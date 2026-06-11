@@ -219,29 +219,37 @@ in logs — scripted in test/e2e/doctor_test.sh and unit tests.
 ---
 
 ## BLOCK 3 — Identity service + audit hash-chain (security spine first)
-**Builds:** internal/identity — keystore interface with macOS Keychain
+**Builds:** internal/identity — narrow interfaces for `KeyStore` and
+`IdentityIssuer`, with P1 implementations backed by macOS Keychain
 (`security(1)` wrapper), Linux libsecret, and an explicit encrypted
 file-keystore fallback (0600 + passphrase; warned by doctor; no silent
 plaintext fallback). Manage distinct local identities: local CA key,
 daemon audit signing key, per-agent package identity keys, and per-run
 workload key/cert. `agent pack` can mint/register an AID; `agent run` can
 issue a 1h, auto-renewed SPIFFE-style workload cert
-(`spiffe://local.agentpaas/agent/<name>/<ver>/run/<run_id>`) for
-gateway/harness-to-daemon mTLS. Workload certs identify event sources but
+(`spiffe://local.agentpaas/agent/<name>/<ver>/run/<run_id>` in P1) for
+gateway/harness-to-daemon mTLS. Trust-domain construction and verification
+must be configurable so Phase 2 can issue hosted identities such as
+`spiffe://tenant.agentpaas.ai/<tenant>/agent/<name>/<ver>/run/<run_id>`
+without changing record schemas. Workload certs identify event sources but
 never sign the canonical audit trail.
 
-internal/audit — append-only canonical JSONL where each record has
-`seq`, `prev_hash`, and `record_hash` (SHA-256 over canonical JSON with
-`record_hash` omitted); SQLite index derived from JSONL and rebuildable;
-single daemon-owned writer that serializes appends and durably maintains a
-latest-head anchor. Signed checkpoint records are inserted into the same
-chain at fixed cadence and at export, signed by the daemon audit signing
-key over `{head_seq, head_hash, previous_checkpoint_hash, created_at}`.
-Security-relevant actions fail closed if their audit record cannot be
-appended. Add `agent audit verify` with local and bundle modes; add
-`agent audit export` -> signed bundle containing JSONL segments,
-checkpoints, AIDs/public keys, trust metadata, and an export manifest signed
-by the daemon audit signing key.
+internal/audit — narrow interfaces for `AuditWriter`, `AuditAnchor`,
+`AuditVerifier`, and `AuditExporter`, with P1 implementations backed by
+append-only canonical JSONL where each record has `seq`, `prev_hash`, and
+`record_hash` (SHA-256 over canonical JSON with `record_hash` omitted);
+SQLite index derived from JSONL and rebuildable; single daemon-owned writer
+that serializes appends and durably maintains a latest-head anchor. Signed
+checkpoint records are inserted into the same chain at fixed cadence and at
+export, signed by the daemon audit signing key over `{head_seq, head_hash,
+previous_checkpoint_hash, created_at}`. Security-relevant actions fail
+closed if their audit record cannot be appended. Add `agent audit verify`
+with local and bundle modes; add `agent audit export` -> signed bundle
+containing JSONL segments, checkpoints, AIDs/public keys, trust metadata,
+and an export manifest signed by the daemon audit signing key. Record schema
+must include `deployment_mode` (`local|hosted`) and optional hosted-context
+fields (`tenant_id`, `project_id`, `region`, `runtime_provider`) so P2 can
+reuse the same verification algorithm in AgentPaaS.ai.
 
 **Edge cases (every one is a test):** tamper a middle line -> verify fails
 naming the exact line/seq; truncate tail relative to the latest local head
@@ -254,7 +262,10 @@ run container; 100k records verify < 5s; concurrent writers serialize
 without loss (`-race`); audit append fsync/write failure makes the guarded
 operation fail closed; keychain locked/unavailable -> clear error, no
 silent plaintext fallback; explicit file-keystore fallback refuses weak
-permissions and wrong passphrase.
+permissions and wrong passphrase; alternate trust domain URI builder/verifier
+passes for a fake hosted tenant; audit bundle verification works from an
+extracted bundle without reading `~/.agentpaas`; in-memory fake keystore and
+fake audit anchor pass the same contract tests as local implementations.
 
 **SUCCESS GATE:** `go test ./internal/identity/... ./internal/audit/...
 -race` green; tamper-detection e2e script demonstrates all 4 tamper modes

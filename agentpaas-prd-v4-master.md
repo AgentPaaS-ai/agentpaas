@@ -386,6 +386,79 @@ AgentPaaS's P1 trust posture is: trust the developer and local supervisor
 enough to govern execution; do not automatically trust the AI-written agent,
 its inputs, its dependencies, or its network behavior.
 
+## 2.4.3 Phase 2 cloud portability guardrails
+Phase 2 should let a developer take an agent that was packed, tested, and
+approved locally, then promote the same governed runtime to an AgentPaaS.ai
+hosted PaaS. The expected cloud substrate is Cloudflare: Workers for ingress
+and control edges, Containers for running agent images, Durable Objects for
+per-agent/per-run coordination and state, Cloudflare secrets/bindings for
+hosted credentials, and Cloudflare Access/service auth where useful.
+
+Block 3's P1 design supports that direction if the implementation treats
+local identity, local storage, and local audit anchoring as replaceable
+backends, not as product semantics.
+
+```mermaid
+flowchart LR
+  Local["P1 local dev<br/>agentpaasd + Docker"] --> Promote["Promote approved<br/>agent.lock + image digest + policy digest + AID"]
+  Promote --> Cloud["P2 AgentPaaS.ai PaaS<br/>Cloudflare-hosted runtime"]
+
+  Cloud --> Worker["Cloudflare Worker<br/>ingress + control edge"]
+  Cloud --> Container["Cloudflare Container<br/>agent runtime image"]
+  Cloud --> DO["Durable Object<br/>per-agent/per-run coordinator"]
+  Cloud --> CloudSecrets["Cloudflare secrets/bindings<br/>hosted credential broker"]
+  Cloud --> CloudAudit["Hosted audit sink<br/>hash-chain + remote anchoring"]
+```
+
+The P1 choices that must remain portable:
+- **AID is environment-independent.** The Agent Identity Document should
+  describe the agent artifact and approval unit, not the local machine. It
+  must be valid when promoted from local Docker to hosted Cloudflare runtime.
+- **Issuer is pluggable.** P1 uses a local CA from the OS secret store.
+  P2 can use an AgentPaaS-hosted issuer or tenant-scoped issuer. Code should
+  depend on an issuer interface, not directly on macOS Keychain, libsecret,
+  or local filesystem paths.
+- **SPIFFE trust domain is not hardcoded to local.** P1 may issue
+  `spiffe://local.agentpaas/...` certificates, but the URI builder/verifier
+  must allow a future hosted trust domain such as
+  `spiffe://tenant.agentpaas.ai/<tenant>/agent/<name>/<ver>/run/<run_id>`.
+- **Audit signer is environment-scoped.** P1 signs with the local daemon
+  audit key. P2 should sign with a tenant/project audit key and optionally
+  remote-anchor checkpoints. Export verification should accept explicit trust
+  metadata rather than assuming "this laptop's daemon key."
+- **Audit storage is abstract.** P1's canonical JSONL + SQLite index is
+  excellent for local mode. P2 may store the same canonical records in a
+  hosted audit sink backed by Durable Objects, R2, D1, or another managed
+  store. The record schema and verification algorithm must stay portable.
+- **Run identity includes deployment context.** Run records should have room
+  for `deployment_mode` (`local|hosted`), `tenant_id`/`project_id` when
+  hosted, and region/runtime metadata when available. P1 can leave hosted
+  fields empty.
+- **Promotion is by digest, not rebuild.** P2 should consume the local
+  `agent.lock`, image digest, policy digest, AID, and SBOM. Rebuilding in the
+  cloud may be offered later, but the first hosted path should preserve the
+  exact artifact the developer tested.
+
+What not to do in P1:
+- Do not bake OS keychain APIs into audit or identity business logic.
+- Do not make `local.agentpaas` the only valid trust domain.
+- Do not define audit verification as "read files from `~/.agentpaas`."
+- Do not make local daemon identity equal tenant identity.
+- Do not require direct host filesystem semantics in record schemas.
+- Do not let cron/scheduled runs bypass Trigger API semantics; hosted
+  schedules must use the same trigger path.
+
+What P1 should do for speed:
+- Implement only local backends first: OS secret store, local CA, local audit
+  key, JSONL, SQLite, local head anchor.
+- Keep the interfaces narrow: `KeyStore`, `IdentityIssuer`, `AuditWriter`,
+  `AuditAnchor`, `AuditVerifier`, and `AuditExporter`.
+- Add cloud-portability tests at the contract level only: alternate trust
+  domain strings, explicit deployment metadata fields, bundle verification
+  without local filesystem assumptions, and an in-memory/fake keystore.
+- Defer hosted issuer, remote audit anchoring, tenant RBAC, Cloudflare
+  deployment, and cloud secrets broker implementation to Phase 2.
+
 ## 2.5 Secrets model
 - Secrets registered once: `agent secret set OPENAI_API_KEY` → stored in
   macOS Keychain / libsecret. NEVER in images, env files, or compose files.
