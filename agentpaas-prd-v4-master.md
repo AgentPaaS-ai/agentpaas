@@ -133,10 +133,14 @@ Local enforcement must be REAL, not advisory env-var proxying:
 3. Harness also sets `HTTP(S)_PROXY` + offers an SDK shim as conveniences —
    but the network topology is the control. An agent that ignores the proxy
    has no route to the internet.
-4. Policy = default-deny. Allow entries: `{domain | domain:port | CIDR,
-   methods?, mcp_server_id?, model_provider_id?}` in `policy.yaml`,
-   compiled to agentgateway config at `agent run`. SNI, Host header, and
-   DNS answers are cross-checked to defeat domain fronting.
+4. Policy = default-deny. One human-readable `policy.yaml` is the canonical
+   source for egress, credentials, MCP servers, and hook destinations. Allow
+   entries are exact by default: `domain: api.example.com` means only that
+   hostname, not subdomains. Wildcards such as `*.example.com` require an
+   explicit `allow_wildcard: true` acknowledgment; private CIDRs require
+   `allow_private: true`. Policy is compiled to agentgateway config at
+   `agent run`. SNI, Host header, and DNS answers are cross-checked to
+   defeat domain fronting.
 5. Every allowed AND denied call → audit event: timestamp, agent identity,
    destination, method, bytes, status, payload SHA-256, token count, cost
    estimate, decision + matching policy rule.
@@ -146,9 +150,9 @@ Local enforcement must be REAL, not advisory env-var proxying:
    IPv6 (internal net is dual-stack-disabled or equally fenced), UDP
    (blocked except DNS-to-stub), container-to-host (host.docker.internal
    blocked unless allow-listed), websockets/SSE through gateway (supported,
-   logged per-frame-batch), redirects crossing domains (re-evaluated
-   against policy per hop), CONNECT tunneling to non-allow-listed ports
-   (denied).
+   logged per-frame-batch), redirects disabled by default for credentialed
+   brokered requests and otherwise re-evaluated against policy per hop,
+   CONNECT tunneling to non-allow-listed ports (denied).
 
 ## 2.4 Identity model
 The identity service keeps signing authority separate from workload identity.
@@ -463,10 +467,15 @@ What P1 should do for speed:
 - Secrets registered once: `agent secret set OPENAI_API_KEY` → stored in
   macOS Keychain / libsecret. NEVER in images, env files, or compose files.
 - Default mode is brokered outbound credentials: `policy.yaml` binds a
-  keychain secret to a specific allowed egress rule and an injection
+  keychain secret to a specific allowed egress rule and a header injection
   template. At runtime, the gateway sidecar injects the credential into the
-  approved outbound request (for example an Authorization header). The
-  agent never receives the raw secret value.
+  approved outbound request, normally as `Authorization` or another
+  app-specific header. The agent never receives the raw secret value. P1
+  deliberately does not support query-string or body credential injection:
+  query strings leak through URLs/logs too easily, and body rewriting is
+  harder to reason about, test, and audit. Services that require body-level
+  credentials need an adapter/MCP server or an explicit future policy
+  extension.
 - For brokered credentials, the agent sends an unsigned logical HTTP/LLM/MCP
   request to the gateway via the SDK or configured proxy. The gateway
   validates policy, injects the credential, and originates the upstream TLS
@@ -492,7 +501,8 @@ What P1 should do for speed:
   agent identity, run id, credential id, destination, policy rule id, and
   `visible_to_agent=false`.
 - We guarantee a brokered credential cannot be used for a different
-  destination or request shape than the policy rule permits.
+  destination, method, port, redirect target, or request shape than the policy
+  rule permits.
 - We guarantee a direct lease cannot exist unless `policy.yaml` explicitly
   opts into `file_lease` or `env_lease`. For security review purposes, a
   direct lease means "this run had access to this secret."
@@ -644,6 +654,7 @@ resources:
 ```
 ```yaml
 # policy.yaml  (lives in git next to the agent; reviewed in PRs)
+version: 1
 egress:
   default: deny
   allow:
@@ -655,7 +666,12 @@ egress:
       ports: [443]
       methods: [GET]
       credential: stripe-readonly
-    - mcp_server: filesystem-readonly   # resolved from mcp.yaml
+    - domain: hooks.slack.com
+      ports: [443]
+      methods: [POST]
+      category: webhook
+    - mcp_server: filesystem-readonly
+      tools: [read_file, list_directory]
 credentials:
   brokered:
     - id: openai-prod
@@ -674,12 +690,43 @@ credentials:
       mode: file_lease             # file_lease | env_lease
       mount_path: /run/agentpaas/secrets/LEGACY_TOOL_TOKEN
       reason: "Legacy SDK only supports reading a token file"
+mcp_servers:
+  - id: filesystem-readonly
+    transport: stdio
+    command: agentpaas-mcp-filesystem
+    args: ["--root", "./data", "--readonly"]
+    env: {}
+    allow_secrets: []
 hooks:
   egress_denied:
     - url: http://127.0.0.1:9999/security-alert
 ingress:
   auth: api_key               # api_key | mtls
 ```
+
+Policy schema rules for P1:
+- `policy.yaml` is the only canonical policy file. It may include sections
+  for egress, credentials, MCP servers, hooks, and ingress. Generated examples
+  should optimize for being easy for a human or LLM to compose correctly.
+- Unknown fields are errors. Typos should fail closed instead of silently
+  weakening security.
+- Domain matching is exact by default. `domain: example.com` does not allow
+  `api.example.com`; use an explicit subdomain or a wildcard with
+  `allow_wildcard: true`.
+- Canonical policy is the review and audit unit. The compiler sorts maps and
+  unordered lists deterministically, normalizes method names to uppercase,
+  lowercases and ASCII-normalizes domains, expands defaults, removes comments,
+  deduplicates equivalent rules with a warning, and produces the
+  `policy_digest`. YAML key order and comments must not affect the digest.
+- IDNs are accepted only after conversion to canonical ASCII punycode.
+  Confusable-character detection and display-name UX are deferred; when in
+  doubt, require the developer to specify the ASCII hostname explicitly.
+- Brokered credential injection is header-only in P1. Query-string and body
+  injection are rejected by validation.
+- Hook destinations are validated in Block 4 as policy data and revalidated
+  at delivery time in Block 9. Remote hook URLs must match an egress allow
+  rule; loopback hook URLs are allowed only as explicit local hooks and are
+  never reachable from the agent container.
 
 ## 2.10 Dashboard (P1 scope, intentionally small)
 Single-page app served by daemon (embedded assets, no CDN at runtime):

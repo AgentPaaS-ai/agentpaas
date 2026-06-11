@@ -278,35 +278,55 @@ global transparency-log anchoring.
 ---
 
 ## BLOCK 4 — Policy engine (parse → validate → compile to agentgateway)
-**Builds:** internal/policy — strict YAML schema (unknown fields = error),
-validation (no wildcard domains by default; `*.example.com` requires
-`allow_wildcard: true` acknowledgment), MCP server declarations (`mcp.yaml`
-or policy section) with explicit server ids, transport (`stdio|http`),
-allowed tools, auth mode, and egress binding for remote MCP servers;
+**Builds:** internal/policy — one canonical human/LLM-friendly `policy.yaml`
+for egress, credentials, MCP servers, hooks, and ingress; strict YAML schema
+(unknown fields = error); validation (exact hostname matching by default,
+no implicit subdomain matching, no wildcard domains unless
+`allow_wildcard: true`, no private CIDRs unless `allow_private: true`); MCP server
+declarations in `policy.yaml` with explicit server ids, transport
+(`stdio|http`), command/endpoint, allowed tools, auth mode, minimal env, and
+egress binding for remote MCP servers; hook destination declarations checked
+as policy data in Block 4 and rechecked at delivery time in Block 9;
 brokered credential bindings (`egress.allow[].credential` and MCP auth
-references must point to `credentials.brokered[].id`), explicit direct-lease
-schema (`credentials.direct_leases[]` requires mode+reason), compiler
-emitting pinned agentgateway config + the DNS-stub allow-list +
-credential-injection rules by id only, policy digest (sha256 of canonical
-form) recorded for audit + agent.lock. Vendor agentgateway release into
+references must point to `credentials.brokered[].id`) with header-only
+injection templates; explicit direct-lease schema
+(`credentials.direct_leases[]` requires mode+reason); canonicalizer that
+sorts maps and unordered lists deterministically, uppercases HTTP methods,
+lowercases and ASCII/punycode-normalizes domains, expands defaults, removes
+comments, deduplicates equivalent rules with warnings, and emits a stable
+policy digest (sha256 of canonical form) recorded for audit + agent.lock.
+Compiler emits pinned agentgateway config + the DNS-stub allow-list +
+credential-injection rules by id only. Vendor agentgateway release into
 third_party/ with checksum verification in the build.
 **Edge cases:** empty policy → deny-all config (valid, runs, nothing
-egresses); duplicate domains → dedup warn; punycode/IDN domains →
-normalized; port ranges rejected (explicit ports only in P1); CIDR overlap
-with RFC1918 → require `allow_private: true`; policy file world-writable →
-refuse to load; egress rule references undeclared brokered credential id →
-validation error; declared brokered credential not referenced by an egress
-rule → validation warning; direct lease without reason → validation error;
-compiled config and canonical policy digest input never contain raw secret
-material; undeclared MCP server id -> validation error; MCP server with
-unspecified allowed tools -> deny all; remote MCP server without matching
-egress allow rule -> validation error; local MCP server receiving undeclared
-env/secret -> validation error; round-trip: compile(parse(x))
-deterministic.
+egresses); `domain: example.com` does not allow `api.example.com`; wildcard
+without `allow_wildcard: true` -> validation error; duplicate domains →
+dedup warn; punycode/IDN domains → canonical ASCII form; confusable IDN
+defense is deferred but non-normalizable names fail closed; port ranges
+rejected (explicit ports only in P1); CIDR overlap with RFC1918 → require
+`allow_private: true`; policy file world-writable → refuse to load; egress
+rule references undeclared brokered credential id → validation error;
+declared brokered credential not referenced by an egress/MCP rule →
+validation warning; query-string or body credential injection → validation
+error; direct lease without reason → validation error; compiled config and
+canonical policy digest input never contain raw secret values; secret ids may
+appear, secret values never may; undeclared MCP server id -> validation
+error; MCP server with unspecified allowed tools -> deny all; remote MCP
+server without matching egress allow rule -> validation error; local MCP
+server receiving undeclared env/secret -> validation error; remote hook URL
+without matching egress allow rule -> validation error; loopback hook URL
+must be explicitly local and cannot be exposed to the agent container;
+credentialed brokered request redirects are disabled by default;
+noncredentialed redirects are re-evaluated against policy per hop; YAML key
+order and comments do not affect digest; typos such as `credentials.brokerd`,
+`allow_wildcards`, and scalar `port: 443` fail schema validation; round-trip:
+compile(parse(x)) deterministic.
 **Fuzzing:** go-fuzz on parser (mandatory; crash corpus committed).
 **SUCCESS GATE:** unit + fuzz (1M execs, 0 crashes) green; golden-file
-tests for compiler output; a sample policy.yaml from PRD §2.9 compiles to
-a config agentgateway actually loads (smoke test runs the real binary).
+tests for compiler output; digest stability tests prove comments/key order do
+not change the canonical digest while semantically meaningful changes do; a
+sample policy.yaml from PRD §2.9 compiles to a config agentgateway actually
+loads (smoke test runs the real binary).
 
 ---
 
