@@ -280,13 +280,16 @@ global transparency-log anchoring.
 ## BLOCK 4 — Policy engine (parse → validate → compile to agentgateway)
 **Builds:** internal/policy — strict YAML schema (unknown fields = error),
 validation (no wildcard domains by default; `*.example.com` requires
-`allow_wildcard: true` acknowledgment), brokered credential bindings
-(`egress.allow[].credential` must reference `credentials.brokered[].id`),
-explicit direct-lease schema (`credentials.direct_leases[]` requires
-mode+reason), compiler emitting pinned agentgateway config + the DNS-stub
-allow-list + credential-injection rules by id only, policy digest (sha256
-of canonical form) recorded for audit + agent.lock. Vendor agentgateway
-release into third_party/ with checksum verification in the build.
+`allow_wildcard: true` acknowledgment), MCP server declarations (`mcp.yaml`
+or policy section) with explicit server ids, transport (`stdio|http`),
+allowed tools, auth mode, and egress binding for remote MCP servers;
+brokered credential bindings (`egress.allow[].credential` and MCP auth
+references must point to `credentials.brokered[].id`), explicit direct-lease
+schema (`credentials.direct_leases[]` requires mode+reason), compiler
+emitting pinned agentgateway config + the DNS-stub allow-list +
+credential-injection rules by id only, policy digest (sha256 of canonical
+form) recorded for audit + agent.lock. Vendor agentgateway release into
+third_party/ with checksum verification in the build.
 **Edge cases:** empty policy → deny-all config (valid, runs, nothing
 egresses); duplicate domains → dedup warn; punycode/IDN domains →
 normalized; port ranges rejected (explicit ports only in P1); CIDR overlap
@@ -295,7 +298,11 @@ refuse to load; egress rule references undeclared brokered credential id →
 validation error; declared brokered credential not referenced by an egress
 rule → validation warning; direct lease without reason → validation error;
 compiled config and canonical policy digest input never contain raw secret
-material; round-trip: compile(parse(x)) deterministic.
+material; undeclared MCP server id -> validation error; MCP server with
+unspecified allowed tools -> deny all; remote MCP server without matching
+egress allow rule -> validation error; local MCP server receiving undeclared
+env/secret -> validation error; round-trip: compile(parse(x))
+deterministic.
 **Fuzzing:** go-fuzz on parser (mandatory; crash corpus committed).
 **SUCCESS GATE:** unit + fuzz (1M execs, 0 crashes) green; golden-file
 tests for compiler output; a sample policy.yaml from PRD §2.9 compiles to
@@ -341,7 +348,8 @@ accounting from gateway-reported usage; breach → SIGTERM, 10s grace,
 SIGKILL, status=BUDGET_EXCEEDED, audit event); checkpoint API (opaque
 blob → daemon store); OTel emit. Python SDK (`agentpaas-sdk`): decorators
 `@agent.on_invoke`, `agent.llm()` (OpenAI-compatible client preconfigured
-to gateway), `agent.http(credential_id, ...)`, `agent.mcp(server_id)`.
+to gateway), `agent.http(credential_id, ...)`,
+`agent.mcp(server_id, tool, input)`.
 Brokered credentials are never returned to SDK callers. `agent.secrets.file()`
 exists only for explicit direct-lease compatibility mode and is discouraged
 in generated code. Node SDK mirrors.
@@ -351,7 +359,9 @@ reaped (PID 1 duty); invoke payload 50MB → rejected 413 (limit 10MB,
 configurable); unicode/binary payloads round-trip; concurrent invokes →
 serialized by default (`concurrency: 1`), explicit opt-up; budget race
 (token usage reported after kill) → accounted post-hoc, audit shows
-overage; wall-clock budget uses monotonic clock (immune to clock-set).
+overage; wall-clock budget uses monotonic clock (immune to clock-set);
+MCP call to undeclared server/tool is denied before execution and audited;
+MCP tool input/output bodies are not logged, only hashes and metadata.
 **SUCCESS GATE:** e2e: an infinite-loop agent with max_wall_clock=30s dies
 at 30s±2s with BUDGET_EXCEEDED + audit event; a token-burn agent dies at
 the token cap; both SDKs pass the same harness contract test suite.

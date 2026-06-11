@@ -539,6 +539,76 @@ What P1 should do for speed:
    cron service invokes via the same Trigger API (so scheduled runs are
    audited identically).
 
+## 2.7.1 MCP access, delegated user access, and orchestration boundary
+AgentPaaS has two MCP roles that must stay distinct:
+1. **Agent as MCP client:** a governed agent calls local or remote MCP
+   servers to use tools and data sources. This is part of the runtime
+   security surface.
+2. **AgentPaaS as MCP server:** coding tools call AgentPaaS MCP tools such as
+   `pack_agent`, `run_agent`, and `query_audit`. This is the distribution
+   integration built in Block 12.
+
+P1 must support the first role at a basic governed level:
+- Local and remote MCP servers must be declared in `mcp.yaml` and referenced
+  from `policy.yaml`; dynamic MCP tool discovery never auto-allows new tools.
+- Local MCP servers run only as daemon-managed child processes, sidecars, or
+  explicitly declared local endpoints. They receive minimal environment, no
+  raw secrets by default, and the same audit/redaction controls as agents.
+- Remote HTTP MCP servers are reached only through the gateway egress path.
+  Their domains, ports, auth mode, and allowed tools are policy-reviewed.
+- MCP auth follows the MCP authorization model for HTTP transports where
+  available: OAuth-style protected-resource discovery, authorization-server
+  metadata, and bearer tokens. In P1, AgentPaaS supports service/app
+  credentials via the secrets broker; interactive per-end-user authorization
+  is a P2 feature.
+- Every MCP tool call is audited with agent identity, run id, server id,
+  tool name, input/output payload hashes, credential id if used, user subject
+  if present, decision, and policy rule id.
+
+Phase 2 adds **Verified User Access-style delegated access**: actions can
+execute as the end user, not only as the agent/service account. The Workato
+pattern is the right mental model: a parent connection defines the approved
+app/integration, while runtime user connections let each end user authenticate
+with their own OAuth credentials; tool/actions then respect that user's
+permissions and produce user-level audit trails.
+
+For AgentPaaS this means:
+- P1 trusted subject = agent/run identity.
+- P2 trusted subjects = agent/run identity **plus** end-user identity and
+  delegated credential context.
+- P1 credentials = brokered service/app credentials and explicit direct
+  leases only.
+- P2 credentials = runtime user connections, OAuth consent, per-user token
+  vaulting, revocation, and user-level authorization checks at tool-call time.
+
+Example P2 flow:
+```mermaid
+sequenceDiagram
+  actor User as End user on phone
+  participant App as AgentPaaS app/trigger
+  participant Agent as Receipt agent
+  participant Broker as Credential broker
+  participant MCP as NetSuite MCP server
+  participant NS as NetSuite
+  participant Audit as Audit log
+
+  User->>App: Upload receipt photo
+  App->>Agent: Invoke run with user_subject
+  Agent->>MCP: submit_receipt(...)
+  MCP->>Broker: Need NetSuite credential for user_subject
+  Broker-->>User: OAuth connect prompt if no runtime connection exists
+  User-->>Broker: Authorize NetSuite
+  Broker-->>MCP: Short-lived delegated token
+  MCP->>NS: Create expense/receipt as user
+  MCP->>Audit: user_subject + agent_id + tool + policy decision
+```
+
+Multi-agent workflows, loops, master/worker patterns, and agent chaining are
+also P2. P1 should not build an orchestration product. It should preserve the
+right primitives: run ids, parent/child run correlation ids, triggering
+subject, policy decision records, and audit events that can later explain
+"who/what caused this action."
+
 ## 2.8 Packaging pipeline (`agent pack`)
 Input: a directory with `agent.yaml` (+ code). Steps, all deterministic:
 1. Detect framework (plain Python, LangGraph, CrewAI, Node) or use
