@@ -211,6 +211,181 @@ P1 has four local identity classes:
   global transparency-log guarantees or prove that a fully compromised local
   machine could not have deleted all local state before export.
 
+## 2.4.2 Block 3 security walkthrough and local threat model
+Block 3 is the trust spine. It does not yet implement the full network
+sandbox, secrets broker, or scheduler. It establishes the local identities,
+short-lived workload credentials, and tamper-evident audit trail that later
+blocks depend on.
+
+The simplest mental model:
+- The developer and the developer's secure machine are trusted enough to run
+  the local supervisor.
+- `agentpaasd` is the trusted local control point.
+- AI-generated agent code, its external inputs, its dependencies, and its
+  network behavior are not trusted by default.
+- Scheduled local runs must go through the same supervised path as manual
+  runs. Cron must not become a backdoor around identity, policy, budget,
+  secrets, or audit.
+
+### Identity roles
+```mermaid
+flowchart TB
+  Dev["Developer / CLI"] -->|"agent pack"| ID["Identity service"]
+  Dev -->|"agent run"| ID
+
+  ID --> Store["OS secret store<br/>macOS Keychain / libsecret"]
+  Store --> CA["Local CA key<br/>issues workload certs"]
+  Store --> AuditKey["Daemon audit signing key<br/>signs audit checkpoints"]
+  Store --> PkgKey["Per-agent package identity key<br/>signs package identity"]
+
+  PkgKey --> AID["AID<br/>Agent Identity Document<br/>public key + metadata"]
+  AID --> Lock["agent.lock + image labels"]
+
+  CA --> Cert["1h workload cert<br/>spiffe://local.agentpaas/.../run/id"]
+  Cert --> Harness["Harness in agent container"]
+  Cert --> Gateway["Gateway sidecar"]
+  Cert --> Daemon["Daemon APIs<br/>mTLS identity"]
+
+  AuditKey --> Checkpoints["Signed audit checkpoints"]
+  AuditKey --> Export["Signed audit export bundle"]
+```
+
+Each identity has one job:
+- **Local CA key:** issues short-lived run certificates, so long-lived signing
+  authority is not placed inside containers.
+- **Workload certificate:** proves which specific run is talking to the
+  daemon/gateway/harness path.
+- **Package identity key:** ties `agent.lock`, image labels, and security
+  review to a stable agent identity.
+- **Daemon audit signing key:** signs audit checkpoints and exports
+  independently from the workload identity.
+
+Workload certificates identify event sources, but they do not sign the
+canonical audit trail. The daemon audit signing key signs the audit trail.
+This separation prevents a compromised or confused workload credential from
+being treated as authority over the audit record itself.
+
+### Audit chain
+```mermaid
+flowchart LR
+  R0["Record 0<br/>seq=0<br/>prev=0000<br/>hash=A"] --> R1["Record 1<br/>seq=1<br/>prev=A<br/>hash=B"]
+  R1 --> R2["Record 2<br/>seq=2<br/>prev=B<br/>hash=C"]
+  R2 --> CP["Checkpoint<br/>head_seq=2<br/>head_hash=C<br/>signed by daemon audit key"]
+  CP --> R3["Record 3<br/>seq=3<br/>prev=checkpoint_hash<br/>hash=D"]
+
+  JSONL["Canonical JSONL<br/>authoritative"] --> SQLite["SQLite index<br/>derived, rebuildable"]
+  CP --> Anchor["Local head anchor<br/>detects tail truncation"]
+```
+
+Why each piece exists:
+- **Canonical JSONL:** portable source of truth for review and export.
+- **SQLite index:** fast dashboard/search path, but not trusted as the source
+  of truth.
+- **Hash chain:** catches edits, deletion in the middle, and reordering.
+- **Signed checkpoints:** make history tamper-evident at known intervals.
+- **Local head anchor:** catches local tail truncation, where an attacker
+  deletes the newest records instead of editing middle records.
+- **Signed export bundle:** lets a security reviewer verify integrity on a
+  second machine.
+
+Second-machine verification proves that the exported bundle is internally
+consistent and signed by the expected daemon audit key. It does not prove a
+fully compromised local machine could not have deleted all local evidence
+before export. That stronger guarantee would require a future transparency
+log or remote anchoring service, which is not a P1 claim.
+
+### Step-by-step run flow
+```mermaid
+sequenceDiagram
+  actor Dev as Developer
+  participant CLI as agent CLI
+  participant ID as Identity service
+  participant Store as OS secret store
+  participant Audit as Audit writer
+  participant Log as JSONL audit log
+  participant Verifier as agent audit verify
+
+  Dev->>CLI: agent pack
+  CLI->>ID: mint/register package identity
+  ID->>Store: store package private key
+  ID-->>CLI: AID public metadata
+  CLI-->>Dev: image labels + agent.lock
+
+  Dev->>CLI: agent run
+  CLI->>ID: request run workload cert
+  ID->>Store: use local CA key
+  ID-->>CLI: short-lived workload cert
+
+  CLI->>Audit: append run_started
+  Audit->>Log: write record with seq + prev_hash + record_hash
+  Audit->>Audit: maybe create signed checkpoint
+
+  Dev->>CLI: agent audit export
+  CLI->>Audit: export JSONL + checkpoints
+  Audit-->>CLI: signed bundle
+
+  Dev->>Verifier: verify bundle elsewhere
+  Verifier->>Verifier: check hashes + signatures + manifest
+```
+
+### Scheduled local runs
+Local cron-style agents are supported by the overall P1 architecture, but the
+cron scheduler itself is implemented later in Block 9. The security rule is
+that a scheduled run must be just another trigger source. It goes through the
+same Trigger API, identity, policy, budget, secrets, egress, and audit path
+as an interactive run.
+
+```mermaid
+flowchart LR
+  Cron["agent.yaml<br/>cron: 0 9 * * *"] --> Daemon["agentpaasd<br/>local scheduler"]
+  Daemon --> Trigger["Same Trigger API path<br/>as manual/API invoke"]
+  Trigger --> Run["New agent run"]
+  Run --> Cert["New short-lived<br/>workload cert"]
+  Run --> Audit["Audit events:<br/>scheduled_run_started<br/>run_finished/failed"]
+  Audit --> Export["Signed audit export"]
+```
+
+Cron makes the controls more important because the agent may run unattended
+for days or weeks. Scheduled execution must never bypass the same guardrails
+that apply when a developer manually runs the agent.
+
+### Who is the adversary on a secure developer machine?
+On a secure local development machine, the primary adversary is usually not
+the developer. The adversary is the untrusted behavior around the agent:
+1. **AI-generated or buggy agent code** may call the wrong API, loop forever,
+   send data to an unintended endpoint, or mishandle credentials.
+2. **Prompt injection** may arrive through email, tickets, docs, Slack, web
+   pages, PDFs, invoices, or any other data the agent reads.
+3. **Compromised dependencies** from npm, PyPI, or transitive packages may
+   try to read files, inspect environment variables, or phone home.
+4. **Over-broad or stolen credentials** can be misused if exposed directly to
+   agent code, which is why brokered credentials are the default.
+5. **Automation drift** can turn a safe-looking local experiment into a
+   recurring unattended process; audit, budgets, identity, and policy make it
+   bounded and reviewable.
+6. **Local malware or full machine compromise** is only partially addressed
+   in P1. AgentPaaS avoids plaintext secrets where possible and makes audit
+   tampering evident, but it does not claim to defeat a fully compromised
+   developer machine.
+
+```mermaid
+flowchart TB
+  You["Developer<br/>trusted"] --> Machine["Secure dev machine<br/>mostly trusted"]
+  Machine --> Daemon["agentpaasd<br/>trusted local control point"]
+  Daemon --> Agent["Agent code<br/>not trusted"]
+  Agent --> Inputs["External inputs<br/>not trusted"]
+  Agent --> Deps["npm/pip deps<br/>not fully trusted"]
+  Agent --> Internet["Network/API calls<br/>controlled by policy"]
+
+  Daemon --> Audit["Audit trail<br/>tamper-evident"]
+  Daemon --> Secrets["Secrets broker<br/>raw secrets hidden by default"]
+  Daemon --> Policy["Default-deny policy<br/>explicit allow only"]
+```
+
+AgentPaaS's P1 trust posture is: trust the developer and local supervisor
+enough to govern execution; do not automatically trust the AI-written agent,
+its inputs, its dependencies, or its network behavior.
+
 ## 2.5 Secrets model
 - Secrets registered once: `agent secret set OPENAI_API_KEY` → stored in
   macOS Keychain / libsecret. NEVER in images, env files, or compose files.
