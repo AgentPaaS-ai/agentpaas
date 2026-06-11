@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <!-- Node-link flowchart - 3 connected circles -->
+  <circle cx="14" cy="16" r="5" stroke="#1E3A5F" stroke-width="2.5"/>
+  <circle cx="34" cy="12" r="5" stroke="#1E3A5F" stroke-width="2.5"/>
+  <circle cx="24" cy="34" r="5" stroke="#CB3C60" stroke-width="2.5"/>
+  <!-- Connecting lines -->
+  <line x1="18" y1="19" x2="30" y2="14" stroke="#1E3A5F" stroke-width="2" opacity="0.5"/>
+  <line x1="20" y1="20" x2="22" y2="30" stroke="#CB3C60" stroke-width="2" opacity="0.5"/>
+  <line x1="29" y1="17" x2="26" y2="30" stroke="#1E3A5F" stroke-width="2" opacity="0.5"/>
+  <!-- Arrow head -->
+  <polygon points="26,30 28,28 28,32" fill="#1E3A5F"/>
+</svg>

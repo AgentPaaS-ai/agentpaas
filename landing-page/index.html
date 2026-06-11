@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentPaaS.ai | The Secure Runtime for Autonomous Scale</title>
+  <meta name="description" content="A secure enterprise PaaS where agents build, test, and launch other agents, tools, and deterministic flows with robust security and deep integrations." />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="icon" type="image/png" href="favicon-32.png" sizes="32x32" />
+  <link rel="icon" type="image/png" href="favicon-16.png" sizes="16x16" />
+  <link rel="apple-touch-icon" href="app-icon-512.png" />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="AgentPaaS.ai | The Secure Runtime for Autonomous Scale" />
+  <meta property="og:description" content="A secure enterprise PaaS where agents build, test, and launch other agents, tools, and deterministic flows with robust security and deep integrations." />
+  <meta property="og:image" content="app-icon-512.png" />
+  <meta property="og:image:width" content="512" />
+  <meta property="og:image:height" content="512" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://www.agentpaas.ai" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Space+Grotesk:wght@500;600&amp;display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --navy: #1E3A5F;
+      --navy-light: #2D5A8E;
+      --rose: #CB3C60;
+      --rose-dark: #9E2D4A;
+      --slate: #F0F4F8;
+      --slate-border: #CBD5E1;
+      --slate-gray: #64748B;
+      --white: #FFFFFF;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #F0F4F8;
+      color: var(--navy);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 28px;
+    }
+
+    /* NAV */
+    nav {
+      padding: 28px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .nav-logo img { height: 60px; width: auto; }
+    .nav-links {
+      display: flex;
+      gap: 36px;
+      font-size: 14.5px;
+      font-weight: 500;
+    }
+    .nav-links a {
+      color: var(--slate-gray);
+      text-decoration: none;
+      transition: color 0.2s ease;
+    }
+    .nav-links a:hover { color: var(--rose); }
+
+    /* HERO */
+    .hero {
+      padding: 60px 0 100px;
+      text-align: center;
+      position: relative;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 620px;
+      height: 620px;
+      background: radial-gradient(circle, rgba(203,60,96,0.07) 0%, transparent 70%);
+      z-index: -1;
+      border-radius: 50%;
+    }
+    .hero-logo {
+      margin-bottom: 32px;
+    }
+    .hero-logo img {
+      height: 240px;
+      width: auto;
+      filter: drop-shadow(0 10px 30px rgba(30,58,95,0.12));
+    }
+    .hero h1 {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: clamp(42px, 6.8vw, 68px);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -2.2px;
+      margin: 0 0 24px;
+    }
+    .hero h1 .rose { color: var(--rose); }
+    .hero h1 .highlight-rose u {
+      color: inherit;
+      text-decoration-color: var(--rose);
+      text-decoration-thickness: 5px;
+      text-underline-offset: 6px;
+      font-size: 1.06em;
+    }
+    .hero-subtitle {
+      font-size: clamp(17px, 2.2vw, 20px);
+      color: var(--slate-gray);
+      max-width: 780px;
+      margin: 0 auto 48px;
+      font-weight: 400;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 15px 38px;
+      font-size: 15.5px;
+      font-weight: 600;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border: none;
+      cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--rose);
+      color: white;
+      box-shadow: 0 6px 20px rgba(203, 60, 96, 0.28);
+    }
+    .btn-primary:hover {
+      background: var(--rose-dark);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 28px rgba(203, 60, 96, 0.35);
+    }
+    .btn-secondary {
+      background: transparent;
+      color: var(--navy);
+      border: 1.5px solid var(--navy-light);
+    }
+    .btn-secondary:hover {
+      background: rgba(30,58,95,0.04);
+      border-color: var(--rose);
+      color: var(--rose);
+      transform: translateY(-3px);
+    }
+
+    .status-pill {
+      display: inline-block;
+      background: rgba(203,60,96,0.1);
+      color: var(--rose);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 4px 14px;
+      border-radius: 999px;
+      margin-bottom: 20px;
+    }
+
+    /* ROBOT SHOWCASE */
+    .robot-showcase {
+      margin: 40px auto 0;
+      display: flex;
+      justify-content: center;
+    }
+    .robot-showcase img {
+      width: 220px;
+      height: 220px;
+      filter: drop-shadow(0 20px 50px rgba(30, 58, 95, 0.18));
+    }
+
+    /* FEATURES */
+    .section {
+      padding: 80px 0;
+    }
+    .section-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+    .section-header h2 {
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: -0.8px;
+      margin-bottom: 14px;
+    }
+    .section-header p {
+      font-size: 17px;
+      color: var(--slate-gray);
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 32px;
+    }
+    .feature {
+      background: white;
+      border: 1px solid var(--slate-border);
+      border-radius: 20px;
+      padding: 36px 32px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .feature:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 25px 50px -12px rgb(30 58 95 / 0.12);
+      border-color: rgba(203,60,96,0.15);
+    }
+    .feature::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      background: linear-gradient(to right, var(--rose), var(--navy-light));
+      opacity: 0.75;
+    }
+    .feature-icon {
+      width: 96px;
+      height: 96px;
+      margin-bottom: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(145deg, #F8FAFC, #F1F5F9);
+      border-radius: 18px;
+      border: 1px solid var(--slate-border);
+    }
+    .feature-icon img, .feature-icon svg {
+      width: 63px;
+      height: 63px;
+      object-fit: contain;
+    }
+    .feature h3 {
+      font-size: 19px;
+      font-weight: 700;
+      margin: 0 0 12px;
+      color: var(--navy);
+    }
+    .feature p {
+      font-size: 15px;
+      color: var(--slate-gray);
+      line-height: 1.65;
+      margin: 0;
+    }
+
+    /* CONNECTORS SECTION */
+    .connectors {
+      background: white;
+      border-top: 1px solid var(--slate-border);
+      border-bottom: 1px solid var(--slate-border);
+      padding: 72px 0;
+    }
+    .connectors-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 18px;
+      margin-top: 40px;
+    }
+    .connector-card {
+      background: #F8FAFC;
+      border: 1px solid var(--slate-border);
+      border-radius: 14px;
+      padding: 20px 18px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+    .connector-card:hover {
+      border-color: var(--rose);
+      transform: translateY(-2px);
+    }
+    .connector-card h4 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 12px 0 4px;
+      color: var(--navy);
+    }
+    .connector-card p {
+      font-size: 12.5px;
+      color: var(--slate-gray);
+      margin: 0;
+    }
+    .connector-card img, .connector-card svg {
+      width: 54px;
+      height: 54px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+    }
+
+    /* CTA SECTION */
+    .cta {
+      background: linear-gradient(145deg, var(--navy), #162C4A);
+      color: white;
+      border-radius: 24px;
+      padding: 72px 60px;
+      text-align: center;
+      margin: 40px 0 60px;
+      position: relative;
+      overflow: hidden;
+    }
+    .cta::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(circle, rgba(203,60,96,0.18) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+    .cta h2 {
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      letter-spacing: -0.6px;
+    }
+    .cta p {
+      font-size: 17px;
+      opacity: 0.85;
+      max-width: 520px;
+      margin: 0 auto 32px;
+    }
+    .cta .btn-primary {
+      background: var(--rose);
+      box-shadow: 0 8px 24px rgba(203, 60, 96, 0.4);
+    }
+
+    /* FOOTER */
+    footer {
+      padding: 48px 0 36px;
+      border-top: 1px solid var(--slate-border);
+      text-align: center;
+    }
+    .footer-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .footer-logo {
+      opacity: 0.6;
+    }
+    footer p {
+      font-size: 13px;
+      color: var(--slate-gray);
+      margin: 0;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      .hero { padding: 40px 0 70px; }
+      .robot-showcase img { width: 180px; height: 180px; }
+      .features-grid { grid-template-columns: 1fr; }
+      .connectors-grid { grid-template-columns: repeat(2, 1fr); }
+      .cta { padding: 56px 32px; margin: 20px 0 40px; }
+      .nav-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <div class="container">
+    <nav>
+      <a href="/" class="nav-logo">
+        <img src="icon-256.png" alt="AgentPaaS.ai" width="42" height="42" />
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#connectors">Tools</a>
+        <a href="#contact">Contact</a>
+      </div>
+    </nav>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-logo">
+        <img src="logo-horizontal.svg" alt="AgentPaaS.ai" />
+      </div>
+
+      <div class="status-pill">Limited Beta Now Open</div>
+
+      <h1>
+        The platform where <span class="highlight-rose"><u>Agents</u></span><br>
+        <span class="rose">build, test, and launch Agents.</span>
+      </h1>
+
+      <p class="hero-subtitle">
+        A secure enterprise PaaS built to manage the persistent lifecycle, auto-tuned memory, and automated cost optimization of millions of autonomous agents, custom tools, and deterministic flows.
+      </p>
+
+      <div class="btn-group">
+        <a href="mailto:contact@agentpaas.ai" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          Request early access
+        </a>
+        <a href="#features" class="btn btn-secondary">Explore features</a>
+      </div>
+
+      <!-- Robot Icon Showcase -->
+      <div class="robot-showcase">
+        <img src="icon-256.png" alt="AgentPaaS Robot Icon" />
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2>PaaS Built for Autonomous Workforces and Tool Runtimes</h2>
+        <p>A resilient execution environment for millions of agents constructed programmatically by other agents.</p>
+      </div>
+
+      <div class="features-grid">
+
+        <!-- Feature 1: Registry & Discoverability -->
+                <div class="feature">
+                  <div class="feature-icon">
+                    <img src="icons/icon-registry.svg" alt="Registry & Discoverability" />
+                              </div>
+                              <h3>Registry &amp; Discoverability</h3>
+                              <p>Provide a native service registry for tool and agent lookup. Agents can dynamically discover other active agents, query available APIs, and attach compliant tool schemas on the fly.</p>
+                            </div>
+
+                            <!-- Feature 2: Policy-Driven Guardrails -->
+                            <div class="feature">
+                              <div class="feature-icon">
+                                <img src="icons/icon-flowchart.svg" alt="Deterministic Secure Flows" />
+                              </div>
+                              <h3>Deterministic Secure Flows</h3>
+                              <p>Bridge stochastic reasoning with strict logical boundaries. Deploy agents into highly defined, rule-based execution tracks that do not drift.</p>
+                            </div>
+
+                            <!-- Feature 3: Million-Agent Scale -->
+                            <div class="feature">
+                              <div class="feature-icon">
+                                <img src="icons/icon-shield.svg" alt="Policy Gateways &amp; Key Vault" />
+                              </div>
+                              <h3>Policy Gateways &amp; Key Vault</h3>
+                              <p>Secure millions of workspaces with automated key rotation and secret containment. Prevent credential exposure by injecting scoped keys programmatically at runtime.</p>
+                            </div>
+
+                            <!-- Feature 4: Memory Tuning -->
+                            <div class="feature">
+                              <div class="feature-icon">
+                                <img src="icons/icon-tuning.svg" alt="Managed Context Tuning" />
+                              </div>
+                              <h3>Managed Context Tuning</h3>
+                              <p>Let agents learn and evolve without hitting memory limits. Manage persistent memories dynamically to keep your agent prompts highly relevant and contextualized.</p>
+                            </div>
+
+                            <!-- Feature 5: Observability -->
+                            <div class="feature">
+                              <div class="feature-icon">
+                                <img src="icons/icon-audit.svg" alt="Cognitive Audit &amp; Observability" />
+                              </div>
+                              <h3>Cognitive Audit &amp; Observability</h3>
+                              <p>Step-by-step reasoning maps. Trace every decision, tool call, and logical pivot of your agents with native logging explaining exactly why an action was taken.</p>
+                            </div>
+
+                            <!-- Feature 6: Dynamic Budgeting & Cost Rulers -->
+                            <div class="feature">
+                              <div class="feature-icon">
+                                <img src="icons/icon-budget.svg" alt="Dynamic Cost Budget Limits" />
+                              </div>
+                              <h3>Dynamic Cost Budget Limits</h3>
+                              <p>Automated cost routing matches the task with the most cash-efficient model dynamically to complete work deterministically within your allocated price envelopes.</p>
+                            </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- CONNECTOR DIVIDER -->
+  <div style="background: linear-gradient(90deg, #1E3A5F, #CB3C60, #1E3A5F); height: 3px; opacity: 0.15; margin: 0;"></div>
+
+  <!-- ENTERPRISE CONNECTORS -->
+  <section class="connectors" id="connectors">
+    <div class="container">
+      <div class="section-header">
+        <h2>Enterprise-grade Tools &amp; Triggers</h2>
+        <p>Give your autonomous agents secure, native access to your stack. Wake and run them on demand or asynchronously with APIs, webhooks, and cron services.</p>
+      </div>
+
+      <div class="connectors-grid">
+        <div class="connector-card">
+          <img src="icons/tool-google.svg" alt="Google Workspace" />
+          <h4>Google Workspace</h4>
+          <p>Gmail, Drive, Docs, Sheets, Calendar</p>
+        </div>
+        <div class="connector-card">
+          <img src="icons/tool-microsoft.svg" alt="Microsoft 365" />
+          <h4>Microsoft 365</h4>
+          <p>Outlook, Teams, SharePoint, OneDrive</p>
+        </div>
+        <div class="connector-card">
+          <img src="icons/tool-slack.svg" alt="Slack &amp; Teams" />
+          <h4>Slack &amp; Microsoft Teams</h4>
+          <p>Full messaging + channel management</p>
+        </div>
+        <div class="connector-card">
+          <img src="icons/tool-crm.svg" alt="CRM &amp; Sales" />
+          <h4>CRM &amp; Sales</h4>
+          <p>Salesforce, HubSpot, Pipedrive</p>
+        </div>
+        <div class="connector-card">
+          <img src="icons/tool-ticketing.svg" alt="Ticketing &amp; Support" />
+          <h4>Ticketing &amp; Support</h4>
+          <p>Zendesk, Intercom, Freshdesk</p>
+        </div>
+        <div class="connector-card">
+          <img src="icons/tool-finance.svg" alt="Finance &amp; ERP" />
+          <h4>Finance &amp; ERP</h4>
+          <p>NetSuite, QuickBooks, SAP</p>
+        </div>
+        <div class="connector-card">
+          <img src="icons/tool-database.svg" alt="Databases &amp; Warehouses" />
+          <h4>Databases &amp; Warehouses</h4>
+          <p>Postgres, Snowflake, BigQuery</p>
+        </div>
+        <div class="connector-card">
+          <img src="icons/tool-api.svg" alt="Custom APIs &amp; Webhooks" />
+          <h4>Custom APIs &amp; Webhooks</h4>
+          <p>REST, GraphQL, and event-driven</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
+  <div class="container">
+    <div class="cta" id="contact">
+      <h2>Ready to provision millions of secure agents?</h2>
+      <p>Secure early access to the developer preview. Bring your agents and launch a self-expanding, policy-controlled workspace today.</p>
+      <a href="mailto:contact@agentpaas.ai" class="btn btn-primary" style="padding: 16px 42px; font-size: 16px;">
+        Request early access
+      </a>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-logo">
+          <img src="icon-128.png" alt="AgentPaaS.ai" width="36" height="36" />
+        </div>
+        <p>© 2026 AgentPaaS.ai | The Secure Runtime for Autonomous Scale</p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

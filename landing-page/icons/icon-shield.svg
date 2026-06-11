@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <!-- Shield outline -->
+  <path d="M24 6L8 14v10c0 10.5 6.5 20.3 16 22 9.5-1.7 16-11.5 16-22V14L24 6z" stroke="#1E3A5F" stroke-width="3" stroke-linejoin="round"/>
+  <!-- Keyhole circle -->
+  <circle cx="24" cy="26" r="6" stroke="#CB3C60" stroke-width="2.5"/>
+  <!-- Keyhole rectangle -->
+  <rect x="22" y="28" width="4" height="7" rx="1" fill="#CB3C60"/>
+</svg>
