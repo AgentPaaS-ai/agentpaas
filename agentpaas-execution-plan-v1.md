@@ -334,28 +334,54 @@ loads (smoke test runs the real binary).
 **Builds:** internal/runtime — RuntimeDriver interface (Create, Start,
 Stop, Remove, Status, Stats, Logs) + Docker implementation. Network setup:
 one logical agent deployment made of two containers: the agent/harness
-container and the ingress/egress gateway sidecar. Per-agent `internal:
-true` bridge; gateway sidecar dual-homed (internal bridge + egress
-network); agent container never shares the gateway network namespace; agent
-container hardening flags (non-root uid 64000, read-only rootfs, tmpfs
-/tmp, cap-drop ALL, no-new-privileges, seccomp default profile, pids-limit
-256, memory/cpu from agent.yaml); DNS of agent container pointed at gateway
-stub IP only.
+container and the ingress/egress gateway sidecar. Both directions are
+gateway-only: daemon/caller ingress goes through gateway before reaching the
+harness, and agent outbound goes through gateway before reaching any
+upstream. There are no direct daemon-to-harness calls, no agent-to-host
+shortcuts, and no host networking in P1. Per-agent `internal: true` bridge;
+dedicated AgentPaaS egress network; gateway sidecar dual-homed (internal
+bridge + egress network); agent container never shares the gateway network
+namespace and is never attached to the egress network; deterministic
+AgentPaaS labels/names on all owned containers and networks for safe
+reconciliation; cleanup on partial create failure. Agent container hardening
+flags (non-root uid 64000, read-only rootfs, tmpfs /tmp, cap-drop ALL,
+no-new-privileges, seccomp default profile, pids-limit 256, memory/cpu from
+agent.yaml); DNS of agent container pointed at gateway stub IP only; IPv6
+disabled for P1 agent networks. Rootless Docker is best-effort and explicitly
+not a P1 gate; supported gates are Docker Desktop, Colima's Docker-compatible
+socket, and Linux `dockerd`.
 **Edge cases / negative tests (heart of the product — exhaustive):**
+- positive path: agent invoke reaches harness only through gateway ingress;
+  agent outbound to an allowed test endpoint succeeds only through gateway
+  egress and emits the expected policy decision and audit event
 - canary on internal net: `curl https://1.1.1.1` → no route, fails fast
-  (assert timeout behavior, not a hang)
+  within a concrete timeout budget (target ≤2s; never hangs)
 - direct DNS to 8.8.8.8 → unreachable
-- `host.docker.internal` → unreachable unless policy-allowed
+- `host.docker.internal`, Docker bridge gateway IP, gateway container IP,
+  daemon ports, and any host-local service probes → unreachable from agent
 - IPv6: no route (AAAA answers and direct v6 literals both dead)
-- UDP egress (non-DNS) → blocked
+- UDP egress (non-DNS), ICMP, raw-socket attempts, and CONNECT tunnel bypass
+  attempts → blocked
+- Docker inspect assertions prove agent has no default route, no egress
+  network attachment, no host networking, no shared network namespace with
+  gateway; gateway has exactly internal+egress networks
+- resource assertions prove non-root uid, read-only rootfs, tmpfs /tmp,
+  cap-drop ALL, no-new-privileges, seccomp default profile, pids-limit,
+  memory, and CPU limits are actually applied
 - container restart preserves network membership
 - daemon crash leaves no half-fenced agent: startup reconciliation kills
   any agent container whose gateway is absent
-- agent container and gateway sidecar do not share a network namespace
+- partial create/start failure leaves no orphaned AgentPaaS containers or
+  networks after cleanup
+- Docker inspect, runtime logs, and network config dumps contain no raw secret
+  values and are suitable for debugging
 - Docker Desktop vs colima vs Linux dockerd: topology holds on all three
-**SUCCESS GATE:** `make e2e-network` runs the canary suite and prints a
-table of 8 attack vectors, all BLOCKED, on macOS (Docker Desktop + colima)
-and Linux CI.
+**SUCCESS GATE:** `make e2e-network` runs the positive-path canary plus the
+bypass suite and prints a table of allowed path PASS plus at least 12 attack
+vectors, all BLOCKED, on macOS (Docker Desktop + colima) and Linux CI. The
+gate docs explicitly state that Block 5 proves gateway-only network topology
+and container hardening, not secrets, budgets, SDK behavior, or the full
+Block 11 red-team suite.
 
 ---
 
@@ -394,16 +420,20 @@ stdin/interactive prompt, NEVER argv so they never hit shell history or
 process lists); brokered outbound credential flow (gateway sidecar requests
 credential use from daemon/secrets broker over local authenticated channel;
 daemon validates run id + policy rule id + destination + method; gateway
-injects header/query/body field per policy and originates the upstream TLS
-request; raw value is never sent to the agent container); direct lease flow
-for compatibility (`file_lease` into
+injects header field per policy and originates the upstream TLS request; raw
+value is never sent to the agent container); direct lease flow for
+compatibility (`file_lease` into
 tmpfs 0400 owned by agent uid; `env_lease` opt-in, warned, discouraged);
 revocation invalidates brokered use immediately and restarts affected
 direct-lease agents. Audit guarantee: brokered injection emits
 `secret_injected` with `visible_to_agent=false`; direct lease emits
 `secret_leased` with `visible_to_agent=true`; SDK lease-helper reads emit
 `secret_read`; P1 does not claim reliable per-open auditing for raw file
-reads of a direct lease.
+reads of a direct lease. Add a follow-up enterprise design issue for
+corporate employee machines behind VPN: evaluate managed-vault/remote broker
+patterns where enterprise secrets do not permanently reside on the employee
+laptop, plus device posture, tenant policy to disable direct leases,
+short-lived credential grants, revocation, and tenant-visible audit.
 **Edge cases:** brokered secret referenced but not set → launch refuses
 naming the missing secret; brokered credential used for wrong domain,
 method, or port → denied before injection and audited; gateway crash cannot

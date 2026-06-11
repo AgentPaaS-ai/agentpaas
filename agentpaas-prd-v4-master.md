@@ -107,7 +107,9 @@ one command.
 ## 2.2.1 Local runtime conventions (P1)
 - P1 container substrate is Docker Engine API. Supported paths: Docker
   Desktop, Colima's Docker-compatible socket, and Linux `dockerd`.
-  Podman/containerd are future `RuntimeDriver` implementations, not P1 gates.
+  Rootless Docker is best-effort only in P1, not a release gate, because the
+  easiest secure path is the common Docker Engine API surface. Podman and
+  containerd are future `RuntimeDriver` implementations, not P1 gates.
 - AgentPaaS state lives under `~/.agentpaas` by default, created 0700:
   `daemon.sock` (0600), `agentpaasd.pid`, `logs/`, `state/`, `config/`,
   `cache/`, and `tmp/`. Developer/test overrides: `AGENTPAAS_HOME`,
@@ -122,17 +124,22 @@ one command.
   Secret-looking values are masked before log emission, even before the
   secrets broker block lands.
 
-## 2.3 Egress enforcement model (the defensible core)
-Local enforcement must be REAL, not advisory env-var proxying:
+## 2.3 Gateway-only network enforcement model (the defensible core)
+Local enforcement must be REAL, not advisory env-var proxying. Both inbound
+traffic to the harness and outbound traffic to the internet go through the
+gateway sidecar. The daemon never calls the harness directly.
 1. Agent container attaches ONLY to a Docker network created with
    `internal: true` — no NAT, no default route. DNS inside resolves only
    through the gateway's DNS stub.
-2. The gateway sidecar attaches to BOTH the internal network and the host
-   egress path. The agent container never shares the gateway's network
-   namespace. The sidecar is physically the only way out.
+2. The gateway sidecar attaches to BOTH the internal network and a dedicated
+   AgentPaaS egress network. The gateway is the only ingress path to the
+   harness and the only egress path to upstream services. P1 does not use
+   host networking for the gateway. The agent container never shares the
+   gateway's network namespace.
 3. Harness also sets `HTTP(S)_PROXY` + offers an SDK shim as conveniences —
    but the network topology is the control. An agent that ignores the proxy
-   has no route to the internet.
+   has no route to the internet and callers cannot skip the gateway to reach
+   the harness.
 4. Policy = default-deny. One human-readable `policy.yaml` is the canonical
    source for egress, credentials, MCP servers, and hook destinations. Allow
    entries are exact by default: `domain: api.example.com` means only that
@@ -147,12 +154,13 @@ Local enforcement must be REAL, not advisory env-var proxying:
 6. Edge cases handled explicitly (each has a test in the execution plan):
    raw-IP dialing (no route — blocked), DNS exfiltration (DNS only via
    stub, NXDOMAIN for non-allow-listed, query rate-limited + logged),
-   IPv6 (internal net is dual-stack-disabled or equally fenced), UDP
-   (blocked except DNS-to-stub), container-to-host (host.docker.internal
-   blocked unless allow-listed), websockets/SSE through gateway (supported,
-   logged per-frame-batch), redirects disabled by default for credentialed
-   brokered requests and otherwise re-evaluated against policy per hop,
-   CONNECT tunneling to non-allow-listed ports (denied).
+   IPv6 disabled for P1 agent networks, UDP (blocked except DNS-to-stub),
+   container-to-host (`host.docker.internal`, gateway IP probing, Docker
+   bridge gateway probing, and local daemon ports blocked because nothing is
+   directly reachable from the agent), websockets/SSE through gateway
+   (supported, logged per-frame-batch), redirects disabled by default for
+   credentialed brokered requests and otherwise re-evaluated against policy
+   per hop, CONNECT tunneling to non-allow-listed ports (denied).
 
 ## 2.4 Identity model
 The identity service keeps signing authority separate from workload identity.
@@ -510,10 +518,36 @@ What P1 should do for speed:
   The SDK can emit precise `secret_read` audit events for lease helpers, but
   arbitrary user code can bypass the SDK once a direct lease is mounted.
 
+### 2.5.2 Future enterprise managed-secret posture
+Corporate rollout has a stricter trust problem than individual local mode:
+business technology/security teams may want employees to run governed agents
+on laptops behind the corporate VPN, but they may not allow long-lived
+business credentials to be copied onto employee machines without additional
+controls.
+
+This is not a P1 build requirement, but it is a required future design review
+before team/enterprise deployment. Options to evaluate:
+- cloud or corporate-network secrets broker where raw secrets remain in a
+  managed vault and the local gateway receives only short-lived, scoped use
+  authorization or request-time injection
+- device posture checks, MDM enrollment, disk encryption, and corporate VPN /
+  network-location requirements before granting credential use
+- per-user delegated authorization for enterprise apps, including revocation
+  and user-level audit
+- tenant-admin policy that can disable direct leases entirely
+- remote audit anchoring so credential use from employee machines is visible
+  to the organization even if a laptop later goes offline or is compromised
+
+The principle for that future block: local agents may run on employee
+machines, but enterprise secrets should not have to permanently reside there.
+Credential use should be brokered, short-lived, policy-scoped, revocable, and
+audited under tenant control.
+
 ## 2.6 Data flow (runtime)
 - **Trigger (inbound):** caller → daemon Trigger API (REST/gRPC, API-key or
   workload-cert auth) → daemon validates + audits → routes via gateway
-  ingress → harness `run` hook → agent code.
+  ingress → harness `run` hook → agent code. The daemon never calls the
+  harness directly, even on the same host.
 - **Agent outbound:** agent → (proxy/SDK or raw socket attempt) → gateway
   egress → policy check → optional brokered credential injection → upstream
   (LLM/MCP/API) → response; both directions traced (OTel) and audited.
@@ -541,7 +575,9 @@ What P1 should do for speed:
    `agent.llm()` / `agent.http()` / `agent.mcp()` helpers that route
    through the gateway with tracing and brokered credential use baked in.
    `agent.secrets.file()` exists only for explicit direct-lease compatibility
-   mode and is discouraged in generated code.
+   mode and is discouraged in generated code. The harness listens only inside
+   the agent container's private network namespace; all external callers,
+   including the daemon, reach it through the gateway ingress path.
 4. **Event hooks:** `hooks:` section in `policy.yaml` → URL or local command
    per event type; deliveries signed (HMAC w/ per-hook secret), retried 3x
    with backoff, dead-lettered to audit log.
