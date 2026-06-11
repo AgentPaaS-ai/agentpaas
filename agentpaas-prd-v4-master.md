@@ -1,0 +1,557 @@
+# AGENTPAAS PRD v4.0 — MASTER DOCUMENT (Technical Cofounder Edition)
+**Status:** Ready for founder review → then build Phase 1 end-to-end
+**Companion:** `agentpaas-execution-plan-v1.md` (block-by-block build plan with prompts, tests, success gates)
+**Supersedes:** v2.0 PRD, v3.0 advisor memo
+**Date:** June 2026
+
+---
+
+# 1. PRODUCT DEFINITION
+
+## 1.1 One-liner
+AgentPaaS is the governed local-first runtime that turns AI-generated agent
+code into a signed, sandboxed, policy-controlled, fully audited workload in
+one command.
+
+## 1.2 The wedge (fixed from v2.0)
+- **Source of agents:** AI coding tools (Claude Code, Codex, Hermes, Cursor).
+- **Blocker we remove:** security/platform sign-off. AI-written code + live
+  credentials + autonomous egress = "no" from every security team today.
+- **Buyer:** staff platform engineer (champion), VP Eng/CISO (economic buyer).
+- **User (Phase 1):** the developer who just had an agent generated and wants
+  to run it on their machine without leaking keys or letting it call
+  arbitrary endpoints. Local mode must be frictionless: `brew install
+  agentpaas && agent pack && agent run`. No Kubernetes, no cloud account,
+  no signup, no telemetry without opt-in.
+
+## 1.3 Personas (corrected from v2.0)
+| Persona | Phase | Relationship | What they need |
+|---|---|---|---|
+| Developer using coding agents | P1 | OSS user, advocate | Zero-friction safe local runtime; instant observability; never hand-writes Docker flags |
+| Platform engineer | P1–P2 | Champion → buyer | Policy-as-code in git, signed artifacts, SBOM, audit export, fleet view (P2) |
+| Security engineer / CISO | P2 | Approver → economic buyer | Default-deny egress, tamper-evident audit, secrets never in images, compliance pack |
+| Ops power user (RevOps etc.) | P3 | End user of blessed registry | Form-based launch of pre-approved agents; never sees containers |
+
+## 1.4 Product principles
+1. The security engineer's "yes" is the product.
+2. Consume standards (MCP, A2A, OCI, OTel, SPIFFE-style identity, cosign,
+   agentgateway); own the experience (harness, identity, policy UX, audit,
+   packaging).
+3. Local-first is a trust posture: zero telemetry leaves the machine without
+   explicit opt-in — and we prove it: our own binaries' egress is governed
+   by the same policy engine users can inspect.
+4. One command, one signed artifact, one audit trail per agent.
+5. Deployment topology (single container vs sidecar) is a flag, never a concept.
+6. Secure by default, overridable only by explicit, logged, git-versioned policy.
+
+## 1.5 Explicit non-goals (Phase 1)
+- No agent authoring framework (LangGraph/CrewAI/plain loops are inputs).
+- No model-cost routing in P1 (budgets land in P1, smart routing P3).
+- No cloud control plane, no private registries, no A2A orchestration in P1.
+- No Windows-native in P1 (macOS + Linux; Windows via WSL2, documented).
+- No marketplace until 50+ paying logos.
+
+---
+
+# 2. ARCHITECTURE (NORMATIVE)
+
+## 2.1 Component map
+```
+┌────────────────────────── Developer machine ───────────────────────────┐
+│  agentpaas CLI  (Go, single static binary)                             │
+│   ├─ agent init / pack / run / stop / logs / policy / audit / doctor   │
+│   └─ talks to agentpaasd over gRPC on unix socket                      │
+│                                                                         │
+│  agentpaasd  (Go daemon, launchd/systemd user service)                  │
+│   ├─ RuntimeDriver: Docker Engine API (containerd/Podman behind iface)  │
+│   ├─ Trigger API   REST :7717 + gRPC :7718  (loopback only by default)  │
+│   ├─ Dashboard     web UI :7700              (loopback only by default) │
+│   ├─ OTel collector (in-process) → SQLite trace store (WAL)             │
+│   ├─ Audit service: hash-chained JSONL + SQLite index + signed export   │
+│   ├─ Identity service: per-agent ed25519 identity, local CA, SVIDs      │
+│   ├─ Secrets broker: keychain backed, gateway injection + scoped leases │
+│   └─ Event bus: webhooks + NATS-style local pub/sub for hooks           │
+│                                                                         │
+│  Per agent: ONE logical deployable unit                                 │
+│   ┌──────────── agent container ────────────┐                           │
+│   │ harness (PID 1, Go)                      │                          │
+│   │  ├─ lifecycle: init/run/checkpoint/stop  │                          │
+│   │  ├─ budgets: tokens / $ / wall-clock /   │                          │
+│   │  │            max-iterations             │                          │
+│   │  ├─ health endpoints + OTel emit         │                          │
+│   │  └─ exec: user agent code (Py / Node)    │                          │
+│   └───────────────────────────────────────────┘                         │
+│          │ internal-only bridge, NO default route                       │
+│          ▼                                                              │
+│   ┌──────── gateway sidecar container ──────┐                           │
+│   │ agentgateway (Rust, pinned release)      │                          │
+│   │  ├─ ingress: authenticated trigger route │                          │
+│   │  └─ egress: THE ONLY network path out    │                          │
+│   └───────────────────────────────────────────┘                         │
+│   agent image is cosign-signed with SBOM; gateway sidecar is supplied   │
+│   by agentpaasd from a pinned, checksummed AgentPaaS release            │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+## 2.2 Technology choices and why
+| Choice | Rationale |
+|---|---|
+| Go for CLI/daemon/harness | Single static binaries → trivial brew/curl install; first-class Docker/containerd/gRPC/OTel libs; fast cold start |
+| agentgateway sidecar, pinned | LF-governed, Rust, MCP/A2A/LLM-aware. We vendor a checksummed release and run it as a sidecar container. Our IP = policy compiler that emits its config + enforcement topology |
+| Docker Engine as P1 substrate | Every target dev has Docker Desktop/colima. `RuntimeDriver` interface from day 1 so containerd/Podman are additive |
+| SQLite (WAL) locally | Zero deps, file-based, easy export, concurrent dashboard reads |
+| gRPC daemon↔CLI on unix socket | Filesystem permissions = auth; no TCP attack surface |
+| Protobuf-first APIs | Trigger API defined in proto; REST generated via grpc-gateway → one source of truth |
+| Loopback-only by default | `--expose` requires configured API key; refuses to start exposed without auth |
+
+## 2.2.1 Local runtime conventions (P1)
+- P1 container substrate is Docker Engine API. Supported paths: Docker
+  Desktop, Colima's Docker-compatible socket, and Linux `dockerd`.
+  Podman/containerd are future `RuntimeDriver` implementations, not P1 gates.
+- AgentPaaS state lives under `~/.agentpaas` by default, created 0700:
+  `daemon.sock` (0600), `agentpaasd.pid`, `logs/`, `state/`, `config/`,
+  `cache/`, and `tmp/`. Developer/test overrides: `AGENTPAAS_HOME`,
+  `AGENTPAAS_SOCKET`, `AGENTPAAS_DASHBOARD_PORT`,
+  `AGENTPAAS_TRIGGER_REST_PORT`, `AGENTPAAS_TRIGGER_GRPC_PORT`.
+- `agentpaasd` runs as the current user via launchd/systemd user services.
+  It refuses to run as root unless `--allow-root-for-test` is supplied.
+- `agent version` and `agent daemon status` show CLI version, daemon version,
+  proto version, build commit, OS/arch, Docker context, and Docker API
+  version.
+- All daemon logs are structured JSON with redaction enabled from day one.
+  Secret-looking values are masked before log emission, even before the
+  secrets broker block lands.
+
+## 2.3 Egress enforcement model (the defensible core)
+Local enforcement must be REAL, not advisory env-var proxying:
+1. Agent container attaches ONLY to a Docker network created with
+   `internal: true` — no NAT, no default route. DNS inside resolves only
+   through the gateway's DNS stub.
+2. The gateway sidecar attaches to BOTH the internal network and the host
+   egress path. The agent container never shares the gateway's network
+   namespace. The sidecar is physically the only way out.
+3. Harness also sets `HTTP(S)_PROXY` + offers an SDK shim as conveniences —
+   but the network topology is the control. An agent that ignores the proxy
+   has no route to the internet.
+4. Policy = default-deny. Allow entries: `{domain | domain:port | CIDR,
+   methods?, mcp_server_id?, model_provider_id?}` in `policy.yaml`,
+   compiled to agentgateway config at `agent run`. SNI, Host header, and
+   DNS answers are cross-checked to defeat domain fronting.
+5. Every allowed AND denied call → audit event: timestamp, agent identity,
+   destination, method, bytes, status, payload SHA-256, token count, cost
+   estimate, decision + matching policy rule.
+6. Edge cases handled explicitly (each has a test in the execution plan):
+   raw-IP dialing (no route — blocked), DNS exfiltration (DNS only via
+   stub, NXDOMAIN for non-allow-listed, query rate-limited + logged),
+   IPv6 (internal net is dual-stack-disabled or equally fenced), UDP
+   (blocked except DNS-to-stub), container-to-host (host.docker.internal
+   blocked unless allow-listed), websockets/SSE through gateway (supported,
+   logged per-frame-batch), redirects crossing domains (re-evaluated
+   against policy per hop), CONNECT tunneling to non-allow-listed ports
+   (denied).
+
+## 2.4 Identity model
+The identity service keeps signing authority separate from workload identity.
+P1 has four local identity classes:
+1. **Local CA key:** stored in the OS secret store and used only to issue
+   short-lived workload certificates.
+2. **Daemon audit signing key:** a separate Ed25519 key stored in the OS
+   secret store; it signs audit checkpoints and export manifests. Its public
+   key fingerprint is the local trust anchor shown by `agent doctor` and
+   included in audit exports.
+3. **Per-agent package identity key:** minted by `agent pack`; public key +
+   agent metadata = the Agent Identity Document (AID), embedded in image
+   labels and recorded in `agent.lock`. The private key is held by the
+   identity service for packaging/signing only. Rotating this key creates a
+   new AID; the same name/version with a different public key is treated as
+   a distinct identity unless explicitly rotated.
+4. **Per-run workload key/cert:** generated at `agent run`; daemon issues a
+   1h, auto-renewed SPIFFE-style certificate
+   (`spiffe://local.agentpaas/agent/<name>/<ver>/run/<run_id>`). Harness and
+   gateway receive only this short-lived workload credential on tmpfs and it
+   is discarded at stop.
+- Workload certificates are used for trigger-API client auth and
+  gateway/harness-to-daemon mTLS. They identify the source of audit events,
+  but they do not sign the canonical audit trail; audit checkpoints and
+  exports are signed only by the daemon audit signing key.
+- The local CA, daemon audit key, and package identity private keys live in
+  macOS Keychain or Linux libsecret. A file keystore fallback is allowed only
+  when explicitly initialized by the user, encrypted with a passphrase, mode
+  0600 under `~/.agentpaas`, and warned by `agent doctor`. There is no silent
+  plaintext fallback.
+
+## 2.4.1 Audit chain model
+- The audit JSONL is the authoritative record. SQLite is a derived index for
+  search/dashboard queries and can be rebuilt from JSONL.
+- Each audit record has a stable schema version, monotonic sequence number,
+  wall-clock timestamp, event type, agent identity, run id where applicable,
+  policy/image digests where applicable, payload hashes instead of payload
+  bodies, `prev_hash`, and `record_hash`.
+- `record_hash` is SHA-256 over canonical JSON with `record_hash` omitted.
+  `prev_hash` is the previous record's `record_hash`; the genesis value is a
+  fixed all-zero hash. Ordering is by sequence number; wall-clock movement
+  never reorders the chain.
+- A single daemon-owned audit writer serializes appends. Security-relevant
+  actions that require auditability (run start/stop, egress allow/deny,
+  credential injection/lease, budget kill, trigger auth failure) fail closed
+  if the audit record cannot be durably appended.
+- Signed checkpoint records are inserted into the same chain at a fixed
+  cadence (record-count or time interval) and at export. Each checkpoint is
+  signed by the daemon audit signing key over `{head_seq, head_hash,
+  previous_checkpoint_hash, created_at}`.
+- Local verification checks JSONL chain continuity, checkpoint signatures,
+  checkpoint cadence, SQLite/index consistency, and the latest local head
+  anchor maintained by the daemon. This catches middle edits, reordering,
+  checkpoint deletion, and tail truncation relative to the daemon's last
+  known head.
+- `agent audit export` writes a signed bundle containing the JSONL segments,
+  checkpoint records, AIDs/public keys, trust metadata, and an export
+  manifest signed by the daemon audit signing key. Verification on a second
+  machine proves bundle integrity and signature validity. It does not claim
+  global transparency-log guarantees or prove that a fully compromised local
+  machine could not have deleted all local state before export.
+
+## 2.5 Secrets model
+- Secrets registered once: `agent secret set OPENAI_API_KEY` → stored in
+  macOS Keychain / libsecret. NEVER in images, env files, or compose files.
+- Default mode is brokered outbound credentials: `policy.yaml` binds a
+  keychain secret to a specific allowed egress rule and an injection
+  template. At runtime, the gateway sidecar injects the credential into the
+  approved outbound request (for example an Authorization header). The
+  agent never receives the raw secret value.
+- For brokered credentials, the agent sends an unsigned logical HTTP/LLM/MCP
+  request to the gateway via the SDK or configured proxy. The gateway
+  validates policy, injects the credential, and originates the upstream TLS
+  request. Raw TLS/socket attempts from the agent cannot receive brokered
+  credential injection and have no direct internet route.
+- Compatibility mode is direct agent lease: `policy.yaml` must explicitly
+  request `mode: file_lease` or `mode: env_lease` with a reason. File leases
+  are mounted from tmpfs with 0400 perms, owner = agent uid, and removed at
+  stop. Env leases are allowed only as a warned, discouraged escape hatch.
+- `agent secret revoke <name>` invalidates brokered credential use
+  immediately and restarts any agent with an active direct lease.
+- Pack-time scanner refuses to build images containing high-entropy strings
+  / known key formats (gitleaks rules) unless `--allow-secret-pattern`
+  (logged, discouraged).
+
+### 2.5.1 Secret access guarantees (P1)
+- We guarantee secrets are not baked into agent images, image layers,
+  Docker labels, compose files, or default environment variables.
+- We guarantee brokered outbound credentials are not exposed to agent code:
+  they are fetched by the daemon/gateway path and injected only after the
+  destination, method, port, and policy rule match.
+- We guarantee brokered credential use is audited as `secret_injected` with:
+  agent identity, run id, credential id, destination, policy rule id, and
+  `visible_to_agent=false`.
+- We guarantee a brokered credential cannot be used for a different
+  destination or request shape than the policy rule permits.
+- We guarantee a direct lease cannot exist unless `policy.yaml` explicitly
+  opts into `file_lease` or `env_lease`. For security review purposes, a
+  direct lease means "this run had access to this secret."
+- We do not guarantee P1 can prove every raw read of a directly leased file.
+  The SDK can emit precise `secret_read` audit events for lease helpers, but
+  arbitrary user code can bypass the SDK once a direct lease is mounted.
+
+## 2.6 Data flow (runtime)
+- **Trigger (inbound):** caller → daemon Trigger API (REST/gRPC, API-key or
+  workload-cert auth) → daemon validates + audits → routes via gateway
+  ingress → harness `run` hook → agent code.
+- **Agent outbound:** agent → (proxy/SDK or raw socket attempt) → gateway
+  egress → policy check → optional brokered credential injection → upstream
+  (LLM/MCP/API) → response; both directions traced (OTel) and audited.
+- **Events (outbound hooks):** daemon event bus emits
+  `agent.started|finished|failed|budget_exceeded|egress_denied|secret_injected|secret_leased`
+  → local webhooks (user-configurable, themselves policy-checked) and the
+  dashboard live stream (SSE).
+- **Observability:** harness + gateway emit OTLP → in-process collector →
+  SQLite → dashboard. `agent audit export` produces hash-chained, signed
+  JSONL + verification command.
+
+## 2.7 API surfaces (P1)
+1. **Trigger API** (proto: `api/trigger/v1/trigger.proto`)
+   - `Invoke(agent, payload, idempotency_key) → run_id`
+   - `InvokeStream(...) → stream of events` (gRPC server-stream / REST SSE)
+   - `GetRun(run_id)`, `CancelRun(run_id)`, `ListRuns(agent, filter)`
+   - Auth: `Authorization: Bearer <api-key>` or mTLS workload cert.
+   - Errors: google.rpc.Status; idempotency on key replay returns original run.
+2. **Control API** (daemon↔CLI, unix socket gRPC): Pack, Run, Stop, Logs,
+   PolicyApply, SecretSet/Grant/Revoke, AuditQuery/Export, Doctor.
+3. **Harness contract** (inside container): agent code implements either
+   (a) HTTP contract: `POST /invoke`, `GET /healthz`, `GET /readyz` on
+   localhost:8000, or (b) SDK contract (Python `agentpaas-sdk`, Node
+   `@agentpaas/sdk`): `@agent.on_invoke`, `agent.checkpoint()`,
+   `agent.llm()` / `agent.http()` / `agent.mcp()` helpers that route
+   through the gateway with tracing and brokered credential use baked in.
+   `agent.secrets.file()` exists only for explicit direct-lease compatibility
+   mode and is discouraged in generated code.
+4. **Event hooks:** `hooks:` section in `policy.yaml` → URL or local command
+   per event type; deliveries signed (HMAC w/ per-hook secret), retried 3x
+   with backoff, dead-lettered to audit log.
+5. **Scheduling:** `triggers: cron: "0 9 * * *"` in agent.yaml → daemon
+   cron service invokes via the same Trigger API (so scheduled runs are
+   audited identically).
+
+## 2.8 Packaging pipeline (`agent pack`)
+Input: a directory with `agent.yaml` (+ code). Steps, all deterministic:
+1. Detect framework (plain Python, LangGraph, CrewAI, Node) or use
+   explicit `runtime:` field; `--dockerfile` escape hatch.
+2. Secret scan (gitleaks ruleset) — fail closed.
+3. Dependency resolution into a locked layer (uv / npm ci), recorded.
+4. Build OCI image: distroless base, non-root uid 64000, read-only rootfs,
+   tmpfs /tmp, no shell in final image, harness as PID 1.
+5. Generate SBOM (syft, SPDX-json) — attached as OCI artifact.
+6. cosign sign (keyless local mode: signed by the agent identity key).
+7. Emit `agent.lock` (image digest, SBOM digest, policy digest, identity
+   pubkey) — the unit a security reviewer approves in a PR.
+
+## 2.9 agent.yaml + policy.yaml (the developer contract)
+```yaml
+# agent.yaml
+name: invoice-chaser
+version: 0.1.0
+runtime: python3.12          # python3.12 | node22 | dockerfile
+entry: main:app              # module:callable or HTTP-contract
+description: Chases overdue invoices via email
+triggers:
+  api: true
+  cron: "0 9 * * 1-5"
+budgets:
+  max_iterations: 50
+  max_wall_clock: 15m
+  max_tokens: 200000
+  max_usd: 5.00              # estimate via provider price table
+resources:
+  memory: 512Mi
+  cpu: "1.0"
+```
+```yaml
+# policy.yaml  (lives in git next to the agent; reviewed in PRs)
+egress:
+  default: deny
+  allow:
+    - domain: api.openai.com
+      ports: [443]
+      category: llm
+      credential: openai-prod
+    - domain: api.stripe.com
+      ports: [443]
+      methods: [GET]
+      credential: stripe-readonly
+    - mcp_server: filesystem-readonly   # resolved from mcp.yaml
+credentials:
+  brokered:
+    - id: openai-prod
+      secret: OPENAI_API_KEY       # keychain item; never visible to agent
+      inject:
+        header: Authorization
+        value: "Bearer ${secret}"
+    - id: stripe-readonly
+      secret: STRIPE_RO_KEY
+      inject:
+        header: Authorization
+        value: "Bearer ${secret}"
+  direct_leases:
+    - id: legacy-tool-token
+      secret: LEGACY_TOOL_TOKEN
+      mode: file_lease             # file_lease | env_lease
+      mount_path: /run/agentpaas/secrets/LEGACY_TOOL_TOKEN
+      reason: "Legacy SDK only supports reading a token file"
+hooks:
+  egress_denied:
+    - url: http://127.0.0.1:9999/security-alert
+ingress:
+  auth: api_key               # api_key | mtls
+```
+
+## 2.10 Dashboard (P1 scope, intentionally small)
+Single-page app served by daemon (embedded assets, no CDN at runtime):
+- Agent list: status, uptime, last run, spend-to-date vs budget.
+- Run detail: timeline of traces (LLM calls w/ tokens+cost, MCP calls,
+  egress events incl. DENIED in red), logs, checkpoint markers.
+- Policy view: effective policy per agent, diff vs git file.
+- Audit search: filterable, with one-click signed export.
+- Live event stream (SSE). No auth on loopback; API-key when `--expose`.
+
+---
+
+# 3. SECURITY DEEP-DIVE (BULLETPROOFING ACTIONS)
+
+## 3.1 Threat model (STRIDE-condensed)
+| Threat | Vector | Control |
+|---|---|---|
+| Malicious/buggy AI-generated code exfiltrates secrets | outbound HTTP/DNS/raw socket | brokered credentials are not visible to agent code; internal-only network, gateway-only egress, DNS stub, default-deny, payload-hash audit |
+| Secret theft from image/registry | keys baked into layers | keychain broker + gateway-side injection by default; direct leases explicit only; pack-time scanner |
+| Prompt-injected agent calls unauthorized tools | MCP/tool call to non-approved server | MCP allow-list by server id + per-tool policy (P2: per-tool args constraints) |
+| Container escape | kernel/runtime exploit | non-root, read-only rootfs, no shell, dropped capabilities (ALL), seccomp default profile, no privileged, pids-limit, memory/cpu caps |
+| Supply chain (our deps) | compromised base image / dep | distroless pinned digests, SBOM on every artifact, `go mod verify`, dependabot, pinned vendored agentgateway with checksum |
+| Supply chain (user deps) | typosquatted pip/npm pkg | locked installs only (uv/npm ci), SBOM surfaced in dashboard, osv-scanner advisory in `agent pack` output |
+| Trigger API abuse | replay / brute force | idempotency keys, constant-time key compare, rate limit, lockout+audit on repeated 401 |
+| Audit tampering | attacker edits logs | canonical hash-chained JSONL, daemon-audit-key checkpoint signatures, local head anchor, signed export manifest, `agent audit verify` |
+| Daemon compromise | local privilege escalation | daemon runs as user (not root); socket 0600; no setuid; secrets only via OS keychain APIs |
+| Malicious webhook targets | hook exfiltration channel | hook destinations are themselves policy-checked egress |
+| Dashboard exposure | accidental 0.0.0.0 bind | loopback default; `--expose` refuses to start without API key + warns; CSRF tokens; strict CSP, no inline JS |
+| Domain fronting | SNI ≠ Host | gateway cross-checks SNI/Host/DNS answer; mismatch = deny + audit |
+
+## 3.2 Hard security actions (all are execution-plan blocks)
+1. seccomp + AppArmor (Linux) profiles shipped and applied by default.
+2. Fuzz the policy compiler and the Trigger API (go-fuzz / protobuf fuzz).
+3. `agent doctor` verifies: docker version, network isolation actually
+   holds (spins a canary container and proves no default route), keychain
+   access, port collisions.
+4. Integration test suite includes an adversarial "red team agent" image
+   that attempts: raw IP dial, DNS tunnel, /etc/passwd read, proxy bypass,
+   host.docker.internal access, IPv6 escape, discovering brokered secrets in
+   env/files/proc (must find zero), using a brokered credential for the wrong
+   destination (denied), and copying a directly leased secret file to an
+   ALLOWED domain (P1 best-effort: known-secret fingerprint match on
+   outbound bodies). The red-team suite is a permanent CI gate — every
+   release must show 0 escapes.
+5. External pentest before GA tag; bug bounty (modest, scoped) at GA.
+6. SLSA provenance for our own release artifacts; users can verify
+   `agentpaas` binaries the same way we verify their agents.
+7. Security disclosure policy + SECURITY.md from the first public commit.
+8. CVE response SLA stated publicly: critical < 48h patch for the runtime.
+
+## 3.3 What we explicitly do NOT claim in P1 (honesty = trust)
+- Not a sandbox against kernel 0-days (we harden containers; we are not gVisor).
+  P2 option: gVisor/Kata runtime class for high-assurance mode.
+- Outbound data-loss prevention is fingerprint-based, not semantic, in P1.
+- Local mode trusts the developer's machine; we protect against the AGENT,
+  not against the user.
+
+---
+
+# 4. CODING-TOOL INTEGRATIONS (DISTRIBUTION-AS-PRODUCT)
+
+This is the highest-leverage distribution channel and it is buildable now.
+
+## 4.1 Claude Code (plugin — confirmed extensibility surface)
+Claude Code supports Plugins that bundle Skills + Hooks + MCP servers.
+Build `agentpaas` plugin:
+- **Skill** `deploy-agent`: when the user says "deploy/run this agent
+  safely", the skill scaffolds `agent.yaml` + `policy.yaml` (inferring
+  egress needs from the code's HTTP calls — propose, never auto-allow),
+  runs `agent pack`, then `agent run`, returns dashboard URL.
+- **PreToolUse hook**: optional guardrail intercepting Claude Code's Bash
+  tool when it tries `docker run` on raw agent code — suggests `agent run`
+  ("governed alternative available").
+- **MCP server** `agentpaas-mcp`: exposes `pack_agent`, `run_agent`,
+  `get_run_status`, `query_audit` as MCP tools so Claude Code operates the
+  runtime conversationally.
+- Distribution: publish to community plugin marketplaces + our own tap.
+
+## 4.2 Hermes
+- Hermes skill `agentpaas-deploy` (SKILL.md): trigger phrases, exact CLI
+  commands, pitfalls, verification. Hermes drives the full loop via its
+  terminal tool. Cheap to build; we dogfood it during development.
+
+## 4.3 Codex / Cursor / generic
+- Codex: AGENTS.md instruction pack + the same MCP server (Codex speaks MCP).
+- Cursor: rules file + MCP.
+**Decision: the MCP server is THE single integration artifact; per-tool
+skins (skill, plugin, rules) are thin wrappers around it.**
+
+---
+
+# 5. GO-TO-MARKET & DISTRIBUTION (DETAILED)
+
+## 5.1 Sequence
+1. **Weeks 1–3 (parallel with build): validation.** 15 conversations with
+   platform/security engineers (Workato network, LinkedIn, 2 CISO intro
+   asks). Script: show the demo storyboard, ask "what would your security
+   team need to see to approve this?" Target: 5 design partners.
+   Kill condition: <5 partners from 15 talks → re-aim wedge before more code.
+2. **Months 1–3: build P1 per execution plan**, partners get weekly builds.
+3. **Month 3–4: OSS launch.** Apache-2.0 runtime; BSL control plane later
+   (stated publicly day one). Launch assets: 3-min egress-block demo video,
+   "Letting AI-written agents into prod: a security checklist" post, HN
+   launch, MCP server listed in registries, Claude Code plugin in
+   marketplaces.
+4. **Months 4–9: channel grind.** LangGraph/CrewAI "deploy to production"
+   docs PRs; 2 talks (AI Engineer Summit, KubeCon AI day); monthly
+   security-angle content. Gate to P2 build: 1,000 weekly-active runtimes
+   (opt-in ping only) OR 25 self-reported production deployments.
+
+## 5.2 Pricing posture (publish early, even pre-revenue)
+- Individual/local: free forever, all security features included. Never
+  paywall single-machine safety.
+- Team (P2): per-fleet pricing, target $99–$299/mo starting tiers.
+- Enterprise (P2/P3): SSO, RBAC, registry, retention, support — $30–60k ACV
+  initial, $100k+ with compliance pack.
+
+## 5.3 Metrics
+- Activation: code → governed running agent < 15 min (p50), < 30 min (p90).
+- Aha: >60% of first sessions view an audit log or a blocked-egress event.
+- Adoption: weekly-active runtimes; 3+-dashboard-user installs = sales signal.
+- Revenue: 5 partners → 3 paying by month 12 → $250k ARR by month 18.
+
+---
+
+# 6. LANDING PAGE CHANGES (agentpaas.ai) — FOR ENTERPRISE BUYERS & VCs
+
+Current page audit (live copy pulled June 2026): leads with "millions of
+autonomous agents", "self-expanding workspace", "auto-tuned memory" —
+Phase-3 vision language with no proof. Enterprise buyers discount it;
+VCs read it as unfocused. Integrations grid (Gmail, Salesforce...) implies
+a shipped iPaaS that doesn't exist — credibility risk.
+
+## 6.1 Rewrite — section by section
+1. **Hero:**
+   - H1: "Ship the agent your AI just built. Safely."
+   - Sub: "AgentPaaS packages AI-generated agents into signed, sandboxed,
+     policy-controlled containers — with default-deny egress and a complete
+     audit trail. One command. Runs on your machine. Open source."
+   - CTA primary: "brew install agentpaas" (copyable). CTA secondary:
+     "Watch the 3-minute demo." Kill "Request early access" as primary —
+     OSS dev tools convert on install, not on forms.
+2. **Replace abstract feature grid with the 60-second story** (terminal
+   animation): Claude Code writes agent → `agent pack` (shows signing+SBOM)
+   → `agent run` → dashboard → agent tries unauthorized call → BLOCKED,
+   audit entry appears → `agent audit export`. This is the whole pitch.
+3. **"Built for the people who say no" section** targeting security:
+   default-deny egress · secrets never in images · signed artifacts + SBOM ·
+   tamper-evident audit · zero phone-home. Each links to docs.
+4. **Honesty fixes:** remove the integrations grid (or relabel "works with
+   anything your policy allows — examples"); remove "millions of agents",
+   "auto-tuned memory", "automated cost optimization" until shipped; move
+   vision items to a clearly-labeled Roadmap page (VCs like a roadmap;
+   they punish vapor presented as product).
+5. **Proof bar:** GitHub stars widget, Linux Foundation/agentgateway
+   "built on" badge, design-partner logos when permitted, "as discussed in
+   <talk/post>" links as they land.
+6. **For VCs (quietly):** an /about page with the why-now narrative
+   (agent creation is commoditized by coding agents; governance is the
+   bottleneck; window 12–24 months), founder background (Workato PM —
+   integration/automation domain depth), and the open-core model. VCs who
+   land on dev-tool pages look for: traction numbers, a wedge they can
+   repeat in one sentence, and evidence of velocity (changelog page —
+   add one).
+7. **Keep:** navy+rose brand, robot mark (resized per prior session),
+   clean layout. The bones are fine; the words are the problem.
+
+---
+
+# 7. RISKS (CARRIED FROM v3.0, UNCHANGED IN SUBSTANCE)
+Platform absorption (HIGH, 12–24mo window) · execution capacity (HIGH —
+mitigated by this LLM-driven build plan + cofounder/funding decision) ·
+category timing (MED-HIGH) · OSS→paid conversion (MED) · security product
+burden (MED — mitigated by §3) · standards churn (MED) · brand (LOW).
+
+# 8. SUCCESS DEFINITION FOR PHASE 1 (THE CONTRACT WITH OURSELVES)
+Phase 1 is DONE when all of the following are demonstrably true:
+1. On a clean macOS and a clean Ubuntu machine: install → first governed
+   agent running in < 15 minutes following only the README.
+2. The red-team agent suite (§3.2.4) shows 0 escapes across all 10 attack
+   classes, in CI, on both platforms.
+3. A LangGraph agent, a CrewAI agent, a plain-Python agent, and a Node
+   agent each pack and run without a Dockerfile.
+4. Claude Code (via plugin) and Hermes (via skill) can each take freshly
+   generated agent code to running-governed state conversationally.
+5. `agent audit export` output passes `agent audit verify` on another
+   machine, and a deliberately tampered line is detected.
+6. Budget enforcement kills a runaway loop at exactly the configured caps
+   (tokens, USD, wall-clock, iterations) with correct audit events.
+7. 5 design partners have run a real agent of their own through it; ≥3 say
+   they would show the audit export to their security team.
+
+**END OF PRD v4.0 — see agentpaas-execution-plan-v1.md to build it.**

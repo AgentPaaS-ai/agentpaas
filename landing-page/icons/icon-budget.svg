@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <!-- Dollar sign -->
+  <text x="14" y="24" font-family="sans-serif" font-size="22" font-weight="bold" fill="#CB3C60">$</text>
+  <!-- Speed/gauge shape -->
+  <path d="M6 38a18 18 0 1136 0" stroke="#1E3A5F" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Gauge needle -->
+  <path d="M24 20L20 32" stroke="#CB3C60" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="24" cy="20" r="2" fill="#CB3C60"/>
+  <!-- Gauge ticks -->
+  <path d="M10 30L14 28M38 30L34 28" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+</svg>
