@@ -767,40 +767,90 @@ RuntimeDriver/agentgateway bump as a comprehensive release gate.
 
 ## BLOCK 12 — Integrations: MCP server + Claude Code plugin + Hermes skill
 **Builds:** integrations/mcp-server — an MCP server exposing the daemon's
-control API as tools (`agentpaas_pack`, `agentpaas_run`, `agentpaas_stop`,
-`agentpaas_logs`, `agentpaas_status`, `agentpaas_policy_show`,
-`agentpaas_audit_query`, `agentpaas_validate_project`,
-`agentpaas_summarize_run`, `agentpaas_explain_failure`,
+Block 10.5 operator contract as tools. Required P1 tools:
+`agentpaas_init_project`/`agentpaas_reconcile_project`,
+`agentpaas_validate_project`, `agentpaas_doctor`, `agentpaas_pack`,
+`agentpaas_run`, `agentpaas_stop`, `agentpaas_logs`, `agentpaas_status`,
+`agentpaas_get_run_timeline`, `agentpaas_policy_show`,
 `agentpaas_explain_policy_denial`, `agentpaas_recommend_policy_patch`,
-`agentpaas_next_action`). These are thin wrappers over the Block 10.5
-operator contract, not a separate behavior surface. This single adapter is
-the universal wedge: any MCP-speaking coding agent (Claude Code, Codex,
-Cursor, Hermes via native-mcp) gets "deploy what you just built, safely" as a
-verb plus the diagnosis loop needed to fix what it just built.
+`agentpaas_audit_query`, `agentpaas_export_audit`,
+`agentpaas_summarize_run`, `agentpaas_explain_failure`, and
+`agentpaas_next_action`. These are generated from or schema-tested against
+the Block 10.5 JSON/protobuf contracts, not hand-maintained as a separate
+behavior surface. This single adapter is the universal wedge: any
+MCP-speaking coding agent (Claude Code, Codex, Cursor, Hermes via native MCP)
+gets "deploy what you just built, safely" as a verb plus the diagnosis loop
+needed to fix what it just built.
+
+Contract parity gate: CI fails if a Block 10.5 operator method lacks an MCP
+wrapper, if an MCP wrapper returns fields outside the versioned operator
+schema, if a wrapper drops required evidence refs/error categories, or if a
+trust-boundary action can complete without the daemon confirmation protocol.
+The MCP spec revision and generated schema fixtures are pinned in the
+integration package lock/test fixtures, not in a user's `agent.lock`.
+
 Then two thin first-party packagings of it:
 - **claude-code-plugin:** plugin manifest + slash command `/deploy-agent`
-  + a PostToolUse hint surfacing "run this under AgentPaaS?" after agent
-  code is written. Distributed via plugin marketplace repo.
-- **hermes-skill:** SKILL.md teaching the flow (detect agent code → `agent
-  init` scaffold → pack → run → open dashboard → show first audit event),
-  with pitfalls (Docker not running → `agent doctor`; policy denial →
-  `agent policy explain <dest>`).
+  + a PostToolUse hint surfacing "run this under AgentPaaS?" after agent code
+  is written + an optional PreToolUse guardrail that intercepts raw
+  `docker run`, ad hoc secret export, or direct ungoverned execution patterns
+  and suggests the governed `agentpaas_run` path. Distributed via plugin
+  marketplace repo.
+- **hermes-skill:** SKILL.md plus native MCP setup that teaches the flow
+  (detect agent code → `agentpaas_init_project` scaffold → validate → pack →
+  run → inspect timeline/dashboard → show first audit event), with pitfalls
+  (Docker not running → `agentpaas_doctor`; policy denial →
+  `agentpaas_explain_policy_denial` then
+  `agentpaas_recommend_policy_patch`). Hermes uses native MCP for the P1
+  happy path; terminal CLI commands remain documented fallback steps.
 Security stance: the MCP server talks ONLY to the loopback daemon socket;
-it never accepts remote connections; destructive tools (stop, secret ops)
-require the daemon's confirm flag so a prompt-injected coding agent cannot
-silently kill or exfiltrate.
+it never accepts remote connections; it inherits the daemon socket's local
+user permissions; and all paths are resolved against the invoking project
+root before reaching the daemon. Destructive tools require scoped semantics
+and the daemon confirmation protocol: `agentpaas_stop` may stop only the
+active run created by that client session by default; stopping unrelated
+runs, applying policy, binding credentials, issuing direct leases, exposing
+listeners, increasing budgets, deleting/purging audit, exporting audit to a
+remote destination, or disabling gates returns
+`requires_confirmation: true`, `confirmation_id`, `risk_level`, rationale,
+and evidence refs. Only the daemon/UI/CLI confirmation path can apply the
+change, and the confirmed action is audited.
+
+Prompt-injection boundary: MCP responses separate trusted control fields
+(`status`, `error_category`, `next_action`, `requires_confirmation`,
+`confirmation_id`, `risk_level`, evidence refs) from untrusted evidence
+(`redacted_excerpt`, log/source/trace snippets, external payload text).
+Agent source, comments, logs, traces, tool output, MCP resource text, and
+remote payloads are always treated as untrusted data; instructions found
+there must not broaden policy, reveal secrets, delete audit, disable gates,
+stop unrelated runs, or trigger destructive operations.
 **Edge cases:** MCP client passes a path outside the project root → tool
 refuses (path allow-list = invoking project dir); daemon down → tool
-returns actionable error, not a hang; concurrent pack requests for the
-same agent → second queues with a message; tool output > 50KB (huge build
-logs) → truncated with a pointer to `agent logs`; prompt-injection test:
-a hostile instruction embedded in agent source comments must not cause
-the MCP tools to alter policy or reveal secrets (negative test in CI).
-**SUCCESS GATE:** scripted e2e on a clean machine: Claude Code session
-generates a weather agent → `/deploy-agent` → agent running governed →
-dashboard shows a DENIED probe → total flow < 10 minutes. Same flow green
-via Hermes skill. MCP conformance tests pass against the spec revision
-pinned in agent.lock.
+returns actionable `agentpaas_doctor` hints, not a hang; concurrent pack
+requests for the same agent → second queues with a message; tool output >
+50KB (huge build logs) → truncated with a pointer to `agentpaas_logs`; old
+MCP client/schema version → compatibility error with upgrade hint;
+confirmation id replay/expiry → refused + audit; hostile instruction
+embedded in agent source/log comments → no policy alteration, secret
+disclosure, audit deletion, gate disabling, or unrelated stop (negative test
+in CI).
+**SUCCESS GATE:** scripted e2e on a clean machine after AgentPaaS is already
+installed: Claude Code session generates an agent → `/deploy-agent` → agent
+running governed → dashboard shows a DENIED probe → post-install deploy flow
+<10 minutes. Same flow green via Hermes native MCP skill. MCP conformance
+tests pass against the spec revision pinned in the integration package.
+
+Demo matrix for P1 differentiation:
+1. **Governed weather/API agent:** generated agent attempts allowed weather
+   API plus denied exfil probe; dashboard shows policy denial and signed audit
+   evidence.
+2. **Secret-brokered SaaS action:** generated ticket/CRM-style agent uses a
+   brokered credential through the gateway; secret value is never visible to
+   code/logs, but upstream fixture receives the authorized request.
+3. **Agentic repair loop:** generated agent has a dependency/code defect and
+   missing egress policy; MCP `next_action` fixes code automatically, proposes
+   policy only, waits for confirmation, reruns, and exports a signed audit
+   bundle.
 
 ---
 
