@@ -686,14 +686,31 @@ external side effects, resume state, and operator-visible recovery decisions.
 Input: a directory with `agent.yaml` (+ code). Steps, all deterministic:
 1. Detect Python framework (plain Python, LangGraph, CrewAI) or use explicit
    `runtime:` field. Node and custom Dockerfile packaging are deferred.
-2. Secret scan (gitleaks ruleset) — fail closed.
-3. Dependency resolution into a locked layer (uv), recorded.
+2. Secret scan (gitleaks ruleset) over the full source tree and the effective
+   build context — fail closed. `.agentpaasignore` controls the build context,
+   not whether a checked-in secret is acceptable.
+3. Dependency resolution into a locked layer (uv), recorded; dependency
+   advisory summary is surfaced in pack output.
 4. Build OCI image: distroless base, non-root uid 64000, read-only rootfs,
    tmpfs /tmp, no shell in final image, harness as PID 1.
-5. Generate SBOM (syft, SPDX-json) — attached as OCI artifact.
-6. cosign sign (keyless local mode: signed by the agent identity key).
-7. Emit `agent.lock` (image digest, SBOM digest, policy digest, identity
-   pubkey) — the unit a security reviewer approves in a PR.
+5. Generate SBOM (syft, SPDX-json) — attached as an OCI artifact in the local
+   OCI layout and referenced from the lockfile.
+6. Sign locally with cosign using the per-agent package identity key. This is
+   local key-backed signing, not Sigstore keyless OIDC/Fulcio signing. The P1
+   trust root is the AID public key recorded in the lockfile and audit/export
+   metadata; future release/enterprise flows may add Fulcio/Rekor or tenant
+   trust roots.
+7. Emit a canonical, signed `agent.lock` manifest — the unit a security
+   reviewer approves in a PR and the exact artifact `agent run` consumes.
+
+`agent.lock` contains at minimum: schema version, agent name/version,
+runtime/framework, target platform, base image digest, harness version, build
+input digest, image digest, SBOM digest, policy digest, package AID/public
+key, signature bundle/referrer locations, and reproducibility metadata. The
+manifest is canonical JSON and is itself signed by the package identity key.
+`agent verify agent.lock` wraps the offline verification path, including
+lockfile signature verification, image signature verification with the AID
+public key, digest checks, SBOM digest checks, and policy digest checks.
 
 ## 2.9 agent.yaml + policy.yaml (the developer contract)
 ```yaml

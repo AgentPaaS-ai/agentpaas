@@ -497,17 +497,35 @@ buildkit image assembly
 (distroless base by digest, locked deps via uv, harness as PID 1, non-root,
 no shell),
 gitleaks secret scan (fail-closed), syft SBOM (SPDX-json, attached as OCI
-artifact), cosign sign with the agent identity key, emit `agent.lock`
-(image digest + SBOM digest + policy digest + identity pubkey).
+artifact in a local OCI layout plus Docker image by digest), local
+key-backed cosign signing with the per-agent package identity key, and a
+signed canonical `agent.lock` manifest. P1 does NOT use Sigstore keyless
+OIDC/Fulcio signing for local packs; future release/enterprise flows may add
+that separately. `agent.lock` includes schema version, agent name/version,
+runtime/framework, platform, base image digest, harness version, build input
+digest, image digest, SBOM digest, policy digest, package AID/public key,
+signature bundle/referrer locations, and reproducibility metadata. The
+lockfile itself is signed by the package identity key and is the exact review
+unit consumed by `agent run` and future promotion.
 **Edge cases:** no agent.yaml → offer `agent init` scaffold; dependency
 conflict → surfaced verbatim, abort; 2GB build context → .agentpaasignore
-honored, warn >100MB; secret in source → FAIL naming file:line;
-`--allow-secret-pattern` logged into the audit trail; rebuild without
-changes → identical image digest (reproducibility); LangGraph and CrewAI
-example repos pack without a custom Dockerfile.
+honored, warn >100MB, with default excludes for `.git`, virtualenvs, caches,
+`node_modules`, test outputs, and large local data; secret scan covers the
+full source tree plus the effective build context, and a secret in either
+path FAILs naming file:line; `--allow-secret-pattern` requires a successful
+daemon audit append or aborts; rebuild without changes → identical image
+digest (fixed timestamps, pinned base digest, locked deps, deterministic
+tar order, `SOURCE_DATE_EPOCH`); local OCI layout missing/corrupt →
+actionable repair; registry push is deferred; LangGraph and CrewAI example
+repos pack without a custom Dockerfile.
 **SUCCESS GATE:** 3 Python reference agents (plain-py, langgraph, crewai)
-pack green; `cosign verify` passes; SBOM lists expected top-level deps;
-secret-scan e2e blocks a planted key. Node packaging is a follow-on gate.
+pack green; `agent verify agent.lock` and explicit offline
+`cosign verify --key <AID pubkey>` pass for the image signature; lockfile
+signature verifies; SBOM lists expected top-level deps; osv-scanner advisory
+summary appears in `agent pack` output without failing on non-critical
+findings; secret-scan e2e blocks a planted key in source, ignored source, and
+build context; golden fixtures assert expected `agent.lock` fields. Node
+packaging is a follow-on gate.
 
 ---
 
