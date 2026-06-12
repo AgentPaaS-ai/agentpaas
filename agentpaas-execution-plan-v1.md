@@ -580,21 +580,43 @@ semantics e2e green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
 
 ## BLOCK 10 — OTel pipeline + Dashboard
 **Builds:** in-process OTLP collector → SQLite (WAL) with retention prune
-(default 7d local, configurable); dashboard SPA (preact+TS, go:embed, no
-runtime CDN): agent list w/ status+spend-vs-budget, run timeline (LLM
-calls w/ tokens+cost, MCP calls, egress ALLOWED/DENIED rows in red),
-log viewer, policy view w/ git-diff, audit search + one-click signed
-export, live SSE event stream. Strict CSP, no inline JS, CSRF token on
-mutating routes.
+(default 7d local, configurable) for OTel traces/logs/metrics only; canonical
+audit JSONL is not pruned by dashboard retention and is purged only by an
+explicit future user retention/purge command. Agent/harness/gateway logs are
+ingested as OTel log records for dashboard correlation; daemon operational
+logs remain bounded structured JSON files under `~/.agentpaas/logs/` with
+rotation/redaction and are linked from `agent doctor`/`agent logs` but are not
+the canonical audit source. Dashboard SPA (preact+TS, go:embed, no runtime
+CDN): agent list w/ status+spend-vs-budget, run timeline with a stable event
+schema (LLM calls w/ tokens+cost, MCP calls, egress ALLOWED/DENIED rows in
+red, budget/audit markers), log viewer with truncation/redaction, policy view
+showing both git-file diff and normalized effective policy digest, audit
+search explicitly labeled as an indexed view + one-click signed export with
+trust-anchor fingerprint, included sequence range, verification command, and
+result status, live SSE event stream reusing Block 9 event IDs/heartbeat/
+Last-Event-ID semantics. Cost estimates record provider, model, price-table
+version, token counts, and `estimated=true`; P1 ships a built-in price table,
+P2 allows user/tenant-modified price tables. Strict CSP, no inline JS, CSRF
+token on mutating routes; loopback read-only dashboard may be unauthenticated,
+exposed dashboard requires API key/session, and API keys are never stored in
+browser localStorage.
 **Edge cases:** 10k-span run renders (virtualized list); SQLite locked by
-concurrent writer → dashboard reads stay snappy (WAL + read pool);
-dashboard with daemon restarting → reconnects SSE gracefully; XSS attempt
-via agent-controlled log line / trace attribute → escaped (test with
-planted `<script>` in agent output); clock-skewed spans → ordered by
-monotonic seq; empty states designed (zero agents, zero runs).
+concurrent writer → dashboard reads stay snappy (WAL + read pool); SQLite
+migration/WAL checkpoint/vacuum/prune/corruption recovery covered; dashboard
+with daemon restarting → reconnects SSE gracefully using Last-Event-ID; XSS
+attempt via agent-controlled log line / trace attribute → escaped (test with
+planted `<script>` in agent output); sentinel secret in logs/spans/errors is
+redacted everywhere; binary/control characters and huge log/attribute values
+are safely escaped/truncated with pointers to full retained logs where
+allowed; clock-skewed spans → ordered by monotonic seq; security events are
+never sampled out of canonical audit even if OTel retention prunes dashboard
+telemetry; empty states designed (zero agents, zero runs); accessibility and
+keyboard smoke test.
 **SUCCESS GATE:** Playwright e2e: launch agent → watch live run → see a
 DENIED egress row → export audit → verify export. Lighthouse perf ≥ 90
-local. Planted-XSS test shows escaped output.
+local. Planted-XSS and sentinel-secret tests show escaped/redacted output.
+10k-span, SSE reconnect, SQLite lock/corruption recovery, empty-state, policy
+diff, audit export verify, and accessibility smoke tests green.
 
 ---
 
