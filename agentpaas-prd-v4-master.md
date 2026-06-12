@@ -1074,23 +1074,44 @@ Build `agentpaas` plugin:
 - **PreToolUse hook**: optional guardrail intercepting Claude Code's Bash
   tool when it tries `docker run` on raw agent code — suggests `agent run`
   ("governed alternative available").
-- **MCP server** `agentpaas-mcp`: exposes `pack_agent`, `run_agent`,
-  `get_run_status`, `query_audit`, `validate_project`, `summarize_run`,
-  `explain_failure`, `explain_policy_denial`, `recommend_policy_patch`, and
-  `next_action` as MCP tools so Claude Code operates the
-  runtime conversationally.
+- **MCP server** `agentpaas-mcp`: exposes `agentpaas_init_project`,
+  `agentpaas_validate_project`, `agentpaas_doctor`, `agentpaas_pack`,
+  `agentpaas_run`, `agentpaas_stop`, `agentpaas_status`,
+  `agentpaas_get_run_timeline`, `agentpaas_logs`, `agentpaas_policy_show`,
+  `agentpaas_explain_policy_denial`, `agentpaas_recommend_policy_patch`,
+  `agentpaas_audit_query`, `agentpaas_export_audit`,
+  `agentpaas_summarize_run`, `agentpaas_explain_failure`, and
+  `agentpaas_next_action` as MCP tools so Claude Code operates the runtime
+  conversationally. These MCP tools are schema-tested thin wrappers over
+  §2.10.5, not a separate behavior surface.
 - Distribution: publish to community plugin marketplaces + our own tap.
 
 ## 4.2 Hermes
-- Hermes skill `agentpaas-deploy` (SKILL.md): trigger phrases, exact CLI
-  commands, pitfalls, verification. Hermes drives the full loop via its
-  terminal tool. Cheap to build; we dogfood it during development.
+- Hermes skill `agentpaas-deploy` (SKILL.md): trigger phrases, native MCP
+  setup, exact fallback CLI commands, pitfalls, verification. Hermes drives
+  the full P1 loop through the same `agentpaas-mcp` server where available;
+  terminal commands remain the fallback path.
 
 ## 4.3 Codex / Cursor / generic
 - Codex: AGENTS.md instruction pack + the same MCP server (Codex speaks MCP).
 - Cursor: rules file + MCP.
 **Decision: the MCP server is THE single integration artifact; per-tool
 skins (skill, plugin, rules) are thin wrappers around it.**
+
+Integration safety rules:
+- Contract parity is release-gated: every MCP tool must match the §2.10.5
+  operator schemas, preserve stable error categories/evidence refs, and fail
+  closed on schema/version mismatch.
+- MCP responses separate trusted control fields from untrusted source/log/trace
+  excerpts so prompt-injected text cannot act as instructions.
+- Trust-boundary actions return confirmation requests, not applied changes:
+  policy broadening, credential binding, direct leases, exposed listeners,
+  budget increases, remote audit export, audit purge/deletion, gate disabling,
+  and stopping unrelated runs require daemon/UI/CLI confirmation and audit.
+- P1 clean-machine integration proof measures only the post-install deploy
+  flow; after AgentPaaS is installed, Claude Code and Hermes native MCP demos
+  must each reach a governed running agent with visible denial/audit evidence
+  in under 10 minutes.
 
 ---
 
