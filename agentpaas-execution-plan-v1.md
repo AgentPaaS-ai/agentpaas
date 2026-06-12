@@ -87,6 +87,36 @@ Every implementation PR must include:
 No PR merges without: green CI, reviewer PASS, adversary PASS, and an updated
 status dashboard.
 
+### 0.2.2a Canonical gate commands
+Every implementation issue must name one binary Makefile gate. Friendly
+subtargets may exist, but these wrapper names are stable and are what reviewers,
+CI, and checkpoint notes cite:
+
+| Block | Canonical gate |
+|---|---|
+| 1 | `make block1-gate` |
+| 2 | `make block2-gate` |
+| 3 | `make block3-gate` |
+| 4 | `make block4-gate` |
+| 5 | `make block5-gate` |
+| 6 | `make block6-gate` |
+| 7 | `make block7-gate` |
+| 8 | `make block8-gate` |
+| 9 | `make block9-gate` |
+| 10 | `make block10-gate` |
+| 11 | `make block11-gate` |
+| 12 | `make block12-gate` (wraps `make redteam-smoke`) |
+| 13 | `make block13-gate` |
+| 14 | `make block14-gate` |
+| 15 | `make block15-gate` once the Makefile exists; before Block 1, the
+docs-only equivalent is `git diff --check` plus a committed checkpoint. |
+
+Block 1 creates the Makefile namespace. Future-block wrappers may initially be
+documented placeholders that exit nonzero with "not implemented until Block N";
+the owning block replaces its wrapper with the real gate before it can pass.
+Implementation agents may add subtargets, but must not rename or remove the
+canonical wrappers.
+
 ### 0.2.2 Tracking and dashboard
 Use GitHub from day 1, even while private.
 - Local git is mandatory: `git init`, `main` protected by convention, feature
@@ -153,8 +183,10 @@ agentpaas/
 ## BLOCK 1 — Repo bootstrap, proto contracts, CI skeleton
 **Builds:** monorepo layout; both .proto files complete; buf lint+generate;
 GitHub Actions (lint, test, -race, osv-scanner); Makefile targets
-`build test proto e2e redteam`; SECURITY.md; Apache-2.0 LICENSE; local git
-repo initialized; GitHub-ready issue/PR templates and status dashboard.
+`build`, `test`, `proto`, `lint`, `race`, `osv`, `e2e-network`,
+`redteam-smoke`, and the canonical `blockN-gate` wrappers from §0.2.2a;
+SECURITY.md; Apache-2.0 LICENSE; local git repo initialized; GitHub-ready
+issue/PR templates and status dashboard.
 **Build prompt:** "Bootstrap the AgentPaaS monorepo per §0.3. Author
 api/trigger/v1/trigger.proto: services Invoke, InvokeStream, GetRun,
 CancelRun, ListRuns; messages carry agent_name, payload (bytes+content_type),
@@ -186,7 +218,8 @@ next-page cases; idempotency replay and payload-mismatch behavior covered in
 proto/API conformance tests; PR template contains Definition of Done;
 status dashboard renders built/remaining/PR sections even before GitHub is
 connected; CI fails a deliberately bad branch for the right reason.
-**SUCCESS GATE:** `make proto build test` green on macOS CI;
+**SUCCESS GATE:** `make block1-gate` green on macOS CI; it wraps
+`make proto build test` plus any Block 1 lint/status checks;
 `scripts/update-status-dashboard.sh` updates `docs/status.md`; initial
 GitHub issues/Project can be created from the block list OR local fallback
 issues exist under `docs/issues/`.
@@ -203,9 +236,10 @@ readiness handshake, control-API server with stub handlers; `agent` CLI
 `uninstall`, `start`, `stop`, `restart`, `status`); `agent version` and
 `agent daemon status` show CLI version, daemon version, proto version, git
 commit, OS/arch, Docker context, Docker API version; `agent doctor` v0
-(Docker reachable? current Docker context? Docker Desktop/Colima/Linux
-dockerd detection where possible? socket perms? ports 7700/7717/7718 free?
-home dir perms? daemon ready? CLI/daemon proto compatible?); structured
+(Docker reachable? current Docker context? Docker Desktop/Colima on macOS?
+unsupported Linux `dockerd` reported as P2/not-a-P1-gate? socket perms? ports
+7700/7717/7718 free? home dir perms? daemon ready? CLI/daemon proto
+compatible?); structured
 logging (slog, JSON) with redaction enabled from day one. Dev/test
 overrides: `AGENTPAAS_HOME`, `AGENTPAAS_SOCKET`,
 `AGENTPAAS_DASHBOARD_PORT`, `AGENTPAAS_TRIGGER_REST_PORT`,
@@ -222,7 +256,7 @@ host supports user services; Docker stopped/context missing/API too old →
 doctor names the exact issue; port squatted → doctor names process/port
 when the OS permits; log redaction masks high-entropy/API-key-looking
 values in CLI and daemon logs.
-**SUCCESS GATE:** `agent doctor` exits 0 on a healthy machine, nonzero with
+**SUCCESS GATE:** `make block2-gate` passes: `agent doctor` exits 0 on a healthy machine, nonzero with
 actionable messages for each induced failure (docker stopped, port
 squatted, bad socket perms, bad home perms, daemon not ready, CLI/daemon
 version mismatch); `agent version` and `agent daemon status` print the
@@ -282,8 +316,9 @@ passes for a fake hosted tenant; audit bundle verification works from an
 extracted bundle without reading `~/.agentpaas`; in-memory fake keystore and
 fake audit anchor pass the same contract tests as local implementations.
 
-**SUCCESS GATE:** `go test ./internal/identity/... ./internal/audit/...
--race` green; tamper-detection e2e script demonstrates all 4 tamper modes
+**SUCCESS GATE:** `make block3-gate` passes: `go test
+./internal/identity/... ./internal/audit/... -race` green;
+tamper-detection e2e script demonstrates all 4 tamper modes
 caught; audit-head-anchor test proves tail truncation is caught locally;
 export verifies on a second machine/clean CI workspace using only the
 bundle and the expected daemon audit public-key fingerprint; docs for the
@@ -337,7 +372,7 @@ order and comments do not affect digest; typos such as `credentials.brokerd`,
 `allow_wildcards`, and scalar `port: 443` fail schema validation; round-trip:
 compile(parse(x)) deterministic.
 **Fuzzing:** go-fuzz on parser (mandatory; crash corpus committed).
-**SUCCESS GATE:** unit + fuzz (1M execs, 0 crashes) green; golden-file
+**SUCCESS GATE:** `make block4-gate` passes: unit + fuzz (1M execs, 0 crashes) green; golden-file
 tests for compiler output; digest stability tests prove comments/key order do
 not change the canonical digest while semantically meaningful changes do; a
 sample policy.yaml from PRD §2.9 compiles to a config agentgateway actually
@@ -392,7 +427,8 @@ Docker-compatible socket. Linux `dockerd` moves to P2 certification.
   values and are suitable for debugging
 - Docker Desktop vs colima: topology holds on both; Linux dockerd certification
   moves to P2
-**SUCCESS GATE:** `make e2e-network` runs the positive-path canary plus the
+**SUCCESS GATE:** `make block5-gate` passes and wraps `make e2e-network`,
+which runs the positive-path canary plus the
 bypass suite and prints a table of allowed path PASS plus at least 12 attack
 vectors, all BLOCKED, on macOS (Docker Desktop + colima). The
 gate docs explicitly state that Block 5 proves gateway-only network topology
@@ -445,7 +481,7 @@ tool input/output bodies are not logged, only hashes and metadata. P2 note:
 the control plane may use the structured failure context to decide whether to
 modify an agent and retry in a fresh container until success; P1 only needs
 the structured failure context needed to support that future loop.
-**SUCCESS GATE:** e2e: an infinite-loop agent with max_wall_clock=30s dies
+**SUCCESS GATE:** `make block6-gate` passes: e2e proves an infinite-loop agent with max_wall_clock=30s dies
 at 30s±2s from invoke start with BUDGET_EXCEEDED + audit event; a token-burn
 agent stops future calls at the token cap using best-known usage and audits
 any provider-reported overage; Python SDK passes the harness contract test
@@ -498,7 +534,7 @@ values; direct lease tmpfs file gone after `agent stop` (asserted); raw file
 read succeeds for an explicit direct lease but is not claimed as a precise
 per-read audit event; CLI/dashboard/runtime errors redact secret values and
 do not show value prefixes/suffixes.
-**SUCCESS GATE:** negative suite green, including grep of full
+**SUCCESS GATE:** `make block7-gate` passes: negative suite green, including grep of full
 process list, shell history fixture, `docker inspect`, gateway logs, compiled
 configs, exported image layers, build context, packed artifacts, CLI/dashboard
 errors, and agent filesystem/proc probes for a brokered sentinel secret →
@@ -538,7 +574,7 @@ tar order, `SOURCE_DATE_EPOCH`); local OCI layout missing/corrupt →
 actionable repair; registry push is deferred; LangGraph and CrewAI-generated
 example repos pack without a custom Dockerfile through the generic Python
 harness.
-**SUCCESS GATE:** 3 Python reference agents (plain-py, langgraph, crewai)
+**SUCCESS GATE:** `make block8-gate` passes: 3 Python reference agents (plain-py, langgraph, crewai)
 pack green; `agent verify agent.lock` and explicit offline
 `cosign verify --key <AID pubkey>` pass for the image signature; lockfile
 signature verifies; SBOM lists expected top-level deps; osv-scanner advisory
@@ -591,7 +627,7 @@ cron fires while prior run active → `concurrency_policy: forbid` default
 skips and audits; CancelRun mid-LLM/MCP-call → audit cancel_requested, ask
 gracefully, wait 30s, force stop if needed, audit final canceled/forced
 outcome.
-**SUCCESS GATE:** API conformance suite (generated from proto) green;
+**SUCCESS GATE:** `make block9-gate` passes: API conformance suite (generated from proto) green;
 auth/API-key lifecycle + idempotency + rate-limit + SSE reconnect e2e green;
 cron/webhook tests prove same policy/audit path as manual Invoke; cancel
 semantics e2e green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
@@ -632,7 +668,7 @@ allowed; clock-skewed spans → ordered by monotonic seq; security events are
 never sampled out of canonical audit even if OTel retention prunes dashboard
 telemetry; empty states designed (zero agents, zero runs); accessibility and
 keyboard smoke test.
-**SUCCESS GATE:** Playwright e2e: launch agent → watch live run → see a
+**SUCCESS GATE:** `make block10-gate` passes: Playwright e2e launches agent → watches live run → sees a
 DENIED egress row → export audit → verify export. Lighthouse perf ≥ 90
 local. Planted-XSS and sentinel-secret tests show escaped/redacted output.
 10k-span, SSE reconnect, SQLite lock/corruption recovery, empty-state, policy
@@ -717,7 +753,8 @@ network/dashboard unavailable → tool falls back to daemon/control JSON; daemon
 restart mid-loop → idempotency and run refs let the coding tool resume; human
 declines policy patch → next action becomes `fix_code` or `ask_user`, not
 policy bypass.
-**SUCCESS GATE:** Agentic golden flow green on a clean machine: a scripted
+**SUCCESS GATE:** `make block11-gate` passes with the agentic golden flow green
+on a clean machine: a scripted
 Codex/Claude/Hermes-like client creates a deliberately incomplete Python
 agent, runs `agent init --from-code --noninteractive`, validates, packs,
 runs, sees a policy denial, receives a structured denial explanation,
@@ -766,7 +803,8 @@ methods from Block 11; each fixture verifies its own audit event exists with
 correct verdict fields; suite target runtime <10 minutes on a developer
 laptop; flaky platform-specific probes may be marked informational only if
 the core P1 claim is still covered by another deterministic assertion.
-**SUCCESS GATE:** `make redteam-smoke` prints 6/6 PASS on macOS (Docker
+**SUCCESS GATE:** `make block12-gate` wraps `make redteam-smoke`, which prints
+6/6 PASS on macOS (Docker
 Desktop or colima); failures in default-deny egress, brokered secret
 invisibility, credential misuse, or operator trust-boundary refusal are
 release blockers for v0.1.0. P2 adds Linux CI coverage plus the full permanent
@@ -847,7 +885,7 @@ confirmation id replay/expiry → refused + audit; hostile instruction
 embedded in agent source/log comments → no policy alteration, secret
 disclosure, audit deletion, gate disabling, or unrelated stop (negative test
 in CI).
-**SUCCESS GATE:** scripted e2e on a clean machine after AgentPaaS is already
+**SUCCESS GATE:** `make block13-gate` passes with scripted e2e on a clean machine after AgentPaaS is already
 installed: Claude Code session generates an agent → `/deploy-agent` → agent
 running governed → dashboard shows a DENIED probe → post-install deploy flow
 <10 minutes. Same flow green via Hermes native MCP skill. MCP conformance
@@ -923,7 +961,8 @@ items, offline bundles) and how to purge them; zero telemetry means no
 analytics, update checks, crash reports, or usage pings leave the machine in
 P1. Any future telemetry is separate, explicit opt-in only, and absent from
 the launch demo path.
-**SUCCESS GATE:** two volunteers (not you) each reach a running governed
+**SUCCESS GATE:** `make block14-gate` passes and release evidence shows two
+volunteers (not you) each reach a running governed
 agent in <15 minutes from the README on their own macOS machines after
 installing Docker Desktop or Colima; Claude Code and Hermes native MCP
 post-install deploy demos each complete in <10 minutes; at least one Block 13
@@ -998,9 +1037,18 @@ Execution control decisions:
   operator contract, redteam-smoke, and integration contract parity are
   never cut from P1.
 
+**SUCCESS GATE:** `make block15-gate` passes once the Makefile exists, proving
+the plan/checkpoint consistency checks still have no stale block numbering,
+P1/P2 scope drift, missing gate commands, or cut security invariants. Before
+Block 1 creates the Makefile, the equivalent docs-only gate is this whole-plan
+review, `git diff --check`, and a committed checkpoint.
+
 ## 16. DEFINITION OF DONE (PHASE 1)
 The execution plan is complete when PRD v4 §8 (Success Definition) items
-1–8 are demonstrably true via the gates above. Every gate command is in the
-Makefile; "done" is always a command exiting 0, never a judgment call.
+1–8 are demonstrably true via the gates above. Blocks 1-14 are complete only
+when their `make blockN-gate` wrappers exit 0, and Block 14 must also collect
+the volunteer/release evidence named in PRD §8. Block 15 is the sequencing
+control gate. "Done" is always a command plus recorded evidence, never a
+judgment call.
 
 **END OF EXECUTION PLAN v1.0 — companion to agentpaas-prd-v4-master.md**
