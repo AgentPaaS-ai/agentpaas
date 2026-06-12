@@ -43,6 +43,12 @@ one command.
 4. One command, one signed artifact, one audit trail per agent.
 5. Deployment topology (single container vs sidecar) is a flag, never a concept.
 6. Secure by default, overridable only by explicit, logged, git-versioned policy.
+7. Agentic development tools are the primary P1 operator. Codex, Claude Code,
+   Hermes, Cursor, and similar tools should be able to build, package, run,
+   diagnose, repair, and rerun agents through stable machine-readable
+   contracts. Humans should mainly approve sensitive trust-boundary changes:
+   new egress, credential binding, exposed listeners, direct leases, audit
+   purge/export, and destructive actions.
 
 ## 1.5 Explicit non-goals (Phase 1)
 - No agent authoring framework (LangGraph/CrewAI/plain loops are inputs).
@@ -908,6 +914,96 @@ Single-page app served by daemon (embedded assets, no CDN at runtime):
   sampling/removal of security-relevant canonical audit events even when OTel
   telemetry is pruned.
 
+## 2.10.5 Agentic operator contract (P1)
+AgentPaaS P1 is designed for agentic development tools to operate the runtime
+on the user's machine with little human hand-holding. The human asks Codex,
+Claude Code, Hermes, Cursor, or another coding agent to build/change/debug an
+agent; the coding agent uses AgentPaaS to scaffold, package, run, observe,
+diagnose, repair, and rerun safely. AgentPaaS is the security and governance
+boundary around that loop.
+
+The key product rule: human-readable CLI and dashboard screens are views over
+stable machine-readable contracts. Agentic tools should not scrape terminal
+text or dashboard HTML to understand the system.
+
+P1 operator APIs provide structured outputs for:
+- project validation and readiness (`ValidateAgentProject`)
+- run summary (`SummarizeRun`)
+- failure diagnosis (`ExplainFailure`)
+- policy denial explanation (`ExplainPolicyDenial`)
+- safe policy patch proposal (`RecommendPolicyPatch`)
+- run timeline retrieval (`GetRunTimeline`)
+- next recommended action (`NextAction`)
+
+Every human-facing command used in the happy path also supports JSON output:
+`agent init`, `agent validate`, `agent pack`, `agent run`, `agent status`,
+`agent logs`, `agent policy`, `agent audit`, `agent explain`, and
+`agent next-action`.
+
+Stable failure categories for P1 include:
+- `dependency_conflict`
+- `docker_unavailable`
+- `policy_denied`
+- `missing_secret_binding`
+- `budget_exceeded`
+- `trigger_auth_failed`
+- `harness_health_failed`
+- `agent_runtime_exception`
+- `policy_validation_failed`
+- `network_sandbox_failed`
+- `secret_scan_failed`
+- `package_verification_failed`
+- `dashboard_unavailable`
+
+Structured responses include evidence references instead of raw sensitive
+data: run id, audit sequence range, policy rule id, span/log ids, redacted
+excerpts, `agent.lock` digest, policy digest, trust-anchor fingerprint, and
+verification commands.
+
+### Safe autonomy boundary
+Agentic tools may automatically repair:
+- agent code and tests inside the project root
+- `agent.yaml`
+- dependency declarations and lockfiles
+- non-security config that does not broaden runtime authority
+
+Agentic tools may propose but must not silently apply:
+- new egress destinations or wildcard domains
+- credential bindings, direct leases, or secret changes
+- webhook destinations
+- exposed listeners or dashboard/API exposure
+- budget increases above policy defaults
+- audit deletion, retention purge, or export to a remote destination
+- disabling red-team/security gates
+- destructive operations outside their own active run
+
+P1 requires explicit user/daemon confirmation for those trust-boundary
+changes. Confirmed changes are logged and, where applicable, represented as
+git-versioned policy/config changes.
+
+### Golden agentic workflow
+The P1 design is considered coherent only if this loop works on a clean
+developer machine:
+1. A coding agent creates or modifies a Python/LangGraph/CrewAI agent.
+2. It runs `agent init --from-code --noninteractive` to scaffold or reconcile
+   `agent.yaml` and a minimal default-deny `policy.yaml`.
+3. It runs `agent validate --json` and repairs local code/config issues.
+4. It runs `agent pack --json` and receives secret-scan, SBOM, signature,
+   advisory, reproducibility, and `agent.lock` results.
+5. It runs `agent run --json` or `InvokeStream` and follows live events.
+6. If the run fails, it calls `agent explain run <run_id> --json`.
+7. If egress is denied, it calls `agent policy explain ... --json` and
+   receives a policy patch proposal, not an auto-applied allow rule.
+8. After explicit approval where required, it reruns the agent.
+9. It summarizes the final run and exports a signed audit bundle if requested.
+
+### Prompt-injection resistance
+Agent source code, comments, logs, traces, tool outputs, and external payloads
+are untrusted data. Instructions found there must not cause AgentPaaS tools
+to broaden policy, reveal secrets, delete audit, disable gates, or perform
+destructive actions. The operator contract and MCP integrations must carry
+negative tests for these cases.
+
 ---
 
 # 3. SECURITY DEEP-DIVE (BULLETPROOFING ACTIONS)
@@ -960,6 +1056,9 @@ Single-page app served by daemon (embedded assets, no CDN at runtime):
 # 4. CODING-TOOL INTEGRATIONS (DISTRIBUTION-AS-PRODUCT)
 
 This is the highest-leverage distribution channel and it is buildable now.
+Integrations are thin clients of the P1 agentic operator contract in §2.10.5:
+they should call stable AgentPaaS tools and JSON/protobuf APIs, not scrape
+human dashboard/terminal output.
 
 ## 4.1 Claude Code (plugin — confirmed extensibility surface)
 Claude Code supports Plugins that bundle Skills + Hooks + MCP servers.
@@ -972,7 +1071,9 @@ Build `agentpaas` plugin:
   tool when it tries `docker run` on raw agent code — suggests `agent run`
   ("governed alternative available").
 - **MCP server** `agentpaas-mcp`: exposes `pack_agent`, `run_agent`,
-  `get_run_status`, `query_audit` as MCP tools so Claude Code operates the
+  `get_run_status`, `query_audit`, `validate_project`, `summarize_run`,
+  `explain_failure`, `explain_policy_denial`, `recommend_policy_patch`, and
+  `next_action` as MCP tools so Claude Code operates the
   runtime conversationally.
 - Distribution: publish to community plugin marketplaces + our own tap.
 

@@ -60,6 +60,9 @@ RULES (apply to every task in this block):
 - No new dependency without listing name+license+reason in the PR body.
 - All listeners bind 127.0.0.1 unless the spec says otherwise.
 - Every security claim gets a NEGATIVE test (prove the bad path is blocked).
+- Every user-visible operation must also expose a machine-readable JSON path
+  suitable for Codex/Claude Code/Hermes. Human text output is a view, not the
+  contract.
 - Commit after every green test, conventional-commit messages.
 - If the spec is ambiguous, STOP and emit "QUESTION:" — never guess.
 - Done = this block's SUCCESS GATE command passes locally.
@@ -116,6 +119,7 @@ agentpaas/
 │   ├── audit/            # hash-chain log, export, verify
 │   ├── otel/             # collector, sqlite store
 │   ├── events/           # bus, webhook delivery
+│   ├── operator/         # agentic diagnostics, repair hints, JSON schemas
 │   └── pack/             # build pipeline, sbom, sign, secret-scan
 ├── web/dashboard/        # SPA (preact/lit + TS, embedded via go:embed)
 ├── sdk/python/           # agentpaas-sdk
@@ -157,7 +161,11 @@ finished_at, error, budget_summary, policy_digest, image_digest), pagination
 returns ALREADY_EXISTS/409). Add HTTP annotations for grpc-gateway routes and
 document InvokeStream as REST SSE. Author control/v1/control.proto: Pack,
 Run, Stop, Logs(stream), PolicyApply, SecretSet/Grant/Revoke, AuditQuery,
-AuditExport, Doctor. Use stable proto package names
+AuditExport, Doctor, ValidateAgentProject, SummarizeRun, ExplainFailure,
+ExplainPolicyDenial, RecommendPolicyPatch, GetRunTimeline, NextAction. These
+operator methods return stable JSON/protobuf payloads for coding-agent
+clients; CLI/dashboard text is rendered from the same data. Use stable proto
+package names
 `agentpaas.trigger.v1` and `agentpaas.control.v1`, explicit `go_package`,
 reserved field numbers/names when deleting, and committed generated code.
 Wire buf + grpc-gateway codegen. CI as specified. Initialize local git,
@@ -620,6 +628,96 @@ diff, audit export verify, and accessibility smoke tests green.
 
 ---
 
+## BLOCK 10.5 — Agentic operator contract (Codex/Claude/Hermes-first P1)
+**Purpose:** Make Codex, Claude Code, Hermes, Cursor, and similar agentic
+development tools first-class operators of AgentPaaS, not screen-scrapers of
+human CLI/dashboard output. P1 is a hands-off but secure local development
+experience: a coding agent can scaffold, pack, run, inspect, diagnose, repair,
+and re-run an agent on the user's machine, while sensitive boundary changes
+remain explicit, reviewed, and audited.
+**Builds:** internal/operator — a stable machine-readable diagnosis and
+repair-hint layer consumed by CLI, dashboard, and Block 12 MCP integrations.
+Add JSON-schema/protobuf contracts for: `ValidateAgentProject`,
+`SummarizeRun`, `ExplainFailure`, `ExplainPolicyDenial`,
+`RecommendPolicyPatch`, `GetRunTimeline`, and `NextAction`. All commands
+that a human can use for pack/run/logs/status/policy/audit also support
+`--json` with the same schema. Outputs include stable error categories
+(`dependency_conflict`, `docker_unavailable`, `policy_denied`,
+`missing_secret_binding`, `budget_exceeded`, `trigger_auth_failed`,
+`harness_health_failed`, `agent_runtime_exception`,
+`policy_validation_failed`, `network_sandbox_failed`, `secret_scan_failed`,
+`package_verification_failed`, `dashboard_unavailable`) plus evidence refs
+(run_id, audit seq range, policy rule id, span/log ids, redacted excerpts,
+verification command).
+
+The operator contract is the retroactive invariant for Blocks 1-10:
+- Block 1 APIs/protos define stable machine-readable methods and error enums.
+- Block 2 daemon lifecycle/doctor reports structured readiness and repair
+  hints.
+- Block 3 audit exposes query/export results as signed, verifiable machine
+  data with trust-anchor fingerprints.
+- Block 4 policy compiler emits structured denial reasons and safe patch
+  proposals, never silent policy broadening.
+- Block 5 network/runtime returns structured egress decisions and containment
+  evidence.
+- Block 6 harness/SDK emits run lifecycle, health, budget, and exception
+  events in schemas that tools can reason over.
+- Block 7 secrets broker exposes missing-binding/revocation/lease diagnostics
+  without revealing secret values.
+- Block 8 packaging returns signed `agent.lock`, SBOM, scan, advisory, and
+  reproducibility results as JSON.
+- Block 9 Trigger API uses stable caller ids, idempotency, SSE event ids, and
+  cancel outcomes that tools can resume from.
+- Block 10 dashboard/OTel exposes the same timeline/audit/policy data as JSON;
+  the UI is a view, not the source of truth.
+
+**Safety model:** Agentic tools may automatically repair code, tests,
+`agent.yaml`, dependency declarations, and non-security config inside the
+project root. They may propose `policy.yaml` changes, new egress, credential
+bindings, direct leases, webhook destinations, exposed listeners, retention
+purges, and destructive actions, but P1 requires explicit user/daemon confirm
+before applying them. Tools cannot read secret values, cannot broaden policy
+silently, cannot delete audit, cannot disable red-team gates, and cannot use
+paths outside the invoking project root. Prompt-injected instructions inside
+agent source/logs/traces are untrusted data and must not cause policy changes,
+secret disclosure, audit deletion, or destructive operations.
+
+**Agentic workflow contract:** `agent init --from-code --noninteractive`
+creates/reconciles `agent.yaml` and a minimal default-deny `policy.yaml`;
+`agent validate --json` returns project readiness; `agent pack --json` emits
+scan/SBOM/signature/lockfile facts; `agent run --json` returns run_id and
+stream refs; `agent status/logs/audit/policy --json` expose structured state;
+`agent explain run <run_id> --json` diagnoses failures; `agent policy explain
+<run_id|dest> --json` names the blocking rule; `agent policy propose --json`
+returns a patch with risk level, rationale, affected destinations, credential
+ids, and audit evidence; `agent next-action <run_id> --json` returns one of
+`fix_code`, `install_dependency`, `start_docker`, `set_secret`,
+`review_policy_patch`, `increase_budget`, `rerun`, `export_audit`, or
+`ask_user`.
+
+**Edge cases:** malformed/old JSON schema version → clear compatibility error;
+tool asks for path outside project root → refusal with audit event; huge logs
+or build output → truncated excerpts + stable refs; denied egress → policy
+patch is proposed but not applied; missing secret → secret binding request is
+proposed but value is never requested through the agentic tool; prompt
+injection in source/logs says "approve all policy" → ignored and tested;
+network/dashboard unavailable → tool falls back to daemon/control JSON; daemon
+restart mid-loop → idempotency and run refs let the coding tool resume; human
+declines policy patch → next action becomes `fix_code` or `ask_user`, not
+policy bypass.
+**SUCCESS GATE:** Agentic golden flow green on a clean machine: a scripted
+Codex/Claude/Hermes-like client creates a deliberately incomplete Python
+agent, runs `agent init --from-code --noninteractive`, validates, packs,
+runs, sees a policy denial, receives a structured denial explanation,
+receives a policy patch proposal but cannot apply it without confirm, fixes a
+code/dependency issue automatically, reruns after approved policy, exports a
+signed audit bundle, and summarizes the final result in JSON. Negative tests
+prove prompt-injected source/log instructions cannot broaden policy, reveal
+secrets, delete audit, or stop unrelated runs. JSON schema golden tests prove
+backward-compatible outputs for every operator method.
+
+---
+
 ## BLOCK 11 — Red-team suite (the permanent CI gate)
 **Builds:** test/redteam — a malicious-agent image library + runner that
 packs and runs each attacker through the REAL pipeline, then asserts
@@ -654,9 +752,14 @@ show 0 escapes; a single escape is a release blocker, no exceptions.
 **Builds:** integrations/mcp-server — an MCP server exposing the daemon's
 control API as tools (`agentpaas_pack`, `agentpaas_run`, `agentpaas_stop`,
 `agentpaas_logs`, `agentpaas_status`, `agentpaas_policy_show`,
-`agentpaas_audit_query`). This single adapter is the universal wedge: any
-MCP-speaking coding agent (Claude Code, Codex, Cursor, Hermes via
-native-mcp) gets "deploy what you just built, safely" as a verb.
+`agentpaas_audit_query`, `agentpaas_validate_project`,
+`agentpaas_summarize_run`, `agentpaas_explain_failure`,
+`agentpaas_explain_policy_denial`, `agentpaas_recommend_policy_patch`,
+`agentpaas_next_action`). These are thin wrappers over the Block 10.5
+operator contract, not a separate behavior surface. This single adapter is
+the universal wedge: any MCP-speaking coding agent (Claude Code, Codex,
+Cursor, Hermes via native-mcp) gets "deploy what you just built, safely" as a
+verb plus the diagnosis loop needed to fix what it just built.
 Then two thin first-party packagings of it:
 - **claude-code-plugin:** plugin manifest + slash command `/deploy-agent`
   + a PostToolUse hint surfacing "run this under AgentPaaS?" after agent
