@@ -1030,14 +1030,13 @@ negative tests for these cases.
 3. `agent doctor` verifies: docker version, network isolation actually
    holds (spins a canary container and proves no default route), keychain
    access, port collisions.
-4. Integration test suite includes an adversarial "red team agent" image
-   that attempts: raw IP dial, DNS tunnel, /etc/passwd read, proxy bypass,
-   host.docker.internal access, IPv6 escape, discovering brokered secrets in
-   env/files/proc (must find zero), using a brokered credential for the wrong
-   destination (denied), and copying a directly leased secret file to an
-   ALLOWED domain (P1 best-effort: known-secret fingerprint match on
-   outbound bodies). The red-team suite is a permanent CI gate — every
-   release must show 0 escapes.
+4. P1 integration test suite includes a fast red-team smoke gate that runs
+   through the real pack/run/operator path and proves the core local release
+   claims: default-deny egress, policy/credential misuse denial, brokered
+   secret invisibility, host-access blocking smoke, resource containment
+   smoke, and operator prompt-injection refusal. Full adversarial coverage is
+   deferred to P2; P1 should be honest that this is release smoke proof, not a
+   comprehensive pentest.
 5. External pentest before GA tag; bug bounty (modest, scoped) at GA.
 6. SLSA provenance for our own release artifacts; users can verify
    `agentpaas` binaries the same way we verify their agents.
@@ -1048,6 +1047,11 @@ negative tests for these cases.
 - Not a sandbox against kernel 0-days (we harden containers; we are not gVisor).
   P2 option: gVisor/Kata runtime class for high-assurance mode.
 - Outbound data-loss prevention is fingerprint-based, not semantic, in P1.
+- P1 red-team coverage is a fast smoke gate for demo/release-critical claims,
+  not a full adversarial research corpus. P2 adds DNS tunneling, proxy bypass
+  variants, IPv6/UDP/ICMP/domain-fronting depth, direct-lease exfil/DLP,
+  SBOM/signature tamper, full MCP prompt-injection matrix, fuzzed operator
+  payloads, and permanent red-team gating on every runtime/gateway change.
 - Local mode trusts the developer's machine; we protect against the AGENT,
   not against the user.
 
