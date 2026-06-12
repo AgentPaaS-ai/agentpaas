@@ -473,7 +473,21 @@ What P1 should do for speed:
 
 ## 2.5 Secrets model
 - Secrets registered once: `agent secret set OPENAI_API_KEY` → stored in
-  macOS Keychain / libsecret. NEVER in images, env files, or compose files.
+  macOS Keychain / libsecret. NEVER in images, generated secret files, env
+  files, compose files, Docker labels, or packed artifacts. The P1
+  `SecretStore` abstraction has macOS Keychain, Linux libsecret, and explicit
+  fake test-store implementations only; there is no silent plaintext
+  fallback.
+- `agent secret set` reads values from stdin or an interactive prompt, never
+  argv. Individual secret values are capped at 64 KiB. `agent secret list`
+  shows metadata only: id, created time, updated time, last used time, and
+  referenced policies/agents. It never shows the value, prefix, suffix, or
+  hash-derived hints.
+- Secret store names are case-sensitive local-profile entries with no
+  whitespace or control characters. Policy credential ids are policy-local
+  stable ids that bind egress/MCP rules to those store names; one stored
+  physical secret can be referenced by multiple reviewed policies, but every
+  agent must opt in through its own policy binding.
 - Default mode is brokered outbound credentials: `policy.yaml` binds a
   keychain secret to a specific allowed egress rule and a header injection
   template. At runtime, the gateway sidecar injects the credential into the
@@ -489,12 +503,16 @@ What P1 should do for speed:
   validates policy, injects the credential, and originates the upstream TLS
   request. Raw TLS/socket attempts from the agent cannot receive brokered
   credential injection and have no direct internet route.
-- Compatibility mode is direct agent lease: `policy.yaml` must explicitly
-  request `mode: file_lease` or `mode: env_lease` with a reason. File leases
-  are mounted from tmpfs with 0400 perms, owner = agent uid, and removed at
-  stop. Env leases are allowed only as a warned, discouraged escape hatch.
+- Compatibility mode is direct agent file lease: `policy.yaml` must explicitly
+  request `mode: file_lease` with a reason. File leases are mounted only at
+  runtime from tmpfs with 0400 perms, owner = agent uid, and removed at stop.
+  P1 does not support env leases because environment variables are too easy to
+  leak through process inspection, crash dumps, dependency behavior, logs, and
+  `/proc`.
 - `agent secret revoke <name>` invalidates brokered credential use
-  immediately and restarts any agent with an active direct lease.
+  immediately and restarts any agent with an active direct lease. Direct-lease
+  revocation stops future access after restart, but it cannot claw back a
+  secret value already visible to agent code.
 - Pack-time scanner refuses to build images containing high-entropy strings
   / known key formats (gitleaks rules) unless `--allow-secret-pattern`
   (logged, discouraged).
@@ -510,10 +528,11 @@ What P1 should do for speed:
   `visible_to_agent=false`.
 - We guarantee a brokered credential cannot be used for a different
   destination, method, port, redirect target, or request shape than the policy
-  rule permits.
+  rule permits. Credentialed redirects are disabled by default; noncredentialed
+  redirects are re-evaluated against policy per hop.
 - We guarantee a direct lease cannot exist unless `policy.yaml` explicitly
-  opts into `file_lease` or `env_lease`. For security review purposes, a
-  direct lease means "this run had access to this secret."
+  opts into `file_lease`. For security review purposes, a direct lease means
+  "this run had access to this secret."
 - We do not guarantee P1 can prove every raw read of a directly leased file.
   The SDK can emit precise `secret_read` audit events for lease helpers, but
   arbitrary user code can bypass the SDK once a direct lease is mounted.
@@ -732,7 +751,7 @@ credentials:
   direct_leases:
     - id: legacy-tool-token
       secret: LEGACY_TOOL_TOKEN
-      mode: file_lease             # file_lease | env_lease
+      mode: file_lease             # P1 compatibility mode; env leases unsupported
       mount_path: /run/agentpaas/secrets/LEGACY_TOOL_TOKEN
       reason: "Legacy SDK only supports reading a token file"
 mcp_servers:
@@ -772,6 +791,12 @@ Policy schema rules for P1:
   doubt, require the developer to specify the ASCII hostname explicitly.
 - Brokered credential injection is header-only in P1. Query-string and body
   injection are rejected by validation.
+- Direct leases are file-only in P1. `env_lease` is rejected by validation.
+  Real secret files must never be generated into the source tree, build
+  context, image layers, or packed artifacts; generated code should create
+  credential references and policy entries, not real secret files.
+- Secret-related CLI, dashboard, runtime, and validation errors must redact
+  values and must not reveal value prefixes, suffixes, or hash-derived hints.
 - Hook destinations are validated in Block 4 as policy data and revalidated
   at delivery time in Block 9. Remote hook URLs must match an egress allow
   rule; loopback hook URLs are allowed only as explicit local hooks and are
@@ -781,7 +806,7 @@ Policy schema rules for P1:
 Single-page app served by daemon (embedded assets, no CDN at runtime):
 - Agent list: status, uptime, last run, spend-to-date vs budget.
 - Run detail: timeline of traces (LLM calls w/ tokens+cost, MCP calls,
-  egress events incl. DENIED in red), logs, checkpoint markers.
+  egress events incl. DENIED in red), logs, audit checkpoint markers.
 - Policy view: effective policy per agent, diff vs git file.
 - Audit search: filterable, with one-click signed export.
 - Live event stream (SSE). No auth on loopback; API-key when `--expose`.

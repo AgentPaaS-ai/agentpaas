@@ -438,17 +438,26 @@ suite.
 ---
 
 ## BLOCK 7 — Secrets broker
-**Builds:** internal/secrets — `agent secret set/list/rm` (values read from
-stdin/interactive prompt, NEVER argv so they never hit shell history or
-process lists); brokered outbound credential flow (gateway sidecar requests
-credential use from daemon/secrets broker over local authenticated channel;
-daemon validates run id + policy rule id + destination + method; gateway
-injects header field per policy and originates the upstream TLS request; raw
-value is never sent to the agent container); direct lease flow for
-compatibility (`file_lease` into
-tmpfs 0400 owned by agent uid; `env_lease` opt-in, warned, discouraged);
-revocation invalidates brokered use immediately and restarts affected
-direct-lease agents. Audit guarantee: brokered injection emits
+**Builds:** internal/secrets — `SecretStore` abstraction with P1
+implementations for macOS Keychain, Linux libsecret, and an explicit fake
+test store only; no silent plaintext fallback. `agent secret set/list/rm`
+(values read from stdin/interactive prompt, NEVER argv so they never hit
+shell history or process lists; max secret value size 64 KiB); `list` shows
+metadata only (id, created_at, updated_at, last_used_at, referenced-by
+policies/agents), never value, prefix, suffix, or hash-derived hints.
+Secret store names are case-sensitive local-profile entries with no
+whitespace/control characters; policy credential ids are policy-local stable
+ids that bind egress/MCP rules to those store names.
+Brokered outbound credential flow (gateway sidecar requests credential use
+from daemon/secrets broker over local authenticated channel; daemon validates
+run id + policy rule id + destination + method; gateway injects header field
+per policy and originates the upstream TLS request; raw value is never sent
+to the agent container). Direct lease flow for compatibility is file-only:
+`file_lease` mounts a runtime tmpfs file 0400 owned by agent uid; P1 does
+not support `env_lease`, and real secret files are never packaged into agent
+images. Revocation invalidates brokered use immediately and restarts affected
+direct-lease agents; direct-lease revocation cannot claw back a secret value
+already visible to agent code. Audit guarantee: brokered injection emits
 `secret_injected` with `visible_to_agent=false`; direct lease emits
 `secret_leased` with `visible_to_agent=true`; SDK lease-helper reads emit
 `secret_read`; P1 does not claim reliable per-open auditing for raw file
@@ -459,19 +468,24 @@ laptop, plus device posture, tenant policy to disable direct leases,
 short-lived credential grants, revocation, and tenant-visible audit.
 **Edge cases:** brokered secret referenced but not set → launch refuses
 naming the missing secret; brokered credential used for wrong domain,
-method, or port → denied before injection and audited; gateway crash cannot
-dump secret in logs; keychain locked → actionable error, no plaintext
-fallback; secret containing newlines/UTF-8/4KB length injects/round-trips
-exactly; agent attempts `env`, `/proc`, filesystem walk, and `docker
-inspect` to find a brokered sentinel secret → zero hits; compiled gateway
-config and policy digest contain credential ids only, never values; direct
-lease tmpfs file gone after `agent stop` (asserted); raw file read succeeds
-for an explicit direct lease but is not claimed as a precise per-read audit
-event.
+method, port, or credentialed redirect → denied before injection and audited;
+noncredentialed redirects are rechecked against policy per hop; gateway crash
+cannot dump secret in logs; keychain/libsecret locked or unavailable →
+actionable error, no plaintext fallback; secret containing newlines/UTF-8/64
+KiB length injects/round-trips exactly; oversize secret rejected before
+storage; agent attempts `env`, `/proc`, filesystem walk, and `docker inspect`
+to find a brokered sentinel secret → zero hits; compiled gateway config and
+policy digest contain credential ids only, never values; generated files,
+image layers, build context, and packed artifacts contain no real secret
+values; direct lease tmpfs file gone after `agent stop` (asserted); raw file
+read succeeds for an explicit direct lease but is not claimed as a precise
+per-read audit event; CLI/dashboard/runtime errors redact secret values and
+do not show value prefixes/suffixes.
 **SUCCESS GATE:** negative suite green, including grep of full
-`docker inspect`, gateway logs, compiled configs, exported image layers,
-and agent filesystem/proc probes for a brokered sentinel secret → zero
-hits; a real brokered OpenAI-style request receives the Authorization
+process list, shell history fixture, `docker inspect`, gateway logs, compiled
+configs, exported image layers, build context, packed artifacts, CLI/dashboard
+errors, and agent filesystem/proc probes for a brokered sentinel secret →
+zero hits; a real brokered OpenAI-style request receives the Authorization
 header upstream while agent logs/proc/env never contain the key.
 
 ---
