@@ -57,6 +57,41 @@ execution PRs small enough for cheaper models to complete safely.
 PR sizing rule: one behavioral claim per PR; target <500 changed production
 LOC plus tests. If a PR needs more, split it before coding.
 
+### 0.1.2 Model routing and cost controls
+Use a routing ladder so P1 does not burn frontier-model budget on mechanical
+work. Model names are guidance, not product dependencies; check current
+OpenRouter pricing/capability before each block and pin the chosen model ids in
+the issue.
+
+Default ladder:
+1. **Planner/orchestrator:** ChatGPT 5.5 high + Codex for block breakdown,
+   architecture decisions, security invariants, and final release-blocking
+   approval.
+2. **Executor:** DeepSeek V4 Flash-class model for normal coding, TDD loops,
+   test writing, and routine fixes.
+3. **Code-specialist fallback:** Qwen Coder-class model when the executor
+   struggles with code generation, repository navigation, or tool-use details.
+4. **Mid-tier senior reviewer:** GLM 4.6/5.x-class model for diff coherence,
+   integration risk, and "should this escalate?" review before spending a
+   ChatGPT 5.5 high pass.
+5. **Strong-model escalation:** ChatGPT 5.5 high only when the change touches
+   API/security contracts, trust boundaries, block acceptance, unresolved
+   reviewer disagreement, or repeated executor failure.
+
+Cost discipline:
+- Give every GitHub issue a model budget and stop/escalate when it is exceeded.
+- Feed strong reviewers only the block spec, touched files, `git diff`, test
+  output, and known failures; avoid full-repo context unless the issue truly
+  needs it.
+- Prefer cached, stable context bundles for repeated PRD/execution-plan excerpts.
+- Do cheap/different-model verifier and adversary passes before the final
+  strong-model approval.
+- Track actual tokens and dollars in the PR body and `docs/status.md` so later
+  blocks can tighten estimates.
+
+Rough P1 API budget target: $300-$700 with disciplined routing; reserve
+$500-$1,000 in credits so security/runtime churn does not stall the build.
+
 ### 0.2 Standing rules for every Builder session (paste verbatim)
 ```
 RULES (apply to every task in this block):
