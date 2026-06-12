@@ -89,8 +89,33 @@ Cost discipline:
 - Track actual tokens and dollars in the PR body and `docs/status.md` so later
   blocks can tighten estimates.
 
+Subscription-assisted capacity:
+- Treat flat-rate chat subscriptions as auxiliary reviewer seats, not CI/API
+  automation. Their usage limits, tool access, and terms can change; no block
+  gate may depend on a subscription-only chat transcript.
+- **Claude Pro subscription:** use after weekly reset windows for high-context
+  spec review, PR description critique, failure triage, docs clarity, and
+  "explain this diff to a security reviewer" passes. Avoid using it for long
+  autonomous coding sessions once the weekly quota is low; save remaining quota
+  for Blocks 3, 5, 7, 11, 13, and 14 review.
+- **SuperGrok / Grok through X OAuth:** use as an independent adversary and
+  market-skeptic reviewer: ask for attack ideas, abuse-case brainstorming,
+  messaging critique, launch-copy punch-up, and "what would a security/platform
+  buyer distrust here?" reviews. Its web/current-events strength is useful for
+  GTM/docs, competitive framing, and threat-model sanity checks.
+- For subscription passes, paste minimized context: block goal, relevant PRD
+  excerpt, diff summary, test output, and the specific question. Do not paste
+  real secrets, customer data, private keys, paid API keys, or full audit
+  bundles.
+- Record useful subscription findings in the issue/PR as human-reviewed notes
+  with model/source/date, then have the API-based verifier or founder make the
+  actual gate decision.
+
 Rough P1 API budget target: $300-$700 with disciplined routing; reserve
 $500-$1,000 in credits so security/runtime churn does not stall the build.
+Using Claude Pro and SuperGrok deliberately should reduce API spend by roughly
+15-30% by replacing some paid review/adversary/documentation passes, but it
+should not replace the final API-backed gate evidence.
 
 ### 0.2 Standing rules for every Builder session (paste verbatim)
 ```
