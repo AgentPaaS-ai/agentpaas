@@ -119,7 +119,7 @@ agentpaas/
 │   └── pack/             # build pipeline, sbom, sign, secret-scan
 ├── web/dashboard/        # SPA (preact/lit + TS, embedded via go:embed)
 ├── sdk/python/           # agentpaas-sdk
-├── sdk/node/             # @agentpaas/sdk
+├── sdk/node/             # @agentpaas/sdk (deferred; not P1 gate)
 ├── integrations/
 │   ├── mcp-server/       # the universal adapter
 │   ├── claude-code-plugin/
@@ -385,32 +385,55 @@ Block 11 red-team suite.
 
 ---
 
-## BLOCK 6 — Harness (cmd/harness) + SDK contracts
-**Builds:** Go harness as container PID 1: exec user code per runtime
-(python/node); HTTP contract (`POST /invoke`, `GET /healthz|readyz` on
-localhost:8000 inside container); budget enforcement (max_iterations via
-SDK count + harness-observed LLM-call count, wall-clock timer, token/USD
-accounting from gateway-reported usage; breach → SIGTERM, 10s grace,
-SIGKILL, status=BUDGET_EXCEEDED, audit event); checkpoint API (opaque
-blob → daemon store); OTel emit. Python SDK (`agentpaas-sdk`): decorators
-`@agent.on_invoke`, `agent.llm()` (OpenAI-compatible client preconfigured
-to gateway), `agent.http(credential_id, ...)`,
-`agent.mcp(server_id, tool, input)`.
-Brokered credentials are never returned to SDK callers. `agent.secrets.file()`
-exists only for explicit direct-lease compatibility mode and is discouraged
-in generated code. Node SDK mirrors.
+## BLOCK 6 — Harness (cmd/harness) + Python SDK contracts
+**Builds:** Go harness as container PID 1: exec Python user code; HTTP
+contract (`POST /invoke`, `GET /healthz|readyz` on localhost:8000 inside
+container); load agent code once per container and serialize invokes by
+default (`concurrency: 1`) with explicit opt-up later. Budget enforcement:
+`startup_timeout` covers import/readiness; `max_wall_clock` measures only
+run receive-invoke → run finishes using a monotonic clock; `max_iterations`
+means agent turns (each SDK-observed LLM/tool cycle counts, and each direct
+`agent.llm()` call counts if no higher-level loop exists; P2 may use model
+context-window health, performance drops, and turn-count guidance to adjust
+repair/retry strategy); token/USD accounting uses gateway-reported best-known
+usage and records post-hoc overage when provider usage arrives after
+termination. Breach → SIGTERM,
+10s grace, SIGKILL, status=BUDGET_EXCEEDED, audit event. OTel emit.
+Python SDK (`agentpaas-sdk`): decorators `@agent.on_invoke`, `agent.llm()`
+(OpenAI-compatible client preconfigured to gateway), noncredentialed
+`agent.http(...)`, brokered `agent.http_with_credential(credential_id, ...)`,
+and `agent.mcp(server_id, tool, input)`. Agent-level checkpoint/resume and
+half-done job recovery are deferred to P2; P1 restarts failed runs from a
+fresh container and records enough structured failure context for future
+resume/repair loops. Audit-log checkpoints from Block 3 remain part of the
+security model. Gateway policy can optionally deny noncredentialed HTTP calls
+(`egress.require_credential_binding: true`), forcing all outbound HTTP
+through named credential bindings. Brokered credentials are never returned to
+SDK callers.
+`agent.secrets.file()` exists only for explicit direct-lease compatibility
+mode and is discouraged in generated code. Node SDK is deferred until after
+the Python SDK and language-neutral harness contract are proven.
 **Edge cases:** user code crashes on import → FAILED with stderr captured;
-user code ignores SIGTERM → killed at grace deadline; zombie processes
-reaped (PID 1 duty); invoke payload 50MB → rejected 413 (limit 10MB,
-configurable); unicode/binary payloads round-trip; concurrent invokes →
-serialized by default (`concurrency: 1`), explicit opt-up; budget race
-(token usage reported after kill) → accounted post-hoc, audit shows
-overage; wall-clock budget uses monotonic clock (immune to clock-set);
-MCP call to undeclared server/tool is denied before execution and audited;
-MCP tool input/output bodies are not logged, only hashes and metadata.
+run fails for prompt/task/tool/SaaS/MCP/code reasons → structured failure
+reason, stderr/stdout pointers, policy decision ids, and relevant upstream
+availability evidence are reported to the control plane; failed runs are
+safe to retry in a fresh container with prior failure context stored outside
+the container; user code ignores SIGTERM → killed at grace deadline; zombie
+processes reaped (PID 1 duty); invoke payload 50MB → rejected 413 (limit
+10MB, configurable); unicode/binary payloads round-trip; budget race (token
+usage reported after kill) → accounted post-hoc, audit shows overage;
+blocked egress/tool calls are visible to the developer in CLI/dashboard logs
+with reason, run id, policy digest, and strict secret/payload redaction; MCP
+call to undeclared server/tool is denied before execution and audited; MCP
+tool input/output bodies are not logged, only hashes and metadata. P2 note:
+the control plane may use the structured failure context to decide whether to
+modify an agent and retry in a fresh container until success; P1 only needs
+the structured failure context needed to support that future loop.
 **SUCCESS GATE:** e2e: an infinite-loop agent with max_wall_clock=30s dies
-at 30s±2s with BUDGET_EXCEEDED + audit event; a token-burn agent dies at
-the token cap; both SDKs pass the same harness contract test suite.
+at 30s±2s from invoke start with BUDGET_EXCEEDED + audit event; a token-burn
+agent stops future calls at the token cap using best-known usage and audits
+any provider-reported overage; Python SDK passes the harness contract test
+suite.
 
 ---
 
@@ -454,9 +477,11 @@ header upstream while agent logs/proc/env never contain the key.
 ---
 
 ## BLOCK 8 — Packaging pipeline (`agent pack`)
-**Builds:** internal/pack — framework detection (plain Python, LangGraph,
-CrewAI markers, Node), buildkit image assembly (distroless base by digest,
-locked deps via uv / npm ci, harness as PID 1, non-root, no shell),
+**Builds:** internal/pack — framework detection for Python first (plain
+Python, LangGraph, CrewAI markers; Node and custom Dockerfiles deferred),
+buildkit image assembly
+(distroless base by digest, locked deps via uv, harness as PID 1, non-root,
+no shell),
 gitleaks secret scan (fail-closed), syft SBOM (SPDX-json, attached as OCI
 artifact), cosign sign with the agent identity key, emit `agent.lock`
 (image digest + SBOM digest + policy digest + identity pubkey).
@@ -465,11 +490,10 @@ conflict → surfaced verbatim, abort; 2GB build context → .agentpaasignore
 honored, warn >100MB; secret in source → FAIL naming file:line;
 `--allow-secret-pattern` logged into the audit trail; rebuild without
 changes → identical image digest (reproducibility); LangGraph and CrewAI
-example repos pack without a Dockerfile; `--dockerfile` escape hatch still
-gets harness + hardening layered on (or refuses with clear limits).
-**SUCCESS GATE:** 4 reference agents (plain-py, langgraph, crewai, node)
+example repos pack without a custom Dockerfile.
+**SUCCESS GATE:** 3 Python reference agents (plain-py, langgraph, crewai)
 pack green; `cosign verify` passes; SBOM lists expected top-level deps;
-secret-scan e2e blocks a planted key.
+secret-scan e2e blocks a planted key. Node packaging is a follow-on gate.
 
 ---
 

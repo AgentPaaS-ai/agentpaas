@@ -570,10 +570,12 @@ audited under tenant control.
    PolicyApply, SecretSet/Grant/Revoke, AuditQuery/Export, Doctor.
 3. **Harness contract** (inside container): agent code implements either
    (a) HTTP contract: `POST /invoke`, `GET /healthz`, `GET /readyz` on
-   localhost:8000, or (b) SDK contract (Python `agentpaas-sdk`, Node
-   `@agentpaas/sdk`): `@agent.on_invoke`, `agent.checkpoint()`,
-   `agent.llm()` / `agent.http()` / `agent.mcp()` helpers that route
-   through the gateway with tracing and brokered credential use baked in.
+   localhost:8000, or (b) SDK contract (P1: Python `agentpaas-sdk`):
+   `@agent.on_invoke`, `agent.llm()`, noncredentialed `agent.http()`,
+   brokered `agent.http_with_credential()`, and `agent.mcp()` helpers that
+   route through the gateway with tracing and brokered credential use baked
+   in. Agent-level checkpoint/resume is deferred to P2 and is not a P1 SDK
+   promise; audit-log checkpoints remain part of the Block 3 security model.
    `agent.secrets.file()` exists only for explicit direct-lease compatibility
    mode and is discouraged in generated code. The harness listens only inside
    the agent container's private network namespace; all external callers,
@@ -655,12 +657,18 @@ right primitives: run ids, parent/child run correlation ids, triggering
 subject, policy decision records, and audit events that can later explain
 "who/what caused this action."
 
+Agent-level checkpoint/resume and half-done job recovery are also P2. P1
+restarts failed runs from a fresh container and records enough structured
+failure context for a future control-plane repair loop. P2 must revisit
+long-running and partially completed jobs explicitly, including idempotency,
+external side effects, resume state, and operator-visible recovery decisions.
+
 ## 2.8 Packaging pipeline (`agent pack`)
 Input: a directory with `agent.yaml` (+ code). Steps, all deterministic:
-1. Detect framework (plain Python, LangGraph, CrewAI, Node) or use
-   explicit `runtime:` field; `--dockerfile` escape hatch.
+1. Detect Python framework (plain Python, LangGraph, CrewAI) or use explicit
+   `runtime:` field. Node and custom Dockerfile packaging are deferred.
 2. Secret scan (gitleaks ruleset) — fail closed.
-3. Dependency resolution into a locked layer (uv / npm ci), recorded.
+3. Dependency resolution into a locked layer (uv), recorded.
 4. Build OCI image: distroless base, non-root uid 64000, read-only rootfs,
    tmpfs /tmp, no shell in final image, harness as PID 1.
 5. Generate SBOM (syft, SPDX-json) — attached as OCI artifact.
@@ -673,7 +681,7 @@ Input: a directory with `agent.yaml` (+ code). Steps, all deterministic:
 # agent.yaml
 name: invoice-chaser
 version: 0.1.0
-runtime: python3.12          # python3.12 | node22 | dockerfile
+runtime: python3.12          # P1: python3.12; node/custom Dockerfiles deferred
 entry: main:app              # module:callable or HTTP-contract
 description: Chases overdue invoices via email
 triggers:
@@ -693,6 +701,7 @@ resources:
 version: 1
 egress:
   default: deny
+  require_credential_binding: false
   allow:
     - domain: api.openai.com
       ports: [443]
@@ -744,6 +753,10 @@ Policy schema rules for P1:
 - `policy.yaml` is the only canonical policy file. It may include sections
   for egress, credentials, MCP servers, hooks, and ingress. Generated examples
   should optimize for being easy for a human or LLM to compose correctly.
+- Gateway egress behavior is configurable through policy. P1 supports
+  noncredentialed HTTP only for explicitly allowed destinations; setting
+  `egress.require_credential_binding: true` forces outbound HTTP calls through
+  named credential bindings.
 - Unknown fields are errors. Typos should fail closed instead of silently
   weakening security.
 - Domain matching is exact by default. `domain: example.com` does not allow
@@ -785,7 +798,7 @@ Single-page app served by daemon (embedded assets, no CDN at runtime):
 | Prompt-injected agent calls unauthorized tools | MCP/tool call to non-approved server | MCP allow-list by server id + per-tool policy (P2: per-tool args constraints) |
 | Container escape | kernel/runtime exploit | non-root, read-only rootfs, no shell, dropped capabilities (ALL), seccomp default profile, no privileged, pids-limit, memory/cpu caps |
 | Supply chain (our deps) | compromised base image / dep | distroless pinned digests, SBOM on every artifact, `go mod verify`, dependabot, pinned vendored agentgateway with checksum |
-| Supply chain (user deps) | typosquatted pip/npm pkg | locked installs only (uv/npm ci), SBOM surfaced in dashboard, osv-scanner advisory in `agent pack` output |
+| Supply chain (user deps) | typosquatted Python package | locked installs only (uv), SBOM surfaced in dashboard, osv-scanner advisory in `agent pack` output |
 | Trigger API abuse | replay / brute force | idempotency keys, constant-time key compare, rate limit, lockout+audit on repeated 401 |
 | Audit tampering | attacker edits logs | canonical hash-chained JSONL, daemon-audit-key checkpoint signatures, local head anchor, signed export manifest, `agent audit verify` |
 | Daemon compromise | local privilege escalation | daemon runs as user (not root); socket 0600; no setuid; secrets only via OS keychain APIs |
@@ -944,8 +957,8 @@ Phase 1 is DONE when all of the following are demonstrably true:
    agent running in < 15 minutes following only the README.
 2. The red-team agent suite (§3.2.4) shows 0 escapes across all 10 attack
    classes, in CI, on both platforms.
-3. A LangGraph agent, a CrewAI agent, a plain-Python agent, and a Node
-   agent each pack and run without a Dockerfile.
+3. A LangGraph agent, a CrewAI agent, and a plain-Python agent each pack and
+   run without a custom Dockerfile.
 4. Claude Code (via plugin) and Hermes (via skill) can each take freshly
    generated agent code to running-governed state conversationally.
 5. `agent audit export` output passes `agent audit verify` on another
