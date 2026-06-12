@@ -879,11 +879,34 @@ Single-page app served by daemon (embedded assets, no CDN at runtime):
 - Agent list: status, uptime, last run, spend-to-date vs budget.
 - Run detail: timeline of traces (LLM calls w/ tokens+cost, MCP calls,
   egress events incl. DENIED in red), logs, audit checkpoint markers.
-- Policy view: effective policy per agent, diff vs git file.
-- Audit search: filterable, with one-click signed export.
+- OTel retention applies to dashboard traces/logs/metrics only: default 7d
+  local, configurable. Canonical audit JSONL is not pruned by dashboard
+  retention; it is retained until an explicit future user retention/purge
+  command.
+- Agent, harness, and gateway logs are ingested as OTel log records for
+  dashboard correlation. Daemon operational logs remain bounded structured
+  JSON files under `~/.agentpaas/logs/` with rotation and redaction. Neither
+  dashboard logs nor daemon operational logs are the canonical audit source.
+- Log and trace rendering treats agent-controlled text as hostile: HTML,
+  binary/control characters, huge attributes, and sentinel secrets are
+  escaped, truncated, and/or redacted before display.
+- Cost estimates record provider, model, price-table version, token counts,
+  and `estimated=true`. P1 ships a built-in price table; P2 allows user or
+  tenant-modified price tables.
+- Policy view shows both the human git-file diff and the normalized effective
+  policy digest used for enforcement/audit.
+- Audit search is labeled as an indexed view over canonical audit records,
+  with one-click signed export. Export UX shows trust-anchor fingerprint,
+  included sequence range, verification command, and verification result.
 - Dashboard read-only live event stream (SSE). Loopback dashboard reads may be
   unauthenticated in P1; exposed dashboard routes require API key, and
-  mutating Trigger API calls require auth even on loopback.
+  mutating Trigger API calls require auth even on loopback. SSE reuses the
+  Block 9 ordered event id, heartbeat, and `Last-Event-ID` reconnect
+  semantics.
+- Dashboard security: strict CSP, no inline JS, CSRF tokens on mutating
+  routes, no runtime CDN, no API keys stored in browser localStorage, and no
+  sampling/removal of security-relevant canonical audit events even when OTel
+  telemetry is pruned.
 
 ---
 
