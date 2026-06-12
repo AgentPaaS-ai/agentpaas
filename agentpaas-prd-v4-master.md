@@ -58,7 +58,11 @@ one command.
    purge/export, and destructive actions.
 
 ## 1.5 Explicit non-goals (Phase 1)
-- No agent authoring framework (LangGraph/CrewAI/plain loops are inputs).
+- No agent authoring framework. LangGraph, CrewAI, and plain loops are inputs:
+  P1 support means AI-generated projects from those Python frameworks can
+  pack/run through the generic Python harness. CrewAI is the open-source Python
+  multi-agent framework; AgentPaaS is not building CrewAI authoring,
+  orchestration, or a custom CrewAI adapter in P1.
 - No model-cost routing in P1 (budgets land in P1, smart routing P3).
 - No cloud control plane, no private registries, no A2A orchestration in P1.
 - No Linux-native, Windows-native, or WSL2 support in P1. P1 is macOS-first;
@@ -680,8 +684,8 @@ AgentPaaS has two MCP roles that must stay distinct:
    servers to use tools and data sources. This is part of the runtime
    security surface.
 2. **AgentPaaS as MCP server:** coding tools call AgentPaaS MCP tools such as
-   `pack_agent`, `run_agent`, and `query_audit`. This is the distribution
-   integration built in Block 12.
+   `agentpaas_pack`, `agentpaas_run`, and `agentpaas_audit_query`. This is the
+   distribution integration built in Block 13.
 
 P1 must support the first role at a basic governed level:
 - Local and remote MCP servers must be declared in `mcp.yaml` and referenced
@@ -753,7 +757,9 @@ external side effects, resume state, and operator-visible recovery decisions.
 ## 2.8 Packaging pipeline (`agent pack`)
 Input: a directory with `agent.yaml` (+ code). Steps, all deterministic:
 1. Detect Python framework (plain Python, LangGraph, CrewAI) or use explicit
-   `runtime:` field. Node and custom Dockerfile packaging are deferred.
+   `runtime:` field. CrewAI support means packaging/running generated Python
+   CrewAI projects through the generic harness, not a custom CrewAI
+   orchestration adapter. Node and custom Dockerfile packaging are deferred.
 2. Secret scan (gitleaks ruleset) over the full source tree and the effective
    build context — fail closed. `.agentpaasignore` controls the build context,
    not whether a checked-in secret is acceptable.
@@ -1128,25 +1134,32 @@ Integration safety rules:
 # 5. GO-TO-MARKET & DISTRIBUTION (DETAILED)
 
 ## 5.1 Sequence
-1. **Weeks 1–3 (parallel with build): validation.** 15 conversations with
-   platform/security engineers (Workato network, LinkedIn, 2 CISO intro
-   asks). Script: show the demo storyboard, ask "what would your security
-   team need to see to approve this?" Target: 5 design partners.
-   Kill condition: <5 partners from 15 talks → re-aim wedge before more code.
-2. **Months 1–3: build P1 per execution plan**, partners get weekly builds.
-3. **Month 3–4: OSS launch.** Apache-2.0 runtime; BSL control plane later
-   (stated publicly day one). P1 launch is macOS-first. Launch assets:
-   3-min egress-block demo video, "Letting AI-written agents into prod: a
-   security checklist" post, HN launch, MCP server listed in registries,
-   Claude Code plugin in marketplaces, Hermes native MCP setup docs, and a
-   signed offline verification bundle.
-4. **Months 4–9: channel grind.** LangGraph/CrewAI "deploy to production"
-   docs PRs; 2 talks (AI Engineer Summit, KubeCon AI day); monthly
-   security-angle content. Gate to P2 build: strong self-reported adoption
-   signals (design partner usage, GitHub stars/issues/discussions, community
-   installs where users volunteer data) OR 25 self-reported production
-   deployments. Any future weekly-active-runtime metric requires a separate
-   explicit opt-in telemetry feature and is not part of the P1 launch path.
+1. **Weeks 0–1 validation while build starts.** 15 conversations with
+   platform/security engineers (Workato network, LinkedIn, 2 CISO intro asks).
+   Script: show the demo storyboard, ask "what would your security team need to
+   see to approve this?" Target: 5 design partners. Kill condition:
+   <5 partners from 15 talks → re-aim wedge before the P2 customer-facing
+   track.
+2. **Weeks 1–4/5: build P1 per execution plan.** P1 is macOS-first OSS/demo
+   delivery, not the full customer-facing release. Week 1: B1-B3. Week 2:
+   B4-B8. Week 3: B9-B12. Week 4: B13-B14. Week 5 is release buffer only.
+3. **Week 4/5: OSS/demo launch.** Apache-2.0 runtime; BSL control plane later
+   (stated publicly day one). Launch assets: 3-min egress-block demo video,
+   "Letting AI-written agents into prod: a security checklist" post, HN
+   launch, MCP server listed in registries, Claude Code plugin in
+   marketplaces, Hermes native MCP setup docs, and a signed offline
+   verification bundle.
+4. **Weeks 6–9: P2 customer-facing release track.** Linux certification,
+   team/fleet management, enterprise packaging, support posture, commercial
+   observability, opt-in telemetry, design-partner onboarding, upgrade/rollback
+   hardening, and customer launch packet.
+5. **Post-P2 channel grind.** LangGraph/CrewAI "deploy to production" docs PRs;
+   2 talks (AI Engineer Summit, KubeCon AI day); monthly security-angle
+   content. Gate to broader GTM: strong self-reported adoption signals (design
+   partner usage, GitHub stars/issues/discussions, community installs where
+   users volunteer data) OR 25 self-reported production deployments. Any
+   future weekly-active-runtime metric requires a separate explicit opt-in
+   telemetry feature and is not part of the P1 launch path.
 
 ## 5.2 Pricing posture (publish early, even pre-revenue)
 - Individual/local: free forever, all security features included. Never
@@ -1223,8 +1236,9 @@ Phase 1 is DONE when all of the following are demonstrably true:
 2. The P1 red-team smoke suite (§3.2.4) shows 6/6 PASS on macOS through the
    real pack/run/operator path. Linux CI and the full 10+ attack-class corpus
    are P2.
-3. A LangGraph agent, a CrewAI agent, and a plain-Python agent each pack and
-   run without a custom Dockerfile.
+3. A LangGraph agent, a CrewAI-generated Python project, and a plain-Python
+   agent each pack and run through the generic Python harness without a custom
+   Dockerfile.
 4. Claude Code (via plugin) and Hermes (via native MCP skill) can each take
    freshly generated agent code to running-governed state conversationally in
    < 10 minutes after AgentPaaS is installed.

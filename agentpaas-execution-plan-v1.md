@@ -397,7 +397,7 @@ bypass suite and prints a table of allowed path PASS plus at least 12 attack
 vectors, all BLOCKED, on macOS (Docker Desktop + colima). The
 gate docs explicitly state that Block 5 proves gateway-only network topology
 and container hardening, not secrets, budgets, SDK behavior, or the full
-Block 11 red-team suite.
+Block 12 red-team suite.
 
 ---
 
@@ -509,7 +509,9 @@ header upstream while agent logs/proc/env never contain the key.
 
 ## BLOCK 8 — Packaging pipeline (`agent pack`)
 **Builds:** internal/pack — framework detection for Python first (plain
-Python, LangGraph, CrewAI markers; Node and custom Dockerfiles deferred),
+Python, LangGraph, CrewAI markers; CrewAI support means generic Python
+pack/run of generated CrewAI projects, not a custom CrewAI adapter; Node and
+custom Dockerfiles deferred),
 buildkit image assembly
 (distroless base by digest, locked deps via uv, harness as PID 1, non-root,
 no shell),
@@ -533,8 +535,9 @@ path FAILs naming file:line; `--allow-secret-pattern` requires a successful
 daemon audit append or aborts; rebuild without changes → identical image
 digest (fixed timestamps, pinned base digest, locked deps, deterministic
 tar order, `SOURCE_DATE_EPOCH`); local OCI layout missing/corrupt →
-actionable repair; registry push is deferred; LangGraph and CrewAI example
-repos pack without a custom Dockerfile.
+actionable repair; registry push is deferred; LangGraph and CrewAI-generated
+example repos pack without a custom Dockerfile through the generic Python
+harness.
 **SUCCESS GATE:** 3 Python reference agents (plain-py, langgraph, crewai)
 pack green; `agent verify agent.lock` and explicit offline
 `cosign verify --key <AID pubkey>` pass for the image signature; lockfile
@@ -637,7 +640,7 @@ diff, audit export verify, and accessibility smoke tests green.
 
 ---
 
-## BLOCK 10.5 — Agentic operator contract (Codex/Claude/Hermes-first P1)
+## BLOCK 11 — Agentic operator contract (Codex/Claude/Hermes-first P1)
 **Purpose:** Make Codex, Claude Code, Hermes, Cursor, and similar agentic
 development tools first-class operators of AgentPaaS, not screen-scrapers of
 human CLI/dashboard output. P1 is a hands-off but secure local development
@@ -645,7 +648,7 @@ experience: a coding agent can scaffold, pack, run, inspect, diagnose, repair,
 and re-run an agent on the user's machine, while sensitive boundary changes
 remain explicit, reviewed, and audited.
 **Builds:** internal/operator — a stable machine-readable diagnosis and
-repair-hint layer consumed by CLI, dashboard, and Block 12 MCP integrations.
+repair-hint layer consumed by CLI, dashboard, and Block 13 MCP integrations.
 Add JSON-schema/protobuf contracts for: `ValidateAgentProject`,
 `SummarizeRun`, `ExplainFailure`, `ExplainPolicyDenial`,
 `RecommendPolicyPatch`, `GetRunTimeline`, and `NextAction`. All commands
@@ -727,7 +730,7 @@ backward-compatible outputs for every operator method.
 
 ---
 
-## BLOCK 11 — P1 red-team smoke gate (fast release proof)
+## BLOCK 12 — P1 red-team smoke gate (fast release proof)
 **Builds:** test/redteam — a small malicious-agent and malicious-operator
 fixture suite that proves the P1 demo/security claims through the REAL
 pipeline without becoming a full adversarial research program. P1 red-team is
@@ -759,7 +762,7 @@ machine-readable result and audit event. Runner prints a 6-row containment
 table plus a signed audit-export verification summary.
 **Edge cases:** all runtime attacks run through REAL `agent pack` + `agent
 run` (no test shortcuts); operator attacks run through REAL `--json`/operator
-methods from Block 10.5; each fixture verifies its own audit event exists with
+methods from Block 11; each fixture verifies its own audit event exists with
 correct verdict fields; suite target runtime <10 minutes on a developer
 laptop; flaky platform-specific probes may be marked informational only if
 the core P1 claim is still covered by another deterministic assertion.
@@ -775,9 +778,9 @@ release gate.
 
 ---
 
-## BLOCK 12 — Integrations: MCP server + Claude Code plugin + Hermes skill
+## BLOCK 13 — Integrations: MCP server + Claude Code plugin + Hermes skill
 **Builds:** integrations/mcp-server — an MCP server exposing the daemon's
-Block 10.5 operator contract as tools. Required P1 tools:
+Block 11 operator contract as tools. Required P1 tools:
 `agentpaas_init_project`/`agentpaas_reconcile_project`,
 `agentpaas_validate_project`, `agentpaas_doctor`, `agentpaas_pack`,
 `agentpaas_run`, `agentpaas_stop`, `agentpaas_logs`, `agentpaas_status`,
@@ -786,13 +789,13 @@ Block 10.5 operator contract as tools. Required P1 tools:
 `agentpaas_audit_query`, `agentpaas_export_audit`,
 `agentpaas_summarize_run`, `agentpaas_explain_failure`, and
 `agentpaas_next_action`. These are generated from or schema-tested against
-the Block 10.5 JSON/protobuf contracts, not hand-maintained as a separate
+the Block 11 JSON/protobuf contracts, not hand-maintained as a separate
 behavior surface. This single adapter is the universal wedge: any
 MCP-speaking coding agent (Claude Code, Codex, Cursor, Hermes via native MCP)
 gets "deploy what you just built, safely" as a verb plus the diagnosis loop
 needed to fix what it just built.
 
-Contract parity gate: CI fails if a Block 10.5 operator method lacks an MCP
+Contract parity gate: CI fails if a Block 11 operator method lacks an MCP
 wrapper, if an MCP wrapper returns fields outside the versioned operator
 schema, if a wrapper drops required evidence refs/error categories, or if a
 trust-boundary action can complete without the daemon confirmation protocol.
@@ -864,7 +867,7 @@ Demo matrix for P1 differentiation:
 
 ---
 
-## BLOCK 13 — Install path, docs, demo, and v0.1.0 release
+## BLOCK 14 — Install path, docs, demo, and v0.1.0 release
 **Builds:** distribution surface area —
 - P1 is macOS-first. Homebrew tap (`brew install agentpaas/tap/agentpaas`)
   is the primary install path for darwin/arm64 and darwin/amd64. Linux native
@@ -894,7 +897,7 @@ Demo matrix for P1 differentiation:
   README and landing page. Minimum v0.1.0 launch demo: Claude Code or Hermes
   writes an agent → AgentPaaS packs/signs/SBOMs it → governed run → blocked
   exfil attempt → signed audit export. Stretch launch demos: secret-brokered
-  SaaS action and agentic repair loop from Block 12.
+  SaaS action and agentic repair loop from Block 13.
 - README: the 60-second story above the fold, containment table from
   `make redteam-smoke` pasted as proof, explicit "zero telemetry, zero
   phone-home by default" statement, prerequisites called out up front
@@ -923,7 +926,7 @@ the launch demo path.
 **SUCCESS GATE:** two volunteers (not you) each reach a running governed
 agent in <15 minutes from the README on their own macOS machines after
 installing Docker Desktop or Colima; Claude Code and Hermes native MCP
-post-install deploy demos each complete in <10 minutes; at least one Block 12
+post-install deploy demos each complete in <10 minutes; at least one Block 13
 differentiation demo is recorded and embedded (two additional demos are
 stretch); `cosign verify-blob` and `agent verify-release` are
 documented-and-green on released artifacts; offline bundle verification is
@@ -933,24 +936,71 @@ redteam-smoke 6/6, docs smoke) green on the tag.
 
 ---
 
-## 14. BLOCK SEQUENCING + PARALLELISM
+## BLOCK 15 — Sequencing, founder calendar, and execution control
 ```
-B1 → B2 → B3 ─┬→ B4 → B5 ─┬→ B6 → B7 → B8 ─┬→ B9 → B10 → B11 → B12 → B13
+B1 → B2 → B3 ─┬→ B4 → B5 ─┬→ B6 → B7 → B8 ─┬→ B9 → B10 → B11 → B12 → B13 → B14
               │            │                 │
               └ B3 gates everything security-spine-first
-B4/B5 can interleave with B6 SDK design (contracts frozen in B1 protos).
-B10 dashboard can start once B9 events exist; B11 red-team needs B5–B8.
 ```
-Estimated calendar (nights/weekends, LLM-driven, one block ≈ 1–2 focused
-sessions + review): B1–B5 ≈ 3 weekends, B6–B8 ≈ 3 weekends, B9–B11 ≈ 3
-weekends, B12–B13 ≈ 2 weekends. ~11 weekends end to end; cut scope by
-deferring Node SDK and CrewAI adapter if slipping, never by cutting
-red-team or audit blocks.
+B4/B5 can interleave with B6 SDK design once Block 1 contracts are frozen.
+B10 dashboard can start once B9 events exist. B11 operator contract depends on
+B1-B10 JSON/control surfaces. B12 red-team needs B5-B8 plus B11 operator
+methods. B13 integrations depend on B11 and B12. B14 release/docs/demo closes
+only after every P1 gate is green.
 
-## 15. DEFINITION OF DONE (PHASE 1)
+Founder calendar target (rough, week-by-week progress, not a relaxed gate):
+- **Week 1:** B1-B3 green. Repo/protos/CI, daemon/CLI skeleton, identity and
+  audit spine. Output: local CLI talks to daemon; audit hash chain and signed
+  export skeleton exist.
+- **Week 2:** B4-B8 green. Policy compiler, fenced macOS Docker
+  Desktop/Colima runtime, harness/Python SDK, secrets broker, packaging.
+  Output: a plain Python/LangGraph/CrewAI-generated project can pack into a
+  signed artifact and run behind default-deny egress.
+- **Week 3:** B9-B12 green. Trigger API/events/cron, dashboard, operator
+  contract, redteam-smoke. Output: governed run is observable, machine-readable
+  operator loop works, and 6/6 smoke proof is release-blocking.
+- **Week 4:** B13-B14 green. MCP server, Claude Code plugin, Hermes native MCP
+  skill, install/docs/demo/release path. Output: post-install Claude/Hermes
+  demos complete in <10 minutes; README clean-machine path works on macOS.
+- **Week 5:** P1 release buffer only. Bug fixes, volunteer clean-machine
+  verification, offline bundle verification, video/asciinema polish, tag
+  v0.1.0. If Week 4 is clean, ship in Week 4; if not, Week 5 is the cap.
+
+P2 calendar target after P1 (four additional weeks):
+- **Week 6:** Linux certification track: Linux `dockerd`, systemd, libsecret,
+  CI runners, seccomp/AppArmor profiles, deb/rpm packaging.
+- **Week 7:** Customer-facing control-plane foundations: team/fleet model,
+  hosted identity/audit abstractions, registry/promotion flow, tenant/project
+  metadata, support bundle.
+- **Week 8:** Commercial observability and opt-in telemetry: explicit consent
+  UX, payload contract, privacy docs, fleet health, upgrade/error reporting,
+  dashboard views for teams.
+- **Week 9:** P2 customer release hardening: production docs, support playbook,
+  design-partner onboarding, upgrade/rollback, pricing hooks, release
+  candidate and customer-facing launch packet.
+
+Execution control decisions:
+- The plan is now 15 blocks: 14 product/release build blocks plus this founder
+  calendar/control block. Former Block 10.5 is now Block 11.
+- Once implementation starts, do not silently slip P1 blocks. If the calendar
+  is impossible, stop and explicitly rescope before continuing.
+- No Block 13 integration items are skipped for P1: MCP server, Claude Code
+  plugin, Hermes native MCP skill, contract parity gate, prompt-injection
+  boundaries, and post-install <10-minute demos are all required.
+- The extra Block 13 demo recordings beyond the minimum launch video are launch
+  asset prioritization, not skipped product functionality.
+- CrewAI is the Python multi-agent framework. P1 support means an AI-generated
+  CrewAI project packs/runs through the generic Python harness and examples;
+  AgentPaaS is not building a CrewAI authoring framework or custom orchestration
+  layer.
+- Node SDK remains explicitly deferred and is not part of the P1 gate.
+- Audit, policy, network enforcement, secrets invisibility, packaging/signing,
+  operator contract, redteam-smoke, and integration contract parity are
+  never cut from P1.
+
+## 16. DEFINITION OF DONE (PHASE 1)
 The execution plan is complete when PRD v4 §8 (Success Definition) items
-1–6 are demonstrably true via the gates above, and item 7 (5 design
-partners) is in motion. Every gate command is in the Makefile; "done"
-is always a command exiting 0, never a judgment call.
+1–8 are demonstrably true via the gates above. Every gate command is in the
+Makefile; "done" is always a command exiting 0, never a judgment call.
 
 **END OF EXECUTION PLAN v1.0 — companion to agentpaas-prd-v4-master.md**
