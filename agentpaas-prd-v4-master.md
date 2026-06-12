@@ -583,10 +583,27 @@ audited under tenant control.
    - `Invoke(agent, payload, idempotency_key) → run_id`
    - `InvokeStream(...) → stream of events` (gRPC server-stream / REST SSE)
    - `GetRun(run_id)`, `CancelRun(run_id)`, `ListRuns(agent, filter)`
-   - Auth: `Authorization: Bearer <api-key>` or mTLS workload cert.
-   - Errors: google.rpc.Status; idempotency on key replay returns original run.
+   - Auth: `Authorization: Bearer <api-key>` or mTLS workload cert. The
+     Trigger API requires auth even on loopback because local callers include
+     Codex, Hermes, Claude Code, local apps, CI jobs, browser-originated local
+     requests, and other processes on the developer machine. Loopback reduces
+     network exposure, but it is not the authorization boundary.
+   - REST CORS is deny-by-default. Browser-originated local requests do not
+     receive ambient trust from being on localhost; they must present an
+     explicit API key or use an approved same-origin dashboard route.
+   - AgentPaaS API keys are Trigger API credentials used to access an agent
+     being tested or run locally. They are shown once, stored hashed, scoped
+     by agent/action, revocable/rotatable, and audited by key id.
+   - Caller identity is normalized as `api_key:<id>`, `spiffe:<subject>`,
+     `system:cron:<agent>`, or `local_user:<uid>` for rate limits,
+     idempotency ownership, and audit attribution.
+   - Invoke payloads are capped at 1 MiB by default. Larger inputs should be
+     stored externally and passed by reference or future managed blob handle.
+   - Errors: google.rpc.Status; idempotency on key replay returns original
+     run if the canonical request hash matches.
 2. **Control API** (daemon↔CLI, unix socket gRPC): Pack, Run, Stop, Logs,
-   PolicyApply, SecretSet/Grant/Revoke, AuditQuery/Export, Doctor.
+   PolicyApply, SecretSet/Grant/Revoke, ApiKeyCreate/List/Revoke/Rotate,
+   AuditQuery/Export, Doctor.
 3. **Harness contract** (inside container): agent code implements either
    (a) HTTP contract: `POST /invoke`, `GET /healthz`, `GET /readyz` on
    localhost:8000, or (b) SDK contract (P1: Python `agentpaas-sdk`):
@@ -599,14 +616,52 @@ audited under tenant control.
    mode and is discouraged in generated code. The harness listens only inside
    the agent container's private network namespace; all external callers,
    including the daemon, reach it through the gateway ingress path.
-4. **Event hooks:** `hooks:` section in `policy.yaml` → URL or local command
-   per event type; deliveries signed (HMAC w/ per-hook secret), retried 3x
-   with backoff, dead-lettered to audit log.
+4. **Event hooks:** `hooks:` section in `policy.yaml` → URL per event type.
+   P1 defers local command hooks because they expand the local execution
+   surface. Deliveries are signed (HMAC w/ per-hook secret and timestamp),
+   retried 3x with backoff, protected by a replay window, and dead-lettered
+   to the audit log.
 5. **Scheduling:** `triggers: cron: "0 9 * * *"` in agent.yaml → daemon
    cron service invokes via the same Trigger API (so scheduled runs are
-   audited identically).
+   audited identically). P1 cron is 5-field syntax only, uses the local
+   timezone by default with explicit timezone optional, skips nonexistent DST
+   times, runs repeated DST times once, defaults missed-run behavior to
+   `skip`, supports `catchup: 1` as an explicit opt-in, and defaults
+   concurrency to `forbid` so a new tick is skipped and audited if the prior
+   run is still active.
 
-## 2.7.1 MCP access, delegated user access, and orchestration boundary
+### 2.7.1 Trigger semantics
+The 24-hour idempotency window protects against retries, not against
+long-running-agent state. A local coding tool, CLI, or app may lose the HTTP
+response after AgentPaaS accepted an invoke; retrying with the same
+idempotency key must return the same `run_id` instead of causing duplicate
+emails, tickets, charges, or webhooks. The idempotency record survives daemon
+restart and stores a canonical request hash over caller id, agent name,
+`agent.lock` digest, payload bytes, content type, and API version. Same key +
+different hash returns 409. Expired keys return an explicit expired-key error
+so callers choose a fresh key deliberately.
+
+`InvokeStream` exists for live progress in the CLI, dashboard, and coding-tool
+integrations. REST uses SSE because the server needs to push ordered run
+events while the client only listens. P1 event types include `run_queued`,
+`run_started`, `run_log`, `run_span`, `egress_allowed`, `egress_denied`,
+`secret_injected`, `budget_warning`, `budget_exceeded`, `cancel_requested`,
+`run_canceled`, `run_failed`, and `run_succeeded`. SSE supports ordered event
+IDs, heartbeat, and `Last-Event-ID` reconnect without duplicating terminal
+events.
+
+`CancelRun` records `cancel_requested`, asks the harness/gateway path to stop
+gracefully, waits 30s, then force-stops the container if needed. The final
+audit event records whether cancelation was graceful or forced.
+
+Required Trigger/API audit events include `api_key_created`,
+`api_key_revoked`, `auth_failed`, `invoke_accepted`, `invoke_rejected`,
+`idempotency_replayed`, `idempotency_conflict`, `rate_limited`,
+`webhook_delivered`, `webhook_dead_lettered`, `cron_missed`,
+`cron_skipped_concurrency`, `cancel_requested`, `cancel_graceful`, and
+`cancel_forced`.
+
+## 2.7.2 MCP access, delegated user access, and orchestration boundary
 AgentPaaS has two MCP roles that must stay distinct:
 1. **Agent as MCP client:** a governed agent calls local or remote MCP
    servers to use tools and data sources. This is part of the runtime
@@ -826,7 +881,9 @@ Single-page app served by daemon (embedded assets, no CDN at runtime):
   egress events incl. DENIED in red), logs, audit checkpoint markers.
 - Policy view: effective policy per agent, diff vs git file.
 - Audit search: filterable, with one-click signed export.
-- Live event stream (SSE). No auth on loopback; API-key when `--expose`.
+- Dashboard read-only live event stream (SSE). Loopback dashboard reads may be
+  unauthenticated in P1; exposed dashboard routes require API key, and
+  mutating Trigger API calls require auth even on loopback.
 
 ---
 

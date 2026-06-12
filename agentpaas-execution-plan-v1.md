@@ -531,23 +531,50 @@ packaging is a follow-on gate.
 
 ## BLOCK 9 — Trigger API + events/webhooks + cron
 **Builds:** Trigger API serving (gRPC :7718 + grpc-gateway REST :7717,
-loopback; `--expose` path requires API key, refuses otherwise);
-idempotency (key→run_id replay window 24h); rate limit (token bucket
-per caller); InvokeStream (gRPC stream + REST SSE); internal/events bus,
-webhook delivery (HMAC-signed, 3 retries exp backoff, dead-letter to
-audit); cron triggers from agent.yaml feeding the same Invoke path.
+loopback by default; Trigger API requires AgentPaaS API-key or mTLS auth even
+on loopback; `--expose` refuses without an API key). API keys are AgentPaaS
+Trigger API credentials for Codex/Hermes/Claude Code/local apps/CI callers to
+invoke a packed agent under test or running locally; keys are shown once,
+stored hashed, scoped by agent/action, revocable/rotatable, and audited.
+REST CORS is deny-by-default; browser-originated local requests are not
+trusted without explicit auth, and preflight/origin handling is covered by
+tests.
+Define stable caller IDs (`api_key:<id>`, `spiffe:<subject>`,
+`system:cron:<agent>`, `local_user:<uid>`), token-bucket rate limits per
+caller, durable idempotency table (key→run_id, 24h replay window,
+canonical request hash over caller, agent, agent.lock digest, payload bytes,
+content type, and API version), max invoke payload 1 MiB default with 413 and
+"pass a reference/blob handle" guidance, InvokeStream (gRPC stream + REST
+SSE for CLI/dashboard/coding-tool live progress), internal/events bus,
+webhook delivery (HMAC-signed with timestamp/replay window, 3 retries exp
+backoff, dead-letter to audit), and cron triggers from agent.yaml feeding the
+same Invoke path. P1 supports URL webhooks only; local command hooks are
+deferred. Audit events include `api_key_created`, `api_key_revoked`,
+`auth_failed`, `invoke_accepted`, `invoke_rejected`, `idempotency_replayed`,
+`idempotency_conflict`, `rate_limited`, `webhook_delivered`,
+`webhook_dead_lettered`, `cron_missed`, `cron_skipped_concurrency`,
+`cancel_requested`, `cancel_graceful`, and `cancel_forced`.
 **Edge cases:** replayed idempotency key → same run_id, no second
 execution; replay with DIFFERENT payload + same key → 409; burst 1000
 invokes → rate-limited with Retry-After; malformed JSON → 400 with line;
-oversized payload → 413; webhook target down → retries then dead-letter
-audit entry; webhook target = non-allow-listed domain → blocked by policy
-(hooks are egress too); cron during daemon downtime → missed-run policy
-explicit (`skip` default, `catchup: 1` opt-in); DST transition → cron uses
-local tz with documented behavior; CancelRun mid-LLM-call → graceful then
-forced.
+browser POST from a random localhost origin without API key → 401/CORS deny;
+oversized payload (>1 MiB default) → 413; daemon restart during idempotency
+window preserves replay/409 behavior; SSE client reconnects with
+Last-Event-ID, heartbeat, ordered event IDs, and no duplicate terminal event;
+webhook target down → retries then dead-letter audit entry; webhook replay or
+bad HMAC → rejected by receiver fixture; webhook target = non-allow-listed
+domain → blocked by policy (hooks are egress too); cron uses 5-field syntax
+only, local timezone by default, explicit timezone optional; cron during
+daemon downtime → missed-run policy explicit (`skip` default, `catchup: 1`
+opt-in); DST nonexistent local time skipped, repeated local time runs once;
+cron fires while prior run active → `concurrency_policy: forbid` default
+skips and audits; CancelRun mid-LLM/MCP-call → audit cancel_requested, ask
+gracefully, wait 30s, force stop if needed, audit final canceled/forced
+outcome.
 **SUCCESS GATE:** API conformance suite (generated from proto) green;
-idempotency + rate-limit + SSE e2e green; fuzz on REST JSON ingestion
-(100k execs, 0 crashes).
+auth/API-key lifecycle + idempotency + rate-limit + SSE reconnect e2e green;
+cron/webhook tests prove same policy/audit path as manual Invoke; cancel
+semantics e2e green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
 
 ---
 
