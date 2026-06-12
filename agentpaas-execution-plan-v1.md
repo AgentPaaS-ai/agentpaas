@@ -2,6 +2,12 @@
 **Purpose:** The build contract. Each BLOCK is sized for one focused LLM
 coding session, carries an exact build prompt, a test plan with edge cases,
 and a binary success gate. No block starts until the previous gate is green.
+**Release posture:** Phase 1 is the macOS-first OSS/demo delivery, not the
+full customer-facing commercial release. Its job is to prove the wedge,
+produce credible demos, publish verifiable open-source artifacts, and collect
+design-partner feedback without telemetry. Phase 2 is the customer-facing
+release track: Linux certification, fleet/team management, enterprise
+packaging, support posture, and commercial observability.
 **Repo:** `github.com/agentpaas/agentpaas` (monorepo)
 **Companion:** `agentpaas-prd-v4-master.md` (the WHY/spec; this is the HOW)
 
@@ -180,7 +186,7 @@ next-page cases; idempotency replay and payload-mismatch behavior covered in
 proto/API conformance tests; PR template contains Definition of Done;
 status dashboard renders built/remaining/PR sections even before GitHub is
 connected; CI fails a deliberately bad branch for the right reason.
-**SUCCESS GATE:** `make proto build test` green on macOS + ubuntu CI;
+**SUCCESS GATE:** `make proto build test` green on macOS CI;
 `scripts/update-status-dashboard.sh` updates `docs/status.md`; initial
 GitHub issues/Project can be created from the block list OR local fallback
 issues exist under `docs/issues/`.
@@ -188,8 +194,8 @@ issues exist under `docs/issues/`.
 ---
 
 ## BLOCK 2 — Daemon skeleton + CLI plumbing (unix-socket gRPC)
-**Builds:** agentpaasd lifecycle (start/stop/status; launchd plist +
-systemd user unit generators), explicit local path layout under
+**Builds:** agentpaasd lifecycle (start/stop/status; launchd plist in P1,
+systemd user unit generator in P2), explicit local path layout under
 `~/.agentpaas` (0700; `daemon.sock` 0600, `agentpaasd.pid`, `logs/`,
 `state/`, `config/`, `cache/`, `tmp/`), unix socket gRPC server with
 readiness handshake, control-API server with stub handlers; `agent` CLI
@@ -220,8 +226,8 @@ values in CLI and daemon logs.
 actionable messages for each induced failure (docker stopped, port
 squatted, bad socket perms, bad home perms, daemon not ready, CLI/daemon
 version mismatch); `agent version` and `agent daemon status` print the
-expected version/context fields; service-unit golden tests pass on macOS
-and Linux; redaction test proves planted secret-looking values do not appear
+expected version/context fields; service-unit golden tests pass on macOS;
+redaction test proves planted secret-looking values do not appear
 in logs — scripted in test/e2e/doctor_test.sh and unit tests.
 
 ---
@@ -229,9 +235,10 @@ in logs — scripted in test/e2e/doctor_test.sh and unit tests.
 ## BLOCK 3 — Identity service + audit hash-chain (security spine first)
 **Builds:** internal/identity — narrow interfaces for `KeyStore` and
 `IdentityIssuer`, with P1 implementations backed by macOS Keychain
-(`security(1)` wrapper), Linux libsecret, and an explicit encrypted
-file-keystore fallback (0600 + passphrase; warned by doctor; no silent
-plaintext fallback). Manage distinct local identities: local CA key,
+(`security(1)` wrapper) and an explicit encrypted file-keystore fallback
+(0600 + passphrase; warned by doctor; no silent plaintext fallback). Linux
+libsecret moves to the P2 Linux track. Manage distinct local identities:
+local CA key,
 daemon audit signing key, per-agent package identity keys, and per-run
 workload key/cert. `agent pack` can mint/register an AID; `agent run` can
 issue a 1h, auto-renewed SPIFFE-style workload cert
@@ -356,8 +363,8 @@ flags (non-root uid 64000, read-only rootfs, tmpfs /tmp, cap-drop ALL,
 no-new-privileges, seccomp default profile, pids-limit 256, memory/cpu from
 agent.yaml); DNS of agent container pointed at gateway stub IP only; IPv6
 disabled for P1 agent networks. Rootless Docker is best-effort and explicitly
-not a P1 gate; supported gates are Docker Desktop, Colima's Docker-compatible
-socket, and Linux `dockerd`.
+not a P1 gate; supported gates are Docker Desktop and Colima's
+Docker-compatible socket. Linux `dockerd` moves to P2 certification.
 **Edge cases / negative tests (heart of the product — exhaustive):**
 - positive path: agent invoke reaches harness only through gateway ingress;
   agent outbound to an allowed test endpoint succeeds only through gateway
@@ -383,10 +390,11 @@ socket, and Linux `dockerd`.
   networks after cleanup
 - Docker inspect, runtime logs, and network config dumps contain no raw secret
   values and are suitable for debugging
-- Docker Desktop vs colima vs Linux dockerd: topology holds on all three
+- Docker Desktop vs colima: topology holds on both; Linux dockerd certification
+  moves to P2
 **SUCCESS GATE:** `make e2e-network` runs the positive-path canary plus the
 bypass suite and prints a table of allowed path PASS plus at least 12 attack
-vectors, all BLOCKED, on macOS (Docker Desktop + colima) and Linux CI. The
+vectors, all BLOCKED, on macOS (Docker Desktop + colima). The
 gate docs explicitly state that Block 5 proves gateway-only network topology
 and container hardening, not secrets, budgets, SDK behavior, or the full
 Block 11 red-team suite.
@@ -447,8 +455,9 @@ suite.
 
 ## BLOCK 7 — Secrets broker
 **Builds:** internal/secrets — `SecretStore` abstraction with P1
-implementations for macOS Keychain, Linux libsecret, and an explicit fake
-test store only; no silent plaintext fallback. `agent secret set/list/rm`
+implementations for macOS Keychain and an explicit fake test store only; no
+silent plaintext fallback. Linux libsecret moves to P2. `agent secret
+set/list/rm`
 (values read from stdin/interactive prompt, NEVER argv so they never hit
 shell history or process lists; max secret value size 64 KiB); `list` shows
 metadata only (id, created_at, updated_at, last_used_at, referenced-by
@@ -755,13 +764,14 @@ correct verdict fields; suite target runtime <10 minutes on a developer
 laptop; flaky platform-specific probes may be marked informational only if
 the core P1 claim is still covered by another deterministic assertion.
 **SUCCESS GATE:** `make redteam-smoke` prints 6/6 PASS on macOS (Docker
-Desktop or colima) and Linux CI; failures in default-deny egress, brokered
-secret invisibility, credential misuse, or operator trust-boundary refusal are
-release blockers for v0.1.0. P2 adds the full permanent red-team corpus:
-DNS tunneling, proxy bypass variants, IPv6 escape, UDP/ICMP tunnels, domain
-fronting, direct-lease exfil/DLP, SBOM/signature tamper, full MCP
-prompt-injection matrix, fuzzed operator payloads, and every future
-RuntimeDriver/agentgateway bump as a comprehensive release gate.
+Desktop or colima); failures in default-deny egress, brokered secret
+invisibility, credential misuse, or operator trust-boundary refusal are
+release blockers for v0.1.0. P2 adds Linux CI coverage plus the full permanent
+red-team corpus: DNS tunneling, proxy bypass variants, IPv6 escape,
+UDP/ICMP tunnels, domain fronting, direct-lease exfil/DLP,
+SBOM/signature tamper, full MCP prompt-injection matrix, fuzzed operator
+payloads, and every future RuntimeDriver/agentgateway bump as a comprehensive
+release gate.
 
 ---
 
@@ -856,34 +866,70 @@ Demo matrix for P1 differentiation:
 
 ## BLOCK 13 — Install path, docs, demo, and v0.1.0 release
 **Builds:** distribution surface area —
-- Homebrew tap (`brew install agentpaas/tap/agentpaas`) + Linux install
-  script that is NOT `curl|bash`-blind: it downloads, prints the checksum
-  + cosign verify command, and asks before executing (we sell trust;
-  the installer must model it). deb/rpm via nfpm. goreleaser pipeline:
-  darwin/arm64+amd64, linux/arm64+amd64, all binaries cosign-signed,
-  SBOMs attached to the GitHub release.
+- P1 is macOS-first. Homebrew tap (`brew install agentpaas/tap/agentpaas`)
+  is the primary install path for darwin/arm64 and darwin/amd64. Linux native
+  packages, Linux CI release certification, deb/rpm via nfpm, and Windows/WSL2
+  docs move to P2 unless a design partner creates a hard requirement before
+  launch.
+- Installer trust posture: no blind `curl|bash`; Homebrew installs the binary
+  but does not silently start background services. First run is explicit:
+  `agent doctor` checks Docker Desktop/Colima, keychain, loopback ports,
+  daemon socket permissions, release signature status, and dashboard port.
+  `agent setup launchd` or documented `brew services start agentpaas` creates
+  the user-level launchd service only after explaining what will run, where
+  logs/state live, and how to uninstall.
+- Release pipeline: goreleaser builds darwin/arm64+amd64, produces checksums,
+  SBOMs, provenance, and cosign signatures. Verification follows Sigstore
+  keyless best practice using GitHub Actions OIDC identity, with a single
+  copy-paste `cosign verify-blob` command plus an `agent verify-release`
+  helper so early adopters are not forced to learn the whole supply-chain
+  stack on day one.
 - Docs site (docs/ → static): Quickstart (the <15-minute path), policy
   reference, secrets guide, "How enforcement actually works" (the
   network-topology page — security engineers read this one first),
-  threat model (§3 of PRD published verbatim), audit-export verification
-  guide for a second machine.
+  threat model (§3 of PRD published verbatim), known limitations (§3.3),
+  audit-export verification guide for a second machine, privacy/telemetry
+  page, Claude Code plugin setup, Hermes native MCP setup, and demo scripts.
 - The 3-minute demo video script + asciinema recordings embedded in
-  README and landing page (Claude Code writes agent → pack → run →
-  blocked exfil attempt → signed audit export).
+  README and landing page. Minimum v0.1.0 launch demo: Claude Code or Hermes
+  writes an agent → AgentPaaS packs/signs/SBOMs it → governed run → blocked
+  exfil attempt → signed audit export. Stretch launch demos: secret-brokered
+  SaaS action and agentic repair loop from Block 12.
 - README: the 60-second story above the fold, containment table from
-  `make redteam` pasted as proof, explicit "zero telemetry" statement.
-**Edge cases:** clean-machine test on macOS (fresh user account) and
-Ubuntu 24.04 container following ONLY the README — every deviation found
-is a docs bug, filed and fixed before release; brew upgrade preserves
-daemon state + restarts cleanly; uninstall (`agent uninstall`) removes
-launchd/systemd units, containers, networks, and says what it deliberately
-keeps (audit logs, keychain items) and how to purge them; air-gapped
-install documented (offline image bundle).
+  `make redteam-smoke` pasted as proof, explicit "zero telemetry, zero
+  phone-home by default" statement, prerequisites called out up front
+  (macOS, Homebrew, Docker Desktop or Colima), and a "known limitations"
+  link near the install command.
+- Air-gapped/offline path: P1 documents a macOS offline bundle containing
+  signed binaries, checksums, SBOMs, container images, policy/demo fixtures,
+  and verification instructions. The offline path may be more manual than
+  Homebrew, but it must prove that release artifacts and audit exports can be
+  verified without network access.
+- Docs/release CI: broken-link check, command-snippet smoke scripts,
+  README quickstart smoke, release-artifact verification matrix, screenshot
+  and asciinema freshness check, and explicit docs issue filing for every
+  clean-machine deviation.
+**Edge cases:** clean-machine test on macOS (fresh user account) following
+ONLY the README, with Docker Desktop or Colima already installed as a stated
+prerequisite — every deviation found is a docs bug, filed and fixed before
+release; brew upgrade preserves daemon state + restarts cleanly; failed daemon
+state migration rolls back or leaves a clear manual recovery path; uninstall
+(`agent uninstall`) removes launchd units, containers, networks, sockets, and
+generated config, and says what it deliberately keeps (audit logs, keychain
+items, offline bundles) and how to purge them; zero telemetry means no
+analytics, update checks, crash reports, or usage pings leave the machine in
+P1. Any future telemetry is separate, explicit opt-in only, and absent from
+the launch demo path.
 **SUCCESS GATE:** two volunteers (not you) each reach a running governed
-agent in < 15 minutes from the README on their own machines; `cosign
-verify` documented-and-green on released artifacts; v0.1.0 tagged with
-goreleaser, all CI gates (lint, test, -race, fuzz corpus, e2e-network,
-redteam 10/10) green on the tag.
+agent in <15 minutes from the README on their own macOS machines after
+installing Docker Desktop or Colima; Claude Code and Hermes native MCP
+post-install deploy demos each complete in <10 minutes; at least one Block 12
+differentiation demo is recorded and embedded (two additional demos are
+stretch); `cosign verify-blob` and `agent verify-release` are
+documented-and-green on released artifacts; offline bundle verification is
+documented-and-green; v0.1.0 tagged with goreleaser, all P1 CI gates (lint,
+test, -race, fuzz corpus, e2e-network on macOS, MCP conformance,
+redteam-smoke 6/6, docs smoke) green on the tag.
 
 ---
 

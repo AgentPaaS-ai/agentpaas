@@ -18,11 +18,17 @@ one command.
 - **Blocker we remove:** security/platform sign-off. AI-written code + live
   credentials + autonomous egress = "no" from every security team today.
 - **Buyer:** staff platform engineer (champion), VP Eng/CISO (economic buyer).
+- **Release posture:** P1 is not the full customer-facing commercial release.
+  P1 is a macOS-first OSS/demo proof that shows the wedge, earns developer and
+  security trust, and gives design partners something real to evaluate. P2 is
+  the first customer-facing release track: Linux certification, fleet/team
+  management, enterprise packaging, support posture, and commercial
+  observability belong there.
 - **User (Phase 1):** the developer who just had an agent generated and wants
   to run it on their machine without leaking keys or letting it call
-  arbitrary endpoints. Local mode must be frictionless: `brew install
-  agentpaas && agent pack && agent run`. No Kubernetes, no cloud account,
-  no signup, no telemetry without opt-in.
+  arbitrary endpoints. Local mode must be frictionless on macOS:
+  `brew install agentpaas && agent pack && agent run`. No Kubernetes, no
+  cloud account, no signup, no telemetry.
 
 ## 1.3 Personas (corrected from v2.0)
 | Persona | Phase | Relationship | What they need |
@@ -39,7 +45,8 @@ one command.
    packaging).
 3. Local-first is a trust posture: zero telemetry leaves the machine without
    explicit opt-in — and we prove it: our own binaries' egress is governed
-   by the same policy engine users can inspect.
+   by the same policy engine users can inspect. Future telemetry may exist only
+   behind a separate explicit opt-in flow.
 4. One command, one signed artifact, one audit trail per agent.
 5. Deployment topology (single container vs sidecar) is a flag, never a concept.
 6. Secure by default, overridable only by explicit, logged, git-versioned policy.
@@ -54,7 +61,8 @@ one command.
 - No agent authoring framework (LangGraph/CrewAI/plain loops are inputs).
 - No model-cost routing in P1 (budgets land in P1, smart routing P3).
 - No cloud control plane, no private registries, no A2A orchestration in P1.
-- No Windows-native in P1 (macOS + Linux; Windows via WSL2, documented).
+- No Linux-native, Windows-native, or WSL2 support in P1. P1 is macOS-first;
+  Linux packaging/CI and Windows/WSL2 docs move to P2.
 - No marketplace until 50+ paying logos.
 
 ---
@@ -68,7 +76,7 @@ one command.
 │   ├─ agent init / pack / run / stop / logs / policy / audit / doctor   │
 │   └─ talks to agentpaasd over gRPC on unix socket                      │
 │                                                                         │
-│  agentpaasd  (Go daemon, launchd/systemd user service)                  │
+│  agentpaasd  (Go daemon, launchd user service in P1; systemd in P2)      │
 │   ├─ RuntimeDriver: Docker Engine API (containerd/Podman behind iface)  │
 │   ├─ Trigger API   REST :7717 + gRPC :7718  (loopback only by default)  │
 │   ├─ Dashboard     web UI :7700              (loopback only by default) │
@@ -111,18 +119,18 @@ one command.
 | Loopback-only by default | `--expose` requires configured API key; refuses to start exposed without auth |
 
 ## 2.2.1 Local runtime conventions (P1)
-- P1 container substrate is Docker Engine API. Supported paths: Docker
-  Desktop, Colima's Docker-compatible socket, and Linux `dockerd`.
-  Rootless Docker is best-effort only in P1, not a release gate, because the
-  easiest secure path is the common Docker Engine API surface. Podman and
-  containerd are future `RuntimeDriver` implementations, not P1 gates.
+- P1 container substrate is Docker Engine API. Supported P1 paths are Docker
+  Desktop and Colima's Docker-compatible socket on macOS. Linux `dockerd`,
+  Podman, and containerd are future `RuntimeDriver` certifications, not P1
+  gates.
 - AgentPaaS state lives under `~/.agentpaas` by default, created 0700:
   `daemon.sock` (0600), `agentpaasd.pid`, `logs/`, `state/`, `config/`,
   `cache/`, and `tmp/`. Developer/test overrides: `AGENTPAAS_HOME`,
   `AGENTPAAS_SOCKET`, `AGENTPAAS_DASHBOARD_PORT`,
   `AGENTPAAS_TRIGGER_REST_PORT`, `AGENTPAAS_TRIGGER_GRPC_PORT`.
-- `agentpaasd` runs as the current user via launchd/systemd user services.
-  It refuses to run as root unless `--allow-root-for-test` is supplied.
+- `agentpaasd` runs as the current user via launchd in P1. systemd user
+  services are P2 Linux work. It refuses to run as root unless
+  `--allow-root-for-test` is supplied.
 - `agent version` and `agent daemon status` show CLI version, daemon version,
   proto version, build commit, OS/arch, Docker context, and Docker API
   version.
@@ -193,10 +201,10 @@ P1 has four local identity classes:
   but they do not sign the canonical audit trail; audit checkpoints and
   exports are signed only by the daemon audit signing key.
 - The local CA, daemon audit key, and package identity private keys live in
-  macOS Keychain or Linux libsecret. A file keystore fallback is allowed only
-  when explicitly initialized by the user, encrypted with a passphrase, mode
-  0600 under `~/.agentpaas`, and warned by `agent doctor`. There is no silent
-  plaintext fallback.
+  macOS Keychain in P1. A file keystore fallback is allowed only when
+  explicitly initialized by the user, encrypted with a passphrase, mode 0600
+  under `~/.agentpaas`, and warned by `agent doctor`. There is no silent
+  plaintext fallback. Linux libsecret is P2.
 
 ## 2.4.1 Audit chain model
 - The audit JSONL is the authoritative record. SQLite is a derived index for
@@ -479,11 +487,10 @@ What P1 should do for speed:
 
 ## 2.5 Secrets model
 - Secrets registered once: `agent secret set OPENAI_API_KEY` → stored in
-  macOS Keychain / libsecret. NEVER in images, generated secret files, env
-  files, compose files, Docker labels, or packed artifacts. The P1
-  `SecretStore` abstraction has macOS Keychain, Linux libsecret, and explicit
-  fake test-store implementations only; there is no silent plaintext
-  fallback.
+  macOS Keychain in P1. NEVER in images, generated secret files, env files,
+  compose files, Docker labels, or packed artifacts. The P1 `SecretStore`
+  abstraction has macOS Keychain and explicit fake test-store implementations
+  only; there is no silent plaintext fallback. Linux libsecret is P2.
 - `agent secret set` reads values from stdin or an interactive prompt, never
   argv. Individual secret values are capped at 64 KiB. `agent secret list`
   shows metadata only: id, created time, updated time, last used time, and
@@ -1025,7 +1032,10 @@ negative tests for these cases.
 | Domain fronting | SNI ≠ Host | gateway cross-checks SNI/Host/DNS answer; mismatch = deny + audit |
 
 ## 3.2 Hard security actions (all are execution-plan blocks)
-1. seccomp + AppArmor (Linux) profiles shipped and applied by default.
+1. P1 applies macOS Docker Desktop/Colima container hardening by default
+   (non-root, read-only rootfs, no shell, dropped capabilities, seccomp where
+   Docker exposes it, pids/memory/cpu caps). P2 adds certified Linux-native
+   seccomp + AppArmor profiles.
 2. Fuzz the policy compiler and the Trigger API (go-fuzz / protobuf fuzz).
 3. `agent doctor` verifies: docker version, network isolation actually
    holds (spins a canary container and proves no default route), keychain
@@ -1125,14 +1135,18 @@ Integration safety rules:
    Kill condition: <5 partners from 15 talks → re-aim wedge before more code.
 2. **Months 1–3: build P1 per execution plan**, partners get weekly builds.
 3. **Month 3–4: OSS launch.** Apache-2.0 runtime; BSL control plane later
-   (stated publicly day one). Launch assets: 3-min egress-block demo video,
-   "Letting AI-written agents into prod: a security checklist" post, HN
-   launch, MCP server listed in registries, Claude Code plugin in
-   marketplaces.
+   (stated publicly day one). P1 launch is macOS-first. Launch assets:
+   3-min egress-block demo video, "Letting AI-written agents into prod: a
+   security checklist" post, HN launch, MCP server listed in registries,
+   Claude Code plugin in marketplaces, Hermes native MCP setup docs, and a
+   signed offline verification bundle.
 4. **Months 4–9: channel grind.** LangGraph/CrewAI "deploy to production"
    docs PRs; 2 talks (AI Engineer Summit, KubeCon AI day); monthly
-   security-angle content. Gate to P2 build: 1,000 weekly-active runtimes
-   (opt-in ping only) OR 25 self-reported production deployments.
+   security-angle content. Gate to P2 build: strong self-reported adoption
+   signals (design partner usage, GitHub stars/issues/discussions, community
+   installs where users volunteer data) OR 25 self-reported production
+   deployments. Any future weekly-active-runtime metric requires a separate
+   explicit opt-in telemetry feature and is not part of the P1 launch path.
 
 ## 5.2 Pricing posture (publish early, even pre-revenue)
 - Individual/local: free forever, all security features included. Never
@@ -1144,7 +1158,8 @@ Integration safety rules:
 ## 5.3 Metrics
 - Activation: code → governed running agent < 15 min (p50), < 30 min (p90).
 - Aha: >60% of first sessions view an audit log or a blocked-egress event.
-- Adoption: weekly-active runtimes; 3+-dashboard-user installs = sales signal.
+- Adoption: self-reported design-partner runs, GitHub/community signals, and
+  volunteered install reports. No automatic telemetry in P1.
 - Revenue: 5 partners → 3 paying by month 12 → $250k ARR by month 18.
 
 ---
@@ -1201,19 +1216,25 @@ burden (MED — mitigated by §3) · standards churn (MED) · brand (LOW).
 
 # 8. SUCCESS DEFINITION FOR PHASE 1 (THE CONTRACT WITH OURSELVES)
 Phase 1 is DONE when all of the following are demonstrably true:
-1. On a clean macOS and a clean Ubuntu machine: install → first governed
-   agent running in < 15 minutes following only the README.
-2. The red-team agent suite (§3.2.4) shows 0 escapes across all 10 attack
-   classes, in CI, on both platforms.
+1. On two clean macOS machines operated by people other than the founder:
+   install → first governed agent running in < 15 minutes following only the
+   README, with Docker Desktop or Colima already installed as a stated
+   prerequisite.
+2. The P1 red-team smoke suite (§3.2.4) shows 6/6 PASS on macOS through the
+   real pack/run/operator path. Linux CI and the full 10+ attack-class corpus
+   are P2.
 3. A LangGraph agent, a CrewAI agent, and a plain-Python agent each pack and
    run without a custom Dockerfile.
-4. Claude Code (via plugin) and Hermes (via skill) can each take freshly
-   generated agent code to running-governed state conversationally.
+4. Claude Code (via plugin) and Hermes (via native MCP skill) can each take
+   freshly generated agent code to running-governed state conversationally in
+   < 10 minutes after AgentPaaS is installed.
 5. `agent audit export` output passes `agent audit verify` on another
    machine, and a deliberately tampered line is detected.
 6. Budget enforcement kills a runaway loop at exactly the configured caps
    (tokens, USD, wall-clock, iterations) with correct audit events.
 7. 5 design partners have run a real agent of their own through it; ≥3 say
    they would show the audit export to their security team.
+8. Release artifacts pass documented Sigstore/cosign verification and the
+   macOS offline bundle can be verified without network access.
 
 **END OF PRD v4.0 — see agentpaas-execution-plan-v1.md to build it.**
