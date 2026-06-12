@@ -97,7 +97,7 @@ one command.
 │   │  ├─ budgets: tokens / $ / wall-clock /   │                          │
 │   │  │            max-iterations             │                          │
 │   │  ├─ health endpoints + OTel emit         │                          │
-│   │  └─ exec: user agent code (Py / Node)    │                          │
+│   │  └─ exec: user agent code (Python P1)    │                          │
 │   └───────────────────────────────────────────┘                         │
 │          │ internal-only bridge, NO default route                       │
 │          ▼                                                              │
@@ -114,7 +114,7 @@ one command.
 ## 2.2 Technology choices and why
 | Choice | Rationale |
 |---|---|
-| Go for CLI/daemon/harness | Single static binaries → trivial brew/curl install; first-class Docker/containerd/gRPC/OTel libs; fast cold start |
+| Go for CLI/daemon/harness | Single static binaries → simple Homebrew/macOS install; first-class Docker/containerd/gRPC/OTel libs; fast cold start |
 | agentgateway sidecar, pinned | LF-governed, Rust, MCP/A2A/LLM-aware. We vendor a checksummed release and run it as a sidecar container. Our IP = policy compiler that emits its config + enforcement topology |
 | Docker Engine as P1 substrate | Every target dev has Docker Desktop/colima. `RuntimeDriver` interface from day 1 so containerd/Podman are additive |
 | SQLite (WAL) locally | Zero deps, file-based, easy export, concurrent dashboard reads |
@@ -688,8 +688,8 @@ AgentPaaS has two MCP roles that must stay distinct:
    distribution integration built in Block 13.
 
 P1 must support the first role at a basic governed level:
-- Local and remote MCP servers must be declared in `mcp.yaml` and referenced
-  from `policy.yaml`; dynamic MCP tool discovery never auto-allows new tools.
+- Local and remote MCP servers must be declared in the `mcp_servers` section of
+  `policy.yaml`; dynamic MCP tool discovery never auto-allows new tools.
 - Local MCP servers run only as daemon-managed child processes, sidecars, or
   explicitly declared local endpoints. They receive minimal environment, no
   raw secrets by default, and the same audit/redaction controls as agents.
@@ -1233,9 +1233,9 @@ Phase 1 is DONE when all of the following are demonstrably true:
    install → first governed agent running in < 15 minutes following only the
    README, with Docker Desktop or Colima already installed as a stated
    prerequisite.
-2. The P1 red-team smoke suite (§3.2.4) shows 6/6 PASS on macOS through the
-   real pack/run/operator path. Linux CI and the full 10+ attack-class corpus
-   are P2.
+2. The P1 red-team smoke suite (§3.2 item 4) shows 6/6 PASS on macOS through
+   the real pack/run/operator path. Linux CI and the full 10+ attack-class
+   corpus are P2.
 3. A LangGraph agent, a CrewAI-generated Python project, and a plain-Python
    agent each pack and run through the generic Python harness without a custom
    Dockerfile.
