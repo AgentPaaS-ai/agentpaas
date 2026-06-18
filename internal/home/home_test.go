@@ -644,3 +644,79 @@ func contains(s, substr string) bool {
 	}
 	return false
 }
+
+// TestEnsureHomeSymlink verifies that Ensure() refuses to operate when the
+// home root path itself is a symlink.
+func TestEnsureHomeSymlink(t *testing.T) {
+	// Create a real target directory.
+	targetDir := t.TempDir()
+
+	// Create a symlink pointing to the target.
+	linkDir := filepath.Join(t.TempDir(), "agentpaas-home")
+	if err := os.Symlink(targetDir, linkDir); err != nil {
+		t.Fatal(err)
+	}
+
+	hp := NewHomePaths(linkDir)
+
+	err := Ensure(hp)
+	if err == nil {
+		t.Fatal("Ensure() should have refused symlinked home path")
+	}
+	if !contains(err.Error(), "refusing to follow symlink") {
+		t.Errorf("error should mention 'refusing to follow symlink', got: %v", err)
+	}
+}
+
+// TestEnsureHomeDoubleSymlink verifies that Ensure() refuses to operate
+// when the home root path is a double-symlink chain (symlink-to-symlink).
+func TestEnsureHomeDoubleSymlink(t *testing.T) {
+	// Create a real target directory.
+	targetDir := t.TempDir()
+
+	// Create first symlink: link1 -> targetDir.
+	baseDir := t.TempDir()
+	link1 := filepath.Join(baseDir, "link1")
+	if err := os.Symlink(targetDir, link1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create second symlink: link2 -> link1.
+	link2 := filepath.Join(baseDir, "link2")
+	if err := os.Symlink(link1, link2); err != nil {
+		t.Fatal(err)
+	}
+
+	hp := NewHomePaths(link2)
+
+	err := Ensure(hp)
+	if err == nil {
+		t.Fatal("Ensure() should have refused double-symlink chain home path")
+	}
+	if !contains(err.Error(), "refusing to follow symlink") {
+		t.Errorf("error should mention 'refusing to follow symlink', got: %v", err)
+	}
+}
+
+// TestEnsureHomeNoSymlink verifies that Ensure() works normally when the
+// home root path is a normal directory (not a symlink).
+func TestEnsureHomeNoSymlink(t *testing.T) {
+	hp := testHomePaths(t)
+	_ = os.RemoveAll(hp.Home)
+
+	if err := Ensure(hp); err != nil {
+		t.Fatalf("Ensure() should succeed for normal directory: %v", err)
+	}
+
+	// Verify home dir exists and has correct perms.
+	fi, err := os.Stat(hp.Home)
+	if err != nil {
+		t.Fatalf("home dir not created: %v", err)
+	}
+	if !fi.IsDir() {
+		t.Fatal("home is not a directory")
+	}
+	if fi.Mode().Perm() != 0700 {
+		t.Errorf("home dir perms = %#o, want 0700", fi.Mode().Perm())
+	}
+}

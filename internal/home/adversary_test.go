@@ -18,15 +18,13 @@ import (
 
 // ---- Attack Vector 1: Permission bypass via symlinks ----
 
-// TestAdversarySymlinkHomeDir validates that if the home path is a symlink
-// pointing to a directory with broad permissions, Ensure() doesn't accidentally
-// let ValidatePermissions() pass.
+// TestAdversarySymlinkHomeDir validates that Ensure() refuses to operate on
+// a home path that is itself a symlink.
 //
-// SEVERITY: Medium
-// If the home dir is a symlink to /tmp/foo (mode 0777), Ensure fixes
-// the symlink's target perms to 0700, but ValidatePermissions checks
-// the symlink itself via os.Stat (which follows symlinks). So it should
-// actually detect the problem. But let's verify.
+// SEVERITY: High
+// If the home dir is a symlink to an attacker-controlled directory,
+// Ensure() would create subdirectories and set permissions at the symlink
+// target, enabling arbitrary writes outside the intended home tree.
 func TestAdversarySymlinkHomeDir(t *testing.T) {
 	// Create a target directory with 0777 perms
 	targetDir := t.TempDir()
@@ -42,23 +40,23 @@ func TestAdversarySymlinkHomeDir(t *testing.T) {
 
 	hp := NewHomePaths(linkDir)
 
-	// Ensure should follow the symlink and set 0700 on the target
-	if err := Ensure(hp); err != nil {
-		t.Fatalf("Ensure() on symlinked home failed: %v", err)
+	// Ensure should refuse because paths.Home is a symlink.
+	err := Ensure(hp)
+	if err == nil {
+		t.Fatal("Ensure() should have refused to follow a symlinked home path, but succeeded")
 	}
-
-	// ValidatePermissions should reflect the REAL perms (after Ensure fixed them)
-	if err := ValidatePermissions(hp); err != nil {
-		t.Errorf("ValidatePermissions() failed even though Ensure fixed perms: %v", err)
+	if !strings.Contains(err.Error(), "refusing to follow symlink") {
+		t.Errorf("error should mention 'refusing to follow symlink', got: %v", err)
 	}
+	t.Logf("FIXED: Ensure() correctly refuses symlinked home path: %v", err)
 
-	// Check target dir perms were corrected
+	// The target directory should NOT have had its perms changed by Ensure.
 	fi, err := os.Stat(targetDir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0700 {
-		t.Errorf("symlink target perms = %#o, want 0700 (Ensure should fix via symlink)", fi.Mode().Perm())
+	if fi.Mode().Perm() != 0777 {
+		t.Errorf("symlink target perms were changed to %#o (should still be 0777 since Ensure refused)", fi.Mode().Perm())
 	}
 }
 
@@ -766,8 +764,8 @@ func TestAdversarySubdirPermsNotChecked(t *testing.T) {
 
 // ---- Attack Vector 14: Double symlink in home dir ----
 
-// TestAdversaryDoubleSymlink validates behavior when home dir contains
-// a symlink chain pointing outside the expected home tree.
+// TestAdversaryDoubleSymlink validates that Ensure() refuses to operate
+// when the home root path is a double-symlink chain (symlink-to-symlink).
 func TestAdversaryDoubleSymlink(t *testing.T) {
 	// Create structure:
 	// /tmp/base/home -> /tmp/middle -> /tmp/target
@@ -793,18 +791,18 @@ func TestAdversaryDoubleSymlink(t *testing.T) {
 
 	hp := NewHomePaths(homeLink)
 
-	// Ensure follows double symlink and fixes perms on the ultimate target
-	if err := Ensure(hp); err != nil {
-		t.Fatalf("Ensure() on double-symlinked home failed: %v", err)
+	// Ensure should refuse because paths.Home is a symlink.
+	err := Ensure(hp)
+	if err == nil {
+		t.Fatal("Ensure() should have refused double-symlink chain home path")
 	}
+	if !strings.Contains(err.Error(), "refusing to follow symlink") {
+		t.Errorf("error should mention 'refusing to follow symlink', got: %v", err)
+	}
+	t.Logf("FIXED: Ensure() correctly refuses double-symlink chain home path: %v", err)
 
-	// Ensure creates subdirs inside the symlink target
-	expectedLogs := filepath.Join(targetDir, "logs")
-	if fi, err := os.Stat(expectedLogs); err == nil {
-		t.Logf("Ensure() created subdirs inside symlink target: %s (mode=%#o)", expectedLogs, fi.Mode().Perm())
-		t.Log("BREACH: Ensure follows symlinks out of the home tree to create directories" +
-			" at the symlink target, which may be outside the expected boundary.")
-	} else {
-		t.Log("Ensure did NOT create subdirs at symlink target (may depend on MkdirAll behavior)")
+	// Ensure did NOT create subdirs at the symlink target (because it refused).
+	if _, err := os.Stat(filepath.Join(targetDir, "logs")); !os.IsNotExist(err) {
+		t.Error("Ensure should NOT have created subdirs in the symlink target")
 	}
 }

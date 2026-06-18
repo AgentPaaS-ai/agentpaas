@@ -208,6 +208,34 @@ func isSymlink(path string) (bool, error) {
 // symlink-escape attacks where an attacker replaces a subdirectory with a
 // symlink pointing outside the home directory.
 func Ensure(paths *HomePaths) error {
+	// Refuse if the home root path itself is a symlink (prevents symlink
+	// escape). This check must happen BEFORE any MkdirAll or Chmod calls
+	// on paths.Home, because os.MkdirAll follows symlinks and os.Chmod
+	// would operate on the symlink target.
+	sym, err := isSymlink(paths.Home)
+	if err != nil {
+		return fmt.Errorf("home: cannot stat home path %s: %w", paths.Home, err)
+	}
+	if sym {
+		return fmt.Errorf("home: refusing to follow symlink at home path %s", paths.Home)
+	}
+
+	// If the socket path has been overridden via AGENTPAAS_SOCKET (detected
+	// by checking whether it differs from the default path under the home
+	// dir), verify the socket path itself is not a symlink. This prevents
+	// an escape where an attacker places a symlink at the overridden socket
+	// location pointing outside the home tree.
+	defaultSocket := filepath.Join(paths.Home, socketName)
+	if paths.Socket != defaultSocket {
+		sym, err := isSymlink(paths.Socket)
+		if err != nil {
+			return fmt.Errorf("home: cannot stat socket path %s: %w", paths.Socket, err)
+		}
+		if sym {
+			return fmt.Errorf("home: refusing to follow symlink at socket path %s", paths.Socket)
+		}
+	}
+
 	// Create home directory.
 	if err := os.MkdirAll(paths.Home, homePerm); err != nil {
 		return fmt.Errorf("home: cannot create home directory %s: %w", paths.Home, err)
