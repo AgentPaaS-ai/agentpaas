@@ -83,7 +83,7 @@ func TestAdversarySymlinkEscape(t *testing.T) {
 	}
 
 	// Remove the config directory and replace with a symlink to etcDir
-	os.RemoveAll(hp.Config)
+	_ = os.RemoveAll(hp.Config)
 	if err := os.Symlink(etcDir, hp.Config); err != nil {
 		t.Fatal(err)
 	}
@@ -120,8 +120,8 @@ func TestAdversarySymlinkEscape(t *testing.T) {
 // Now protected by ValidatePath() which rejects non-absolute and system paths.
 func TestAdversaryPathTraversal(t *testing.T) {
 	// Test that DiscoverHome rejects system paths
-	os.Setenv("AGENTPAAS_HOME", "/etc/agentpaas")
-	defer os.Unsetenv("AGENTPAAS_HOME")
+	_ = os.Setenv("AGENTPAAS_HOME", "/etc/agentpaas")
+	defer func() { _ = os.Unsetenv("AGENTPAAS_HOME") }()
 
 	_, err := DiscoverHome()
 	if err == nil {
@@ -131,7 +131,7 @@ func TestAdversaryPathTraversal(t *testing.T) {
 	}
 
 	// Test relative path traversal is rejected
-	os.Setenv("AGENTPAAS_HOME", "../../etc/agentpaas")
+	_ = os.Setenv("AGENTPAAS_HOME", "../../etc/agentpaas")
 
 	_, err = DiscoverHome()
 	if err == nil {
@@ -237,7 +237,7 @@ func TestAdversaryCleanStaleSocketTOCTOU(t *testing.T) {
 	}
 
 	// Create a stale socket (plain file, not a listening socket)
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 	if err := os.WriteFile(hp.Socket, []byte("not a socket"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -253,13 +253,13 @@ func TestAdversaryCleanStaleSocketTOCTOU(t *testing.T) {
 
 	// Simulate: a daemon starts listening between check and remove
 	// Remove the stale file and create a real listener
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 	ln, err := net.Listen("unix", hp.Socket)
 	if err != nil {
 		t.Fatalf("cannot start listener: %v", err)
 	}
-	defer ln.Close()
-	defer os.Remove(hp.Socket)
+	defer func() { _ = ln.Close() }()
+	defer func() { _ = os.Remove(hp.Socket) }()
 
 	// CleanStale now re-checks staleness, finds a live listener, and
 	// correctly refuses to remove the socket.
@@ -293,15 +293,15 @@ func TestAdversarySocketPlantedListener(t *testing.T) {
 	}
 
 	// Remove the empty socket file created by Ensure
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 
 	// Attacker starts a listener on the stale socket path
 	ln, err := net.Listen("unix", hp.Socket)
 	if err != nil {
 		t.Fatalf("attacker cannot start listener: %v", err)
 	}
-	defer ln.Close()
-	defer os.Remove(hp.Socket)
+	defer func() { _ = ln.Close() }()
+	defer func() { _ = os.Remove(hp.Socket) }()
 
 	// IsStaleSocket says NOT stale (because something IS listening)
 	stale, err := IsStaleSocket(hp.Socket)
@@ -615,7 +615,7 @@ func TestAdversarySymlinkSocket(t *testing.T) {
 	}
 
 	// Remove the socket and replace with a symlink to a sensitive location
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 	sensitiveFile := filepath.Join(t.TempDir(), "sensitive")
 	if err := os.WriteFile(sensitiveFile, []byte("secret data"), 0600); err != nil {
 		t.Fatal(err)
@@ -672,8 +672,8 @@ func TestAdversaryDiscoverHomeNoValidation(t *testing.T) {
 	}
 	for _, p := range dangerousPaths {
 		t.Run(strings.ReplaceAll(p, "/", "_"), func(t *testing.T) {
-			os.Setenv("AGENTPAAS_HOME", p)
-			defer os.Unsetenv("AGENTPAAS_HOME")
+			_ = os.Setenv("AGENTPAAS_HOME", p)
+			defer func() { _ = os.Unsetenv("AGENTPAAS_HOME") }()
 			_, err := DiscoverHome()
 			if err == nil {
 				t.Errorf("FAIL: dangerous path %q was accepted with no validation", p)
@@ -684,8 +684,8 @@ func TestAdversaryDiscoverHomeNoValidation(t *testing.T) {
 	}
 	for _, p := range safePaths {
 		t.Run("safe_"+strings.ReplaceAll(p, "/", "_"), func(t *testing.T) {
-			os.Setenv("AGENTPAAS_HOME", p)
-			defer os.Unsetenv("AGENTPAAS_HOME")
+			_ = os.Setenv("AGENTPAAS_HOME", p)
+			defer func() { _ = os.Unsetenv("AGENTPAAS_HOME") }()
 			home, err := DiscoverHome()
 			if err != nil {
 				t.Errorf("safe path %q was rejected: %v", p, err)
@@ -712,8 +712,8 @@ func TestAdversaryDiscoverSocketPathNoValidation(t *testing.T) {
 	}
 	for _, p := range dangerousPaths {
 		t.Run(strings.ReplaceAll(p, "/", "_"), func(t *testing.T) {
-			os.Setenv("AGENTPAAS_SOCKET", p)
-			defer os.Unsetenv("AGENTPAAS_SOCKET")
+			_ = os.Setenv("AGENTPAAS_SOCKET", p)
+			defer func() { _ = os.Unsetenv("AGENTPAAS_SOCKET") }()
 
 			hp2 := NewHomePaths(hp.Home)
 			if hp2.Socket == p {
@@ -725,8 +725,8 @@ func TestAdversaryDiscoverSocketPathNoValidation(t *testing.T) {
 	}
 
 	// Also test that safe custom paths still work
-	os.Setenv("AGENTPAAS_SOCKET", "/tmp/mydaemon.sock")
-	defer os.Unsetenv("AGENTPAAS_SOCKET")
+	_ = os.Setenv("AGENTPAAS_SOCKET", "/tmp/mydaemon.sock")
+	defer func() { _ = os.Unsetenv("AGENTPAAS_SOCKET") }()
 	hp2 := NewHomePaths(hp.Home)
 	if hp2.Socket != "/tmp/mydaemon.sock" {
 		t.Errorf("safe custom socket path was not accepted: got %s, want /tmp/mydaemon.sock", hp2.Socket)

@@ -23,7 +23,7 @@ func shortTempDir(t *testing.T) *HomePaths {
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return NewHomePaths(dir)
 }
 
@@ -94,7 +94,7 @@ func TestNewHomePathsRelativePaths(t *testing.T) {
 func TestEnsureCreatesDirectories(t *testing.T) {
 	hp := testHomePaths(t)
 	// Remove the home dir so Ensure has to create it
-	os.RemoveAll(hp.Home)
+	_ = os.RemoveAll(hp.Home)
 
 	if err := Ensure(hp); err != nil {
 		t.Fatalf("Ensure() failed: %v", err)
@@ -140,7 +140,7 @@ func TestEnsureCreatesDirectories(t *testing.T) {
 
 func TestEnsureCreatesFiles(t *testing.T) {
 	hp := testHomePaths(t)
-	os.RemoveAll(hp.Home)
+	_ = os.RemoveAll(hp.Home)
 
 	if err := Ensure(hp); err != nil {
 		t.Fatalf("Ensure() failed: %v", err)
@@ -226,8 +226,8 @@ func TestValidatePermissionsSocketBad(t *testing.T) {
 
 func TestDiscoverHomeDefault(t *testing.T) {
 	// Temporarily unset AGENTPAAS_HOME
-	os.Unsetenv("AGENTPAAS_HOME")
-	defer os.Unsetenv("AGENTPAAS_HOME")
+	_ = os.Unsetenv("AGENTPAAS_HOME")
+	defer func() { _ = os.Unsetenv("AGENTPAAS_HOME") }()
 
 	home, err := DiscoverHome()
 	if err != nil {
@@ -243,8 +243,8 @@ func TestDiscoverHomeDefault(t *testing.T) {
 
 func TestDiscoverHomeOverride(t *testing.T) {
 	custom := "/tmp/agentpaas-test-custom"
-	os.Setenv("AGENTPAAS_HOME", custom)
-	defer os.Unsetenv("AGENTPAAS_HOME")
+	_ = os.Setenv("AGENTPAAS_HOME", custom)
+	defer func() { _ = os.Unsetenv("AGENTPAAS_HOME") }()
 
 	home, err := DiscoverHome()
 	if err != nil {
@@ -266,8 +266,8 @@ func TestDiscoverSocketPathDefault(t *testing.T) {
 func TestDiscoverSocketPathOverride(t *testing.T) {
 	hp := testHomePaths(t)
 	custom := filepath.Join(hp.Home, "custom.sock")
-	os.Setenv("AGENTPAAS_SOCKET", custom)
-	defer os.Unsetenv("AGENTPAAS_SOCKET")
+	_ = os.Setenv("AGENTPAAS_SOCKET", custom)
+	defer func() { _ = os.Unsetenv("AGENTPAAS_SOCKET") }()
 
 	hp2 := NewHomePaths(hp.Home)
 	if hp2.Socket != custom {
@@ -360,7 +360,7 @@ func TestIsStaleSocketStale(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Remove socket created by Ensure and create a plain file (not a real socket)
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 	if err := os.WriteFile(hp.Socket, []byte("not a socket"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -379,15 +379,15 @@ func TestIsStaleSocketLive(t *testing.T) {
 	if err := Ensure(hp); err != nil {
 		t.Fatal(err)
 	}
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 
 	// Start a real Unix listener (using shortTempDir to keep path short)
 	ln, err := net.Listen("unix", hp.Socket)
 	if err != nil {
 		t.Fatalf("cannot start listener: %v", err)
 	}
-	defer ln.Close()
-	defer os.Remove(hp.Socket)
+	defer func() { _ = ln.Close() }()
+	defer func() { _ = os.Remove(hp.Socket) }()
 
 	// Socket is live — should NOT be stale
 	stale, err := IsStaleSocket(hp.Socket)
@@ -404,7 +404,7 @@ func TestCleanStaleStaleSocket(t *testing.T) {
 	if err := Ensure(hp); err != nil {
 		t.Fatal(err)
 	}
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 	if err := os.WriteFile(hp.Socket, []byte("not a socket"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -423,15 +423,15 @@ func TestCleanStaleDoesNotRemoveLiveSocket(t *testing.T) {
 	if err := Ensure(hp); err != nil {
 		t.Fatal(err)
 	}
-	os.Remove(hp.Socket)
+	_ = os.Remove(hp.Socket)
 
 	// Start a real listener on a short path
 	ln, err := net.Listen("unix", hp.Socket)
 	if err != nil {
 		t.Fatalf("cannot start listener: %v", err)
 	}
-	defer ln.Close()
-	defer os.Remove(hp.Socket)
+	defer func() { _ = ln.Close() }()
+	defer func() { _ = os.Remove(hp.Socket) }()
 
 	// CleanStale — socket is live, so CleanStale should return an error
 	err = CleanStale(hp)
@@ -476,12 +476,12 @@ func TestIsStaleLockHeld(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		t.Fatal(err)
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
 
 	// Now check — should NOT be stale since we hold the lock
 	stale, err := IsStaleLock(hp.Lock)
@@ -522,12 +522,12 @@ func TestCleanStaleDoesNotRemoveHeldLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		t.Fatal(err)
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer func() { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) }()
 
 	// CleanStale should NOT remove the held lock
 	if err := CleanStale(hp); err != nil {
@@ -550,7 +550,7 @@ func TestCleanStaleEmptyHome(t *testing.T) {
 
 func TestValidatePermissionsMissingHome(t *testing.T) {
 	hp := testHomePaths(t)
-	os.RemoveAll(hp.Home)
+	_ = os.RemoveAll(hp.Home)
 
 	err := ValidatePermissions(hp)
 	if err == nil {

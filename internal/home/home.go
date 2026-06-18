@@ -278,7 +278,7 @@ func touchFile(path string, mode os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("cannot create %s: %w", path, err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Re-check with Lstat before Chmod to avoid following a symlink.
 	sym, err := isSymlink(path)
@@ -439,7 +439,7 @@ func IsStaleSocket(sockFile string) (bool, error) {
 		// Cannot connect — either no listener or file is not a real socket.
 		return true, nil
 	}
-	conn.Close()
+	_ = conn.Close()
 	return false, nil
 }
 
@@ -459,7 +459,7 @@ func IsStaleLock(lockFile string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("home: cannot open lock file %s: %w", lockFile, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		if err == syscall.EWOULDBLOCK {
@@ -471,7 +471,7 @@ func IsStaleLock(lockFile string) (bool, error) {
 
 	// We acquired the lock — no one else holds it, so it's stale.
 	// Release it immediately since we only needed to check.
-	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	return true, nil
 }
 
