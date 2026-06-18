@@ -28,3 +28,9 @@ coverage.txt
 # AgentPaaS local state (created at runtime, never committed)
 .agentpaas/
 AGENTPAAS_HOME/
+
+# Local tool binaries (installed manually, not part of build)
+.tools/
+
+# Session management (not part of the codebase)
+NEXT-SESSION-PROMPT.md
