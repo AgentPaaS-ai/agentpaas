@@ -4,11 +4,20 @@
 # Landing page is a separate track, not part of the build
 landing-page/
 
-# Go build artifacts (will be created in Block 1)
+# Go build artifacts
 /bin/
 /dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.test
 *.out
+
+# Go coverage files
+*.cover
+coverage.txt
 
 # IDE
 .idea/
@@ -18,3 +27,4 @@ landing-page/
 
 # AgentPaaS local state (created at runtime, never committed)
 .agentpaas/
+AGENTPAAS_HOME/
