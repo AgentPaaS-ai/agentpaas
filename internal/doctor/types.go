@@ -22,12 +22,17 @@ type CheckResult struct {
 
 // OverallStatus derives the aggregate health from a set of check results.
 //
-// It returns "error" if any check has status "error", "warning" if any
-// check has status "warning" (and no errors), and "ok" otherwise.
+// It returns "error" if any check has status "error" or an unknown/empty
+// status (defensive measure), "warning" if any check has status "warning"
+// (and no errors), and "ok" otherwise.
 func OverallStatus(checks []CheckResult) string {
 	hasWarning := false
 	for _, c := range checks {
 		if c.Status == "error" {
+			return "error"
+		}
+		if c.Status == "" || (c.Status != "ok" && c.Status != "warning") {
+			// Treat unknown/empty status as an error.
 			return "error"
 		}
 		if c.Status == "warning" {

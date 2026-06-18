@@ -4,13 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -22,6 +25,90 @@ import (
 // knownPorts are the ports that agentpaas uses for control and agent traffic.
 var knownPorts = []int{7700, 7717, 7718}
 
+// dockerInfoTimeout is the timeout for "docker info" commands.
+const dockerInfoTimeout = 10 * time.Second
+
+// dockerContextTimeout is the timeout for "docker context show".
+const dockerContextTimeout = 5 * time.Second
+
+// identifyProcessTimeout is the timeout for lsof.
+const identifyProcessTimeout = 5 * time.Second
+
+// pgrepTimeout is the timeout for pgrep.
+const pgrepTimeout = 5 * time.Second
+
+// daemonDialTimeout is the timeout for gRPC dial to the daemon.
+const daemonDialTimeout = 5 * time.Second
+
+// expectedDockerPaths are the only legitimate locations for the docker binary.
+var expectedDockerPaths = []string{
+	"/usr/local/bin/docker",
+	"/opt/homebrew/bin/docker",
+	"/usr/bin/docker",
+}
+
+// validateDockerBinary checks that the docker binary at PATH is a legitimate
+// installation. Returns a warning CheckResult if the path is unexpected.
+func validateDockerBinary(name string) *CheckResult {
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		return nil
+	}
+
+	// Resolve symlinks to get the real path.
+	realPath, err := filepath.EvalSymlinks(dockerPath)
+	if err != nil {
+		realPath = dockerPath
+	}
+
+	// Reject if the binary lives in /tmp, /var/tmp.
+	if strings.HasPrefix(realPath, "/tmp/") || strings.HasPrefix(realPath, "/var/tmp/") {
+		return &CheckResult{
+			Name:    name,
+			Status:  "warning",
+			Message: fmt.Sprintf("Docker binary at unexpected path %s — verify this is a legitimate Docker installation", realPath),
+			FixHint: fmt.Sprintf("Remove the spoofed docker binary at %s and install Docker from the official channel.", realPath),
+		}
+	}
+
+	// Check if the binary is in a user-writable directory.
+	// Home directories and /tmp-like dirs are considered user-writable.
+	homeDir, _ := os.UserHomeDir()
+	if homeDir != "" && strings.HasPrefix(realPath, homeDir) {
+		return &CheckResult{
+			Name:    name,
+			Status:  "warning",
+			Message: fmt.Sprintf("Docker binary at unexpected path %s — verify this is a legitimate Docker installation", realPath),
+			FixHint: fmt.Sprintf("The docker binary is located in your home directory (%s). Remove it and install Docker from the official channel.", realPath),
+		}
+	}
+
+	// Check against known expected locations.
+	found := false
+	for _, loc := range expectedDockerPaths {
+		rp, err := filepath.EvalSymlinks(loc)
+		if err == nil && realPath == rp {
+			found = true
+			break
+		}
+		if realPath == loc {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		return &CheckResult{
+			Name:    name,
+			Status:  "warning",
+			Message: fmt.Sprintf("Docker binary at unexpected path %s — verify this is a legitimate Docker installation", realPath),
+			FixHint: fmt.Sprintf("Expected docker at one of: %s. The current binary is at %s.", strings.Join(expectedDockerPaths, ", "), realPath),
+		}
+	}
+
+	return nil
+}
+
 // CheckDockerReachable verifies that the Docker daemon is reachable.
 //
 // It shells out to "docker info" and checks the API version in the output.
@@ -30,8 +117,24 @@ var knownPorts = []int{7700, 7717, 7718}
 func CheckDockerReachable() CheckResult {
 	name := "docker_reachable"
 
-	out, err := exec.Command("docker", "info", "--format", "{{.ServerVersion}}").Output()
+	// Validate the docker binary path before running it.
+	if result := validateDockerBinary(name); result != nil {
+		return *result
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), dockerInfoTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").Output()
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return CheckResult{
+				Name:    name,
+				Status:  "error",
+				Message: fmt.Sprintf("%s timed out after %ds", name, int(dockerInfoTimeout.Seconds())),
+				FixHint: "Docker info timed out. Check Docker daemon responsiveness.",
+			}
+		}
 		hint := "Ensure Docker is installed and running. Run 'docker info' to verify."
 		if runtime.GOOS == "darwin" {
 			hint = "Docker Desktop or Colima is not running. Start Docker Desktop from Applications, or run 'colima start'."
@@ -69,8 +172,24 @@ func CheckDockerReachable() CheckResult {
 func CheckDockerContext() CheckResult {
 	name := "docker_context"
 
-	out, err := exec.Command("docker", "context", "show").Output()
+	// Validate the docker binary path before running it.
+	if result := validateDockerBinary(name); result != nil {
+		return *result
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), dockerContextTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "docker", "context", "show").Output()
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return CheckResult{
+				Name:    name,
+				Status:  "warning",
+				Message: fmt.Sprintf("%s timed out after %ds", name, int(dockerContextTimeout.Seconds())),
+				FixHint: "Docker context show timed out. Check Docker daemon responsiveness.",
+			}
+		}
 		return CheckResult{
 			Name:    name,
 			Status:  "warning",
@@ -114,11 +233,38 @@ func CheckDockerDesktop() CheckResult {
 	}
 
 	// Check for Docker Desktop process.
-	desktopOut, err := exec.Command("pgrep", "-f", "com.docker.docker").Output()
+	ctx1, cancel1 := context.WithTimeout(context.Background(), pgrepTimeout)
+	defer cancel1()
+	desktopOut, err := exec.CommandContext(ctx1, "pgrep", "-f", "com.docker.docker").Output()
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		// pgrep returns non-zero exit code when no process matches — that's fine.
+		desktopOut = nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return CheckResult{
+			Name:    name,
+			Status:  "error",
+			Message: fmt.Sprintf("%s timed out after %ds", name, int(pgrepTimeout.Seconds())),
+			FixHint: "pgrep timed out checking for Docker Desktop process.",
+		}
+	}
 	desktopRunning := err == nil && strings.TrimSpace(string(desktopOut)) != ""
 
 	// Check for Colima process.
-	colimaOut, err := exec.Command("pgrep", "-f", "colima").Output()
+	ctx2, cancel2 := context.WithTimeout(context.Background(), pgrepTimeout)
+	defer cancel2()
+	colimaOut, err := exec.CommandContext(ctx2, "pgrep", "-f", "colima").Output()
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		colimaOut = nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return CheckResult{
+			Name:    name,
+			Status:  "error",
+			Message: fmt.Sprintf("%s timed out after %ds", name, int(pgrepTimeout.Seconds())),
+			FixHint: "pgrep timed out checking for Colima process.",
+		}
+	}
 	colimaRunning := err == nil && strings.TrimSpace(string(colimaOut)) != ""
 
 	if !desktopRunning && !colimaRunning {
@@ -182,18 +328,32 @@ func CheckLinuxDockerd() CheckResult {
 
 // CheckPortsFree verifies that ports 7700, 7717, and 7718 are not in use.
 //
-// For each port, it attempts net.Listen("tcp", ...). If the listen fails,
-// it uses lsof to identify the process holding the port and returns an
-// error with the process name.
+// For each port, it attempts net.Listen("tcp", ...) on both IPv4 (127.0.0.1)
+// and IPv6 (::1) loopback. If either listen fails, the port is considered
+// squatted and it uses lsof to identify the process holding the port.
 func CheckPortsFree() CheckResult {
 	name := "ports_free"
 
 	var squatters []string
 	for _, port := range knownPorts {
-		addr := fmt.Sprintf("127.0.0.1:%d", port)
-		ln, err := net.Listen("tcp", addr)
-		if err != nil {
-			// Port is in use — try to identify the process.
+		// Try IPv4 loopback.
+		ipv4Addr := fmt.Sprintf("127.0.0.1:%d", port)
+		ln4, err4 := net.Listen("tcp", ipv4Addr)
+
+		// Try IPv6 loopback.
+		ipv6Addr := fmt.Sprintf("[::1]:%d", port)
+		ln6, err6 := net.Listen("tcp", ipv6Addr)
+
+		// If either binding failed, the port is squatted on that address family.
+		if err4 != nil || err6 != nil {
+			// Close whichever succeeded.
+			if err4 == nil && ln4 != nil {
+				_ = ln4.Close()
+			}
+			if err6 == nil && ln6 != nil {
+				_ = ln6.Close()
+			}
+			// Try to identify the process.
 			procName := identifyProcess(port)
 			hint := fmt.Sprintf("Port %d is in use", port)
 			if procName != "" {
@@ -202,7 +362,10 @@ func CheckPortsFree() CheckResult {
 			squatters = append(squatters, hint)
 			continue
 		}
-		_ = ln.Close()
+
+		// Both succeeded — close both and move on.
+		_ = ln4.Close()
+		_ = ln6.Close()
 	}
 
 	if len(squatters) > 0 {
@@ -224,7 +387,10 @@ func CheckPortsFree() CheckResult {
 // identifyProcess uses lsof to find the process listening on the given port.
 // Returns the process name if identifiable, or an empty string otherwise.
 func identifyProcess(port int) string {
-	out, err := exec.Command("lsof", "-i", fmt.Sprintf(":%d", port), "-P", "-n", "-sTCP:LISTEN").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), identifyProcessTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "lsof", "-i", fmt.Sprintf(":%d", port), "-P", "-n", "-sTCP:LISTEN").Output()
 	if err != nil {
 		return ""
 	}
@@ -376,8 +542,18 @@ func CheckDaemonReady(socketPath string) CheckResult {
 	defer func() { _ = conn.Close() }()
 
 	client := controlv1.NewControlServiceClient(conn)
-	resp, err := client.Doctor(context.Background(), &controlv1.DoctorRequest{})
+	ctx, cancel := context.WithTimeout(context.Background(), daemonDialTimeout)
+	defer cancel()
+	resp, err := client.Doctor(ctx, &controlv1.DoctorRequest{})
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return CheckResult{
+				Name:    name,
+				Status:  "error",
+				Message: fmt.Sprintf("%s timed out after %ds", name, int(daemonDialTimeout.Seconds())),
+				FixHint: "Daemon gRPC dial timed out. Check that the daemon is running and responsive.",
+			}
+		}
 		return CheckResult{
 			Name:    name,
 			Status:  "error",
@@ -418,7 +594,9 @@ func CheckProtoCompatible(socketPath string, cliVersion, cliProtoVersion string)
 	defer func() { _ = conn.Close() }()
 
 	client := controlv1.NewControlServiceClient(conn)
-	resp, err := client.Doctor(context.Background(), &controlv1.DoctorRequest{})
+	ctx, cancel := context.WithTimeout(context.Background(), daemonDialTimeout)
+	defer cancel()
+	resp, err := client.Doctor(ctx, &controlv1.DoctorRequest{})
 	if err != nil {
 		// Daemon didn't respond — can't compare.
 		return CheckResult{
