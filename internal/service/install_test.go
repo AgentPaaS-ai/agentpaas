@@ -17,7 +17,7 @@ func TestInstallWritesPlist(t *testing.T) {
 		EnvHome:    "/Users/testuser/.agentpaas",
 	}
 
-	if err := service.InstallLaunchdPlist(cfg, dir); err != nil {
+	if err := service.InstallLaunchdPlist(cfg, dir, false); err != nil {
 		t.Fatalf("InstallLaunchdPlist: %v", err)
 	}
 
@@ -36,7 +36,7 @@ func TestInstallCustomPath(t *testing.T) {
 		HomeDir:    "/home/testuser/.agentpaas",
 	}
 
-	if err := service.InstallLaunchdPlist(cfg, customDir); err != nil {
+	if err := service.InstallLaunchdPlist(cfg, customDir, false); err != nil {
 		t.Fatalf("InstallLaunchdPlist: %v", err)
 	}
 
@@ -64,7 +64,7 @@ func TestUninstallRemovesPlist(t *testing.T) {
 	}
 
 	// Install first.
-	if err := service.InstallLaunchdPlist(cfg, dir); err != nil {
+	if err := service.InstallLaunchdPlist(cfg, dir, false); err != nil {
 		t.Fatalf("InstallLaunchdPlist: %v", err)
 	}
 
@@ -106,7 +106,7 @@ func TestInstallCreatesDirectory(t *testing.T) {
 		HomeDir:    "/Users/testuser/.agentpaas",
 	}
 
-	if err := service.InstallLaunchdPlist(cfg, nestedDir); err != nil {
+	if err := service.InstallLaunchdPlist(cfg, nestedDir, false); err != nil {
 		t.Fatalf("InstallLaunchdPlist should create nested directory: %v", err)
 	}
 
@@ -122,7 +122,7 @@ func TestInstallEmptyPathFails(t *testing.T) {
 		HomeDir:    "/Users/testuser/.agentpaas",
 	}
 
-	if err := service.InstallLaunchdPlist(cfg, ""); err == nil {
+	if err := service.InstallLaunchdPlist(cfg, "", false); err == nil {
 		t.Errorf("InstallLaunchdPlist with empty path should error")
 	}
 }
@@ -136,7 +136,7 @@ func TestInstallPlistContentsValid(t *testing.T) {
 		EnvHome:    "/Users/testuser/.agentpaas",
 	}
 
-	if err := service.InstallLaunchdPlist(cfg, dir); err != nil {
+	if err := service.InstallLaunchdPlist(cfg, dir, false); err != nil {
 		t.Fatalf("InstallLaunchdPlist: %v", err)
 	}
 

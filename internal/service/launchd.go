@@ -112,6 +112,10 @@ func (a plistArrayXML) MarshalXML(enc *xml.Encoder, start xml.StartElement) erro
 // The output is deterministic: the same config always produces byte-identical XML.
 // No timestamps or random values are included.
 func GenerateLaunchdPlist(cfg LaunchdPlistConfig) ([]byte, error) {
+	if cfg.HomeDir == "" {
+		return nil, fmt.Errorf("service: HomeDir must not be empty")
+	}
+
 	label := cfg.Label
 	if label == "" {
 		label = defaultLaunchdLabel
