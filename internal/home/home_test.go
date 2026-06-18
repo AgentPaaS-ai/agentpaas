@@ -294,7 +294,8 @@ func TestIsStalePidStale(t *testing.T) {
 
 func TestIsStalePidLive(t *testing.T) {
 	hp := testHomePaths(t)
-	// Use current process PID — it is definitely running
+	// Use current process PID — it is definitely running but is NOT the
+	// agentpaasd daemon, so IsStalePid should treat it as stale (PID reuse).
 	pid := os.Getpid()
 	pidBytes := []byte(fmt.Sprintf("%d\n", pid))
 	if err := os.WriteFile(hp.PID, pidBytes, 0600); err != nil {
@@ -305,8 +306,8 @@ func TestIsStalePidLive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IsStalePid() failed: %v", err)
 	}
-	if stale {
-		t.Error("expected NOT stale for live process PID, got stale")
+	if !stale {
+		t.Error("expected stale for non-agentpaasd PID (PID reuse protection), got not stale")
 	}
 }
 
@@ -335,7 +336,8 @@ func TestCleanStalePidDoesNotRemoveLive(t *testing.T) {
 	if err := Ensure(hp); err != nil {
 		t.Fatal(err)
 	}
-	// Write current process PID
+	// Write current process PID — but the test process is NOT agentpaasd,
+	// so IsStalePid treats it as stale (PID reuse protection).
 	pid := os.Getpid()
 	pidBytes := []byte(fmt.Sprintf("%d\n", pid))
 	if err := os.WriteFile(hp.PID, pidBytes, 0600); err != nil {
@@ -346,9 +348,9 @@ func TestCleanStalePidDoesNotRemoveLive(t *testing.T) {
 		t.Fatalf("CleanStale() failed: %v", err)
 	}
 
-	// PID file should still exist
-	if _, err := os.Stat(hp.PID); os.IsNotExist(err) {
-		t.Error("live PID file should NOT have been removed")
+	// PID file should have been removed because it's not an agentpaasd PID
+	if _, err := os.Stat(hp.PID); !os.IsNotExist(err) {
+		t.Error("non-daemon PID file should have been removed as stale (PID reuse protection)")
 	}
 }
 
@@ -431,9 +433,12 @@ func TestCleanStaleDoesNotRemoveLiveSocket(t *testing.T) {
 	defer ln.Close()
 	defer os.Remove(hp.Socket)
 
-	// CleanStale — socket is NOT stale since it's listening
-	if err := CleanStale(hp); err != nil {
-		t.Fatalf("CleanStale() failed: %v", err)
+	// CleanStale — socket is live, so CleanStale should return an error
+	err = CleanStale(hp)
+	if err == nil {
+		t.Error("expected error for live socket, got nil")
+	} else if !contains(err.Error(), "live process") {
+		t.Errorf("error should mention 'live process', got: %v", err)
 	}
 
 	// Socket should still exist
