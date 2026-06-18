@@ -1,0 +1,566 @@
+// AgentPaaS Control API
+//
+// The ControlService provides operational control over agents: packaging,
+// running, stopping, policy management, secrets, audit, diagnostics, and
+// operator/introspection capabilities.
+//
+// All RPCs use google.api.http annotations for REST/HTTP mapping.
+// Errors follow google.rpc.Status conventions:
+//
+//  - NOT_FOUND (404)       — requested resource does not exist
+//  - ALREADY_EXISTS (409)  — resource or key conflict
+//  - FAILED_PRECONDITION (412) — invalid state for the operation
+//  - INVALID_ARGUMENT (3)  — malformed request parameters
+//  - PERMISSION_DENIED (7) — authorization failure
+//  - RESOURCE_EXHAUSTED (8) — budget or quota exceeded
+//
+// Operator methods (13-18) return structured payloads designed for
+// coding-agent clients. CLI/dashboard text is rendered from the same data.
+// Each response is self-describing enough for an LLM to act on.
+
+syntax = "proto3";
+
+package agentpaas.control.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/parvezsyed/agentpaas/api/control/v1;controlv1";
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+// LogLevel represents the severity of a log entry.
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_DEBUG = 1;
+  LOG_LEVEL_INFO = 2;
+  LOG_LEVEL_WARN = 3;
+  LOG_LEVEL_ERROR = 4;
+}
+
+// EventType represents the category of an audit event.
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  EVENT_TYPE_INVOKE = 1;
+  EVENT_TYPE_CANCEL = 2;
+  EVENT_TYPE_POLICY_APPLY = 3;
+  EVENT_TYPE_POLICY_DENIAL = 4;
+  EVENT_TYPE_SECRET_SET = 5;
+  EVENT_TYPE_SECRET_GRANT = 6;
+  EVENT_TYPE_SECRET_REVOKE = 7;
+  EVENT_TYPE_PACK = 8;
+  EVENT_TYPE_RUN = 9;
+  EVENT_TYPE_STOP = 10;
+}
+
+// SecretType represents how a secret is injected.
+enum SecretType {
+  SECRET_TYPE_UNSPECIFIED = 0;
+  SECRET_TYPE_ENV = 1;
+  SECRET_TYPE_FILE = 2;
+  SECRET_TYPE_INLINE = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Packaging / Lifecycle
+// ---------------------------------------------------------------------------
+
+message PackRequest {
+  // Path to the agent project directory.
+  string agent_project_path = 1;
+  // Name of the agent to pack.
+  string agent_name = 2;
+  // Version string for the agent image.
+  string agent_version = 3;
+  // Override base image (optional).
+  string base_image = 4;
+}
+
+message PackResponse {
+  // Digest of the built agent image.
+  string image_digest = 1;
+  // Human-readable build log excerpt.
+  string build_log = 2;
+}
+
+message RunRequest {
+  // Name of the agent to run.
+  string agent_name = 1;
+  // Version of the agent to run.
+  string agent_version = 2;
+  // Trigger payload passed to the agent.
+  bytes trigger_payload = 3;
+  // Budget configuration (optional).
+  BudgetConfig budget = 4;
+}
+
+message BudgetConfig {
+  // Maximum token budget for the run.
+  int64 max_tokens = 1;
+  // Maximum cost in USD.
+  double max_cost_usd = 2;
+  // Maximum wall-clock time in milliseconds.
+  int64 max_wall_clock_ms = 3;
+  // Maximum iteration count.
+  int32 max_iterations = 4;
+}
+
+message RunResponse {
+  // Unique identifier for the started run.
+  string run_id = 1;
+}
+
+message StopRequest {
+  // ID of the run to stop.
+  string run_id = 1;
+  // Reason for stopping (optional).
+  string reason = 2;
+  // Force immediate termination without graceful shutdown.
+  bool force = 3;
+}
+
+message StopResponse {
+  // Whether the stop was acknowledged.
+  bool acknowledged = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Logs
+// ---------------------------------------------------------------------------
+
+message LogsRequest {
+  // Optional: filter by run ID.
+  string run_id = 1;
+  // Optional: minimum log level to include.
+  LogLevel min_level = 2;
+  // Optional: follow the log stream in real-time.
+  bool follow = 3;
+  // Maximum number of historical entries to return.
+  int32 tail = 4;
+}
+
+message LogEntry {
+  // Timestamp of the log entry.
+  google.protobuf.Timestamp timestamp = 1;
+  // Run ID the entry belongs to.
+  string run_id = 2;
+  // Severity level.
+  string level = 3;
+  // Log message body.
+  string message = 4;
+  // Structured fields (key-value pairs).
+  map<string, string> fields = 5;
+}
+
+// ---------------------------------------------------------------------------
+// Policy
+// ---------------------------------------------------------------------------
+
+message PolicyApplyRequest {
+  // OPA/Rego policy YAML content.
+  string policy_yaml = 1;
+  // When true, validate without applying.
+  bool dry_run = 2;
+}
+
+message PolicyApplyResponse {
+  // Digest of the applied policy.
+  string policy_digest = 1;
+  // Number of rules applied.
+  int32 rules_applied = 2;
+  // Any validation warnings.
+  repeated string warnings = 3;
+}
+
+// ---------------------------------------------------------------------------
+// Secrets
+// ---------------------------------------------------------------------------
+
+message SecretSetRequest {
+  // Name of the secret.
+  string name = 1;
+  // Scope of the secret (e.g. agent name or global).
+  string scope = 2;
+  // How the secret is injected.
+  SecretType type = 3;
+}
+
+message SecretSetResponse {
+  // Whether the secret was created or updated.
+  bool created = 1;
+}
+
+message SecretGrantRequest {
+  // Run ID to grant the secret to.
+  string run_id = 1;
+  // Name of the secret to grant.
+  string secret_name = 2;
+}
+
+message SecretGrantResponse {
+  // Whether the grant succeeded.
+  bool acknowledged = 1;
+}
+
+message SecretRevokeRequest {
+  // Run ID to revoke the secret from.
+  string run_id = 1;
+  // Name of the secret to revoke.
+  string secret_name = 2;
+}
+
+message SecretRevokeResponse {
+  // Whether the revocation succeeded.
+  bool acknowledged = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+message AuditQueryRequest {
+  // Optional: filter by agent name.
+  string agent_name = 1;
+  // Optional: filter by run ID.
+  string run_id = 2;
+  // Optional: filter by event type.
+  EventType event_type = 3;
+  // Optional: time range filter.
+  TimeRange time_range = 4;
+  // Maximum number of results.
+  int32 page_size = 5;
+  // Pagination token.
+  string page_token = 6;
+}
+
+message TimeRange {
+  google.protobuf.Timestamp start = 1;
+  google.protobuf.Timestamp end = 2;
+}
+
+message AuditEntry {
+  string event_id = 1;
+  EventType event_type = 2;
+  string agent_name = 3;
+  string run_id = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  bytes payload = 6;
+}
+
+message AuditQueryResponse {
+  repeated AuditEntry entries = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message AuditExportRequest {
+  // Time range to export.
+  TimeRange time_range = 1;
+  // Output format (e.g. "json", "csv", "ndjson").
+  string format = 2;
+  // Whether to include event payloads.
+  bool include_payloads = 3;
+}
+
+message AuditExportResponse {
+  // Exported audit data in the requested format.
+  bytes data = 1;
+  // Number of entries exported.
+  int32 entry_count = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics / Operator
+// ---------------------------------------------------------------------------
+
+message DoctorRequest {}
+
+message CheckResult {
+  // Name of the health check (e.g. "buf_connectivity", "docker_daemon").
+  string name = 1;
+  // Check status: "ok", "warning", "error".
+  string status = 2;
+  // Human-readable description of the check result.
+  string message = 3;
+  // Suggested remediation if the check failed.
+  string fix_hint = 4;
+}
+
+message DoctorResponse {
+  repeated CheckResult checks = 1;
+  // Overall system health status.
+  string overall_status = 2;
+}
+
+message ValidateAgentProjectRequest {
+  // Path to the agent project directory.
+  string project_path = 1;
+}
+
+message ProjectValidation {
+  // Name of the validation check.
+  string check = 1;
+  // Whether the check passed.
+  bool passed = 2;
+  // Human-readable details.
+  string details = 3;
+}
+
+message ValidateAgentProjectResponse {
+  repeated ProjectValidation validations = 1;
+  // Overall pass/fail.
+  bool valid = 2;
+  // Summary message.
+  string summary = 3;
+}
+
+message SummarizeRunRequest {
+  string run_id = 1;
+}
+
+message KeyEvent {
+  google.protobuf.Timestamp timestamp = 1;
+  string description = 2;
+  string event_type = 3;
+}
+
+message SummarizeRunResponse {
+  // Natural-language summary of the run.
+  string summary = 1;
+  // Key events extracted from the run.
+  repeated KeyEvent key_events = 2;
+  // Budget consumed during the run.
+  string budget_used = 3;
+}
+
+message ExplainFailureRequest {
+  string run_id = 1;
+}
+
+message ExplainFailureResponse {
+  // Identified root cause of the failure.
+  string root_cause = 1;
+  // Factors that contributed to the failure.
+  repeated string contributing_factors = 2;
+  // Suggested code or config changes to fix the issue.
+  repeated string suggested_fixes = 3;
+}
+
+message ExplainPolicyDenialRequest {
+  string run_id = 1;
+  // Optional: specific destination that was denied.
+  string denied_destination = 2;
+}
+
+message ExplainPolicyDenialResponse {
+  // The destination that was denied.
+  string denied_destination = 1;
+  // The OPA/Rego rule that produced the denial.
+  string matching_rule = 2;
+  // Human-readable explanation of why the denial occurred.
+  string explanation = 3;
+}
+
+message RecommendPolicyPatchRequest {
+  // Description of the desired behavior the policy should allow.
+  string desired_behavior = 1;
+}
+
+message RecommendPolicyPatchResponse {
+  // Suggested OPA/Rego policy patch in YAML.
+  string patch_yaml = 1;
+  // Explanation of what the patch does.
+  string explanation = 2;
+  // Risk assessment: "low", "medium", "high".
+  string risk_assessment = 3;
+}
+
+message GetRunTimelineRequest {
+  string run_id = 1;
+}
+
+message TimelineEvent {
+  // When the event occurred.
+  google.protobuf.Timestamp timestamp = 1;
+  // Event type identifier.
+  string type = 2;
+  // Human-readable description.
+  string description = 3;
+  // Arbitrary structured data associated with the event.
+  bytes data = 4;
+}
+
+message GetRunTimelineResponse {
+  repeated TimelineEvent events = 1;
+}
+
+message NextActionRequest {
+  // Current context describing the system state.
+  string context = 1;
+}
+
+message NextActionResponse {
+  // Recommended action type (e.g. "invoke", "stop", "policy_apply", "pack").
+  string action = 1;
+  // Target resource for the action.
+  string target = 2;
+  // Parameters to pass with the action.
+  map<string, string> params = 3;
+  // LLM reasoning behind the recommendation.
+  string reasoning = 4;
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+// ControlService provides operational control over agent lifecycle, policy,
+// secrets, audit logs, and diagnostic/introspection capabilities.
+service ControlService {
+  // Pack builds an agent image from a project directory.
+  rpc Pack(PackRequest) returns (PackResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/pack"
+      body: "*"
+    };
+  }
+
+  // Run starts a new agent run with the given budget and payload.
+  rpc Run(RunRequest) returns (RunResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/run"
+      body: "*"
+    };
+  }
+
+  // Stop terminates a running agent run.
+  rpc Stop(StopRequest) returns (StopResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/stop"
+      body: "*"
+    };
+  }
+
+  // Logs returns a stream of log entries, optionally following in real-time.
+  rpc Logs(LogsRequest) returns (stream LogEntry) {
+    option (google.api.http) = {
+      get: "/v1/control/logs"
+    };
+  }
+
+  // PolicyApply applies or validates an OPA/Rego policy.
+  rpc PolicyApply(PolicyApplyRequest) returns (PolicyApplyResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/policy:apply"
+      body: "*"
+    };
+  }
+
+  // SecretSet creates or updates a secret.
+  rpc SecretSet(SecretSetRequest) returns (SecretSetResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/secrets"
+      body: "*"
+    };
+  }
+
+  // SecretGrant grants a secret to a specific run.
+  rpc SecretGrant(SecretGrantRequest) returns (SecretGrantResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/secrets:grant"
+      body: "*"
+    };
+  }
+
+  // SecretRevoke revokes a secret from a specific run.
+  rpc SecretRevoke(SecretRevokeRequest) returns (SecretRevokeResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/secrets:revoke"
+      body: "*"
+    };
+  }
+
+  // AuditQuery queries audit log entries with filters and pagination.
+  rpc AuditQuery(AuditQueryRequest) returns (AuditQueryResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/audit:query"
+      body: "*"
+    };
+  }
+
+  // AuditExport exports audit log entries in a specified format.
+  rpc AuditExport(AuditExportRequest) returns (AuditExportResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/audit:export"
+      body: "*"
+    };
+  }
+
+  // Doctor runs system diagnostics and returns health check results.
+  rpc Doctor(DoctorRequest) returns (DoctorResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/doctor"
+    };
+  }
+
+  // ValidateAgentProject validates an agent project directory structure and
+  // configuration.
+  rpc ValidateAgentProject(ValidateAgentProjectRequest) returns (ValidateAgentProjectResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/validate"
+      body: "*"
+    };
+  }
+
+  // SummarizeRun generates a natural-language summary of a completed run.
+  rpc SummarizeRun(SummarizeRunRequest) returns (SummarizeRunResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/runs/{run_id}:summarize"
+      body: "*"
+    };
+  }
+
+  // ExplainFailure analyzes a failed run and returns root cause and suggested
+  // fixes.
+  rpc ExplainFailure(ExplainFailureRequest) returns (ExplainFailureResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/runs/{run_id}:explain-failure"
+      body: "*"
+    };
+  }
+
+  // ExplainPolicyDenial explains why a specific destination was denied by
+  // policy.
+  rpc ExplainPolicyDenial(ExplainPolicyDenialRequest) returns (ExplainPolicyDenialResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/policy:explain-denial"
+      body: "*"
+    };
+  }
+
+  // RecommendPolicyPatch suggests a policy patch based on a desired behavior
+  // description.
+  rpc RecommendPolicyPatch(RecommendPolicyPatchRequest) returns (RecommendPolicyPatchResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/policy:recommend-patch"
+      body: "*"
+    };
+  }
+
+  // GetRunTimeline returns a chronological timeline of events for a run.
+  rpc GetRunTimeline(GetRunTimelineRequest) returns (GetRunTimelineResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/runs/{run_id}/timeline"
+    };
+  }
+
+  // NextAction recommends the next action based on the current context.
+  rpc NextAction(NextActionRequest) returns (NextActionResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/next-action"
+      body: "*"
+    };
+  }
+}
