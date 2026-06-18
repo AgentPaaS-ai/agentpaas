@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Landing page is a separate track, not part of the build
+landing-page/
+
+# Go build artifacts (will be created in Block 1)
+/bin/
+/dist/
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AgentPaaS local state (created at runtime, never committed)
+.agentpaas/

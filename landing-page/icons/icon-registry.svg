@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
-  <!-- Magnifying glass (rose) -->
-  <circle cx="21" cy="20" r="9" stroke="#CB3C60" stroke-width="2.5"/>
-  <line x1="28" y1="27" x2="35" y2="34" stroke="#CB3C60" stroke-width="3" stroke-linecap="round"/>
-  <!-- Database cylinder (navy) -->
-  <ellipse cx="26" cy="34" rx="12" ry="4" stroke="#1E3A5F" stroke-width="2"/>
-  <path d="M14 34v6c0 2.2 5.4 4 12 4s12-1.8 12-4v-6" stroke="#1E3A5F" stroke-width="2"/>
-  <path d="M14 37c0 2.2 5.4 4 12 4s12-1.8 12-4" stroke="#1E3A5F" stroke-width="1.5" opacity="0.5"/>
-</svg>
