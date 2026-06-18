@@ -637,7 +637,24 @@ contract change, or refactors that do not alter behavior. The PR must record
 RULES (apply to every task in this block):
 - TDD: failing test first, run it, implement, re-run.
 - Go 1.24+, golangci-lint clean, go vet clean. No panics in library code.
-- Every public function documented. Errors wrapped with context.
+- Documentation standard: code must be readable by a layperson or an AI
+  agent with no prior context. This means:
+  - Every package has a doc.go with a paragraph explaining what the package
+    does, why it exists, and how it fits into the system.
+  - Every exported type, function, method, and constant has a Go doc comment
+    starting with the identifier name, explaining WHAT it does and WHY, not
+    just the mechanics. Parameters and return values documented when not
+    obvious from the name.
+  - Non-obvious logic gets inline comments explaining the reasoning, not
+    restating the code. If a reader would ask "why?", add a comment.
+  - Complex types (state machines, config structs, protocol messages) get
+    a usage example or a reference to one in the doc comment.
+  - File-level comments for files that implement a single cohesive concept
+    (e.g., "// This file implements the audit hash-chain append-only writer.").
+  - No dead code, no commented-out code, no TODO without a linked issue.
+  - godoc readability: comments are complete sentences, start with the
+    identifier name, and read as natural English prose.
+- Errors wrapped with context (fmt.Errorf("doing X: %w", err)).
 - No new dependency without listing name+license+reason in the PR body.
 - All listeners bind 127.0.0.1 unless the spec says otherwise.
 - Every security claim gets a NEGATIVE test (prove the bad path is blocked).
@@ -664,7 +681,8 @@ Every implementation PR must include:
 
 No PR merges without: green CI, verifier-worker gate evidence, orchestrator
 spec-review ACCEPT, required adversary PASS or documented "not invoked" risk
-decision, and an updated status dashboard.
+decision, documentation standard compliance check (§0.2), and an updated
+status dashboard.
 
 ### 0.2.2a Canonical gate commands
 Every implementation issue must name one binary Makefile gate. Friendly
