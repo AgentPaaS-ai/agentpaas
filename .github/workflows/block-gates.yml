@@ -14,9 +14,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.26'
       - name: Install tools
-        run: brew install buf protoc-gen-go protoc-gen-go-grpc protoc-gen-grpc-gateway golangci-lint
+        run: |
+          brew install buf protoc-gen-go protoc-gen-go-grpc golangci-lint
+          # protoc-gen-grpc-gateway is not on Homebrew — install via go
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
       - name: Run block1-gate
         run: make block1-gate
 
