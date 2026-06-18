@@ -39,10 +39,19 @@ type Daemon struct {
 	started  bool
 	stopped  bool
 	lockFile *os.File
+	lockIno  lockIno
 	pidFile  string
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
+}
+
+// lockIno holds the inode of the lock file at the time the flock was
+// acquired. It is used to detect whether the lock file has been deleted
+// and recreated (which would create a new inode and bypass the flock).
+type lockIno struct {
+	dev uint64
+	ino uint64
 }
 
 // Option configures the Daemon.
@@ -89,7 +98,30 @@ func New(paths *home.HomePaths, version VersionInfo, opts ...Option) (*Daemon, e
 		return nil, fmt.Errorf("daemon: flock error on %s: %w", paths.Lock, err)
 	}
 
+	// Verify the lock file inode hasn't been replaced between Open and Flock.
+	// If the file was deleted and a new one created at the same path, the
+	// FD's inode will differ from the path's inode, and the flock on the
+	// old inode provides no protection against a second daemon.
+	li, err := lockFileInode(lockFile)
+	if err != nil {
+		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+		_ = lockFile.Close()
+		return nil, fmt.Errorf("daemon: cannot stat lock file %s: %w", paths.Lock, err)
+	}
+	pathFi, err := os.Stat(paths.Lock)
+	if err != nil {
+		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+		_ = lockFile.Close()
+		return nil, fmt.Errorf("daemon: cannot stat lock file path %s: %w", paths.Lock, err)
+	}
+	if li.dev != uint64(pathFi.Sys().(*syscall.Stat_t).Dev) || li.ino != pathFi.Sys().(*syscall.Stat_t).Ino {
+		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+		_ = lockFile.Close()
+		return nil, fmt.Errorf("daemon: lock file %s was replaced (inode mismatch) — refusing to start", paths.Lock)
+	}
+
 	d.lockFile = lockFile
+	d.lockIno = li
 	return d, nil
 }
 
@@ -127,6 +159,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Ensure home directory exists with correct permissions.
 	if err := home.Ensure(d.paths); err != nil {
 		return fmt.Errorf("daemon: home setup: %w", err)
+	}
+
+	// After Ensure, verify the lock file hasn't been replaced. Ensure may
+	// recreate runtime files that were deleted, and a recreated lock file
+	// would have a new inode with no flock held.
+	if err := d.reacquireLock(); err != nil {
+		return fmt.Errorf("daemon: lock file verification after Ensure: %w", err)
 	}
 
 	// Validate permissions before serving.
@@ -328,5 +367,88 @@ func CheckRoot(uid int, allowRoot bool) error {
 	if uid == 0 && !allowRoot {
 		return fmt.Errorf("daemon: refusing to run as root — use --allow-root-for-test to bypass (not recommended for production)")
 	}
+	return nil
+}
+
+// lockFileInode returns the device and inode number of the open file.
+func lockFileInode(f *os.File) (lockIno, error) {
+	fi, err := f.Stat()
+	if err != nil {
+		return lockIno{}, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return lockIno{}, fmt.Errorf("unexpected file info type %T", fi.Sys())
+	}
+	return lockIno{dev: uint64(st.Dev), ino: st.Ino}, nil
+}
+
+// reacquireLock checks whether the lock file on disk still refers to the
+// same inode as the open FD. If the inode differs (because the file was
+// deleted and recreated), it re-opens the new file, re-acquires the flock,
+// and updates the daemon's lockFile and lockIno fields.
+//
+// NOTE: d.mu MUST be held by the caller.
+func (d *Daemon) reacquireLock() error {
+	li, err := lockFileInode(d.lockFile)
+	if err != nil {
+		return fmt.Errorf("daemon: cannot stat lock file FD: %w", err)
+	}
+	pathFi, err := os.Stat(d.paths.Lock)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Lock file was deleted and not recreated — we still hold
+			// the flock on the old inode, but there's nothing to do.
+			return nil
+		}
+		return fmt.Errorf("daemon: cannot stat lock file path %s: %w", d.paths.Lock, err)
+	}
+	pathSt := pathFi.Sys().(*syscall.Stat_t)
+
+	// If inodes match, the lock file hasn't been replaced.
+	if li.dev == uint64(pathSt.Dev) && li.ino == pathSt.Ino {
+		return nil
+	}
+
+	// The lock file was replaced — open the new file and re-acquire the flock.
+	newFile, err := os.OpenFile(d.paths.Lock, os.O_RDWR, 0600)
+	if err != nil {
+		return fmt.Errorf("daemon: cannot re-open replaced lock file %s: %w", d.paths.Lock, err)
+	}
+
+	if err := syscall.Flock(int(newFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = newFile.Close()
+		if err == syscall.EWOULDBLOCK {
+			return fmt.Errorf("daemon: lock file %s replaced and already held by another process", d.paths.Lock)
+		}
+		return fmt.Errorf("daemon: flock error on replaced lock file %s: %w", d.paths.Lock, err)
+	}
+
+	// Verify the new file's inode is stable.
+	newLI, err := lockFileInode(newFile)
+	if err != nil {
+		_ = syscall.Flock(int(newFile.Fd()), syscall.LOCK_UN)
+		_ = newFile.Close()
+		return fmt.Errorf("daemon: cannot stat new lock file FD: %w", err)
+	}
+	newPathFi, err := os.Stat(d.paths.Lock)
+	if err != nil {
+		_ = syscall.Flock(int(newFile.Fd()), syscall.LOCK_UN)
+		_ = newFile.Close()
+		return fmt.Errorf("daemon: cannot stat new lock file path: %w", err)
+	}
+	newPathSt := newPathFi.Sys().(*syscall.Stat_t)
+	if newLI.dev != uint64(newPathSt.Dev) || newLI.ino != newPathSt.Ino {
+		_ = syscall.Flock(int(newFile.Fd()), syscall.LOCK_UN)
+		_ = newFile.Close()
+		return fmt.Errorf("daemon: new lock file was also replaced during re-acquisition")
+	}
+
+	// Release the old lock and swap.
+	_ = syscall.Flock(int(d.lockFile.Fd()), syscall.LOCK_UN)
+	_ = d.lockFile.Close()
+	d.lockFile = newFile
+	d.lockIno = newLI
+
 	return nil
 }
