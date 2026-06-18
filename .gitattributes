@@ -6,6 +6,9 @@
 
 # Generated Go code — mark as generated for linguist
 *_gen.go linguist-generated=true
+*.pb.go linguist-generated=true
+*_grpc.pb.go linguist-generated=true
+*.pb.gw.go linguist-generated=true
 
 # Vendored third-party — collapse in diffs by default
 third_party/** linguist-vendored=true
