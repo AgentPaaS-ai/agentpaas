@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
-  <!-- Eye shape -->
-  <path d="M24 14C14 14 6 24 6 24s8 10 18 10 18-10 18-10-8-10-18-10z" stroke="#1E3A5F" stroke-width="2.5"/>
-  <circle cx="24" cy="24" r="5" stroke="#CB3C60" stroke-width="2.5"/>
-  <!-- Magnifying glass overlay -->
-  <circle cx="32" cy="20" r="6" stroke="#1E3A5F" stroke-width="2" opacity="0.4"/>
-  <line x1="37" y1="24" x2="40" y2="28" stroke="#1E3A5F" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
-</svg>

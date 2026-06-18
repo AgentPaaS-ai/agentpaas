@@ -1,32 +1,43 @@
-# AgentPaaS.ai
+# AgentPaaS
 
-Landing page for [AgentPaaS.ai](https://www.agentpaas.ai) — Autonomous Agent Platform as a Service.
+AgentPaaS is a governed, local-first runtime for packaging, running, and
+observing AI-generated agents with policy enforcement, auditability, identity,
+secrets handling, and a path to Hermes-first operator workflows.
 
-## Structure
+This repository is currently in planning/decomposition mode. The active source
+of truth is:
 
-```
+- [agentpaas-prd-v4-master.md](agentpaas-prd-v4-master.md) - product and
+  technical definition.
+- [agentpaas-execution-plan-v1.md](agentpaas-execution-plan-v1.md) - block by
+  block implementation plan and gates.
+- [docs/agentpaas-subtask-decomposition-v1.md](docs/agentpaas-subtask-decomposition-v1.md)
+  - coding-agent sized issue breakdown for the orchestrator.
+
+## Repository Layout
+
+```text
 agentpaas/
-├── README.md
-└── landing-page/          ← Cloudflare Pages root
-    ├── index.html          ← Main landing page
-    ├── icon.svg            ← Primary brand mark
-    ├── logo-horizontal.svg ← Full horizontal lockup
-    ├── favicon.svg         ← SVG favicon
-    ├── favicon-16.png      ← PNG favicon 16x16
-    ├── favicon-32.png      ← PNG favicon 32x32
-    └── app-icon-512.png    ← Apple touch / OG image
+├── agentpaas-prd-v4-master.md
+├── agentpaas-execution-plan-v1.md
+├── docs/
+│   ├── agentpaas-subtask-decomposition-v1.md
+│   └── archive/
+│       ├── checkpoints/
+│       ├── landing-page-legacy/
+│       └── prd-history/
+└── landing-page/
+    ├── README.md
+    └── index.html
 ```
 
-## Brand Colors
+## Archive Policy
 
-| Role | Hex |
-|------|-----|
-| Navy (primary) | `#1E3A5F` |
-| Navy Light | `#2D5A8E` |
-| Rose (accent) | `#CB3C60` |
-| Rose Dark | `#9E2D4A` |
-| Slate Light (bg) | `#F0F4F8` |
+Superseded PRDs, checkpoints, and unused landing-page generation assets are
+kept under `docs/archive/` for provenance. They are not active implementation
+inputs unless a task explicitly references them.
 
-## Deploy
+## Landing Page
 
-Drop the contents of `landing-page/` into your Cloudflare Pages project root.
+The current static landing page remains in `landing-page/`. See
+[landing-page/README.md](landing-page/README.md) for deploy notes.

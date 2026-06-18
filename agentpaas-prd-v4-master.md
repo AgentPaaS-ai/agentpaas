@@ -14,7 +14,8 @@ code into a signed, sandboxed, policy-controlled, fully audited workload in
 one command.
 
 ## 1.2 The wedge (fixed from v2.0)
-- **Source of agents:** AI coding tools (Claude Code, Codex, Hermes, Cursor).
+- **Source of agents:** Hermes only for the P1 demo. Claude Code, Codex,
+  Cursor, and other coding-tool sources move to P2.
 - **Blocker we remove:** security/platform sign-off. AI-written code + live
   credentials + autonomous egress = "no" from every security team today.
 - **Buyer:** staff platform engineer (champion), VP Eng/CISO (economic buyer).
@@ -33,7 +34,7 @@ one command.
 ## 1.3 Personas (corrected from v2.0)
 | Persona | Phase | Relationship | What they need |
 |---|---|---|---|
-| Developer using coding agents | P1 | OSS user, advocate | Zero-friction safe local runtime; instant observability; never hand-writes Docker flags |
+| Developer using Hermes | P1 | OSS user, advocate | Zero-friction safe local runtime; instant observability; never hand-writes Docker flags |
 | Platform engineer | P1–P2 | Champion → buyer | Policy-as-code in git, signed artifacts, SBOM, audit export, fleet view (P2) |
 | Security engineer / CISO | P2 | Approver → economic buyer | Default-deny egress, tamper-evident audit, secrets never in images, compliance pack |
 | Ops power user (RevOps etc.) | P3 | End user of blessed registry | Form-based launch of pre-approved agents; never sees containers |
@@ -50,10 +51,10 @@ one command.
 4. One command, one signed artifact, one audit trail per agent.
 5. Deployment topology (single container vs sidecar) is a flag, never a concept.
 6. Secure by default, overridable only by explicit, logged, git-versioned policy.
-7. Agentic development tools are the primary P1 operator. Codex, Claude Code,
-   Hermes, Cursor, and similar tools should be able to build, package, run,
-   diagnose, repair, and rerun agents through stable machine-readable
-   contracts. Humans should mainly approve sensitive trust-boundary changes:
+7. Hermes is the primary P1 operator. It should be able to build, package,
+   run, diagnose, repair, and rerun agents through stable machine-readable
+   contracts. Claude Code, Codex, Cursor, and other coding-tool integrations
+   are P2. Humans should mainly approve sensitive trust-boundary changes:
    new egress, credential binding, exposed listeners, direct leases, audit
    purge/export, and destructive actions.
 
@@ -602,8 +603,8 @@ audited under tenant control.
    - `GetRun(run_id)`, `CancelRun(run_id)`, `ListRuns(agent, filter)`
    - Auth: `Authorization: Bearer <api-key>` or mTLS workload cert. The
      Trigger API requires auth even on loopback because local callers include
-     Codex, Hermes, Claude Code, local apps, CI jobs, browser-originated local
-     requests, and other processes on the developer machine. Loopback reduces
+     Hermes, local apps, CI jobs, browser-originated local requests, and
+     other processes on the developer machine. Loopback reduces
      network exposure, but it is not the authorization boundary.
    - REST CORS is deny-by-default. Browser-originated local requests do not
      receive ambient trust from being on localhost; they must present an
@@ -683,9 +684,11 @@ AgentPaaS has two MCP roles that must stay distinct:
 1. **Agent as MCP client:** a governed agent calls local or remote MCP
    servers to use tools and data sources. This is part of the runtime
    security surface.
-2. **AgentPaaS as MCP server:** coding tools call AgentPaaS MCP tools such as
-   `agentpaas_pack`, `agentpaas_run`, and `agentpaas_audit_query`. This is the
-   distribution integration built in Block 13.
+2. **AgentPaaS as an integration server for coding tools:** Hermes calls
+   AgentPaaS tools such as `agentpaas_pack`, `agentpaas_run`, and
+   `agentpaas_audit_query` through the Block 13 Hermes plugin. This is a P1
+   Hermes-only distribution integration. A generic AgentPaaS MCP server for
+   Claude Code, Codex, Cursor, and other clients is P2.
 
 P1 must support the first role at a basic governed level:
 - Local and remote MCP servers must be declared in the `mcp_servers` section of
@@ -785,6 +788,25 @@ manifest is canonical JSON and is itself signed by the package identity key.
 `agent verify agent.lock` wraps the offline verification path, including
 lockfile signature verification, image signature verification with the AID
 public key, digest checks, SBOM digest checks, and policy digest checks.
+
+### 2.8.1 Prompt/config update path for deployed agents
+P1 deployed agents are immutable. Agent prompts, system instructions,
+templates, tool-routing instructions, and other behavior-changing config must
+live in the agent source tree or `agent.yaml`-referenced files and are part of
+the `build input digest`. AgentPaaS must not support in-place mutation of a
+running/deployed agent's prompt, harness files, image filesystem, or
+`agent.lock`.
+
+The supported P1 path for changing an already deployed agent's prompt is:
+edit the project source/config → `agent validate --json` → `agent pack --json`
+→ `agent verify agent.lock` → `agent run --json`. This creates a new signed
+artifact with a new digest and audit trail. Prior runs remain tied to the old
+`agent.lock`, image digest, policy digest, and harness version.
+
+If the Hermes plugin/skill instructions change, that is an integration update,
+not an agent artifact update. If the AgentPaaS harness behavior changes, that
+is a runtime release/update; affected agents must be repacked before they can
+claim the new harness version.
 
 ## 2.9 agent.yaml + policy.yaml (the developer contract)
 ```yaml
@@ -927,17 +949,16 @@ Single-page app served by daemon (embedded assets, no CDN at runtime):
   sampling/removal of security-relevant canonical audit events even when OTel
   telemetry is pruned.
 
-## 2.10.5 Agentic operator contract (P1)
-AgentPaaS P1 is designed for agentic development tools to operate the runtime
-on the user's machine with little human hand-holding. The human asks Codex,
-Claude Code, Hermes, Cursor, or another coding agent to build/change/debug an
-agent; the coding agent uses AgentPaaS to scaffold, package, run, observe,
-diagnose, repair, and rerun safely. AgentPaaS is the security and governance
-boundary around that loop.
+## 2.10.5 Hermes operator contract (P1)
+AgentPaaS P1 is designed for Hermes to operate the runtime on the user's
+machine with little human hand-holding. The human asks Hermes to
+build/change/debug an agent; Hermes uses AgentPaaS to scaffold, package, run,
+observe, diagnose, repair, and rerun safely. AgentPaaS is the security and
+governance boundary around that loop. Other coding-tool operators move to P2.
 
 The key product rule: human-readable CLI and dashboard screens are views over
-stable machine-readable contracts. Agentic tools should not scrape terminal
-text or dashboard HTML to understand the system.
+stable machine-readable contracts. Hermes should not scrape terminal text or
+dashboard HTML to understand the system.
 
 P1 operator APIs provide structured outputs for:
 - project validation and readiness (`ValidateAgentProject`)
@@ -974,13 +995,13 @@ excerpts, `agent.lock` digest, policy digest, trust-anchor fingerprint, and
 verification commands.
 
 ### Safe autonomy boundary
-Agentic tools may automatically repair:
+Hermes may automatically repair:
 - agent code and tests inside the project root
 - `agent.yaml`
 - dependency declarations and lockfiles
 - non-security config that does not broaden runtime authority
 
-Agentic tools may propose but must not silently apply:
+Hermes may propose but must not silently apply:
 - new egress destinations or wildcard domains
 - credential bindings, direct leases, or secret changes
 - webhook destinations
@@ -994,10 +1015,10 @@ P1 requires explicit user/daemon confirmation for those trust-boundary
 changes. Confirmed changes are logged and, where applicable, represented as
 git-versioned policy/config changes.
 
-### Golden agentic workflow
+### Golden Hermes workflow
 The P1 design is considered coherent only if this loop works on a clean
 developer machine:
-1. A coding agent creates or modifies a Python/LangGraph/CrewAI agent.
+1. Hermes creates or modifies a Python/LangGraph/CrewAI agent.
 2. It runs `agent init --from-code --noninteractive` to scaffold or reconcile
    `agent.yaml` and a minimal default-deny `policy.yaml`.
 3. It runs `agent validate --json` and repairs local code/config issues.
@@ -1073,61 +1094,43 @@ negative tests for these cases.
 
 ---
 
-# 4. CODING-TOOL INTEGRATIONS (DISTRIBUTION-AS-PRODUCT)
+# 4. HERMES INTEGRATION (DISTRIBUTION-AS-PRODUCT)
 
-This is the highest-leverage distribution channel and it is buildable now.
-Integrations are thin clients of the P1 agentic operator contract in §2.10.5:
-they should call stable AgentPaaS tools and JSON/protobuf APIs, not scrape
-human dashboard/terminal output.
+This is the highest-leverage P1 distribution channel and it is buildable now.
+The P1 integration is a Hermes plugin/skill that is a thin client of the P1
+Hermes operator contract in §2.10.5: it should call stable AgentPaaS tools and
+JSON/protobuf APIs, not scrape human dashboard/terminal output.
 
-## 4.1 Claude Code (plugin — confirmed extensibility surface)
-Claude Code supports Plugins that bundle Skills + Hooks + MCP servers.
-Build `agentpaas` plugin:
-- **Skill** `deploy-agent`: when the user says "deploy/run this agent
-  safely", the skill scaffolds `agent.yaml` + `policy.yaml` (inferring
-  egress needs from the code's HTTP calls — propose, never auto-allow),
-  runs `agent pack`, then `agent run`, returns dashboard URL.
-- **PreToolUse hook**: optional guardrail intercepting Claude Code's Bash
-  tool when it tries `docker run` on raw agent code — suggests `agent run`
-  ("governed alternative available").
-- **MCP server** `agentpaas-mcp`: exposes `agentpaas_init_project`,
-  `agentpaas_validate_project`, `agentpaas_doctor`, `agentpaas_pack`,
-  `agentpaas_run`, `agentpaas_stop`, `agentpaas_status`,
-  `agentpaas_get_run_timeline`, `agentpaas_logs`, `agentpaas_policy_show`,
-  `agentpaas_explain_policy_denial`, `agentpaas_recommend_policy_patch`,
-  `agentpaas_audit_query`, `agentpaas_export_audit`,
-  `agentpaas_summarize_run`, `agentpaas_explain_failure`, and
-  `agentpaas_next_action` as MCP tools so Claude Code operates the runtime
-  conversationally. These MCP tools are schema-tested thin wrappers over
-  §2.10.5, not a separate behavior surface.
-- Distribution: publish to community plugin marketplaces + our own tap.
+## 4.1 Hermes
+- Hermes plugin/skill `agentpaas-deploy` (SKILL.md plus native tool/MCP setup
+  if Hermes requires it): trigger phrases, exact fallback CLI commands,
+  pitfalls, verification, and the full deploy loop.
+- The plugin teaches Hermes to detect agent code, run
+  `agentpaas_init_project` or `agent init --from-code --noninteractive`,
+  validate, pack, run, inspect timeline/dashboard, explain policy denials,
+  propose policy patches, wait for explicit confirmation, rerun, and export a
+  signed audit bundle.
+- Terminal commands remain the fallback path so the P1 demo is not blocked by
+  a Hermes integration setup issue.
 
-## 4.2 Hermes
-- Hermes skill `agentpaas-deploy` (SKILL.md): trigger phrases, native MCP
-  setup, exact fallback CLI commands, pitfalls, verification. Hermes drives
-  the full P1 loop through the same `agentpaas-mcp` server where available;
-  terminal commands remain the fallback path.
-
-## 4.3 Codex / Cursor / generic
-- Codex: AGENTS.md instruction pack + the same MCP server (Codex speaks MCP).
-- Cursor: rules file + MCP.
-**Decision: the MCP server is THE single integration artifact; per-tool
-skins (skill, plugin, rules) are thin wrappers around it.**
+## 4.2 P2 coding-tool integrations
+Claude Code, Codex, Cursor, and a generic AgentPaaS MCP server are P2. P1
+must not claim marketplace distribution, first-party plugins, or clean-machine
+demo gates for those tools.
 
 Integration safety rules:
-- Contract parity is release-gated: every MCP tool must match the §2.10.5
-  operator schemas, preserve stable error categories/evidence refs, and fail
-  closed on schema/version mismatch.
-- MCP responses separate trusted control fields from untrusted source/log/trace
-  excerpts so prompt-injected text cannot act as instructions.
+- Contract parity is release-gated: every Hermes integration tool must match
+  the §2.10.5 operator schemas, preserve stable error categories/evidence
+  refs, and fail closed on schema/version mismatch.
+- Hermes integration responses separate trusted control fields from untrusted
+  source/log/trace excerpts so prompt-injected text cannot act as instructions.
 - Trust-boundary actions return confirmation requests, not applied changes:
   policy broadening, credential binding, direct leases, exposed listeners,
   budget increases, remote audit export, audit purge/deletion, gate disabling,
   and stopping unrelated runs require daemon/UI/CLI confirmation and audit.
-- P1 clean-machine integration proof measures only the post-install deploy
-  flow; after AgentPaaS is installed, Claude Code and Hermes native MCP demos
-  must each reach a governed running agent with visible denial/audit evidence
-  in under 10 minutes.
+- P1 clean-machine integration proof measures only the post-install Hermes
+  deploy flow. After AgentPaaS is installed, Hermes must reach a governed
+  running agent with visible denial/audit evidence in under 10 minutes.
 
 ---
 
@@ -1146,9 +1149,8 @@ Integration safety rules:
 3. **Week 4/5: OSS/demo launch.** Apache-2.0 runtime; BSL control plane later
    (stated publicly day one). Launch assets: 3-min egress-block demo video,
    "Letting AI-written agents into prod: a security checklist" post, HN
-   launch, MCP server listed in registries, Claude Code plugin in
-   marketplaces, Hermes native MCP setup docs, and a signed offline
-   verification bundle.
+   launch, Hermes plugin/skill setup docs, and a signed offline verification
+   bundle. Broader coding-tool plugins and MCP registry distribution are P2.
 4. **Weeks 6–9: P2 customer-facing release track.** Linux certification,
    team/fleet management, enterprise packaging, support posture, commercial
    observability, opt-in telemetry, design-partner onboarding, upgrade/rollback
@@ -1195,7 +1197,7 @@ a shipped iPaaS that doesn't exist — credibility risk.
      "Watch the 3-minute demo." Kill "Request early access" as primary —
      OSS dev tools convert on install, not on forms.
 2. **Replace abstract feature grid with the 60-second story** (terminal
-   animation): Claude Code writes agent → `agent pack` (shows signing+SBOM)
+   animation): Hermes writes agent → `agent pack` (shows signing+SBOM)
    → `agent run` → dashboard → agent tries unauthorized call → BLOCKED,
    audit entry appears → `agent audit export`. This is the whole pitch.
 3. **"Built for the people who say no" section** targeting security:
@@ -1239,9 +1241,9 @@ Phase 1 is DONE when all of the following are demonstrably true:
 3. A LangGraph agent, a CrewAI-generated Python project, and a plain-Python
    agent each pack and run through the generic Python harness without a custom
    Dockerfile.
-4. Claude Code (via plugin) and Hermes (via native MCP skill) can each take
-   freshly generated agent code to running-governed state conversationally in
-   < 10 minutes after AgentPaaS is installed.
+4. Hermes (via the P1 plugin/skill) can take freshly generated agent code to
+   running-governed state conversationally in < 10 minutes after AgentPaaS is
+   installed. Claude Code, Codex, Cursor, and generic MCP integrations are P2.
 5. `agent audit export` output passes `agent audit verify` on another
    machine, and a deliberately tampered line is detected.
 6. Budget enforcement kills a runaway loop at exactly the configured caps

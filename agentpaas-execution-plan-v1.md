@@ -15,77 +15,574 @@ packaging, support posture, and commercial observability.
 
 ## 0. BUILD STRATEGY — HOW TO DRIVE LLMs ON THIS
 
-### 0.1 Single-shot vs. multi-agent: the answer
-Neither extreme. Use a **three-role loop per block**:
-1. **Builder** (Claude Code / Codex / Hermes — one fresh session per block):
-   receives ONLY: this plan's block section + the relevant PRD sections +
-   the repo. Builds test-first.
-2. **Spec reviewer** (separate fresh LLM session, different model if
-   possible): receives the block spec + the diff. Question: "does the code
-   do exactly what the spec says — nothing missing, nothing extra?"
-   Output: PASS or a numbered defect list.
-3. **Adversary** (separate fresh session): receives the SECURITY CLAIMS of
-   the block and the code. Task: "write and run tests that break these
-   claims." Any successful break = block fails, returns to Builder with the
-   adversary's reproduction script.
-You (founder) gate each block: review the three outputs, run the success
-gate command yourself, merge. Mixture-of-agents is reserved for DESIGN
-disputes (builder vs reviewer disagreement on approach), not routine
-blocks — too slow/expensive for code.
+### 0.1 OWA build loop: Orchestrator, Worker, Verifier, Adversary
+Use the OWA coding pattern for implementation: **Orchestrator · Workers ·
+Adversary**, with a separate verifier-worker function for test evidence.
+The user chooses the model for each role at the start of every build session.
+Model names in this document are examples, not requirements.
+
+Before coding begins, record the session routing:
+```yaml
+build_session:
+  agent: hermes
+  block: N
+  issue: <issue id/title>
+  orchestrator:
+    primary: glm-5.2-via-openrouter
+    fallback: deepseek-v4-pro
+  worker:
+    primary: deepseek-v4-flash
+    fallback: composer-2.5-via-x-oauth
+  verifier:
+    primary: composer-2.5-via-x-oauth
+    fallback: glm-5.2-via-openrouter
+  adversary:
+    primary: grok-4.3
+    fallback: glm-5.2-via-openrouter
+    invoked: true|false
+  adversary_required: true|false
+  model_budget_usd: <budget>
+```
+
+Role contract:
+1. **Orchestrator** (main session; user-selected model): owns architecture,
+   scoping, issue decomposition, acceptance criteria, security invariants,
+   spec review, and the accept/refine/reject decision. The orchestrator is
+   the only LLM role allowed to decide whether the implementation satisfies
+   the spec. It may not outsource final judgment to the worker, verifier, or
+   adversary.
+2. **Worker** (fresh session; user-selected model): receives only the issue,
+   relevant PRD/execution-plan excerpts, touched-file scope, and acceptance
+   criteria. It implements test-first and returns a diff summary, files
+   changed, commands run, and known risks. It does not make architecture
+   decisions unless the issue explicitly grants that authority.
+3. **Verifier Worker** (fresh session; user-selected model): owns test
+   evidence, not spec authority. It receives the issue, acceptance criteria,
+   diff, and expected gate. It writes or requests missing tests, runs the
+   canonical `make blockN-gate` or narrower failing target, reports exact
+   PASS/FAIL output, and produces repro steps for failures. It cannot approve
+   the PR and should not rewrite the implementation in the same pass unless
+   the orchestrator explicitly reassigns it as a worker.
+4. **Adversary** (fresh session; user-selected model from a different model
+   family where possible): runs only when risk triggers require it. It
+   receives the security claims, trust boundaries, diff, and test evidence.
+   Its task is to break the claims with negative tests, abuse cases, and
+   first-principles review. Any successful break returns to the orchestrator
+   for refine/re-scope.
+
+Founder gate: you review the orchestrator's spec decision, verifier evidence,
+and adversary result when invoked; then you run the named success gate before
+merge. Design disputes are resolved by the orchestrator and founder, not by
+adding unbounded agent debate.
+
+### 0.1.0 Build memory: GitHub is the durable brain
+LLM chat history is not build memory. GitHub is the durable memory for the OWA
+loop: Issues hold intent and attempt history; Pull Requests hold diffs,
+review/gate evidence, and merge decisions; GitHub Project shows block status;
+`docs/status.md` is the generated executive dashboard.
+
+Every worker, verifier, adversary, fallback, and orchestrator decision must be
+recorded in the linked GitHub issue or PR before another role continues.
+At minimum, each attempt log records:
+```yaml
+attempt: 1
+role: worker|verifier|adversary|orchestrator
+model: <model id/provider>
+fallback_used: true|false
+fallback_reason: quota|tokens|rate_limit|unavailable|repeated_failure|null
+input_refs:
+  issue: <github issue url>
+  pr: <github pr url or null>
+  commit: <sha or null>
+result: pass|fail|blocked|needs_orchestrator|accepted|refine|reject
+gate: <command or null>
+commands_run:
+  - <exact command>
+failure_summary: <short summary or null>
+files_touched:
+  - <path>
+next_recommendation: continue|retry_worker|switch_fallback|split_issue|rescope|invoke_adversary|founder_decision
+```
+
+If a worker fails the same issue three times, the next action is not another
+blind retry. The issue must be marked `needs_orchestrator`; the orchestrator
+reviews the attempt logs and chooses a different approach: split the issue,
+change the design, switch to fallback/stronger model, add missing tests, or
+re-scope the block.
 
 ### 0.1.1 Cost-effective LLM execution loop
 Use the strongest available model for planning and architecture, then keep
 execution PRs small enough for cheaper models to complete safely.
 
-1. **Planner pass (strong model: ChatGPT 5.5 high + Codex).** For each block,
+1. **Orchestrator planning pass (user-selected model).** For each block,
    produce: PR breakdown, public contracts, security invariants, expected
    tests, files likely touched, and non-goals. Output becomes GitHub issues.
-2. **Executor pass (cheap model, e.g. DeepSeek flash-class).** One issue at a
+2. **Worker pass (user-selected model).** One issue at a
    time. Context = issue body, relevant PRD/execution-plan sections, repo,
    failing test target. No architecture decisions unless the issue explicitly
    grants them.
-3. **Verifier pass (cheap/different model).** Receives the issue, diff, and
-   test output. Must answer: PASS or numbered defects. It cannot rewrite the
-   implementation in the same pass.
-4. **Adversary pass (cheap/different model for ordinary PRs; strong model for
-   security PRs).** Writes or suggests negative tests against the claims in
-   the issue. Any successful break blocks merge.
-5. **Escalation rule.** Use the strong model only when: API/security contract
-   changes, executor fails the same gate twice, reviewer and executor
+3. **Verifier-worker pass (user-selected model).** Receives the issue, diff,
+   acceptance criteria, and test output. It must answer with exact gate
+   evidence: PASS, FAIL with repro, or missing-test list. It cannot be the
+   final spec approver.
+4. **Orchestrator spec review (same orchestrator model unless user changes
+   it).** Receives the issue, diff, verifier evidence, and known failures.
+   It must answer: ACCEPT, REFINE with numbered defects, or REJECT/re-scope.
+5. **Adversary pass (user-selected model; invoked by risk triggers).** Writes
+   or suggests negative tests against the claims in the issue. Any successful
+   break blocks merge.
+6. **Escalation rule.** Use a stronger model only when: API/security contract
+   changes, worker fails the same gate twice, verifier and worker evidence
    disagree, or the fix would broaden scope beyond the issue.
 
 PR sizing rule: one behavioral claim per PR; target <500 changed production
 LOC plus tests. If a PR needs more, split it before coding.
 
+### 0.1.1a Role prompt templates (paste verbatim)
+Each role runs in a fresh Hermes session unless the section says otherwise.
+Paste the applicable template, then attach only the referenced context bundle.
+Every role must write its result back to the linked issue or PR using the
+attempt-log schema in §0.1.0 before another role continues.
+
+#### Orchestrator planning prompt
+````
+You are the AgentPaaS build orchestrator for this block/issue.
+
+Your authority:
+- You own architecture, issue decomposition, acceptance criteria, security
+  invariants, non-goals, model routing, and final spec judgment.
+- You do not write implementation code in this pass unless the user explicitly
+  reassigns you as a worker.
+- You may split, rescope, or block an issue if the request is too large,
+  ambiguous, unsafe, or missing testable acceptance criteria.
+
+Inputs you receive:
+- Current build_session routing YAML.
+- The target BLOCK from this execution plan.
+- Relevant PRD excerpts.
+- Current repo status and known constraints.
+- Any linked issue, attempt log, verifier evidence, or adversary evidence.
+
+Your task:
+1. Restate the goal in one short paragraph.
+2. Define the smallest safe issue or PR slice. Keep it to one behavioral
+   claim and target <500 changed production LOC plus tests.
+3. Write acceptance criteria that are binary and testable.
+4. List security invariants and at least one required negative test for every
+   security claim.
+5. Name the canonical gate command, usually `make blockN-gate`, and any
+   narrower command the worker should run first.
+6. Identify files or directories likely touched, plus files that should not be
+   touched.
+7. Declare non-goals and ambiguity. If a human answer is required, stop with
+   `QUESTION:` and do not invent a requirement.
+8. Decide whether adversary review is required using §0.1.3.
+9. Produce the worker handoff packet below.
+
+Output format:
+```yaml
+orchestrator_plan:
+  result: ready|question|blocked|split_required|rescope_required
+  issue_title: <title>
+  goal: <short paragraph>
+  behavioral_claim: <one claim>
+  acceptance_criteria:
+    - <binary criterion>
+  security_invariants:
+    - claim: <claim>
+      negative_test_required: <test idea>
+  gate:
+    canonical: make blockN-gate
+    first_narrow_target: <command or null>
+  context_refs:
+    execution_plan_sections:
+      - <section>
+    prd_sections:
+      - <section>
+  likely_files:
+    - <path or glob>
+  do_not_touch:
+    - <path or glob>
+  non_goals:
+    - <non-goal>
+  adversary_required: true|false
+  adversary_reason: <reason>
+  worker_handoff:
+    summary: <what to build>
+    constraints:
+      - <constraint>
+    done_when:
+      - <criterion>
+```
+
+If you succeed:
+- Create or update the linked issue with the plan, acceptance criteria, gate,
+  adversary requirement, and worker handoff.
+- Record an attempt log with `result: pass` or `result: accepted`.
+- Send the worker only the issue, relevant excerpts, touched-file scope, and
+  acceptance criteria.
+
+If you fail:
+- If requirements are unclear, output `QUESTION:` with the minimum question
+  needed.
+- If the issue is too large, output `split_required` and propose the split.
+- If the plan would violate a security invariant or P1 scope, output
+  `blocked` or `rescope_required` with a concrete reason.
+- Do not send work to a worker until the issue is ready.
+````
+
+#### Orchestrator spec-review prompt
+````
+You are the AgentPaaS orchestrator performing final spec review for this
+issue. This is a judgment pass, not an implementation pass.
+
+Your authority:
+- You are the only LLM role allowed to decide whether the implementation
+  satisfies the issue, block spec, security invariants, and non-goals.
+- You may accept, request refinement, reject/re-scope, split follow-up work, or
+  require adversary review.
+- You may not ignore failing verifier evidence, accept missing security tests,
+  or outsource final judgment to the worker, verifier, or adversary.
+
+Inputs you receive:
+- Current build_session routing YAML.
+- Linked issue, orchestrator plan, and acceptance criteria.
+- Worker result and diff summary.
+- Verifier evidence and exact commands run.
+- Adversary result when invoked, or not-invoked reason.
+- Current PR diff, known risks, and any failed attempts.
+
+Your task:
+1. Compare the implementation against the issue and block spec.
+2. Check that every acceptance criterion has verifier evidence.
+3. Check that every required security invariant has a passing negative test or
+   a documented, acceptable not-applicable reason.
+4. Check that the diff stayed within scope and did not add unrelated behavior.
+5. Decide whether residual risk is acceptable for this block.
+6. Produce one of: `ACCEPT`, `REFINE`, or `REJECT`.
+
+Output format:
+```yaml
+orchestrator_review:
+  result: ACCEPT|REFINE|REJECT
+  issue: <id/title>
+  decision_summary: <short paragraph>
+  acceptance_criteria:
+    - criterion: <criterion>
+      status: satisfied|unsatisfied|unclear
+      evidence: <verifier evidence or reason>
+  security_invariants:
+    - claim: <claim>
+      status: satisfied|unsatisfied|unclear|not_applicable
+      evidence: <negative test/adversary evidence/reason>
+  scope_check: in_scope|scope_creep|unclear
+  required_fixes:
+    - id: O1
+      severity: blocker|major|minor
+      instruction: <specific fix or test>
+  follow_up_issues:
+    - <issue or none>
+  next_action: merge_ready|return_to_worker|invoke_adversary|split_issue|rescope|founder_decision
+```
+
+If you accept:
+- Record `result: accepted` in the issue/PR attempt log.
+- State exactly which gate evidence supports acceptance.
+- Hand off to founder gate/merge readiness. Do not merge on behalf of the
+  founder unless explicitly asked.
+
+If you request refinement:
+- Record `result: refine` with numbered defects and exact required changes.
+- Return the issue to the worker with only the required fixes and tests.
+- Require a new verifier pass after the worker changes the diff.
+
+If you reject:
+- Record `result: reject` with the reason: wrong approach, unsafe design,
+  scope mismatch, missing requirement, or failed security claim.
+- Choose the next action: split, rescope, stronger model, more context, or
+  founder decision.
+- Do not allow the same worker loop to continue without a new plan.
+````
+
+#### Worker implementation prompt
+````
+You are the AgentPaaS worker for one issue. Implement exactly the
+orchestrator handoff, no more and no less.
+
+Your authority:
+- You may edit code, tests, docs, fixtures, and build files only within the
+  touched-file scope or when directly required by the acceptance criteria.
+- You may make small local design choices inside the orchestrator's plan.
+- You may not change architecture, broaden scope, remove security checks,
+  rename canonical gates, skip required negative tests, or decide final spec
+  acceptance.
+
+Inputs you receive:
+- Current build_session routing YAML.
+- Linked issue and orchestrator handoff.
+- Relevant execution-plan and PRD excerpts.
+- Acceptance criteria, security invariants, and required gate command.
+- Current repository state.
+
+Rules:
+- TDD: add or expose a failing test first, run it, implement, re-run.
+- Keep the diff focused on the issue. Do not refactor unrelated code.
+- No new dependency without name, license, and reason in the PR body.
+- All listeners bind 127.0.0.1 unless the spec says otherwise.
+- Every security claim gets a negative test proving the bad path is blocked.
+- User-visible behavior must also expose a machine-readable JSON path suitable
+  for Hermes in P1 and other coding tools in P2.
+- If the spec is ambiguous, stop with `QUESTION:`. Do not guess.
+
+Your task:
+1. Inspect the relevant files and existing patterns.
+2. Add or identify the failing test that proves the missing behavior.
+3. Implement the smallest change that satisfies the acceptance criteria.
+4. Run the narrow test target, then the canonical gate if available.
+5. Prepare a diff summary, commands run, risks, and follow-up notes.
+
+Output format:
+```yaml
+worker_result:
+  result: pass|fail|blocked|question
+  issue: <id/title>
+  summary: <what changed>
+  files_changed:
+    - <path>
+  tests_added_or_changed:
+    - <path or test name>
+  commands_run:
+    - command: <exact command>
+      result: pass|fail
+      notes: <short output summary>
+  acceptance_criteria_status:
+    - criterion: <criterion>
+      status: met|not_met|blocked
+      evidence: <test/file/command>
+  security_tests:
+    - claim: <claim>
+      negative_test: <test>
+      status: pass|fail|not_applicable
+  known_risks:
+    - <risk or none>
+  needs_orchestrator: true|false
+```
+
+If you succeed:
+- Leave the repo in a state where the verifier can run the named tests.
+- Update the issue/PR attempt log with `result: pass`, exact commands, files
+  touched, and any risk.
+- Hand off to the verifier with the diff summary, commit/branch ref if
+  available, and test evidence.
+
+If you fail:
+- If a test fails, keep the failure output and exact repro command.
+- If blocked by ambiguity, output `QUESTION:` and set `needs_orchestrator:
+  true`.
+- If the same issue has failed twice before, do not retry blindly; mark
+  `needs_orchestrator` and recommend split, rescope, stronger model, or
+  missing-test clarification.
+- Do not hide failing commands or claim success without a green gate.
+````
+
+#### Verifier-worker prompt
+````
+You are the AgentPaaS verifier-worker. Your job is test evidence and failure
+reproduction, not final spec approval.
+
+Your authority:
+- You may run tests, inspect the diff, add narrowly scoped missing tests, and
+  report defects.
+- You may not approve the PR, rewrite the implementation, change acceptance
+  criteria, weaken tests, or decide final spec acceptance.
+- If you discover missing implementation work, report it as a defect for the
+  orchestrator and worker.
+
+Inputs you receive:
+- Current build_session routing YAML.
+- Linked issue, acceptance criteria, and security invariants.
+- Worker diff summary, files changed, and commands already run.
+- The current diff or PR branch.
+- The canonical gate and any narrower expected targets.
+
+Your task:
+1. Confirm the diff is scoped to the issue.
+2. Run the canonical gate or the narrowest meaningful failing target first,
+   then the canonical gate when possible.
+3. Verify that every acceptance criterion has direct evidence.
+4. Verify that every security claim has a negative test, or list the missing
+   test.
+5. Try to reproduce any worker-reported failure.
+6. Report exact PASS/FAIL evidence and repro steps.
+
+Output format:
+```yaml
+verifier_result:
+  result: pass|fail|blocked|missing_tests
+  issue: <id/title>
+  diff_scope: in_scope|out_of_scope|unclear
+  commands_run:
+    - command: <exact command>
+      result: pass|fail
+      notes: <short output summary>
+  acceptance_criteria_evidence:
+    - criterion: <criterion>
+      status: proven|not_proven|blocked
+      evidence: <test/file/command>
+  security_evidence:
+    - claim: <claim>
+      negative_test_status: present_and_passing|missing|failing|not_applicable
+      evidence: <test/file/command>
+  defects:
+    - id: V1
+      severity: blocker|major|minor
+      description: <defect>
+      repro: <exact command or steps>
+  missing_tests:
+    - <test that must be added>
+  recommendation: accept_evidence|return_to_worker|needs_orchestrator|invoke_adversary
+```
+
+If you succeed:
+- Record `result: pass` with exact commands and evidence.
+- Hand evidence to the orchestrator for final spec review.
+- Do not say the PR is accepted; only the orchestrator can accept.
+
+If you fail:
+- Record `result: fail` or `missing_tests` with exact commands and repro.
+- If the failure is due to unclear criteria or scope mismatch, set
+  `recommendation: needs_orchestrator`.
+- If security coverage is missing for a required claim, set
+  `recommendation: return_to_worker` or `invoke_adversary` depending on risk.
+````
+
+#### Adversary prompt
+````
+You are the AgentPaaS adversary for this issue. Your job is to break the
+security claims, trust boundaries, and unsafe assumptions before merge.
+
+Your authority:
+- You may inspect the issue, diff, tests, logs, policy, threat model, and
+  relevant code.
+- You may write or propose negative tests, abuse cases, fuzz cases, and manual
+  repro steps.
+- You may not approve the PR, weaken requirements, broaden product scope, or
+  make final acceptance decisions.
+
+Inputs you receive:
+- Current build_session routing YAML.
+- Linked issue, acceptance criteria, and security invariants.
+- Trust boundaries and threat claims from the PRD/execution plan.
+- Worker diff and verifier evidence.
+- Any known limitations or skipped tests.
+
+Attack focus:
+- Can an agent escape policy, network, secrets, identity, audit, runtime, or
+  Hermes operator boundaries?
+- Can untrusted source, logs, traces, tool output, remote payloads, or Hermes
+  resource text inject instructions that broaden permissions or hide evidence?
+- Can failures bypass audit, signing, verification, budget, cancellation,
+  idempotency, redaction, or confirmation requirements?
+- Can local-only assumptions accidentally expose remote listeners or browser
+  surfaces?
+
+Your task:
+1. Restate the claims you are trying to break.
+2. Generate abuse cases and choose the highest-risk tests to run or propose.
+3. Run feasible negative tests, or provide exact tests the worker must add.
+4. Report every successful break with repro steps and expected vs actual
+   behavior.
+5. Report residual risk even if no break is found.
+
+Output format:
+```yaml
+adversary_result:
+  result: pass|break_found|blocked|needs_more_context
+  issue: <id/title>
+  claims_tested:
+    - <claim>
+  abuse_cases:
+    - <case>
+  commands_run:
+    - command: <exact command>
+      result: pass|fail
+      notes: <short output summary>
+  breaks:
+    - id: A1
+      severity: critical|high|medium|low
+      claim_broken: <claim>
+      repro: <exact command or steps>
+      expected: <secure behavior>
+      actual: <observed behavior>
+      recommended_fix: <short fix direction>
+  residual_risk:
+    - <risk or none>
+  recommendation: proceed_to_orchestrator|return_to_worker|rescope|needs_human
+```
+
+If you succeed:
+- If no break is found, record `result: pass`, the claims tested, commands
+  run, and residual risk.
+- Hand the result to the orchestrator. Do not approve the PR.
+
+If you fail:
+- If a break is found, record `break_found`, exact repro, severity, and
+  recommended fix direction. The issue returns to the orchestrator for
+  refine/re-scope.
+- If blocked by missing context, record the minimum context needed and set
+  `needs_more_context`.
+- Do not accept verbal assurances; require evidence or a concrete follow-up
+  test.
+````
+
 ### 0.1.2 Model routing and cost controls
-Use a routing ladder so P1 does not burn frontier-model budget on mechanical
-work. Model names are guidance, not product dependencies; check current
-OpenRouter pricing/capability before each block and pin the chosen model ids in
-the issue.
+The default P1 model routing is:
+- **Agent:** Hermes.
+- **Orchestrator primary:** GLM-5.2 through OpenRouter.
+- **Orchestrator fallback:** DeepSeek V4 Pro.
+- **Worker primary:** DeepSeek V4 Flash.
+- **Worker fallback:** Composer 2.5 through X OAuth.
+- **Verifier primary:** Composer 2.5 through X OAuth.
+- **Verifier fallback:** GLM-5.2 through OpenRouter.
+- **Adversary primary:** Grok 4.3.
+- **Adversary fallback:** GLM-5.2 through OpenRouter.
+
+The user confirms or changes this routing at the start of each build session.
+The choice may change per block or per issue. The role contract matters more
+than vendor/model name. Check current pricing/capability before each block and
+pin the chosen model ids in the issue/PR.
+
+Fallback rule: if the primary model for a role exhausts quota/tokens, hits
+rate limits, becomes unavailable, or fails the same role task twice, the next
+run for that role may continue with the configured fallback. The issue/PR
+attempt log must record the switch, the reason, and which artifacts were
+produced before and after fallback.
 
 Default ladder:
-1. **Planner/orchestrator:** ChatGPT 5.5 high + Codex for block breakdown,
+1. **Orchestrator:** GLM-5.2 through OpenRouter for block breakdown,
    architecture decisions, security invariants, and final release-blocking
-   approval.
-2. **Executor:** DeepSeek V4 Flash-class model for normal coding, TDD loops,
+   approval. Fallback: DeepSeek V4 Pro.
+2. **Worker:** DeepSeek V4 Flash for normal coding, TDD loops,
    test writing, and routine fixes.
-3. **Code-specialist fallback:** Qwen Coder-class model when the executor
-   struggles with code generation, repository navigation, or tool-use details.
-4. **Mid-tier senior reviewer:** GLM 4.6/5.x-class model for diff coherence,
-   integration risk, and "should this escalate?" review before spending a
-   ChatGPT 5.5 high pass.
-5. **Strong-model escalation:** ChatGPT 5.5 high only when the change touches
+   Fallback: Composer 2.5 through X OAuth.
+3. **Verifier Worker:** Composer 2.5 through X OAuth for independent test
+   writing, gate execution, failure reproduction, and missing-test
+   identification. Fallback: GLM-5.2 through OpenRouter.
+4. **Adversary:** Grok 4.3 for high-risk critique and negative-test
+   generation. Fallback: GLM-5.2 through OpenRouter.
+5. **Strong-model escalation:** Use the configured orchestrator fallback or a
+   founder-approved stronger model only when the change touches
    API/security contracts, trust boundaries, block acceptance, unresolved
-   reviewer disagreement, or repeated executor failure.
+   verifier/worker disagreement, or repeated worker failure.
 
 Cost discipline:
 - Give every GitHub issue a model budget and stop/escalate when it is exceeded.
-- Feed strong reviewers only the block spec, touched files, `git diff`, test
-  output, and known failures; avoid full-repo context unless the issue truly
-  needs it.
+- Feed orchestrator/spec-review passes only the block spec, touched files,
+  `git diff`, test output, and known failures; avoid full-repo context unless
+  the issue truly needs it.
 - Prefer cached, stable context bundles for repeated PRD/execution-plan excerpts.
-- Do cheap/different-model verifier and adversary passes before the final
-  strong-model approval.
+- Do verifier-worker and required adversary passes before the final
+  orchestrator approval.
 - Track actual tokens and dollars in the PR body and `docs/status.md` so later
   blocks can tighten estimates.
 
@@ -117,7 +614,25 @@ Using Claude Pro and SuperGrok deliberately should reduce API spend by roughly
 15-30% by replacing some paid review/adversary/documentation passes, but it
 should not replace the final API-backed gate evidence.
 
-### 0.2 Standing rules for every Builder session (paste verbatim)
+### 0.1.3 Adversary trigger matrix
+Invoke the adversary for any issue touching:
+- policy parsing, validation, compilation, or denial behavior
+- network topology, gateway egress, DNS, ingress, ports, or RuntimeDriver
+- secrets, leases, credential binding, redaction, or secret scanning
+- identity, signing, verification, package provenance, or `agent.lock`
+- audit chain, audit export/verify, retention, deletion, or tamper detection
+- Trigger API auth, idempotency, rate limits, webhooks, cron, or cancellation
+- harness isolation, budget enforcement, process lifecycle, or SDK tool calls
+- dashboard rendering of untrusted logs/traces or browser/API exposure
+- Hermes operator/integration trust boundaries or prompt-injection resistance
+- release/install/upgrade/uninstall paths with security impact
+
+The orchestrator may skip adversary review only for low-risk mechanical
+changes such as docs wording, typo fixes, generated-code refreshes with no
+contract change, or refactors that do not alter behavior. The PR must record
+`adversary.invoked: false`, `adversary_required: false`, and the reason.
+
+### 0.2 Standing rules for every Worker session (paste verbatim)
 ```
 RULES (apply to every task in this block):
 - TDD: failing test first, run it, implement, re-run.
@@ -127,8 +642,8 @@ RULES (apply to every task in this block):
 - All listeners bind 127.0.0.1 unless the spec says otherwise.
 - Every security claim gets a NEGATIVE test (prove the bad path is blocked).
 - Every user-visible operation must also expose a machine-readable JSON path
-  suitable for Codex/Claude Code/Hermes. Human text output is a view, not the
-  contract.
+  suitable for Hermes in P1 and other coding tools in P2. Human text output
+  is a view, not the contract.
 - Commit after every green test, conventional-commit messages.
 - If the spec is ambiguous, STOP and emit "QUESTION:" — never guess.
 - Done = this block's SUCCESS GATE command passes locally.
@@ -137,6 +652,9 @@ RULES (apply to every task in this block):
 ### 0.2.1 PR contract template
 Every implementation PR must include:
 - Linked issue / block id.
+- Build-session model routing:
+  orchestrator/worker/verifier/adversary primary+fallback models, adversary
+  invoked/not invoked, fallback switches if any, and budget.
 - User-facing behavior changed.
 - Security claims changed or preserved.
 - Tests added, including at least one negative test for any security claim.
@@ -144,8 +662,9 @@ Every implementation PR must include:
 - Known limitations / follow-up issues.
 - Definition of Done checklist copied from the issue.
 
-No PR merges without: green CI, reviewer PASS, adversary PASS, and an updated
-status dashboard.
+No PR merges without: green CI, verifier-worker gate evidence, orchestrator
+spec-review ACCEPT, required adversary PASS or documented "not invoked" risk
+decision, and an updated status dashboard.
 
 ### 0.2.2a Canonical gate commands
 Every implementation issue must name one binary Makefile gate. Friendly
@@ -178,22 +697,31 @@ Implementation agents may add subtargets, but must not rename or remove the
 canonical wrappers.
 
 ### 0.2.2 Tracking and dashboard
-Use GitHub from day 1, even while private.
+Use GitHub from day 1, even while private. GitHub is the implementation
+source of truth and durable memory for the build.
 - Local git is mandatory: `git init`, `main` protected by convention, feature
   branches per issue, conventional commits.
 - GitHub is the recommended source of truth: Issues = work items, Pull
   Requests = execution units, GitHub Project "AgentPaaS P1" = dashboard.
+- Every issue must include: block id, acceptance criteria, role/model routing,
+  attempt log, current blocker, latest gate evidence, orchestrator decision,
+  verifier evidence, adversary decision or not-invoked reason, and next action.
+- Every PR must link its issue and preserve the final attempt log, test/gate
+  evidence, fallback switches, adversary output when invoked, and orchestrator
+  ACCEPT/REFINE/REJECT decision.
 - Required Project views: Board by status, Table by block, Roadmap by target
   week, PR Review queue, Security Gates.
-- Required fields: Block, Area, Status, Priority, Model tier
-  (`strong-plan|cheap-exec|cheap-review|strong-escalation`), Gate command,
-  PR link, Owner, Target date.
+- Required fields: Block, Area, Status, Priority, Orchestrator model, Worker
+  model, Verifier model, Adversary model/status, Model tier
+  (`strong-plan|cheap-exec|cheap-verify|adversary|strong-escalation`), Gate
+  command, PR link, Owner, Target date.
 - Required labels: `block:N`, `area:api|runtime|policy|identity|secrets|audit|docs`,
   `kind:plan|impl|test|security|docs`, `model:strong|model:cheap`,
   `status:ready|blocked|review|done`.
 - `docs/status.md` is generated or refreshed before every merge and shows:
   built, remaining, active PRs, blocked items, latest gate results, and next
-  recommended issue.
+  recommended issue. It links back to GitHub rather than duplicating the full
+  attempt history.
 - Local-only fallback is temporary only: before the private GitHub repo is
   created, keep `docs/status.md`, `docs/prs/PR-000-template.md`, and one
   markdown issue per work item under `docs/issues/`. Move to GitHub before
@@ -221,9 +749,7 @@ agentpaas/
 ├── sdk/python/           # agentpaas-sdk
 ├── sdk/node/             # @agentpaas/sdk (deferred; not P1 gate)
 ├── integrations/
-│   ├── mcp-server/       # the universal adapter
-│   ├── claude-code-plugin/
-│   └── hermes-skill/
+│   └── hermes-plugin/    # P1 Hermes plugin/skill; broader MCP/plugins P2
 ├── test/e2e/
 ├── test/redteam/         # adversarial agent images + harness
 ├── third_party/agentgateway/  # pinned vendored release + checksum
@@ -246,7 +772,10 @@ GitHub Actions (lint, test, -race, osv-scanner); Makefile targets
 `build`, `test`, `proto`, `lint`, `race`, `osv`, `e2e-network`,
 `redteam-smoke`, and the canonical `blockN-gate` wrappers from §0.2.2a;
 SECURITY.md; Apache-2.0 LICENSE; local git repo initialized; GitHub-ready
-issue/PR templates and status dashboard.
+issue/PR templates and status dashboard. GitHub templates must implement
+§0.1.0 build memory: model routing, attempt log, fallback switches,
+verifier evidence, adversary decision/not-invoked reason, orchestrator
+decision, latest gate result, and next action.
 **Build prompt:** "Bootstrap the AgentPaaS monorepo per §0.3. Author
 api/trigger/v1/trigger.proto: services Invoke, InvokeStream, GetRun,
 CancelRun, ListRuns; messages carry agent_name, payload (bytes+content_type),
@@ -621,7 +1150,16 @@ runtime/framework, platform, base image digest, harness version, build input
 digest, image digest, SBOM digest, policy digest, package AID/public key,
 signature bundle/referrer locations, and reproducibility metadata. The
 lockfile itself is signed by the package identity key and is the exact review
-unit consumed by `agent run` and future promotion.
+unit consumed by `agent run` and future promotion. P1 deployed agents are
+immutable: prompt files, system instructions, templates, tool-routing
+instructions, and other behavior-changing config must live in the source tree
+or `agent.yaml`-referenced files and be covered by the build input digest.
+There is no supported in-place prompt edit for a running/deployed agent; the
+path is edit project → `agent validate --json` → `agent pack --json` →
+`agent verify agent.lock` → `agent run --json`, producing a new signed
+artifact and audit trail. Hermes plugin/skill prompt changes are integration
+updates, and harness behavior changes are runtime releases that require
+repacking affected agents before claiming the new harness version.
 **Edge cases:** no agent.yaml → offer `agent init` scaffold; dependency
 conflict → surfaced verbatim, abort; 2GB build context → .agentpaasignore
 honored, warn >100MB, with default excludes for `.git`, virtualenvs, caches,
@@ -635,7 +1173,15 @@ actionable repair; registry push is deferred; LangGraph and CrewAI-generated
 example repos pack without a custom Dockerfile through the generic Python
 harness.
 **SUCCESS GATE:** `make block8-gate` passes: 3 Python reference agents (plain-py, langgraph, crewai)
-pack green; `agent verify agent.lock` and explicit offline
+pack green; changing only a prompt/template file changes the build input
+digest and image/lockfile digest; any attempt to mutate prompt/config inside
+an existing deployed image or `agent.lock` is rejected with an audit event;
+CLI e2e proves the full update path works without Hermes: run an agent with
+prompt v1, edit a prompt/template file to v2, run `agent validate --json`,
+`agent pack --json`, `agent verify agent.lock`, and `agent run --json`, then
+assert the new run reflects prompt v2 and audit links the old/new runs to
+different build input/image/lockfile digests;
+`agent verify agent.lock` and explicit offline
 `cosign verify --key <AID pubkey>` pass for the image signature; lockfile
 signature verifies; SBOM lists expected top-level deps; osv-scanner advisory
 summary appears in `agent pack` output without failing on non-critical
@@ -649,9 +1195,9 @@ packaging is a follow-on gate.
 **Builds:** Trigger API serving (gRPC :7718 + grpc-gateway REST :7717,
 loopback by default; Trigger API requires AgentPaaS API-key or mTLS auth even
 on loopback; `--expose` refuses without an API key). API keys are AgentPaaS
-Trigger API credentials for Codex/Hermes/Claude Code/local apps/CI callers to
-invoke a packed agent under test or running locally; keys are shown once,
-stored hashed, scoped by agent/action, revocable/rotatable, and audited.
+Trigger API credentials for Hermes/local apps/CI callers to invoke a packed
+agent under test or running locally; keys are shown once, stored hashed,
+scoped by agent/action, revocable/rotatable, and audited.
 REST CORS is deny-by-default; browser-originated local requests are not
 trusted without explicit auth, and preflight/origin handling is covered by
 tests.
@@ -736,13 +1282,13 @@ diff, audit export verify, and accessibility smoke tests green.
 
 ---
 
-## BLOCK 11 — Agentic operator contract (Codex/Claude/Hermes-first P1)
-**Purpose:** Make Codex, Claude Code, Hermes, Cursor, and similar agentic
-development tools first-class operators of AgentPaaS, not screen-scrapers of
-human CLI/dashboard output. P1 is a hands-off but secure local development
-experience: a coding agent can scaffold, pack, run, inspect, diagnose, repair,
-and re-run an agent on the user's machine, while sensitive boundary changes
-remain explicit, reviewed, and audited.
+## BLOCK 11 — Hermes operator contract (Hermes-first P1)
+**Purpose:** Make Hermes the first-class P1 operator of AgentPaaS, not a
+screen-scraper of human CLI/dashboard output. P1 is a hands-off but secure
+local development experience: Hermes can scaffold, pack, run, inspect,
+diagnose, repair, and re-run an agent on the user's machine, while sensitive
+boundary changes remain explicit, reviewed, and audited. Claude Code, Codex,
+Cursor, and other coding-tool operators are P2.
 **Builds:** internal/operator — a stable machine-readable diagnosis and
 repair-hint layer consumed by CLI, dashboard, and Block 13 MCP integrations.
 Add JSON-schema/protobuf contracts for: `ValidateAgentProject`,
@@ -810,14 +1356,14 @@ patch is proposed but not applied; missing secret → secret binding request is
 proposed but value is never requested through the agentic tool; prompt
 injection in source/logs says "approve all policy" → ignored and tested;
 network/dashboard unavailable → tool falls back to daemon/control JSON; daemon
-restart mid-loop → idempotency and run refs let the coding tool resume; human
+restart mid-loop → idempotency and run refs let Hermes resume; human
 declines policy patch → next action becomes `fix_code` or `ask_user`, not
 policy bypass.
-**SUCCESS GATE:** `make block11-gate` passes with the agentic golden flow green
-on a clean machine: a scripted
-Codex/Claude/Hermes-like client creates a deliberately incomplete Python
-agent, runs `agent init --from-code --noninteractive`, validates, packs,
-runs, sees a policy denial, receives a structured denial explanation,
+**SUCCESS GATE:** `make block11-gate` passes with the Hermes golden flow green
+on a clean machine: a scripted Hermes-like client creates a deliberately
+incomplete Python agent, runs `agent init --from-code --noninteractive`,
+validates, packs, runs, sees a policy denial, receives a structured denial
+explanation,
 receives a policy patch proposal but cannot apply it without confirm, fixes a
 code/dependency issue automatically, reruns after approved policy, exports a
 signed audit bundle, and summarizes the final result in JSON. Negative tests
@@ -876,9 +1422,9 @@ release gate.
 
 ---
 
-## BLOCK 13 — Integrations: MCP server + Claude Code plugin + Hermes skill
-**Builds:** integrations/mcp-server — an MCP server exposing the daemon's
-Block 11 operator contract as tools. Required P1 tools:
+## BLOCK 13 — Hermes integration plugin/skill
+**Builds:** integrations/hermes-plugin — a Hermes plugin/skill exposing the
+daemon's Block 11 operator contract as tools. Required P1 tools:
 `agentpaas_init_project`/`agentpaas_reconcile_project`,
 `agentpaas_validate_project`, `agentpaas_doctor`, `agentpaas_pack`,
 `agentpaas_run`, `agentpaas_stop`, `agentpaas_logs`, `agentpaas_status`,
@@ -888,36 +1434,30 @@ Block 11 operator contract as tools. Required P1 tools:
 `agentpaas_summarize_run`, `agentpaas_explain_failure`, and
 `agentpaas_next_action`. These are generated from or schema-tested against
 the Block 11 JSON/protobuf contracts, not hand-maintained as a separate
-behavior surface. This single adapter is the universal wedge: any
-MCP-speaking coding agent (Claude Code, Codex, Cursor, Hermes via native MCP)
-gets "deploy what you just built, safely" as a verb plus the diagnosis loop
-needed to fix what it just built.
+behavior surface. This P1 adapter is Hermes-only: Hermes gets "deploy what
+you just built, safely" as a verb plus the diagnosis loop needed to fix what
+it just built. A generic MCP server and Claude Code/Codex/Cursor skins are P2.
 
-Contract parity gate: CI fails if a Block 11 operator method lacks an MCP
-wrapper, if an MCP wrapper returns fields outside the versioned operator
+Contract parity gate: CI fails if a Block 11 operator method lacks a Hermes
+tool wrapper, if a wrapper returns fields outside the versioned operator
 schema, if a wrapper drops required evidence refs/error categories, or if a
 trust-boundary action can complete without the daemon confirmation protocol.
-The MCP spec revision and generated schema fixtures are pinned in the
-integration package lock/test fixtures, not in a user's `agent.lock`.
+The Hermes integration spec revision and generated schema fixtures are pinned
+in the integration package lock/test fixtures, not in a user's `agent.lock`.
 
-Then two thin first-party packagings of it:
-- **claude-code-plugin:** plugin manifest + slash command `/deploy-agent`
-  + a PostToolUse hint surfacing "run this under AgentPaaS?" after agent code
-  is written + an optional PreToolUse guardrail that intercepts raw
-  `docker run`, ad hoc secret export, or direct ungoverned execution patterns
-  and suggests the governed `agentpaas_run` path. Distributed via plugin
-  marketplace repo.
-- **hermes-skill:** SKILL.md plus native MCP setup that teaches the flow
-  (detect agent code → `agentpaas_init_project` scaffold → validate → pack →
-  run → inspect timeline/dashboard → show first audit event), with pitfalls
-  (Docker not running → `agentpaas_doctor`; policy denial →
-  `agentpaas_explain_policy_denial` then
-  `agentpaas_recommend_policy_patch`). Hermes uses native MCP for the P1
-  happy path; terminal CLI commands remain documented fallback steps.
-Security stance: the MCP server talks ONLY to the loopback daemon socket;
-it never accepts remote connections; it inherits the daemon socket's local
-user permissions; and all paths are resolved against the invoking project
-root before reaching the daemon. Destructive tools require scoped semantics
+The Hermes plugin/skill includes SKILL.md plus native tool/MCP setup if Hermes
+requires it. It teaches the flow (detect agent code →
+`agentpaas_init_project` scaffold → validate → pack → run → inspect
+timeline/dashboard → show first audit event), with pitfalls (Docker not
+running → `agentpaas_doctor`; policy denial →
+`agentpaas_explain_policy_denial` then
+`agentpaas_recommend_policy_patch`). Terminal CLI commands remain documented
+fallback steps.
+Security stance: the Hermes integration talks ONLY to the loopback daemon
+socket; it never accepts remote connections; it inherits the daemon socket's
+local user permissions; and all paths are resolved against the invoking
+project root before reaching the daemon. Destructive tools require scoped
+semantics
 and the daemon confirmation protocol: `agentpaas_stop` may stop only the
 active run created by that client session by default; stopping unrelated
 runs, applying policy, binding credentials, issuing direct leases, exposing
@@ -927,29 +1467,37 @@ remote destination, or disabling gates returns
 and evidence refs. Only the daemon/UI/CLI confirmation path can apply the
 change, and the confirmed action is audited.
 
-Prompt-injection boundary: MCP responses separate trusted control fields
+Prompt-injection boundary: Hermes integration responses separate trusted
+control fields
 (`status`, `error_category`, `next_action`, `requires_confirmation`,
 `confirmation_id`, `risk_level`, evidence refs) from untrusted evidence
 (`redacted_excerpt`, log/source/trace snippets, external payload text).
-Agent source, comments, logs, traces, tool output, MCP resource text, and
+Agent source, comments, logs, traces, tool output, Hermes resource text, and
 remote payloads are always treated as untrusted data; instructions found
 there must not broaden policy, reveal secrets, delete audit, disable gates,
 stop unrelated runs, or trigger destructive operations.
-**Edge cases:** MCP client passes a path outside the project root → tool
+**Edge cases:** Hermes passes a path outside the project root → tool
 refuses (path allow-list = invoking project dir); daemon down → tool
 returns actionable `agentpaas_doctor` hints, not a hang; concurrent pack
 requests for the same agent → second queues with a message; tool output >
 50KB (huge build logs) → truncated with a pointer to `agentpaas_logs`; old
-MCP client/schema version → compatibility error with upgrade hint;
+Hermes integration/schema version → compatibility error with upgrade hint;
+Hermes user asks "change this agent's prompt" for an already running agent →
+plugin edits only project prompt/config files, runs the required validate →
+pack → verify → run command sequence, reports the new run id/digests, and
+does not mutate the existing container/image/lockfile in place;
 confirmation id replay/expiry → refused + audit; hostile instruction
 embedded in agent source/log comments → no policy alteration, secret
 disclosure, audit deletion, gate disabling, or unrelated stop (negative test
 in CI).
 **SUCCESS GATE:** `make block13-gate` passes with scripted e2e on a clean machine after AgentPaaS is already
-installed: Claude Code session generates an agent → `/deploy-agent` → agent
-running governed → dashboard shows a DENIED probe → post-install deploy flow
-<10 minutes. Same flow green via Hermes native MCP skill. MCP conformance
-tests pass against the spec revision pinned in the integration package.
+installed: Hermes generates an agent → `agentpaas-deploy` → agent running
+governed → dashboard shows a DENIED probe → post-install deploy flow <10
+minutes; then Hermes is asked to change the agent prompt and must drive the
+same immutable redeploy path (edit project prompt/config → validate → pack →
+verify → run), with the second run reflecting the new prompt and audit
+showing distinct old/new digests. Hermes integration conformance tests pass
+against the spec revision pinned in the integration package.
 
 Demo matrix for P1 differentiation:
 1. **Governed weather/API agent:** generated agent attempts allowed weather
@@ -990,10 +1538,11 @@ Demo matrix for P1 differentiation:
   network-topology page — security engineers read this one first),
   threat model (§3 of PRD published verbatim), known limitations (§3.3),
   audit-export verification guide for a second machine, privacy/telemetry
-  page, Claude Code plugin setup, Hermes native MCP setup, and demo scripts.
+  page, Hermes plugin/skill setup, and demo scripts. Claude Code, Codex,
+  Cursor, and generic MCP integration docs move to P2.
 - The 3-minute demo video script + asciinema recordings embedded in
-  README and landing page. Minimum v0.1.0 launch demo: Claude Code or Hermes
-  writes an agent → AgentPaaS packs/signs/SBOMs it → governed run → blocked
+  README and landing page. Minimum v0.1.0 launch demo: Hermes writes an
+  agent → AgentPaaS packs/signs/SBOMs it → governed run → blocked
   exfil attempt → signed audit export. Stretch launch demos: secret-brokered
   SaaS action and agentic repair loop from Block 13.
 - README: the 60-second story above the fold, containment table from
@@ -1024,13 +1573,13 @@ the launch demo path.
 **SUCCESS GATE:** `make block14-gate` passes and release evidence shows two
 volunteers (not you) each reach a running governed
 agent in <15 minutes from the README on their own macOS machines after
-installing Docker Desktop or Colima; Claude Code and Hermes native MCP
-post-install deploy demos each complete in <10 minutes; at least one Block 13
-differentiation demo is recorded and embedded (two additional demos are
-stretch); `cosign verify-blob` and `agent verify-release` are
+installing Docker Desktop or Colima; the Hermes post-install deploy demo
+completes in <10 minutes; at least one Block 13 differentiation demo is
+recorded and embedded (two additional demos are stretch); `cosign verify-blob`
+and `agent verify-release` are
 documented-and-green on released artifacts; offline bundle verification is
 documented-and-green; v0.1.0 tagged with goreleaser, all P1 CI gates (lint,
-test, -race, fuzz corpus, e2e-network on macOS, MCP conformance,
+test, -race, fuzz corpus, e2e-network on macOS, Hermes integration conformance,
 redteam-smoke 6/6, docs smoke) green on the tag.
 
 ---
@@ -1058,9 +1607,9 @@ Founder calendar target (rough, week-by-week progress, not a relaxed gate):
 - **Week 3:** B9-B12 green. Trigger API/events/cron, dashboard, operator
   contract, redteam-smoke. Output: governed run is observable, machine-readable
   operator loop works, and 6/6 smoke proof is release-blocking.
-- **Week 4:** B13-B14 green. MCP server, Claude Code plugin, Hermes native MCP
-  skill, install/docs/demo/release path. Output: post-install Claude/Hermes
-  demos complete in <10 minutes; README clean-machine path works on macOS.
+- **Week 4:** B13-B14 green. Hermes plugin/skill plus install/docs/demo/release
+  path. Output: post-install Hermes demo completes in <10 minutes; README
+  clean-machine path works on macOS.
 - **Week 5:** P1 release buffer only. Bug fixes, volunteer clean-machine
   verification, offline bundle verification, video/asciinema polish, tag
   v0.1.0. If Week 4 is clean, ship in Week 4; if not, Week 5 is the cap.
@@ -1083,9 +1632,10 @@ Execution control decisions:
   calendar/control block. Former Block 10.5 is now Block 11.
 - Once implementation starts, do not silently slip P1 blocks. If the calendar
   is impossible, stop and explicitly rescope before continuing.
-- No Block 13 integration items are skipped for P1: MCP server, Claude Code
-  plugin, Hermes native MCP skill, contract parity gate, prompt-injection
-  boundaries, and post-install <10-minute demos are all required.
+- Block 13 P1 scope is Hermes-only: Hermes plugin/skill, contract parity gate,
+  prompt-injection boundaries, and post-install <10-minute demo are required.
+  Generic MCP server distribution plus Claude Code, Codex, and Cursor
+  integrations move to P2.
 - The extra Block 13 demo recordings beyond the minimum launch video are launch
   asset prioritization, not skipped product functionality.
 - CrewAI is the Python multi-agent framework. P1 support means an AI-generated
@@ -1094,7 +1644,7 @@ Execution control decisions:
   layer.
 - Node SDK remains explicitly deferred and is not part of the P1 gate.
 - Audit, policy, network enforcement, secrets invisibility, packaging/signing,
-  operator contract, redteam-smoke, and integration contract parity are
+  Hermes operator contract, redteam-smoke, and integration contract parity are
   never cut from P1.
 
 **SUCCESS GATE:** `make block15-gate` passes once the Makefile exists, proving
