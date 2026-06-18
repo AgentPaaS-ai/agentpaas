@@ -1,0 +1,29 @@
+name: Block Gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  block1-gate:
+    name: Block 1 Gate
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Install tools
+        run: brew install buf protoc-gen-go protoc-gen-go-grpc protoc-gen-grpc-gateway golangci-lint
+      - name: Run block1-gate
+        run: make block1-gate
+
+  # Placeholder for future blocks — these will be enabled when their blocks are implemented
+  block2-gate-placeholder:
+    name: Block 2 Gate (not implemented)
+    runs-on: ubuntu-latest
+    if: false  # Disabled until Block 2 is implemented
+    steps:
+      - run: echo "Block 2 gate will be enabled when Block 2 is implemented"
