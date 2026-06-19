@@ -23,4 +23,32 @@
 //     returns an error so the caller can abort the guarded operation.
 //   - Head reconstruction: on open, the writer replays the file to find the
 //     latest seq and record_hash.
+//
+// # Checkpoints
+//
+// Checkpoints are signed snapshots of the audit chain head created at a
+// configurable cadence or on demand. Each checkpoint records the head anchor
+// (seq + record_hash) at a point in time, is cryptographically linked to the
+// previous checkpoint, and is signed with the daemon's audit signing key.
+// The checkpoint chain provides a separate signed attestation that can be
+// used to verify the integrity of the audit log at the checkpointed point.
+//
+// # Audit Export Bundle
+//
+// ExportAuditBundle creates a portable bundle containing a copy of the audit
+// JSONL, checkpoints JSONL, the daemon public key (PEM), and a signed
+// manifest tying them together. The manifest is signed with the daemon's
+// audit signing key and includes metadata (record count, head anchor,
+// checkpoint count, public key fingerprint).
+//
+// VerifyAuditBundle performs offline verification of a bundle using only the
+// bundle contents and the expected daemon audit public key fingerprint.
+// Verification proves:
+//  1. The bundled audit chain is internally consistent (hash chain intact).
+//  2. The bundled checkpoint chain is internally consistent.
+//  3. Checkpoint signatures are valid against the bundled public key.
+//  4. The manifest signature is valid for the expected daemon audit key.
+//
+// Offline verification does NOT prove global transparency-log anchoring.
+// It proves bundle integrity at export time only.
 package audit
