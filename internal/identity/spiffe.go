@@ -24,6 +24,20 @@ type TrustDomain struct {
 	TenantID string
 }
 
+// ErrInvalidComponent is returned when a URI component contains path
+// traversal characters or path separators.
+var ErrInvalidComponent = errors.New("invalid URI component")
+
+// ValidateURIComponent validates that a URI component does not contain path
+// traversal characters ("..") or path separators ("/"). It returns
+// ErrInvalidComponent if the component is invalid.
+func ValidateURIComponent(component, name string) error {
+	if strings.Contains(component, "..") || strings.Contains(component, "/") {
+		return fmt.Errorf("%w: %s must not contain \"..\" or \"/\"", ErrInvalidComponent, name)
+	}
+	return nil
+}
+
 // BuildURI constructs a SPIFFE URI for the given agent identity within this
 // trust domain. For local mode the URI is:
 //
@@ -32,13 +46,25 @@ type TrustDomain struct {
 // For hosted mode the URI includes the tenant segment:
 //
 //	spiffe://tenant.agentpaas.ai/<tenant>/agent/<name>/<ver>/run/<run_id>
-func (td *TrustDomain) BuildURI(agentName, agentVersion, runID string) string {
+//
+// It returns an error if any component contains path traversal characters
+// ("..") or path separators ("/").
+func (td *TrustDomain) BuildURI(agentName, agentVersion, runID string) (string, error) {
+	if err := ValidateURIComponent(agentName, "agentName"); err != nil {
+		return "", err
+	}
+	if err := ValidateURIComponent(agentVersion, "agentVersion"); err != nil {
+		return "", err
+	}
+	if err := ValidateURIComponent(runID, "runID"); err != nil {
+		return "", err
+	}
 	if td.IsHosted {
 		return fmt.Sprintf("spiffe://%s/%s/agent/%s/%s/run/%s",
-			td.Host, td.TenantID, agentName, agentVersion, runID)
+			td.Host, td.TenantID, agentName, agentVersion, runID), nil
 	}
 	return fmt.Sprintf("spiffe://%s/agent/%s/%s/run/%s",
-		td.Host, agentName, agentVersion, runID)
+		td.Host, agentName, agentVersion, runID), nil
 }
 
 // ParseURI parses a SPIFFE URI of the form
@@ -46,6 +72,11 @@ func (td *TrustDomain) BuildURI(agentName, agentVersion, runID string) string {
 // the agent name, version, and run ID. It accepts both local and hosted
 // formats.
 func ParseURI(uri string) (agentName, agentVersion, runID string, err error) {
+	// Check the raw URI starts with lowercase "spiffe://" before url.Parse
+	// lowercases the scheme. This rejects SPIFFE://, Spiffe://, etc.
+	if len(uri) < 9 || uri[:9] != "spiffe://" {
+		return "", "", "", fmt.Errorf("invalid SPIFFE URI: scheme must be lowercase \"spiffe\"")
+	}
 	u, err := url.Parse(uri)
 	if err != nil {
 		return "", "", "", fmt.Errorf("invalid SPIFFE URI: %w", err)

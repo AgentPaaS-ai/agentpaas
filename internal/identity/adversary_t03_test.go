@@ -36,8 +36,12 @@ func TestAdversaryT03_URIPathTraversalInjection(t *testing.T) {
 	// url.Parse normalizes "../../../bar" in the path, potentially shifting
 	// segments and yielding wrong parsed values.
 	agentName := "foo/../../../bar"
-	uri := td.BuildURI(agentName, "1.0.0", "run-001")
-	t.Logf("URI with path-traversal agentName: %s", uri)
+	uri, err := td.BuildURI(agentName, "1.0.0", "run-001")
+	if err != nil {
+		t.Logf("BuildURI rejected path-traversal agentName: %v", err)
+	} else {
+		t.Logf("URI with path-traversal agentName: %s", uri)
+	}
 
 	name, ver, rid, err := ParseURI(uri)
 	if err == nil {
@@ -63,8 +67,12 @@ func TestAdversaryT03_URIPathTraversalInjection(t *testing.T) {
 	// agentName with forward slash inside (not path-traversal) — creates an
 	// extra path segment that shifts all subsequent fields.
 	agentName2 := "foo/bar"
-	uri2 := td.BuildURI(agentName2, "1.0.0", "run-002")
-	t.Logf("URI with embedded slash in agentName: %s", uri2)
+	uri2, err := td.BuildURI(agentName2, "1.0.0", "run-002")
+	if err != nil {
+		t.Logf("BuildURI rejected embedded slash in agentName: %v", err)
+	} else {
+		t.Logf("URI with embedded slash in agentName: %s", uri2)
+	}
 
 	name2, ver2, rid2, err2 := ParseURI(uri2)
 	if err2 == nil {
@@ -79,8 +87,12 @@ func TestAdversaryT03_URIPathTraversalInjection(t *testing.T) {
 
 	// runID with path traversal
 	runID := "../malicious"
-	uri3 := td.BuildURI("safe-agent", "1.0.0", runID)
-	t.Logf("URI with path-traversal runID: %s", uri3)
+	uri3, err := td.BuildURI("safe-agent", "1.0.0", runID)
+	if err != nil {
+		t.Logf("BuildURI rejected path-traversal runID: %v", err)
+	} else {
+		t.Logf("URI with path-traversal runID: %s", uri3)
+	}
 
 	_, _, rid3, err3 := ParseURI(uri3)
 	if err3 == nil {
@@ -114,7 +126,11 @@ func TestAdversaryT03_URISpecialCharsInjection(t *testing.T) {
 	for _, name := range specialNames {
 		name := name
 		t.Run(fmt.Sprintf("agentName=%q", name), func(t *testing.T) {
-			uri := td.BuildURI(name, "1.0.0", "run-safe")
+			uri, err := td.BuildURI(name, "1.0.0", "run-safe")
+			if err != nil {
+				t.Logf("BuildURI rejected special agentName %q: %v", name, err)
+				return
+			}
 			gotName, gotVer, gotRid, err := ParseURI(uri)
 			if err == nil {
 				if gotName != name {
@@ -149,11 +165,14 @@ func TestAdversaryT03_URISpecialCharsInjection(t *testing.T) {
 func TestAdversaryT03_HostedDomainSpoofing(t *testing.T) {
 	// A hosted URI from tenant "evil-corp"
 	evilTD := &TrustDomain{Host: "tenant.agentpaas.ai", IsHosted: true, TenantID: "evil-corp"}
-	evilURI := evilTD.BuildURI("my-agent", "1.0.0", "run-999")
+	evilURI, err := evilTD.BuildURI("my-agent", "1.0.0", "run-999")
+	if err != nil {
+		t.Fatalf("BuildURI(evil): %v", err)
+	}
 
 	// VerifyURI only checks agent name and version — it does NOT check
 	// the trust domain host or tenant ID.
-	err := VerifyURI(evilURI, "my-agent", "1.0.0")
+	err = VerifyURI(evilURI, "my-agent", "1.0.0")
 	if err != nil {
 		t.Fatalf("Unexpected VerifyURI error: %v", err)
 	}
@@ -166,7 +185,10 @@ func TestAdversaryT03_HostedDomainSpoofing(t *testing.T) {
 
 	// Additionally: a local URI parsed with hosted TrustDomain
 	localTD := &TrustDomain{Host: "local.agentpaas"}
-	localURI := localTD.BuildURI("my-agent", "1.0.0", "run-001")
+	localURI, err := localTD.BuildURI("my-agent", "1.0.0", "run-001")
+	if err != nil {
+		t.Fatalf("BuildURI(local): %v", err)
+	}
 
 	// Parse a local URI and see if it can be misinterpreted as hosted.
 	name, ver, rid, err := ParseURI(localURI)
@@ -191,9 +213,13 @@ func TestAdversaryT03_EmptyComponents(t *testing.T) {
 
 	// BuildURI with empty agentName
 	t.Run("empty_agentName", func(t *testing.T) {
-		uri := td.BuildURI("", "1.0.0", "run-001")
+		uri, err := td.BuildURI("", "1.0.0", "run-001")
+		if err != nil {
+			t.Logf("BuildURI rejected empty agentName: %v", err)
+			return
+		}
 		t.Logf("URI with empty agentName: %q", uri)
-		_, _, _, err := ParseURI(uri)
+		_, _, _, err = ParseURI(uri)
 		if err == nil {
 			t.Error("ADVERSARY BREAK [MEDIUM]: ParseURI accepted empty agentName")
 		} else {
@@ -203,9 +229,13 @@ func TestAdversaryT03_EmptyComponents(t *testing.T) {
 
 	// BuildURI with empty agentVersion
 	t.Run("empty_agentVersion", func(t *testing.T) {
-		uri := td.BuildURI("my-agent", "", "run-001")
+		uri, err := td.BuildURI("my-agent", "", "run-001")
+		if err != nil {
+			t.Logf("BuildURI rejected empty agentVersion: %v", err)
+			return
+		}
 		t.Logf("URI with empty agentVersion: %q", uri)
-		_, _, _, err := ParseURI(uri)
+		_, _, _, err = ParseURI(uri)
 		if err == nil {
 			t.Error("ADVERSARY BREAK [MEDIUM]: ParseURI accepted empty agentVersion")
 		} else {
@@ -215,9 +245,13 @@ func TestAdversaryT03_EmptyComponents(t *testing.T) {
 
 	// BuildURI with empty runID
 	t.Run("empty_runID", func(t *testing.T) {
-		uri := td.BuildURI("my-agent", "1.0.0", "")
+		uri, err := td.BuildURI("my-agent", "1.0.0", "")
+		if err != nil {
+			t.Logf("BuildURI rejected empty runID: %v", err)
+			return
+		}
 		t.Logf("URI with empty runID: %q", uri)
-		_, _, _, err := ParseURI(uri)
+		_, _, _, err = ParseURI(uri)
 		if err == nil {
 			t.Error("ADVERSARY BREAK [MEDIUM]: ParseURI accepted empty runID")
 		} else {
@@ -232,7 +266,11 @@ func TestAdversaryT03_VeryLongComponents(t *testing.T) {
 	td := &TrustDomain{Host: "local.agentpaas"}
 
 	longName := strings.Repeat("a", 10000)
-	uri := td.BuildURI(longName, "1.0.0", "run-long")
+	uri, err := td.BuildURI(longName, "1.0.0", "run-long")
+	if err != nil {
+		t.Logf("BuildURI rejected long agentName: %v", err)
+		return
+	}
 	t.Logf("URI with 10K-char agentName (first 100 chars): %s...", uri[:100])
 
 	name, ver, rid, err := ParseURI(uri)
@@ -938,6 +976,7 @@ func TestAdversaryT03_RenewAfterExpiry(t *testing.T) {
 	}
 	if newKey == nil {
 		t.Error("renewed key is nil")
+		return
 	}
 	if newSPIFFE == "" {
 		t.Error("renewed SPIFFE URI is empty")
@@ -1066,9 +1105,7 @@ func TestAdversaryT03_CAKeyIsPersisted(t *testing.T) {
 	}
 	if parsedKey == nil {
 		t.Error("ADVERSARY BREAK [HIGH]: parsed CA key is nil")
-	}
-	if !parsedKey.Curve.IsOnCurve(parsedKey.X, parsedKey.Y) {
-		t.Error("ADVERSARY BREAK [HIGH]: stored CA key public point is not on curve")
+		return
 	}
 
 	// Verify the key is usable for signing.

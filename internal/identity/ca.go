@@ -145,10 +145,22 @@ func (ca *LocalCA) getCACertificate() (*x509.Certificate, error) {
 // contains the SPIFFE URI as a URI SAN. Returns the certificate, private
 // key, SPIFFE URI, and any error.
 func (ca *LocalCA) IssueWorkloadCert(agentName, agentVersion, runID string, ttl time.Duration) (*x509.Certificate, *ecdsa.PrivateKey, string, error) {
+	if agentName == "" {
+		return nil, nil, "", fmt.Errorf("%w: agentName must not be empty", ErrInvalidComponent)
+	}
+	if agentVersion == "" {
+		return nil, nil, "", fmt.Errorf("%w: agentVersion must not be empty", ErrInvalidComponent)
+	}
+	if runID == "" {
+		return nil, nil, "", fmt.Errorf("%w: runID must not be empty", ErrInvalidComponent)
+	}
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
-	spiffeURI := ca.trustDomain.BuildURI(agentName, agentVersion, runID)
+	spiffeURI, err := ca.trustDomain.BuildURI(agentName, agentVersion, runID)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("build SPIFFE URI: %w", err)
+	}
 
 	// Generate ephemeral workload key pair.
 	workloadKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

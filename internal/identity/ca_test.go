@@ -47,7 +47,10 @@ func TestLocalCA_IssueWorkloadCert_Valid(t *testing.T) {
 		t.Errorf("cert URISANs do not contain SPIFFE URI %q; got %v", spiffeURI, cert.URIs)
 	}
 	// Verify correct SPIFFE URI format.
-	expectedURI := (&TrustDomain{Host: "local.agentpaas"}).BuildURI("test-agent", "1.0.0", "run-001")
+	expectedURI, err := (&TrustDomain{Host: "local.agentpaas"}).BuildURI("test-agent", "1.0.0", "run-001")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
 	if spiffeURI != expectedURI {
 		t.Errorf("spiffeURI = %q, want %q", spiffeURI, expectedURI)
 	}
@@ -258,7 +261,10 @@ func TestLocalCA_WorkloadCertSPIFFEURISAN(t *testing.T) {
 		t.Fatalf("IssueWorkloadCert: %v", err)
 	}
 	// The URISAN must contain the SPIFFE URI.
-	expectedURI := td.BuildURI("spiffe-agent", "2.0.0", "run-spiffe")
+	expectedURI, err := td.BuildURI("spiffe-agent", "2.0.0", "run-spiffe")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
 	if spiffeURI != expectedURI {
 		t.Errorf("spiffeURI = %q, want %q", spiffeURI, expectedURI)
 	}
@@ -285,7 +291,10 @@ func TestLocalCA_IssueWorkloadCert_HostedDomain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueWorkloadCert: %v", err)
 	}
-	expectedURI := td.BuildURI("hosted-agent", "3.0.0", "run-hosted")
+	expectedURI, err := td.BuildURI("hosted-agent", "3.0.0", "run-hosted")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
 	if spiffeURI != expectedURI {
 		t.Errorf("spiffeURI = %q, want %q", spiffeURI, expectedURI)
 	}

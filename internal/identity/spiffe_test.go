@@ -13,7 +13,10 @@ import (
 
 func TestTrustDomainLocal_BuildAndParseRoundTrip(t *testing.T) {
 	td := &TrustDomain{Host: "local.agentpaas"}
-	uri := td.BuildURI("my-agent", "1.0.0", "run-abc123")
+	uri, err := td.BuildURI("my-agent", "1.0.0", "run-abc123")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
 	name, ver, rid, err := ParseURI(uri)
 	if err != nil {
 		t.Fatalf("ParseURI: %v", err)
@@ -31,7 +34,10 @@ func TestTrustDomainLocal_BuildAndParseRoundTrip(t *testing.T) {
 
 func TestTrustDomainHosted_BuildAndParseRoundTrip(t *testing.T) {
 	td := &TrustDomain{Host: "tenant.agentpaas.ai", IsHosted: true, TenantID: "acme-corp"}
-	uri := td.BuildURI("assistant", "2.1.0", "run-def456")
+	uri, err := td.BuildURI("assistant", "2.1.0", "run-def456")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
 	name, ver, rid, err := ParseURI(uri)
 	if err != nil {
 		t.Fatalf("ParseURI: %v", err)
@@ -53,8 +59,11 @@ func TestTrustDomainHosted_BuildAndParseRoundTrip(t *testing.T) {
 
 func TestVerifyURI_RejectsWrongName(t *testing.T) {
 	td := &TrustDomain{Host: "local.agentpaas"}
-	uri := td.BuildURI("correct-name", "1.0.0", "run-111")
-	err := VerifyURI(uri, "wrong-name", "1.0.0")
+	uri, err := td.BuildURI("correct-name", "1.0.0", "run-111")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
+	err = VerifyURI(uri, "wrong-name", "1.0.0")
 	if err == nil {
 		t.Fatal("VerifyURI: expected error for wrong agent name, got nil")
 	}
@@ -62,8 +71,11 @@ func TestVerifyURI_RejectsWrongName(t *testing.T) {
 
 func TestVerifyURI_RejectsWrongVersion(t *testing.T) {
 	td := &TrustDomain{Host: "local.agentpaas"}
-	uri := td.BuildURI("agent", "2.0.0", "run-222")
-	err := VerifyURI(uri, "agent", "9.9.9")
+	uri, err := td.BuildURI("agent", "2.0.0", "run-222")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
+	err = VerifyURI(uri, "agent", "9.9.9")
 	if err == nil {
 		t.Fatal("VerifyURI: expected error for wrong version, got nil")
 	}
@@ -71,8 +83,11 @@ func TestVerifyURI_RejectsWrongVersion(t *testing.T) {
 
 func TestVerifyURI_PassesCorrectIdentity(t *testing.T) {
 	td := &TrustDomain{Host: "local.agentpaas"}
-	uri := td.BuildURI("ok-agent", "3.0.0", "run-333")
-	err := VerifyURI(uri, "ok-agent", "3.0.0")
+	uri, err := td.BuildURI("ok-agent", "3.0.0", "run-333")
+	if err != nil {
+		t.Fatalf("BuildURI: %v", err)
+	}
+	err = VerifyURI(uri, "ok-agent", "3.0.0")
 	if err != nil {
 		t.Fatalf("VerifyURI: unexpected error: %v", err)
 	}
@@ -84,11 +99,17 @@ func TestAlternateHostedDomain_PassesWithoutSchemaChange(t *testing.T) {
 	localTD := &TrustDomain{Host: "local.agentpaas"}
 	hostedTD := &TrustDomain{Host: "tenant.agentpaas.ai", IsHosted: true, TenantID: "other-tenant"}
 
-	localURI := localTD.BuildURI("a", "1", "r1")
-	hostedURI := hostedTD.BuildURI("b", "2", "r2")
+	localURI, err := localTD.BuildURI("a", "1", "r1")
+	if err != nil {
+		t.Fatalf("BuildURI(local): %v", err)
+	}
+	hostedURI, err := hostedTD.BuildURI("b", "2", "r2")
+	if err != nil {
+		t.Fatalf("BuildURI(hosted): %v", err)
+	}
 
 	// Both should parse identically via the same ParseURI function
-	_, _, _, err := ParseURI(localURI)
+	_, _, _, err = ParseURI(localURI)
 	if err != nil {
 		t.Fatalf("ParseURI(local): %v", err)
 	}
