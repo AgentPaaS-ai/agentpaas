@@ -40,8 +40,10 @@ block2-gate: build test lint race
 	go test ./internal/logging/... -race -count=1
 	@echo "Block 2 gate: PASS"
 
-block3-gate:
-	@echo "Error: block3-gate is not implemented until Block 3" && exit 1
+block3-gate: build test race lint
+	@echo "==> Running Block 3 gate: identity + audit tests"
+	go test ./internal/identity/... ./internal/audit/... -race -count=1
+	@echo "✓ Block 3 gate passed"
 
 block4-gate:
 	@echo "Error: block4-gate is not implemented until Block 4" && exit 1
@@ -84,7 +86,7 @@ gates: ## List all available gate targets
 	@echo "Available gates:"
 	@echo "  block1-gate  - Repo bootstrap, proto contracts, CI skeleton (ACTIVE)"
 	@echo "  block2-gate  - Daemon skeleton, CLI plumbing (ACTIVE)"
-	@echo "  block3-gate  - Identity service, audit hash chain (not implemented)"
+	@echo "  block3-gate  - Identity service, audit hash chain (ACTIVE)"
 	@echo "  block4-gate  - Policy engine (not implemented)"
 	@echo "  block5-gate  - Secrets broker (not implemented)"
 	@echo "  block6-gate  - Agent harness (not implemented)"
