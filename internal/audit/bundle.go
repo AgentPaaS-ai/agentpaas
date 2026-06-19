@@ -287,9 +287,10 @@ func VerifyAuditBundle(bundleDir string, expectedFingerprint string, verifySigna
 	fingerprintMatch := bundledFingerprint == manifest.PubKeyFingerprint
 
 	if expectedFingerprint != "" && bundledFingerprint != expectedFingerprint {
-		// Fingerprint mismatch against expected — still continue checking
-		// chain integrity but record the mismatch
+		// Fingerprint mismatch against expected — the manifest cannot be
+		// trusted if the key identity is wrong
 		fingerprintMatch = false
+		manifestValid = false
 	}
 
 	// Phase 3: Verify manifest signature
@@ -299,7 +300,14 @@ func VerifyAuditBundle(bundleDir string, expectedFingerprint string, verifySigna
 		}
 	}
 
-	// Phase 4: Verify audit chain and checkpoints against the bundled public key
+	// Phase 4: Check that all required bundle files exist before chain verification
+	for _, path := range []string{bp.AuditPath, bp.CheckpointsPath} {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return nil, fmt.Errorf("required bundle file missing: %s", path)
+		}
+	}
+
+	// Phase 5: Verify audit chain and checkpoints against the bundled public key
 	chainResult, err := VerifyAuditChain(bp.AuditPath, bp.CheckpointsPath, pubKey)
 	if err != nil {
 		return nil, fmt.Errorf("verify bundle chain: %w", err)

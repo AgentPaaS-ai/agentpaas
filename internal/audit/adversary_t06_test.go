@@ -225,7 +225,8 @@ func TestAdversaryT06_CheckpointGap(t *testing.T) {
 	}
 	lines := strings.Split(string(data), "\n")
 	if len(lines) > 3 {
-		lines = append(lines[:2], lines[3:]...)
+		// Remove the middle checkpoint (index 1) to create a seq gap
+		lines = append(lines[:1], lines[2:]...)
 		if err := os.WriteFile(cpBundlePath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
 			t.Fatalf("WriteFile cp tamper: %v", err)
 		}
