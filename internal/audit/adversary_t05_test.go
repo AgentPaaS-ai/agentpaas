@@ -412,11 +412,11 @@ func TestAdversaryT05_DuplicateSeq(t *testing.T) {
 	data, _ := os.ReadFile(auditPath)
 	lines := strings.Split(string(data), "\n")
 	var rec3 AuditRecord
-	json.Unmarshal([]byte(lines[2]), &rec3)
+	_ = json.Unmarshal([]byte(lines[2]), &rec3)
 	rec3.Seq = 2
 	modifiedLine, _ := json.Marshal(rec3)
 	lines[2] = string(modifiedLine)
-	os.WriteFile(auditPath, []byte(strings.Join(lines, "\n")), 0644)
+	_ = os.WriteFile(auditPath, []byte(strings.Join(lines, "\n")), 0644)
 
 	_, err = readAuditChain(auditPath)
 	if err == nil {
@@ -452,7 +452,7 @@ func TestAdversaryT05_GapInSeq(t *testing.T) {
 	data, _ := os.ReadFile(auditPath)
 	lines := strings.Split(string(data), "\n")
 	gapped := strings.Join(append(lines[:2], lines[3:]...), "\n")
-	os.WriteFile(auditPath, []byte(gapped), 0644)
+	_ = os.WriteFile(auditPath, []byte(gapped), 0644)
 
 	_, err = readAuditChain(auditPath)
 	if err == nil {
@@ -825,7 +825,7 @@ func TestAdversaryT05_TamperedCheckpointFile(t *testing.T) {
 	lines := strings.Split(string(data), "\n")
 	tampered := strings.Replace(lines[0], anchorHash, "tampered_hash_value", 1)
 	lines[0] = tampered
-	os.WriteFile(cpPath, []byte(strings.Join(lines, "\n")), 0644)
+	_ = os.WriteFile(cpPath, []byte(strings.Join(lines, "\n")), 0644)
 
 	// Verify should detect checkpoint self-hash mismatch
 	// (the checkpoint hash won't match the recomputed hash)

@@ -12,35 +12,6 @@ import (
 	"testing"
 )
 
-// writeAuditJSONL writes audit records to a JSONL file for testing.
-func writeAuditJSONL(t *testing.T, path string, records []AuditRecord) {
-	t.Helper()
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		t.Fatalf("open audit file: %v", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	for _, rec := range records {
-		line, err := json.Marshal(rec)
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		if _, err := fmt.Fprintf(f, "%s\n", string(line)); err != nil {
-			t.Fatalf("write: %v", err)
-		}
-	}
-}
-
-// writeAuditLines writes raw JSON strings to a JSONL file for testing
-// tampered/malformed data.
-func writeAuditLines(t *testing.T, path string, lines []string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-}
-
 // writeCheckpointLine appends a single checkpoint line to a JSONL file.
 func writeCheckpointLine(t *testing.T, path string, cp *CheckpointRecord) {
 	t.Helper()

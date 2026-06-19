@@ -128,8 +128,8 @@ func TestGenerateCheckpointKey(t *testing.T) {
 		t.Fatal("parsed key is not ECDSA")
 	}
 
-	// Verify the public key matches
-	if ecKey.PublicKey.X.Cmp(pub.X) != 0 || ecKey.PublicKey.Y.Cmp(pub.Y) != 0 {
+	// Verify the public key matches using Equal (avoids deprecated X/Y fields)
+	if !ecKey.PublicKey.Equal(pub) {
 		t.Fatal("public key mismatch after parse")
 	}
 
