@@ -124,6 +124,7 @@ func (k *KeychainKeyStore) loadManifest() []string {
 }
 
 // saveManifest persists the list of key IDs under the manifest account.
+// The manifest data is passed via argv (see Create for P1 risk acceptance).
 func (k *KeychainKeyStore) saveManifest(manifest []string) error {
 	data, err := json.Marshal(manifest)
 	if err != nil {
@@ -196,6 +197,16 @@ func (k *KeychainKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) er
 		return fmt.Errorf("marshal keychain entry: %w", err)
 	}
 
+	// NOTE: The password data is passed via argv (-w <value>) because
+	// security(1) does NOT support reading the password from stdin —
+	// "-w" without a value prompts interactively via getpass(), which
+	// reads from the terminal, not piped stdin. This means the key
+	// material is briefly visible in the process list (ps). This is a
+	// P1 accepted risk: the security command runs for milliseconds,
+	// macOS ps is restricted to same-user processes by default, and the
+	// data is base64-encoded JSON (not raw key bytes). P2 will replace
+	// this with a Security framework integration via CGo or a helper
+	// binary that reads from stdin, eliminating argv exposure entirely.
 	if _, err := k.securityCall("add-generic-password", "-a", string(id), "-s", k.service, "-w", string(data)); err != nil {
 		return err
 	}

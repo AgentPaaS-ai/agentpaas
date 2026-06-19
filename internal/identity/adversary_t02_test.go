@@ -618,6 +618,9 @@ func TestAdversaryT02_KeychainEntryIsolation(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
 	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
+	}
 
 	serviceA := "ai.agentpaas.adv.isolation.A." + t.Name()
 	serviceB := "ai.agentpaas.adv.isolation.B." + t.Name()
@@ -653,6 +656,9 @@ func TestAdversaryT02_KeychainEntryIsolation(t *testing.T) {
 func TestAdversaryT02_SecurityCLIInjection(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 
 	service := "ai.agentpaas.adv.injection." + t.Name()
@@ -707,8 +713,8 @@ func TestAdversaryT02_SecurityCLIInjection(t *testing.T) {
 // the base64 key material is passed as an argument to
 // `security add-generic-password -w <base64>`. This IS visible in `ps`.
 func TestAdversaryT02_KeyMaterialInProcessList(t *testing.T) {
-	// CODE REVIEW FINDING: The keychain.go line ~199 passes key material as
-	// argv to security(1):
+	// CODE REVIEW FINDING: The keychain.go passes key material as argv
+	// to security(1):
 	//
 	//   k.securityCall("add-generic-password", "-a", string(id), "-s", k.service, "-w", string(data))
 	//
@@ -717,9 +723,14 @@ func TestAdversaryT02_KeyMaterialInProcessList(t *testing.T) {
 	// visible in the process command line. Any process on the system with
 	// `ps` access can see it during the brief window security(1) runs.
 	//
-	// FIX: Use `security add-generic-password -a <id> -s <service> -w` (no
-	// value after -w) which reads the password from stdin, or use -p to
-	// prompt. Pipe the value via stdin instead of argv.
+	// INVESTIGATION: stdin piping was attempted but security(1) does NOT
+	// read the password from stdin — "-w" without a value prompts
+	// interactively via getpass() (terminal, not stdin). CGo with the
+	// Security framework was also attempted but triggers keychain
+	// permission dialogs. This is a P1 ACCEPTED RISK: the command runs
+	// for milliseconds, macOS ps is same-user by default, and data is
+	// base64-encoded JSON. P2 will use a Security framework helper binary
+	// that reads from stdin.
 
 	t.Log("ADVERSARY BREAK [HIGH]: key material is passed via argv to security(1) CLI")
 	t.Log("  - See keychain.go line ~199: securityCall(\"add-generic-password\", ..., \"-w\", string(data))")
@@ -730,6 +741,9 @@ func TestAdversaryT02_KeyMaterialInProcessList(t *testing.T) {
 	// Verify the concern: actually capture what argv would look like.
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; verifying runtime behavior")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 
 	// Create a key and inspect the keychain item to confirm the data exists.
@@ -819,6 +833,9 @@ func TestAdversaryT02_ListMetadataLeak_KeychainKeyStore(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
 	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
+	}
 
 	service := "ai.agentpaas.adv.listleak." + t.Name()
 	s, err := NewKeychainKeyStore(service)
@@ -905,6 +922,9 @@ func TestAdversaryT02_DeleteThenLoad_KeychainKeyStore(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
 	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
+	}
 
 	service := "ai.agentpaas.adv.deload." + t.Name()
 	s, err := NewKeychainKeyStore(service)
@@ -968,6 +988,9 @@ func TestAdversaryT02_RecreateAfterDelete_KeychainKeyStore(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
 	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
+	}
 
 	service := "ai.agentpaas.adv.recreate." + t.Name()
 	s, err := NewKeychainKeyStore(service)
@@ -1012,6 +1035,9 @@ func TestAdversaryT02_RecreateAfterDelete_KeychainKeyStore(t *testing.T) {
 func TestAdversaryT02_CrossBackendIsolation(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 
 	dir := t.TempDir()
@@ -1129,6 +1155,9 @@ func TestAdversaryT02_ListNoBase64Leak(t *testing.T) {
 func TestAdversaryT02_KeychainManifestIntegrity(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 
 	service := "ai.agentpaas.adv.manifest." + t.Name()

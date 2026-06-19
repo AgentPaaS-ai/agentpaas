@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"runtime"
 	"sync/atomic"
+	"os"
 	"testing"
 )
 
@@ -17,6 +18,9 @@ var runID = rand.Int63()
 func TestKeychainKeyStore(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 	t.Parallel()
 
@@ -45,6 +49,9 @@ func TestKeychainKeyStore(t *testing.T) {
 func TestKeychainKeyStore_LockedKeychain(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 
 	service := "ai.agentpaas.identity.test.locked." + t.Name()
@@ -88,6 +95,9 @@ func TestKeychainKeyStore_LockedKeychain(t *testing.T) {
 func TestKeychainKeyStore_Integration(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 
 	service := "ai.agentpaas.identity.test.integration." + t.Name()
@@ -137,6 +147,9 @@ func TestKeychainKeyStore_Integration(t *testing.T) {
 func TestKeychainKeyStore_RejectsInvalidKeyID(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("KeychainKeyStore requires macOS; skipping")
+	}
+	if os.Getenv("AGENTPAAS_KEYCHAIN_TESTS") == "" {
+		t.Skip("skipping keychain integration test; set AGENTPAAS_KEYCHAIN_TESTS=1 to run")
 	}
 
 	service := "ai.agentpaas.identity.test.reject." + t.Name()

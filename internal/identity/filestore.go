@@ -104,9 +104,28 @@ type FileKeyStore struct {
 // weaker than 0600 (e.g., world-readable 0644 or 0755).
 var ErrWeakPermissions = errors.New("keystore file has weak permissions; expected 0600 or 0400")
 
+// fileLocks provides per-file-path locking to prevent concurrent access
+// to the same keystore file across multiple FileKeyStore instances within
+// a single process (P1 daemon model). Cross-process locking is deferred to P2.
+var fileLocks sync.Map // map[string]*sync.Mutex
+
+// getFileLock returns or creates a mutex for the given file path. The mutex
+// is keyed by the absolute path so that two stores pointing at the same file
+// (via different relative paths) share the same lock.
+func getFileLock(path string) *sync.Mutex {
+	abs, _ := filepath.Abs(path)
+	v, _ := fileLocks.LoadOrStore(abs, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 // ErrWrongPassphrase is returned when the passphrase does not decrypt the
 // keystore file correctly (authentication tag mismatch).
 var ErrWrongPassphrase = errors.New("wrong passphrase or corrupted keystore file")
+
+// ErrSymlinkDetected is returned when the keystore file is a symlink.
+// Reading or writing through a symlink is refused to prevent TOCTOU attacks
+// where an attacker replaces the keystore with a symlink to an arbitrary path.
+var ErrSymlinkDetected = errors.New("keystore file is a symlink; refusing to read/write through symlink")
 
 // NewFileKeyStore opens or creates an encrypted file keystore at the given
 // directory. If the store file already exists, it is decrypted and loaded.
@@ -136,7 +155,12 @@ func NewFileKeyStore(dir, passphrase string) (*FileKeyStore, error) {
 		filePath:   fp,
 	}
 
-	// Try to load existing store.
+	// Try to load existing store. Acquire file lock to avoid reading a
+	// partially-written file from another instance.
+	flock := getFileLock(fp)
+	flock.Lock()
+	defer flock.Unlock()
+
 	if _, err := os.Stat(fp); err == nil {
 		if err := s.loadFromDisk(); err != nil {
 			return nil, err
@@ -157,11 +181,17 @@ func (f *FileKeyStore) Close() error {
 // loadFromDisk reads the encrypted store file, decrypts it, and populates
 // the in-memory key map. The caller must hold f.mu.
 func (f *FileKeyStore) loadFromDisk() error {
-	// Check file permissions.
-	fi, err := os.Stat(f.filePath)
+	// Check for symlink attack: use Lstat to detect symlinks.
+	fi, err := os.Lstat(f.filePath)
 	if err != nil {
 		return fmt.Errorf("stat keystore file: %w", err)
 	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return ErrSymlinkDetected
+	}
+
+	// Check file permissions. Since Lstat confirmed this is not a symlink,
+	// the Mode from Lstat reflects the actual file's permission bits.
 	if err := checkPermissions(fi.Mode()); err != nil {
 		return err
 	}
@@ -237,10 +267,40 @@ func (f *FileKeyStore) saveToDisk() error {
 	out = append(out, nonce...)
 	out = append(out, ciphertext...)
 
-	if err := os.WriteFile(f.filePath, out, 0600); err != nil {
-		return fmt.Errorf("write keystore file: %w", err)
+	// Check for symlink attack before writing.
+	fi, err := os.Lstat(f.filePath)
+	if err == nil {
+		// File exists — check if it's a symlink.
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return ErrSymlinkDetected
+		}
+		// Existing regular file — verify permissions before overwriting.
+		if err := checkPermissions(fi.Mode()); err != nil {
+			return err
+		}
+		outFile, err := os.OpenFile(f.filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			return fmt.Errorf("write keystore file: %w", err)
+		}
+		if _, err := outFile.Write(out); err != nil {
+			_ = outFile.Close()
+			return fmt.Errorf("write keystore file: %w", err)
+		}
+		return outFile.Close()
+	} else if os.IsNotExist(err) {
+		// File doesn't exist — create with O_EXCL to prevent symlink race.
+		outFile, err := os.OpenFile(f.filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return fmt.Errorf("write keystore file: %w", err)
+		}
+		if _, err := outFile.Write(out); err != nil {
+			_ = outFile.Close()
+			return fmt.Errorf("write keystore file: %w", err)
+		}
+		return outFile.Close()
+	} else {
+		return fmt.Errorf("stat keystore file: %w", err)
 	}
-	return nil
 }
 
 // deriveKey derives an AES-256 key from the passphrase and salt using
@@ -306,8 +366,24 @@ func (f *FileKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error 
 	// Encode key material as base64 for storage.
 	b64 := b64Encode(material.Bytes)
 
+	// Acquire file lock before f.mu to prevent cross-instance data loss.
+	// The file lock wraps the entire read-modify-write cycle so that
+	// concurrent stores pointing at the same file serialize correctly.
+	flock := getFileLock(f.filePath)
+	flock.Lock()
+	defer flock.Unlock()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	// Reload from disk to pick up keys added by other instances since
+	// this store was opened. Without this, the in-memory map is stale
+	// and saveToDisk would overwrite other instances' additions.
+	if _, err := os.Stat(f.filePath); err == nil {
+		if err := f.loadFromDisk(); err != nil {
+			return err
+		}
+	}
 
 	if _, exists := f.keys[string(id)]; exists {
 		return ErrKeyAlreadyExists
@@ -420,8 +496,20 @@ func (f *FileKeyStore) Delete(id KeyID) error {
 		return err
 	}
 
+	// Acquire file lock before f.mu to prevent cross-instance data loss.
+	flock := getFileLock(f.filePath)
+	flock.Lock()
+	defer flock.Unlock()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
+
+	// Reload from disk to pick up changes from other instances.
+	if _, err := os.Stat(f.filePath); err == nil {
+		if err := f.loadFromDisk(); err != nil {
+			return err
+		}
+	}
 
 	if _, exists := f.keys[string(id)]; !exists {
 		return ErrKeyNotFound
