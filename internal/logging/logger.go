@@ -2,6 +2,8 @@ package logging
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 )
@@ -64,7 +66,8 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 func (h *RedactingHandler) redactAttr(a slog.Attr) slog.Attr {
 	// If the key suggests a sensitive value (e.g., "password"), redact entirely.
 	if hasSensitiveKey(a.Key) {
-		return h.redactAttrValue(a)
+		a.Value = slog.StringValue("[REDACTED]")
+		return a
 	}
 
 	return h.redactAttrValue(a)
@@ -93,7 +96,8 @@ func (h *RedactingHandler) redactAttrValue(a slog.Attr) slog.Attr {
 		a.Value = slog.GroupValue(redacted...)
 	case slog.KindAny:
 		// For KindAny, try to extract string representation
-		if s, ok := a.Value.Any().(string); ok {
+		val := a.Value.Any()
+		if s, ok := val.(string); ok {
 			if isSensitiveValue(s) || (len(s) >= 20 && looksLikeAPIKey(s)) {
 				a.Value = slog.StringValue("[REDACTED]")
 			} else {
@@ -101,6 +105,22 @@ func (h *RedactingHandler) redactAttrValue(a slog.Attr) slog.Attr {
 				if redacted != s {
 					a.Value = slog.StringValue(redacted)
 				}
+			}
+		} else if err, ok := val.(error); ok {
+			// Handle error types: extract .Error() string and redact
+			errStr := err.Error()
+			redacted := Redact(errStr)
+			a.Value = slog.StringValue(redacted)
+		} else {
+			// For other non-string types (structs, maps, etc.),
+			// marshal to JSON, redact the JSON string, and store as string value.
+			jsonBytes, marshalErr := json.Marshal(val)
+			if marshalErr == nil {
+				jsonStr := string(jsonBytes)
+				redacted := Redact(jsonStr)
+				a.Value = slog.StringValue(redacted)
+			} else {
+				a.Value = slog.StringValue(fmt.Sprintf("[REDACTED:%T]", val))
 			}
 		}
 	}

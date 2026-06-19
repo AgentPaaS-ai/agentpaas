@@ -7,8 +7,8 @@ import (
 
 // Patterns for sensitive values that must be redacted.
 var (
-	// apiKeyPattern matches common API key prefixes followed by alphanumeric content.
-	apiKeyPattern = regexp.MustCompile(`(?i)(sk-|key-|token-|bearer\s+)[a-z0-9]{8,}`)
+	// apiKeyPattern matches common API key prefixes followed by base64/alphanumeric content.
+	apiKeyPattern = regexp.MustCompile(`(?i)(sk-|key-|token-|bearer\s+)[a-zA-Z0-9+/=_-]{8,}`)
 
 	// gitHubTokenPattern matches GitHub tokens with ghp_, gho_, ghs_, or gh prefix + underscore.
 	gitHubTokenPattern = regexp.MustCompile(`gh[pso]?_[a-zA-Z0-9]{8,}`)
@@ -16,8 +16,8 @@ var (
 	// jwtPattern matches JWT tokens that start with the base64-encoded JSON header "eyJ".
 	jwtPattern = regexp.MustCompile(`eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+`)
 
-	// awsKeyPattern matches AWS access key IDs starting with AKIA.
-	awsKeyPattern = regexp.MustCompile(`AKIA[A-Z0-9]{16}`)
+	// awsKeyPattern matches AWS access key IDs starting with AKIA or ASIA.
+	awsKeyPattern = regexp.MustCompile(`(AKIA|ASIA)[A-Z0-9]{16}`)
 
 	// privateKeyPattern matches PEM-encoded private key blocks.
 	privateKeyPattern = regexp.MustCompile(`-----BEGIN[^-]+PRIVATE KEY-----`)
@@ -29,9 +29,16 @@ var (
 	// Uses a character class that captures base64 alphabet plus padding.
 	base64HighEntropyPattern = regexp.MustCompile(`\b[A-Za-z0-9+/]{40,}={0,2}\b`)
 
+	// hexWithColonsPattern matches colon-separated hex strings (e.g., SHA256 fingerprints).
+	hexWithColonsPattern = regexp.MustCompile(`[0-9a-fA-F]{2}(:[0-9a-fA-F]{2}){15,}`)
+
+	// leetspeakPasswordPattern matches password-like strings even within words
+	// (used for leetspeak-normalized strings, e.g., "Password" from "P@ssw0rd").
+	leetspeakPasswordPattern = regexp.MustCompile(`(?i)(pass|pwd|secret|passphrase)`)
+
 	// passwordValuePattern matches strings that look like password/passphrase values.
-	// Matches strings containing case-insensitive password indicators like "pass", "pwd", "secret".
-	passwordValuePattern = regexp.MustCompile(`(?i)(pass|pwd|secret|passphrase)`)
+	// Matches whole words containing case-insensitive password indicators like "pass", "pwd", "secret".
+	passwordValuePattern = regexp.MustCompile(`(?i)\b(pass|pwd|secret|passphrase)\b`)
 
 	// passwordFieldNames are attribute keys that suggest the value is a password.
 	passwordFieldNames = []string{
@@ -40,6 +47,15 @@ var (
 		"passwd",
 		"pwd",
 		"secret",
+		"api_key",
+		"apikey",
+		"auth",
+		"credential",
+		"token",
+		"access_token",
+		"refresh_token",
+		"private_key",
+		"client_secret",
 	}
 )
 
@@ -71,10 +87,13 @@ func isSensitiveValue(val string) bool {
 	if base64HighEntropyPattern.MatchString(val) {
 		return true
 	}
+	if hexWithColonsPattern.MatchString(val) {
+		return true
+	}
 
 	// Check for password/passphrase values (contains "pass", "pwd", "secret", "passphrase").
 	// Also checks with leetspeak normalization (e.g., "P@ssw0rd" -> "Password").
-	if len(val) >= 8 && (passwordValuePattern.MatchString(val) || passwordValuePattern.MatchString(normalizeLeet(val))) {
+	if len(val) >= 8 && (passwordValuePattern.MatchString(val) || leetspeakPasswordPattern.MatchString(normalizeLeet(val))) {
 		return true
 	}
 
@@ -139,6 +158,7 @@ func replaceAllPatterns(s string) string {
 		gitHubTokenPattern,      // GitHub tokens
 		awsKeyPattern,           // AWS keys
 		apiKeyPattern,           // API key patterns
+		hexWithColonsPattern,    // Colon-separated hex
 		hexStringPattern,        // Long hex strings
 		base64HighEntropyPattern, // Long base64 strings
 	}
