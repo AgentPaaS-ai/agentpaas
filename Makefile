@@ -30,8 +30,15 @@ block1-gate: proto build test lint
 
 .PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block15-gate
 
-block2-gate:
-	@echo "Error: block2-gate is not implemented until Block 2" && exit 1
+block2-gate: build test lint race
+	@echo "Verifying Block 2 packages..."
+	go test ./internal/home/... -race -count=1
+	go test ./internal/daemon/... -race -count=1
+	go test ./internal/cli/... -count=1
+	go test ./internal/service/... -count=1
+	go test ./internal/doctor/... -race -count=1
+	go test ./internal/logging/... -race -count=1
+	@echo "Block 2 gate: PASS"
 
 block3-gate:
 	@echo "Error: block3-gate is not implemented until Block 3" && exit 1
@@ -76,7 +83,7 @@ block15-gate:
 gates: ## List all available gate targets
 	@echo "Available gates:"
 	@echo "  block1-gate  - Repo bootstrap, proto contracts, CI skeleton (ACTIVE)"
-	@echo "  block2-gate  - Daemon skeleton, CLI plumbing (not implemented)"
+	@echo "  block2-gate  - Daemon skeleton, CLI plumbing (ACTIVE)"
 	@echo "  block3-gate  - Identity service, audit hash chain (not implemented)"
 	@echo "  block4-gate  - Policy engine (not implemented)"
 	@echo "  block5-gate  - Secrets broker (not implemented)"
