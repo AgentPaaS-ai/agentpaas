@@ -40,8 +40,12 @@ func NewFakeKeyStore() *FakeKeyStore {
 }
 
 // Create stores the key material under the given ID and type. It returns
-// ErrKeyAlreadyExists if a key with that ID already exists.
+// ErrKeyAlreadyExists if a key with that ID already exists, or
+// ErrInvalidKeyID if the ID fails validation.
 func (f *FakeKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error {
+	if err := ValidateKeyID(id); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, exists := f.keys[id]; exists {
@@ -55,8 +59,12 @@ func (f *FakeKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error 
 }
 
 // Load retrieves the key material for the given ID. It returns
-// ErrKeyNotFound if the key does not exist.
+// ErrKeyNotFound if the key does not exist, or ErrInvalidKeyID if the ID
+// fails validation.
 func (f *FakeKeyStore) Load(id KeyID) (KeyMaterial, error) {
+	if err := ValidateKeyID(id); err != nil {
+		return KeyMaterial{}, err
+	}
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	sk, ok := f.keys[id]
@@ -69,8 +77,12 @@ func (f *FakeKeyStore) Load(id KeyID) (KeyMaterial, error) {
 // Sign computes an ECDSA signature over the given digest using the key
 // identified by id. Only signing key types (CA, AuditSigning,
 // PackageIdentity) are supported; Workload keys return ErrWrongKeyType.
-// Returns ErrKeyNotFound if the key does not exist.
+// Returns ErrKeyNotFound if the key does not exist, or ErrInvalidKeyID if
+// the ID fails validation.
 func (f *FakeKeyStore) Sign(id KeyID, digest []byte) ([]byte, error) {
+	if err := ValidateKeyID(id); err != nil {
+		return nil, err
+	}
 	f.mu.RLock()
 	sk, ok := f.keys[id]
 	f.mu.RUnlock()
@@ -89,9 +101,12 @@ func (f *FakeKeyStore) Sign(id KeyID, digest []byte) ([]byte, error) {
 }
 
 // Verify checks an ECDSA signature over the given digest against the key
-// identified by id. It returns false if the key is not found or is a
-// non-signing key type.
+// identified by id. It returns false if the key is not found, is a
+// non-signing key type, or if the ID fails validation.
 func (f *FakeKeyStore) Verify(id KeyID, digest []byte, signature []byte) bool {
+	if err := ValidateKeyID(id); err != nil {
+		return false
+	}
 	f.mu.RLock()
 	sk, ok := f.keys[id]
 	f.mu.RUnlock()
@@ -109,8 +124,11 @@ func (f *FakeKeyStore) Verify(id KeyID, digest []byte, signature []byte) bool {
 }
 
 // Delete removes the key with the given ID. It returns ErrKeyNotFound if
-// the key does not exist.
+// the key does not exist, or ErrInvalidKeyID if the ID fails validation.
 func (f *FakeKeyStore) Delete(id KeyID) error {
+	if err := ValidateKeyID(id); err != nil {
+		return err
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, exists := f.keys[id]; !exists {

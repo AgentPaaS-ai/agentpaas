@@ -6,6 +6,9 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -206,6 +209,66 @@ func ContractTests(t *testing.T, newStore func() KeyStore) {
 		}
 		if len(meta) != 0 {
 			t.Errorf("List on empty store returned %d entries, want 0", len(meta))
+		}
+	})
+
+	t.Run("RejectsInvalidKeyID", func(t *testing.T) {
+		s := newStore()
+		material := testKeyMaterial(t, KeyTypeCA)
+
+		invalidIDs := []KeyID{
+			"",               // empty
+			"../../etc/passwd", // path traversal (contains '/')
+			"foo/../bar",     // path traversal (contains '/')
+			"🔥🦄",          // unicode emoji
+			"日本語-key",      // unicode CJK
+			KeyID(strings.Repeat("a", 10000)), // too long
+			"key with spaces",
+			"key\nwith\nnewlines",
+			".",  // dot
+			"..", // dot-dot
+		}
+
+		for _, id := range invalidIDs {
+			t.Run(fmt.Sprintf("Create_%q", id), func(t *testing.T) {
+				if err := s.Create(id, KeyTypeCA, material); err == nil {
+					t.Errorf("Create with invalid KeyID %q: want error, got nil", id)
+				} else if !errors.Is(err, ErrInvalidKeyID) {
+					t.Errorf("Create with invalid KeyID %q: want %v, got %v", id, ErrInvalidKeyID, err)
+				}
+			})
+
+			t.Run(fmt.Sprintf("Load_%q", id), func(t *testing.T) {
+				_, err := s.Load(id)
+				if err == nil {
+					t.Errorf("Load with invalid KeyID %q: want error, got nil", id)
+				} else if !errors.Is(err, ErrInvalidKeyID) {
+					t.Errorf("Load with invalid KeyID %q: want %v, got %v", id, ErrInvalidKeyID, err)
+				}
+			})
+
+			t.Run(fmt.Sprintf("Sign_%q", id), func(t *testing.T) {
+				_, err := s.Sign(id, []byte("digest"))
+				if err == nil {
+					t.Errorf("Sign with invalid KeyID %q: want error, got nil", id)
+				} else if !errors.Is(err, ErrInvalidKeyID) {
+					t.Errorf("Sign with invalid KeyID %q: want %v, got %v", id, ErrInvalidKeyID, err)
+				}
+			})
+
+			t.Run(fmt.Sprintf("Verify_%q", id), func(t *testing.T) {
+				if ok := s.Verify(id, []byte("digest"), []byte("sig")); ok {
+					t.Errorf("Verify with invalid KeyID %q: want false, got true", id)
+				}
+			})
+
+			t.Run(fmt.Sprintf("Delete_%q", id), func(t *testing.T) {
+				if err := s.Delete(id); err == nil {
+					t.Errorf("Delete with invalid KeyID %q: want error, got nil", id)
+				} else if !errors.Is(err, ErrInvalidKeyID) {
+					t.Errorf("Delete with invalid KeyID %q: want %v, got %v", id, ErrInvalidKeyID, err)
+				}
+			})
 		}
 	})
 }

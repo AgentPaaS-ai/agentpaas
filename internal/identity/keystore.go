@@ -1,11 +1,50 @@
 package identity
 
 import (
+	"errors"
+	"fmt"
 	"time"
 )
 
 // KeyID is a unique identifier for a key stored in the KeyStore.
 type KeyID string
+
+// ErrInvalidKeyID is returned when a KeyID fails validation. Implementations
+// must reject any KeyID that does not satisfy the constraints enforced by
+// ValidateKeyID.
+var ErrInvalidKeyID = errors.New("invalid key ID")
+
+// ValidateKeyID validates a KeyID against the KeyStore contract to prevent
+// path-traversal, injection, and resource-exhaustion attacks in file-backed
+// and DB-backed keystores (T02+). The following constraints are enforced:
+//   - Non-empty
+//   - Max 128 characters
+//   - Allowed charset: [a-zA-Z0-9._-] only (no path separators, no unicode,
+//     no control chars, no spaces)
+//   - Must not be "." or ".."
+//
+// Returns ErrInvalidKeyID with an actionable message naming the violated rule.
+func ValidateKeyID(id KeyID) error {
+	s := string(id)
+	if s == "" {
+		return fmt.Errorf("%w: key ID must not be empty", ErrInvalidKeyID)
+	}
+	if s == "." || s == ".." {
+		return fmt.Errorf("%w: key ID must not be %q", ErrInvalidKeyID, s)
+	}
+	if len(s) > 128 {
+		return fmt.Errorf("%w: key ID length %d exceeds maximum 128", ErrInvalidKeyID, len(s))
+	}
+	for i, r := range s {
+		if r > 127 {
+			return fmt.Errorf("%w: key ID contains non-ASCII character %q at position %d", ErrInvalidKeyID, r, i)
+		}
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '.' && r != '_' && r != '-' {
+			return fmt.Errorf("%w: key ID contains disallowed character %q at position %d", ErrInvalidKeyID, r, i)
+		}
+	}
+	return nil
+}
 
 // KeyType represents the purpose/type of a cryptographic key.
 type KeyType string

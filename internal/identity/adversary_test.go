@@ -2,6 +2,7 @@ package identity
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -391,20 +392,25 @@ func TestAdversary_VerifyDeletedKey(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Vector 11: Large keyID / special-char keyID
 // Empty string, very long, unicode, path-traversal-looking ids must be
-// rejected or handled safely. Flag if the interface allows arbitrary ids
-// without validation.
+// rejected with ErrInvalidKeyID.
 // ---------------------------------------------------------------------------
 func TestAdversary_KeyIDValidation_Empty(t *testing.T) {
 	ks := NewFakeKeyStore()
 	material := testKeyMaterial(t, KeyTypeCA)
 	err := ks.Create("", KeyTypeCA, material)
-	if err != nil {
-		t.Logf("Empty keyID rejected: %v", err)
-	} else {
-		t.Log("NOTE: Empty keyID was accepted — interface has no validation (MEDIUM)")
-		defer func() { _ = ks.Delete("") }()
+	if err == nil {
+		t.Error("BREAK: Empty keyID was accepted, expected ErrInvalidKeyID")
+		return
 	}
-	t.Log("MEDIUM FINDING: KeyID type is string with no charset validation — empty, long, unicode, or path-traversal IDs are accepted")
+	if !errors.Is(err, ErrInvalidKeyID) {
+		t.Errorf("Empty keyID: got %v, want ErrInvalidKeyID", err)
+	}
+	t.Logf("Empty keyID correctly rejected: %v", err)
+
+	// Verify also rejects
+	if ok := ks.Verify("", []byte("digest"), []byte("sig")); ok {
+		t.Error("BREAK: Verify accepted empty keyID")
+	}
 }
 
 func TestAdversary_KeyIDValidation_Long(t *testing.T) {
@@ -412,18 +418,18 @@ func TestAdversary_KeyIDValidation_Long(t *testing.T) {
 	longID := KeyID(strings.Repeat("a", 10000))
 	material := testKeyMaterial(t, KeyTypeCA)
 	err := ks.Create(longID, KeyTypeCA, material)
-	if err != nil {
-		t.Logf("Long keyID (10000 chars) rejected: %v", err)
-	} else {
-		t.Logf("NOTE: Very long keyID (%d chars) was accepted", len(longID))
-		// Verify operations still work
-		sig, sigErr := ks.Sign(longID, []byte("digest"))
-		if sigErr != nil {
-			t.Errorf("Sign with long keyID failed: %v", sigErr)
-		} else if ok := ks.Verify(longID, []byte("digest"), sig); !ok {
-			t.Error("Verify with long keyID failed")
-		}
-		_ = ks.Delete(longID)
+	if err == nil {
+		t.Errorf("BREAK: Very long keyID (%d chars) was accepted, expected ErrInvalidKeyID", len(longID))
+		return
+	}
+	if !errors.Is(err, ErrInvalidKeyID) {
+		t.Errorf("Long keyID: got %v, want ErrInvalidKeyID", err)
+	}
+	t.Logf("Long keyID (%d chars) correctly rejected: %v", len(longID), err)
+
+	// Verify also rejects
+	if ok := ks.Verify(longID, []byte("digest"), []byte("sig")); ok {
+		t.Error("BREAK: Verify accepted long keyID")
 	}
 }
 
@@ -432,23 +438,19 @@ func TestAdversary_KeyIDValidation_Unicode(t *testing.T) {
 	unicodeID := KeyID("🔥🦄-emoji-key-日本語")
 	material := testKeyMaterial(t, KeyTypeCA)
 	err := ks.Create(unicodeID, KeyTypeCA, material)
-	if err != nil {
-		t.Logf("Unicode keyID rejected: %v", err)
+	if err == nil {
+		t.Errorf("BREAK: Unicode keyID %q was accepted, expected ErrInvalidKeyID", unicodeID)
 		return
 	}
-	t.Logf("NOTE: Unicode keyID %q was accepted", unicodeID)
-	// Verify full lifecycle works
-	sig, err := ks.Sign(unicodeID, []byte("digest"))
-	if err != nil {
-		t.Errorf("Sign with unicode keyID failed: %v", err)
-	} else if ok := ks.Verify(unicodeID, []byte("digest"), sig); !ok {
-		t.Error("Verify with unicode keyID failed")
+	if !errors.Is(err, ErrInvalidKeyID) {
+		t.Errorf("Unicode keyID: got %v, want ErrInvalidKeyID", err)
 	}
-	_, err = ks.Load(unicodeID)
-	if err != nil {
-		t.Errorf("Load with unicode keyID failed: %v", err)
+	t.Logf("Unicode keyID %q correctly rejected: %v", unicodeID, err)
+
+	// Verify also rejects
+	if ok := ks.Verify(unicodeID, []byte("digest"), []byte("sig")); ok {
+		t.Error("BREAK: Verify accepted unicode keyID")
 	}
-	_ = ks.Delete(unicodeID)
 }
 
 func TestAdversary_KeyIDValidation_PathTraversal(t *testing.T) {
@@ -463,14 +465,22 @@ func TestAdversary_KeyIDValidation_PathTraversal(t *testing.T) {
 		pid := pid
 		material := testKeyMaterial(t, KeyTypeCA)
 		err := ks.Create(pid, KeyTypeCA, material)
-		if err != nil {
-			t.Logf("Path-traversal keyID %q rejected: %v", pid, err)
+		if err == nil {
+			t.Errorf("BREAK: Path-traversal keyID %q was accepted, expected ErrInvalidKeyID", pid)
+			continue
+		}
+		if !errors.Is(err, ErrInvalidKeyID) {
+			t.Errorf("Path-traversal keyID %q: got %v, want ErrInvalidKeyID", pid, err)
 		} else {
-			t.Logf("NOTE: Path-traversal keyID %q was accepted (no filesystem impact for FakeKeyStore, but contract gap)", pid)
-			_ = ks.Delete(pid)
+			t.Logf("Path-traversal keyID %q correctly rejected: %v", pid, err)
+		}
+
+		// Verify also rejects
+		if ok := ks.Verify(pid, []byte("digest"), []byte("sig")); ok {
+			t.Errorf("BREAK: Verify accepted path-traversal keyID %q", pid)
 		}
 	}
-	t.Log("MEDIUM FINDING: KeyStore interface allows arbitrary KeyID strings with no validation — suggest charset/format constraints in interface contract")
+	t.Log("FIXED: All path-traversal KeyIDs are now rejected with ErrInvalidKeyID")
 }
 
 // ---------------------------------------------------------------------------
