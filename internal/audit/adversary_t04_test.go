@@ -478,10 +478,11 @@ func TestAdversaryT04_TamperMiddleRecord(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Re-open — replay() simply takes the last record as head (no validation)
+	// Re-open — replay() now validates chain integrity; tampered chain must be detected
 	w2, err := NewAuditWriter(path)
 	if err != nil {
-		t.Fatalf("NewAuditWriter: %v", err)
+		t.Logf("PASS: NewAuditWriter correctly detected tampered chain: %v", err)
+		return
 	}
 	defer func() { _ = w2.Close() }()
 
@@ -658,10 +659,11 @@ func TestAdversaryT04_ReorderLines(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Re-open — replay() does not validate chain
+	// Re-open — replay() now validates chain integrity; reordered chain must be detected
 	w2, err := NewAuditWriter(path)
 	if err != nil {
-		t.Fatalf("NewAuditWriter: %v", err)
+		t.Logf("PASS: NewAuditWriter correctly detected reordered chain: %v", err)
+		return
 	}
 	defer func() { _ = w2.Close() }()
 
@@ -755,10 +757,11 @@ func TestAdversaryT04_InsertFakeRecord(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Re-open
+	// Re-open — replay() now validates chain integrity; fake record must be detected
 	w2, err := NewAuditWriter(path)
 	if err != nil {
-		t.Fatalf("NewAuditWriter: %v", err)
+		t.Logf("PASS: NewAuditWriter correctly detected fake record: %v", err)
+		return
 	}
 	defer func() { _ = w2.Close() }()
 
@@ -843,10 +846,11 @@ func TestAdversaryT04_DuplicateSeq(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Re-open
+	// Re-open — replay() now validates chain integrity; duplicate seq must be detected
 	w2, err := NewAuditWriter(path)
 	if err != nil {
-		t.Fatalf("NewAuditWriter: %v", err)
+		t.Logf("PASS: NewAuditWriter correctly detected duplicate seq: %v", err)
+		return
 	}
 	defer func() { _ = w2.Close() }()
 
@@ -956,10 +960,11 @@ func TestAdversaryT04_GapInSeq(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	// Re-open
+	// Re-open — replay() now validates chain integrity; gap must be detected
 	w2, err := NewAuditWriter(path)
 	if err != nil {
-		t.Fatalf("NewAuditWriter: %v", err)
+		t.Logf("PASS: NewAuditWriter correctly detected seq gap: %v", err)
+		return
 	}
 	defer func() { _ = w2.Close() }()
 

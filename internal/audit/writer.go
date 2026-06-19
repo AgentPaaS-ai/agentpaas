@@ -47,9 +47,16 @@ func NewAuditWriter(path string) (*AuditWriter, error) {
 	return w, nil
 }
 
-// replay reads all existing lines from the JSONL file and reconstructs the
-// head anchor (last seq and record_hash). It also validates chain integrity
-// but does not fail on broken chains — it simply takes the last record as head.
+// replay reads all existing lines from the JSONL file and validates the full
+// hash chain integrity on startup. It verifies:
+//  1. Each record is parseable JSON.
+//  2. seq=1 (genesis) has prev_hash == "".
+//  3. Every subsequent record's prev_hash matches the previous record's record_hash.
+//  4. Every record's stored record_hash matches a recomputed hash from canonical JSON.
+//  5. seq is monotonically increasing by 1 (no gaps or duplicates).
+//
+// If any check fails, a descriptive error is returned. Only if the entire chain
+// is valid is the head set to the last record's seq and record_hash.
 func (w *AuditWriter) replay() error {
 	// Seek to beginning of file
 	if _, err := w.file.Seek(0, 0); err != nil {
@@ -58,22 +65,69 @@ func (w *AuditWriter) replay() error {
 
 	scanner := bufio.NewScanner(w.file)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024) // 1MB buffer
+	var prev AuditRecord
+	lineNum := 0
+	hasRecords := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
+		lineNum++
+
 		var rec AuditRecord
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
-			// Skip malformed lines rather than failing; the head is best-effort.
-			continue
+			return fmt.Errorf("chain integrity broken at line %d: malformed JSON: %w", lineNum, err)
 		}
-		w.seq = rec.Seq
-		w.hash = rec.RecordHash
+
+		// Verify seq monotonicity (no gaps, no duplicates)
+		if hasRecords {
+			if rec.Seq != prev.Seq+1 {
+				return fmt.Errorf("chain integrity broken at line %d (seq=%d): expected seq=%d, got seq=%d (gap or duplicate)",
+					lineNum, rec.Seq, prev.Seq+1, rec.Seq)
+			}
+		}
+
+		// Genesis check: first record must be seq=1 with empty prev_hash
+		if !hasRecords {
+			if rec.Seq != 1 {
+				return fmt.Errorf("chain integrity broken at line %d: first record must have seq=1, got seq=%d", lineNum, rec.Seq)
+			}
+			if rec.PrevHash != "" {
+				return fmt.Errorf("chain integrity broken at line %d (seq=1): expected prev_hash=\"\", got %q", lineNum, rec.PrevHash)
+			}
+		}
+
+		// Verify prev_hash chain
+		if hasRecords {
+			if rec.PrevHash != prev.RecordHash {
+				return fmt.Errorf("chain integrity broken at line %d (seq=%d): prev_hash mismatch: got %q, expected %q",
+					lineNum, rec.Seq, rec.PrevHash, prev.RecordHash)
+			}
+		}
+
+		// Recompute record_hash from canonical JSON and verify it matches the stored hash
+		computedHash, err := rec.computeRecordHash()
+		if err != nil {
+			return fmt.Errorf("chain integrity broken at line %d (seq=%d): failed to compute record_hash: %w", lineNum, rec.Seq, err)
+		}
+		if rec.RecordHash != computedHash {
+			return fmt.Errorf("chain integrity broken at line %d (seq=%d): record_hash mismatch: stored %q, recomputed %q",
+				lineNum, rec.Seq, rec.RecordHash, computedHash)
+		}
+
+		prev = rec
+		hasRecords = true
 	}
 
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("scan audit file: %w", err)
+	}
+
+	// Set head only if the entire chain is valid
+	if hasRecords {
+		w.seq = prev.Seq
+		w.hash = prev.RecordHash
 	}
 
 	return nil
