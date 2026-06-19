@@ -38,12 +38,9 @@ func TestAdversaryT02_PlaintextOnDisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dBytes := key.D.Bytes()
-	// Pad to 32 bytes (P-256 private key scalar is 32 bytes).
-	dPadded := make([]byte, 32)
-	copy(dPadded[32-len(dBytes):], dBytes)
-
-	der, err := x509.MarshalECPrivateKey(key)
+	// Use x509.MarshalPKCS8PrivateKey to get the raw private key bytes
+	// (key.D.Bytes() is deprecated in Go 1.26).
+	der, err := x509.MarshalPKCS8PrivateKey(key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,9 +82,10 @@ func TestAdversaryT02_PlaintextOnDisk(t *testing.T) {
 		t.Error("ADVERSARY BREAK [HIGH]: plaintext PEM boundary '-----BEGIN' found in encrypted keystore file")
 	}
 
-	// Check 2: The raw D scalar (private key value) must not appear in bytes.
-	if bytes.Contains(raw, dPadded) {
-		t.Error("ADVERSARY BREAK [HIGH]: raw EC D value (private key scalar) found in encrypted keystore file")
+	// Check 2: The raw private key bytes must not appear in the encrypted file.
+	// We search for the DER-encoded private key bytes (PKCS8 format).
+	if bytes.Contains(raw, der) {
+		t.Error("ADVERSARY BREAK [HIGH]: raw private key bytes found in encrypted keystore file")
 	}
 
 	// Check 3: X and Y coordinates (public key) should not leak in raw form.
