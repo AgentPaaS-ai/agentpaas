@@ -21,13 +21,17 @@ func TestRuntimeDriver_InterfaceCompiles(t *testing.T) {
 // mockRuntimeDriver is a minimal mock that implements RuntimeDriver for use
 // in interface compilation checks and basic contract tests.
 type mockRuntimeDriver struct {
-	createFunc func(ctx context.Context, spec ContainerSpec) (ContainerID, error)
-	startFunc  func(ctx context.Context, id ContainerID) error
-	stopFunc   func(ctx context.Context, id ContainerID, timeout *time.Duration) error
-	removeFunc func(ctx context.Context, id ContainerID, force bool) error
-	statusFunc func(ctx context.Context, id ContainerID) (ContainerStatus, error)
-	statsFunc  func(ctx context.Context, id ContainerID) (ContainerStats, error)
-	logsFunc   func(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error)
+	createFunc             func(ctx context.Context, spec ContainerSpec) (ContainerID, error)
+	startFunc              func(ctx context.Context, id ContainerID) error
+	stopFunc               func(ctx context.Context, id ContainerID, timeout *time.Duration) error
+	removeFunc             func(ctx context.Context, id ContainerID, force bool) error
+	statusFunc             func(ctx context.Context, id ContainerID) (ContainerStatus, error)
+	statsFunc              func(ctx context.Context, id ContainerID) (ContainerStats, error)
+	logsFunc               func(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error)
+	createNetworkFunc      func(ctx context.Context, spec NetworkSpec) (NetworkID, error)
+	removeNetworkFunc      func(ctx context.Context, id NetworkID) error
+	inspectNetworkFunc     func(ctx context.Context, id NetworkID) (NetworkInfo, error)
+	inspectContainerNetFunc func(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error)
 }
 
 func (m *mockRuntimeDriver) Create(ctx context.Context, spec ContainerSpec) (ContainerID, error) {
@@ -75,6 +79,34 @@ func (m *mockRuntimeDriver) Stats(ctx context.Context, id ContainerID) (Containe
 func (m *mockRuntimeDriver) Logs(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error) {
 	if m.logsFunc != nil {
 		return m.logsFunc(ctx, id, opts)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) CreateNetwork(ctx context.Context, spec NetworkSpec) (NetworkID, error) {
+	if m.createNetworkFunc != nil {
+		return m.createNetworkFunc(ctx, spec)
+	}
+	return "", errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) RemoveNetwork(ctx context.Context, id NetworkID) error {
+	if m.removeNetworkFunc != nil {
+		return m.removeNetworkFunc(ctx, id)
+	}
+	return errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) InspectNetwork(ctx context.Context, id NetworkID) (NetworkInfo, error) {
+	if m.inspectNetworkFunc != nil {
+		return m.inspectNetworkFunc(ctx, id)
+	}
+	return NetworkInfo{}, errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error) {
+	if m.inspectContainerNetFunc != nil {
+		return m.inspectContainerNetFunc(ctx, id)
 	}
 	return nil, errors.New("not implemented")
 }
