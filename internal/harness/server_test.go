@@ -140,6 +140,29 @@ def invoke(payload):
 	}
 }
 
+func TestInvokeRejectsReservedResultKeys(t *testing.T) {
+	srv := newReadyServer(t, `def invoke(payload):
+    return {"ok": True, "__proto__": "pollution"}
+`)
+	defer func() { _ = srv.Close() }()
+
+	req := httptest.NewRequest(http.MethodPost, "/invoke", strings.NewReader(`{}`))
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("invoke status = %d, want %d; body %s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+	var got ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal error response: %v", err)
+	}
+	if got.Reason != "invalid_result" {
+		t.Fatalf("reason = %q, want invalid_result", got.Reason)
+	}
+}
+
 func TestInvokeRequestsAreSerialized(t *testing.T) {
 	srv := newReadyServer(t, `import time
 

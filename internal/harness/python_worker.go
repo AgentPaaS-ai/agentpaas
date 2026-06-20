@@ -9,8 +9,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 type pythonWorker struct {
@@ -181,6 +183,9 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any) (*Inv
 			}
 			return nil, &ErrorResponse{Status: "FAILED", Reason: reason, Detail: msg.Detail}
 		}
+		if err := validateResultKeys(msg.Result); err != nil {
+			return nil, &ErrorResponse{Status: "FAILED", Reason: "invalid_result", Detail: err.Error()}
+		}
 		return &InvokeResponse{
 			Status: "OK",
 			Result: msg.Result,
@@ -188,6 +193,32 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any) (*Inv
 			Stderr: w.stderrPath,
 		}, nil
 	}
+}
+
+func validateResultKeys(value any) error {
+	switch v := value.(type) {
+	case map[string]any:
+		for key, child := range v {
+			if strings.HasPrefix(key, "__") {
+				return fmt.Errorf("result key %q is reserved", key)
+			}
+			for _, r := range key {
+				if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
+					return fmt.Errorf("result key %q contains a control character", key)
+				}
+			}
+			if err := validateResultKeys(child); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, child := range v {
+			if err := validateResultKeys(child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (w *pythonWorker) Close() error {
