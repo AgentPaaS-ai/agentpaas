@@ -43,6 +43,10 @@ e2e-network: build
 	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_PartialCreateCleanup' ./internal/runtime/... -timeout 120s
 	# Run B5-T04d adversary tests (orphan leaks, restart bypass, double-removal, cross-run isolation)
 	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04d' ./internal/runtime/... -timeout 180s
+	# Run B5-T05 crash reconciliation tests (agent without gateway killed, agent with gateway kept)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_CrashReconciliation' ./internal/runtime/... -timeout 120s
+	# Run B5-T05 secret-free debug output tests (no raw secrets in inspect/logs/config dumps)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_SecretFreeDebugOutput' ./internal/runtime/... -timeout 120s
 	@echo "✓ e2e-network gate: PASS"
 
 redteam-smoke:
@@ -138,7 +142,7 @@ gates: ## List all available gate targets
 	@echo "  block2-gate  - Daemon skeleton, CLI plumbing (ACTIVE)"
 	@echo "  block3-gate  - Identity service, audit hash chain (ACTIVE)"
 	@echo "  block4-gate  - Policy engine (ACTIVE)"
-	@echo "  block5-gate  - Secrets broker (not implemented)"
+	@echo "  block5-gate  - Runtime driver, Docker integration (ACTIVE)"
 	@echo "  block6-gate  - Agent harness (not implemented)"
 	@echo "  block7-gate  - Runtime driver, Docker integration (not implemented)"
 	@echo "  block8-gate  - Gateway sidecar, network enforcement (not implemented)"
