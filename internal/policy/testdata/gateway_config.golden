@@ -1,0 +1,41 @@
+config:
+    dns:
+        lookupFamily: V4Only
+binds:
+    - port: 7718
+      listeners:
+        - protocol: HTTP
+          routes:
+            - name: ingress
+              backends:
+                - host: localhost:7718
+    - port: 7799
+      listeners:
+        - protocol: HTTP
+          routes:
+            - name: egress
+              backends:
+                - host: api.openai.com:443
+                - host: api.stripe.com:443
+                - host: hooks.slack.com:443
+    - port: 7800
+      listeners:
+        - protocol: HTTP
+          routes:
+            - name: filesystem-readonly
+              backends:
+                - mcp:
+                    targets:
+                        - name: filesystem-readonly
+                          stdio:
+                            cmd: agentpaas-mcp-filesystem
+                            args:
+                                - --root
+                                - ./data
+                                - --readonly
+frontendPolicies:
+    networkAuthorization:
+        rules:
+            - allow: dns.domain == "api.openai.com"
+            - allow: dns.domain == "api.stripe.com"
+            - allow: dns.domain == "hooks.slack.com"
