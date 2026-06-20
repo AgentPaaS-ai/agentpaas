@@ -34,8 +34,9 @@ build_session:
     primary: deepseek-v4-flash
     fallback: composer-2.5-via-x-oauth
   verifier:
-    primary: composer-2.5-via-x-oauth
-    fallback: glm-5.2-via-openrouter
+    primary: glm-5.2-via-openrouter   # Block 6+: runs ONCE per block, not per subtask (see §0.1.0a)
+    fallback: deepseek-v4-pro
+    cadence: once_per_block
   adversary:
     primary: grok-4.3
     fallback: glm-5.2-via-openrouter
@@ -62,7 +63,18 @@ Role contract:
    canonical `make blockN-gate` or narrower failing target, reports exact
    PASS/FAIL output, and produces repro steps for failures. It cannot approve
    the PR and should not rewrite the implementation in the same pass unless
-   the orchestrator explicitly reassigns it as a worker.
+   the orchestrator explicitly reassigns it as a worker. **Starting Block 6,
+   the verifier runs ONCE per block, not per subtask.** Per-subtask
+   verification is deferred: the orchestrator's fresh-cache gate
+   (build/test/lint) and the adversary cover in-subtask defect-finding; the
+   verifier provides fresh-context cross-subtask integration review at
+   block-end (see §0.1.0a "Block-end verification"). Rationale: the Block 5
+   audit found the per-subtask verifier (grok-4.3) caught 0 novel issues
+   across 9 subtasks — every BLOCKER was a re-confirmation of an adversary
+   break, a stale-branch false positive, or environmental noise (OSV/Docker).
+   The adversary does 100% of real per-subtask defect-finding; the block gate
+   requires multiple subtasks merged to be meaningful, so block-end
+   verification is where the verifier adds value.
 4. **Adversary** (fresh session; user-selected model from a different model
    family where possible): runs only when risk triggers require it. It
    receives the security claims, trust boundaries, diff, and test evidence.
@@ -130,36 +142,90 @@ block completion via a checkpoint push.
    → Worker runs go test + golangci-lint locally
    → Worker outputs JSON summary
 
-2. Orchestrator runs local gate on worktree
-   bash scripts/local-gate.sh ./internal/<package>/...
-   → build + test-race + lint (3-6 min)
-
-3. If gate fails → dispatch fix worker (same branch), repeat from step 2
-
-4. Orchestrator spawns adversary (separate Hermes profile, foreground terminal)
+2. Orchestrator spawns adversary (separate Hermes profile, foreground terminal)
    hermes -p agentpaas-adversary chat -q "<prompt with worktree path>" -Q
    → Adversary reads worktree code, writes break tests, runs them, reports
 
-5. If adversary breaks → dispatch fix worker (same branch), repeat from step 2
+3. If adversary breaks → dispatch fix worker (same branch), repeat from step 2
 
-6. Orchestrator spawns verifier (separate Hermes profile, foreground terminal)
-   hermes -p agentpaas-verifier chat -q "<prompt with worktree path>" -Q
-   → Verifier runs full gate, reports evidence
+4. Orchestrator runs fresh-cache gate on worktree
+   bash scripts/local-gate.sh ./internal/<package>/...
+   → build + test + lint ONLY (no -race, no osv, no e2e per-subtask;
+     race/osv/e2e-with-Docker move to block-end verification below)
+   → fresh-cache: orchestrator does NOT reuse the worker's cache; it re-runs
+     build/test/lint against the merged worktree state
 
-7. Orchestrator merges locally
+5. If gate fails → dispatch fix worker (same branch), repeat from step 4
+
+6. Orchestrator merges locally
    git merge --no-ff <branch> -m "B<N>-T<NN>: <title>"
 
-8. Orchestrator writes OWA record to file
+7. Orchestrator writes OWA record to file (verifier section DEFERRED to block-end)
    docs/owa-records/b<N>-t<NN>.md
-   (Same format as the GitHub attempt log above — just stored locally)
+   (Same format as the GitHub attempt log above — just stored locally.
+    The verifier_result block is left empty and filled at block-end.)
 
-9. Orchestrator prunes worktree
+8. Orchestrator prunes worktree
    git worktree remove --force <worktree>
    git branch -D <branch>
    git worktree prune
 
-10. Next subtask (repeat from step 1)
+9. Next subtask (repeat from step 1)
+
+NOTE (Block 6+): the per-subtask verifier step (v1.0 step 6) is REMOVED. The
+adversary does 100% of real per-subtask defect-finding (Block 5 audit: 0 novel
+issues from the per-subtask verifier across 9 subtasks). The orchestrator's
+fresh-cache gate covers build/test/lint. Independent verification moves to
+block-end (see "Block-end verification" below), where the verifier's
+fresh-context cross-subtask integration review actually adds value.
 ```
+
+#### Block-end verification (Block 6+)
+
+After ALL subtasks are merged to local main (and BEFORE the checkpoint push),
+run the verifier once per block. This replaces the per-subtask verifier step.
+
+```
+1. Orchestrator runs a preliminary block gate on merged main
+   bash scripts/local-gate.sh block N
+   → build + test + test-race + lint + osv
+   → if this fails, dispatch fix workers on the failing subtask(s) and
+     re-run; do NOT proceed to the verifier with a red preliminary gate
+
+2. Orchestrator spawns the verifier ONCE (fresh agentpaas-verifier Hermes
+   profile, foreground terminal; primary model GLM-5.2)
+   hermes -p agentpaas-verifier chat -q "<block-end prompt with merged-main
+   ref, block spec, all OWA records, all adversary reports>" -Q
+
+   The verifier INDEPENDENTLY runs the FULL block gate on merged main:
+     - build / test / test-race / lint / osv
+     - e2e with Docker (DOCKER_HOST=unix:///Users/pms88/.colima/default/docker.sock,
+       AGENTPAAS_DOCKER_TESTS=1)
+   Then it runs ALL adversary tests against merged main (the per-subtask
+   adversary runs were on isolated worktrees; the verifier re-runs them on
+   the merged tree to catch cross-subtask regressions).
+   Then it performs a cross-subtask integration review: do the merged
+   subtasks compose correctly, do their contracts line up, are there
+   gaps/contradictions between subtask boundaries that no single-subtask
+   pass could see.
+
+3. Verifier reports evidence (verifier_result schema from §0.1.1a).
+
+4. If verifier FAILS → orchestrator dispatches fix workers on the offending
+   subtask(s), re-merges, and re-runs the block-end verifier. The block is
+   NOT checkpointed until the verifier passes.
+
+5. If verifier PASSES → block checkpoint (below).
+```
+
+Why block-end (not per-subtask): the block gate (`make blockN-gate`) requires
+multiple subtasks merged to be meaningful — running it on a single isolated
+subtask worktree yields stale-branch false positives and misses cross-subtask
+integration defects. A fresh-context verifier on merged main is the only point
+in the loop where the full block gate and cross-subtask review are valid. The
+Block 5 audit confirmed this: per-subtask verifier (grok-4.3) caught 0 novel
+issues across 9 subtasks; every BLOCKER was a re-confirmed adversary break, a
+stale-branch false positive, or environmental noise (OSV/Docker).
 
 #### Block checkpoint (at block completion)
 
@@ -246,7 +312,14 @@ execution PRs small enough for cheaper models to complete safely.
 3. **Verifier-worker pass (user-selected model).** Receives the issue, diff,
    acceptance criteria, and test output. It must answer with exact gate
    evidence: PASS, FAIL with repro, or missing-test list. It cannot be the
-   final spec approver.
+   final spec approver. **Starting Block 6 this pass runs ONCE per block at
+   block-end** (see §0.1.0a "Block-end verification"), not per subtask. The
+   per-subtask verifier pass is dropped: the Block 5 audit found it caught 0
+   novel issues across 9 subtasks (every BLOCKER was a re-confirmed adversary
+   break, stale-branch false positive, or environmental noise). The adversary
+   and the orchestrator's fresh-cache build/test/lint gate cover per-subtask
+   defect-finding; the verifier adds value only at block-end with fresh-context
+   cross-subtask integration review on merged main.
 4. **Orchestrator spec review (same orchestrator model unless user changes
    it).** Receives the issue, diff, verifier evidence, and known failures.
    It must answer: ACCEPT, REFINE with numbered defects, or REJECT/re-scope.
@@ -549,6 +622,11 @@ If you fail:
 You are the AgentPaaS verifier-worker. Your job is test evidence and failure
 reproduction, not final spec approval.
 
+**Block 6+ cadence:** you run ONCE per block at block-end (see §0.1.0a
+"Block-end verification"), not per subtask. Your inputs cover ALL merged
+subtasks for the block, and your scope is the full block gate on merged main
+plus cross-subtask integration review — not a single isolated subtask diff.
+
 Your authority:
 - You may run tests, inspect the diff, add narrowly scoped missing tests, and
   report defects.
@@ -565,14 +643,21 @@ Inputs you receive:
 - The canonical gate and any narrower expected targets.
 
 Your task:
-1. Confirm the diff is scoped to the issue.
-2. Run the canonical gate or the narrowest meaningful failing target first,
-   then the canonical gate when possible.
-3. Verify that every acceptance criterion has direct evidence.
-4. Verify that every security claim has a negative test, or list the missing
+1. Confirm the merged diff is scoped to the block's subtasks.
+2. Run the FULL block gate on merged main: build / test / test-race / lint /
+   osv, plus e2e with Docker (DOCKER_HOST set, AGENTPAAS_DOCKER_TESTS=1).
+3. Re-run ALL adversary tests against merged main — the per-subtask adversary
+   runs were on isolated worktrees; re-running on the merged tree catches
+   cross-subtask regressions.
+4. Verify that every acceptance criterion (across all subtasks) has direct
+   evidence.
+5. Verify that every security claim has a negative test, or list the missing
    test.
-5. Try to reproduce any worker-reported failure.
-6. Report exact PASS/FAIL evidence and repro steps.
+6. Perform a cross-subtask integration review: do the merged subtasks compose
+   correctly, do their contracts line up at subtask boundaries, are there
+   gaps/contradictions that no single-subtask pass could see.
+7. Try to reproduce any worker-reported failure.
+8. Report exact PASS/FAIL evidence and repro steps.
 
 Output format:
 ```yaml
@@ -701,8 +786,8 @@ The default P1 model routing is:
 - **Orchestrator fallback:** DeepSeek V4 Pro.
 - **Worker primary:** GPT-5.5 through Codex CLI (`codex exec --sandbox danger-full-access -m gpt-5.5`).
 - **Worker fallback:** DeepSeek V4 Flash (via delegate_task — pins to delegation model).
-- **Verifier primary:** Grok 4.3 through X OAuth ($0, subscription).
-- **Verifier fallback:** GLM-5.2 through OpenRouter.
+- **Verifier primary:** GLM-5.2 through OpenRouter (Block 6+: runs ONCE per block at block-end, not per subtask).
+- **Verifier fallback:** DeepSeek V4 Pro.
 - **Adversary primary:** Grok 4.3 through X OAuth ($0, subscription).
 - **Adversary fallback:** GLM-5.2 through OpenRouter.
 
@@ -719,7 +804,9 @@ fix-worker roles — delegate_task pins subagents to the delegation model
 **Grok 4.3 is NOT the orchestrator.** Tested as Block 6 cost experiment —
 quality was unacceptable (missed adversary breaks, wrong merge calls, poor task
 scoping). GLM-5.2 is the permanent orchestrator. Grok 4.3 remains
-adversary/verifier only ($0 subscription tier).
+adversary-only ($0 subscription tier); the verifier role moved off Grok 4.3
+to GLM-5.2 at Block 6 (per-subtask verifier retired — see §0.1.0a block-end
+verification).
 
 The user confirms or changes this routing at the start of each build session.
 The choice may change per block or per issue. The role contract matters more
@@ -739,9 +826,14 @@ Default ladder:
 2. **Worker:** DeepSeek V4 Flash for normal coding, TDD loops,
    test writing, and routine fixes.
    Fallback: Composer 2.5 through X OAuth.
-3. **Verifier Worker:** Composer 2.5 through X OAuth for independent test
-   writing, gate execution, failure reproduction, and missing-test
-   identification. Fallback: GLM-5.2 through OpenRouter.
+3. **Verifier Worker (Block 6+: ONCE per block, at block-end):** GLM-5.2
+   through OpenRouter for independent full block-gate execution
+   (build/test/race/lint/osv + e2e with Docker), re-running all adversary
+   tests on merged main, and fresh-context cross-subtask integration review.
+   Fallback: DeepSeek V4 Pro. Per-subtask verification is retired — the
+   orchestrator's fresh-cache build/test/lint gate and the adversary cover
+   per-subtask defect-finding (Block 5 audit: per-subtask verifier caught 0
+   novel issues across 9 subtasks).
 4. **Adversary:** Grok 4.3 for high-risk critique and negative-test
    generation. Fallback: GLM-5.2 through OpenRouter.
 5. **Strong-model escalation:** Use the configured orchestrator fallback or a
@@ -755,8 +847,9 @@ Cost discipline:
   `git diff`, test output, and known failures; avoid full-repo context unless
   the issue truly needs it.
 - Prefer cached, stable context bundles for repeated PRD/execution-plan excerpts.
-- Do verifier-worker and required adversary passes before the final
-  orchestrator approval.
+- Do the required adversary pass per subtask, and the verifier-worker pass
+  once at block-end, before the final orchestrator block approval (Block 6+;
+  see §0.1.0a block-end verification).
 - Track actual tokens and dollars in the PR body and `docs/status.md` so later
   blocks can tighten estimates.
 
