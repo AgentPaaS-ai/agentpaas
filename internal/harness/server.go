@@ -59,6 +59,7 @@ type Server struct {
 
 	mux    *http.ServeMux
 	worker *pythonWorker
+	reaper *childReaper
 
 	mu          sync.RWMutex
 	ready       bool
@@ -72,8 +73,9 @@ type Server struct {
 func NewServer(cfg Config) *Server {
 	cfg = normalizeConfig(cfg)
 	s := &Server{
-		cfg: cfg,
-		mux: http.NewServeMux(),
+		cfg:    cfg,
+		mux:    http.NewServeMux(),
+		reaper: startChildReaper(),
 	}
 	s.routes()
 	s.startWorker()
@@ -125,9 +127,16 @@ func (s *Server) Close() error {
 	s.mu.Unlock()
 
 	if worker == nil {
+		if s.reaper != nil {
+			s.reaper.Stop()
+		}
 		return nil
 	}
-	return worker.Close()
+	err := worker.Close()
+	if s.reaper != nil {
+		s.reaper.Stop()
+	}
+	return err
 }
 
 func (s *Server) routes() {
@@ -137,7 +146,7 @@ func (s *Server) routes() {
 }
 
 func (s *Server) startWorker() {
-	worker, errResp := startPythonWorker(s.cfg)
+	worker, errResp := startPythonWorker(s.cfg, s.reaper)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -245,7 +254,7 @@ func (s *Server) workerForInvoke() (*pythonWorker, *ErrorResponse) {
 		return worker, nil
 	}
 
-	worker, errResp := startPythonWorker(s.cfg)
+	worker, errResp := startPythonWorker(s.cfg, s.reaper)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
