@@ -33,6 +33,10 @@ e2e-network: build
 	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_HostBridgeProbes' ./internal/runtime/... -timeout 120s
 	# Run B5-T04b adversary tests (host bypass, loopback, gateway port scan, socket discovery)
 	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04b' ./internal/runtime/... -timeout 180s
+	# Run B5-T04c protocol bypass probe tests (IPv6, UDP, ICMP, raw socket, CONNECT tunnel, namespace)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_ProtocolBypassProbes' ./internal/runtime/... -timeout 120s
+	# Run B5-T04c adversary tests (IPv6 bypass, UDP tunneling, ICMP covert channel, CAP_NET_RAW, namespace sharing)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04c' ./internal/runtime/... -timeout 180s
 	@echo "✓ e2e-network gate: PASS"
 
 redteam-smoke:
