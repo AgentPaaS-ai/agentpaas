@@ -105,8 +105,10 @@ block5-gate: build test race lint osv
 	AGENTPAAS_DOCKER_TESTS=1 $(MAKE) e2e-network
 	@echo "✓ Block 5 gate passed"
 
-block6-gate:
-	@echo "Error: block6-gate is not implemented until Block 6" && exit 1
+block6-gate: build test race lint osv
+	@echo "==> Running Block 6 gate: agent harness HTTP lifecycle"
+	go test -race -count=1 ./internal/harness/...
+	@echo "✓ Block 6 gate passed"
 
 block7-gate:
 	@echo "Error: block7-gate is not implemented until Block 7" && exit 1
@@ -143,7 +145,7 @@ gates: ## List all available gate targets
 	@echo "  block3-gate  - Identity service, audit hash chain (ACTIVE)"
 	@echo "  block4-gate  - Policy engine (ACTIVE)"
 	@echo "  block5-gate  - Runtime driver, Docker integration (ACTIVE)"
-	@echo "  block6-gate  - Agent harness (not implemented)"
+	@echo "  block6-gate  - Agent harness (ACTIVE)"
 	@echo "  block7-gate  - Runtime driver, Docker integration (not implemented)"
 	@echo "  block8-gate  - Gateway sidecar, network enforcement (not implemented)"
 	@echo "  block9-gate  - Trigger API, event bus (not implemented)"
