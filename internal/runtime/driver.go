@@ -130,6 +130,23 @@ type NetworkInfo struct {
 	Labels map[string]string
 }
 
+// ContainerInfo contains summary information about a Docker container,
+// typically returned by ListContainers for reconciliation and discovery.
+type ContainerInfo struct {
+	// ID is the Docker container ID.
+	ID string
+	// Name is the Docker container name.
+	Name string
+	// Status is the current lifecycle status of the container.
+	Status ContainerStatus
+	// Labels are the Docker labels attached to the container.
+	Labels map[string]string
+	// RunID is the AgentPaaS run identifier extracted from labels.
+	RunID string
+	// ResourceType is the AgentPaaS resource type (agent, gateway, etc.).
+	ResourceType string
+}
+
 // ContainerStats represents a snapshot of container resource usage.
 type ContainerStats struct {
 	// CPUPercent is the CPU usage percentage (0.0-100.0).
@@ -216,4 +233,13 @@ type RuntimeDriver interface {
 	// InspectContainerNetworks returns the list of networks a container is
 	// attached to, with network names and IDs. Used for topology assertions.
 	InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error)
+
+	// ListContainers returns all containers matching the given label filters.
+	// Each filter is a "key=value" pair. Results are returned as a slice of
+	// ContainerInfo structs containing ID, name, status, and labels.
+	ListContainers(ctx context.Context, labelFilters ...string) ([]ContainerInfo, error)
+
+	// ListNetworks returns all Docker networks matching the given label filters.
+	// Each filter is a "key=value" pair.
+	ListNetworks(ctx context.Context, labelFilters ...string) ([]NetworkInfo, error)
 }

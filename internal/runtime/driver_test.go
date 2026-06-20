@@ -32,6 +32,8 @@ type mockRuntimeDriver struct {
 	removeNetworkFunc      func(ctx context.Context, id NetworkID) error
 	inspectNetworkFunc     func(ctx context.Context, id NetworkID) (NetworkInfo, error)
 	inspectContainerNetFunc func(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error)
+	listContainersFunc      func(ctx context.Context, labelFilters ...string) ([]ContainerInfo, error)
+	listNetworksFunc        func(ctx context.Context, labelFilters ...string) ([]NetworkInfo, error)
 }
 
 func (m *mockRuntimeDriver) Create(ctx context.Context, spec ContainerSpec) (ContainerID, error) {
@@ -107,6 +109,20 @@ func (m *mockRuntimeDriver) InspectNetwork(ctx context.Context, id NetworkID) (N
 func (m *mockRuntimeDriver) InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error) {
 	if m.inspectContainerNetFunc != nil {
 		return m.inspectContainerNetFunc(ctx, id)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) ListContainers(ctx context.Context, labelFilters ...string) ([]ContainerInfo, error) {
+	if m.listContainersFunc != nil {
+		return m.listContainersFunc(ctx, labelFilters...)
+	}
+	return nil, errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) ListNetworks(ctx context.Context, labelFilters ...string) ([]NetworkInfo, error) {
+	if m.listNetworksFunc != nil {
+		return m.listNetworksFunc(ctx, labelFilters...)
 	}
 	return nil, errors.New("not implemented")
 }

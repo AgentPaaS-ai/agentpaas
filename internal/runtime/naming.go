@@ -94,3 +94,21 @@ func IsOwned(labels map[string]string) bool {
 	}
 	return strings.EqualFold(labels[LabelManagedBy], ManagedByValue)
 }
+
+// RunIDFromLabels extracts the run ID from AgentPaaS resource labels.
+// Returns empty string if the label is not present.
+func RunIDFromLabels(labels map[string]string) string {
+	if labels == nil {
+		return ""
+	}
+	return labels[LabelRunID]
+}
+
+// ResourceTypeFromLabels extracts the resource type from AgentPaaS labels.
+// Returns empty string if the label is not present.
+func ResourceTypeFromLabels(labels map[string]string) string {
+	if labels == nil {
+		return ""
+	}
+	return labels[LabelResourceType]
+}
