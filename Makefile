@@ -10,7 +10,7 @@ proto:
 	buf generate
 
 lint:
-	golangci-lint run
+	golangci-lint run --timeout 5m
 
 race:
 	go test -race ./...
