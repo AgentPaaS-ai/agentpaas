@@ -10,6 +10,7 @@ import (
 
 // validCredentialTypes is the set of allowed credential type values.
 var validCredentialTypes = map[string]bool{
+	"direct_lease": true,
 	"header":   true,
 	"brokered": true,
 	"file":     true,
@@ -109,7 +110,7 @@ func validateCredentialEntry(node *yaml.Node) error {
 				return fmt.Errorf("credential.type must be a string, got YAML tag %s", typeNode.Tag)
 			}
 			if !validCredentialTypes[typeNode.Value] {
-				return fmt.Errorf("invalid credential type %q: must be one of: header, brokered, file", typeNode.Value)
+				return fmt.Errorf("invalid credential type %q: must be one of: header, brokered, file, direct_lease", typeNode.Value)
 			}
 		}
 	}

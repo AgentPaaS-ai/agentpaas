@@ -25,9 +25,11 @@ type EgressRule struct {
 	Ports         []int  `yaml:"ports"`
 	AllowWildcard *bool  `yaml:"allow_wildcard"`
 	AllowPrivate  *bool  `yaml:"allow_private"`
+	Credential    string `yaml:"credential"`
 }
 
 // Credential defines a credential source for the agent.
+// Type may be "header", "brokered", or "direct_lease".
 type Credential struct {
 	ID      string `yaml:"id"`
 	Type    string `yaml:"type"`
@@ -35,13 +37,22 @@ type Credential struct {
 	Value   string `yaml:"value"`
 	Service string `yaml:"service"`
 	Path    string `yaml:"path"`
+	// Mode is required for direct-lease credentials: "file" or "env".
+	Mode string `yaml:"mode"`
+	// Reason is required for direct-lease credentials.
+	Reason string `yaml:"reason"`
 }
 
 // MCPServer defines an MCP (Model Context Protocol) server endpoint.
 type MCPServer struct {
-	Name    string            `yaml:"name"`
-	URL     string            `yaml:"url"`
-	Headers map[string]string `yaml:"headers"`
+	Name         string            `yaml:"name"`
+	URL          string            `yaml:"url"`
+	Headers      map[string]string `yaml:"headers"`
+	Transport    string            `yaml:"transport"`
+	Command      string            `yaml:"command"`
+	Endpoint     string            `yaml:"endpoint"`
+	AllowedTools []string          `yaml:"allowed_tools"`
+	Env          map[string]string `yaml:"env"`
 }
 
 // Hook defines an outbound webhook destination.
