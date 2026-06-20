@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/audit"
@@ -56,6 +57,7 @@ type BudgetEnforcer struct {
 	audit    AuditAppender
 	now      func() time.Time
 
+	mu        sync.Mutex
 	startedAt time.Time
 	exceeded  *budgetExceededError
 
@@ -94,6 +96,9 @@ func normalizeBudgetConfig(cfg BudgetConfig) BudgetConfig {
 }
 
 func (b *BudgetEnforcer) Start() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	b.startedAt = b.now()
 }
 
@@ -102,6 +107,9 @@ func (b *BudgetEnforcer) WallClockBudget() time.Duration {
 }
 
 func (b *BudgetEnforcer) Elapsed() time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.startedAt.IsZero() {
 		return 0
 	}
@@ -109,6 +117,9 @@ func (b *BudgetEnforcer) Elapsed() time.Duration {
 }
 
 func (b *BudgetEnforcer) RecordIteration() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.exceeded != nil {
 		return b.exceeded
 	}
@@ -123,6 +134,9 @@ func (b *BudgetEnforcer) RecordTokens(count int64) error {
 	if count < 0 {
 		return fmt.Errorf("token count must be non-negative")
 	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	if b.exceeded != nil {
 		return b.exceeded
 	}
@@ -140,6 +154,9 @@ func (b *BudgetEnforcer) RecordTokens(count int64) error {
 func (b *BudgetEnforcer) MarkWallClockExceeded(observed time.Duration) error {
 	observedMS := max(int64(observed/time.Millisecond), int64(0))
 	limitMS := int64(b.WallClockBudget() / time.Millisecond)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
 	return b.markExceeded(wallClockBudgetCategory, limitMS, observedMS)
 }
 

@@ -30,7 +30,9 @@ def invoke(payload):
 	elapsed := time.Since(start)
 
 	var got ErrorResponse
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal invoke response: %v", err)
+	}
 	if got.Status == StatusBudgetExceeded {
 		t.Logf("SAFE: wall clock budget enforced from invoke start, elapsed=%v", elapsed)
 	} else if elapsed > 3*time.Second {
@@ -84,7 +86,7 @@ func TestAdversary_B6T02_TokenNegativeOrBypass(t *testing.T) {
 
 	// Bypass? RecordTokens is the hook; if not called, no enforcement, but caller controls
 	// Test overflow path
-	err = enforcer.RecordTokens(1<<60)
+	err = enforcer.RecordTokens(1 << 60)
 	if errors.Is(err, ErrBudgetExceeded) {
 		t.Logf("SAFE: large token count triggers exceed")
 	} else {
@@ -118,7 +120,9 @@ def invoke(payload):
 	elapsed := time.Since(start)
 
 	var got ErrorResponse
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal invoke response: %v", err)
+	}
 	if got.Status == StatusBudgetExceeded && elapsed < 15*time.Second {
 		t.Logf("SAFE: SIGTERM grace + kill worked, no child survival visible, elapsed=%v", elapsed)
 	} else {
@@ -141,7 +145,9 @@ def invoke(payload):
 	srv.ServeHTTP(rec, req)
 
 	var got ErrorResponse
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal invoke response: %v", err)
+	}
 	if got.Status != StatusBudgetExceeded {
 		t.Logf("// ADVERSARY BREAK: killed run reported non-BUDGET_EXCEEDED status %s", got.Status)
 		t.Fail()
@@ -154,7 +160,9 @@ func TestAdversary_B6T02_AuditOverageHiddenOrSpoofed(t *testing.T) {
 	recorder := &recordingAuditAppender{}
 	enforcer := newBudgetEnforcer(BudgetConfig{MaxTokens: 5}, "run-audit", "inv-audit", recorder, time.Now)
 	enforcer.Start()
-	enforcer.RecordTokens(10) // force exceed
+	if err := enforcer.RecordTokens(10); !errors.Is(err, ErrBudgetExceeded) {
+		t.Fatalf("record tokens error = %v, want ErrBudgetExceeded", err)
+	}
 
 	event := recorder.lastEvent(t)
 	observed := event.Payload["observed"]
@@ -233,7 +241,10 @@ def invoke(payload):
 			rec := httptest.NewRecorder()
 			srv.ServeHTTP(rec, req)
 			var got ErrorResponse
-			json.Unmarshal(rec.Body.Bytes(), &got)
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Errorf("unmarshal invoke response: %v", err)
+				return
+			}
 			results[idx] = got.Status
 		}(i)
 	}
