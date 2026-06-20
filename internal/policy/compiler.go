@@ -120,9 +120,14 @@ func CompileDNSAllowList(p *Policy) ([]byte, error) {
 
 	domainSet := make(map[string]struct{})
 	for _, e := range p.Egress {
-		if e.Domain != "" {
-			domainSet[strings.ToLower(e.Domain)] = struct{}{}
+		if e.Domain == "" {
+			continue
 		}
+		// Skip wildcard domains without explicit AllowWildcard (defense-in-depth).
+		if isWildcardDomainBlocked(e) {
+			continue
+		}
+		domainSet[strings.ToLower(e.Domain)] = struct{}{}
 	}
 
 	if len(domainSet) == 0 {
@@ -237,12 +242,26 @@ func buildBinds(p *Policy) []gatewayBind {
 	return binds
 }
 
+// isWildcardDomainBlocked returns true if the egress rule has a wildcard domain
+// but AllowWildcard is not explicitly set to true. This is defense-in-depth:
+// validation should catch these, but the compiler must also enforce it.
+func isWildcardDomainBlocked(e EgressRule) bool {
+	if !strings.Contains(e.Domain, "*") {
+		return false
+	}
+	return e.AllowWildcard == nil || !*e.AllowWildcard
+}
+
 func buildEgressBackends(p *Policy) []gatewayBackend {
 	var backends []gatewayBackend
 	seen := make(map[string]bool)
 
 	for _, e := range p.Egress {
 		if e.Domain == "" {
+			continue
+		}
+		// Skip wildcard domains without explicit AllowWildcard (defense-in-depth).
+		if isWildcardDomainBlocked(e) {
 			continue
 		}
 		key := strings.ToLower(e.Domain)
@@ -322,12 +341,17 @@ func buildFrontendPolicies(p *Policy) *gatewayFrontendPolicies {
 	// Allow only known agent container IPs (simplified: allow from agent
 	// container subnet, deny everything else).
 	for _, e := range p.Egress {
-		if e.Domain != "" {
-			// Allow DNS resolution for this domain.
-			rules = append(rules, networkAuthzRule{
-				Allow: fmt.Sprintf("dns.domain == %q", e.Domain),
-			})
+		if e.Domain == "" {
+			continue
 		}
+		// Skip wildcard domains without explicit AllowWildcard (defense-in-depth).
+		if isWildcardDomainBlocked(e) {
+			continue
+		}
+		// Allow DNS resolution for this domain.
+		rules = append(rules, networkAuthzRule{
+			Allow: fmt.Sprintf("dns.domain == %q", e.Domain),
+		})
 	}
 
 	return &gatewayFrontendPolicies{
