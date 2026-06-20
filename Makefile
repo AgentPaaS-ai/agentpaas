@@ -16,7 +16,7 @@ race:
 	go test -race ./...
 
 osv:
-	osv-scanner scan source -r .
+	osv-scanner scan -r .
 
 e2e-network:
 	@echo "Error: e2e-network is not implemented until later blocks" && exit 1
