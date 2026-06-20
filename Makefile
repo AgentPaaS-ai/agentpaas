@@ -18,8 +18,17 @@ race:
 osv:
 	osv-scanner scan -r .
 
-e2e-network:
-	@echo "Error: e2e-network is not implemented until later blocks" && exit 1
+e2e-network: build
+	@echo "==> Running E2E network tests (positive path + canary probes)"
+	# Run the canary probe tests with a short timeout for fast failure.
+	# AGENTPAAS_DOCKER_TESTS=1 is required to run Docker integration tests.
+	# Tests: E2E_Network_PositivePath (canary: direct external blocked, DNS blocked,
+	#        positive: gateway egress works, agent→gateway internal path works)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_Network_PositivePath' ./internal/runtime/... -timeout 120s
+	# Run B5-T04a adversary tests (bypass, timeout, DNS redirect, etc.)
+	# These document expected adversary behaviour for the gateway topology.
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04a' ./internal/runtime/... -timeout 120s
+	@echo "✓ e2e-network gate: PASS"
 
 redteam-smoke:
 	@echo "Error: redteam-smoke is not implemented until Block 12" && exit 1
@@ -69,8 +78,13 @@ block4-gate-full: build lint
 	go test -race -fuzz=FuzzDigest -fuzztime=5m -count=1 ./internal/policy/...
 	@echo "✓ Block 4 FULL gate passed"
 
-block5-gate:
-	@echo "Error: block5-gate is not implemented until Block 5" && exit 1
+block5-gate: build test race lint osv
+	@echo "==> Running Block 5 gate: container runtime + network topology + canary probes"
+	# B5-T01/T02/T03 unit + integration tests (runtime driver, containers, hardening)
+	go test -race -count=1 ./internal/runtime/...
+	# e2e-network: positive path + canary probes + adversary tests (needs Docker)
+	AGENTPAAS_DOCKER_TESTS=1 $(MAKE) e2e-network
+	@echo "✓ Block 5 gate passed"
 
 block6-gate:
 	@echo "Error: block6-gate is not implemented until Block 6" && exit 1
