@@ -45,10 +45,16 @@ block3-gate: build test race lint
 	go test ./internal/identity/... ./internal/audit/... -race -count=1
 	@echo "✓ Block 3 gate passed"
 
+# block4-gate runs unit tests (with race detection) plus fuzz targets.
+# Fuzz targets use -fuzztime=30s for CI practicality (~100K-500K executions).
+# For the full 1M-execution gate, run locally with -fuzztime=5m.
+# See B4-T05 spec: parser fuzzing + block4-gate.
 block4-gate: build lint
-	@echo "==> Running Block 4 gate: policy engine tests (unit + race)"
-	go test ./internal/policy/... -count=1 -v
-	go test ./internal/policy/... -race -count=1
+	@echo "==> Running Block 4 gate: policy engine (unit + race + fuzz)"
+	go test -race -count=1 ./internal/policy/...
+	go test -fuzz=FuzzParsePolicy -fuzztime=30s -count=1 ./internal/policy/...
+	go test -fuzz=FuzzCanonicalize -fuzztime=30s -count=1 ./internal/policy/...
+	go test -fuzz=FuzzDigest -fuzztime=30s -count=1 ./internal/policy/...
 	@echo "✓ Block 4 gate passed"
 
 block5-gate:
