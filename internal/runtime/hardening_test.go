@@ -391,9 +391,13 @@ func TestHardening_AllFlagsApplied(t *testing.T) {
 		t.Error("ReadonlyRootfs = false, want true")
 	}
 
-	// Verify tmpfs /tmp
-	if info.HostConfig.Tmpfs == nil || info.HostConfig.Tmpfs["/tmp"] == "" {
-		t.Errorf("Tmpfs = %v, want /tmp mounted", info.HostConfig.Tmpfs)
+	// Verify tmpfs /tmp.
+	// Docker represents tmpfs as map[string]string{"/tmp": ""} — the key
+	// existence is the signal, not the value (empty string is normal).
+	if info.HostConfig.Tmpfs == nil {
+		t.Error("Container Tmpfs is nil, want map containing /tmp")
+	} else if _, ok := info.HostConfig.Tmpfs["/tmp"]; !ok {
+		t.Errorf("Container Tmpfs missing /tmp mount; got: %v", info.HostConfig.Tmpfs)
 	}
 
 	// Verify CapDrop ALL
