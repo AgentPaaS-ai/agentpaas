@@ -152,13 +152,22 @@ func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, st
 	}
 }
 
-func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any) (*InvokeResponse, *ErrorResponse) {
+const defaultTerminateGrace = 10 * time.Second
+
+func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budget *BudgetEnforcer, terminateGrace time.Duration) (*InvokeResponse, *ErrorResponse) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.closed {
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_closed", Detail: "python worker is closed"}
 	}
+	if budget == nil {
+		budget = NewBudgetEnforcer(BudgetConfig{})
+	}
+	if terminateGrace <= 0 {
+		terminateGrace = defaultTerminateGrace
+	}
+	budget.Start()
 
 	done := make(chan workerMessage, 1)
 	errCh := make(chan error, 1)
@@ -175,10 +184,22 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any) (*Inv
 		done <- msg
 	}()
 
+	wallTimer := time.NewTimer(budget.WallClockBudget())
+	defer wallTimer.Stop()
+
 	select {
 	case <-ctx.Done():
 		_ = w.terminateLocked()
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_timeout", Detail: ctx.Err().Error()}
+	case <-wallTimer.C:
+		terminateErr := w.terminateWithGraceLocked(terminateGrace)
+		if terminateErr != nil {
+			return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_kill_failed", Detail: terminateErr.Error()}
+		}
+		if err := budget.MarkWallClockExceeded(budget.Elapsed()); !errors.Is(err, ErrBudgetExceeded) {
+			return nil, &ErrorResponse{Status: "FAILED", Reason: "audit_failed", Detail: err.Error()}
+		}
+		return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "wall_clock_budget_exceeded", Detail: "wall-clock budget exceeded"}
 	case err := <-errCh:
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_failed", Detail: err.Error()}
 	case msg := <-done:
@@ -239,6 +260,13 @@ func (w *pythonWorker) Close() error {
 	return joined
 }
 
+func (w *pythonWorker) isClosed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.closed
+}
+
 func (w *pythonWorker) terminateLocked() error {
 	w.closed = true
 
@@ -262,11 +290,55 @@ func (w *pythonWorker) terminateLocked() error {
 	return joined
 }
 
-func killCommand(cmd *exec.Cmd) error {
+func (w *pythonWorker) terminateWithGraceLocked(grace time.Duration) error {
+	w.closed = true
+
+	var joined error
+	if w.stdin != nil {
+		joined = errors.Join(joined, w.stdin.Close())
+	}
+	if w.stdout != nil {
+		joined = errors.Join(joined, w.stdout.Close())
+	}
+	if w.cmd != nil && w.cmd.Process != nil {
+		waitCh := make(chan error, 1)
+		if err := terminateCommand(w.cmd); err != nil {
+			joined = errors.Join(joined, err)
+		}
+		go func() {
+			waitCh <- w.cmd.Wait()
+		}()
+
+		timer := time.NewTimer(grace)
+		select {
+		case <-waitCh:
+			timer.Stop()
+		case <-timer.C:
+			joined = errors.Join(joined, killCommand(w.cmd))
+			<-waitCh
+		}
+	}
+	if w.cancel != nil {
+		w.cancel()
+	}
+	if w.stderrFile != nil {
+		joined = errors.Join(joined, w.stderrFile.Close())
+	}
+	return joined
+}
+
+func terminateCommand(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
-	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM); err == nil || errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	return cmd.Process.Signal(syscall.SIGTERM)
+}
+
+func killCommand(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
 	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err == nil || errors.Is(err, os.ErrProcessDone) {

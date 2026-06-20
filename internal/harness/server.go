@@ -22,19 +22,20 @@ const (
 	MaxPayloadBytes = 10 * 1024 * 1024
 
 	defaultAddr          = "127.0.0.1:8080"
-	defaultImportTimeout = 10 * time.Second
-	defaultInvokeTimeout = 30 * time.Second
+	defaultImportTimeout = 60 * time.Second
 )
 
 // Config controls the harness HTTP server and Python worker.
 type Config struct {
-	Addr          string
-	AgentPath     string
-	Python        string
-	ImportTimeout time.Duration
-	InvokeTimeout time.Duration
-	StdoutPath    string
-	StderrPath    string
+	Addr           string
+	AgentPath      string
+	Python         string
+	ImportTimeout  time.Duration
+	InvokeTimeout  time.Duration
+	TerminateGrace time.Duration
+	StdoutPath     string
+	StderrPath     string
+	Audit          AuditAppender
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.
@@ -203,6 +204,27 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.invokeMu.Lock()
+	defer s.invokeMu.Unlock()
+
+	worker, errResp := s.workerForInvoke()
+	if errResp != nil {
+		writeJSON(w, http.StatusServiceUnavailable, errResp)
+		return
+	}
+
+	budget := newBudgetEnforcer(budgetFromPayload(payload), runIDFromPayload(payload), invokeIDFromPayload(payload), s.cfg.Audit, time.Now)
+	ctx, cancel := contextWithOptionalTimeout(r.Context(), s.cfg.InvokeTimeout)
+	defer cancel()
+	resp, invokeErr := worker.Invoke(ctx, payload, budget, s.cfg.TerminateGrace)
+	if invokeErr != nil {
+		writeJSON(w, http.StatusInternalServerError, invokeErr)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) workerForInvoke() (*pythonWorker, *ErrorResponse) {
 	s.mu.RLock()
 	worker := s.worker
 	importError := s.importError
@@ -210,29 +232,32 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 	s.mu.RUnlock()
 
 	if importError != nil {
-		writeJSON(w, http.StatusServiceUnavailable, importError)
-		return
+		return nil, importError
 	}
 	if !ready || worker == nil {
-		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+		return nil, &ErrorResponse{
 			Status: "FAILED",
 			Reason: "not_ready",
 			Detail: "agent is not ready to accept invokes",
-		})
-		return
+		}
+	}
+	if !worker.isClosed() {
+		return worker, nil
 	}
 
-	s.invokeMu.Lock()
-	defer s.invokeMu.Unlock()
+	worker, errResp := startPythonWorker(s.cfg)
 
-	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.InvokeTimeout)
-	defer cancel()
-	resp, errResp := worker.Invoke(ctx, payload)
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if errResp != nil {
-		writeJSON(w, http.StatusInternalServerError, errResp)
-		return
+		s.ready = false
+		s.importError = errResp
+		return nil, errResp
 	}
-	writeJSON(w, http.StatusOK, resp)
+	s.worker = worker
+	s.ready = true
+	s.importError = nil
+	return worker, nil
 }
 
 func readLimitedBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
@@ -270,8 +295,8 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.ImportTimeout == 0 {
 		cfg.ImportTimeout = defaultImportTimeout
 	}
-	if cfg.InvokeTimeout == 0 {
-		cfg.InvokeTimeout = defaultInvokeTimeout
+	if cfg.TerminateGrace == 0 {
+		cfg.TerminateGrace = defaultTerminateGrace
 	}
 	if cfg.StdoutPath == "" {
 		cfg.StdoutPath = filepath.Join(os.TempDir(), fmt.Sprintf("agentpaas-harness-%d.stdout.log", time.Now().UnixNano()))
