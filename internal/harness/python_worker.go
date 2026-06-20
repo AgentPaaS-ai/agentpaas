@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,6 +25,7 @@ type pythonWorker struct {
 	stderrFile *os.File
 	decoder    *json.Decoder
 	reaper     *childReaper
+	rpc        *harnessRPCServer
 
 	stdoutPath string
 	stderrPath string
@@ -58,17 +60,26 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "stderr_capture_failed", Detail: err.Error()}
 	}
 
+	rpcServer, err := startHarnessRPCServer(cfg.Audit)
+	if err != nil {
+		_ = stderrCapture.Close()
+		return nil, &ErrorResponse{Status: "FAILED", Reason: "rpc_start_failed", Detail: err.Error()}
+	}
+
 	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
+	cmd.Env = workerEnv(os.Environ(), rpcServer.Addr())
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
+		_ = rpcServer.Close()
 		_ = stderrCapture.Close()
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_stdin_failed", Detail: err.Error()}
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
+		_ = rpcServer.Close()
 		_ = stdin.Close()
 		_ = stderrCapture.Close()
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_stdout_failed", Detail: err.Error()}
@@ -77,6 +88,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 
 	if err := cmd.Start(); err != nil {
 		cancel()
+		_ = rpcServer.Close()
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
@@ -89,10 +101,12 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	decoder := json.NewDecoder(bufio.NewReader(stdout))
 	msg, errResp := waitForImport(cmd, reaper, cancel, stdin, stdout, stderrCapture, decoder, cfg.ImportTimeout)
 	if errResp != nil {
+		_ = rpcServer.Close()
 		return nil, errResp
 	}
 	if msg.Type == "import_failed" {
 		cancel()
+		_ = rpcServer.Close()
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
@@ -101,6 +115,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	}
 	if msg.Type != "ready" {
 		cancel()
+		_ = rpcServer.Close()
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
@@ -116,6 +131,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		stderrFile: stderrCapture,
 		decoder:    decoder,
 		reaper:     reaper,
+		rpc:        rpcServer,
 		stdoutPath: cfg.StdoutPath,
 		stderrPath: cfg.StderrPath,
 	}, nil
@@ -173,6 +189,10 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budge
 		terminateGrace = defaultTerminateGrace
 	}
 	budget.Start()
+	if w.rpc != nil {
+		w.rpc.SetInvoke(payload, budget, func() { _ = killCommand(w.cmd) })
+		defer w.rpc.ClearInvoke()
+	}
 
 	done := make(chan workerMessage, 1)
 	errCh := make(chan error, 1)
@@ -206,9 +226,17 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budge
 		}
 		return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "wall_clock_budget_exceeded", Detail: "wall-clock budget exceeded"}
 	case err := <-errCh:
+		if budgetErr := budget.RecordTokens(0); errors.Is(budgetErr, ErrBudgetExceeded) {
+			_ = w.terminateWithGraceLocked(terminateGrace)
+			return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "budget_exceeded", Detail: budgetErr.Error()}
+		}
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_failed", Detail: err.Error()}
 	case msg := <-done:
 		if msg.Type != "ok" {
+			if budgetErr := budget.RecordTokens(0); errors.Is(budgetErr, ErrBudgetExceeded) {
+				_ = w.terminateWithGraceLocked(terminateGrace)
+				return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "budget_exceeded", Detail: budgetErr.Error()}
+			}
 			reason := msg.Reason
 			if reason == "" {
 				reason = "invoke_failed"
@@ -292,6 +320,9 @@ func (w *pythonWorker) terminateLocked() error {
 	if w.stderrFile != nil {
 		joined = errors.Join(joined, w.stderrFile.Close())
 	}
+	if w.rpc != nil {
+		joined = errors.Join(joined, w.rpc.Close())
+	}
 	return joined
 }
 
@@ -328,6 +359,9 @@ func (w *pythonWorker) terminateWithGraceLocked(grace time.Duration) error {
 	}
 	if w.stderrFile != nil {
 		joined = errors.Join(joined, w.stderrFile.Close())
+	}
+	if w.rpc != nil {
+		joined = errors.Join(joined, w.rpc.Close())
 	}
 	return joined
 }
@@ -408,6 +442,18 @@ def apply_resource_limits():
 apply_resource_limits()
 
 try:
+    repo_python = os.path.join(os.getcwd(), "python")
+    if repo_python not in sys.path:
+        sys.path.insert(0, repo_python)
+    os.environ["AGENTPAAS_AGENT_PATH"] = agent_path
+    os.environ["AGENTPAAS_STDOUT_PATH"] = stdout_path
+    try:
+        from agentpaas_sdk import run
+    except ModuleNotFoundError:
+        run = None
+    if run is not None:
+        run()
+        sys.exit(0)
     spec = importlib.util.spec_from_file_location("agentpaas_user_agent", agent_path)
     if spec is None or spec.loader is None:
         raise RuntimeError("unable to load agent module")
@@ -430,3 +476,25 @@ for line in sys.stdin:
     except Exception:
         send({"type": "failed", "reason": "invoke_failed", "detail": traceback.format_exc()})
 `
+
+func workerEnv(base []string, rpcAddr string) []string {
+	env := make([]string, 0, len(base)+2)
+	pythonPath := filepath.Join(".", "python")
+	var sawPythonPath bool
+	for _, item := range base {
+		if strings.HasPrefix(item, "AGENTPAAS_RPC_ADDR=") {
+			continue
+		}
+		if strings.HasPrefix(item, "PYTHONPATH=") {
+			sawPythonPath = true
+			env = append(env, item+string(os.PathListSeparator)+pythonPath)
+			continue
+		}
+		env = append(env, item)
+	}
+	if !sawPythonPath {
+		env = append(env, "PYTHONPATH="+pythonPath)
+	}
+	env = append(env, "AGENTPAAS_RPC_ADDR="+rpcAddr)
+	return env
+}
