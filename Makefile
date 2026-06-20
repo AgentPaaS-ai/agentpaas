@@ -19,7 +19,7 @@ osv:
 	osv-scanner scan -r .
 
 e2e-network: build
-	@echo "==> Running E2E network tests (positive path + canary probes)"
+	@echo "==> Running E2E network tests (positive path + canary probes + host/bridge probes)"
 	# Run the canary probe tests with a short timeout for fast failure.
 	# AGENTPAAS_DOCKER_TESTS=1 is required to run Docker integration tests.
 	# Tests: E2E_Network_PositivePath (canary: direct external blocked, DNS blocked,
@@ -28,6 +28,11 @@ e2e-network: build
 	# Run B5-T04a adversary tests (bypass, timeout, DNS redirect, etc.)
 	# These document expected adversary behaviour for the gateway topology.
 	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04a' ./internal/runtime/... -timeout 120s
+	# Run B5-T04b host/bridge probe tests (host.docker.internal, bridge gateway,
+	# gateway container IP probing, daemon ports)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_HostBridgeProbes' ./internal/runtime/... -timeout 120s
+	# Run B5-T04b adversary tests (host bypass, loopback, gateway port scan, socket discovery)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04b' ./internal/runtime/... -timeout 180s
 	@echo "✓ e2e-network gate: PASS"
 
 redteam-smoke:
