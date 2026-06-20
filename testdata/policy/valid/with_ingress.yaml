@@ -1,0 +1,10 @@
+version: "1.0"
+agent:
+  name: ingress-agent
+ingress:
+  - path: "/api/v1/webhook"
+    port: 8080
+  - path: "/healthz"
+    port: 8080
+  - path: "/metrics"
+    port: 9090
