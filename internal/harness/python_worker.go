@@ -43,8 +43,6 @@ func startPythonWorker(cfg Config) (*pythonWorker, *ErrorResponse) {
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invalid_listen_addr", Detail: "harness must listen on a loopback address"}
 	}
 
-	workerCtx, cancel := context.WithCancel(context.Background())
-
 	stdoutCapture, err := os.OpenFile(cfg.StdoutPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "stdout_capture_failed", Detail: err.Error()}
@@ -56,14 +54,17 @@ func startPythonWorker(cfg Config) (*pythonWorker, *ErrorResponse) {
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "stderr_capture_failed", Detail: err.Error()}
 	}
 
+	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
+		cancel()
 		_ = stderrCapture.Close()
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_stdin_failed", Detail: err.Error()}
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		cancel()
 		_ = stdin.Close()
 		_ = stderrCapture.Close()
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_stdout_failed", Detail: err.Error()}
