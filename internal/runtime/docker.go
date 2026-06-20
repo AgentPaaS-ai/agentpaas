@@ -375,3 +375,94 @@ func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id Contain
 func int64Ptr(v int64) *int64 {
 	return &v
 }
+
+// ListContainers returns all Docker containers matching the given label
+// filters. Each filter should be in "key=value" format. The results include
+// each container's ID, name, status, and Docker labels.
+func (d *DockerRuntime) ListContainers(ctx context.Context, labelFilters ...string) ([]ContainerInfo, error) {
+	if d.cli == nil {
+		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+	}
+
+	filterArgs := filters.NewArgs()
+	for _, lf := range labelFilters {
+		filterArgs.Add("label", lf)
+	}
+
+	containers, err := d.cli.ContainerList(ctx, container.ListOptions{
+		Filters: filterArgs,
+		All:     true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list containers: %w", err)
+	}
+
+	var result []ContainerInfo
+	for _, c := range containers {
+		status := ContainerStatusUnknown
+		switch {
+		case strings.Contains(c.Status, "Up"):
+			status = ContainerStatusRunning
+		case strings.Contains(c.Status, "Exited"), strings.Contains(c.Status, "Created"):
+			status = ContainerStatusStopped
+		case strings.Contains(c.Status, "Paused"):
+			status = ContainerStatusPaused
+		case strings.Contains(c.Status, "Removal In Progress"):
+			status = ContainerStatusRemoved
+		}
+
+		labels := c.Labels
+		if labels == nil {
+			labels = map[string]string{}
+		}
+
+		// Truncate container name — Docker returns names with leading slash
+		name := c.Names[0]
+		if len(name) > 0 && name[0] == '/' {
+			name = name[1:]
+		}
+
+		result = append(result, ContainerInfo{
+			ID:           c.ID,
+			Name:         name,
+			Status:       status,
+			Labels:       labels,
+			RunID:        RunIDFromLabels(labels),
+			ResourceType: ResourceTypeFromLabels(labels),
+		})
+	}
+
+	return result, nil
+}
+
+// ListNetworks returns all Docker networks matching the given label filters.
+// Each filter should be in "key=value" format.
+func (d *DockerRuntime) ListNetworks(ctx context.Context, labelFilters ...string) ([]NetworkInfo, error) {
+	if d.cli == nil {
+		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+	}
+
+	filterArgs := filters.NewArgs()
+	for _, lf := range labelFilters {
+		filterArgs.Add("label", lf)
+	}
+
+	resources, err := d.cli.NetworkList(ctx, types.NetworkListOptions{
+		Filters: filterArgs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list networks: %w", err)
+	}
+
+	var result []NetworkInfo
+	for _, n := range resources {
+		result = append(result, NetworkInfo{
+			ID:       n.ID,
+			Name:     n.Name,
+			Internal: n.Internal,
+			Labels:   n.Labels,
+		})
+	}
+
+	return result, nil
+}
