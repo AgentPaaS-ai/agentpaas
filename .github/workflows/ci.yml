@@ -1,62 +1,82 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint:
     name: Lint
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+          cache: true
       - name: Install golangci-lint
-        run: brew install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh |
+            sh -s -- -b /usr/local/bin v1.64.8
       - name: Run lint
         run: make lint
 
   test:
     name: Test
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+          cache: true
       - name: Run tests
         run: make test
 
   race:
     name: Race Detector
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+          cache: true
       - name: Run race detector
         run: make race
 
   proto:
     name: Proto Codegen Drift
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+          cache: true
       - name: Install buf and protoc plugins
         run: |
-          brew install buf protoc-gen-go protoc-gen-go-grpc
-          # protoc-gen-grpc-gateway is not on Homebrew — install via go
+          # Install buf via Go (no brew needed on Linux)
+          go install github.com/bufbuild/buf/cmd/buf@latest
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+          # protoc binary
+          sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Regenerate proto code
-        run: make proto
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make proto
       - name: Check for drift
         run: |
           if ! git diff --exit-code; then
@@ -66,13 +86,19 @@ jobs:
 
   osv:
     name: OSV Scan
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+          cache: true
       - name: Install osv-scanner
-        run: brew install osv-scanner
+        run: |
+          go install github.com/google/osv-scanner/cmd/osv-scanner@latest
+          export PATH="$PATH:$(go env GOPATH)/bin"
       - name: Run OSV scan
-        run: make osv
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make osv

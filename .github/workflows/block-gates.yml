@@ -1,27 +1,38 @@
 name: Block Gates
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: block-gates-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   block1-gate:
     name: Block 1 Gate
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.26.4'
+          cache: true
       - name: Install tools
         run: |
-          brew install buf protoc-gen-go protoc-gen-go-grpc golangci-lint
-          # protoc-gen-grpc-gateway is not on Homebrew — install via go
+          go install github.com/bufbuild/buf/cmd/buf@latest
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
           go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Run block1-gate
-        run: make block1-gate
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make block1-gate
 
   # Placeholder for future blocks — these will be enabled when their blocks are implemented
   block2-gate-placeholder:
