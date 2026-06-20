@@ -22,19 +22,20 @@ const (
 	MaxPayloadBytes = 10 * 1024 * 1024
 
 	defaultAddr          = "127.0.0.1:8080"
-	defaultImportTimeout = 10 * time.Second
-	defaultInvokeTimeout = 30 * time.Second
+	defaultImportTimeout = 60 * time.Second
 )
 
 // Config controls the harness HTTP server and Python worker.
 type Config struct {
-	Addr          string
-	AgentPath     string
-	Python        string
-	ImportTimeout time.Duration
-	InvokeTimeout time.Duration
-	StdoutPath    string
-	StderrPath    string
+	Addr           string
+	AgentPath      string
+	Python         string
+	ImportTimeout  time.Duration
+	InvokeTimeout  time.Duration
+	TerminateGrace time.Duration
+	StdoutPath     string
+	StderrPath     string
+	Audit          AuditAppender
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.
@@ -225,9 +226,10 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 	s.invokeMu.Lock()
 	defer s.invokeMu.Unlock()
 
-	ctx, cancel := context.WithTimeout(r.Context(), s.cfg.InvokeTimeout)
+	budget := newBudgetEnforcer(budgetFromPayload(payload), runIDFromPayload(payload), invokeIDFromPayload(payload), s.cfg.Audit, time.Now)
+	ctx, cancel := contextWithOptionalTimeout(r.Context(), s.cfg.InvokeTimeout)
 	defer cancel()
-	resp, errResp := worker.Invoke(ctx, payload)
+	resp, errResp := worker.Invoke(ctx, payload, budget, s.cfg.TerminateGrace)
 	if errResp != nil {
 		writeJSON(w, http.StatusInternalServerError, errResp)
 		return
@@ -270,8 +272,8 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.ImportTimeout == 0 {
 		cfg.ImportTimeout = defaultImportTimeout
 	}
-	if cfg.InvokeTimeout == 0 {
-		cfg.InvokeTimeout = defaultInvokeTimeout
+	if cfg.TerminateGrace == 0 {
+		cfg.TerminateGrace = defaultTerminateGrace
 	}
 	if cfg.StdoutPath == "" {
 		cfg.StdoutPath = filepath.Join(os.TempDir(), fmt.Sprintf("agentpaas-harness-%d.stdout.log", time.Now().UnixNano()))
