@@ -43,27 +43,32 @@ type workerMessage struct {
 
 func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorResponse) {
 	if cfg.AgentPath == "" {
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "missing_agent_path", Detail: "agent path is required"}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "missing_agent_path", Detail: "agent path is required"}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	if !loopbackAddr(cfg.Addr) {
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "invalid_listen_addr", Detail: "harness must listen on a loopback address"}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "invalid_listen_addr", Detail: "harness must listen on a loopback address"}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 
 	stdoutCapture, err := os.OpenFile(cfg.StdoutPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "stdout_capture_failed", Detail: err.Error()}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "stdout_capture_failed", Detail: err.Error()}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	defer func() { _ = stdoutCapture.Close() }()
 
 	stderrCapture, err := os.OpenFile(cfg.StderrPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "stderr_capture_failed", Detail: err.Error()}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "stderr_capture_failed", Detail: err.Error()}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 
 	rpcServer, err := startHarnessRPCServer(cfg.Audit)
 	if err != nil {
 		_ = stderrCapture.Close()
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "rpc_start_failed", Detail: err.Error()}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "rpc_start_failed", Detail: err.Error()}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 
 	workerCtx, cancel := context.WithCancel(context.Background())
@@ -74,7 +79,8 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		cancel()
 		_ = rpcServer.Close()
 		_ = stderrCapture.Close()
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_stdin_failed", Detail: err.Error()}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "worker_stdin_failed", Detail: err.Error()}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -82,7 +88,8 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		_ = rpcServer.Close()
 		_ = stdin.Close()
 		_ = stderrCapture.Close()
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_stdout_failed", Detail: err.Error()}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "worker_stdout_failed", Detail: err.Error()}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	cmd.Stderr = stderrCapture
 
@@ -92,7 +99,8 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_start_failed", Detail: err.Error()}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "worker_start_failed", Detail: err.Error()}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	if reaper != nil {
 		reaper.Track(cmd.Process.Pid)
@@ -102,7 +110,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	msg, errResp := waitForImport(cmd, reaper, cancel, stdin, stdout, stderrCapture, decoder, cfg.ImportTimeout)
 	if errResp != nil {
 		_ = rpcServer.Close()
-		return nil, errResp
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	if msg.Type == "import_failed" {
 		cancel()
@@ -111,7 +119,8 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
 		_ = waitCommand(cmd, reaper)
-		return nil, &ErrorResponse{Status: "FAILED", Reason: msg.Reason, Detail: msg.Detail}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: msg.Reason, Detail: msg.Detail}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	if msg.Type != "ready" {
 		cancel()
@@ -120,7 +129,8 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
 		_ = waitCommand(cmd, reaper)
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: fmt.Sprintf("unexpected worker message %q", msg.Type)}
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: fmt.Sprintf("unexpected worker message %q", msg.Type)}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 
 	return &pythonWorker{
@@ -175,12 +185,12 @@ func waitForImport(cmd *exec.Cmd, reaper *childReaper, cancel context.CancelFunc
 
 const defaultTerminateGrace = 10 * time.Second
 
-func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budget *BudgetEnforcer, terminateGrace time.Duration) (*InvokeResponse, *ErrorResponse) {
+func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budget *BudgetEnforcer, terminateGrace time.Duration) (*InvokeResponse, *ErrorResponse, *UpstreamEvidence) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.closed {
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_closed", Detail: "python worker is closed"}
+		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_closed", Detail: "python worker is closed"}, nil
 	}
 	if budget == nil {
 		budget = NewBudgetEnforcer(BudgetConfig{})
@@ -215,44 +225,51 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budge
 	select {
 	case <-ctx.Done():
 		_ = w.terminateWithGraceLocked(terminateGrace)
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_timeout", Detail: ctx.Err().Error()}
+		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_timeout", Detail: ctx.Err().Error()}, w.rpcFailureEvidence()
 	case <-wallTimer.C:
 		terminateErr := w.terminateWithGraceLocked(terminateGrace)
 		if terminateErr != nil {
-			return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_kill_failed", Detail: terminateErr.Error()}
+			return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_kill_failed", Detail: terminateErr.Error()}, w.rpcFailureEvidence()
 		}
 		if err := budget.MarkWallClockExceeded(budget.Elapsed()); !errors.Is(err, ErrBudgetExceeded) {
-			return nil, &ErrorResponse{Status: "FAILED", Reason: "audit_failed", Detail: err.Error()}
+			return nil, &ErrorResponse{Status: "FAILED", Reason: "audit_failed", Detail: err.Error()}, w.rpcFailureEvidence()
 		}
-		return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "wall_clock_budget_exceeded", Detail: "wall-clock budget exceeded"}
+		return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "wall_clock_budget_exceeded", Detail: "wall-clock budget exceeded"}, w.rpcFailureEvidence()
 	case err := <-errCh:
 		if budgetErr := budget.RecordTokens(0); errors.Is(budgetErr, ErrBudgetExceeded) {
 			_ = w.terminateWithGraceLocked(terminateGrace)
-			return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "budget_exceeded", Detail: budgetErr.Error()}
+			return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "budget_exceeded", Detail: budgetErr.Error()}, w.rpcFailureEvidence()
 		}
-		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_failed", Detail: err.Error()}
+		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_failed", Detail: err.Error()}, w.rpcFailureEvidence()
 	case msg := <-done:
 		if msg.Type != "ok" {
 			if budgetErr := budget.RecordTokens(0); errors.Is(budgetErr, ErrBudgetExceeded) {
 				_ = w.terminateWithGraceLocked(terminateGrace)
-				return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "budget_exceeded", Detail: budgetErr.Error()}
+				return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "budget_exceeded", Detail: budgetErr.Error()}, w.rpcFailureEvidence()
 			}
 			reason := msg.Reason
 			if reason == "" {
 				reason = "invoke_failed"
 			}
-			return nil, &ErrorResponse{Status: "FAILED", Reason: reason, Detail: msg.Detail}
+			return nil, &ErrorResponse{Status: "FAILED", Reason: reason, Detail: msg.Detail}, w.rpcFailureEvidence()
 		}
 		if err := validateResultKeys(msg.Result); err != nil {
-			return nil, &ErrorResponse{Status: "FAILED", Reason: "invalid_result", Detail: err.Error()}
+			return nil, &ErrorResponse{Status: "FAILED", Reason: "invalid_result", Detail: err.Error()}, w.rpcFailureEvidence()
 		}
 		return &InvokeResponse{
 			Status: "OK",
 			Result: msg.Result,
 			Stdout: w.stdoutPath,
 			Stderr: w.stderrPath,
-		}, nil
+		}, nil, nil
 	}
+}
+
+func (w *pythonWorker) rpcFailureEvidence() *UpstreamEvidence {
+	if w.rpc == nil {
+		return nil
+	}
+	return w.rpc.FailureEvidence()
 }
 
 func validateResultKeys(value any) error {
