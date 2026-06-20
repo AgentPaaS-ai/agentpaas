@@ -34,3 +34,7 @@ AGENTPAAS_HOME/
 
 # Session management (not part of the codebase)
 NEXT-SESSION-PROMPT.md
+
+# Python
+__pycache__/
+*.pyc
