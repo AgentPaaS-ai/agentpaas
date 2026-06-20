@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -73,8 +74,24 @@ type CanonicalIngressRule struct {
 }
 
 // egressRuleKey returns a sortable key for deduplication + ordering.
+// Uses normalized domain (lowercased, trailing-dot-stripped), sorted ports,
+// and security flags (AllowWildcard, AllowPrivate) to ensure rules with
+// different semantics are not wrongly deduplicated.
 func egressRuleKey(e EgressRule) string {
-	return fmt.Sprintf("%s|%s|%v", e.Domain, e.CIDR, e.Ports)
+	// Normalize domain for dedup (lowercase, IDNA, strip trailing dot)
+	domain := normalizeDomain(e.Domain)
+	ports := sortedInts(e.Ports)
+	aw := formatBoolPtr(e.AllowWildcard)
+	ap := formatBoolPtr(e.AllowPrivate)
+	return fmt.Sprintf("%s|%s|%v|%s|%s", domain, e.CIDR, ports, aw, ap)
+}
+
+// formatBoolPtr formats a *bool for use in dedup keys.
+func formatBoolPtr(b *bool) string {
+	if b == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("%t", *b)
 }
 
 // normalizeDomain lowercases the domain and applies IDNA punycode conversion.
@@ -85,6 +102,8 @@ func normalizeDomain(domain string) string {
 	if domain == "" {
 		return ""
 	}
+	// Strip trailing dot (RFC 1034 — fully-qualified domain name indicator)
+	domain = strings.TrimSuffix(domain, ".")
 	// First lowercase
 	lower := strings.ToLower(domain)
 
@@ -134,6 +153,9 @@ func isASCII(s string) bool {
 //   - Removes comments (comments are already absent from the parsed struct)
 //   - Expands defaults (inferred transport, etc.)
 func Canonicalize(p *Policy) (*CanonicalPolicy, []string) {
+	if p == nil {
+		return nil, nil
+	}
 	var warnings []string
 
 	cp := &CanonicalPolicy{
@@ -269,16 +291,17 @@ func canonicalizeMCPServers(servers []MCPServer, warnings *[]string) []Canonical
 		}
 		seen[m.Name] = true
 
-		// Sort header map keys — JSON encoding handles sort order,
-		// but we still need to normalize the URL domain
-		headers := m.Headers
-		if headers == nil {
-			headers = make(map[string]string)
+		// Redact header values — header names are structural (determine behavior)
+		// but values are secrets (Bearer tokens, API keys) that must never appear
+		// in the canonical form or be fed to the digest.
+		headers := make(map[string]string, len(m.Headers))
+		for k := range m.Headers {
+			headers[k] = "" // redacted — key preserved for structural identity
 		}
 
 		cr := CanonicalMCPServer{
 			Name:    m.Name,
-			URL:     m.URL,
+			URL:     stripURLUserinfo(m.URL),
 			Headers: headers,
 		}
 		result = append(result, cr)
@@ -313,7 +336,7 @@ func canonicalizeHooks(hooks []Hook, warnings *[]string) []CanonicalHook {
 		// Secret is deliberately omitted — no secret values in canonical form.
 		cr := CanonicalHook{
 			Name: h.Name,
-			URL:  h.URL,
+			URL:  stripURLUserinfo(h.URL),
 		}
 		result = append(result, cr)
 	}
@@ -350,6 +373,17 @@ func canonicalizeIngress(rules []IngressRule, warnings *[]string) []CanonicalIng
 	return result
 }
 
+// stripURLUserinfo removes userinfo (user:password@) from a URL string.
+// If the URL has no userinfo or cannot be parsed, returns the original URL.
+func stripURLUserinfo(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.User == nil {
+		return rawURL
+	}
+	u.User = nil
+	return u.String()
+}
+
 // sortedInts returns a sorted copy of the integer slice.
 func sortedInts(s []int) []int {
 	if len(s) == 0 {
@@ -372,6 +406,9 @@ func marshalCanonicalJSON(cp *CanonicalPolicy) ([]byte, error) {
 // which ensures that comments, key order, and white space do not affect the
 // digest, while semantically meaningful changes do.
 func Digest(p *Policy) (string, error) {
+	if p == nil {
+		return "", fmt.Errorf("policy digest: nil policy")
+	}
 	cp, _ := Canonicalize(p)
 	data, err := marshalCanonicalJSON(cp)
 	if err != nil {
