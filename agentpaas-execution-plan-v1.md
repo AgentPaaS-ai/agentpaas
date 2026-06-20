@@ -207,6 +207,31 @@ GitHub per-subtask mode (section 0.1.0) is used when:
 | Manual re-invocations | 5 per block | 0 | 100% |
 | GitHub API calls | 20+ per subtask | 0 during build | 100% |
 
+#### Pre-build token optimization (all modes)
+
+Before starting any block, prune irrelevant skills, toolsets, and MCP servers
+from all OWA profiles (orchestrator, adversary, verifier). This reduces system
+prompt size by ~20KB per orchestrator call — saving ~1MB of context over a
+5-subtask block and improving adversary focus.
+
+**Orchestrator profile:**
+- Keep toolsets: web, terminal, file, code_execution, skills, todo, memory, context_engine, delegation
+- Disable: vision, video, image_gen, video_gen, x_search, tts, computer_use, moa, session_search, clarify, cronjob, browser
+- Remove GitHub MCP during build (checkpoint uses gh CLI)
+- Keep skill categories: autonomous-ai-agents, devops, github, hermes-agent, mcp, software-development
+- Move all other skill categories to .skills-holding/ (reversible)
+
+**Adversary + Verifier profiles:**
+- Keep toolsets: terminal, file ONLY
+- Disable all others
+- Remove GitHub MCP
+- Keep skill categories: github, hermes-agent, software-development ONLY
+- Move all other categories to .skills-holding/
+
+See OWA skill → "Token Optimization (pre-build pruning)" for the full pruning
+and restore scripts. Run pruning before block start, restore after block
+checkpoint push to GitHub.
+
 ### 0.1.1 Cost-effective LLM execution loop
 Use the strongest available model for planning and architecture, then keep
 execution PRs small enough for cheaper models to complete safely.
