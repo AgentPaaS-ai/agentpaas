@@ -10,11 +10,23 @@ concurrency:
   group: block-gates-${{ github.ref }}
   cancel-in-progress: true
 
+# Shared paths that should trigger all gates (deps, proto, build config)
+# Each block gate also has its own path filter for its specific code.
 jobs:
   block1-gate:
     name: Block 1 Gate
     runs-on: self-hosted
     timeout-minutes: 10
+    # Block 1: repo bootstrap, proto contracts — triggers on proto/api/build config
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'go.sum') ||
+      contains(join(github.event.commits.*.modified, ','), 'Makefile') ||
+      contains(join(github.event.commits.*.added, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'api/') ||
+      contains(join(github.event.commits.*.added, ','), 'api/') ||
+      contains(join(github.event.commits.*.modified, ','), '.github/workflows/')
     steps:
       - uses: actions/checkout@v4
       - name: Run block1-gate
@@ -26,6 +38,16 @@ jobs:
     name: Block 5 Gate
     runs-on: self-hosted
     timeout-minutes: 15
+    # Block 5: RuntimeDriver + fenced network topology — internal/runtime/
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'go.sum') ||
+      contains(join(github.event.commits.*.modified, ','), 'Makefile') ||
+      contains(join(github.event.commits.*.added, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'internal/runtime/') ||
+      contains(join(github.event.commits.*.added, ','), 'internal/runtime/') ||
+      contains(join(github.event.commits.*.modified, ','), '.github/workflows/')
     steps:
       - uses: actions/checkout@v4
       - name: Run block5-gate
@@ -36,11 +58,22 @@ jobs:
           export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
           make block5-gate
 
-  # Placeholder for future blocks — these will be enabled when their blocks are implemented
   block6-gate:
     name: Block 6 Gate
     runs-on: self-hosted
     timeout-minutes: 5
+    # Block 6: Harness + Python SDK — internal/harness/, python/
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'go.sum') ||
+      contains(join(github.event.commits.*.modified, ','), 'Makefile') ||
+      contains(join(github.event.commits.*.added, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'internal/harness/') ||
+      contains(join(github.event.commits.*.added, ','), 'internal/harness/') ||
+      contains(join(github.event.commits.*.modified, ','), 'python/') ||
+      contains(join(github.event.commits.*.added, ','), 'python/') ||
+      contains(join(github.event.commits.*.modified, ','), '.github/workflows/')
     steps:
       - uses: actions/checkout@v4
       - name: Run block6-gate
@@ -48,9 +81,23 @@ jobs:
           export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
           make block6-gate
 
-  block2-gate-placeholder:
-    name: Block 2 Gate (not implemented)
+  block7-gate:
+    name: Block 7 Gate
     runs-on: self-hosted
-    if: false  # Disabled until Block 2 is implemented
+    timeout-minutes: 5
+    # Block 7: Secrets broker — internal/secrets/
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(join(github.event.commits.*.modified, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'go.sum') ||
+      contains(join(github.event.commits.*.modified, ','), 'Makefile') ||
+      contains(join(github.event.commits.*.added, ','), 'go.mod') ||
+      contains(join(github.event.commits.*.modified, ','), 'internal/secrets/') ||
+      contains(join(github.event.commits.*.added, ','), 'internal/secrets/') ||
+      contains(join(github.event.commits.*.modified, ','), '.github/workflows/')
     steps:
-      - run: echo "Block 2 gate will be enabled when Block 2 is implemented"
+      - uses: actions/checkout@v4
+      - name: Run block7-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block7-gate

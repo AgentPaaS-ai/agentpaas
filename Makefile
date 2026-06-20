@@ -110,8 +110,8 @@ block6-gate: build test race lint osv
 	go test -race -count=1 ./internal/harness/...
 	@echo "✓ Block 6 gate passed"
 
-block7-gate:
-	@echo "Error: block7-gate is not implemented until Block 7" && exit 1
+block7-gate: build test race lint osv
+	@echo "Block 7 gate: PASS"
 
 block8-gate:
 	@echo "Error: block8-gate is not implemented until Block 8" && exit 1

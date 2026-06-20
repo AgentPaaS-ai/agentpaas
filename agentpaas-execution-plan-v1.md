@@ -1062,7 +1062,19 @@ with `export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"`. For
 Docker-gated tests, set `AGENTPAAS_DOCKER_TESTS: "1"` and
 `DOCKER_HOST: "unix:///Users/pms88/.colima/default/docker.sock"`. See
 `references/self-hosted-runner-setup.md` in the OWA skill for setup and
-management details. Makefile targets
+management details.
+
+The "Block Gates" CI workflow (`.github/workflows/block-gates.yml`) uses
+**path filters** — each block gate only runs when its own code or shared
+files change (go.mod, go.sum, Makefile, api/**, .github/workflows/**).
+This prevents unnecessary re-runs of slow gates (e.g. Block 5 Docker
+e2e, ~10 min) when unrelated code changes. When adding a new block gate:
+1) add a `blockN-gate` job with path filter, 2) update Makefile
+`blockN-gate: build test race lint osv`, 3) set Docker env vars if the
+block uses Docker. See the OWA skill's "Block Gates CI Workflow" section
+for the current path-filter mappings.
+
+Makefile targets
 `build`, `test`, `proto`, `lint`, `race`, `osv`, `e2e-network`,
 `redteam-smoke`, and the canonical `blockN-gate` wrappers from §0.2.2a;
 SECURITY.md; Apache-2.0 LICENSE; local git repo initialized; GitHub-ready
