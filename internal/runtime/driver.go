@@ -60,9 +60,12 @@ func (s ContainerStatus) String() string {
 	}
 }
 
-// ContainerSpec defines the parameters for creating a container. Fields are
-// intentionally minimal for P1; the NetworkIDs slice supports dual-homing
-// for the gateway sidecar.
+// ContainerSpec defines the parameters for creating a container. Hardening
+// flags (User, ReadonlyRootfs, tmpfs, CapDrop, no-new-privileges, PidsLimit,
+// IPv6 disable) are applied automatically by DockerRuntime.Create based on
+// P1 security policy — callers do not need to set them in the spec.
+// MemoryLimitBytes and NanoCPUs are populated from agent.yaml configuration
+// by the upper orchestrator layer.
 type ContainerSpec struct {
 	// Image is the container image reference (e.g., "nginx:latest").
 	Image string
@@ -82,6 +85,20 @@ type ContainerSpec struct {
 	// both internal and egress networks). For single-network containers
 	// (e.g., agent), pass exactly one ID.
 	NetworkIDs []string
+
+	// User is the container-internal user to run as. When empty, the runtime
+	// enforces a non-root default (uid 64000). Callers may override for
+	// gateway containers that need privileged operations.
+	User string
+
+	// MemoryLimitBytes is the maximum memory the container may consume, in
+	// bytes. 0 means no limit (gateway containers may need more). Populated
+	// from agent.yaml by the upper orchestrator.
+	MemoryLimitBytes int64
+
+	// NanoCPUs is the CPU quota in nanoseconds of CPU time per period.
+	// 0 means no limit. Populated from agent.yaml by the upper orchestrator.
+	NanoCPUs int64
 }
 
 // NetworkSpec defines the parameters for creating a Docker network.
