@@ -34,10 +34,11 @@ const (
 )
 
 var (
-	bearerTokenPattern = regexp.MustCompile(`(?i)bearer\s+[a-z0-9._-]+`)
-	secretFieldPattern = regexp.MustCompile(`(?i)\b(api[_-]?key|token|password|secret)\s*[=:]\s*\S+`)
-	privateKeyPattern  = regexp.MustCompile(`(?is)-----BEGIN .*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----`)
-	urlQueryPattern    = regexp.MustCompile(`https?://[^\s"'<>]*\?[^\s"'<>]+`)
+	bearerTokenPattern     = regexp.MustCompile(`(?i)bearer(?:\s+|\\s\+)[^\s"'<>]+`)
+	secretFieldPattern     = regexp.MustCompile(`(?i)["']?(api[_-]?key|token|password|secret)["']?\s*[=:]\s*["']?[^\s"',}]+["']?`)
+	privateKeyPattern      = regexp.MustCompile(`(?is)-----BEGIN .*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----`)
+	urlQueryPattern        = regexp.MustCompile(`https?://[^\s"'<>]*\?[^\s"'<>]+`)
+	secretFieldNamePattern = regexp.MustCompile(`(?i)(api[_-]?key|token|password|secret)`)
 )
 
 type FailureContext struct {
@@ -218,16 +219,20 @@ func redactFailureDetail(detail string) string {
 	detail = privateKeyPattern.ReplaceAllString(detail, "[REDACTED:private_key]")
 	detail = bearerTokenPattern.ReplaceAllString(detail, "[REDACTED:bearer_token]")
 	detail = secretFieldPattern.ReplaceAllStringFunc(detail, func(match string) string {
-		parts := regexp.MustCompile(`(?i)\b(api[_-]?key|token|password|secret)`).FindStringSubmatch(match)
+		parts := secretFieldNamePattern.FindStringSubmatch(match)
 		if len(parts) < 2 {
 			return "[REDACTED:secret]"
 		}
 		return "[REDACTED:" + strings.ToLower(strings.ReplaceAll(parts[1], "-", "_")) + "]"
 	})
-	return urlQueryPattern.ReplaceAllStringFunc(detail, redactURLQuery)
+	return redactURLQuery(detail)
 }
 
 func redactURLQuery(raw string) string {
+	return urlQueryPattern.ReplaceAllStringFunc(raw, redactURLQueryMatch)
+}
+
+func redactURLQueryMatch(raw string) string {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return raw
@@ -235,7 +240,7 @@ func redactURLQuery(raw string) string {
 	parsed.RawQuery = ""
 	parsed.ForceQuery = false
 	parsed.User = nil
-	return parsed.String()
+	return parsed.String() + "[REDACTED:query]"
 }
 
 func sanitizedURL(raw string) string {
