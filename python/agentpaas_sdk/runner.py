@@ -26,7 +26,10 @@ def run() -> None:
         protocol.flush()
 
     try:
-        _load_user_agent(agent_path)
+        module = _load_user_agent(agent_path)
+        legacy_invoke = getattr(module, "invoke", None)
+        if agent._invoke_handler is None and callable(legacy_invoke):
+            agent.on_invoke(legacy_invoke)
         rpc = RPCClient(rpc_addr)
         agent.set_rpc(rpc)
     except Exception:
@@ -55,9 +58,10 @@ def run() -> None:
             )
 
 
-def _load_user_agent(agent_path: str) -> None:
+def _load_user_agent(agent_path: str) -> Any:
     spec = importlib.util.spec_from_file_location("agentpaas_user_agent", agent_path)
     if spec is None or spec.loader is None:
         raise RuntimeError("unable to load agent module")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
