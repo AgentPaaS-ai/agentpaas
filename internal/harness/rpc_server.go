@@ -35,6 +35,9 @@ type rpcInvokeState struct {
 	terminate   func()
 	credentials map[string]rpcCredential
 	mcpAllowed  map[string]map[string]bool
+
+	mu              sync.Mutex
+	failureEvidence *UpstreamEvidence
 }
 
 type rpcCredential struct {
@@ -109,6 +112,23 @@ func (s *harnessRPCServer) ClearInvoke() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.invoke = nil
+}
+
+func (s *harnessRPCServer) FailureEvidence() *UpstreamEvidence {
+	state := s.currentInvoke()
+	if state == nil {
+		return nil
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.failureEvidence == nil {
+		return nil
+	}
+	evidence := *state.failureEvidence
+	if evidence.Headers != nil {
+		evidence.Headers = cloneStringMap(evidence.Headers)
+	}
+	return &evidence
 }
 
 func (s *harnessRPCServer) serve() {
@@ -199,14 +219,24 @@ func (s *harnessRPCServer) handleRecordIteration(req rpcRequest, state *rpcInvok
 }
 
 func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, withCredential bool) rpcResponse {
+	start := time.Now()
 	method := strings.ToUpper(defaultString(stringParam(req.Params, "method"), http.MethodGet))
-	url := stringParam(req.Params, "url")
-	if url == "" {
+	rawURL := stringParam(req.Params, "url")
+	if rawURL == "" {
 		return rpcError(req.ID, "url is required", "invalid_http_request")
 	}
 	body := stringParam(req.Params, "body")
-	httpReq, err := http.NewRequestWithContext(context.Background(), method, url, strings.NewReader(body))
+	bodyMarker, bodyHash := redactedBodyEvidence(body)
+	httpReq, err := http.NewRequestWithContext(context.Background(), method, rawURL, strings.NewReader(body))
 	if err != nil {
+		state.setFailureEvidence(&UpstreamEvidence{
+			Availability: AvailabilityUnavailable,
+			Method:       method,
+			URL:          sanitizedURL(rawURL),
+			TimingMS:     elapsedMS(start),
+			BodyHash:     bodyHash,
+			BodyRedacted: bodyMarker,
+		})
 		return rpcError(req.ID, err.Error(), "invalid_http_request")
 	}
 	for key, value := range stringMapParam(req.Params, "headers") {
@@ -216,6 +246,16 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		credID := stringParam(req.Params, "credential_id")
 		cred, ok := state.credentials[credID]
 		if !ok {
+			state.setFailureEvidence(&UpstreamEvidence{
+				Availability: AvailabilityForbidden,
+				Method:       method,
+				URL:          sanitizedURL(rawURL),
+				TimingMS:     elapsedMS(start),
+				Headers:      hashedHeaders(httpReq.Header),
+				BodyHash:     bodyHash,
+				BodyRedacted: bodyMarker,
+				Credential:   redactedCredentialEvidence(),
+			})
 			return rpcError(req.ID, "credential is not declared", "credential_denied")
 		}
 		header := defaultString(cred.Header, "Authorization")
@@ -224,11 +264,35 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		headers := hashedHeaders(httpReq.Header)
+		if withCredential {
+			headers["credential"] = sha256HexString(redactedCredentialEvidence())
+		}
+		state.setFailureEvidence(&UpstreamEvidence{
+			Availability: AvailabilityUnavailable,
+			Method:       method,
+			URL:          sanitizedURL(rawURL),
+			TimingMS:     elapsedMS(start),
+			Headers:      headers,
+			BodyHash:     bodyHash,
+			BodyRedacted: bodyMarker,
+			Credential:   redactedCredentialEvidence(),
+		})
 		return rpcError(req.ID, err.Error(), "http_failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
+		state.setFailureEvidence(&UpstreamEvidence{
+			StatusCode:   resp.StatusCode,
+			Availability: availabilityFromStatus(resp.StatusCode),
+			Method:       method,
+			URL:          sanitizedURL(rawURL),
+			TimingMS:     elapsedMS(start),
+			Headers:      hashedHeaders(resp.Header),
+			BodyHash:     bodyHash,
+			BodyRedacted: bodyMarker,
+		})
 		return rpcError(req.ID, err.Error(), "http_failed")
 	}
 	return rpcResponse{
@@ -243,20 +307,31 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 }
 
 func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcResponse {
+	start := time.Now()
 	serverID := stringParam(req.Params, "server_id")
 	tool := stringParam(req.Params, "tool")
+	input := req.Params["input"]
+	inputHash := hashJSONValue(input)
 	if !state.mcpAllowed[serverID][tool] {
 		s.auditMCPDenied(serverID, tool, "undeclared")
+		state.setFailureEvidence(&UpstreamEvidence{
+			Availability: AvailabilityForbidden,
+			TimingMS:     elapsedMS(start),
+			BodyHash:     inputHash,
+			BodyRedacted: "[REDACTED:body]",
+		})
 		return rpcError(req.ID, "mcp server/tool is not declared", "mcp_denied")
 	}
+	result := map[string]any{
+		"server_id": serverID,
+		"tool":      tool,
+		"result":    map[string]any{"ok": true},
+	}
+	s.auditMCPCall(serverID, tool, inputHash, hashJSONValue(result), elapsedMS(start))
 	return rpcResponse{
-		ID: req.ID,
-		OK: true,
-		Result: map[string]any{
-			"server_id": serverID,
-			"tool":      tool,
-			"result":    map[string]any{"ok": true},
-		},
+		ID:     req.ID,
+		OK:     true,
+		Result: result,
 	}
 }
 
@@ -275,6 +350,62 @@ func (s *harnessRPCServer) auditMCPDenied(serverID, tool, reason string) {
 			"reason":    reason,
 		},
 	})
+}
+
+func (s *harnessRPCServer) auditMCPCall(serverID, tool, inputHash, outputHash string, timingMS int64) {
+	if s.audit == nil {
+		return
+	}
+	_ = s.audit.Append(audit.AuditRecord{
+		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+		EventType:      "mcp_call",
+		DeploymentMode: "local",
+		Actor:          "harness",
+		Payload: map[string]interface{}{
+			"server_id":   serverID,
+			"tool":        tool,
+			"input_hash":  inputHash,
+			"output_hash": outputHash,
+			"timing_ms":   timingMS,
+		},
+	})
+}
+
+func (state *rpcInvokeState) setFailureEvidence(evidence *UpstreamEvidence) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	state.failureEvidence = evidence
+}
+
+func elapsedMS(start time.Time) int64 {
+	return max(int64(time.Since(start)/time.Millisecond), int64(0))
+}
+
+func availabilityFromStatus(status int) string {
+	switch status {
+	case http.StatusTooManyRequests:
+		return AvailabilityRateLimited
+	case http.StatusForbidden, http.StatusUnauthorized:
+		return AvailabilityForbidden
+	default:
+		return AvailabilityAvailable
+	}
+}
+
+func hashJSONValue(value any) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return sha256HexString(fmt.Sprintf("%v", value))
+	}
+	return sha256HexString(string(encoded))
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 func rpcError(id, message, code string) rpcResponse {
@@ -329,11 +460,7 @@ func mcpAllowlistFromPayload(payload map[string]any) map[string]map[string]bool 
 }
 
 func redactedHeaders(headers http.Header) map[string]string {
-	out := make(map[string]string, len(headers))
-	for key := range headers {
-		out[key] = "[redacted]"
-	}
-	return out
+	return hashedHeaders(headers)
 }
 
 func stringParam(params map[string]any, key string) string {

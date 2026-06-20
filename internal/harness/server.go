@@ -40,9 +40,10 @@ type Config struct {
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.
 type ErrorResponse struct {
-	Status string `json:"status"`
-	Reason string `json:"reason"`
-	Detail string `json:"detail"`
+	Status         string          `json:"status"`
+	Reason         string          `json:"reason"`
+	Detail         string          `json:"detail"`
+	FailureContext *FailureContext `json:"failure_context,omitempty"`
 }
 
 // InvokeResponse is returned by successful /invoke calls.
@@ -222,11 +223,13 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	budget := newBudgetEnforcer(budgetFromPayload(payload), runIDFromPayload(payload), invokeIDFromPayload(payload), s.cfg.Audit, time.Now)
+	meta := newInvokeMetadata(payload, s.cfg)
+	budget := newBudgetEnforcer(budgetFromPayload(payload), meta.runID, meta.invokeID, s.cfg.Audit, time.Now)
 	ctx, cancel := contextWithOptionalTimeout(r.Context(), s.cfg.InvokeTimeout)
 	defer cancel()
-	resp, invokeErr := worker.Invoke(ctx, payload, budget, s.cfg.TerminateGrace)
+	resp, invokeErr, evidence := worker.Invoke(ctx, payload, budget, s.cfg.TerminateGrace)
 	if invokeErr != nil {
+		invokeErr = attachFailureContext(invokeErr, buildFailureContext(invokeErr, meta, evidence), s.cfg.Audit)
 		writeJSON(w, http.StatusInternalServerError, invokeErr)
 		return
 	}
@@ -327,6 +330,9 @@ func sanitizeResponse(value any) any {
 	switch v := value.(type) {
 	case ErrorResponse:
 		v.Detail = sanitizeDetail(v.Detail)
+		if v.FailureContext != nil {
+			v.FailureContext.RedactedDetail = sanitizeDetail(v.FailureContext.RedactedDetail)
+		}
 		return v
 	case *ErrorResponse:
 		if v == nil {
@@ -334,6 +340,11 @@ func sanitizeResponse(value any) any {
 		}
 		cleaned := *v
 		cleaned.Detail = sanitizeDetail(cleaned.Detail)
+		if cleaned.FailureContext != nil {
+			ctx := *cleaned.FailureContext
+			ctx.RedactedDetail = sanitizeDetail(ctx.RedactedDetail)
+			cleaned.FailureContext = &ctx
+		}
 		return &cleaned
 	default:
 		return value
