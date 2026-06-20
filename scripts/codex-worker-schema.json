@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex OWA Worker Output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "issue", "branch", "pr", "files_changed", "tests_added", "commands_run", "acceptance_criteria", "known_risks", "status", "blocker"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One paragraph describing what was built"
+    },
+    "issue": {
+      "type": "integer",
+      "description": "GitHub issue number (0 if not applicable)"
+    },
+    "branch": {
+      "type": "string",
+      "description": "Git branch name"
+    },
+    "pr": {
+      "type": "integer",
+      "description": "GitHub PR number (0 if not created)"
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "List of file paths changed"
+    },
+    "tests_added": {
+      "type": "integer",
+      "description": "Number of test functions added"
+    },
+    "commands_run": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Commands run (go test, golangci-lint, etc.)"
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["criterion", "status"],
+        "properties": {
+          "criterion": {"type": "string"},
+          "status": {"type": "string", "enum": ["met", "not_met"]}
+        }
+      },
+      "description": "List of acceptance criteria with met/not_met status"
+    },
+    "known_risks": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "status": {
+      "type": "string",
+      "enum": ["complete", "blocked"]
+    },
+    "blocker": {
+      "type": "string",
+      "description": "Blocker description if status is blocked (empty string if not blocked)"
+    }
+  }
+}

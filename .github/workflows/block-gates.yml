@@ -34,6 +34,31 @@ jobs:
           export PATH="$PATH:$(go env GOPATH)/bin"
           make block1-gate
 
+  block5-gate:
+    name: Block 5 Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: true
+      - name: Install tools
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@latest
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - name: Run block5-gate
+        env:
+          AGENTPAAS_DOCKER_TESTS: "1"
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          make block5-gate
+
   # Placeholder for future blocks — these will be enabled when their blocks are implemented
   block2-gate-placeholder:
     name: Block 2 Gate (not implemented)
