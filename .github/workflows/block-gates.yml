@@ -5,48 +5,60 @@ on:
     branches: [main]
   push:
     branches: [main]
-    paths:
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
-      - 'api/**'
-      - 'internal/runtime/**'
-      - 'internal/harness/**'
-      - 'python/**'
-      - 'internal/secrets/**'
-      - '.github/workflows/block-gates.yml'
 
 concurrency:
   group: block-gates-${{ github.ref }}
   cancel-in-progress: true
 
-# Each block gate runs only when its own code or shared files change.
-# The workflow-level `paths` filter above controls WHEN the workflow runs.
-# The per-job `if` conditions below control WHICH gates run within it.
-#
-# Shared paths (trigger all gates): go.mod, go.sum, Makefile, api/**,
-# .github/workflows/block-gates.yml
+# Detect which paths changed, then only run the relevant block gates.
+# Shared files (go.mod, go.sum, Makefile, api/**) trigger ALL gates.
+# Each block's own code only triggers its own gate.
 #
 # When adding a new block gate:
-# 1. Add its code path to the `paths:` list above
-# 2. Add a blockN-gate job below with the appropriate `if` condition
+# 1. Add its code path to the detect-changes step below
+# 2. Add a blockN-gate job gated on the corresponding output
 # 3. Update Makefile: blockN-gate: build test race lint osv
 # 4. For Docker blocks: set AGENTPAAS_DOCKER_TESTS and DOCKER_HOST in env
 
 jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: self-hosted
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      block1: ${{ steps.filter.outputs.block1 }}
+      block5: ${{ steps.filter.outputs.block5 }}
+      block6: ${{ steps.filter.outputs.block6 }}
+      block7: ${{ steps.filter.outputs.block7 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - 'api/**'
+              - '.github/workflows/block-gates.yml'
+            block1:
+              - 'api/**'
+              - 'cmd/**'
+            block5:
+              - 'internal/runtime/**'
+            block6:
+              - 'internal/harness/**'
+              - 'python/**'
+            block7:
+              - 'internal/secrets/**'
+
   block1-gate:
     name: Block 1 Gate
+    needs: detect-changes
     runs-on: self-hosted
     timeout-minutes: 10
-    if: |
-      contains(github.event.head_commit.modified, 'go.mod') ||
-      contains(github.event.head_commit.modified, 'go.sum') ||
-      contains(github.event.head_commit.modified, 'Makefile') ||
-      contains(github.event.head_commit.modified, 'api/') ||
-      contains(github.event.head_commit.modified, '.github/workflows/block-gates.yml') ||
-      contains(github.event.head_commit.added, 'go.mod') ||
-      contains(github.event.head_commit.added, 'api/') ||
-      github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block1 == 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Run block1-gate
@@ -56,17 +68,10 @@ jobs:
 
   block5-gate:
     name: Block 5 Gate
+    needs: detect-changes
     runs-on: self-hosted
     timeout-minutes: 15
-    if: |
-      contains(github.event.head_commit.modified, 'go.mod') ||
-      contains(github.event.head_commit.modified, 'go.sum') ||
-      contains(github.event.head_commit.modified, 'Makefile') ||
-      contains(github.event.head_commit.modified, 'internal/runtime/') ||
-      contains(github.event.head_commit.modified, '.github/workflows/block-gates.yml') ||
-      contains(github.event.head_commit.added, 'go.mod') ||
-      contains(github.event.head_commit.added, 'internal/runtime/') ||
-      github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block5 == 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Run block5-gate
@@ -79,19 +84,10 @@ jobs:
 
   block6-gate:
     name: Block 6 Gate
+    needs: detect-changes
     runs-on: self-hosted
     timeout-minutes: 5
-    if: |
-      contains(github.event.head_commit.modified, 'go.mod') ||
-      contains(github.event.head_commit.modified, 'go.sum') ||
-      contains(github.event.head_commit.modified, 'Makefile') ||
-      contains(github.event.head_commit.modified, 'internal/harness/') ||
-      contains(github.event.head_commit.modified, 'python/') ||
-      contains(github.event.head_commit.modified, '.github/workflows/block-gates.yml') ||
-      contains(github.event.head_commit.added, 'go.mod') ||
-      contains(github.event.head_commit.added, 'internal/harness/') ||
-      contains(github.event.head_commit.added, 'python/') ||
-      github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block6 == 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Run block6-gate
@@ -101,17 +97,10 @@ jobs:
 
   block7-gate:
     name: Block 7 Gate
+    needs: detect-changes
     runs-on: self-hosted
     timeout-minutes: 5
-    if: |
-      contains(github.event.head_commit.modified, 'go.mod') ||
-      contains(github.event.head_commit.modified, 'go.sum') ||
-      contains(github.event.head_commit.modified, 'Makefile') ||
-      contains(github.event.head_commit.modified, 'internal/secrets/') ||
-      contains(github.event.head_commit.modified, '.github/workflows/block-gates.yml') ||
-      contains(github.event.head_commit.added, 'go.mod') ||
-      contains(github.event.head_commit.added, 'internal/secrets/') ||
-      github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block7 == 'true'
     steps:
       - uses: actions/checkout@v4
       - name: Run block7-gate
