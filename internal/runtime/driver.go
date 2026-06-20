@@ -11,6 +11,20 @@ import (
 // driver. Implementations use Docker container IDs, which are hex strings.
 type ContainerID string
 
+// NetworkID is a unique identifier for a Docker network managed by the runtime
+// driver. Implementations use Docker network IDs (hex strings or short IDs).
+type NetworkID string
+
+// ContainerNetworkInfo describes a single network attachment on a container.
+type ContainerNetworkInfo struct {
+	// ID is the Docker network ID.
+	ID string
+	// Name is the Docker network name.
+	Name string
+	// Aliases are network-scoped DNS aliases for the container.
+	Aliases []string
+}
+
 // ContainerStatus represents the current lifecycle state of a container.
 type ContainerStatus int
 
@@ -47,7 +61,8 @@ func (s ContainerStatus) String() string {
 }
 
 // ContainerSpec defines the parameters for creating a container. Fields are
-// intentionally minimal for P1; they will be extended in B5-T02+.
+// intentionally minimal for P1; the NetworkIDs slice supports dual-homing
+// for the gateway sidecar.
 type ContainerSpec struct {
 	// Image is the container image reference (e.g., "nginx:latest").
 	Image string
@@ -62,8 +77,40 @@ type ContainerSpec struct {
 	// tracking and reconciliation.
 	Labels map[string]string
 
-	// NetworkID is the Docker network ID to attach the container to.
-	NetworkID string
+	// NetworkIDs is a list of Docker network IDs to attach the container to.
+	// Multiple network IDs enable dual-homing (e.g., gateway sidecar on
+	// both internal and egress networks). For single-network containers
+	// (e.g., agent), pass exactly one ID.
+	NetworkIDs []string
+}
+
+// NetworkSpec defines the parameters for creating a Docker network.
+type NetworkSpec struct {
+	// Name is the Docker network name.
+	Name string
+
+	// Internal, when true, creates an internal bridge network that has no
+	// external access. The agent's internal bridge uses this to prevent
+	// direct egress.
+	Internal bool
+
+	// Labels are Docker labels to apply to the network for ownership
+	// tracking and reconciliation.
+	Labels map[string]string
+}
+
+// NetworkInfo contains details about a Docker network, typically from an
+// inspect operation.
+type NetworkInfo struct {
+	// ID is the Docker network ID.
+	ID string
+	// Name is the Docker network name.
+	Name string
+	// Internal indicates whether the network is an internal bridge (no
+	// external access).
+	Internal bool
+	// Labels are the Docker labels attached to the network.
+	Labels map[string]string
 }
 
 // ContainerStats represents a snapshot of container resource usage.
@@ -100,6 +147,10 @@ var (
 	// ErrContainerNotFound is returned when the target container does not
 	// exist or has been removed.
 	ErrContainerNotFound = errors.New("container not found")
+
+	// ErrNetworkNotFound is returned when the target network does not
+	// exist or has been removed.
+	ErrNetworkNotFound = errors.New("network not found")
 )
 
 // RuntimeDriver is the abstraction over container runtimes (Docker, etc.)
@@ -131,4 +182,21 @@ type RuntimeDriver interface {
 	// Logs returns a reader for the container's stdout/stderr output.
 	// The caller MUST close the returned reader when done.
 	Logs(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error)
+
+	// CreateNetwork provisions a new Docker network from the given spec and
+	// returns its NetworkID. An internal:true network restricts external
+	// access (used for the per-agent internal bridge).
+	CreateNetwork(ctx context.Context, spec NetworkSpec) (NetworkID, error)
+
+	// RemoveNetwork deletes a Docker network. Returns ErrNetworkNotFound
+	// if the network does not exist.
+	RemoveNetwork(ctx context.Context, id NetworkID) error
+
+	// InspectNetwork returns detailed information about a Docker network,
+	// including its Internal flag and labels.
+	InspectNetwork(ctx context.Context, id NetworkID) (NetworkInfo, error)
+
+	// InspectContainerNetworks returns the list of networks a container is
+	// attached to, with network names and IDs. Used for topology assertions.
+	InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error)
 }
