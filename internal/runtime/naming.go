@@ -46,23 +46,30 @@ var NetworkPrefixes = map[string]string{
 }
 
 // ContainerName returns a deterministic container name for the given role
-// and run ID. The format is "agentpaas-<role>-<id>", e.g.
-// "agentpaas-agent-run-abc123" or "agentpaas-gateway-run-abc123".
+// and run ID. For known roles (agent, gateway) the format is
+// "agentpaas-<role>-<id>", e.g. "agentpaas-agent-run-abc123".
+// For unknown roles (which may contain hyphens), underscore separates
+// role from ID to prevent ambiguity: "agentpaas-<role>_<id>".
 func ContainerName(role, id string) string {
 	if prefix, ok := ContainerPrefixes[role]; ok {
 		return prefix + id
 	}
-	return fmt.Sprintf("agentpaas-%s-%s", role, id)
+	// Use underscore delimiter to avoid ambiguity when role contains hyphens:
+	// ContainerName("agent", "foo-bar") == "agentpaas-agent-foo-bar"
+	// ContainerName("agent-foo", "bar") == "agentpaas-agent-foo_bar"  (not a collision)
+	return fmt.Sprintf("agentpaas-%s_%s", role, id)
 }
 
 // NetworkName returns a deterministic Docker network name for the given role
-// and run ID. The format is "agentpaas-net-<role>-<id>", e.g.
-// "agentpaas-net-internal-run-abc123" or "agentpaas-net-egress-run-abc123".
+// and run ID. For known roles (internal, egress) the format is
+// "agentpaas-net-<role>-<id>", e.g. "agentpaas-net-internal-run-abc123".
+// For unknown roles, underscore separates role from ID:
+// "agentpaas-net-<role>_<id>".
 func NetworkName(role, id string) string {
 	if prefix, ok := NetworkPrefixes[role]; ok {
 		return prefix + id
 	}
-	return fmt.Sprintf("agentpaas-net-%s-%s", role, id)
+	return fmt.Sprintf("agentpaas-net-%s_%s", role, id)
 }
 
 // Labels returns a deterministic set of AgentPaaS ownership labels for a
