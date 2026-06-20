@@ -11,8 +11,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 const (
@@ -282,7 +284,34 @@ func normalizeConfig(cfg Config) Config {
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
+	value = sanitizeResponse(value)
 	_ = json.NewEncoder(w).Encode(value)
+}
+
+func sanitizeResponse(value any) any {
+	switch v := value.(type) {
+	case ErrorResponse:
+		v.Detail = sanitizeDetail(v.Detail)
+		return v
+	case *ErrorResponse:
+		if v == nil {
+			return v
+		}
+		cleaned := *v
+		cleaned.Detail = sanitizeDetail(cleaned.Detail)
+		return &cleaned
+	default:
+		return value
+	}
+}
+
+func sanitizeDetail(detail string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\u2028' || r == '\u2029' || r == '\x7f' || (unicode.IsControl(r) && r != '\t') {
+			return ' '
+		}
+		return r
+	}, detail)
 }
 
 func loopbackAddr(addr string) bool {

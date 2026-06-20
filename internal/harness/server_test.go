@@ -36,6 +36,29 @@ func TestImportCrashYieldsFailedStatusWithStructuredReason(t *testing.T) {
 	}
 }
 
+func TestErrorResponseDetailIsSanitizedAtJSONBoundary(t *testing.T) {
+	rec := httptest.NewRecorder()
+
+	writeJSON(rec, http.StatusServiceUnavailable, ErrorResponse{
+		Status: "FAILED",
+		Reason: "import_failed",
+		Detail: "boom\nwith\x00controls\u2028and\u2029separators",
+	})
+
+	var got ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal error response: %v", err)
+	}
+	for _, forbidden := range []string{"\n", "\x00", "\u2028", "\u2029"} {
+		if strings.Contains(got.Detail, forbidden) {
+			t.Fatalf("detail = %q, want no raw %q", got.Detail, forbidden)
+		}
+	}
+	if !strings.Contains(got.Detail, "boom") || !strings.Contains(got.Detail, "controls") {
+		t.Fatalf("detail = %q, want sanitized content preserved", got.Detail)
+	}
+}
+
 func TestInvokeRejectsRequestBodiesOverTenMegabytes(t *testing.T) {
 	srv := newReadyServer(t, `def invoke(payload):
     return {"ok": True}
