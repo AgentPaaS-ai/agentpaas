@@ -101,6 +101,46 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 		Labels: spec.Labels,
 	}
 
+	// Apply P1 container hardening flags. These are security policy values,
+	// not caller-configurable. The User field on ContainerSpec allows the
+	// upper layer to override for gateway containers that may need a
+	// different user.
+	user := spec.User
+	if user == "" {
+		user = "64000" // non-root default for agent containers
+	}
+	config.User = user
+
+	hostConfig := &container.HostConfig{
+		// Read-only rootfs prevents container processes from modifying
+		// the filesystem.
+		ReadonlyRootfs: true,
+
+		// tmpfs on /tmp gives a writable scratch space without needing
+		// a writable rootfs.
+		Tmpfs: map[string]string{
+			"/tmp": "",
+		},
+
+		// Drop all Linux capabilities — the agent has no need for any
+		// privileged operations.
+		CapDrop: []string{"ALL"},
+
+		// Prevent privilege escalation via setuid binaries or similar.
+		SecurityOpt: []string{"no-new-privileges:true"},
+
+		// Disable IPv6 inside the container. IPv6 is not used in the
+		// current network topology; disabling it reduces attack surface.
+		Sysctls: map[string]string{
+			"net.ipv6.conf.all.disable_ipv6": "1",
+		},
+	}
+
+	// Resource limits (embedded Resources struct — set separately for clarity)
+	hostConfig.PidsLimit = int64Ptr(256) // Limit processes to prevent fork bombs
+	hostConfig.Memory = spec.MemoryLimitBytes
+	hostConfig.NanoCPUs = spec.NanoCPUs
+
 	// For multi-network containers (gateway dual-homing), we create the
 	// container with the FIRST network and then connect additional networks
 	// via NetworkConnect.
@@ -119,8 +159,6 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 			firstNetID: {},
 		}
 	}
-
-	hostConfig := &container.HostConfig{}
 
 	resp, err := d.cli.ContainerCreate(ctx, config, hostConfig, networkingConfig, nil, "")
 	if err != nil {
@@ -330,4 +368,10 @@ func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id Contain
 		result = append(result, info)
 	}
 	return result, nil
+}
+
+// int64Ptr returns a pointer to the given int64 value. Used for Docker API
+// fields that expect *int64 (e.g., PidsLimit).
+func int64Ptr(v int64) *int64 {
+	return &v
 }
