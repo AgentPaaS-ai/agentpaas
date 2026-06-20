@@ -37,6 +37,12 @@ e2e-network: build
 	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_ProtocolBypassProbes' ./internal/runtime/... -timeout 120s
 	# Run B5-T04c adversary tests (IPv6 bypass, UDP tunneling, ICMP covert channel, CAP_NET_RAW, namespace sharing)
 	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04c' ./internal/runtime/... -timeout 180s
+	# Run B5-T04d topology inspect tests (deep Docker inspect assertions, restart preserves membership)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_TopologyInspect' ./internal/runtime/... -timeout 120s
+	# Run B5-T04d partial create cleanup tests (failure-injection leaves zero orphans)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_PartialCreateCleanup' ./internal/runtime/... -timeout 120s
+	# Run B5-T04d adversary tests (orphan leaks, restart bypass, double-removal, cross-run isolation)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestAdversaryB5T04d' ./internal/runtime/... -timeout 180s
 	@echo "✓ e2e-network gate: PASS"
 
 redteam-smoke:
