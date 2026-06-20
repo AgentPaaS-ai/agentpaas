@@ -45,9 +45,10 @@ block3-gate: build test race lint
 	go test ./internal/identity/... ./internal/audit/... -race -count=1
 	@echo "✓ Block 3 gate passed"
 
-block4-gate: build test lint
-	@echo "==> Running Block 4 gate: policy engine tests"
+block4-gate: build lint
+	@echo "==> Running Block 4 gate: policy engine tests (unit + race)"
 	go test ./internal/policy/... -count=1 -v
+	go test ./internal/policy/... -race -count=1
 	@echo "✓ Block 4 gate passed"
 
 block5-gate:
