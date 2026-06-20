@@ -260,6 +260,13 @@ func (w *pythonWorker) Close() error {
 	return joined
 }
 
+func (w *pythonWorker) isClosed() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	return w.closed
+}
+
 func (w *pythonWorker) terminateLocked() error {
 	w.closed = true
 
