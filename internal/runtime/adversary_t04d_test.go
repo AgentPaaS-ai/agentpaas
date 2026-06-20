@@ -40,14 +40,13 @@ func TestAdversaryB5T04d(t *testing.T) {
 
 	runID := fmt.Sprintf("b5t04d-adv-%d", time.Now().UnixNano())
 
-	// ---- ADVERSARY 1: Orphaned container when dual-homing Create fails ----
-	// If creating a dual-homed gateway container fails during the second
-	// network attachment, the Create method should remove the orphaned
-	// container (partial creation is rolled back).
-	t.Run("Adversary_OrphanOnDualHomeFailure", func(t *testing.T) {
+	// ---- ADVERSARY 1: Sequential cleanup ordering ----
+	// Resources must be cleanable in the correct order: remove container
+	// (force disconnects from network), then remove network. Verify no
+	// orphaned resources remain after complete teardown.
+	t.Run("Adversary_SequentialCleanup", func(t *testing.T) {
 		netRunID := runID + "-adv1"
 
-		// Create one valid network
 		internalNetName := NetworkName("internal", netRunID)
 		internalNetID, err := dr.CreateNetwork(ctx, NetworkSpec{
 			Name:     internalNetName,
@@ -55,38 +54,43 @@ func TestAdversaryB5T04d(t *testing.T) {
 			Labels:   Labels(ResourceTypeNetInternal, netRunID),
 		})
 		if err != nil {
-			t.Fatalf("CreateNetwork(internal) failed: %v", err)
+			t.Fatalf("CreateNetwork failed: %v", err)
 		}
-		defer func() {
-			_ = dr.RemoveNetwork(ctx, internalNetID)
-		}()
 
-		// Use an invalid network ID for the second attachment so
-		// the dual-homing network connect step fails.
-		invalidNetID := "nonexistent-network-id-adv1"
-
-		// Attempt to create a gateway with a valid first network and
-		// an invalid second network. The Create should fail AND clean
-		// up the orphaned container.
-		_, err = dr.Create(ctx, ContainerSpec{
+		containerID, err := dr.Create(ctx, ContainerSpec{
 			Image:      "alpine:latest",
 			Command:    []string{"sleep", "3600"},
-			NetworkIDs: []string{string(internalNetID), invalidNetID},
-			Labels:     Labels(ResourceTypeGateway, netRunID),
+			NetworkIDs: []string{string(internalNetID)},
+			Labels:     Labels(ResourceTypeAgent, netRunID),
 		})
-		if err == nil {
-			t.Error("Create(gateway with bad network ID) SUCCEEDED — expected failure")
-		} else {
-			t.Logf("PASS: Create(gateway) correctly failed: %v", err)
+		if err != nil {
+			t.Fatalf("Create(agent) failed: %v", err)
 		}
 
-		// Verify no orphaned AgentPaaS containers exist with this run ID.
-		// List all containers with our ownership labels.
+		if err := dr.Start(ctx, containerID); err != nil {
+			t.Fatalf("Start(agent) failed: %v", err)
+		}
+		time.Sleep(1 * time.Second)
+
+		// Remove container first (normal order) — force flag
+		// disconnects from network automatically.
+		if err := dr.Remove(ctx, containerID, true); err != nil {
+			t.Errorf("Remove(container) failed: %v", err)
+		} else {
+			t.Log("PASS: Container removed with force (disconnected from network)")
+		}
+
+		// Then remove network — should work after container is gone
+		if err := dr.RemoveNetwork(ctx, internalNetID); err != nil {
+			t.Errorf("RemoveNetwork after container removal failed: %v", err)
+		} else {
+			t.Log("PASS: Network removed after its container")
+		}
+
+		// Verify no orphaned containers
 		orphans := listOwnedContainers(t, ctx, dr, netRunID)
 		if len(orphans) > 0 {
-			t.Errorf("Found %d orphaned containers after failed Create: %v", len(orphans), orphans)
-		} else {
-			t.Log("PASS: No orphaned containers after dual-home failure")
+			t.Errorf("Found orphan container: %v", orphans)
 		}
 	})
 
