@@ -119,6 +119,23 @@ def handle(payload):
 	}
 }
 
+func TestSDKMCPDeniedFailureContextCategoryFullInvokePath(t *testing.T) {
+	srv := newReadyServer(t, `from agentpaas_sdk import agent
+
+@agent.on_invoke
+def handle(payload):
+    return agent.mcp("undeclared", "tool", {})
+`)
+
+	errResp := invokeSDKAgentError(t, srv, `{"mcp_servers":[{"server_id":"declared","tools":["tool"]}]}`)
+	if errResp.FailureContext == nil {
+		t.Fatalf("failure context is nil; error response = %#v", errResp)
+	}
+	if errResp.FailureContext.Category != FailureCategoryMCPDenied {
+		t.Fatalf("failure context category = %q, want %q; detail %s", errResp.FailureContext.Category, FailureCategoryMCPDenied, errResp.FailureContext.RedactedDetail)
+	}
+}
+
 func TestSDKIterationBudgetStopsInvoke(t *testing.T) {
 	srv := newReadyServer(t, `from agentpaas_sdk import agent
 

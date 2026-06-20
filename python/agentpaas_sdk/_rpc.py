@@ -16,6 +16,9 @@ class RPCError(RuntimeError):
         super().__init__(message)
         self.code = code
 
+    def __str__(self) -> str:
+        return f"RPCError({self.code}): {super().__str__()}"
+
 
 class BudgetExceeded(RPCError):
     """Raised when an SDK call exceeds the active harness budget."""
