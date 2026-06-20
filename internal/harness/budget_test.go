@@ -165,10 +165,19 @@ func (r *recordingAuditAppender) lastEvent(t *testing.T) audit.AuditRecord {
 	t.Helper()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if len(r.records) == 0 {
-		t.Fatal("no audit records emitted")
+	for i := len(r.records) - 1; i >= 0; i-- {
+		if r.records[i].EventType != "failure_context" {
+			return r.records[i]
+		}
 	}
-	return r.records[len(r.records)-1]
+	t.Fatal("no non-failure-context audit records emitted")
+	return audit.AuditRecord{}
+}
+
+func (r *recordingAuditAppender) events() []audit.AuditRecord {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]audit.AuditRecord(nil), r.records...)
 }
 
 func assertBudgetEvent(t *testing.T, event audit.AuditRecord, category string, limit int64, runID string) {
