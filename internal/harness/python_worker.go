@@ -23,6 +23,7 @@ type pythonWorker struct {
 	stdout     io.ReadCloser
 	stderrFile *os.File
 	decoder    *json.Decoder
+	reaper     *childReaper
 
 	stdoutPath string
 	stderrPath string
@@ -38,7 +39,7 @@ type workerMessage struct {
 	Detail string         `json:"detail,omitempty"`
 }
 
-func startPythonWorker(cfg Config) (*pythonWorker, *ErrorResponse) {
+func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorResponse) {
 	if cfg.AgentPath == "" {
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "missing_agent_path", Detail: "agent path is required"}
 	}
@@ -81,9 +82,12 @@ func startPythonWorker(cfg Config) (*pythonWorker, *ErrorResponse) {
 		_ = stderrCapture.Close()
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "worker_start_failed", Detail: err.Error()}
 	}
+	if reaper != nil {
+		reaper.Track(cmd.Process.Pid)
+	}
 
 	decoder := json.NewDecoder(bufio.NewReader(stdout))
-	msg, errResp := waitForImport(cmd, cancel, stdin, stdout, stderrCapture, decoder, cfg.ImportTimeout)
+	msg, errResp := waitForImport(cmd, reaper, cancel, stdin, stdout, stderrCapture, decoder, cfg.ImportTimeout)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -92,7 +96,7 @@ func startPythonWorker(cfg Config) (*pythonWorker, *ErrorResponse) {
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
-		_ = cmd.Wait()
+		_ = waitCommand(cmd, reaper)
 		return nil, &ErrorResponse{Status: "FAILED", Reason: msg.Reason, Detail: msg.Detail}
 	}
 	if msg.Type != "ready" {
@@ -100,7 +104,7 @@ func startPythonWorker(cfg Config) (*pythonWorker, *ErrorResponse) {
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrCapture.Close()
-		_ = cmd.Wait()
+		_ = waitCommand(cmd, reaper)
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: fmt.Sprintf("unexpected worker message %q", msg.Type)}
 	}
 
@@ -111,12 +115,13 @@ func startPythonWorker(cfg Config) (*pythonWorker, *ErrorResponse) {
 		stdout:     stdout,
 		stderrFile: stderrCapture,
 		decoder:    decoder,
+		reaper:     reaper,
 		stdoutPath: cfg.StdoutPath,
 		stderrPath: cfg.StderrPath,
 	}, nil
 }
 
-func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, stdout io.Closer, stderrFile io.Closer, decoder *json.Decoder, timeout time.Duration) (workerMessage, *ErrorResponse) {
+func waitForImport(cmd *exec.Cmd, reaper *childReaper, cancel context.CancelFunc, stdin io.Closer, stdout io.Closer, stderrFile io.Closer, decoder *json.Decoder, timeout time.Duration) (workerMessage, *ErrorResponse) {
 	msgCh := make(chan workerMessage, 1)
 	errCh := make(chan error, 1)
 	go func() {
@@ -138,7 +143,7 @@ func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, st
 		_ = stderrFile.Close()
 		// best-effort kill; error is not actionable here.
 		_ = killCommand(cmd)
-		_ = cmd.Wait()
+		_ = waitCommand(cmd, reaper)
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: err.Error()}
 	case <-time.After(timeout):
 		cancel()
@@ -147,7 +152,7 @@ func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, st
 		_ = stderrFile.Close()
 		// best-effort kill; error is not actionable here.
 		_ = killCommand(cmd)
-		_ = cmd.Wait()
+		_ = waitCommand(cmd, reaper)
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_timeout", Detail: "agent import timed out"}
 	}
 }
@@ -189,7 +194,7 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budge
 
 	select {
 	case <-ctx.Done():
-		_ = w.terminateLocked()
+		_ = w.terminateWithGraceLocked(terminateGrace)
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_timeout", Detail: ctx.Err().Error()}
 	case <-wallTimer.C:
 		terminateErr := w.terminateWithGraceLocked(terminateGrace)
@@ -282,7 +287,7 @@ func (w *pythonWorker) terminateLocked() error {
 	}
 	if w.cmd != nil && w.cmd.Process != nil {
 		joined = errors.Join(joined, killCommand(w.cmd))
-		joined = errors.Join(joined, w.cmd.Wait())
+		joined = errors.Join(joined, waitCommand(w.cmd, w.reaper))
 	}
 	if w.stderrFile != nil {
 		joined = errors.Join(joined, w.stderrFile.Close())
@@ -306,7 +311,7 @@ func (w *pythonWorker) terminateWithGraceLocked(grace time.Duration) error {
 			joined = errors.Join(joined, err)
 		}
 		go func() {
-			waitCh <- w.cmd.Wait()
+			waitCh <- waitCommand(w.cmd, w.reaper)
 		}()
 
 		timer := time.NewTimer(grace)
@@ -331,8 +336,10 @@ func terminateCommand(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
-	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM); err == nil || errors.Is(err, os.ErrProcessDone) {
-		return err
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM); err == nil {
+		return nil
+	} else if errors.Is(err, syscall.ESRCH) {
+		return nil
 	}
 	return cmd.Process.Signal(syscall.SIGTERM)
 }
@@ -341,10 +348,23 @@ func killCommand(cmd *exec.Cmd) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
-	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err == nil || errors.Is(err, os.ErrProcessDone) {
-		return err
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err == nil {
+		return nil
+	} else if errors.Is(err, syscall.ESRCH) {
+		return nil
 	}
 	return cmd.Process.Kill()
+}
+
+func waitCommand(cmd *exec.Cmd, reaper *childReaper) error {
+	if cmd == nil {
+		return nil
+	}
+	err := cmd.Wait()
+	if cmd.Process != nil && reaper != nil {
+		reaper.Untrack(cmd.Process.Pid)
+	}
+	return err
 }
 
 const pythonRunner = `
