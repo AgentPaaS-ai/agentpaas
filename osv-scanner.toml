@@ -1,0 +1,24 @@
+# osv-scanner configuration
+# Ignores CVEs in github.com/docker/docker that have no fix available (Fixed Version: --).
+# These are tracked but cannot be resolved by upgrading.
+# See: https://github.com/google/osv-scanner#ignore-vulnerabilities
+
+[[IgnoredVulns]]
+id = "GO-2026-4883"
+reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+
+[[IgnoredVulns]]
+id = "GO-2026-4887"
+reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+
+[[IgnoredVulns]]
+id = "GHSA-rg2x-37c3-w2rh"
+reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+
+[[IgnoredVulns]]
+id = "GHSA-vp62-88p7-qqf5"
+reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+
+[[IgnoredVulns]]
+id = "GHSA-x86f-5xw2-fm2r"
+reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
