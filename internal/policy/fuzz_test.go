@@ -58,8 +58,46 @@ egress: []
 `,
 		// Invalid YAML (parser should return error, not panic)
 		`garbage: [`,
+
+		// Edge case: empty input
 		``,
+		// Non-string scalar version
 		`version: 123`,
+
+		// Binary data seed: null bytes in string values
+		string([]byte{118, 101, 114, 115, 105, 111, 110, 58, 32, 34, 49, 46, 48, 34, 10, 97, 103, 101, 110, 116, 58, 10, 32, 32, 110, 97, 109, 101, 58, 32, 34, 116, 101, 115, 116, 0, 97, 103, 101, 110, 116, 34, 10}),
+		// YAML anchors and aliases
+		`version: "1.0"
+agent:
+  name: anchor-agent
+default_egress: &default
+  domain: "default.example.com"
+  ports: [443]
+egress:
+  - <<: *default
+  - domain: "extra.example.com"
+    ports: [80]
+`,
+		// Deeply nested YAML structure
+		`version: "1.0"
+agent:
+  name: nested
+credentials:
+  - id: "a"
+    type: header
+    header: "X-A"
+    value: "v1"
+`,
+		// Unicode domains
+		`version: "1.0"
+agent:
+  name: unicode-agent
+egress:
+  - domain: "日本語.example.com"
+    ports: [443]
+  - domain: "xn--n8j6d.example.com"
+    ports: [80]
+`,
 	}
 
 	for _, s := range seeds {
@@ -125,7 +163,7 @@ hooks:
   - name: "z-hook"
     url: "https://z.example.com/hook"
   - name: "a-hook"
-    url: "https://a.example.com/hook",
+    url: "https://a.example.com/hook"
 `,
 		`version: "1.0"
 agent:
@@ -135,6 +173,28 @@ ingress:
     port: 9090
   - path: "/a"
     port: 8080
+`,
+		// YAML anchors and aliases
+		`version: "1.0"
+agent:
+  name: anchor-agent
+default_egress: &default
+  domain: "default.example.com"
+  ports: [443]
+egress:
+  - <<: *default
+  - domain: "extra.example.com"
+    ports: [80]
+`,
+		// Unicode domains
+		`version: "1.0"
+agent:
+  name: unicode-agent
+egress:
+  - domain: "日本語.example.com"
+    ports: [443]
+  - domain: "xn--n8j6d.example.com"
+    ports: [80]
 `,
 	}
 
@@ -246,6 +306,28 @@ hooks:
 ingress:
   - path: "/webhook"
     port: 8080
+`,
+		// YAML anchors and aliases
+		`version: "1.0"
+agent:
+  name: anchor-agent
+default_egress: &default
+  domain: "default.example.com"
+  ports: [443]
+egress:
+  - <<: *default
+  - domain: "extra.example.com"
+    ports: [80]
+`,
+		// Unicode domains
+		`version: "1.0"
+agent:
+  name: unicode-agent
+egress:
+  - domain: "日本語.example.com"
+    ports: [443]
+  - domain: "xn--n8j6d.example.com"
+    ports: [80]
 `,
 	}
 

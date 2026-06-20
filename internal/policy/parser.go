@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"reflect"
 
 	"gopkg.in/yaml.v3"
 )
@@ -23,6 +24,11 @@ var validCredentialTypes = map[string]bool{
 func ParsePolicy(r io.Reader) (*Policy, error) {
 	if r == nil {
 		return nil, fmt.Errorf("policy: reader is nil")
+	}
+	// Catch typed-nil interfaces that bypass the `r == nil` check
+	// (e.g. var r *bytes.Reader = nil; ParsePolicy(r)).
+	if reflect.ValueOf(r).IsNil() {
+		return nil, fmt.Errorf("policy: reader is nil (typed nil)")
 	}
 
 	raw, err := io.ReadAll(r)
