@@ -18,8 +18,14 @@ race:
 osv:
 	osv-scanner scan -r .
 
-e2e-network:
-	@echo "Error: e2e-network is not implemented until later blocks" && exit 1
+e2e-network: build
+	@echo "==> Running E2E network tests (positive path + canary probes)"
+	# Run the canary probe tests with a short timeout for fast failure.
+	# AGENTPAAS_DOCKER_TESTS=1 is required to run Docker integration tests.
+	# Tests: E2E_Network_PositivePath (canary: direct external blocked, DNS blocked,
+	#        positive: gateway egress works, agent→gateway internal path works)
+	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_Network_PositivePath' ./internal/runtime/... -timeout 120s
+	@echo "✓ e2e-network gate: PASS"
 
 redteam-smoke:
 	@echo "Error: redteam-smoke is not implemented until Block 12" && exit 1
