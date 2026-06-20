@@ -479,7 +479,7 @@ for line in sys.stdin:
 
 func workerEnv(base []string, rpcAddr string) []string {
 	env := make([]string, 0, len(base)+2)
-	pythonPath := filepath.Join(".", "python")
+	pythonPath := pythonPackagePath()
 	var sawPythonPath bool
 	for _, item := range base {
 		if strings.HasPrefix(item, "AGENTPAAS_RPC_ADDR=") {
@@ -497,4 +497,22 @@ func workerEnv(base []string, rpcAddr string) []string {
 	}
 	env = append(env, "AGENTPAAS_RPC_ADDR="+rpcAddr)
 	return env
+}
+
+func pythonPackagePath() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return filepath.Join(".", "python")
+	}
+	for {
+		candidate := filepath.Join(wd, "python")
+		if info, statErr := os.Stat(filepath.Join(candidate, "agentpaas_sdk")); statErr == nil && info.IsDir() {
+			return candidate
+		}
+		parent := filepath.Dir(wd)
+		if parent == wd {
+			return filepath.Join(".", "python")
+		}
+		wd = parent
+	}
 }
