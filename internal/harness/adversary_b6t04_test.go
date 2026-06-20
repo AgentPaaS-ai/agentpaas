@@ -2,6 +2,8 @@ package harness
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,13 +19,21 @@ func TestAdversary_B6T04_CredentialLeakage_SentinelInResponse(t *testing.T) {
 
 @agent.on_invoke
 def handle(payload):
-    resp = agent.http_with_credential("mycred", "GET", "https://example.invalid")
+    resp = agent.http_with_credential("mycred", "GET", payload["url"])
     return {"resp": resp}
 `
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != sentinel {
+			t.Fatalf("authorization header = %q, want sentinel", r.Header.Get("Authorization"))
+		}
+		_, _ = w.Write([]byte("credential accepted"))
+	}))
+	defer upstream.Close()
+
 	srv := newReadyServer(t, agent)
 	defer func() { _ = srv.Close() }()
 
-	payload := `{"credentials":[{"id":"mycred","value":"` + sentinel + `"}]}`
+	payload := `{"url":` + quoteJSON(upstream.URL) + `,"credentials":[{"id":"mycred","value":"` + sentinel + `"}]}`
 	got := invokeSDKAgent(t, srv, payload)
 	encoded := ""
 	if got.Result != nil {
@@ -87,7 +97,7 @@ func TestAdversary_B6T04_RPCSecurity_UnixSocketMode(t *testing.T) {
 		t.Skip("unix only")
 	}
 	dir, _ := os.MkdirTemp("", "agentpaas-rpc-test-*")
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	socket := filepath.Join(dir, "rpc.sock")
 	_ = socket // placeholder; real test would start server and os.Stat(socket).Mode()
 	mode := os.FileMode(0600)
@@ -109,12 +119,14 @@ def handle(payload):
 	srv := newReadyServer(t, agent)
 	defer func() { _ = srv.Close() }()
 
-	got := invokeSDKAgent(t, srv, `{}`)
-	if _, has := got.Result["__proto__"]; has {
-		t.Logf("// ADVERSARY BREAK: __proto__ key accepted in result")
-	} else {
-		t.Logf("CONFIRMED SAFE: harness or JSON handling rejects dangerous keys")
+	got := invokeSDKAgentError(t, srv, `{}`)
+	if got.Status != "FAILED" {
+		t.Fatalf("expected reserved result key to be rejected with FAILED status, got status=%q detail=%q", got.Status, got.Detail)
 	}
+	if got.Reason != "invalid_result" {
+		t.Fatalf("reason = %q, want invalid_result", got.Reason)
+	}
+	t.Logf("CONFIRMED SAFE: harness rejects dangerous result keys")
 }
 
 // TestAdversary_B6T04_ImportCrash_StructuredResponse
@@ -124,8 +136,22 @@ from agentpaas_sdk import agent
 @agent.on_invoke
 def h(p): return {}
 `
-	srv := newReadyServer(t, bad)
+	srv := NewServer(Config{AgentPath: writeAgent(t, bad)})
 	defer func() { _ = srv.Close() }()
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz status = %d, want %d; body %s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+	var got ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal readyz error response: %v", err)
+	}
+	if got.Status != "FAILED" || got.Reason != "import_failed" {
+		t.Fatalf("readyz response = %#v, want structured import failure", got)
+	}
 	t.Logf("CONFIRMED SAFE: import crash path yields structured FAILED via waitForImport")
 }
 
@@ -140,8 +166,14 @@ def handle(payload):
 	srv := newReadyServer(t, agent)
 	defer func() { _ = srv.Close() }()
 
-	got := invokeSDKAgent(t, srv, `{}`)
-	t.Logf("CONFIRMED SAFE: result key validation delegated or accepted; got keys %v", got.Result)
+	got := invokeSDKAgentError(t, srv, `{}`)
+	if got.Status != "FAILED" {
+		t.Fatalf("expected control char result key to be rejected with FAILED status, got status=%q detail=%q", got.Status, got.Detail)
+	}
+	if !strings.Contains(got.Reason, "invalid_result") {
+		t.Fatalf("expected rejection reason to contain invalid_result, got %q", got.Reason)
+	}
+	t.Logf("CONFIRMED SAFE: control char result key rejected by harness")
 }
 
 // TestAdversary_B6T04_ConcurrentInvokes_RaceBudget
