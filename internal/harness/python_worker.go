@@ -136,7 +136,7 @@ func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, st
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrFile.Close()
-		killCommand(cmd)
+		_ = killCommand(cmd)
 		_ = cmd.Wait()
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: err.Error()}
 	case <-time.After(timeout):
@@ -144,7 +144,7 @@ func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, st
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrFile.Close()
-		killCommand(cmd)
+		_ = killCommand(cmd)
 		_ = cmd.Wait()
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_timeout", Detail: "agent import timed out"}
 	}

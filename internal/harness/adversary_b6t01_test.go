@@ -130,7 +130,7 @@ def invoke(payload):
 	srv.ServeHTTP(rec, req)
 
 	var got InvokeResponse
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
 	// Check if paths can be tampered (they are from config, normalized at server.go:273)
 	if got.Stdout == "" || got.Stderr == "" {
 		t.Logf("// ADVERSARY BREAK: capture paths empty or tampered")
@@ -152,7 +152,7 @@ def invoke(payload):
 	srv.ServeHTTP(rec, req)
 
 	var got InvokeResponse
-	json.Unmarshal(rec.Body.Bytes(), &got)
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
 	if got.Result != nil && got.Result["escaped"] == true {
 		t.Logf("// ADVERSARY BREAK HIGH: subprocess escape via os.system at python_worker.go:261 (user agent)")
 	} else {
@@ -191,7 +191,7 @@ def invoke(payload):
 
 	if rec.Code == http.StatusInternalServerError {
 		var errResp ErrorResponse
-		json.Unmarshal(rec.Body.Bytes(), &errResp)
+		_ = json.Unmarshal(rec.Body.Bytes(), &errResp)
 		if errResp.Reason == "invoke_timeout" {
 			t.Logf("SAFE timeout enforced at server.go:225 and python_worker.go:172")
 		} else {
