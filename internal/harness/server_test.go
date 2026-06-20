@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -160,6 +161,37 @@ func TestInvokeRejectsReservedResultKeys(t *testing.T) {
 	}
 	if got.Reason != "invalid_result" {
 		t.Fatalf("reason = %q, want invalid_result", got.Reason)
+	}
+}
+
+func TestInvokeResourceLimitsBlockSubprocessEscape(t *testing.T) {
+	escapePath := filepath.Join(os.TempDir(), "agentpaas-harness-escape-"+strconv.FormatInt(time.Now().UnixNano(), 10))
+	t.Cleanup(func() { _ = os.Remove(escapePath) })
+
+	srv := newReadyServer(t, `import os
+
+escape_path = `+strconv.Quote(escapePath)+`
+
+def invoke(payload):
+    os.system("echo escape > " + escape_path + " 2>/dev/null || true")
+    return {"escaped": os.path.exists(escape_path)}
+`)
+	defer func() { _ = srv.Close() }()
+
+	req := httptest.NewRequest(http.MethodPost, "/invoke", strings.NewReader(`{}`))
+	rec := httptest.NewRecorder()
+
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("invoke status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var got InvokeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal invoke response: %v", err)
+	}
+	if got.Result["escaped"] == true {
+		t.Fatalf("subprocess wrote %s, want resource limits to block fork", escapePath)
 	}
 }
 
