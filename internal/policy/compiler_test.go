@@ -1,6 +1,9 @@
 package policy
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -20,7 +23,6 @@ func TestCompileGatewayConfig_EmptyPolicy(t *testing.T) {
 	if err := yaml.Unmarshal(got, &decoded); err != nil {
 		t.Fatalf("output is not valid YAML: %v\n%s", err, string(got))
 	}
-	t.Logf("Empty policy output:\n%s", string(got))
 }
 
 func TestCompileGatewayConfig_SamplePolicy(t *testing.T) {
@@ -37,18 +39,17 @@ func TestCompileGatewayConfig_SamplePolicy(t *testing.T) {
 	if err := yaml.Unmarshal(got, &decoded); err != nil {
 		t.Fatalf("output is not valid YAML: %v\n%s", err, string(got))
 	}
-	t.Logf("Sample policy output:\n%s", string(got))
 }
 
 func TestCompileGatewayConfig_ContainsMCPBackends(t *testing.T) {
 	p := samplePolicy()
 	got, _ := CompileGatewayConfig(p)
 	// Should contain the MCP server name.
-	if !containsStr(string(got), "filesystem-readonly") {
+	if !strings.Contains(string(got), "filesystem-readonly") {
 		t.Errorf("expected MCP server 'filesystem-readonly' in output, got:\n%s", string(got))
 	}
 	// Should contain stdio config (the command).
-	if !containsStr(string(got), "agentpaas-mcp-filesystem") {
+	if !strings.Contains(string(got), "agentpaas-mcp-filesystem") {
 		t.Errorf("expected MCP command 'agentpaas-mcp-filesystem' in output, got:\n%s", string(got))
 	}
 }
@@ -58,7 +59,7 @@ func TestCompileGatewayConfig_ContainsEgressDomains(t *testing.T) {
 	got, _ := CompileGatewayConfig(p)
 	// Should contain allowed domains.
 	for _, domain := range []string{"api.openai.com", "api.stripe.com", "hooks.slack.com"} {
-		if !containsStr(string(got), domain) {
+		if !strings.Contains(string(got), domain) {
 			t.Errorf("expected domain %q in compiled output, got:\n%s", domain, string(got))
 		}
 	}
@@ -68,10 +69,9 @@ func TestCompileGatewayConfig_NoSecretValues(t *testing.T) {
 	p := samplePolicy()
 	got, _ := CompileGatewayConfig(p)
 	// Must NOT contain any credential secret values (by-id only).
-	// Credential IDs and values are emitted via CompileCredentialRules, not in the gateway config.
 	for _, secret := range []string{"OPENAI_API_KEY", "STRIPE_RO_KEY", "LEGACY_TOOL_TOKEN",
 		"Bearer sk-prod-123", "Bearer sk-test-456"} {
-		if containsStr(string(got), secret) {
+		if strings.Contains(string(got), secret) {
 			t.Errorf("secret value %q MUST NOT appear in compiled gateway config", secret)
 		}
 	}
@@ -85,15 +85,15 @@ func TestCompileDNSAllowList_Sample(t *testing.T) {
 	}
 	// Should include all egress domains.
 	for _, dom := range []string{"api.openai.com", "api.stripe.com", "hooks.slack.com"} {
-		if !containsStr(string(got), dom) {
+		if !strings.Contains(string(got), dom) {
 			t.Errorf("expected domain %q in allow-list, got:\n%s", dom, string(got))
 		}
 	}
 	// Should not include MCP server names or credential IDs.
-	if containsStr(string(got), "filesystem-readonly") {
+	if strings.Contains(string(got), "filesystem-readonly") {
 		t.Error("DNS allow-list should not contain MCP server names")
 	}
-	if containsStr(string(got), "openai-prod") {
+	if strings.Contains(string(got), "openai-prod") {
 		t.Error("DNS allow-list should not contain credential IDs")
 	}
 }
@@ -122,34 +122,61 @@ func TestCompileCredentialRules_Sample(t *testing.T) {
 	}
 	// Must contain credential IDs but NOT secret values.
 	for _, id := range []string{"openai-prod", "stripe-readonly", "legacy-tool-token"} {
-		if !containsStr(string(got), id) {
+		if !strings.Contains(string(got), id) {
 			t.Errorf("expected credential id %q in credential rules", id)
 		}
 	}
 	for _, secret := range []string{"OPENAI_API_KEY", "STRIPE_RO_KEY"} {
-		if containsStr(string(got), secret) {
+		if strings.Contains(string(got), secret) {
 			t.Errorf("secret value %q MUST NOT appear in credential rules (by-id only)", secret)
 		}
 	}
 }
 
-// containsStr is a simple substring check.
-func containsStr(s, substr string) bool {
-	return len(s) >= len(substr) && len(s) > 0 && len(substr) > 0 &&
-		(s == substr || len(s) >= len(substr) &&
-			(s[:len(substr)] == substr ||
-				len(s) > len(substr) &&
-					(searchInString(s, substr) >= 0)))
+func TestCompileGatewayConfig_Golden(t *testing.T) {
+	p := samplePolicy()
+	got, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("CompileGatewayConfig returned error: %v", err)
+	}
+	golden := readGolden(t, "gateway_config.golden")
+	if string(got) != string(golden) {
+		t.Errorf("gateway config mismatch.\n--- GOT:\n%s\n--- EXPECTED:\n%s", string(got), string(golden))
+	}
 }
 
-// searchInString returns the index of substr in s, or -1 if not found.
-func searchInString(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if i+len(substr) <= len(s) && s[i:i+len(substr)] == substr {
-			return i
-		}
+func TestCompileDNSAllowList_Golden(t *testing.T) {
+	p := samplePolicy()
+	got, err := CompileDNSAllowList(p)
+	if err != nil {
+		t.Fatalf("CompileDNSAllowList returned error: %v", err)
 	}
-	return -1
+	golden := readGolden(t, "dns_allowlist.golden")
+	if string(got) != string(golden) {
+		t.Errorf("DNS allow-list mismatch.\n--- GOT:\n%s\n--- EXPECTED:\n%s", string(got), string(golden))
+	}
+}
+
+func TestCompileCredentialRules_Golden(t *testing.T) {
+	p := samplePolicy()
+	got, err := CompileCredentialRules(p)
+	if err != nil {
+		t.Fatalf("CompileCredentialRules returned error: %v", err)
+	}
+	golden := readGolden(t, "credential_rules.golden")
+	if string(got) != string(golden) {
+		t.Errorf("credential rules mismatch.\n--- GOT:\n%s\n--- EXPECTED:\n%s", string(got), string(golden))
+	}
+}
+
+// readGolden reads a golden file from testdata/.
+func readGolden(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatalf("reading golden file %q: %v", name, err)
+	}
+	return data
 }
 
 // samplePolicy returns a policy matching the PRD §2.9 example.
