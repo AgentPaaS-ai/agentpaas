@@ -235,6 +235,43 @@ execution PRs small enough for cheaper models to complete safely.
 PR sizing rule: one behavioral claim per PR; target <500 changed production
 LOC plus tests. If a PR needs more, split it before coding.
 
+### 0.1.1b Post-build audit (after all subtasks closed)
+
+After all subtask issues are closed and PRs merged (or in local-first mode,
+after all subtasks are merged to local main), run a verification audit BEFORE
+declaring the block complete. OWA closure comments describe what was done; the
+audit verifies it was actually done.
+
+Audit checklist:
+1. **Fix commits actually pushed to remote** (GitHub mode) or merged to local
+   main (local-first mode). Local-only = CI still red. Check `git log --oneline`
+   for every fix commit referenced in closure comments.
+2. **CI green on remote main** (GitHub mode) or **local gate green**
+   (local-first mode). Don't trust "CI green" in closure comments — run the
+   gate yourself. In local-first mode: `bash scripts/local-gate.sh block N`.
+3. **E2E tests that CI skips actually pass locally with Docker.** Set
+   `DOCKER_HOST=unix:///Users/pms88/.colima/default/docker.sock` and
+   `AGENTPAAS_DOCKER_TESTS=1`. Clean stale Docker networks/containers first.
+4. **CVE suppressions have factually accurate reasoning.** "No fix available"
+   is wrong if fixes exist in a newer version. Check each suppression in
+   `osv-scanner.toml` against the actual advisory.
+5. **CI workflow runs the block gate** (not just block1-gate). Check
+   `.github/workflows/block-gates.yml` for the current block's gate job.
+6. **Summary issue content is current** (no stale "Known Issues"). If the
+   audit found and fixed issues, the summary must reflect the post-fix state.
+7. **All adversary breaks are resolved.** Check each adversary report for
+   HIGH/MEDIUM breaks and verify fix commits address them. Reopen issues if
+   any are skipped.
+8. **All acceptance criteria are verified.** Don't trust "met" checkboxes —
+   run the gate and confirm each criterion produces a PASS.
+
+If the audit finds issues: create fix issues, dispatch workers, and re-audit
+after fixes merge. Do NOT close the block summary issue until the audit passes.
+
+In local-first mode: run the audit before `bash scripts/block-checkpoint.sh N`.
+The checkpoint push to GitHub is the point of no return — all audit findings
+must be resolved before pushing.
+
 ### 0.1.1a Role prompt templates (paste verbatim)
 Each role runs in a fresh Hermes session unless the section says otherwise.
 Paste the applicable template, then attach only the referenced context bundle.
@@ -635,14 +672,29 @@ If you fail:
 ### 0.1.2 Model routing and cost controls
 The default P1 model routing is:
 - **Agent:** Hermes.
-- **Orchestrator primary:** GLM-5.2 through OpenRouter.
+- **Orchestrator primary:** GLM-5.2 through OpenRouter (Flagship, ~$0.50-3/response).
 - **Orchestrator fallback:** DeepSeek V4 Pro.
-- **Worker primary:** DeepSeek V4 Flash.
-- **Worker fallback:** Composer 2.5 through X OAuth.
-- **Verifier primary:** Composer 2.5 through X OAuth.
+- **Worker primary:** GPT-5.5 through Codex CLI (`codex exec --sandbox danger-full-access -m gpt-5.5`).
+- **Worker fallback:** DeepSeek V4 Flash (via delegate_task — pins to delegation model).
+- **Verifier primary:** Grok 4.3 through X OAuth ($0, subscription).
 - **Verifier fallback:** GLM-5.2 through OpenRouter.
-- **Adversary primary:** Grok 4.3.
+- **Adversary primary:** Grok 4.3 through X OAuth ($0, subscription).
 - **Adversary fallback:** GLM-5.2 through OpenRouter.
+
+**Worker dispatch (Block 4+):** Workers are dispatched via Codex CLI
+(`scripts/codex-worker-local.sh` for local-first mode, `scripts/codex-worker-dispatch.sh`
+for GitHub mode). The script creates a git worktree, launches
+`codex exec --sandbox danger-full-access -m gpt-5.5`, and captures structured
+JSON output via `--output-last-message` + `--output-schema`. Workers CANNOT call
+Hermes kanban tools — the orchestrator handles task lifecycle. Workers and fix
+workers MUST use the Codex CLI script. Do NOT use delegate_task for worker or
+fix-worker roles — delegate_task pins subagents to the delegation model
+(DeepSeek V4 Flash), bypassing the GPT-5.5 worker design.
+
+**Grok 4.3 is NOT the orchestrator.** Tested as Block 6 cost experiment —
+quality was unacceptable (missed adversary breaks, wrong merge calls, poor task
+scoping). GLM-5.2 is the permanent orchestrator. Grok 4.3 remains
+adversary/verifier only ($0 subscription tier).
 
 The user confirms or changes this routing at the start of each build session.
 The choice may change per block or per issue. The role contract matters more
