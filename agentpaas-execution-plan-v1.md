@@ -110,6 +110,103 @@ reviews the attempt logs and chooses a different approach: split the issue,
 change the design, switch to fallback/stronger model, add missing tests, or
 re-scope the block.
 
+### 0.1.0a Local-first build mode (Block 6+)
+
+**When the CI runner is self-hosted on the same machine as the orchestrator,
+GitHub per-subtask PRs add 15-30 min overhead with zero additional verification
+value.** The self-hosted runner runs the same Makefile targets on the same
+hardware as a local gate run.
+
+Local-first mode eliminates per-subtask: PR creation, CI dispatch, CI wait,
+post-merge CI, GitHub API calls. All work is local. GitHub is updated only at
+block completion via a checkpoint push.
+
+#### Local-first OWA flow (per subtask)
+
+```
+1. Orchestrator dispatches Codex worker on local git worktree
+   bash scripts/codex-worker-local.sh <branch> <issue#> <prompt> <worktree>
+   → Worker commits to local branch (NO PR, NO push)
+   → Worker runs go test + golangci-lint locally
+   → Worker outputs JSON summary
+
+2. Orchestrator runs local gate on worktree
+   bash scripts/local-gate.sh ./internal/<package>/...
+   → build + test-race + lint (3-6 min)
+
+3. If gate fails → dispatch fix worker (same branch), repeat from step 2
+
+4. Orchestrator spawns adversary (separate Hermes profile, foreground terminal)
+   hermes -p agentpaas-adversary chat -q "<prompt with worktree path>" -Q
+   → Adversary reads worktree code, writes break tests, runs them, reports
+
+5. If adversary breaks → dispatch fix worker (same branch), repeat from step 2
+
+6. Orchestrator spawns verifier (separate Hermes profile, foreground terminal)
+   hermes -p agentpaas-verifier chat -q "<prompt with worktree path>" -Q
+   → Verifier runs full gate, reports evidence
+
+7. Orchestrator merges locally
+   git merge --no-ff <branch> -m "B<N>-T<NN>: <title>"
+
+8. Orchestrator writes OWA record to file
+   docs/owa-records/b<N>-t<NN>.md
+   (Same format as the GitHub attempt log above — just stored locally)
+
+9. Orchestrator prunes worktree
+   git worktree remove --force <worktree>
+   git branch -D <branch>
+   git worktree prune
+
+10. Next subtask (repeat from step 1)
+```
+
+#### Block checkpoint (at block completion)
+
+After all subtasks are merged to local main:
+```bash
+bash scripts/block-checkpoint.sh <block_number>
+```
+This:
+1. Pushes local main to GitHub (all merged work in one push)
+2. Creates GitHub issues from `docs/owa-records/b<N>-*.md` files (with full
+   OWA records as issue body — same documentation gate, just deferred)
+3. Creates a block summary issue
+
+The checkpoint satisfies the "GitHub is the durable brain" requirement — all
+attempt logs, adversary findings, verifier evidence, and merge decisions are
+preserved in GitHub issues. The difference is timing: batch at block completion
+instead of per-subtask.
+
+#### Local-first scripts
+
+- `scripts/codex-worker-local.sh` — dispatch Codex worker (GPT-5.5) on local
+  worktree, no PR, no push
+- `scripts/local-gate.sh` — run gate verification (package/block/full/e2e)
+- `scripts/block-checkpoint.sh` — push to GitHub + batch-create issues
+- `docs/codex-owa-worker-local.md` — worker prompt for local mode
+
+#### When to use local-first vs GitHub mode
+
+Local-first is the default when:
+- CI runner is self-hosted on the same machine as the orchestrator
+- Solo development (no multi-developer PR review needed)
+- Block gate can be run locally (all deps installed)
+
+GitHub per-subtask mode (section 0.1.0) is used when:
+- CI runs on GitHub-hosted runners (ubuntu-latest, etc.)
+- Multiple developers need to review PRs
+- Block requires GitHub-hosted CI services
+
+#### Savings (measured on Block 5 self-hosted runner)
+
+| Metric | GitHub per-subtask | Local + checkpoint | Savings |
+|--------|-------------------|--------------------|---------|
+| Wall clock per subtask | 40-80 min | 20-45 min | ~50% |
+| Token cost per block | $15-40 | $5-15 | ~65% |
+| Manual re-invocations | 5 per block | 0 | 100% |
+| GitHub API calls | 20+ per subtask | 0 during build | 100% |
+
 ### 0.1.1 Cost-effective LLM execution loop
 Use the strongest available model for planning and architecture, then keep
 execution PRs small enough for cheaper models to complete safely.
