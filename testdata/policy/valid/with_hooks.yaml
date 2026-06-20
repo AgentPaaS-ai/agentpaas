@@ -1,0 +1,12 @@
+version: "1.0"
+agent:
+  name: hook-agent
+hooks:
+  - name: "slack-notify"
+    url: "https://hooks.slack.com/services/T00/B00/xxx"
+    secret: "${cred:slack-secret}"
+  - name: "datadog"
+    url: "https://api.datadoghq.com/api/v2/events"
+  - name: "pagerduty"
+    url: "https://events.pagerduty.com/v2/enqueue"
+    secret: "${cred:pagerduty-key}"

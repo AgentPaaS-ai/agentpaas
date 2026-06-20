@@ -1,0 +1,9 @@
+version: "1.0"
+agent:
+  name: typo-mcp
+mcp_servers:
+  - name: "claude"
+    url: "https://api.anthropic.com/v1"
+    headers:
+      x-api-key: "${cred:key}"
+    unknown_extra: "reject me"

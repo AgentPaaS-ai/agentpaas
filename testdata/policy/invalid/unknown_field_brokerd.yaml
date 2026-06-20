@@ -1,0 +1,7 @@
+version: "1.0"
+agent:
+  name: typo-agent
+egress:
+  - domain: "example.com"
+    ports: [443]
+    brokerd: "hashicorp-vault"

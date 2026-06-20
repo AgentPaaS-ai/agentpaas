@@ -1,0 +1,7 @@
+version: "1.0"
+agent:
+  name: test-agent
+---
+version: "2.0"
+agent:
+  name: second-agent

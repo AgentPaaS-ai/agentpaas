@@ -1,0 +1,42 @@
+version: "1.0"
+agent:
+  name: demo-agent
+  description: "A demonstration agent with full policy"
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+  - domain: "*.example.com"
+    ports: [443, 80]
+    allow_wildcard: true
+  - cidr: "10.0.0.0/8"
+    ports: [5432]
+    allow_private: true
+  - domain: "database.internal"
+    ports: [5432, 6379]
+credentials:
+  - id: "my-api-key"
+    type: header
+    header: "X-API-Key"
+    value: "${env:MY_API_KEY}"
+  - id: "vault-token"
+    type: brokered
+    service: "hashicorp-vault"
+    path: "secret/api-tokens"
+mcp_servers:
+  - name: "claude"
+    url: "https://api.anthropic.com/v1"
+    headers:
+      x-api-key: "${cred:my-api-key}"
+  - name: "local-llm"
+    url: "http://localhost:11434/v1"
+hooks:
+  - name: "notify"
+    url: "https://hooks.example.com/notify"
+    secret: "${cred:webhook-secret}"
+  - name: "audit-log"
+    url: "https://audit.example.com/events"
+ingress:
+  - path: "/webhook"
+    port: 8080
+  - path: "/healthz"
+    port: 9090

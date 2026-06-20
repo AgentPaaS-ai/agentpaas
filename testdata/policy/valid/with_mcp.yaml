@@ -1,0 +1,14 @@
+version: "1.0"
+agent:
+  name: mcp-agent
+mcp_servers:
+  - name: "claude"
+    url: "https://api.anthropic.com/v1"
+    headers:
+      x-api-key: "${cred:anthropic-key}"
+  - name: "github-mcp"
+    url: "https://api.github.com/mcp"
+  - name: "local-filesystem"
+    url: "http://localhost:8080/mcp"
+    headers:
+      authorization: "Bearer ${env:LOCAL_MCP_TOKEN}"

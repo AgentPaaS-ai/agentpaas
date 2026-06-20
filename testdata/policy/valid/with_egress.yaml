@@ -1,0 +1,14 @@
+version: "1.0"
+agent:
+  name: egress-agent
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+  - domain: "cdn.example.com"
+    ports: [443, 80]
+  - domain: "*.wild.example.com"
+    ports: [443]
+    allow_wildcard: true
+  - cidr: "10.10.0.0/16"
+    ports: [27017]
+    allow_private: true
