@@ -50,6 +50,7 @@ type MCPServer struct {
 	Headers      map[string]string `yaml:"headers"`
 	Transport    string            `yaml:"transport"`
 	Command      string            `yaml:"command"`
+	Args         []string          `yaml:"args"`
 	Endpoint     string            `yaml:"endpoint"`
 	AllowedTools []string          `yaml:"allowed_tools"`
 	Env          map[string]string `yaml:"env"`
