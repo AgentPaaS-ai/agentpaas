@@ -158,9 +158,13 @@ func TestAdversaryB5T03_ReadOnlyRootfsBypass(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
-	// Must have /tmp as writable space on read-only rootfs
-	if info.HostConfig.Tmpfs == nil || info.HostConfig.Tmpfs["/tmp"] == "" {
-		t.Errorf("Tmpfs = %v, want /tmp writable tmpfs", info.HostConfig.Tmpfs)
+	// Must have /tmp as writable space on read-only rootfs.
+	// Docker represents tmpfs as map[string]string{"/tmp": ""} — the key
+	// existence is the signal, not the value (empty string is normal).
+	if info.HostConfig.Tmpfs == nil {
+		t.Errorf("Tmpfs = nil, want /tmp writable tmpfs")
+	} else if _, ok := info.HostConfig.Tmpfs["/tmp"]; !ok {
+		t.Errorf("Tmpfs = %v, want /tmp key present", info.HostConfig.Tmpfs)
 	}
 	if !info.HostConfig.ReadonlyRootfs {
 		t.Errorf("ReadonlyRootfs = false, want true")
