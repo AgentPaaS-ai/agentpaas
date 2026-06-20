@@ -217,6 +217,17 @@ func ValidatePolicy(p *Policy) []ValidationError {
 			})
 		}
 
+		// Credential type is required. A credential with no type field (empty string)
+		// passes parser validation but must be caught here.
+		if c.Type == "" {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".type",
+				Message:  "credential type is required",
+				Severity: "error",
+			})
+			continue
+		}
+
 		switch c.Type {
 		case "header":
 			if c.Header == "" {
@@ -362,9 +373,10 @@ func ValidatePolicy(p *Policy) []ValidationError {
 			if urlErr == nil && (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") {
 				host := stripPort(parsedURL.Host)
 				if !hasMatchingEgress(p.Egress, host) {
+					redactedURL := redactURL(m.URL)
 					errs = append(errs, ValidationError{
 						Field:    prefix + ".url",
-						Message:  fmt.Sprintf("remote MCP server %q has no matching egress allow rule", m.URL),
+						Message:  fmt.Sprintf("remote MCP server %q has no matching egress allow rule", redactedURL),
 						Severity: "error",
 					})
 				}
@@ -406,9 +418,10 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		// Loopback hook exposure refuse.
 		host := parsedURL.Hostname()
 		if IsLoopbackAddress(host) {
+			redactedURL := redactURL(h.URL)
 			errs = append(errs, ValidationError{
 				Field:    prefix + ".url",
-				Message:  fmt.Sprintf("loopback hook URL %q must be explicitly local and cannot be exposed to the agent container", h.URL),
+				Message:  fmt.Sprintf("loopback hook URL %q must be explicitly local and cannot be exposed to the agent container", redactedURL),
 				Severity: "error",
 			})
 		}
@@ -416,9 +429,10 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		// Remote hook must have matching egress rule.
 		if (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") && !IsLoopbackAddress(host) {
 			if !hasMatchingEgress(p.Egress, host) {
+				redactedURL := redactURL(h.URL)
 				errs = append(errs, ValidationError{
 					Field:    prefix + ".url",
-					Message:  fmt.Sprintf("remote hook %q has no matching egress allow rule", h.URL),
+					Message:  fmt.Sprintf("remote hook %q has no matching egress allow rule", redactedURL),
 					Severity: "error",
 				})
 			}
@@ -426,6 +440,23 @@ func ValidatePolicy(p *Policy) []ValidationError {
 	}
 
 	return errs
+}
+
+// redactURL removes userinfo (credentials/tokens) from a URL string
+// for safe inclusion in error messages. If the URL cannot be parsed,
+// the original string is returned unchanged.
+func redactURL(rawURL string) string {
+	if rawURL == "" {
+		return rawURL
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	if u.User != nil {
+		u.User = url.UserPassword(u.User.Username(), "***redacted***")
+	}
+	return u.String()
 }
 
 // stripPort removes the port suffix from a host if present.
@@ -450,12 +481,13 @@ func IsLoopbackAddress(host string) bool {
 	if host == "" {
 		return false
 	}
-	// Named loopbacks.
-	if host == "localhost" || host == "localhost.localdomain" || host == "127.0.0.1" || host == "::1" {
+	// Case-insensitive comparison for named loopbacks.
+	lower := strings.ToLower(host)
+	if lower == "localhost" || lower == "localhost.localdomain" || host == "127.0.0.1" || host == "::1" {
 		return true
 	}
-	// Subdomain of localhost (e.g., "x.localhost").
-	if strings.HasSuffix(host, ".localhost") {
+	// Subdomain of localhost (e.g., "x.localhost", "x.Localhost").
+	if strings.HasSuffix(lower, ".localhost") {
 		return true
 	}
 	// Check IP CIDR
