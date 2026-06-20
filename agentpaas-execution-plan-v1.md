@@ -786,7 +786,16 @@ agentpaas/
 
 ## BLOCK 1 — Repo bootstrap, proto contracts, CI skeleton
 **Builds:** monorepo layout; both .proto files complete; buf lint+generate;
-GitHub Actions (lint, test, -race, osv-scanner); Makefile targets
+GitHub Actions (lint, test, -race, osv-scanner) on a **self-hosted macOS
+runner** (production target is macOS; zero Actions minutes consumed; 3-16x
+faster than ubuntu-latest). All tools (Go, golangci-lint, buf, protoc,
+osv-scanner, Docker) are pre-installed via Homebrew — no per-job install
+steps needed. Workflows use `runs-on: self-hosted` and prefix commands
+with `export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"`. For
+Docker-gated tests, set `AGENTPAAS_DOCKER_TESTS: "1"` and
+`DOCKER_HOST: "unix:///Users/pms88/.colima/default/docker.sock"`. See
+`references/self-hosted-runner-setup.md` in the OWA skill for setup and
+management details. Makefile targets
 `build`, `test`, `proto`, `lint`, `race`, `osv`, `e2e-network`,
 `redteam-smoke`, and the canonical `blockN-gate` wrappers from §0.2.2a;
 SECURITY.md; Apache-2.0 LICENSE; local git repo initialized; GitHub-ready
@@ -1041,6 +1050,17 @@ vectors, all BLOCKED, on macOS (Docker Desktop + colima). The
 gate docs explicitly state that Block 5 proves gateway-only network topology
 and container hardening, not secrets, budgets, SDK behavior, or the full
 Block 12 red-team suite.
+
+**Post-Build Audit (2026-06-20):** Docker SDK upgraded from v26.1.5 to
+v28.5.2 (commit 8df0d4c). 5 remaining OSV CVEs are daemon-side Docker Engine
+vulnerabilities (docker cp, plugin install, AuthZ bypass) patched in Docker
+Engine 29.3.1/29.5.1 — suppressed in `osv-scanner.toml` with accurate
+reasoning. These are NOT SDK client code vulnerabilities and AgentPaaS does
+not use the affected code paths. Revisit after Block 10 to migrate to
+github.com/moby/moby/v2 (v2.0.0-beta.8+) once stable, then remove suppressions.
+E2E network tests verified in CI (block5-gate CI job with
+AGENTPAAS_DOCKER_TESTS=1 on self-hosted runner). Tmpfs assertion fixed for
+Docker SDK v28 API representation (commit 8dc99f0).
 
 ---
 
@@ -1436,7 +1456,8 @@ red-team corpus: DNS tunneling, proxy bypass variants, IPv6 escape,
 UDP/ICMP tunnels, domain fronting, direct-lease exfil/DLP,
 SBOM/signature tamper, full MCP prompt-injection matrix, fuzzed operator
 payloads, and every future RuntimeDriver/agentgateway bump as a comprehensive
-release gate.
+release gate. (P1 CI runs on a self-hosted macOS runner — production target
+is macOS. A Linux runner can be added in P2 for cross-platform certification.)
 
 ---
 
