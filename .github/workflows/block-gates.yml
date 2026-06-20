@@ -37,6 +37,17 @@ jobs:
           make block5-gate
 
   # Placeholder for future blocks — these will be enabled when their blocks are implemented
+  block6-gate:
+    name: Block 6 Gate
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block6-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block6-gate
+
   block2-gate-placeholder:
     name: Block 2 Gate (not implemented)
     runs-on: self-hosted
