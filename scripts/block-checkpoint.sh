@@ -54,6 +54,8 @@ if [ ! -d "$OWA_DIR" ]; then
 else
   BLOCK_PREFIX="b${BLOCK}-"
   ISSUE_COUNT=0
+  # Fetch existing open+closed issue titles with this block's label to avoid duplicates
+  EXISTING_TITLES=$(gh issue list --repo "$OWNER/$REPO" --label "block-${BLOCK}" --state all --limit 100 --json title -q '.[].title' 2>/dev/null || echo "")
   for record in "$OWA_DIR"/${BLOCK_PREFIX}*.md; do
     [ -f "$record" ] || continue
     filename=$(basename "$record")
@@ -61,6 +63,11 @@ else
     title=$(grep -m1 '^# ' "$record" | sed 's/^# //')
     if [ -z "$title" ]; then
       title="$filename"
+    fi
+    # Skip if an issue with this title already exists (kanban bootstrap, prior checkpoint, etc.)
+    if echo "$EXISTING_TITLES" | grep -qxF "$title"; then
+      echo "  SKIP (already exists): $title"
+      continue
     fi
     echo "  Creating issue: $title"
     gh issue create \
@@ -70,7 +77,7 @@ else
       --repo "$OWNER/$REPO"
     ISSUE_COUNT=$((ISSUE_COUNT + 1))
   done
-  echo "  Created $ISSUE_COUNT issues."
+  echo "  Created $ISSUE_COUNT issues (skipped duplicates)."
 fi
 echo ""
 
@@ -102,11 +109,16 @@ See individual issues labeled \`block-${BLOCK}\` for per-subtask OWA records.
 $(git log --oneline origin/main~$LOCAL_AHEAD..main 2>/dev/null || git log --oneline -20)
 EOF
 
-gh issue create \
-  --title "Block $BLOCK Complete (Checkpoint)" \
-  --body-file "$SUMMARY_FILE" \
-  --label "block-${BLOCK},documentation" \
-  --repo "$OWNER/$REPO"
+SUMMARY_TITLE="Block $BLOCK Complete (Checkpoint)"
+if echo "$EXISTING_TITLES" | grep -qxF "$SUMMARY_TITLE"; then
+  echo "  SKIP (already exists): $SUMMARY_TITLE"
+else
+  gh issue create \
+    --title "$SUMMARY_TITLE" \
+    --body-file "$SUMMARY_FILE" \
+    --label "block-${BLOCK},documentation" \
+    --repo "$OWNER/$REPO"
+fi
 
 echo ""
 echo "=== Checkpoint Complete ==="
