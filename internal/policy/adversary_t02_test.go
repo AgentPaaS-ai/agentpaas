@@ -395,3 +395,250 @@ egress:
 		}
 	})
 }
+
+// ---------------------------------------------------------------------------
+// ADVERSARY ROUND 2 — Additional break attempts (undiscovered by round 1)
+// ---------------------------------------------------------------------------
+
+// Break 1: Credential with NO type field silently accepted.
+// The parser's validateCredentialTypes only checks credential entries that
+// have a "type" field. A credential without any type field at all passes
+// parser validation with an empty-string Type. ValidatePolicy's default
+// case skips empty-type credentials, meaning they are silently accepted.
+func TestAdversaryT02_CredentialNoTypeSilentBypass(t *testing.T) {
+	p := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+credentials:
+  - id: "no-type-cred"
+    header: "X-Key"
+    value: "secret123"
+`)
+	errs := ValidatePolicy(p)
+	// A credential without a type field should be flagged.
+	hasTypeErr := false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "type") || strings.Contains(e.Message, "unknown") {
+			hasTypeErr = true
+		}
+	}
+	if !hasTypeErr && len(p.Credentials) > 0 && p.Credentials[0].Type == "" {
+		t.Error("ADVERSARY BREAK [HIGH]: credential with no type field silently accepted with empty-string type")
+	}
+}
+
+// Break 2: Loopback address case-variant bypass.
+// IsLoopbackAddress uses exact string comparison for "localhost" and
+// ".localhost" suffix. "Localhost", "LOCALHOST", "localHOST", "X.Localhost"
+// all bypass detection and allow loopback hooks to be configured without
+// the loopback refusal error.
+func TestAdversaryT02_LoopbackCaseVariantBypass(t *testing.T) {
+	variants := []string{
+		"http://Localhost:8080/hook",
+		"http://LOCALHOST:8080/hook",
+		"http://localHOST:8080/hook",
+	}
+	for _, u := range variants {
+		t.Run(u, func(t *testing.T) {
+			p := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+hooks:
+  - name: "test"
+    url: "`+u+`"
+`)
+			errs := ValidatePolicy(p)
+			found := false
+			for _, e := range errs {
+				if strings.Contains(e.Message, "loopback") {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("ADVERSARY BREAK [HIGH]: loopback variant %q bypassed detection", u)
+			}
+		})
+	}
+}
+
+// Break 2b: Subdomain of case-variant localhost also bypasses.
+func TestAdversaryT02_LoopbackSubdomainCaseVariant(t *testing.T) {
+	u := "http://x.Localhost:8080/hook"
+	p := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+hooks:
+  - name: "test"
+    url: "`+u+`"
+`)
+	errs := ValidatePolicy(p)
+	for _, e := range errs {
+		if strings.Contains(e.Message, "loopback") {
+			return // caught
+		}
+	}
+	t.Errorf("ADVERSARY BREAK [HIGH]: loopback subdomain %q bypassed detection", u)
+}
+
+// Break 3: MCP server URL with embedded userinfo (credentials) leaks
+// the full URL — including the password/token — in validation error messages
+// via %q formatting of m.URL.
+func TestAdversaryT02_MCPUrlUserinfoLeak(t *testing.T) {
+	// Use the adversary secret as a token in the URL.
+	input := fmt.Sprintf(`version: "1.0"
+agent:
+  name: x
+mcp_servers:
+  - name: "leak-mcp"
+    url: "https://token:%s@mcp.example.com/v1"
+`, adversarySecretValidation)
+	p := parseYAML(t, input)
+	errs := ValidatePolicy(p)
+	assertValidationErrorDoesNotLeakSecret(t, errs)
+}
+
+// Break 4: Hook URL with embedded userinfo leaks the full URL in
+// validation error messages ("no matching egress" path).
+func TestAdversaryT02_HookUrlUserinfoLeak(t *testing.T) {
+	input := fmt.Sprintf(`version: "1.0"
+agent:
+  name: x
+hooks:
+  - name: "leak-hook"
+    url: "https://token:%s@hooks.example.com/notify"
+`, adversarySecretValidation)
+	p := parseYAML(t, input)
+	errs := ValidatePolicy(p)
+	assertValidationErrorDoesNotLeakSecret(t, errs)
+}
+
+// Break 5: Hook loopback URL with embedded userinfo leaks credentials.
+func TestAdversaryT02_HookLoopbackUrlUserinfoLeak(t *testing.T) {
+	input := fmt.Sprintf(`version: "1.0"
+agent:
+  name: x
+hooks:
+  - name: "leak-hook"
+    url: "http://token:%s@localhost:8080/hook"
+`, adversarySecretValidation)
+	p := parseYAML(t, input)
+	errs := ValidatePolicy(p)
+	assertValidationErrorDoesNotLeakSecret(t, errs)
+}
+
+// Break 6: Empty credential value for header-type credentials accepted
+// without warning. A header credential with an empty value is functionally
+// useless but the validator does not flag it.
+func TestAdversaryT02_EmptyHeaderCredValue(t *testing.T) {
+	p := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+    credential: "empty-key"
+credentials:
+  - id: "empty-key"
+    type: header
+    header: "X-API-Key"
+    value: ""
+`)
+	errs := ValidatePolicy(p)
+	// Empty value for header credentials should at least be a warning.
+	hasValueWarning := false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "empty") || strings.Contains(e.Message, "value") {
+			hasValueWarning = true
+		}
+	}
+	if !hasValueWarning {
+		t.Log("ADVERSARY OBSERVATION [MEDIUM]: empty credential value accepted without warning")
+	}
+}
+
+// Break 7: Explicitly empty type string should be caught by parser, not validator.
+// The parser's validCredentialTypes map rejects empty string.
+func TestAdversaryT02_UnknownCredTypeEmptyString(t *testing.T) {
+	// Credential with type set to empty string explicitly — parser should reject.
+	_, err := ParsePolicy(strings.NewReader(`version: "1.0"
+agent:
+  name: x
+credentials:
+  - id: "weird"
+    type: ""
+`))
+	if err == nil {
+		t.Error("ADVERSARY BREAK [HIGH]: empty-string credential type accepted by parser")
+	} else if !strings.Contains(err.Error(), "invalid credential type") {
+		t.Errorf("expected invalid credential type error, got: %v", err)
+	}
+}
+
+// Break 8: MCP stdio transport with command containing path traversal.
+func TestAdversaryT02_MCPStdioCommandTraversal(t *testing.T) {
+	p := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+mcp_servers:
+  - name: "evil-stdio"
+    transport: "stdio"
+    command: "../../../etc/passwd"
+`)
+	errs := ValidatePolicy(p)
+	// Path-like injection in stdio command — should at minimum be noted.
+	hasPathWarning := false
+	for _, e := range errs {
+		if strings.Contains(e.Message, "path") || strings.Contains(e.Message, "traversal") {
+			hasPathWarning = true
+		}
+	}
+	if !hasPathWarning {
+		t.Log("ADVERSARY OBSERVATION [LOW]: stdio command with path traversal not flagged")
+	}
+}
+
+// Break 9: Port 65535 (boundary) should be accepted; 65536 rejected.
+// Verify no off-by-one at upper boundary.
+func TestAdversaryT02_PortUpperBoundary(t *testing.T) {
+	// 65535 is valid — must be accepted.
+	p := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+egress:
+  - domain: "api.example.com"
+    ports: [65535]
+`)
+	errs := ValidatePolicy(p)
+	for _, e := range errs {
+		if e.Severity == "error" && strings.Contains(e.Message, "port") && strings.Contains(e.Message, "65535") {
+			t.Errorf("ADVERSARY BREAK [MEDIUM]: valid port 65535 incorrectly rejected")
+		}
+	}
+	// 65536 must be rejected — already tested in worker tests, verify.
+	p2 := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+egress:
+  - domain: "api.example.com"
+    ports: [65536]
+`)
+	errs2 := ValidatePolicy(p2)
+	requireValidationError(t, errs2, "error", "65536")
+}
+
+// Break 10: Port -1 (negative) — should be caught. Go's int can be negative
+// in YAML, and port < 1 would catch it.
+func TestAdversaryT02_PortNegative(t *testing.T) {
+	p := parseYAML(t, `version: "1.0"
+agent:
+  name: x
+egress:
+  - domain: "api.example.com"
+    ports: [-1]
+`)
+	errs := ValidatePolicy(p)
+	requireValidationError(t, errs, "error", "port -1 out of valid range")
+}
