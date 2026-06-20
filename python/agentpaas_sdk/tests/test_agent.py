@@ -55,6 +55,7 @@ class AgentTests(unittest.TestCase):
             sdk_agent.mcp("server", "tool", {})
 
         self.assertEqual(got.exception.code, "mcp_denied")
+        self.assertIn("mcp_denied", str(got.exception))
 
     def test_budget_exceeded_is_fail_closed(self):
         sdk_agent = Agent()
