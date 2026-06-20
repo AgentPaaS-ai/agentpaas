@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -185,7 +185,7 @@ func (d *DockerRuntime) Start(ctx context.Context, id ContainerID) error {
 		return errors.New("DockerRuntime: not initialized (no Docker client)")
 	}
 	if err := d.cli.ContainerStart(ctx, string(id), container.StartOptions{}); err != nil {
-		if client.IsErrNotFound(err) {
+		if errdefs.IsNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
 		return fmt.Errorf("start container %q: %w", string(id), err)
@@ -208,7 +208,7 @@ func (d *DockerRuntime) Stop(ctx context.Context, id ContainerID, timeout *time.
 		stopOpts.Timeout = &secs
 	}
 	if err := d.cli.ContainerStop(ctx, string(id), stopOpts); err != nil {
-		if client.IsErrNotFound(err) {
+		if errdefs.IsNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
 		return fmt.Errorf("stop container %q: %w", string(id), err)
@@ -229,7 +229,7 @@ func (d *DockerRuntime) Remove(ctx context.Context, id ContainerID, force bool) 
 		Force: force,
 	}
 	if err := d.cli.ContainerRemove(ctx, string(id), removeOpts); err != nil {
-		if client.IsErrNotFound(err) {
+		if errdefs.IsNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
 		return fmt.Errorf("remove container %q: %w", string(id), err)
@@ -247,7 +247,7 @@ func (d *DockerRuntime) Status(ctx context.Context, id ContainerID) (ContainerSt
 	}
 	json, err := d.cli.ContainerInspect(ctx, string(id))
 	if err != nil {
-		if client.IsErrNotFound(err) {
+		if errdefs.IsNotFound(err) {
 			return ContainerStatusRemoved, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
 		return ContainerStatusUnknown, fmt.Errorf("inspect container %q: %w", string(id), err)
@@ -286,11 +286,10 @@ func (d *DockerRuntime) CreateNetwork(ctx context.Context, spec NetworkSpec) (Ne
 		return "", errors.New("DockerRuntime: not initialized (no Docker client)")
 	}
 
-	netCreate := types.NetworkCreate{
-		Driver:         "bridge",
-		Internal:       spec.Internal,
-		Labels:         spec.Labels,
-		CheckDuplicate: true,
+	netCreate := network.CreateOptions{
+		Driver:   "bridge",
+		Internal: spec.Internal,
+		Labels:   spec.Labels,
 	}
 
 	resp, err := d.cli.NetworkCreate(ctx, spec.Name, netCreate)
@@ -310,7 +309,7 @@ func (d *DockerRuntime) RemoveNetwork(ctx context.Context, id NetworkID) error {
 		return errors.New("DockerRuntime: not initialized (no Docker client)")
 	}
 	if err := d.cli.NetworkRemove(ctx, string(id)); err != nil {
-		if client.IsErrNotFound(err) || strings.Contains(err.Error(), "not found") {
+		if errdefs.IsNotFound(err) || strings.Contains(err.Error(), "not found") {
 			return fmt.Errorf("%w: %s", ErrNetworkNotFound, string(id))
 		}
 		return fmt.Errorf("remove network %q: %w", string(id), err)
@@ -326,9 +325,9 @@ func (d *DockerRuntime) InspectNetwork(ctx context.Context, id NetworkID) (Netwo
 	if d.cli == nil {
 		return NetworkInfo{}, errors.New("DockerRuntime: not initialized (no Docker client)")
 	}
-	resource, err := d.cli.NetworkInspect(ctx, string(id), types.NetworkInspectOptions{})
+	resource, err := d.cli.NetworkInspect(ctx, string(id), network.InspectOptions{})
 	if err != nil {
-		if client.IsErrNotFound(err) {
+		if errdefs.IsNotFound(err) {
 			return NetworkInfo{}, fmt.Errorf("%w: %s", ErrNetworkNotFound, string(id))
 		}
 		return NetworkInfo{}, fmt.Errorf("inspect network %q: %w", string(id), err)
@@ -352,7 +351,7 @@ func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id Contain
 	}
 	json, err := d.cli.ContainerInspect(ctx, string(id))
 	if err != nil {
-		if client.IsErrNotFound(err) {
+		if errdefs.IsNotFound(err) {
 			return nil, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
 		return nil, fmt.Errorf("inspect container %q: %w", string(id), err)
@@ -447,7 +446,7 @@ func (d *DockerRuntime) ListNetworks(ctx context.Context, labelFilters ...string
 		filterArgs.Add("label", lf)
 	}
 
-	resources, err := d.cli.NetworkList(ctx, types.NetworkListOptions{
+	resources, err := d.cli.NetworkList(ctx, network.ListOptions{
 		Filters: filterArgs,
 	})
 	if err != nil {
