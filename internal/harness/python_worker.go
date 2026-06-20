@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -135,6 +136,7 @@ func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, st
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrFile.Close()
+		killCommand(cmd)
 		_ = cmd.Wait()
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: err.Error()}
 	case <-time.After(timeout):
@@ -142,6 +144,7 @@ func waitForImport(cmd *exec.Cmd, cancel context.CancelFunc, stdin io.Closer, st
 		_ = stdin.Close()
 		_ = stdout.Close()
 		_ = stderrFile.Close()
+		killCommand(cmd)
 		_ = cmd.Wait()
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_timeout", Detail: "agent import timed out"}
 	}
@@ -172,6 +175,7 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any) (*Inv
 
 	select {
 	case <-ctx.Done():
+		_ = w.terminateLocked()
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_timeout", Detail: ctx.Err().Error()}
 	case err := <-errCh:
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_failed", Detail: err.Error()}
@@ -227,38 +231,53 @@ func (w *pythonWorker) Close() error {
 		w.mu.Unlock()
 		return nil
 	}
-	w.closed = true
-	stdin := w.stdin
-	stdout := w.stdout
-	stderrFile := w.stderrFile
-	cmd := w.cmd
-	cancel := w.cancel
+	joined := w.terminateLocked()
 	w.mu.Unlock()
 
+	return joined
+}
+
+func (w *pythonWorker) terminateLocked() error {
+	w.closed = true
+
 	var joined error
-	if cancel != nil {
-		cancel()
+	if w.cancel != nil {
+		w.cancel()
 	}
-	if stdin != nil {
-		joined = errors.Join(joined, stdin.Close())
+	if w.stdin != nil {
+		joined = errors.Join(joined, w.stdin.Close())
 	}
-	if stdout != nil {
-		joined = errors.Join(joined, stdout.Close())
+	if w.stdout != nil {
+		joined = errors.Join(joined, w.stdout.Close())
 	}
-	if cmd != nil && cmd.Process != nil {
-		joined = errors.Join(joined, cmd.Process.Kill())
-		joined = errors.Join(joined, cmd.Wait())
+	if w.cmd != nil && w.cmd.Process != nil {
+		joined = errors.Join(joined, killCommand(w.cmd))
+		joined = errors.Join(joined, w.cmd.Wait())
 	}
-	if stderrFile != nil {
-		joined = errors.Join(joined, stderrFile.Close())
+	if w.stderrFile != nil {
+		joined = errors.Join(joined, w.stderrFile.Close())
 	}
 	return joined
+}
+
+func killCommand(cmd *exec.Cmd) error {
+	if cmd == nil || cmd.Process == nil {
+		return nil
+	}
+	if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+		return nil
+	}
+	if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err == nil || errors.Is(err, os.ErrProcessDone) {
+		return err
+	}
+	return cmd.Process.Kill()
 }
 
 const pythonRunner = `
 import importlib.util
 import json
 import os
+import resource
 import sys
 import traceback
 
@@ -270,6 +289,29 @@ sys.stdout = open(stdout_path, "a", buffering=1)
 def send(value):
     protocol.write(json.dumps(value, separators=(",", ":")) + "\n")
     protocol.flush()
+
+def apply_resource_limits():
+    # Full container sandboxing is deferred to a later block. These rlimits are
+    # a best-effort first layer that bounds CPU, file growth, and child process
+    # creation inherited by user agent code.
+    limits = [
+        ("RLIMIT_CPU", 30),
+        ("RLIMIT_FSIZE", 64 * 1024 * 1024),
+        ("RLIMIT_NPROC", 0),
+    ]
+    for name, soft in limits:
+        if not hasattr(resource, name):
+            continue
+        kind = getattr(resource, name)
+        try:
+            _, hard = resource.getrlimit(kind)
+            if hard != resource.RLIM_INFINITY:
+                soft = min(soft, hard)
+            resource.setrlimit(kind, (soft, hard))
+        except (OSError, ValueError):
+            pass
+
+apply_resource_limits()
 
 try:
     spec = importlib.util.spec_from_file_location("agentpaas_user_agent", agent_path)
