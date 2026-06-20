@@ -1,24 +1,68 @@
 # osv-scanner configuration
-# Ignores CVEs in github.com/docker/docker that have no fix available (Fixed Version: --).
-# These are tracked but cannot be resolved by upgrading.
-# See: https://github.com/google/osv-scanner#ignore-vulnerabilities
+#
+# Suppressed CVEs in github.com/docker/docker (v28.5.2+incompatible).
+#
+# All 5 are DAEMON-SIDE vulnerabilities (Docker Engine), not SDK client
+# library vulnerabilities. The Go module github.com/docker/docker has no
+# patched version because the fixes live in the Docker daemon binary, not
+# the client SDK code. There is no fixed version for the +incompatible
+# module line; the v2 module (github.com/moby/moby/v2) has fixes but is
+# still in beta (v2.0.0-beta.8+).
+#
+# All 5 are patched in Docker Engine 29.3.1 / 29.5.1 (released May 2026).
+# The runtime requirement for AgentPaaS is Docker Engine >= 29.5.1, which
+# covers all of these.
+#
+# Additionally, AgentPaaS does not exercise the affected code paths:
+#   - No docker cp usage (eliminates bind mount / file creation / archive
+#     decompression attack vectors)
+#   - No docker plugin install (eliminates plugin privilege bypass)
+#   - No AuthZ plugin integration (eliminates AuthZ bypass)
+#
+# If a future Docker SDK v2 stable release is available, these can be
+# resolved by migrating from github.com/docker/docker to github.com/moby/moby/v2.
 
 [[IgnoredVulns]]
 id = "GO-2026-4883"
-reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+reason = """
+Daemon-side CVE (CVE-2026-33997): plugin privilege validation off-by-one. \
+Fixed in Docker Engine 29.3.1. Not an SDK client vulnerability — no patched \
+version exists for github.com/docker/docker. AgentPaaS does not use docker \
+plugin install. Runtime requires Docker Engine >= 29.5.1 (already patched).
+"""
 
 [[IgnoredVulns]]
 id = "GO-2026-4887"
-reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+reason = """
+Daemon-side CVE (CVE-2026-34040): AuthZ plugin bypass via oversized request \
+body. Fixed in Docker Engine 29.3.1. Not an SDK client vulnerability. \
+AgentPaaS does not use AuthZ plugins. Runtime requires Docker Engine >= 29.5.1 \
+(already patched).
+"""
 
 [[IgnoredVulns]]
 id = "GHSA-rg2x-37c3-w2rh"
-reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+reason = """
+Daemon-side CVE (CVE-2026-42306): docker cp race condition allows bind mount \
+redirection to host path. Fixed in Docker Engine 29.5.1. Not an SDK client \
+vulnerability. AgentPaaS does not use docker cp. Runtime requires Docker \
+Engine >= 29.5.1 (already patched).
+"""
 
 [[IgnoredVulns]]
 id = "GHSA-vp62-88p7-qqf5"
-reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+reason = """
+Daemon-side CVE (CVE-2026-41568): docker cp race condition allows creation \
+of arbitrary empty files on host via symlink swap. Fixed in Docker Engine \
+29.5.1. Not an SDK client vulnerability. AgentPaaS does not use docker cp. \
+Runtime requires Docker Engine >= 29.5.1 (already patched).
+"""
 
 [[IgnoredVulns]]
 id = "GHSA-x86f-5xw2-fm2r"
-reason = "No fix available in any Docker SDK version (Fixed Version: --). Tracked upstream."
+reason = """
+Daemon-side CVE (CVE-2026-41567): PUT /containers/{id}/archive executes \
+container binary on host via trojanized decompression. Fixed in Docker Engine \
+29.5.1. Not an SDK client vulnerability. AgentPaaS does not upload archives \
+to containers. Runtime requires Docker Engine >= 29.5.1 (already patched).
+"""
