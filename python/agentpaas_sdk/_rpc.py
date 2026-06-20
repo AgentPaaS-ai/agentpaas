@@ -1,0 +1,60 @@
+"""Line-delimited JSON RPC client for the AgentPaaS harness."""
+
+from __future__ import annotations
+
+import json
+import socket
+import threading
+import uuid
+from typing import Any
+
+
+class RPCError(RuntimeError):
+    """Raised when the harness rejects an SDK RPC call."""
+
+    def __init__(self, message: str, code: str = "rpc_error") -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class BudgetExceeded(RPCError):
+    """Raised when an SDK call exceeds the active harness budget."""
+
+
+class RPCClient:
+    def __init__(self, addr: str) -> None:
+        if not addr:
+            raise RPCError("AGENTPAAS_RPC_ADDR is required", "missing_rpc_addr")
+        self._addr = addr
+        self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._sock.connect(addr)
+        self._file = self._sock.makefile("rwb", buffering=0)
+        self._lock = threading.Lock()
+
+    def close(self) -> None:
+        try:
+            self._file.close()
+        finally:
+            self._sock.close()
+
+    def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
+        request_id = uuid.uuid4().hex
+        payload = {
+            "id": request_id,
+            "method": method,
+            "params": params or {},
+        }
+        data = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
+        with self._lock:
+            self._file.write(data)
+            line = self._file.readline()
+        if not line:
+            raise RPCError("harness rpc connection closed", "rpc_closed")
+        response = json.loads(line.decode("utf-8"))
+        if response.get("ok"):
+            return response.get("result")
+        message = response.get("error") or "harness rpc call failed"
+        code = response.get("code") or "rpc_error"
+        if code == "BUDGET_EXCEEDED":
+            raise BudgetExceeded(message, code)
+        raise RPCError(message, code)
