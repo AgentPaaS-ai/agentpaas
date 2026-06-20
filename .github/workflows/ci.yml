@@ -13,69 +13,46 @@ concurrency:
 jobs:
   lint:
     name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: self-hosted
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-          cache: true
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
       - name: Run lint
         run: |
-          export PATH="$PATH:$(go env GOPATH)/bin"
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
           make lint
 
   test:
     name: Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-          cache: true
-      - name: Run tests
-        run: make test
-
-  race:
-    name: Race Detector
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-          cache: true
-      - name: Run race detector
-        run: make race
-
-  proto:
-    name: Proto Codegen Drift
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-          cache: true
-      - name: Install buf and protoc plugins
+      - name: Run tests
         run: |
-          # Install buf via Go (no brew needed on Linux)
-          go install github.com/bufbuild/buf/cmd/buf@latest
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
-          # protoc binary
-          sudo apt-get update && sudo apt-get install -y protobuf-compiler
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make test
+
+  race:
+    name: Race Detector
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run race detector
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make race
+
+  proto:
+    name: Proto Codegen Drift
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
       - name: Regenerate proto code
         run: |
-          export PATH="$PATH:$(go env GOPATH)/bin"
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
           make proto
       - name: Check for drift
         run: |
@@ -86,19 +63,11 @@ jobs:
 
   osv:
     name: OSV Scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    runs-on: self-hosted
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.4'
-          cache: true
-      - name: Install osv-scanner
-        run: |
-          go install github.com/google/osv-scanner/cmd/osv-scanner@latest
-          export PATH="$PATH:$(go env GOPATH)/bin"
       - name: Run OSV scan
         run: |
-          export PATH="$PATH:$(go env GOPATH)/bin"
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
           make osv
