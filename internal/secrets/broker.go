@@ -323,6 +323,9 @@ func (b *Broker) auditSecret(_ context.Context, status, runID, policyRuleID, cre
 		"method":           strings.ToUpper(method),
 		"visible_to_agent": false,
 	}
+	if b.policy.Agent.Name != "" {
+		payload["agent_id"] = b.policy.Agent.Name
+	}
 	if len(reason) > 0 && reason[0] != "" {
 		payload["reason"] = reason[0]
 	}
