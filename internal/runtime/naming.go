@@ -19,6 +19,9 @@ const (
 
 	// LabelRunID identifies the agent run that owns this resource.
 	LabelRunID = "agentpaas.run-id"
+
+	// LabelMCPServerID identifies which MCP server a container represents.
+	LabelMCPServerID = "agentpaas.mcp-server-id"
 )
 
 // ManagedByValue is the value of LabelManagedBy for all AgentPaaS-managed
@@ -29,6 +32,7 @@ const ManagedByValue = "agentpaas"
 const (
 	ResourceTypeAgent       = "agent"
 	ResourceTypeGateway     = "gateway"
+	ResourceTypeMCP         = "mcp"
 	ResourceTypeNetInternal = "net-internal"
 	ResourceTypeNetEgress   = "net-egress"
 )
@@ -37,6 +41,7 @@ const (
 var ContainerPrefixes = map[string]string{
 	"agent":   "agentpaas-agent-",
 	"gateway": "agentpaas-gateway-",
+	"mcp":     "agentpaas-mcp-",
 }
 
 // NetworkPrefixes map network role types to their network name prefixes.
