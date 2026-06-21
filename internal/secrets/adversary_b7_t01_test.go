@@ -177,10 +177,12 @@ func TestAdversary_B7_T01_RmIdempotencyAndGetDoesNotTouchLastUsed(t *testing.T) 
 	}
 
 	// Get must not update LastUsedAt
-	store.Set(ctx, "touch-test", []byte("v"))
+	if err := store.Set(ctx, "touch-test", []byte("v")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
 	meta, _ := store.List(ctx)
 	initial := meta[0].LastUsedAt
-	store.Get(ctx, "touch-test")
+	_, _ = store.Get(ctx, "touch-test")
 	meta, _ = store.List(ctx)
 	if !meta[0].LastUsedAt.Equal(initial) {
 		t.Fatalf("Get updated LastUsedAt (should only Touch do it)")
