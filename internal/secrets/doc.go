@@ -1,2 +1,2 @@
-// Package secrets provides the keychain broker, gateway injection, and lease management.
+// Package secrets provides SecretStore implementations for local profile secrets.
 package secrets
