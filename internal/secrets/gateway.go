@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 type Gateway struct {
@@ -46,8 +47,9 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 		}
 
 		credentialed := request.PolicyRuleID != ""
+		var injection CredentialInjection
 		if credentialed {
-			injection, err := g.broker.RequestCredential(ctx, request.RunID, request.PolicyRuleID, currentURL, method)
+			injection, err = g.broker.RequestCredential(ctx, request.RunID, request.PolicyRuleID, currentURL, method)
 			if err != nil {
 				return nil, err
 			}
@@ -61,6 +63,11 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 			return nil, fmt.Errorf("upstream request: %w", err)
 		}
 		if !isRedirect(resp.StatusCode) {
+			if credentialed && injection.HeaderValue != "" {
+				if err := redactCredentialFromResponse(resp, injection.HeaderValue); err != nil {
+					return nil, err
+				}
+			}
 			return resp, nil
 		}
 
@@ -83,6 +90,21 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 		currentURL = nextURL
 	}
 	return nil, errors.New("too many redirects")
+}
+
+func redactCredentialFromResponse(resp *http.Response, credential string) error {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		_ = resp.Body.Close()
+		return fmt.Errorf("read upstream response body: %w", err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		return fmt.Errorf("close upstream response body: %w", err)
+	}
+	redacted := strings.ReplaceAll(string(body), credential, "[REDACTED]")
+	resp.Body = io.NopCloser(strings.NewReader(redacted))
+	resp.ContentLength = int64(len(redacted))
+	return nil
 }
 
 func isRedirect(statusCode int) bool {
