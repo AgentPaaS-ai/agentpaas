@@ -83,19 +83,20 @@ func TestBrokerRevokedCredentialDoesNotReadStore(t *testing.T) {
 
 func TestBrokerRestartAffectedAgentsReturnsActiveDirectLeaseRuns(t *testing.T) {
 	ctx := context.Background()
-	broker := newTestBroker(t, newSecretStore(t), &recordingAuditSink{}, newBrokeredPolicy("api.example.com", 443))
-
-	broker.mu.Lock()
-	broker.activeRuns["run-other"] = struct{}{}
-	broker.activeDirectLeases["api-token"] = map[string]struct{}{
-		"run-active": {},
-		"run-other":  {},
-		"run-stale":  {},
+	broker, err := NewBroker(BrokerConfig{
+		Store:      newSecretStore(t),
+		Policy:     newBrokeredPolicy("api.example.com", 443),
+		ActiveRuns: []string{"run-active", "run-other"},
+		ActiveDirectLeases: map[string][]string{
+			"api-token":   {"run-active", "run-other", "run-stale"},
+			"other-token": {"run-active"},
+		},
+		RuleMethods: map[string][]string{"egress[0]": {http.MethodGet}},
+		Audit:       &recordingAuditSink{},
+	})
+	if err != nil {
+		t.Fatalf("NewBroker: %v", err)
 	}
-	broker.activeDirectLeases["other-token"] = map[string]struct{}{
-		"run-active": {},
-	}
-	broker.mu.Unlock()
 
 	got, err := broker.RestartAffectedAgents(ctx, "api-token")
 	if err != nil {

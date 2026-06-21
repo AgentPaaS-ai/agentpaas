@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/audit"
@@ -19,21 +21,25 @@ type AuditAppender interface {
 }
 
 type BrokerConfig struct {
-	Store       SecretStore
-	Policy      *policy.Policy
-	ActiveRuns  []string
-	RuleMethods map[string][]string
-	Audit       AuditAppender
-	Now         func() time.Time
+	Store              SecretStore
+	Policy             *policy.Policy
+	ActiveRuns         []string
+	ActiveDirectLeases map[string][]string
+	RuleMethods        map[string][]string
+	Audit              AuditAppender
+	Now                func() time.Time
 }
 
 type Broker struct {
-	store       SecretStore
-	policy      *policy.Policy
-	activeRuns  map[string]struct{}
-	ruleMethods map[string]map[string]struct{}
-	audit       AuditAppender
-	now         func() time.Time
+	store              SecretStore
+	policy             *policy.Policy
+	mu                 sync.RWMutex
+	revoked            map[string]bool
+	activeRuns         map[string]struct{}
+	activeDirectLeases map[string]map[string]struct{}
+	ruleMethods        map[string]map[string]struct{}
+	audit              AuditAppender
+	now                func() time.Time
 }
 
 type CredentialInjection struct {
@@ -70,6 +76,15 @@ func NewBroker(cfg BrokerConfig) (*Broker, error) {
 		activeRuns[runID] = struct{}{}
 	}
 
+	activeDirectLeases := make(map[string]map[string]struct{}, len(cfg.ActiveDirectLeases))
+	for credentialID, runIDs := range cfg.ActiveDirectLeases {
+		runs := make(map[string]struct{}, len(runIDs))
+		for _, runID := range runIDs {
+			runs[runID] = struct{}{}
+		}
+		activeDirectLeases[credentialID] = runs
+	}
+
 	ruleMethods := make(map[string]map[string]struct{}, len(cfg.RuleMethods))
 	for ruleID, methods := range cfg.RuleMethods {
 		allowed := make(map[string]struct{}, len(methods))
@@ -80,12 +95,14 @@ func NewBroker(cfg BrokerConfig) (*Broker, error) {
 	}
 
 	return &Broker{
-		store:       cfg.Store,
-		policy:      cfg.Policy,
-		activeRuns:  activeRuns,
-		ruleMethods: ruleMethods,
-		audit:       cfg.Audit,
-		now:         now,
+		store:              cfg.Store,
+		policy:             cfg.Policy,
+		revoked:            make(map[string]bool),
+		activeRuns:         activeRuns,
+		activeDirectLeases: activeDirectLeases,
+		ruleMethods:        ruleMethods,
+		audit:              cfg.Audit,
+		now:                now,
 	}, nil
 }
 
@@ -107,6 +124,9 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 	}
 	if credentialID == "" {
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "policy rule %s does not reference a brokered credential", policyRuleID)
+	}
+	if b.IsRevoked(credentialID) {
+		return CredentialInjection{}, b.denyWithReason(ctx, runID, policyRuleID, credentialID, dest.String(), method, "revoked", "credential %s is revoked", credentialID)
 	}
 	credential, err := b.credential(credentialID)
 	if err != nil {
@@ -146,6 +166,42 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 		return CredentialInjection{}, err
 	}
 	return CredentialInjection{HeaderName: headerName, HeaderValue: string(value)}, nil
+}
+
+func (b *Broker) Revoke(_ context.Context, credentialID string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.revoked[credentialID] = true
+	return nil
+}
+
+func (b *Broker) IsRevoked(credentialID string) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	return b.revoked[credentialID]
+}
+
+// RestartAffectedAgents identifies active runs with direct leases for a revoked
+// credential. Direct-lease revocation cannot claw back a secret value already
+// visible to agent code; the daemon must decide how to restart affected runs.
+func (b *Broker) RestartAffectedAgents(_ context.Context, credentialID string) ([]string, error) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	leases := b.activeDirectLeases[credentialID]
+	if len(leases) == 0 {
+		return nil, nil
+	}
+	runIDs := make([]string, 0, len(leases))
+	for runID := range leases {
+		if _, ok := b.activeRuns[runID]; ok {
+			runIDs = append(runIDs, runID)
+		}
+	}
+	sort.Strings(runIDs)
+	return runIDs, nil
 }
 
 func (b *Broker) ValidateEgress(ctx context.Context, runID, destination, method string) error {
@@ -243,31 +299,39 @@ func (b *Broker) validateOptionalMethod(policyRuleID, method string) error {
 }
 
 func (b *Broker) deny(ctx context.Context, runID, policyRuleID, credentialID, destination, method, format string, args ...interface{}) error {
+	return b.denyWithReason(ctx, runID, policyRuleID, credentialID, destination, method, "", format, args...)
+}
+
+func (b *Broker) denyWithReason(ctx context.Context, runID, policyRuleID, credentialID, destination, method, reason, format string, args ...interface{}) error {
 	err := fmt.Errorf(format, args...)
-	if auditErr := b.auditSecret(ctx, "denied", runID, policyRuleID, credentialID, destination, method); auditErr != nil {
+	if auditErr := b.auditSecret(ctx, "denied", runID, policyRuleID, credentialID, destination, method, reason); auditErr != nil {
 		return auditErr
 	}
 	return err
 }
 
-func (b *Broker) auditSecret(_ context.Context, status, runID, policyRuleID, credentialID, destination, method string) error {
+func (b *Broker) auditSecret(_ context.Context, status, runID, policyRuleID, credentialID, destination, method string, reason ...string) error {
 	if b.audit == nil {
 		return nil
+	}
+	payload := map[string]interface{}{
+		"status":           status,
+		"run_id":           runID,
+		"policy_rule_id":   policyRuleID,
+		"credential_id":    credentialID,
+		"destination":      destination,
+		"method":           strings.ToUpper(method),
+		"visible_to_agent": false,
+	}
+	if len(reason) > 0 && reason[0] != "" {
+		payload["reason"] = reason[0]
 	}
 	return b.audit.Append(audit.AuditRecord{
 		Timestamp:      b.now().UTC().Format(time.RFC3339),
 		EventType:      audit.EventTypeSecretInjected,
 		DeploymentMode: "local",
 		Actor:          "secrets-broker",
-		Payload: map[string]interface{}{
-			"status":           status,
-			"run_id":           runID,
-			"policy_rule_id":   policyRuleID,
-			"credential_id":    credentialID,
-			"destination":      destination,
-			"method":           strings.ToUpper(method),
-			"visible_to_agent": false,
-		},
+		Payload:        payload,
 	})
 }
 
