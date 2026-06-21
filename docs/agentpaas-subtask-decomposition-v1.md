@@ -1449,11 +1449,16 @@ Scope:
 - Handoff caller id `system:handoff:<source_agent>`.
 - Parent run id, correlation id, idempotency key, and target lock digest.
 - Payload modes: `empty`, `summary_ref`, `artifact_ref`, `fixed_json`.
+- Internal A2A-compatible envelope with source/target agent-card refs, parent
+  task/run id, context/correlation id, message role, parts, artifact refs, and
+  metadata map.
 - Cycle/depth guard and concurrency policy.
 - Audit `handoff_invoked`, `handoff_skipped`, and `handoff_denied`.
 
 Non-goals:
 - No dynamic DAG/workflow engine.
+- No external A2A server, agent-card discovery endpoint, or arbitrary task
+  negotiation in P1.
 - No dynamic target agent names from model output.
 - No local command hooks.
 - No checkpoint/resume.
@@ -1462,6 +1467,8 @@ Acceptance:
 - Two-agent handoff runs on macOS without Hermes alive after configuration.
 - Target agent receives input only through Trigger API and normal policy,
   budget, secret, and audit paths.
+- Handoff envelope round-trips in an A2A-compatible shape and records artifact
+  refs without embedding raw large outputs.
 - Missing target, stale lock digest, declined/unapproved config, and cycle
   guard produce skipped/denied audit events.
 
