@@ -1601,10 +1601,14 @@ same Invoke path. Add P1 local handoff triggers: approved static terminal-run
 events may invoke one named packed target agent through the same Trigger API
 with caller `system:handoff:<source_agent>`, parent run id, correlation id,
 idempotency key, target agent.lock digest, payload mode
-(`empty|summary_ref|artifact_ref|fixed_json`), and target policy/budget/secrets
-applied normally. P1 supports URL webhooks and local handoff triggers only;
-local command hooks and dynamic workflow DAGs are deferred. Audit events
-include `api_key_created`, `api_key_revoked`, `auth_failed`,
+(`empty|summary_ref|artifact_ref|fixed_json`), and an internal
+A2A-compatible envelope containing source/target agent-card refs, parent
+task/run id, context/correlation id, message role, parts, artifact refs, and
+metadata map where applicable. Target policy/budget/secrets apply normally.
+P1 supports URL webhooks and local handoff triggers only; local command hooks,
+external A2A serving/discovery, arbitrary task negotiation, and dynamic
+workflow DAGs are deferred. Audit events include `api_key_created`,
+`api_key_revoked`, `auth_failed`,
 `invoke_accepted`, `invoke_rejected`, `idempotency_replayed`,
 `idempotency_conflict`, `rate_limited`, `webhook_delivered`,
 `webhook_dead_lettered`, `handoff_invoked`, `handoff_skipped`,
@@ -1625,16 +1629,17 @@ daemon downtime → missed-run policy explicit (`skip` default, `catchup: 1`
 opt-in); DST nonexistent local time skipped, repeated local time runs once;
 cron fires while prior run active → `concurrency_policy: forbid` default
 skips and audits; handoff cycle/depth guard blocks unbounded loops; handoff
-target missing, stale lock digest, or unapproved config → skipped/denied and
-audited; daemon restart after source completion still preserves pending
-handoff idempotency; CancelRun mid-LLM/MCP-call → audit cancel_requested,
-ask gracefully, wait 30s, force stop if needed, audit final canceled/forced
-outcome.
+target missing, stale lock digest, malformed A2A-compatible envelope, or
+unapproved config → skipped/denied and audited; daemon restart after source
+completion still preserves pending handoff idempotency; CancelRun mid-LLM/
+MCP-call → audit cancel_requested, ask gracefully, wait 30s, force stop if
+needed, audit final canceled/forced outcome.
 **SUCCESS GATE:** `make block9-gate` passes: API conformance suite (generated from proto) green;
 auth/API-key lifecycle + idempotency + rate-limit + SSE reconnect e2e green;
 cron/webhook/local-handoff tests prove same policy/audit path as manual
-Invoke and that a two-agent handoff runs without Hermes alive; cancel semantics
-e2e green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
+Invoke, that the handoff envelope round-trips in an A2A-compatible shape, and
+that a two-agent handoff runs without Hermes alive; cancel semantics e2e
+green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
 
 ---
 

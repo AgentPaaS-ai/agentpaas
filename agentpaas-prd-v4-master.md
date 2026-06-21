@@ -668,11 +668,15 @@ audited under tenant control.
    target agent through the same Trigger API with caller
    `system:handoff:<source_agent>`, parent run id, correlation id, idempotency
    key, target agent/lock digest, and an explicit payload mode
-   (`empty|summary_ref|artifact_ref|fixed_json`). Handoffs run independently
-   of Hermes once configured, but they are not a workflow engine: no dynamic
-   agent names from model output, no arbitrary branching, no unbounded loops,
-   no local command hooks, and no bypass of target-agent auth, policy,
-   budgets, secrets, or audit.
+   (`empty|summary_ref|artifact_ref|fixed_json`). The internal handoff record
+   should be A2A-compatible where practical: source/target agent card refs,
+   parent task/run id, context/correlation id, message role, parts, artifact
+   refs, and metadata map. P1 does not expose a full external A2A server,
+   agent-card discovery endpoint, or arbitrary task negotiation. Handoffs run
+   independently of Hermes once configured, but they are not a workflow engine:
+   no dynamic agent names from model output, no arbitrary branching, no
+   unbounded loops, no local command hooks, and no bypass of target-agent auth,
+   policy, budgets, secrets, or audit.
 
 ### 2.7.1 Trigger semantics
 The 24-hour idempotency window protects against retries, not against
@@ -800,9 +804,12 @@ Full multi-agent workflows, loops, master/worker patterns, dynamic DAGs, and
 agent chaining are P2. P1 should not build an orchestration product. It does
 support the narrow local handoff trigger primitive in §2.7: one approved
 terminal event can invoke one static target agent through the Trigger API.
-That preserves the right primitives: run ids, parent/child run correlation
-ids, triggering subject, policy decision records, and audit events that can
-later explain "who/what caused this action."
+The internal envelope should stay A2A-compatible enough that P2 can expose
+proper A2A agent cards, messages, tasks, artifacts, and streaming semantics
+without rewriting P1 audit history. That preserves the right primitives: run
+ids, parent/child run correlation ids, triggering subject, policy decision
+records, and audit events that can later explain "who/what caused this
+action."
 
 Agent-level checkpoint/resume and half-done job recovery are also P2. P1
 restarts failed runs from a fresh container and records enough structured
