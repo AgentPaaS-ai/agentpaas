@@ -39,8 +39,8 @@ func ValidateSecretName(name string) error {
 		return fmt.Errorf("%w: name must not be empty", ErrInvalidSecretName)
 	}
 	for _, r := range name {
-		if unicode.IsSpace(r) || unicode.IsControl(r) {
-			return fmt.Errorf("%w: name must not contain whitespace or control characters", ErrInvalidSecretName)
+		if unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return fmt.Errorf("%w: name must not contain whitespace, control, or invisible format characters", ErrInvalidSecretName)
 		}
 	}
 	return nil
