@@ -122,6 +122,14 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "%w", err)
 	}
 
+	headerName := credential.Header
+	if headerName == "" {
+		headerName = "Authorization"
+	}
+	if err := validateHeaderName(headerName); err != nil {
+		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "%w", err)
+	}
+
 	value, err := b.store.Get(ctx, credentialID)
 	if err != nil {
 		msg := "brokered credential " + credentialID + " is referenced by " + ruleID(ruleIndex) + " but is not set in the secret store"
@@ -136,10 +144,6 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 
 	if err := b.auditSecret(ctx, "injected", runID, policyRuleID, credentialID, dest.String(), method); err != nil {
 		return CredentialInjection{}, err
-	}
-	headerName := credential.Header
-	if headerName == "" {
-		headerName = "Authorization"
 	}
 	return CredentialInjection{HeaderName: headerName, HeaderValue: string(value)}, nil
 }
@@ -339,6 +343,40 @@ func validateRuleDestination(rule policy.EgressRule, dest brokerDestination) err
 		}
 	}
 	return fmt.Errorf("destination port %d is not allowed by policy domain %s", dest.port, ruleDomain)
+}
+
+func validateHeaderName(name string) error {
+	if name == "" {
+		return errors.New("credential header name is required")
+	}
+	for i := 0; i < len(name); i++ {
+		ch := name[i]
+		if ch < 0x20 || ch == 0x7f {
+			return fmt.Errorf("credential header name %q contains a control character", name)
+		}
+		if !isHeaderTokenChar(ch) {
+			return fmt.Errorf("credential header name %q is not a valid RFC 7230 token", name)
+		}
+	}
+	return nil
+}
+
+func isHeaderTokenChar(ch byte) bool {
+	if ch >= 'a' && ch <= 'z' {
+		return true
+	}
+	if ch >= 'A' && ch <= 'Z' {
+		return true
+	}
+	if ch >= '0' && ch <= '9' {
+		return true
+	}
+	switch ch {
+	case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+		return true
+	default:
+		return false
+	}
 }
 
 func domainMatches(ruleDomain, destination string, allowWildcard bool) bool {
