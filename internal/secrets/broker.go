@@ -37,8 +37,8 @@ type Broker struct {
 }
 
 type CredentialInjection struct {
-	HeaderName  string
-	HeaderValue string
+	HeaderName  string `json:"-"`
+	HeaderValue string `json:"-"`
 }
 
 func (c CredentialInjection) String() string {
