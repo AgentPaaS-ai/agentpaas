@@ -20,12 +20,14 @@ type AgentConfig struct {
 
 // EgressRule defines an outbound network access rule.
 type EgressRule struct {
-	Domain        string `yaml:"domain"`
-	CIDR          string `yaml:"cidr"`
-	Ports         []int  `yaml:"ports"`
-	AllowWildcard *bool  `yaml:"allow_wildcard"`
-	AllowPrivate  *bool  `yaml:"allow_private"`
-	Credential    string `yaml:"credential"`
+	Domain        string   `yaml:"domain"`
+	CIDR          string   `yaml:"cidr"`
+	Ports         []int    `yaml:"ports"`
+	Methods       []string `yaml:"methods"`
+	AllowWildcard *bool    `yaml:"allow_wildcard"`
+	AllowPrivate  *bool    `yaml:"allow_private"`
+	Credential    string   `yaml:"credential"`
+	MCPServerID   string   `yaml:"mcp_server_id"` // if set, this rule applies to MCP server egress
 }
 
 // Credential defines a credential source for the agent.
