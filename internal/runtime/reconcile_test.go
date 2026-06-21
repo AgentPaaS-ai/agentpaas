@@ -276,10 +276,122 @@ func TestReconcileAfterCrash_ContainerWithoutRunID_Skipped(t *testing.T) {
 	}
 }
 
+func TestReconcileAfterCrash_OrphanedMCPRemoved(t *testing.T) {
+	var removedIDs []ContainerID
+	mock := &mockRuntimeDriver{
+		listContainersFunc: func(_ context.Context, _ ...string) ([]ContainerInfo, error) {
+			return []ContainerInfo{
+				{
+					ID:           "gateway-run1",
+					Status:       ContainerStatusRunning,
+					RunID:        "run-1",
+					ResourceType: ResourceTypeGateway,
+					Labels:       Labels(ResourceTypeGateway, "run-1"),
+				},
+				{
+					ID:           "agent-run1",
+					Status:       ContainerStatusRunning,
+					RunID:        "run-1",
+					ResourceType: ResourceTypeAgent,
+					Labels:       Labels(ResourceTypeAgent, "run-1"),
+				},
+				{
+					ID:           "mcp-run1",
+					Status:       ContainerStatusRunning,
+					RunID:        "run-1",
+					ResourceType: ResourceTypeMCP,
+					Labels: map[string]string{
+						LabelManagedBy:    ManagedByValue,
+						LabelResourceType: ResourceTypeMCP,
+						LabelRunID:        "run-1",
+						LabelMCPServerID:  "stdio",
+					},
+				},
+				{
+					ID:           "mcp-run2",
+					Status:       ContainerStatusRunning,
+					RunID:        "run-2",
+					ResourceType: ResourceTypeMCP,
+					Labels: map[string]string{
+						LabelManagedBy:    ManagedByValue,
+						LabelResourceType: ResourceTypeMCP,
+						LabelRunID:        "run-2",
+						LabelMCPServerID:  "http",
+					},
+				},
+			}, nil
+		},
+		removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
+			removedIDs = append(removedIDs, id)
+			return nil
+		},
+	}
+
+	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	if err != nil {
+		t.Fatalf("ReconcileAfterCrash failed: %v", err)
+	}
+	if len(removed) != 1 || removed[0] != "mcp-run2" {
+		t.Fatalf("removed = %v, want [mcp-run2]", removed)
+	}
+	if len(removedIDs) != 1 || removedIDs[0] != "mcp-run2" {
+		t.Fatalf("Remove called with %v, want [mcp-run2]", removedIDs)
+	}
+}
+
+func TestReconcileMCPServersDiscoversLabeledContainers(t *testing.T) {
+	mock := &mockRuntimeDriver{
+		listContainersFunc: func(_ context.Context, labelFilters ...string) ([]ContainerInfo, error) {
+			wantFilters := map[string]bool{
+				LabelManagedBy + "=" + ManagedByValue:     true,
+				LabelResourceType + "=" + ResourceTypeMCP: true,
+			}
+			for _, filter := range labelFilters {
+				delete(wantFilters, filter)
+			}
+			if len(wantFilters) != 0 {
+				t.Fatalf("missing label filters: %v", wantFilters)
+			}
+			return []ContainerInfo{
+				{
+					ID:           "mcp-1",
+					Status:       ContainerStatusRunning,
+					RunID:        "run-1",
+					ResourceType: ResourceTypeMCP,
+					Labels: map[string]string{
+						LabelManagedBy:    ManagedByValue,
+						LabelResourceType: ResourceTypeMCP,
+						LabelRunID:        "run-1",
+						LabelMCPServerID:  "server-1",
+					},
+				},
+				{
+					ID:           "agent-1",
+					Status:       ContainerStatusRunning,
+					RunID:        "run-1",
+					ResourceType: ResourceTypeAgent,
+					Labels:       Labels(ResourceTypeAgent, "run-1"),
+				},
+			}, nil
+		},
+	}
+
+	infos, err := ReconcileMCPServers(context.Background(), mock)
+	if err != nil {
+		t.Fatalf("ReconcileMCPServers failed: %v", err)
+	}
+	if len(infos) != 1 {
+		t.Fatalf("len(infos) = %d, want 1", len(infos))
+	}
+	if infos[0] != (MCPContainerInfo{ContainerID: "mcp-1", ServerID: "server-1", RunID: "run-1"}) {
+		t.Fatalf("infos[0] = %#v", infos[0])
+	}
+}
+
 func TestIsUnrelatedContainer(t *testing.T) {
 	tests := []struct {
-		name     string
-		info     ContainerInfo
+		name      string
+		info      ContainerInfo
 		unrelated bool
 	}{
 		{

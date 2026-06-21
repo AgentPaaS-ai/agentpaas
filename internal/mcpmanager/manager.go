@@ -47,11 +47,15 @@ type Resource struct {
 type Manager struct {
 	mu        sync.RWMutex
 	resources map[string]*Resource
+	servers   map[string]policy.MCPServer
 }
 
 // NewManager creates a new MCP manager.
 func NewManager() *Manager {
-	return &Manager{resources: make(map[string]*Resource)}
+	return &Manager{
+		resources: make(map[string]*Resource),
+		servers:   make(map[string]policy.MCPServer),
+	}
 }
 
 // Validate validates declared MCP servers.
@@ -86,9 +90,11 @@ func (m *Manager) Register(servers []policy.MCPServer, agentID, runID string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.resources = make(map[string]*Resource)
+	m.servers = make(map[string]policy.MCPServer)
 	for _, s := range servers {
 		tools := make([]string, len(s.AllowedTools))
 		copy(tools, s.AllowedTools)
+		m.servers[s.Name] = s
 		m.resources[s.Name] = &Resource{
 			ResourceType: "mcp_server",
 			AgentID:      agentID,
@@ -149,6 +155,35 @@ func (m *Manager) Status() []Resource {
 		result = append(result, *r)
 	}
 	return result
+}
+
+func (m *Manager) server(serverID string) (policy.MCPServer, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	server, ok := m.servers[serverID]
+	return server, ok
+}
+
+func (m *Manager) setReadiness(serverID, readiness string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r, ok := m.resources[serverID]; ok {
+		r.Readiness = readiness
+		if readiness == ReadinessReady {
+			r.Health = HealthHealthy
+			r.LastError = ""
+		}
+	}
+}
+
+func (m *Manager) setFailure(serverID, readiness, lastError string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if r, ok := m.resources[serverID]; ok {
+		r.Readiness = readiness
+		r.Health = HealthFailed
+		r.LastError = lastError
+	}
 }
 
 func computePolicyDigest(s policy.MCPServer) string {
