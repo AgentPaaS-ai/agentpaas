@@ -109,8 +109,8 @@ func newSecretCmd() *cobra.Command {
 			if err := store.Set(cmd.Context(), name, value); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "secret %q stored\n", name)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "secret %q stored\n", name)
+			return err
 		},
 	})
 
@@ -147,8 +147,8 @@ func newSecretCmd() *cobra.Command {
 			if err := store.Delete(cmd.Context(), name); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "secret %q removed\n", name)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "secret %q removed\n", name)
+			return err
 		},
 	})
 
@@ -171,7 +171,9 @@ func secretServiceName(homeDir string) string {
 func readSecretValue(cmd *cobra.Command) ([]byte, error) {
 	in := cmd.InOrStdin()
 	if isTerminal(in) {
-		fmt.Fprint(cmd.ErrOrStderr(), "Secret value: ")
+		if _, err := fmt.Fprint(cmd.ErrOrStderr(), "Secret value: "); err != nil {
+			return nil, err
+		}
 		reader := bufio.NewReader(io.LimitReader(in, secrets.MaxSecretValueSize+2))
 		value, err := reader.ReadBytes('\n')
 		if err != nil && err != io.EOF {
@@ -234,16 +236,20 @@ func writeSecretList(cmd *cobra.Command, meta []secrets.SecretMeta) error {
 	}
 
 	tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tCREATED_AT\tUPDATED_AT\tLAST_USED_AT\tREFERENCED_BY")
+	if _, err := fmt.Fprintln(tw, "NAME\tCREATED_AT\tUPDATED_AT\tLAST_USED_AT\tREFERENCED_BY"); err != nil {
+		return err
+	}
 	for _, m := range meta {
-		fmt.Fprintf(
+		if _, err := fmt.Fprintf(
 			tw,
 			"%s\t%s\t%s\t%s\t-\n",
 			m.Name,
 			formatSecretTime(m.CreatedAt),
 			formatSecretTime(m.UpdatedAt),
 			formatSecretTime(m.LastUsedAt),
-		)
+		); err != nil {
+			return err
+		}
 	}
 	return tw.Flush()
 }
