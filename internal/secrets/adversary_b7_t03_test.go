@@ -13,6 +13,8 @@ import (
 	"testing"
 )
 
+type adversaryContextKey string
+
 func TestAdversary_B7_T03_JSONMarshalCredentialInjection(t *testing.T) {
 	// ADVERSARY BREAK: CredentialInjection has no json tags or omitempty/ignore on HeaderValue; json.Marshal leaks the full sentinel.
 	flow := newB7T03Flow(t)
@@ -95,8 +97,9 @@ func TestAdversary_B7_T03_ContextValueLeak(t *testing.T) {
 	_ = requestB7T03Credential(t, flow)
 
 	// no attachment in production, but test explicit attachment would leak if inspected
-	ctx = context.WithValue(ctx, "test-key", b7T03Sentinel())
-	val := ctx.Value("test-key")
+	key := adversaryContextKey("test-key")
+	ctx = context.WithValue(ctx, key, b7T03Sentinel())
+	val := ctx.Value(key)
 	if s, ok := val.(string); ok && strings.Contains(s, b7T03Sentinel()) {
 		// this is our test attachment, not production
 		t.Log("context value test attachment contains sentinel (expected for this probe)")
@@ -110,7 +113,9 @@ func TestAdversary_B7_T03_HTTPResponseEcho(t *testing.T) {
 	echoServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// echo the auth header back in body to simulate bad upstream
 		auth := r.Header.Get("Authorization")
-		w.Write([]byte("echo:" + auth))
+		if _, err := w.Write([]byte("echo:" + auth)); err != nil {
+			t.Fatalf("write: %v", err)
+		}
 	}))
 	defer echoServer.Close()
 
