@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -51,7 +53,7 @@ func TestAdversary_B7M_T03_StdioDecodeTimeoutDesync(t *testing.T) {
 		Name:         "local",
 		Transport:    "stdio",
 		Command:      "sh",
-		Args:         []string{"-c", "sleep 10; echo '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}'"},
+		Args:         []string{stdioTimeoutDesyncScript(t)},
 		AllowedTools: []string{"slow"},
 	}}, "agent-1", "run-1")
 	lifecycle := NewLifecycle(manager, nil, "")
@@ -60,7 +62,7 @@ func TestAdversary_B7M_T03_StdioDecodeTimeoutDesync(t *testing.T) {
 	if err := lifecycle.Start(ctx, "local", "agent-1", "run-1"); err != nil {
 		t.Fatalf("Start error = %v", err)
 	}
-	defer lifecycle.Stop(context.Background(), "local")
+	defer func() { _ = lifecycle.Stop(context.Background(), "local") }()
 
 	router := NewRouter(manager, lifecycle, nil, nil)
 	shortCtx, shortCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -70,11 +72,53 @@ func TestAdversary_B7M_T03_StdioDecodeTimeoutDesync(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected timeout error on slow stdio response")
 	}
-	// Second call may now be desynced or hang due to leftover reader state
-	_, err2 := router.CallTool(context.Background(), "local", "slow", map[string]any{}, "agent-1", "run-1")
-	if err2 == nil {
-		t.Log("second call succeeded after timeout (possible desync not triggered in this run)")
+
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer secondCancel()
+	result, err := router.CallTool(secondCtx, "local", "slow", map[string]any{}, "agent-1", "run-1")
+	if err != nil {
+		t.Fatalf("second CallTool error = %v, want current response after timeout", err)
 	}
+	resultMap, ok := result.(map[string]any)
+	if !ok || resultMap["ok"] != true {
+		t.Fatalf("second CallTool result = %#v, want current ok response", result)
+	}
+
+	time.Sleep(1200 * time.Millisecond)
+	thirdCtx, thirdCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer thirdCancel()
+	result, err = router.CallTool(thirdCtx, "local", "slow", map[string]any{}, "agent-1", "run-1")
+	if err != nil {
+		t.Fatalf("third CallTool error = %v, want stale response discarded", err)
+	}
+	resultMap, ok = result.(map[string]any)
+	if !ok || resultMap["ok"] != true {
+		t.Fatalf("third CallTool result = %#v, want current ok response", result)
+	}
+}
+
+func stdioTimeoutDesyncScript(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "stdio-timeout-desync.sh")
+	script := `count=0
+while IFS= read -r request; do
+	count=$((count + 1))
+	id=$(printf '%s' "$request" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+	if [ -z "$id" ]; then
+		id=1
+	fi
+	if [ "$count" -eq 1 ]; then
+		(sleep 1; printf '{"jsonrpc":"2.0","id":%s,"result":{"late":true}}\n' "$id") &
+		continue
+	fi
+	printf '{"jsonrpc":"2.0","id":%s,"result":{"ok":true}}\n' "$id"
+done
+wait
+`
+	if err := os.WriteFile(path, []byte(script), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	return path
 }
 
 func TestAdversary_B7M_T03_NilRouterManagerSafe(t *testing.T) {

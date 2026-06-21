@@ -20,17 +20,22 @@ import (
 // ErrServerCrashed indicates a stopped MCP server has crash context.
 var ErrServerCrashed = errors.New("mcp server crashed")
 
-const maxBodySize int64 = 1 << 20
+const (
+	maxBodySize          int64 = 1 << 20
+	stdioResponseTimeout       = 5 * time.Second
+)
 
 // Router forwards MCP tool calls from the agent to the appropriate local MCP
 // server. Stdio servers receive JSON-RPC over stdin/stdout. HTTP servers
 // receive POST requests to their declared endpoint.
 type Router struct {
-	mu        sync.Mutex
-	manager   *Manager
-	lifecycle *Lifecycle
-	gateway   HTTPDoer
-	audit     audit.AuditAppender
+	mu         sync.Mutex
+	manager    *Manager
+	lifecycle  *Lifecycle
+	gateway    HTTPDoer
+	audit      audit.AuditAppender
+	stdioLocks map[string]*sync.Mutex
+	requestSeq int64
 }
 
 // HTTPDoer is an interface for making HTTP requests. http.Client satisfies
@@ -42,10 +47,11 @@ type HTTPDoer interface {
 // NewRouter creates a Router bound to the given Manager and Lifecycle.
 func NewRouter(manager *Manager, lifecycle *Lifecycle, gateway HTTPDoer, audit audit.AuditAppender) *Router {
 	return &Router{
-		manager:   manager,
-		lifecycle: lifecycle,
-		gateway:   gateway,
-		audit:     audit,
+		manager:    manager,
+		lifecycle:  lifecycle,
+		gateway:    gateway,
+		audit:      audit,
+		stdioLocks: make(map[string]*sync.Mutex),
 	}
 }
 
@@ -111,21 +117,22 @@ func (r *Router) routeStdio(ctx context.Context, serverID, tool string, input an
 	if r.lifecycle == nil {
 		return nil, errors.New("mcp router lifecycle is nil")
 	}
-	stdin, stdout, err := r.lifecycle.StdioPipes(serverID)
+	stdin, stdoutLines, err := r.lifecycle.StdioPipes(serverID)
 	if err != nil {
 		return nil, err
 	}
-	request, err := buildMCPRequest(tool, input)
+	request, err := buildMCPRequest(tool, input, r.nextRequestID())
 	if err != nil {
 		return nil, err
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	stdioLock := r.stdioLock(serverID)
+	stdioLock.Lock()
+	defer stdioLock.Unlock()
 	if err := json.NewEncoder(stdin).Encode(request); err != nil {
 		return nil, fmt.Errorf("write stdio MCP request for %q: %w", serverID, err)
 	}
-	response, err := decodeMCPResponse(ctx, stdout)
+	response, err := decodeMCPResponse(ctx, stdoutLines, request.ID)
 	if err != nil {
 		if crash := r.lifecycle.CrashContext(serverID); crash != nil {
 			return nil, fmt.Errorf("%w: server_id=%s transport=%s exit_code=%d error=%s", ErrServerCrashed, crash.ServerID, crash.Transport, crash.ExitCode, crash.Error)
@@ -139,7 +146,7 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 	if r.gateway == nil {
 		return nil, errors.New("mcp router http gateway is nil")
 	}
-	request, err := buildMCPRequest(tool, input)
+	request, err := buildMCPRequest(tool, input, r.nextRequestID())
 	if err != nil {
 		return nil, err
 	}
@@ -192,14 +199,35 @@ func readLimitedHTTPResponseBody(body io.Reader) ([]byte, error) {
 	return responseBody, nil
 }
 
-func buildMCPRequest(tool string, input any) (mcpRequest, error) {
+func (r *Router) stdioLock(serverID string) *sync.Mutex {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.stdioLocks == nil {
+		r.stdioLocks = make(map[string]*sync.Mutex)
+	}
+	lock, ok := r.stdioLocks[serverID]
+	if !ok {
+		lock = &sync.Mutex{}
+		r.stdioLocks[serverID] = lock
+	}
+	return lock
+}
+
+func (r *Router) nextRequestID() int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.requestSeq++
+	return r.requestSeq
+}
+
+func buildMCPRequest(tool string, input any, id int64) (mcpRequest, error) {
 	arguments, err := mcpArguments(input)
 	if err != nil {
 		return mcpRequest{}, err
 	}
 	request := mcpRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      id,
 		Method:  "tools/call",
 	}
 	request.Params.Name = tool
@@ -225,29 +253,33 @@ func mcpArguments(input any) (map[string]any, error) {
 	return arguments, nil
 }
 
-func decodeMCPResponse(ctx context.Context, reader io.Reader) (mcpResponse, error) {
-	responseCh := make(chan mcpResponse, 1)
-	errCh := make(chan error, 1)
-	go func() {
-		var response mcpResponse
-		if err := json.NewDecoder(reader).Decode(&response); err != nil {
-			errCh <- err
-			return
-		}
-		responseCh <- response
-	}()
-
-	timeout := time.NewTimer(5 * time.Second)
+func decodeMCPResponse(ctx context.Context, lines <-chan stdioLine, expectedID int64) (mcpResponse, error) {
+	timeout := time.NewTimer(stdioResponseTimeout)
 	defer timeout.Stop()
-	select {
-	case response := <-responseCh:
+	for {
+		var line stdioLine
+		select {
+		case <-ctx.Done():
+			return mcpResponse{}, ctx.Err()
+		case <-timeout.C:
+			return mcpResponse{}, errors.New("timed out waiting for MCP response")
+		case readLine, ok := <-lines:
+			if !ok {
+				return mcpResponse{}, io.EOF
+			}
+			line = readLine
+		}
+		if line.err != nil {
+			return mcpResponse{}, line.err
+		}
+		var response mcpResponse
+		if err := json.Unmarshal(line.data, &response); err != nil {
+			return mcpResponse{}, err
+		}
+		if response.ID != expectedID {
+			continue
+		}
 		return response, nil
-	case err := <-errCh:
-		return mcpResponse{}, err
-	case <-ctx.Done():
-		return mcpResponse{}, ctx.Err()
-	case <-timeout.C:
-		return mcpResponse{}, errors.New("timed out waiting for MCP response")
 	}
 }
 
@@ -277,7 +309,7 @@ func hashRouterJSON(value any) string {
 // mcpRequest is the JSON-RPC 2.0 request for MCP tools/call.
 type mcpRequest struct {
 	JSONRPC string `json:"jsonrpc"`
-	ID      int    `json:"id"`
+	ID      int64  `json:"id"`
 	Method  string `json:"method"`
 	Params  struct {
 		Name      string         `json:"name"`
@@ -288,7 +320,7 @@ type mcpRequest struct {
 // mcpResponse is the JSON-RPC 2.0 response from an MCP server.
 type mcpResponse struct {
 	JSONRPC string          `json:"jsonrpc"`
-	ID      int             `json:"id"`
+	ID      int64           `json:"id"`
 	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *mcpError       `json:"error,omitempty"`
 }

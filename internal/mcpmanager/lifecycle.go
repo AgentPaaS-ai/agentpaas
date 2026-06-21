@@ -1,6 +1,7 @@
 package mcpmanager
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -32,13 +33,19 @@ type Lifecycle struct {
 }
 
 type stdioState struct {
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	stdout   io.ReadCloser
-	done     chan struct{}
-	exitCode int
-	exitTime time.Time
-	err      error
+	cmd         *exec.Cmd
+	stdin       io.WriteCloser
+	stdout      io.ReadCloser
+	stdoutLines chan stdioLine
+	done        chan struct{}
+	exitCode    int
+	exitTime    time.Time
+	err         error
+}
+
+type stdioLine struct {
+	data []byte
+	err  error
 }
 
 // CrashContext is structured failure context for a crashed MCP server.
@@ -112,11 +119,12 @@ func (lc *Lifecycle) startStdio(ctx context.Context, serverID string, server pol
 	}
 
 	state := &stdioState{
-		cmd:      cmd,
-		stdin:    stdinPipe,
-		stdout:   stdoutPipe,
-		done:     make(chan struct{}),
-		exitCode: -1,
+		cmd:         cmd,
+		stdin:       stdinPipe,
+		stdout:      stdoutPipe,
+		stdoutLines: make(chan stdioLine, 128),
+		done:        make(chan struct{}),
+		exitCode:    -1,
 	}
 
 	lc.mu.Lock()
@@ -125,13 +133,14 @@ func (lc *Lifecycle) startStdio(ctx context.Context, serverID string, server pol
 	lc.mu.Unlock()
 	lc.manager.setReadiness(serverID, ReadinessStarting)
 
+	go readStdioOutput(stdoutPipe, state.stdoutLines)
 	go lc.waitForStdio(serverID, cmd, state)
 	return nil
 }
 
 // StdioPipes returns the stdin writer and stdout reader for a running stdio
 // MCP server.
-func (lc *Lifecycle) StdioPipes(serverID string) (io.Writer, io.Reader, error) {
+func (lc *Lifecycle) StdioPipes(serverID string) (io.Writer, <-chan stdioLine, error) {
 	lc.mu.RLock()
 	state, ok := lc.procState[serverID]
 	if !ok {
@@ -148,12 +157,29 @@ func (lc *Lifecycle) StdioPipes(serverID string) (io.Writer, io.Reader, error) {
 	default:
 	}
 	stdin := state.stdin
-	stdout := state.stdout
+	stdoutLines := state.stdoutLines
 	lc.mu.RUnlock()
-	if stdin == nil || stdout == nil || state.cmd == nil {
+	if stdin == nil || stdoutLines == nil || state.cmd == nil {
 		return nil, nil, fmt.Errorf("stdio server %q pipes are unavailable", serverID)
 	}
-	return stdin, stdout, nil
+	return stdin, stdoutLines, nil
+}
+
+func readStdioOutput(stdout io.Reader, lines chan<- stdioLine) {
+	defer close(lines)
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), int(maxBodySize)+1)
+	for scanner.Scan() {
+		line := append([]byte(nil), scanner.Bytes()...)
+		if int64(len(line)) > maxBodySize {
+			lines <- stdioLine{err: errors.New("mcp stdio response exceeds 1MiB limit")}
+			continue
+		}
+		lines <- stdioLine{data: line}
+	}
+	if err := scanner.Err(); err != nil {
+		lines <- stdioLine{err: err}
+	}
 }
 
 func (lc *Lifecycle) waitForStdio(serverID string, cmd *exec.Cmd, state *stdioState) {
