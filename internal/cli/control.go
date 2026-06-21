@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,6 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/parvezsyed/agentpaas/internal/mcpmanager"
+	"github.com/parvezsyed/agentpaas/internal/runtime"
 	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 )
@@ -248,6 +251,43 @@ func writeSecretList(cmd *cobra.Command, meta []secrets.SecretMeta) error {
 			formatSecretTime(m.UpdatedAt),
 			formatSecretTime(m.LastUsedAt),
 		); err != nil {
+			return err
+		}
+	}
+	return tw.Flush()
+}
+
+func addMCPStatusJSON(
+	ctx context.Context,
+	status map[string]any,
+	manager *mcpmanager.Manager,
+	lifecycle *mcpmanager.Lifecycle,
+	driver runtime.RuntimeDriver,
+) error {
+	if manager == nil {
+		return nil
+	}
+	report, err := mcpmanager.GenerateStatusReport(ctx, manager, lifecycle, driver)
+	if err != nil {
+		return err
+	}
+	status["mcp"] = report
+	return nil
+}
+
+func writeMCPStatusText(w io.Writer, report *mcpmanager.StatusReport) error {
+	if report == nil || len(report.Resources) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "MCP Servers:"); err != nil {
+		return err
+	}
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(tw, "SERVER_ID\tREADINESS\tHEALTH"); err != nil {
+		return err
+	}
+	for _, resource := range report.Resources {
+		if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\n", resource.ServerID, resource.Readiness, resource.Health); err != nil {
 			return err
 		}
 	}
