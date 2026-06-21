@@ -339,8 +339,8 @@ func rejectSymlinkPath(path string) error {
 	if !filepath.IsAbs(clean) {
 		return fmt.Errorf("lease path %s must be absolute", path)
 	}
-	if strings.Contains(clean, "..") {
-		return fmt.Errorf("lease path %s must not contain ..", path)
+	if hasDotDotPathSegment(clean) {
+		return fmt.Errorf("lease path %s must not contain dot-dot path segments", path)
 	}
 	volume := filepath.VolumeName(clean)
 	rest := strings.TrimPrefix(clean, volume)
@@ -401,4 +401,13 @@ func safeLeasePathComponent(value string) (string, error) {
 		}
 	}
 	return value, nil
+}
+
+func hasDotDotPathSegment(path string) bool {
+	for _, component := range strings.Split(path, string(os.PathSeparator)) {
+		if component == ".." {
+			return true
+		}
+	}
+	return false
 }
