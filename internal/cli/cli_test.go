@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 )
 
@@ -97,6 +99,31 @@ func executeCmd(args ...string) (string, string, error) {
 	errResult := errBuf.String() + stderrRaw
 
 	return outResult, errResult, err
+}
+
+func executeSecretCmd(t *testing.T, store secrets.SecretStore, input string, args ...string) (string, string, error) {
+	t.Helper()
+	resetAgentCmd()
+
+	oldFactory := secretStoreFactory
+	secretStoreFactory = func(cmd *cobra.Command) (secrets.SecretStore, error) {
+		return store, nil
+	}
+	t.Cleanup(func() {
+		secretStoreFactory = oldFactory
+		resetAgentCmd()
+	})
+
+	cmd := AgentCmd()
+	outBuf := new(bytes.Buffer)
+	errBuf := new(bytes.Buffer)
+	cmd.SetOut(outBuf)
+	cmd.SetErr(errBuf)
+	cmd.SetIn(strings.NewReader(input))
+	cmd.SetArgs(args)
+
+	err := cmd.Execute()
+	return outBuf.String(), errBuf.String(), err
 }
 
 // findSubCmd walks the command tree looking for a command with the given use
@@ -338,7 +365,7 @@ func TestControlCommands_Exist(t *testing.T) {
 		{"timeline", "timeline"},
 		{"next-action", "next-action"},
 		{"policy", "policy"},
-		{"secrets", "secrets"},
+		{"secret", "secret"},
 		{"audit", "audit"},
 	}
 
@@ -411,7 +438,7 @@ func TestHelp_ShowsCommands(t *testing.T) {
 		"stop",
 		"logs",
 		"policy",
-		"secrets",
+		"secret",
 		"audit",
 		"validate",
 		"summarize",
@@ -452,4 +479,131 @@ func TestVersionCommand_ExecuteDirect(t *testing.T) {
 	if !strings.Contains(stdout, "CLI:") {
 		t.Errorf("expected stdout to contain 'CLI:'; got:\n%s", stdout)
 	}
+}
+
+func TestSecretSetReadsFromStdinNeverArgv(t *testing.T) {
+	store := secrets.NewFakeKeyStore()
+	secretValue := "sensitive-value-from-stdin"
+
+	stdout, stderr, err := executeSecretCmd(t, store, secretValue, "secret", "set", "mykey")
+	if err != nil {
+		t.Fatalf("secret set returned error: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+	}
+
+	got, err := store.Get(context.Background(), "mykey")
+	if err != nil {
+		t.Fatalf("Get mykey: %v", err)
+	}
+	if string(got) != secretValue {
+		t.Fatalf("stored value = %q, want %q", got, secretValue)
+	}
+
+	processListFixture := "agent secret set mykey"
+	if strings.Contains(processListFixture, secretValue) {
+		t.Fatalf("process list fixture leaked secret value: %s", processListFixture)
+	}
+	if strings.Contains(strings.Join(os.Args, " "), secretValue) {
+		t.Fatalf("os.Args leaked secret value: %v", os.Args)
+	}
+
+	_, _, err = executeSecretCmd(t, secrets.NewFakeKeyStore(), "", "secret", "set", "mykey", secretValue)
+	if err == nil {
+		t.Fatal("secret set accepted a value through argv; want error")
+	}
+}
+
+func TestSecretSetRejectsOversizeBeforeStorage(t *testing.T) {
+	store := secrets.NewFakeKeyStore()
+	oversize := strings.Repeat("x", secrets.MaxSecretValueSize+1)
+
+	_, _, err := executeSecretCmd(t, store, oversize, "secret", "set", "too_large")
+	if err == nil {
+		t.Fatal("secret set oversize value: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds 65536 byte limit") {
+		t.Fatalf("oversize error = %v, want clear size limit", err)
+	}
+
+	_, err = store.Get(context.Background(), "too_large")
+	if !errorsIsSecretNotFound(err) {
+		t.Fatalf("Get after oversize set error = %v, want ErrSecretNotFound", err)
+	}
+}
+
+func TestSecretNameValidationBeforeStoreInteraction(t *testing.T) {
+	resetAgentCmd()
+	calls := 0
+	oldFactory := secretStoreFactory
+	secretStoreFactory = func(cmd *cobra.Command) (secrets.SecretStore, error) {
+		calls++
+		return secrets.NewFakeKeyStore(), nil
+	}
+	t.Cleanup(func() {
+		secretStoreFactory = oldFactory
+		resetAgentCmd()
+	})
+
+	cmd := AgentCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetIn(strings.NewReader("value"))
+	cmd.SetArgs([]string{"secret", "set", "bad name"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("secret set with invalid name: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid secret name") {
+		t.Fatalf("invalid-name error = %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("secret store factory called %d times before name validation, want 0", calls)
+	}
+}
+
+func TestSecretListOutputsMetadataOnly(t *testing.T) {
+	store := secrets.NewFakeKeyStore()
+	secretValue := "never-render-this-secret"
+	if err := store.Set(context.Background(), "display_only", []byte(secretValue)); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if err := store.TouchLastUsed(context.Background(), "display_only"); err != nil {
+		t.Fatalf("TouchLastUsed: %v", err)
+	}
+
+	stdout, stderr, err := executeSecretCmd(t, store, "", "secret", "list")
+	if err != nil {
+		t.Fatalf("secret list returned error: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+	}
+	for _, want := range []string{"NAME", "CREATED_AT", "UPDATED_AT", "LAST_USED_AT", "REFERENCED_BY", "display_only"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("secret list output missing %q:\n%s", want, stdout)
+		}
+	}
+	for _, forbidden := range []string{secretValue, "never-render", "secret"} {
+		if strings.Contains(stdout, forbidden) {
+			t.Fatalf("secret list output leaked forbidden value %q:\n%s", forbidden, stdout)
+		}
+	}
+}
+
+func TestSecretRmDeletesSecret(t *testing.T) {
+	store := secrets.NewFakeKeyStore()
+	if err := store.Set(context.Background(), "remove_me", []byte("delete-value")); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	stdout, stderr, err := executeSecretCmd(t, store, "", "secret", "rm", "remove_me")
+	if err != nil {
+		t.Fatalf("secret rm returned error: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+	}
+
+	_, err = store.Get(context.Background(), "remove_me")
+	if !errorsIsSecretNotFound(err) {
+		t.Fatalf("Get after rm error = %v, want ErrSecretNotFound", err)
+	}
+}
+
+func errorsIsSecretNotFound(err error) bool {
+	return err != nil && strings.Contains(err.Error(), secrets.ErrSecretNotFound.Error())
 }

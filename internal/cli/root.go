@@ -107,7 +107,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newStopCmd())
 	rootCmd.AddCommand(newLogsCmd())
 	rootCmd.AddCommand(newPolicyCmd())
-	rootCmd.AddCommand(newSecretsCmd())
+	rootCmd.AddCommand(newSecretCmd())
 	rootCmd.AddCommand(newAuditCmd())
 	rootCmd.AddCommand(newValidateCmd())
 	rootCmd.AddCommand(newSummarizeCmd())
