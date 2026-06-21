@@ -500,6 +500,7 @@ Scope:
 - Wildcards/private CIDRs require explicit opt-in.
 - Header-only credential templates.
 - Direct leases require mode and reason.
+- MCP workload egress is default-deny unless explicitly allowed.
 
 Non-goals:
 - No runtime enforcement.
@@ -511,10 +512,10 @@ Acceptance:
   credential warnings, query-string credential injection rejection, body
   credential injection rejection, direct lease without reason rejection,
   undeclared MCP server/tool rejection, remote MCP without matching egress
-  rule rejection, local MCP undeclared env/secret rejection, remote hook
-  without matching egress rule rejection, loopback hook exposure refusal,
-  credentialed redirect disablement, and noncredentialed redirect per-hop
-  revalidation.
+  rule rejection, local MCP undeclared env/secret rejection, local MCP workload
+  egress without matching rule rejection, remote hook without matching egress
+  rule rejection, loopback hook exposure refusal, credentialed redirect
+  disablement, and noncredentialed redirect per-hop revalidation.
 
 Verifier:
 - Run validation test suite.
@@ -1010,6 +1011,171 @@ Verifier:
 
 Adversary: required.
 
+## Block 7.5: MCP Server Lifecycle Manager
+
+Canonical gate: `make block7-mcp-gate`
+
+### B7M-T01 MCP Resource Model and Policy Binding
+
+Goal: represent declared MCP servers as first-class managed AgentPaaS
+resources tied to policy digest, agent, and run context.
+
+Scope:
+- Resource records with `resource_type=mcp_server`.
+- Owning agent/run, server id, allowed tools, health, readiness, last error.
+- Policy validation rejects duplicate ids and unspecified tools defaults to
+  deny all.
+
+Non-goals:
+- No generic AgentPaaS MCP server for Codex/Cursor/Claude Code.
+- No dynamic tool discovery auto-allow.
+
+Acceptance:
+- `agent status --json` can include agent, gateway, and MCP server resources.
+- Undeclared server/tool calls are denied before execution and audited.
+
+Verifier:
+- Run MCP resource model and policy binding tests.
+
+Adversary: required.
+
+### B7M-T02 Local MCP Process and Sidecar Supervision
+
+Goal: start, readiness-check, stop, and reconcile declared local MCP servers.
+
+Scope:
+- Daemon-managed child process and sidecar lifecycle.
+- Minimal env by default.
+- AgentPaaS Docker labels for MCP sidecars.
+- No host networking or ambient Docker/host socket access for MCP sidecars.
+- Daemon restart reconciliation for owned MCP resources.
+
+Non-goals:
+- No host networking by default.
+- No shell/browser/desktop tools unless explicitly declared and confirmed.
+
+Acceptance:
+- Declared readonly filesystem MCP server starts separately from the agent.
+- Daemon restart leaves unrelated processes/containers untouched.
+- MCP crash produces structured unavailable/tool failure context.
+- Docker inspect proves MCP sidecars carry AgentPaaS labels and no host
+  networking.
+
+Verifier:
+- Run MCP lifecycle and reconciliation tests.
+
+Adversary: required.
+
+### B7M-T03 Gateway-Mediated MCP Routing
+
+Goal: route agent MCP calls through the gateway to local MCP servers and return
+responses through the same governed path.
+
+Scope:
+- `agent.mcp(server_id, tool, input)` uses gateway MCP route.
+- Gateway performs server/tool policy decision before forwarding.
+- Local stdio MCP calls are forwarded to daemon MCP manager.
+- Local sidecar/endpoint MCP calls are routed only to declared endpoint.
+- Trace and audit both request and response metadata.
+
+Non-goals:
+- No direct agent-to-host or agent-to-MCP container network access.
+- No dynamic MCP tool discovery auto-allow.
+
+Acceptance:
+- E2E fixture agent calls readonly filesystem MCP via gateway and receives
+  expected response.
+- Direct connection attempts to local MCP process/sidecar from agent fail.
+- Undeclared server/tool is denied before MCP execution and audited.
+
+Verifier:
+- Run gateway-mediated MCP route e2e tests.
+
+Adversary: required.
+
+### B7M-T04 MCP Workload Egress Policy
+
+Goal: enforce default-deny egress for MCP servers as separate managed
+workloads.
+
+Scope:
+- MCP server ingress accepts only AgentPaaS gateway/daemon-routed tool calls.
+- MCP server outbound HTTP/network access is gateway-mediated and policy
+  checked.
+- Audit MCP server identity, destination, method, credential id, policy rule,
+  and decision for allowed and denied egress.
+
+Non-goals:
+- No ambient host network, Docker socket, or local service access.
+- No per-user OAuth delegated access; P2 handles runtime user connections.
+
+Acceptance:
+- MCP server egress to an allow-listed test endpoint succeeds and is audited.
+- MCP server egress to a non-allow-listed endpoint is denied and audited.
+- MCP server probes for host/Docker socket/bridge access fail.
+
+Verifier:
+- Run MCP workload egress policy e2e tests.
+
+Adversary: required.
+
+### B7M-T05 MCP Status, Dashboard Data, and Hermes Contract
+
+Goal: expose MCP server readiness and health through the same operator/status
+surfaces as agents.
+
+Scope:
+- `agent status --json` resource inventory.
+- Dashboard data model includes MCP resources.
+- Docker artifact metadata for MCP sidecars: labels, image digest, network
+  membership, health, restart count, and resource stats.
+- Hermes operator contract sees MCP status without scraping Docker.
+
+Non-goals:
+- No full dashboard UI polish beyond data required for Block 10.
+
+Acceptance:
+- Status output includes `resource_type`, `server_id`, owning agent/run,
+  policy digest, allowed tools, readiness, health, and last error.
+- Stopped/starting/ready/unhealthy states are represented consistently.
+- Agent, gateway, and MCP Docker artifacts are visible without leaking raw
+  secrets.
+
+Verifier:
+- Run status JSON golden tests.
+
+Adversary: required for schema prompt-injection/status confusion cases.
+
+### B7M-T06 MCP Tool Auditing and Host-Affecting Capability Guard
+
+Goal: audit every MCP tool call and require confirmation for host-affecting
+local tools.
+
+Scope:
+- Audit server id, tool name, decision, policy rule id, credential id if used,
+  and input/output hashes.
+- MCP server logs and tool output are redacted/truncated before CLI/dashboard
+  display.
+- Host-affecting tools include browser control, shell execution, writable
+  filesystem, AppleScript, and desktop automation.
+- Confirmation protocol required before enabling or broadening such tools.
+
+Non-goals:
+- No complete MCP prompt-injection matrix; full matrix remains P2 red-team.
+
+Acceptance:
+- Successful and denied tool calls emit expected audit events.
+- Sentinel secrets and hostile HTML/control characters in MCP logs/tool output
+  are redacted or escaped.
+- Prompt-injected source/log/tool output cannot add MCP servers or broaden
+  allowed tools.
+- High-risk local tools cannot enable without confirmation.
+
+Verifier:
+- Run MCP audit and host-capability negative tests.
+
+Adversary: required.
+
 ## Block 8: Packaging Pipeline
 
 Canonical gate: `make block8-gate`
@@ -1274,7 +1440,37 @@ Verifier:
 
 Adversary: required.
 
-### B9-T07 CancelRun Semantics
+### B9-T07 Local Handoff Triggers
+
+Goal: implement static approved handoffs from one agent's terminal run event
+to another packed agent through the same Trigger API.
+
+Scope:
+- Handoff caller id `system:handoff:<source_agent>`.
+- Parent run id, correlation id, idempotency key, and target lock digest.
+- Payload modes: `empty`, `summary_ref`, `artifact_ref`, `fixed_json`.
+- Cycle/depth guard and concurrency policy.
+- Audit `handoff_invoked`, `handoff_skipped`, and `handoff_denied`.
+
+Non-goals:
+- No dynamic DAG/workflow engine.
+- No dynamic target agent names from model output.
+- No local command hooks.
+- No checkpoint/resume.
+
+Acceptance:
+- Two-agent handoff runs on macOS without Hermes alive after configuration.
+- Target agent receives input only through Trigger API and normal policy,
+  budget, secret, and audit paths.
+- Missing target, stale lock digest, declined/unapproved config, and cycle
+  guard produce skipped/denied audit events.
+
+Verifier:
+- Run local handoff e2e and cycle-guard tests.
+
+Adversary: required.
+
+### B9-T08 CancelRun Semantics
 
 Goal: implement cancellation path.
 
@@ -1293,7 +1489,7 @@ Verifier:
 
 Adversary: required.
 
-### B9-T08 Control API REST/JSON Fuzzing
+### B9-T09 Control API REST/JSON Fuzzing
 
 Goal: fuzz Control API REST JSON ingestion.
 
@@ -1326,6 +1522,7 @@ Goal: implement in-process OTLP collector to SQLite WAL for traces/logs/metrics.
 Scope:
 - Retention prune for OTel data only.
 - Audit JSONL never pruned by dashboard retention.
+- Ingest agent, harness, gateway, MCP server, and MCP manager logs.
 - Migration, WAL checkpoint, vacuum, corruption recovery.
 
 Non-goals:
@@ -1342,10 +1539,14 @@ Adversary: required because audit/telemetry separation is security relevant.
 
 ### B10-T02 Embedded Dashboard App Shell
 
-Goal: build embedded Preact/TypeScript SPA with strict CSP and no runtime CDN.
+Goal: build embedded Preact/TypeScript SPA with strict CSP, no runtime CDN, and
+managed resource inventory.
 
 Scope:
-- Agent list, empty states, basic routing, keyboard smoke.
+- Managed resource list for agents, gateways, and MCP servers.
+- Empty states, basic routing, keyboard smoke.
+- Docker artifact ids/labels/digests where applicable.
+- Network membership, health, restart count, resource stats.
 - CSRF token on mutating routes.
 - Exposed dashboard requires API key/session.
 - No API keys in localStorage.
@@ -1355,7 +1556,9 @@ Non-goals:
 
 Acceptance:
 - CSP test blocks inline script.
-- Empty states render.
+- Empty states render for zero agents, zero runs, and zero MCP servers.
+- Agent, gateway, and MCP server resources render without scraping Docker from
+  Hermes.
 
 Verifier:
 - Run frontend unit and Playwright smoke.
@@ -1385,19 +1588,23 @@ Adversary: required for untrusted data rendering.
 
 ### B10-T04 Log Viewer Redaction and XSS Defense
 
-Goal: safely display agent/harness/gateway logs and OTel attributes.
+Goal: safely display agent/harness/gateway/MCP logs, Docker artifact metadata,
+and OTel attributes.
 
 Scope:
 - Escape HTML, binary/control chars.
 - Truncate huge values with refs.
 - Redact sentinel secrets everywhere.
+- Sanitize Docker inspect-derived views for agents, gateways, and MCP sidecars.
 
 Non-goals:
 - No raw unredacted browser view.
 
 Acceptance:
 - Planted `<script>` appears escaped.
-- Sentinel secret not visible in logs/spans/errors.
+- Sentinel secret not visible in logs/spans/errors, MCP logs, or Docker
+  artifact views.
+- Stale/missing Docker artifacts show reconciled state instead of stale green.
 
 Verifier:
 - Run XSS and redaction Playwright tests.
@@ -1558,7 +1765,7 @@ Goal: recommend policy patches without silently applying trust-boundary changes.
 Scope:
 - Risk level, rationale, affected destinations, credential ids, audit evidence.
 - Explicit user/daemon confirm required for policy, credentials, direct leases,
-  exposed listeners, destructive operations.
+  local handoff triggers, exposed listeners, destructive operations.
 
 Non-goals:
 - No auto-apply for security-sensitive changes.
@@ -1566,8 +1773,9 @@ Non-goals:
 Acceptance:
 - Human decline changes next action to `fix_code` or `ask_user`, not bypass.
 - Confirmation protocol fixtures cover policy changes, new egress, credential
-  bindings, direct leases, webhook destinations, exposed listeners, retention
-  purges, unrelated run stops, and destructive operations.
+  bindings, direct leases, local handoff triggers, webhook destinations,
+  exposed listeners, retention purges, unrelated run stops, and destructive
+  operations.
 
 Verifier:
 - Run confirmation-boundary tests.
@@ -1803,9 +2011,9 @@ actions.
 
 Scope:
 - Stop only active run by default.
-- Unrelated stop, policy apply, credential binding, direct lease, exposed
-  listener, budget increase, audit purge/export remote, gate disabling all
-  return confirmation metadata.
+- Unrelated stop, policy apply, credential binding, direct lease, local
+  handoff trigger, exposed listener, budget increase, audit purge/export
+  remote, gate disabling all return confirmation metadata.
 
 Non-goals:
 - Hermes cannot apply confirmation itself.
