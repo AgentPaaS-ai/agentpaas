@@ -240,11 +240,8 @@ func TestAdversary_B7_T02_HeaderInjectionViaPolicy(t *testing.T) {
 	broker := newAdversaryBroker(t, store, p, nil, nil)
 
 	inj, err := broker.RequestCredential(ctx, "run-active", "egress[0]", "https://api.example.com/v1", http.MethodGet)
-	if err != nil {
-		t.Fatalf("unexpected: %v", err)
-	}
-	if strings.Contains(inj.HeaderName, "\r") || strings.Contains(inj.HeaderName, "\n") {
-		t.Fatalf("ADVERSARY BREAK: header injection via policy name: %q", inj.HeaderName)
+	if err == nil {
+		t.Fatalf("ADVERSARY BREAK: CRLF header name was not rejected, got injection: %+v", inj)
 	}
 }
 
