@@ -33,12 +33,13 @@ func TestAdversary_B7M_T03_UnboundedHTTPResponseBody(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	result, err := router.CallTool(ctx, "sidecar", "lookup", map[string]any{}, "agent-1", "run-1")
-	if err != nil {
-		t.Fatalf("CallTool error = %v, want success with large body", err)
+	_, err := router.CallTool(ctx, "sidecar", "lookup", map[string]any{}, "agent-1", "run-1")
+	if err == nil {
+		t.Fatal("CallTool error = nil, want response body limit error")
 	}
-	// If it succeeds without OOM or truncation, demonstrates no limit enforced in Router
-	_ = result
+	if !strings.Contains(err.Error(), "mcp http response exceeds 1MiB limit") {
+		t.Fatalf("CallTool error = %v, want response body limit error", err)
+	}
 }
 
 func TestAdversary_B7M_T03_StdioDecodeTimeoutDesync(t *testing.T) {
