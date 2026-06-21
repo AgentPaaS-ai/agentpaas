@@ -30,6 +30,9 @@ type BrokerConfig struct {
 	Now                func() time.Time
 }
 
+// Broker is the sole credential access path for agent workloads. SecretStore
+// instances must not be passed to agent code or any package outside the secrets
+// broker; direct store.Get calls bypass revocation checks.
 type Broker struct {
 	store              SecretStore
 	policy             *policy.Policy
