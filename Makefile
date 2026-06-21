@@ -111,6 +111,8 @@ block6-gate: build test race lint osv
 	@echo "✓ Block 6 gate passed"
 
 block7-gate: build test race lint osv
+	@echo "==> Running Block 7 gate: secret store"
+	go test -race -count=1 ./internal/secrets/...
 	@echo "Block 7 gate: PASS"
 
 block8-gate:
