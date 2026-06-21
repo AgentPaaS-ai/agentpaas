@@ -20,6 +20,8 @@ import (
 // ErrServerCrashed indicates a stopped MCP server has crash context.
 var ErrServerCrashed = errors.New("mcp server crashed")
 
+const maxBodySize int64 = 1 << 20
+
 // Router forwards MCP tool calls from the agent to the appropriate local MCP
 // server. Stdio servers receive JSON-RPC over stdin/stdout. HTTP servers
 // receive POST requests to their declared endpoint.
@@ -159,7 +161,7 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 		return nil, fmt.Errorf("send http MCP request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	responseBody, err := io.ReadAll(resp.Body)
+	responseBody, err := readLimitedHTTPResponseBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read http MCP response: %w", err)
 	}
@@ -168,6 +170,26 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 		return nil, fmt.Errorf("decode http MCP response: %w", err)
 	}
 	return responseResult(response)
+}
+
+func readLimitedHTTPResponseBody(body io.Reader) ([]byte, error) {
+	responseBody, err := io.ReadAll(io.LimitReader(body, maxBodySize))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(responseBody)) < maxBodySize {
+		return responseBody, nil
+	}
+
+	var extra [1]byte
+	n, err := body.Read(extra[:])
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if n > 0 {
+		return nil, errors.New("mcp http response exceeds 1MiB limit")
+	}
+	return responseBody, nil
 }
 
 func buildMCPRequest(tool string, input any) (mcpRequest, error) {
