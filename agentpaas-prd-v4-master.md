@@ -155,6 +155,11 @@ gateway sidecar. The daemon never calls the harness directly.
    harness and the only egress path to upstream services. P1 does not use
    host networking for the gateway. The agent container never shares the
    gateway's network namespace.
+   MCP servers are also managed workloads with a gateway boundary. A local
+   MCP server's ingress is only from AgentPaaS gateway/daemon routes, and any
+   MCP-server outbound network access must pass through a gateway-enforced
+   MCP egress policy. MCP servers do not receive ambient host/network access
+   merely because they run beside an agent.
 3. Harness also sets `HTTP(S)_PROXY` + offers an SDK shim as conveniences —
    but the network topology is the control. An agent that ignores the proxy
    has no route to the internet and callers cannot skip the gateway to reach
@@ -476,6 +481,11 @@ What not to do in P1:
 - Do not define audit verification as "read files from `~/.agentpaas`."
 - Do not make local daemon identity equal tenant identity.
 - Do not require direct host filesystem semantics in record schemas.
+- Do not expose writable host-directory mounts as the P1 file-output story.
+  Post-P1 should add a governed artifact export path instead: agents write to
+  a scoped internal output directory, the daemon records output metadata and
+  hashes, and Hermes/users explicitly export selected artifacts for later
+  workflows.
 - Do not let cron/scheduled runs bypass Trigger API semantics; hosted
   schedules must use the same trigger path.
 
@@ -588,6 +598,11 @@ audited under tenant control.
 - **Agent outbound:** agent → (proxy/SDK or raw socket attempt) → gateway
   egress → policy check → optional brokered credential injection → upstream
   (LLM/MCP/API) → response; both directions traced (OTel) and audited.
+- **Agent MCP call:** agent → `agent.mcp(server_id, tool, input)` or MCP HTTP
+  request → gateway MCP egress route → policy/tool allow-list decision →
+  daemon MCP manager or MCP sidecar/endpoint → response returns through the
+  gateway path. The agent never receives direct stdio, host socket, or
+  container-network access to a local MCP server.
 - **Events (outbound hooks):** daemon event bus emits
   `agent.started|finished|failed|budget_exceeded|egress_denied|secret_injected|secret_leased`
   → local webhooks (user-configurable, themselves policy-checked) and the
@@ -638,7 +653,8 @@ audited under tenant control.
    P1 defers local command hooks because they expand the local execution
    surface. Deliveries are signed (HMAC w/ per-hook secret and timestamp),
    retried 3x with backoff, protected by a replay window, and dead-lettered
-   to the audit log.
+   to the audit log. Local handoff triggers are separate internal Trigger API
+   invocations, not shell/local-command hooks.
 5. **Scheduling:** `triggers: cron: "0 9 * * *"` in agent.yaml → daemon
    cron service invokes via the same Trigger API (so scheduled runs are
    audited identically). P1 cron is 5-field syntax only, uses the local
@@ -647,6 +663,16 @@ audited under tenant control.
    `skip`, supports `catchup: 1` as an explicit opt-in, and defaults
    concurrency to `forbid` so a new tick is skipped and audited if the prior
    run is still active.
+6. **Local handoff triggers:** P1 supports static, approved handoffs from one
+   packed agent to another on terminal run events. A handoff invokes the
+   target agent through the same Trigger API with caller
+   `system:handoff:<source_agent>`, parent run id, correlation id, idempotency
+   key, target agent/lock digest, and an explicit payload mode
+   (`empty|summary_ref|artifact_ref|fixed_json`). Handoffs run independently
+   of Hermes once configured, but they are not a workflow engine: no dynamic
+   agent names from model output, no arbitrary branching, no unbounded loops,
+   no local command hooks, and no bypass of target-agent auth, policy,
+   budgets, secrets, or audit.
 
 ### 2.7.1 Trigger semantics
 The 24-hour idempotency window protects against retries, not against
@@ -690,12 +716,32 @@ AgentPaaS has two MCP roles that must stay distinct:
    Hermes-only distribution integration. A generic AgentPaaS MCP server for
    Claude Code, Codex, Cursor, and other clients is P2.
 
-P1 must support the first role at a basic governed level:
+P1 must support the first role as managed runtime infrastructure, not as an
+unowned subprocess hidden inside the agent:
 - Local and remote MCP servers must be declared in the `mcp_servers` section of
   `policy.yaml`; dynamic MCP tool discovery never auto-allows new tools.
 - Local MCP servers run only as daemon-managed child processes, sidecars, or
   explicitly declared local endpoints. They receive minimal environment, no
   raw secrets by default, and the same audit/redaction controls as agents.
+- AgentPaaS owns the lifecycle for declared local MCP servers: validate,
+  start, readiness-check, stop, reconcile after daemon restart, and report
+  status alongside the agent and gateway. MCP servers are separate managed
+  resources, not silently baked into the agent image by default.
+- Agent-to-MCP traffic is gateway-mediated. For local stdio MCP servers, the
+  gateway forwards the approved tool call to the daemon MCP manager, which
+  owns the child process and returns the result. For local MCP sidecars or
+  endpoints, the gateway routes to the declared endpoint only after the same
+  server/tool policy check. Direct agent-to-MCP connectivity is not a P1
+  escape hatch.
+- MCP servers have their own workload policy scope. Ingress to a local MCP
+  server is restricted to AgentPaaS gateway/daemon traffic for declared
+  server/tool calls; egress from an MCP server to network services is
+  default-deny and must be explicitly allowed in policy, with the MCP server
+  identity, destination, credential id, and policy rule recorded in audit.
+- `agent status --json`, the dashboard, and Hermes operator tools must expose
+  resource inventory with `resource_type` values such as `agent`, `gateway`,
+  and `mcp_server`, including readiness, owning agent/run, policy digest,
+  allowed tools, health, and last error.
 - Remote HTTP MCP servers are reached only through the gateway egress path.
   Their domains, ports, auth mode, and allowed tools are policy-reviewed.
 - MCP auth follows the MCP authorization model for HTTP transports where
@@ -706,6 +752,11 @@ P1 must support the first role at a basic governed level:
 - Every MCP tool call is audited with agent identity, run id, server id,
   tool name, input/output payload hashes, credential id if used, user subject
   if present, decision, and policy rule id.
+- Host-affecting MCP tools such as browser control, shell execution, writable
+  filesystem access, AppleScript, or desktop automation are high-risk local
+  capabilities. They must be declared explicitly, tool-limited, shown in
+  status/dashboard, and require user/daemon confirmation before being enabled;
+  prompt-injected agent text must never be able to add or broaden them.
 
 Phase 2 adds **Verified User Access-style delegated access**: actions can
 execute as the end user, not only as the agent/service account. The Workato
@@ -745,11 +796,13 @@ sequenceDiagram
   MCP->>Audit: user_subject + agent_id + tool + policy decision
 ```
 
-Multi-agent workflows, loops, master/worker patterns, and agent chaining are
-also P2. P1 should not build an orchestration product. It should preserve the
-right primitives: run ids, parent/child run correlation ids, triggering
-subject, policy decision records, and audit events that can later explain
-"who/what caused this action."
+Full multi-agent workflows, loops, master/worker patterns, dynamic DAGs, and
+agent chaining are P2. P1 should not build an orchestration product. It does
+support the narrow local handoff trigger primitive in §2.7: one approved
+terminal event can invoke one static target agent through the Trigger API.
+That preserves the right primitives: run ids, parent/child run correlation
+ids, triggering subject, policy decision records, and audit events that can
+later explain "who/what caused this action."
 
 Agent-level checkpoint/resume and half-done job recovery are also P2. P1
 restarts failed runs from a fresh container and records enough structured
@@ -819,6 +872,14 @@ description: Chases overdue invoices via email
 triggers:
   api: true
   cron: "0 9 * * 1-5"
+handoffs:
+  on_run_succeeded:
+    - invoke_agent: invoice-emailer
+      target_lock_digest: sha256:<pinned-target-lock-digest>
+      payload: summary_ref       # empty | summary_ref | artifact_ref | fixed_json
+      concurrency: forbid
+      max_depth: 2
+      requires_confirmation: true
 budgets:
   max_iterations: 50
   max_wall_clock: 15m
@@ -889,6 +950,11 @@ Policy schema rules for P1:
   noncredentialed HTTP only for explicitly allowed destinations; setting
   `egress.require_credential_binding: true` forces outbound HTTP calls through
   named credential bindings.
+- MCP server workload egress is also policy-scoped and default-deny. A local
+  MCP server that needs network access must have explicit policy allowing its
+  destination/method/port/credential binding; the agent's permission to call
+  an MCP tool does not automatically grant that MCP server outbound internet
+  access.
 - Unknown fields are errors. Typos should fail closed instead of silently
   weakening security.
 - Domain matching is exact by default. `domain: example.com` does not allow
@@ -917,17 +983,23 @@ Policy schema rules for P1:
 
 ## 2.10 Dashboard (P1 scope, intentionally small)
 Single-page app served by daemon (embedded assets, no CDN at runtime):
-- Agent list: status, uptime, last run, spend-to-date vs budget.
+- Managed resource list: agents, gateway sidecars, and MCP servers with
+  status, readiness, uptime, owning agent/run, last run/tool call, Docker
+  artifact ids/labels/digests where applicable, and spend-to-date vs budget.
 - Run detail: timeline of traces (LLM calls w/ tokens+cost, MCP calls,
   egress events incl. DENIED in red), logs, audit checkpoint markers.
+- Docker artifact observability covers all AgentPaaS-owned agent, gateway,
+  and MCP containers/images/networks: labels, image digest, network
+  membership, health, resource stats, restart count, and sanitized logs.
 - OTel retention applies to dashboard traces/logs/metrics only: default 7d
   local, configurable. Canonical audit JSONL is not pruned by dashboard
   retention; it is retained until an explicit future user retention/purge
   command.
-- Agent, harness, and gateway logs are ingested as OTel log records for
-  dashboard correlation. Daemon operational logs remain bounded structured
-  JSON files under `~/.agentpaas/logs/` with rotation and redaction. Neither
-  dashboard logs nor daemon operational logs are the canonical audit source.
+- Agent, harness, gateway, MCP server, and MCP manager logs are ingested as
+  OTel log records for dashboard correlation. Daemon operational logs remain
+  bounded structured JSON files under `~/.agentpaas/logs/` with rotation and
+  redaction. Neither dashboard logs nor daemon operational logs are the
+  canonical audit source.
 - Log and trace rendering treats agent-controlled text as hostile: HTML,
   binary/control characters, huge attributes, and sentinel secrets are
   escaped, truncated, and/or redacted before display.
@@ -962,6 +1034,7 @@ dashboard HTML to understand the system.
 
 P1 operator APIs provide structured outputs for:
 - project validation and readiness (`ValidateAgentProject`)
+- managed resource inventory and readiness (`Status` / `ListResources`)
 - run summary (`SummarizeRun`)
 - failure diagnosis (`ExplainFailure`)
 - policy denial explanation (`ExplainPolicyDenial`)
@@ -1004,6 +1077,7 @@ Hermes may automatically repair:
 Hermes may propose but must not silently apply:
 - new egress destinations or wildcard domains
 - credential bindings, direct leases, or secret changes
+- local handoff triggers that invoke another agent
 - webhook destinations
 - exposed listeners or dashboard/API exposure
 - budget increases above policy defaults
@@ -1152,9 +1226,10 @@ Integration safety rules:
    launch, Hermes plugin/skill setup docs, and a signed offline verification
    bundle. Broader coding-tool plugins and MCP registry distribution are P2.
 4. **Weeks 6–9: P2 customer-facing release track.** Linux certification,
-   team/fleet management, enterprise packaging, support posture, commercial
-   observability, opt-in telemetry, design-partner onboarding, upgrade/rollback
-   hardening, and customer launch packet.
+   team/fleet management, enterprise packaging, governed run artifact export
+   for agent-modified files, support posture, commercial observability, opt-in
+   telemetry, design-partner onboarding, upgrade/rollback hardening, and
+   customer launch packet.
 5. **Post-P2 channel grind.** LangGraph/CrewAI "deploy to production" docs PRs;
    2 talks (AI Engineer Summit, KubeCon AI day); monthly security-angle
    content. Gate to broader GTM: strong self-reported adoption signals (design
@@ -1244,13 +1319,21 @@ Phase 1 is DONE when all of the following are demonstrably true:
 4. Hermes (via the P1 plugin/skill) can take freshly generated agent code to
    running-governed state conversationally in < 10 minutes after AgentPaaS is
    installed. Claude Code, Codex, Cursor, and generic MCP integrations are P2.
-5. `agent audit export` output passes `agent audit verify` on another
+5. A static approved local handoff trigger invokes a second packed agent
+   through the Trigger API and completes on macOS without Hermes running,
+   preserving parent/child run correlation, target lock digest, idempotency,
+   and audit events.
+6. A declared local MCP server is managed by AgentPaaS as a first-class P1
+   resource: it starts separately from the agent, exposes only allowed tools,
+   appears in `agent status --json` and the dashboard as `mcp_server`, and its
+   tool calls are audited with input/output hashes.
+7. `agent audit export` output passes `agent audit verify` on another
    machine, and a deliberately tampered line is detected.
-6. Budget enforcement kills a runaway loop at exactly the configured caps
+8. Budget enforcement kills a runaway loop at exactly the configured caps
    (tokens, USD, wall-clock, iterations) with correct audit events.
-7. 5 design partners have run a real agent of their own through it; ≥3 say
+9. 5 design partners have run a real agent of their own through it; ≥3 say
    they would show the audit export to their security team.
-8. Release artifacts pass documented Sigstore/cosign verification and the
+10. Release artifacts pass documented Sigstore/cosign verification and the
    macOS offline bundle can be verified without network access.
 
 **END OF PRD v4.0 — see agentpaas-execution-plan-v1.md to build it.**

@@ -1230,8 +1230,10 @@ no implicit subdomain matching, no wildcard domains unless
 `allow_wildcard: true`, no private CIDRs unless `allow_private: true`); MCP server
 declarations in `policy.yaml` with explicit server ids, transport
 (`stdio|http`), command/endpoint, allowed tools, auth mode, minimal env, and
-egress binding for remote MCP servers; hook destination declarations checked
-as policy data in Block 4 and rechecked at delivery time in Block 9;
+egress binding for remote MCP servers; MCP workload egress policy for local
+MCP servers that need outbound network access, default-deny unless explicitly
+allowed by destination/method/port/credential; hook destination declarations
+checked as policy data in Block 4 and rechecked at delivery time in Block 9;
 brokered credential bindings (`egress.allow[].credential` and MCP auth
 references must point to `credentials.brokered[].id`) with header-only
 injection templates; explicit direct-lease schema
@@ -1449,6 +1451,74 @@ header upstream while agent logs/proc/env never contain the key.
 
 ---
 
+## BLOCK 7.5 — MCP server lifecycle manager
+**Builds:** internal/mcpmanager — P1 management for MCP servers declared by
+an agent's `policy.yaml`. AgentPaaS validates, starts, readiness-checks,
+stops, and reconciles declared local MCP servers as first-class managed
+resources, similar to agents and gateway sidecars. Local MCP servers may run
+only as daemon-managed child processes, sidecars, or explicitly declared
+local endpoints; remote MCP servers remain gateway-routed egress. Agent MCP
+traffic is gateway-mediated: the agent calls `agent.mcp(server_id, tool,
+input)` or an MCP HTTP endpoint exposed by the gateway; the gateway performs
+the server/tool policy decision, forwards allowed stdio calls to the daemon
+MCP manager or allowed HTTP calls to the declared sidecar/endpoint, then
+returns the response through the same governed path. The agent never gets
+direct stdio, host socket, or container-network access to a local MCP server.
+MCP servers have their own workload policy scope: ingress is restricted to
+AgentPaaS gateway/daemon routes for declared server/tool calls, and
+MCP-server egress is default-deny unless policy explicitly allows the
+destination, method, port, and credential binding. MCP sidecars use
+AgentPaaS-owned Docker labels, no host networking, no ambient Docker/host
+socket access, and gateway-mediated egress; daemon-managed stdio MCP
+processes receive minimal env and egress only through approved broker/gateway
+paths.
+MCP servers are not silently baked into the agent image by default. Status
+surfaces must show `resource_type=agent|gateway|mcp_server`, owning
+agent/run, policy digest, allowed tools, readiness, health, and last error
+through `agent status --json`, dashboard data, and the Hermes operator
+contract. Observability covers all AgentPaaS-owned Docker artifacts for
+agents, gateways, and MCP sidecars: labels, image digest, network membership,
+health, restart count, resource stats, and sanitized logs.
+Lifecycle is fail-closed: if a required MCP server cannot start, is unhealthy,
+or exposes undeclared tools, the run is rejected or tool calls are denied
+before execution and audited.
+
+Host-affecting MCP capabilities such as browser control, shell execution,
+writable filesystem access, AppleScript, and desktop automation are treated
+as high-risk local tools. P1 may manage them only when explicitly declared
+and tool-limited in policy; enabling or broadening them requires the same
+user/daemon confirmation protocol as egress or credential binding. Prompt
+injection in source/logs/tool output must not add MCP servers, broaden allowed
+tools, or enable host-affecting capabilities.
+**Edge cases:** duplicate MCP ids → validation error; undeclared server/tool
+call → denied and audited; local MCP command path outside approved/project
+scope → refused; unspecified allowed tools → deny all; minimal env by default
+with no raw secrets; secret-backed MCP auth uses brokered credential ids only;
+MCP server attempts egress to a non-allow-listed domain → denied and audited;
+MCP server attempts host/Docker socket/bridge access → blocked; MCP logs with
+sentinel secrets or untrusted HTML/control chars → redacted/escaped in logs
+and dashboard;
+MCP child process crash → agent run gets structured `mcp_unavailable` or
+tool-call failure, no silent fallback; daemon restart reconciles owned MCP
+processes/sidecars and leaves unrelated processes untouched; status lists
+stopped, starting, ready, unhealthy, and orphan-reconciled MCP resources;
+containerized MCP sidecars carry AgentPaaS Docker labels and no host
+networking unless a future explicitly-confirmed high-risk mode says so.
+**SUCCESS GATE:** `make block7-mcp-gate` passes: a declared readonly
+filesystem MCP server starts separately from the agent, appears in
+`agent status --json` and dashboard data as `mcp_server`, exposes only
+declared tools, and an e2e agent call reaches it only through the gateway MCP
+route and receives the response through that route. Successful/denied tool
+calls produce audit events with server id, tool name, decision, policy rule
+id, and input/output hashes. Negative tests prove dynamic tool discovery does
+not auto-allow tools, direct agent-to-MCP/host connectivity is blocked,
+MCP-server egress is denied unless explicitly policy-allowed, host-affecting
+MCP capabilities require confirmation, logs/OTel/dashboard include sanitized
+MCP server and Docker artifact observability, and daemon restart
+reconciliation does not orphan or misattribute MCP resources.
+
+---
+
 ## BLOCK 8 — Packaging pipeline (`agent pack`)
 **Builds:** internal/pack — framework detection for Python first (plain
 Python, LangGraph, CrewAI markers; CrewAI support means generic Python
@@ -1527,11 +1597,18 @@ content type, and API version), max invoke payload 1 MiB default with 413 and
 SSE for CLI/dashboard/coding-tool live progress), internal/events bus,
 webhook delivery (HMAC-signed with timestamp/replay window, 3 retries exp
 backoff, dead-letter to audit), and cron triggers from agent.yaml feeding the
-same Invoke path. P1 supports URL webhooks only; local command hooks are
-deferred. Audit events include `api_key_created`, `api_key_revoked`,
-`auth_failed`, `invoke_accepted`, `invoke_rejected`, `idempotency_replayed`,
+same Invoke path. Add P1 local handoff triggers: approved static terminal-run
+events may invoke one named packed target agent through the same Trigger API
+with caller `system:handoff:<source_agent>`, parent run id, correlation id,
+idempotency key, target agent.lock digest, payload mode
+(`empty|summary_ref|artifact_ref|fixed_json`), and target policy/budget/secrets
+applied normally. P1 supports URL webhooks and local handoff triggers only;
+local command hooks and dynamic workflow DAGs are deferred. Audit events
+include `api_key_created`, `api_key_revoked`, `auth_failed`,
+`invoke_accepted`, `invoke_rejected`, `idempotency_replayed`,
 `idempotency_conflict`, `rate_limited`, `webhook_delivered`,
-`webhook_dead_lettered`, `cron_missed`, `cron_skipped_concurrency`,
+`webhook_dead_lettered`, `handoff_invoked`, `handoff_skipped`,
+`handoff_denied`, `cron_missed`, `cron_skipped_concurrency`,
 `cancel_requested`, `cancel_graceful`, and `cancel_forced`.
 **Edge cases:** replayed idempotency key → same run_id, no second
 execution; replay with DIFFERENT payload + same key → 409; burst 1000
@@ -1547,13 +1624,17 @@ only, local timezone by default, explicit timezone optional; cron during
 daemon downtime → missed-run policy explicit (`skip` default, `catchup: 1`
 opt-in); DST nonexistent local time skipped, repeated local time runs once;
 cron fires while prior run active → `concurrency_policy: forbid` default
-skips and audits; CancelRun mid-LLM/MCP-call → audit cancel_requested, ask
-gracefully, wait 30s, force stop if needed, audit final canceled/forced
+skips and audits; handoff cycle/depth guard blocks unbounded loops; handoff
+target missing, stale lock digest, or unapproved config → skipped/denied and
+audited; daemon restart after source completion still preserves pending
+handoff idempotency; CancelRun mid-LLM/MCP-call → audit cancel_requested,
+ask gracefully, wait 30s, force stop if needed, audit final canceled/forced
 outcome.
 **SUCCESS GATE:** `make block9-gate` passes: API conformance suite (generated from proto) green;
 auth/API-key lifecycle + idempotency + rate-limit + SSE reconnect e2e green;
-cron/webhook tests prove same policy/audit path as manual Invoke; cancel
-semantics e2e green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
+cron/webhook/local-handoff tests prove same policy/audit path as manual
+Invoke and that a two-agent handoff runs without Hermes alive; cancel semantics
+e2e green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
 
 ---
 
@@ -1561,15 +1642,18 @@ semantics e2e green; fuzz on REST JSON ingestion (100k execs, 0 crashes).
 **Builds:** in-process OTLP collector → SQLite (WAL) with retention prune
 (default 7d local, configurable) for OTel traces/logs/metrics only; canonical
 audit JSONL is not pruned by dashboard retention and is purged only by an
-explicit future user retention/purge command. Agent/harness/gateway logs are
-ingested as OTel log records for dashboard correlation; daemon operational
-logs remain bounded structured JSON files under `~/.agentpaas/logs/` with
-rotation/redaction and are linked from `agent doctor`/`agent logs` but are not
-the canonical audit source. Dashboard SPA (preact+TS, go:embed, no runtime
-CDN): agent list w/ status+spend-vs-budget, run timeline with a stable event
-schema (LLM calls w/ tokens+cost, MCP calls, egress ALLOWED/DENIED rows in
-red, budget/audit markers), log viewer with truncation/redaction, policy view
-showing both git-file diff and normalized effective policy digest, audit
+explicit future user retention/purge command. Agent/harness/gateway/MCP
+server/MCP manager logs are ingested as OTel log records for dashboard
+correlation; daemon operational logs remain bounded structured JSON files
+under `~/.agentpaas/logs/` with rotation/redaction and are linked from
+`agent doctor`/`agent logs` but are not the canonical audit source. Dashboard
+SPA (preact+TS, go:embed, no runtime CDN): managed resource list for agents,
+gateway sidecars, and MCP servers w/ status+readiness+spend-vs-budget, Docker
+artifact ids/labels/digests where applicable, network membership, health,
+restart count, resource stats, and sanitized logs; run timeline with a stable
+event schema (LLM calls w/ tokens+cost, MCP calls, egress ALLOWED/DENIED rows
+in red, budget/audit markers), log viewer with truncation/redaction, policy
+view showing both git-file diff and normalized effective policy digest, audit
 search explicitly labeled as an indexed view + one-click signed export with
 trust-anchor fingerprint, included sequence range, verification command, and
 result status, live SSE event stream reusing Block 9 event IDs/heartbeat/
@@ -1585,17 +1669,21 @@ migration/WAL checkpoint/vacuum/prune/corruption recovery covered; dashboard
 with daemon restarting → reconnects SSE gracefully using Last-Event-ID; XSS
 attempt via agent-controlled log line / trace attribute → escaped (test with
 planted `<script>` in agent output); sentinel secret in logs/spans/errors is
-redacted everywhere; binary/control characters and huge log/attribute values
-are safely escaped/truncated with pointers to full retained logs where
-allowed; clock-skewed spans → ordered by monotonic seq; security events are
-never sampled out of canonical audit even if OTel retention prunes dashboard
-telemetry; empty states designed (zero agents, zero runs); accessibility and
-keyboard smoke test.
+redacted everywhere, including MCP server logs and Docker inspect-derived
+views; binary/control characters and huge log/attribute values are safely
+escaped/truncated with pointers to full retained logs where allowed;
+agent/gateway/MCP Docker artifact disappearance or stale labels → dashboard
+shows reconciled state instead of stale green; clock-skewed spans → ordered by
+monotonic seq; security events are never sampled out of canonical audit even
+if OTel retention prunes dashboard telemetry; empty states designed (zero
+agents, zero runs, zero MCP servers); accessibility and keyboard smoke test.
 **SUCCESS GATE:** `make block10-gate` passes: Playwright e2e launches agent → watches live run → sees a
-DENIED egress row → export audit → verify export. Lighthouse perf ≥ 90
-local. Planted-XSS and sentinel-secret tests show escaped/redacted output.
-10k-span, SSE reconnect, SQLite lock/corruption recovery, empty-state, policy
-diff, audit export verify, and accessibility smoke tests green.
+DENIED egress row → export audit → verify export. It also shows a managed MCP
+server resource with sanitized logs and Docker artifact metadata. Lighthouse
+perf ≥ 90 local. Planted-XSS and sentinel-secret tests show escaped/redacted
+output for agent, gateway, and MCP logs. 10k-span, SSE reconnect, SQLite
+lock/corruption recovery, empty-state, policy diff, audit export verify, and
+accessibility smoke tests green.
 
 ---
 
@@ -1638,20 +1726,22 @@ The operator contract is the retroactive invariant for Blocks 1-10:
 - Block 8 packaging returns signed `agent.lock`, SBOM, scan, advisory, and
   reproducibility results as JSON.
 - Block 9 Trigger API uses stable caller ids, idempotency, SSE event ids, and
-  cancel outcomes that tools can resume from.
+  cancel outcomes that tools can resume from; local handoff triggers preserve
+  parent/child run correlation and static target lock digests.
 - Block 10 dashboard/OTel exposes the same timeline/audit/policy data as JSON;
   the UI is a view, not the source of truth.
 
 **Safety model:** Agentic tools may automatically repair code, tests,
 `agent.yaml`, dependency declarations, and non-security config inside the
 project root. They may propose `policy.yaml` changes, new egress, credential
-bindings, direct leases, webhook destinations, exposed listeners, retention
-purges, and destructive actions, but P1 requires explicit user/daemon confirm
-before applying them. Tools cannot read secret values, cannot broaden policy
-silently, cannot delete audit, cannot disable red-team gates, and cannot use
-paths outside the invoking project root. Prompt-injected instructions inside
-agent source/logs/traces are untrusted data and must not cause policy changes,
-secret disclosure, audit deletion, or destructive operations.
+bindings, direct leases, local handoff triggers, webhook destinations, exposed
+listeners, retention purges, and destructive actions, but P1 requires explicit
+user/daemon confirm before applying them. Tools cannot read secret values,
+cannot broaden policy silently, cannot create hidden agent chains, cannot
+delete audit, cannot disable red-team gates, and cannot use paths outside the
+invoking project root. Prompt-injected instructions inside agent
+source/logs/traces are untrusted data and must not cause policy changes,
+secret disclosure, hidden handoffs, audit deletion, or destructive operations.
 
 **Agentic workflow contract:** `agent init --from-code --noninteractive`
 creates/reconciles `agent.yaml` and a minimal default-deny `policy.yaml`;
@@ -1663,8 +1753,8 @@ stream refs; `agent status/logs/audit/policy --json` expose structured state;
 returns a patch with risk level, rationale, affected destinations, credential
 ids, and audit evidence; `agent next-action <run_id> --json` returns one of
 `fix_code`, `install_dependency`, `start_docker`, `set_secret`,
-`review_policy_patch`, `increase_budget`, `rerun`, `export_audit`, or
-`ask_user`.
+`review_policy_patch`, `review_handoff`, `increase_budget`, `rerun`,
+`export_audit`, or `ask_user`.
 
 **Edge cases:** malformed/old JSON schema version → clear compatibility error;
 tool asks for path outside project root → refusal with audit event; huge logs
@@ -1674,8 +1764,8 @@ proposed but value is never requested through the agentic tool; prompt
 injection in source/logs says "approve all policy" → ignored and tested;
 network/dashboard unavailable → tool falls back to daemon/control JSON; daemon
 restart mid-loop → idempotency and run refs let Hermes resume; human
-declines policy patch → next action becomes `fix_code` or `ask_user`, not
-policy bypass.
+declines policy patch or handoff trigger → next action becomes `fix_code` or
+`ask_user`, not policy bypass or hidden chaining.
 **SUCCESS GATE:** `make block11-gate` passes with the Hermes golden flow green
 on a clean machine: a scripted Hermes-like client creates a deliberately
 incomplete Python agent, runs `agent init --from-code --noninteractive`,
@@ -1937,7 +2027,8 @@ P2 calendar target after P1 (four additional weeks):
   CI runners, seccomp/AppArmor profiles, deb/rpm packaging.
 - **Week 7:** Customer-facing control-plane foundations: team/fleet model,
   hosted identity/audit abstractions, registry/promotion flow, tenant/project
-  metadata, support bundle.
+  metadata, governed run artifact export for agent-modified files, support
+  bundle.
 - **Week 8:** Commercial observability and opt-in telemetry: explicit consent
   UX, payload contract, privacy docs, fleet health, upgrade/error reporting,
   dashboard views for teams.
