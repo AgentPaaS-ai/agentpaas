@@ -35,6 +35,7 @@ func (r *egressRecordingAudit) last(t *testing.T) audit.AuditRecord {
 func TestEgressPolicyAllowsAllowListedEndpoint(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "api.example.com",
+		Methods:     []string{"GET"},
 		Ports:       []int{443},
 		MCPServerID: "server-a",
 	}}, nil)
@@ -58,6 +59,8 @@ func TestEgressPolicyDeniesNonAllowListedEndpoint(t *testing.T) {
 	appender := &egressRecordingAudit{}
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "api.example.com",
+		Methods:     []string{"GET"},
+		Ports:       []int{443},
 		MCPServerID: "server-a",
 	}}, appender)
 
@@ -92,13 +95,20 @@ func TestEgressPolicyDefaultDeny(t *testing.T) {
 
 func TestEgressPolicyDeniesHostAccess(t *testing.T) {
 	for _, destination := range []string{
+		"http://LOCALHOST:8080",
 		"http://localhost:8080",
+		"http://localhost.localdomain:8080",
+		"http://localhost4:8080",
+		"http://localhost6:8080",
 		"http://127.0.0.1:8080",
+		"http://127.42.0.1:8080",
 		"http://[::1]:8080",
 	} {
 		t.Run(destination, func(t *testing.T) {
 			ep := NewEgressPolicy([]policy.EgressRule{{
 				Domain:      "*",
+				Methods:     []string{"GET"},
+				Ports:       []int{80},
 				MCPServerID: "server-a",
 			}}, nil)
 
@@ -116,6 +126,8 @@ func TestEgressPolicyDeniesHostAccess(t *testing.T) {
 func TestEgressPolicyDeniesDockerSocket(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "*",
+		Methods:     []string{"GET"},
+		Ports:       []int{80},
 		MCPServerID: "server-a",
 	}}, nil)
 
@@ -131,6 +143,8 @@ func TestEgressPolicyDeniesDockerSocket(t *testing.T) {
 func TestEgressPolicyDeniesLinkLocal(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "*",
+		Methods:     []string{"GET"},
+		Ports:       []int{80},
 		MCPServerID: "server-a",
 	}}, nil)
 
@@ -147,6 +161,7 @@ func TestEgressPolicyDeniesMethodMismatch(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "api.example.com",
 		Methods:     []string{"GET"},
+		Ports:       []int{443},
 		MCPServerID: "server-a",
 	}}, nil)
 
@@ -162,6 +177,7 @@ func TestEgressPolicyDeniesMethodMismatch(t *testing.T) {
 func TestEgressPolicyDeniesPortMismatch(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "api.example.com",
+		Methods:     []string{"GET"},
 		Ports:       []int{443},
 		MCPServerID: "server-a",
 	}}, nil)
@@ -179,6 +195,8 @@ func TestEgressPolicyAuditEventIncludesRequiredFields(t *testing.T) {
 	appender := &egressRecordingAudit{}
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "api.example.com",
+		Methods:     []string{"GET"},
+		Ports:       []int{443},
 		Credential:  "cred-a",
 		MCPServerID: "server-a",
 	}}, appender)
@@ -226,6 +244,8 @@ func TestEgressPolicyAuditEventIncludesRequiredFields(t *testing.T) {
 func TestEgressPolicyReturnsCredentialIDForBrokeredEgress(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "api.example.com",
+		Methods:     []string{"GET"},
+		Ports:       []int{443},
 		Credential:  "brokered-token",
 		MCPServerID: "server-a",
 	}}, nil)
@@ -246,11 +266,15 @@ func TestEgressPolicyMultipleRulesFirstMatchWins(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{
 		{
 			Domain:      "api.example.com",
+			Methods:     []string{"GET"},
+			Ports:       []int{443},
 			Credential:  "cred-a",
 			MCPServerID: "server-a",
 		},
 		{
 			Domain:      "api.example.com",
+			Methods:     []string{"GET"},
+			Ports:       []int{443},
 			Credential:  "cred-b",
 			MCPServerID: "server-a",
 		},
@@ -274,6 +298,7 @@ func TestEgressPolicyMultipleRulesFirstMatchWins(t *testing.T) {
 func TestEgressPolicyConcurrentCheckEgress(t *testing.T) {
 	ep := NewEgressPolicy([]policy.EgressRule{{
 		Domain:      "api.example.com",
+		Methods:     []string{"GET"},
 		Ports:       []int{443},
 		MCPServerID: "server-a",
 	}}, nil)

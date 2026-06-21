@@ -2,6 +2,7 @@ package mcpmanager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -29,8 +30,8 @@ type EgressPolicy struct {
 
 type egressRule struct {
 	Destination  string   // domain or host:port pattern
-	Methods      []string // allowed HTTP methods (empty = all)
-	Port         int      // allowed port (0 = any)
+	Methods      []string // allowed HTTP methods (empty = none)
+	Port         int      // allowed port (0 = none)
 	CredentialID string   // brokered credential ID (empty = no cred)
 	PolicyRuleID string   // policy rule identifier for auditing
 	CIDR         string   // optional IP network
@@ -76,6 +77,9 @@ func NewEgressPolicy(rules []policy.EgressRule, appender audit.AuditAppender) *E
 // CheckEgress validates whether an MCP server may make an outbound request to
 // the given destination with the given method.
 func (ep *EgressPolicy) CheckEgress(ctx context.Context, serverID, destination, method string) (bool, string, string, error) {
+	if ep == nil {
+		return false, "", "", errors.New("egress policy is not configured (default-deny)")
+	}
 	if err := ctx.Err(); err != nil {
 		ep.auditEgressDecision(serverID, destination, method, "", "", "denied", err.Error())
 		return false, "", "", err
@@ -139,6 +143,15 @@ func (ep *EgressPolicy) CheckEgress(ctx context.Context, serverID, destination, 
 
 	privateHost := isPrivateHost(host)
 	for _, rule := range rules {
+		if strings.TrimSpace(rule.Destination) == "*" {
+			continue
+		}
+		if rule.Port == 0 {
+			continue
+		}
+		if len(rule.Methods) == 0 {
+			continue
+		}
 		if privateHost && !ruleExplicitlyAllowsHost(rule, host) {
 			continue
 		}
@@ -148,7 +161,7 @@ func (ep *EgressPolicy) CheckEgress(ctx context.Context, serverID, destination, 
 		if !ruleAllowsMethod(rule, normalizedMethod) {
 			continue
 		}
-		if rule.Port != 0 && rule.Port != port {
+		if rule.Port != port {
 			continue
 		}
 		ep.auditEgressDecision(serverID, destination, normalizedMethod, rule.CredentialID, rule.PolicyRuleID, "allowed", "")
@@ -237,7 +250,7 @@ func destinationPort(parsed *url.URL) (int, error) {
 
 func ruleAllowsMethod(rule egressRule, method string) bool {
 	if len(rule.Methods) == 0 {
-		return true
+		return false
 	}
 	for _, allowed := range rule.Methods {
 		if allowed == method {
@@ -261,7 +274,7 @@ func domainPatternMatches(pattern, host string, port int) bool {
 	normalizedPattern := strings.ToLower(strings.TrimSpace(pattern))
 	normalizedHost := strings.ToLower(strings.TrimSuffix(host, "."))
 	if normalizedPattern == "*" {
-		return true
+		return false
 	}
 	if patternHost, patternPort, ok := splitPatternHostPort(normalizedPattern); ok {
 		return patternHost == normalizedHost && patternPort == port
@@ -299,15 +312,29 @@ func ruleExplicitlyAllowsHost(rule egressRule, host string) bool {
 }
 
 func isDeniedHost(host string) bool {
-	normalizedHost := strings.ToLower(strings.TrimSuffix(host, "."))
-	if normalizedHost == "localhost" {
+	return isLocalhost(host)
+}
+
+func isLocalhost(host string) bool {
+	normalizedHost := strings.ToLower(strings.Trim(strings.TrimSuffix(host, "."), "[]"))
+	switch normalizedHost {
+	case "localhost", "localhost.localdomain", "localhost4", "localhost6":
 		return true
 	}
-	addr, ok := parseHostAddr(normalizedHost)
-	if !ok {
+	if addr, ok := parseHostAddr(normalizedHost); ok {
+		return addr.Unmap().IsLoopback()
+	}
+	ips, err := net.LookupIP(normalizedHost)
+	if err != nil {
 		return false
 	}
-	return addr.IsLoopback()
+	for _, ip := range ips {
+		addr, ok := netip.AddrFromSlice(ip)
+		if ok && addr.Unmap().IsLoopback() {
+			return true
+		}
+	}
+	return false
 }
 
 func isLinkLocalHost(host string) bool {
