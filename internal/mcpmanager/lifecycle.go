@@ -32,6 +32,9 @@ type Lifecycle struct {
 }
 
 type stdioState struct {
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	stdout   io.ReadCloser
 	done     chan struct{}
 	exitCode int
 	exitTime time.Time
@@ -92,15 +95,26 @@ func (lc *Lifecycle) Start(ctx context.Context, serverID, agentID, runID string)
 func (lc *Lifecycle) startStdio(ctx context.Context, serverID string, server policy.MCPServer) error {
 	cmd := exec.CommandContext(ctx, server.Command, server.Args...)
 	cmd.Env = lifecycleEnv(server.Env)
-	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("create stdin pipe for stdio MCP server %q: %w", serverID, err)
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("create stdout pipe for stdio MCP server %q: %w", serverID, err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start stdio MCP server %q: %w", serverID, err)
 	}
 
 	state := &stdioState{
+		cmd:      cmd,
+		stdin:    stdinPipe,
+		stdout:   stdoutPipe,
 		done:     make(chan struct{}),
 		exitCode: -1,
 	}
@@ -113,6 +127,33 @@ func (lc *Lifecycle) startStdio(ctx context.Context, serverID string, server pol
 
 	go lc.waitForStdio(serverID, cmd, state)
 	return nil
+}
+
+// StdioPipes returns the stdin writer and stdout reader for a running stdio
+// MCP server.
+func (lc *Lifecycle) StdioPipes(serverID string) (io.Writer, io.Reader, error) {
+	lc.mu.RLock()
+	state, ok := lc.procState[serverID]
+	if !ok {
+		lc.mu.RUnlock()
+		return nil, nil, fmt.Errorf("stdio server %q not found", serverID)
+	}
+	select {
+	case <-state.done:
+		lc.mu.RUnlock()
+		if crash := lc.CrashContext(serverID); crash != nil {
+			return nil, nil, fmt.Errorf("%w: server_id=%s transport=%s exit_code=%d error=%s", ErrServerCrashed, crash.ServerID, crash.Transport, crash.ExitCode, crash.Error)
+		}
+		return nil, nil, fmt.Errorf("stdio server %q has exited", serverID)
+	default:
+	}
+	stdin := state.stdin
+	stdout := state.stdout
+	lc.mu.RUnlock()
+	if stdin == nil || stdout == nil || state.cmd == nil {
+		return nil, nil, fmt.Errorf("stdio server %q pipes are unavailable", serverID)
+	}
+	return stdin, stdout, nil
 }
 
 func (lc *Lifecycle) waitForStdio(serverID string, cmd *exec.Cmd, state *stdioState) {
