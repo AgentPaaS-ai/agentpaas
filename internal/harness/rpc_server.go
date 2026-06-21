@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/mcpmanager"
 )
 
 type harnessRPCServer struct {
@@ -27,6 +28,7 @@ type harnessRPCServer struct {
 	mu     sync.RWMutex
 	invoke *rpcInvokeState
 	audit  AuditAppender
+	router *mcpmanager.Router
 }
 
 type rpcInvokeState struct {
@@ -184,6 +186,12 @@ func (s *harnessRPCServer) currentInvoke() *rpcInvokeState {
 	return s.invoke
 }
 
+func (s *harnessRPCServer) SetRouter(router *mcpmanager.Router) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.router = router
+}
+
 func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcResponse {
 	prompt := stringParam(req.Params, "prompt")
 	tokens := int64(len(strings.Fields(prompt)))
@@ -312,6 +320,28 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 	tool := stringParam(req.Params, "tool")
 	input := req.Params["input"]
 	inputHash := hashJSONValue(input)
+	s.mu.RLock()
+	router := s.router
+	s.mu.RUnlock()
+	if router != nil {
+		result, err := router.CallTool(context.Background(), serverID, tool, input, "harness", "test-run")
+		if err != nil {
+			s.auditMCPDenied(serverID, tool, err.Error())
+			state.setFailureEvidence(&UpstreamEvidence{
+				Availability: AvailabilityForbidden,
+				TimingMS:     elapsedMS(start),
+				BodyHash:     inputHash,
+				BodyRedacted: "[REDACTED:body]",
+			})
+			return rpcError(req.ID, err.Error(), "mcp_error")
+		}
+		s.auditMCPCall(serverID, tool, inputHash, hashJSONValue(result), elapsedMS(start))
+		return rpcResponse{
+			ID:     req.ID,
+			OK:     true,
+			Result: result,
+		}
+	}
 	if !state.mcpAllowed[serverID][tool] {
 		s.auditMCPDenied(serverID, tool, "undeclared")
 		state.setFailureEvidence(&UpstreamEvidence{
