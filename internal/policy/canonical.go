@@ -17,13 +17,13 @@ import (
 // domains are lowercased and punycode-normalized, and duplicate entries are
 // removed with warnings.
 type CanonicalPolicy struct {
-	Version     string                  `json:"version"`
-	Agent       CanonicalAgentConfig    `json:"agent"`
-	Egress      []CanonicalEgressRule   `json:"egress,omitempty"`
-	Credentials []CanonicalCredential   `json:"credentials,omitempty"`
-	MCPServers  []CanonicalMCPServer    `json:"mcp_servers,omitempty"`
-	Hooks       []CanonicalHook         `json:"hooks,omitempty"`
-	Ingress     []CanonicalIngressRule  `json:"ingress,omitempty"`
+	Version     string                 `json:"version"`
+	Agent       CanonicalAgentConfig   `json:"agent"`
+	Egress      []CanonicalEgressRule  `json:"egress,omitempty"`
+	Credentials []CanonicalCredential  `json:"credentials,omitempty"`
+	MCPServers  []CanonicalMCPServer   `json:"mcp_servers,omitempty"`
+	Hooks       []CanonicalHook        `json:"hooks,omitempty"`
+	Ingress     []CanonicalIngressRule `json:"ingress,omitempty"`
 }
 
 // CanonicalAgentConfig is the canonical form of AgentConfig.
@@ -54,9 +54,12 @@ type CanonicalCredential struct {
 
 // CanonicalMCPServer is the canonical form of MCPServer.
 type CanonicalMCPServer struct {
-	Name    string            `json:"name"`
-	URL     string            `json:"url,omitempty"`
-	Headers map[string]string `json:"headers,omitempty"`
+	Name         string            `json:"name"`
+	URL          string            `json:"url,omitempty"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	Transport    string            `json:"transport,omitempty"`
+	AllowedTools []string          `json:"allowed_tools,omitempty"`
+	AuthMode     string            `json:"auth_mode,omitempty"`
 }
 
 // CanonicalHook is the canonical form of Hook.
@@ -300,9 +303,12 @@ func canonicalizeMCPServers(servers []MCPServer, warnings *[]string) []Canonical
 		}
 
 		cr := CanonicalMCPServer{
-			Name:    m.Name,
-			URL:     stripURLUserinfo(m.URL),
-			Headers: headers,
+			Name:         m.Name,
+			URL:          stripURLUserinfo(m.URL),
+			Headers:      headers,
+			Transport:    m.Transport,
+			AllowedTools: append([]string(nil), m.AllowedTools...),
+			AuthMode:     m.AuthMode,
 		}
 		result = append(result, cr)
 	}

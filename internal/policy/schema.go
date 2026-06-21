@@ -45,15 +45,17 @@ type Credential struct {
 
 // MCPServer defines an MCP (Model Context Protocol) server endpoint.
 type MCPServer struct {
-	Name         string            `yaml:"name"`
-	URL          string            `yaml:"url"`
-	Headers      map[string]string `yaml:"headers"`
-	Transport    string            `yaml:"transport"`
-	Command      string            `yaml:"command"`
-	Args         []string          `yaml:"args"`
-	Endpoint     string            `yaml:"endpoint"`
-	AllowedTools []string          `yaml:"allowed_tools"`
-	Env          map[string]string `yaml:"env"`
+	Name          string            `yaml:"name"`
+	URL           string            `yaml:"url"`
+	Headers       map[string]string `yaml:"headers"`
+	Transport     string            `yaml:"transport"`
+	Command       string            `yaml:"command"`
+	Args          []string          `yaml:"args"`
+	Endpoint      string            `yaml:"endpoint"`
+	AllowedTools  []string          `yaml:"allowed_tools"`
+	Env           map[string]string `yaml:"env"`
+	AuthMode      string            `yaml:"auth_mode"`
+	EgressBinding string            `yaml:"egress_binding"`
 }
 
 // Hook defines an outbound webhook destination.
