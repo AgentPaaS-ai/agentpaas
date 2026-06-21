@@ -69,6 +69,33 @@ func TestDirectLeaseRequiresFileLeasePolicyReason(t *testing.T) {
 	}
 }
 
+func TestDirectLeaseRequiresNonEmptyReason(t *testing.T) {
+	ctx := context.Background()
+	p := newDirectLeasePolicy("file_lease")
+	p.Credentials[0].Reason = ""
+	store := NewFakeKeyStore()
+	if err := store.Set(ctx, "api-token", []byte(leaseSecretValue)); err != nil {
+		t.Fatalf("Set secret: %v", err)
+	}
+	lease, err := NewDirectLease(DirectLeaseConfig{
+		Store:      store,
+		Policy:     p,
+		ActiveRuns: []string{"run-active"},
+		LeaseDir:   t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("NewDirectLease: %v", err)
+	}
+
+	_, err = lease.Lease(ctx, "run-active", "api-token", "egress[0]")
+	if err == nil {
+		t.Fatal("Lease succeeded without a policy reason, want error")
+	}
+	if !strings.Contains(err.Error(), "reason") {
+		t.Fatalf("Lease error = %v, want reason denial", err)
+	}
+}
+
 func TestReadLeaseReadsFileAndAuditsSecretRead(t *testing.T) {
 	ctx := context.Background()
 	flow := newDirectLeaseFlow(t, "file_lease")
