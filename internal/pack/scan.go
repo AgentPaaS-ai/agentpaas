@@ -150,6 +150,9 @@ func runGitleaks(ctx context.Context, dir string) ([]SecretFinding, error) {
 	if scanCtx.Err() != nil {
 		return nil, fmt.Errorf("gitleaks scan failed: %w", scanCtx.Err())
 	}
+	if err != nil && len(strings.TrimSpace(string(output))) == 0 {
+		return nil, fmt.Errorf("gitleaks scan failed: %w", err)
+	}
 
 	findings, parseErr := parseGitleaksOutput(output, dir)
 	if parseErr == nil {
