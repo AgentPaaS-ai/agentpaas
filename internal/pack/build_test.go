@@ -447,7 +447,7 @@ func inspectImage(t *testing.T, tag string) image.InspectResponse {
 		t.Fatalf("Docker client unavailable: %v", err)
 	}
 	defer func() { _ = cli.Close() }()
-	inspect, _, err := cli.ImageInspectWithRaw(ctx, tag)
+	inspect, err := cli.ImageInspect(ctx, tag)
 	if err != nil {
 		t.Fatalf("ImageInspectWithRaw(%q) error = %v", tag, err)
 	}

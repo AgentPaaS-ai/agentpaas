@@ -17,9 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/client"
 )
 
@@ -99,7 +97,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	}
 	defer func() { _ = cli.Close() }()
 
-	buildResp, err := cli.ImageBuild(ctx, buildCtx, types.ImageBuildOptions{
+	buildResp, err := cli.ImageBuild(ctx, buildCtx, build.ImageBuildOptions{
 		Tags:       []string{cfg.ImageTag},
 		Remove:     true,
 		NoCache:    true,
@@ -121,7 +119,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		return nil, fmt.Errorf("drain build output: %w", err)
 	}
 
-	inspect, _, err := cli.ImageInspectWithRaw(ctx, cfg.ImageTag)
+	inspect, err := cli.ImageInspect(ctx, cfg.ImageTag)
 	if err != nil {
 		return nil, fmt.Errorf("inspect built image %q: %w", cfg.ImageTag, err)
 	}
@@ -603,6 +601,3 @@ func unwrappedErr(err error) error {
 		err = unwrapped
 	}
 }
-
-var _ = container.Config{}
-var _ = image.InspectResponse{}
