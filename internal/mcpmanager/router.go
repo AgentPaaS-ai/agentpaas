@@ -60,17 +60,21 @@ func (r *Router) CallTool(ctx context.Context, serverID, tool string, input any,
 	if r == nil || r.manager == nil {
 		return nil, errors.New("mcp router manager is nil")
 	}
+	start := time.Now()
 	if !r.manager.IsToolAllowed(serverID, tool) {
-		r.manager.DenyToolCall(r.audit, serverID, tool, agentID, runID, "undeclared")
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "mcp server/tool not allowed", "undeclared", "", hashRouterJSON(input), time.Since(start).Milliseconds())
 		return nil, errors.New("mcp server/tool not allowed")
+	}
+	if r.manager.RequiresConfirmation(serverID, tool) {
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "host-affecting tool requires confirmation", "host_affecting_unconfirmed", "", hashRouterJSON(input), time.Since(start).Milliseconds())
+		return nil, errors.New("host-affecting tool requires confirmation: call manager.ConfirmTool first")
 	}
 	server, ok := r.server(serverID)
 	if !ok {
-		r.manager.DenyToolCall(r.audit, serverID, tool, agentID, runID, "undeclared")
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "mcp server/tool not allowed", "undeclared", "", hashRouterJSON(input), time.Since(start).Milliseconds())
 		return nil, errors.New("mcp server/tool not allowed")
 	}
 
-	start := time.Now()
 	var (
 		result any
 		err    error
@@ -86,24 +90,8 @@ func (r *Router) CallTool(ctx context.Context, serverID, tool string, input any,
 	if err != nil {
 		return nil, err
 	}
-	if r.audit != nil {
-		_ = r.audit.Append(audit.AuditRecord{
-			Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
-			EventType:      "mcp_call",
-			DeploymentMode: "local",
-			Actor:          agentID,
-			Payload: map[string]interface{}{
-				"agent_id":    agentID,
-				"input_hash":  hashRouterJSON(input),
-				"output_hash": hashRouterJSON(result),
-				"run_id":      runID,
-				"server_id":   serverID,
-				"timing_ms":   time.Since(start).Milliseconds(),
-				"tool":        tool,
-			},
-		})
-	}
-	return result, nil
+	AuditToolCall(r.audit, serverID, tool, agentID, runID, "allowed", "", "", hashRouterJSON(input), RedactToolOutputHash(result), time.Since(start).Milliseconds())
+	return redactToolOutputValue(result), nil
 }
 
 func (r *Router) server(serverID string) (policy.MCPServer, bool) {

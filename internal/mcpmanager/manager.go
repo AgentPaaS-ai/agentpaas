@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/audit"
 	"github.com/parvezsyed/agentpaas/internal/policy"
@@ -45,16 +44,18 @@ type Resource struct {
 
 // Manager manages declared MCP server resources.
 type Manager struct {
-	mu        sync.RWMutex
-	resources map[string]*Resource
-	servers   map[string]policy.MCPServer
+	mu             sync.RWMutex
+	resources      map[string]*Resource
+	servers        map[string]policy.MCPServer
+	confirmedTools map[string]bool // serverID+":"+tool -> confirmed
 }
 
 // NewManager creates a new MCP manager.
 func NewManager() *Manager {
 	return &Manager{
-		resources: make(map[string]*Resource),
-		servers:   make(map[string]policy.MCPServer),
+		resources:      make(map[string]*Resource),
+		servers:        make(map[string]policy.MCPServer),
+		confirmedTools: make(map[string]bool),
 	}
 }
 
@@ -126,24 +127,31 @@ func (m *Manager) IsToolAllowed(serverID, tool string) bool {
 	return false
 }
 
+// ConfirmTool marks a host-affecting tool as confirmed for use.
+// This is the confirmation protocol: host-affecting tools cannot be
+// called until confirmed.
+func (m *Manager) ConfirmTool(serverID, tool string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.confirmedTools[serverID+":"+tool] = true
+}
+
+// IsToolConfirmed returns true if a host-affecting tool has been confirmed.
+func (m *Manager) IsToolConfirmed(serverID, tool string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.confirmedTools[serverID+":"+tool]
+}
+
+// RequiresConfirmation returns true if a tool is host-affecting and
+// has not yet been confirmed.
+func (m *Manager) RequiresConfirmation(serverID, tool string) bool {
+	return IsHostAffecting(tool) && !m.IsToolConfirmed(serverID, tool)
+}
+
 // DenyToolCall records a denied tool call and emits an audit event.
 func (m *Manager) DenyToolCall(appender audit.AuditAppender, serverID, tool, agentID, runID, policyRuleID string) {
-	if appender == nil {
-		return
-	}
-	_ = appender.Append(audit.AuditRecord{
-		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
-		EventType:      audit.EventTypeMCPToolDenied,
-		DeploymentMode: "local",
-		Actor:          agentID,
-		Payload: map[string]interface{}{
-			"agent_id":       agentID,
-			"policy_rule_id": policyRuleID,
-			"run_id":         runID,
-			"server_id":      serverID,
-			"tool":           tool,
-		},
-	})
+	AuditToolDenied(appender, serverID, tool, agentID, runID, policyRuleID, policyRuleID, "", "", int64(0))
 }
 
 // Status returns all managed MCP resources.
