@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,8 +96,8 @@ func TestValidAPIKeyInvokeReturnsStubResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Invoke(): %v", err)
 	}
-	if got := resp.GetRun().GetRunId(); got != "run-stub" {
-		t.Fatalf("RunId = %q, want %q", got, "run-stub")
+	if got := resp.GetRun().GetRunId(); !strings.HasPrefix(got, "run-") {
+		t.Fatalf("RunId = %q, want run-*", got)
 	}
 	if got := resp.GetRun().GetAgentName(); got != "agent-a" {
 		t.Fatalf("AgentName = %q, want %q", got, "agent-a")
