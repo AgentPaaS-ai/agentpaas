@@ -511,7 +511,12 @@ func writeTempKey(keyPEM []byte) (string, func(), error) {
 		cleanup()
 		return "", nil, fmt.Errorf("chmod temp key: %w", err)
 	}
-	return path, cleanup, nil
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("resolve temp key path: %w", err)
+	}
+	return realPath, cleanup, nil
 }
 
 func verifyRequiredDigest(name string, value string) error {
@@ -581,7 +586,12 @@ func writeTempPublicKey(keyPEM []byte) (string, func(), error) {
 		cleanup()
 		return "", nil, fmt.Errorf("close temp public key: %w", err)
 	}
-	return path, cleanup, nil
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("resolve temp public key path: %w", err)
+	}
+	return realPath, cleanup, nil
 }
 
 func validateSecurePath(path string, mustExist bool) error {
