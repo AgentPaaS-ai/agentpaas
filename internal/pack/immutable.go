@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -90,15 +91,20 @@ func VerifyDeployedIntegrity(homeDir, agentName string, auditAppender audit.Audi
 	}
 
 	deployedDir := DeployedAgentPath(homeDir, agentName)
-	deployed, err := LoadDeployedAgent(homeDir, agentName)
-	if err != nil {
+	if err := verifyDeployedPath(auditAppender, agentName, "deployed directory", deployedDir); err != nil {
 		return err
 	}
-	lock, err := readDeployedLock(deployedDir)
-	if err != nil {
+
+	lockPath := filepath.Join(deployedDir, deployedLockName)
+	if err := verifyDeployedPath(auditAppender, agentName, deployedLockName, lockPath); err != nil {
 		return err
 	}
-	imageDigest, err := readDeployedTextFile(deployedDir, deployedImageDigestName)
+	imageDigestPath := filepath.Join(deployedDir, deployedImageDigestName)
+	if err := verifyDeployedPath(auditAppender, agentName, deployedImageDigestName, imageDigestPath); err != nil {
+		return err
+	}
+
+	lockContent, err := readDeployedFile(deployedDir, deployedLockName)
 	if err != nil {
 		return err
 	}
@@ -106,28 +112,47 @@ func VerifyDeployedIntegrity(homeDir, agentName string, auditAppender audit.Audi
 	if err != nil {
 		return err
 	}
-	lockHash, err := hashDeployedFile(filepath.Join(deployedDir, deployedLockName))
+	lockHash := sha256.Sum256(lockContent)
+	actualLockHash := hex.EncodeToString(lockHash[:])
+	if actualLockHash != storedLockHash {
+		return immutableViolation(auditAppender, agentName, "agent.lock_hash", storedLockHash, actualLockHash)
+	}
+
+	var lock AgentLock
+	if err := json.Unmarshal(lockContent, &lock); err != nil {
+		return fmt.Errorf("parse deployed agent.lock: %w", err)
+	}
+	if err := VerifyLockfileSignature(&lock); err != nil {
+		return immutableViolation(auditAppender, agentName, "agent.lock_signature", "valid", err.Error())
+	}
+
+	imageDigest, err := readDeployedTextFile(deployedDir, deployedImageDigestName)
 	if err != nil {
 		return err
 	}
-
-	if lockHash != storedLockHash {
-		return immutableViolation(auditAppender, agentName, "agent.lock_hash", storedLockHash, lockHash)
+	sourceDigest, err := readDeployedTextFile(deployedDir, deployedSourceDigestName)
+	if err != nil {
+		return err
 	}
-	if err := VerifyLockfileSignature(lock); err != nil {
-		return immutableViolation(auditAppender, agentName, "agent.lock_signature", "valid", err.Error())
+	deployedAtText, err := readDeployedTextFile(deployedDir, deployedAtName)
+	if err != nil {
+		return err
 	}
-	if lock.LockfileSignature != deployed.LockfileSig {
-		return immutableViolation(auditAppender, agentName, "lockfile_signature", deployed.LockfileSig, lock.LockfileSignature)
+	if _, err := time.Parse(time.RFC3339Nano, deployedAtText); err != nil {
+		return fmt.Errorf("parse deployed_at: %w", err)
 	}
-	if lock.ImageDigest != deployed.ImageDigest {
-		return immutableViolation(auditAppender, agentName, "agent.lock image_digest", deployed.ImageDigest, lock.ImageDigest)
+	latestLockContent, err := readDeployedFile(deployedDir, deployedLockName)
+	if err != nil {
+		return err
 	}
-	if lock.BuildInputDigest != deployed.SourceDigest {
-		return immutableViolation(auditAppender, agentName, "agent.lock build_input_digest", deployed.SourceDigest, lock.BuildInputDigest)
+	if !bytes.Equal(lockContent, latestLockContent) {
+		return immutableViolation(auditAppender, agentName, "agent.lock", "stable during verification", "changed during verification")
 	}
-	if imageDigest != deployed.ImageDigest {
-		return immutableViolation(auditAppender, agentName, "image.digest", deployed.ImageDigest, imageDigest)
+	if imageDigest != lock.ImageDigest {
+		return immutableViolation(auditAppender, agentName, "image.digest", lock.ImageDigest, imageDigest)
+	}
+	if sourceDigest != lock.BuildInputDigest {
+		return immutableViolation(auditAppender, agentName, "source_digest", lock.BuildInputDigest, sourceDigest)
 	}
 
 	return nil
@@ -146,7 +171,8 @@ func RecordDeployment(homeDir, agentName string, lock *AgentLock) error {
 	}
 
 	deployedDir := DeployedAgentPath(homeDir, agentName)
-	if err := ensureDeployedDir(homeDir, agentName); err != nil {
+	agentsDir, err := ensureDeployedParentDir(homeDir)
+	if err != nil {
 		return err
 	}
 
@@ -156,21 +182,36 @@ func RecordDeployment(homeDir, agentName string, lock *AgentLock) error {
 	}
 	lockHash := sha256.Sum256(lockContent)
 
-	if err := atomicWriteDeployedFile(filepath.Join(deployedDir, deployedLockName), lockContent, 0o600); err != nil {
+	stagingDir, err := os.MkdirTemp(agentsDir, "."+agentName+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create deployment staging directory: %w", err)
+	}
+	stagingActive := true
+	defer func() {
+		if stagingActive {
+			_ = os.RemoveAll(stagingDir)
+		}
+	}()
+	if err := rejectSymlinkPath(stagingDir, false); err != nil {
 		return err
 	}
-	if err := atomicWriteDeployedFile(filepath.Join(deployedDir, deployedImageDigestName), []byte(lock.ImageDigest+"\n"), 0o600); err != nil {
+
+	files := map[string][]byte{
+		deployedLockName:         lockContent,
+		deployedImageDigestName:  []byte(lock.ImageDigest + "\n"),
+		deployedAtName:           []byte(time.Now().UTC().Format(time.RFC3339Nano) + "\n"),
+		deployedSourceDigestName: []byte(lock.BuildInputDigest + "\n"),
+		deployedLockHashName:     []byte(hex.EncodeToString(lockHash[:]) + "\n"),
+	}
+	for name, data := range files {
+		if err := writeStagedDeployedFile(stagingDir, name, data, 0o600); err != nil {
+			return err
+		}
+	}
+	if err := replaceDeployedDir(stagingDir, deployedDir); err != nil {
 		return err
 	}
-	if err := atomicWriteDeployedFile(filepath.Join(deployedDir, deployedAtName), []byte(time.Now().UTC().Format(time.RFC3339Nano)+"\n"), 0o600); err != nil {
-		return err
-	}
-	if err := atomicWriteDeployedFile(filepath.Join(deployedDir, deployedSourceDigestName), []byte(lock.BuildInputDigest+"\n"), 0o600); err != nil {
-		return err
-	}
-	if err := atomicWriteDeployedFile(filepath.Join(deployedDir, deployedLockHashName), []byte(hex.EncodeToString(lockHash[:])+"\n"), 0o600); err != nil {
-		return err
-	}
+	stagingActive = false
 
 	return nil
 }
@@ -216,22 +257,21 @@ func validateDeployedAgentInput(homeDir, agentName string) error {
 	return nil
 }
 
-func ensureDeployedDir(homeDir, agentName string) error {
+func ensureDeployedParentDir(homeDir string) (string, error) {
 	stateDir := filepath.Join(homeDir, "state")
 	agentsDir := filepath.Join(stateDir, "agents")
-	deployedDir := filepath.Join(agentsDir, agentName)
-	for _, dir := range []string{stateDir, agentsDir, deployedDir} {
+	for _, dir := range []string{stateDir, agentsDir} {
 		if err := validateSecurePath(dir, false); err != nil {
-			return err
+			return "", err
 		}
 		if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("create %s: %w", dir, err)
+			return "", fmt.Errorf("create %s: %w", dir, err)
 		}
 		if err := rejectSymlinkPath(dir, false); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return nil
+	return agentsDir, nil
 }
 
 func readDeployedLock(deployedDir string) (*AgentLock, error) {
@@ -250,76 +290,101 @@ func readDeployedLock(deployedDir string) (*AgentLock, error) {
 	return &lock, nil
 }
 
-func readDeployedTextFile(deployedDir, name string) (string, error) {
+func readDeployedFile(deployedDir, name string) ([]byte, error) {
 	path := filepath.Join(deployedDir, name)
 	if err := rejectSymlinkPath(path, false); err != nil {
-		return "", err
+		return nil, err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", fmt.Errorf("read deployed %s: %w", name, err)
+		return nil, fmt.Errorf("read deployed %s: %w", name, err)
+	}
+	return data, nil
+}
+
+func readDeployedTextFile(deployedDir, name string) (string, error) {
+	data, err := readDeployedFile(deployedDir, name)
+	if err != nil {
+		return "", err
 	}
 	return strings.TrimSpace(string(data)), nil
 }
 
-func hashDeployedFile(path string) (string, error) {
+func verifyDeployedPath(auditAppender audit.AuditAppender, agentName, field, path string) error {
 	if err := rejectSymlinkPath(path, false); err != nil {
-		return "", err
+		if strings.Contains(err.Error(), "symlink") {
+			return immutableViolation(auditAppender, agentName, field, "not a symlink", err.Error())
+		}
+		return err
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read deployed file for hash: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
+	return nil
 }
 
-func atomicWriteDeployedFile(path string, data []byte, perm os.FileMode) error {
+func writeStagedDeployedFile(dir, name string, data []byte, perm os.FileMode) error {
+	path := filepath.Join(dir, name)
 	if err := validateSecurePath(path, false); err != nil {
 		return err
 	}
-	dir := filepath.Dir(path)
 	if err := rejectSymlinkPath(dir, false); err != nil {
 		return err
 	}
-
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return fmt.Errorf("create temp file for %s: %w", path, err)
+	if err := os.WriteFile(path, data, perm); err != nil {
+		return fmt.Errorf("write staged deployed %s: %w", name, err)
 	}
-	tmpPath := tmp.Name()
-	removeTemp := true
+	return nil
+}
+
+func replaceDeployedDir(stagingDir, deployedDir string) error {
+	if err := validateSecurePath(deployedDir, false); err != nil {
+		return err
+	}
+	if err := rejectSymlinkPath(stagingDir, false); err != nil {
+		return err
+	}
+
+	info, err := os.Lstat(deployedDir)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := os.Rename(stagingDir, deployedDir); err != nil {
+			return fmt.Errorf("rename staged deployment into place: %w", err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect deployed directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("deployed path is not a directory: %s", deployedDir)
+	}
+	if err := rejectSymlinkPath(deployedDir, false); err != nil {
+		return err
+	}
+
+	backupDir, err := os.MkdirTemp(filepath.Dir(deployedDir), "."+filepath.Base(deployedDir)+".previous-*")
+	if err != nil {
+		return fmt.Errorf("create deployment backup directory: %w", err)
+	}
+	if err := os.Remove(backupDir); err != nil {
+		return fmt.Errorf("remove empty deployment backup directory: %w", err)
+	}
+	backupActive := false
+	if err := os.Rename(deployedDir, backupDir); err != nil {
+		return fmt.Errorf("move existing deployment aside: %w", err)
+	}
+	backupActive = true
 	defer func() {
-		if removeTemp {
-			_ = os.Remove(tmpPath)
+		if backupActive {
+			_ = os.RemoveAll(backupDir)
 		}
 	}()
 
-	if err := rejectSymlinkPath(tmpPath, false); err != nil {
-		if closeErr := tmp.Close(); closeErr != nil {
-			return fmt.Errorf("close temp file after symlink rejection: %w", closeErr)
+	if err := os.Rename(stagingDir, deployedDir); err != nil {
+		restoreErr := os.Rename(backupDir, deployedDir)
+		backupActive = restoreErr != nil
+		if restoreErr != nil {
+			return fmt.Errorf("rename staged deployment into place: %w; restore previous deployment: %w", err, restoreErr)
 		}
-		return err
+		return fmt.Errorf("rename staged deployment into place: %w", err)
 	}
-	if _, err := tmp.Write(data); err != nil {
-		if closeErr := tmp.Close(); closeErr != nil {
-			return fmt.Errorf("close temp file after write failure: %w", closeErr)
-		}
-		return fmt.Errorf("write temp file for %s: %w", path, err)
-	}
-	if err := tmp.Chmod(perm); err != nil {
-		if closeErr := tmp.Close(); closeErr != nil {
-			return fmt.Errorf("close temp file after chmod failure: %w", closeErr)
-		}
-		return fmt.Errorf("chmod temp file for %s: %w", path, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file for %s: %w", path, err)
-	}
-	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("rename temp file to %s: %w", path, err)
-	}
-	removeTemp = false
 	return nil
 }
 
