@@ -131,7 +131,7 @@ func TestComputeBuildInputDigestEmptyDir(t *testing.T) {
 
 func TestDefaultBaseImage(t *testing.T) {
 	for _, runtimeType := range []RuntimeType{RuntimePython, RuntimeLangGraph, RuntimeCrewAI} {
-		if got := defaultBaseImage(runtimeType); got != "gcr.io/distroless/python3-debian12" {
+		if got := defaultBaseImage(runtimeType); got != "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f" {
 			t.Fatalf("defaultBaseImage(%q) = %q", runtimeType, got)
 		}
 	}
@@ -236,6 +236,45 @@ func TestCreateBuildContextRejectsSymlink(t *testing.T) {
 	_, err := CreateBuildContext(projectDir, nil)
 	if err == nil || !strings.Contains(err.Error(), "symlinks are not allowed") {
 		t.Fatalf("CreateBuildContext() error = %v, want symlink rejection", err)
+	}
+}
+
+func TestCreateDockerBuildContextUsesDeterministicRootfs(t *testing.T) {
+	projectDir := minimalDockerProject(t)
+	harnessPath := writeHarness(t)
+	cfg := dockerBuildConfig(t, projectDir, harnessPath, "agentpaas/build-test-context:latest")
+	deps := []string{"idna@3.7"}
+
+	ctx1 := readDockerBuildContext(t, cfg, deps)
+	ctx2 := readDockerBuildContext(t, cfg, deps)
+	if !bytes.Equal(ctx1, ctx2) {
+		t.Fatal("createDockerBuildContext() produced different tar bytes for unchanged input")
+	}
+
+	rootfs := tarEntryData(t, ctx1, "rootfs.tar")
+	headers := tarHeaders(t, rootfs)
+	epoch := time.Unix(0, 0).UTC()
+	for _, name := range []string{
+		"agentpaas/",
+		"agentpaas/harness",
+		"agentpaas/requirements.lock",
+		"app/",
+		"app/main.py",
+		"app/requirements.txt",
+	} {
+		header, ok := headers[name]
+		if !ok {
+			t.Fatalf("rootfs.tar missing %s", name)
+		}
+		if !header.ModTime.Equal(epoch) {
+			t.Fatalf("%s modtime = %s, want %s", name, header.ModTime, epoch)
+		}
+	}
+	if got := headers["app/main.py"].Uid; got != cfg.NonRootUID {
+		t.Fatalf("app/main.py uid = %d, want %d", got, cfg.NonRootUID)
+	}
+	if got := headers["app/main.py"].Gid; got != cfg.NonRootUID {
+		t.Fatalf("app/main.py gid = %d, want %d", got, cfg.NonRootUID)
 	}
 }
 
@@ -354,6 +393,59 @@ func readAllBuildContext(t *testing.T, projectDir string, ignore *IgnoreMatcher)
 	return data
 }
 
+func readDockerBuildContext(t *testing.T, cfg BuildConfig, deps []string) []byte {
+	t.Helper()
+	reader, err := createDockerBuildContext(cfg, nil, deps)
+	if err != nil {
+		t.Fatalf("createDockerBuildContext() error = %v", err)
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("io.ReadAll() error = %v", err)
+	}
+
+	return data
+}
+
+func tarEntryData(t *testing.T, data []byte, name string) []byte {
+	t.Helper()
+	tr := tar.NewReader(bytes.NewReader(data))
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			t.Fatalf("tar entry %s not found", name)
+		}
+		if err != nil {
+			t.Fatalf("tar.Next() error = %v", err)
+		}
+		if header.Name != name {
+			continue
+		}
+		entryData, err := io.ReadAll(tr)
+		if err != nil {
+			t.Fatalf("io.ReadAll(%s) error = %v", name, err)
+		}
+
+		return entryData
+	}
+}
+
+func tarHeaders(t *testing.T, data []byte) map[string]tar.Header {
+	t.Helper()
+	tr := tar.NewReader(bytes.NewReader(data))
+	headers := make(map[string]tar.Header)
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return headers
+		}
+		if err != nil {
+			t.Fatalf("tar.Next() error = %v", err)
+		}
+		headers[header.Name] = *header
+	}
+}
+
 func tarEntries(t *testing.T, data []byte) []string {
 	t.Helper()
 	tr := tar.NewReader(bytes.NewReader(data))
@@ -430,7 +522,7 @@ func dockerBuildConfig(t *testing.T, projectDir string, harnessPath string, tag 
 	return BuildConfig{
 		ProjectDir:      projectDir,
 		Runtime:         RuntimePython,
-		BaseImage:       "gcr.io/distroless/python3-debian12",
+		BaseImage:       "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
 		HarnessPath:     harnessPath,
 		SourceDateEpoch: time.Unix(0, 0),
 		NonRootUID:      64000,
