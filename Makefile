@@ -115,8 +115,13 @@ block7-gate: build test race lint osv
 	go test -race -count=1 ./internal/secrets/...
 	@echo "Block 7 gate: PASS"
 
-block8-gate:
-	@echo "Error: block8-gate is not implemented until Block 8" && exit 1
+block8-gate: build test race lint osv
+	@echo "==> Running Block 8 gate: packaging pipeline (agent pack)"
+	# B8-T01..T06 unit + integration tests (detect, build, scan, lock, immutable, advisory)
+	go test -race -count=1 ./internal/pack/...
+	# Adversary regression tests (B8-T02..T05) - security breaks resolved
+	go test -tags=adversary -race -count=1 ./internal/pack/...
+	@echo "✓ Block 8 gate passed"
 
 block9-gate:
 	@echo "Error: block9-gate is not implemented until Block 9" && exit 1
@@ -148,8 +153,8 @@ gates: ## List all available gate targets
 	@echo "  block4-gate  - Policy engine (ACTIVE)"
 	@echo "  block5-gate  - Runtime driver, Docker integration (ACTIVE)"
 	@echo "  block6-gate  - Agent harness (ACTIVE)"
-	@echo "  block7-gate  - Runtime driver, Docker integration (not implemented)"
-	@echo "  block8-gate  - Gateway sidecar, network enforcement (not implemented)"
+	@echo "  block7-gate  - Secret store (ACTIVE)"
+	@echo "  block8-gate  - Packaging pipeline, agent pack (ACTIVE)"
 	@echo "  block9-gate  - Trigger API, event bus (not implemented)"
 	@echo "  block10-gate - OTel pipeline, dashboard (not implemented)"
 	@echo "  block11-gate - Hermes operator contract (not implemented)"
