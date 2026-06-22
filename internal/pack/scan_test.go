@@ -217,6 +217,15 @@ func TestScanSecretsNoGitleaks(t *testing.T) {
 	}
 }
 
+func TestRunGitleaksMissingBinaryFailsClosed(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	_, err := runGitleaks(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("runGitleaks() error = nil, want error")
+	}
+}
+
 func TestMaskSecret(t *testing.T) {
 	got := maskSecret(testAWSKey)
 	if got != "AKIA***MPLE" {
