@@ -100,6 +100,30 @@ func TestVerifyDeployedIntegrity_TamperedLockFile_Rejected(t *testing.T) {
 	assertImmutableViolationAudit(t, appender)
 }
 
+func TestVerifyDeployedIntegrity_ReformattedLockFile_Rejected(t *testing.T) {
+	homeDir := symlinkSafeTempDir(t)
+	lock, _ := signedTestLock(t)
+	appender := &fakeAuditAppender{}
+
+	if err := RecordDeployment(homeDir, lock.AgentName, lock); err != nil {
+		t.Fatalf("RecordDeployment() error = %v", err)
+	}
+	path := filepath.Join(DeployedAgentPath(homeDir, lock.AgentName), "agent.lock")
+	data, err := json.MarshalIndent(lock, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent(agent.lock): %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile(agent.lock): %v", err)
+	}
+
+	err = VerifyDeployedIntegrity(homeDir, lock.AgentName, appender)
+	if !errors.Is(err, ErrImmutableViolation) {
+		t.Fatalf("VerifyDeployedIntegrity() error = %v, want ErrImmutableViolation", err)
+	}
+	assertImmutableViolationAudit(t, appender)
+}
+
 func TestVerifyDeployedIntegrity_TamperedImageDigest_Rejected(t *testing.T) {
 	homeDir := symlinkSafeTempDir(t)
 	lock, _ := signedTestLock(t)
