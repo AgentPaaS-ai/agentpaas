@@ -151,7 +151,7 @@ func (m *Manager) RequiresConfirmation(serverID, tool string) bool {
 
 // DenyToolCall records a denied tool call and emits an audit event.
 func (m *Manager) DenyToolCall(appender audit.AuditAppender, serverID, tool, agentID, runID, policyRuleID string) {
-	AuditToolDenied(appender, serverID, tool, agentID, runID, policyRuleID, policyRuleID)
+	AuditToolDenied(appender, serverID, tool, agentID, runID, policyRuleID, policyRuleID, "", "", int64(0))
 }
 
 // Status returns all managed MCP resources.

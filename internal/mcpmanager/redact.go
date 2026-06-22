@@ -5,11 +5,14 @@ import (
 	"strings"
 )
 
-// sentinelSecretPatterns are redacted from all MCP tool output.
-var sentinelSecretPatterns = []string{
-	"sk-", "sk_live_", "AKIA", "ghp_", "gho_", "ghs_",
-	"-----BEGIN", "PRIVATE KEY",
-	"xoxb-", "xoxp-",
+// sentinelSecretPatternsList returns the redaction patterns as a fresh slice.
+// This prevents mutation of the shared pattern list.
+func sentinelSecretPatternsList() []string {
+	return []string{
+		"sk-", "sk_live_", "AKIA", "ghp_", "gho_", "ghs_",
+		"-----BEGIN", "PRIVATE KEY",
+		"xoxb-", "xoxp-",
+	}
 }
 
 // maxToolOutputLen is the maximum length of tool output before truncation.
@@ -65,7 +68,8 @@ func sanitizeJSONValue(value any) any {
 	case map[string]any:
 		sanitized := make(map[string]any, len(typed))
 		for key, item := range typed {
-			sanitized[key] = sanitizeJSONValue(item)
+			sanitizedKey := sanitizeToolOutputString(key)
+			sanitized[sanitizedKey] = sanitizeJSONValue(item)
 		}
 		return sanitized
 	default:
@@ -81,7 +85,7 @@ func sanitizeToolOutputString(s string) string {
 		return r
 	}, s)
 
-	for _, pattern := range sentinelSecretPatterns {
+	for _, pattern := range sentinelSecretPatternsList() {
 		idx := strings.Index(strings.ToLower(s), strings.ToLower(pattern))
 		for idx >= 0 {
 			end := len(s)
