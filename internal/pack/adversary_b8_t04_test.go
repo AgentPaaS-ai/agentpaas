@@ -19,16 +19,6 @@ import (
 	"time"
 )
 
-func symlinkSafeTempDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	realDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		t.Fatalf("EvalSymlinks on tempdir: %v", err)
-	}
-	return realDir
-}
-
 func TestAdversaryB8T04_CanonicalJSONDeterminism(t *testing.T) {
 	lock, _ := signedTestLock(t)
 	for i := 0; i < 3; i++ {

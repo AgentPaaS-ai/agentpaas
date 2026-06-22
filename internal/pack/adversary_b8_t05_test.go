@@ -11,8 +11,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 func TestAdversaryB8T05_DeployedLockTamper_UndetectedFields(t *testing.T) {

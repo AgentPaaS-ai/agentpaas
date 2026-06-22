@@ -19,29 +19,6 @@ func (f *fakeAuditAppender) Append(record audit.AuditRecord) error {
 	return nil
 }
 
-func symlinkSafeTempDir(t *testing.T) string {
-	t.Helper()
-
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("os.Getwd: %v", err)
-	}
-	realWD, err := filepath.EvalSymlinks(wd)
-	if err != nil {
-		t.Fatalf("EvalSymlinks(%s): %v", wd, err)
-	}
-	dir, err := os.MkdirTemp(realWD, "agentpaas-immutable-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := os.RemoveAll(dir); err != nil {
-			t.Fatalf("RemoveAll(%s): %v", dir, err)
-		}
-	})
-	return dir
-}
-
 func TestRecordDeployment_CreatesFiles(t *testing.T) {
 	homeDir := symlinkSafeTempDir(t)
 	lock, _ := signedTestLock(t)
