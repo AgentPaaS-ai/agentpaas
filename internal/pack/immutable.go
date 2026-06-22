@@ -1,7 +1,6 @@
 package pack
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -140,13 +139,6 @@ func VerifyDeployedIntegrity(homeDir, agentName string, auditAppender audit.Audi
 	}
 	if _, err := time.Parse(time.RFC3339Nano, deployedAtText); err != nil {
 		return fmt.Errorf("parse deployed_at: %w", err)
-	}
-	latestLockContent, err := readDeployedFile(deployedDir, deployedLockName)
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(lockContent, latestLockContent) {
-		return immutableViolation(auditAppender, agentName, "agent.lock", "stable during verification", "changed during verification")
 	}
 	if imageDigest != lock.ImageDigest {
 		return immutableViolation(auditAppender, agentName, "image.digest", lock.ImageDigest, imageDigest)

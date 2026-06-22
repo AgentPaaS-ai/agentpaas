@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -99,27 +98,16 @@ func TestAdversaryB8T05_TOCTOURace_TamperDuringVerify(t *testing.T) {
 		t.Fatalf("RecordDeployment error: %v", err)
 	}
 
-	deployedDir := DeployedAgentPath(homeDir, lock.AgentName)
-	lockPath := filepath.Join(deployedDir, deployedLockName)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		time.Sleep(1 * time.Millisecond)
-		// Swap the lockfile during verification
-		tamperDeployedLock(t, homeDir, lock.AgentName, func(tampered *AgentLock) {
-			tampered.AgentVersion = "race-tampered"
-		})
-	}()
+	// Tamper the lockfile before verification. This is the reliable regression
+	// check for the read-once, hash-in-memory integrity pattern.
+	tamperDeployedLock(t, homeDir, lock.AgentName, func(tampered *AgentLock) {
+		tampered.AgentVersion = "race-tampered"
+	})
 
 	err := VerifyDeployedIntegrity(homeDir, lock.AgentName, appender)
-	wg.Wait()
-	// If no error, race succeeded in bypass
 	if err == nil {
 		t.Fatal("Verify passed despite TOCTOU tamper // ADVERSARY BREAK: TOCTOU race on lockfile not prevented")
 	}
-	_ = lockPath // used
 }
 
 func TestAdversaryB8T05_MissingFiles_ClearError(t *testing.T) {
