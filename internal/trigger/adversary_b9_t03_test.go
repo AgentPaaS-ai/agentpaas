@@ -64,7 +64,9 @@ func TestAdversaryB9T03_SameKeyDifferentPayloadNoConflict(t *testing.T) {
 	hash1 := "hashA"
 	hash2 := "hashB"
 
-	store.CheckOrReserve(context.Background(), key, "r1", hash1, "c", "a")
+	if _, _, err := store.CheckOrReserve(context.Background(), key, "r1", hash1, "c", "a"); err != nil {
+		t.Fatalf("reserve initial payload: %v", err)
+	}
 	res, _, _ := store.CheckOrReserve(context.Background(), key, "r2", hash2, "c", "a")
 	if res != IdempotencyConflict {
 		t.Errorf("SECURITY BREAK: different payload did not return 409/Conflict: got %v // ADVERSARY BREAK: conflict detection failed", res)
@@ -92,7 +94,9 @@ func TestAdversaryB9T03_ExpiredEntryReplay(t *testing.T) {
 	store, _ := NewIdempotencyStore(path, 1*time.Nanosecond, nil) // immediate expiry
 
 	key := "exp-key"
-	store.CheckOrReserve(context.Background(), key, "r1", "h1", "c", "a")
+	if _, _, err := store.CheckOrReserve(context.Background(), key, "r1", "h1", "c", "a"); err != nil {
+		t.Fatalf("reserve initial entry: %v", err)
+	}
 	time.Sleep(10 * time.Millisecond)
 	store.PurgeExpired()
 
@@ -106,7 +110,9 @@ func TestAdversaryB9T03_ExpiredEntryReplay(t *testing.T) {
 func TestAdversaryB9T03_DurablePersistenceAcrossRestart(t *testing.T) {
 	path := symlinkSafeIdempotencyPath(t)
 	store1, _ := NewIdempotencyStore(path, time.Hour, nil)
-	store1.CheckOrReserve(context.Background(), "persist-key", "run-p", "hp", "c", "a")
+	if _, _, err := store1.CheckOrReserve(context.Background(), "persist-key", "run-p", "hp", "c", "a"); err != nil {
+		t.Fatalf("reserve persisted entry: %v", err)
+	}
 	// simulate restart
 	store2, _ := NewIdempotencyStore(path, time.Hour, nil)
 	res, entry, _ := store2.CheckOrReserve(context.Background(), "persist-key", "run-new", "hp", "c", "a")
@@ -187,7 +193,9 @@ func TestAdversaryB9T03_TOCTOUEntryModify(t *testing.T) {
 	// Hard to TOCTOU because Lock inside CheckOrReserve; test that save is atomic
 	path := symlinkSafeIdempotencyPath(t)
 	store, _ := NewIdempotencyStore(path, time.Hour, nil)
-	store.CheckOrReserve(context.Background(), "toctou", "r", "h", "c", "a")
+	if _, _, err := store.CheckOrReserve(context.Background(), "toctou", "r", "h", "c", "a"); err != nil {
+		t.Fatalf("reserve toctou entry: %v", err)
+	}
 	// tamper file between? but single threaded test; assume lock protects
 	t.Logf("TOCTOU mitigated by mutex; no break found in single-process")
 }
@@ -195,7 +203,9 @@ func TestAdversaryB9T03_TOCTOUEntryModify(t *testing.T) {
 func TestAdversaryB9T03_FilePermissions0600(t *testing.T) {
 	path := symlinkSafeIdempotencyPath(t)
 	store, _ := NewIdempotencyStore(path, time.Hour, nil)
-	store.CheckOrReserve(context.Background(), "perm-key", "r", "h", "c", "a")
+	if _, _, err := store.CheckOrReserve(context.Background(), "perm-key", "r", "h", "c", "a"); err != nil {
+		t.Fatalf("reserve permission entry: %v", err)
+	}
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -213,7 +223,9 @@ func TestAdversaryB9T03_KeyReuseAfterExpiry(t *testing.T) {
 	store, _ := NewIdempotencyStore(path, 1*time.Nanosecond, nil)
 
 	key := "reuse-key"
-	store.CheckOrReserve(context.Background(), key, "r1", "h1", "c", "a")
+	if _, _, err := store.CheckOrReserve(context.Background(), key, "r1", "h1", "c", "a"); err != nil {
+		t.Fatalf("reserve initial entry: %v", err)
+	}
 	time.Sleep(10 * time.Millisecond)
 	store.PurgeExpired()
 
