@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/runtime"
@@ -103,7 +104,11 @@ func collectSidecars(ctx context.Context, resources []Resource, driver runtime.R
 		if resource.Transport != "http" {
 			continue
 		}
-		containers, err := driver.ListContainers(ctx, runtime.LabelMCPServerID+"="+resource.ServerID)
+		containers, err := driver.ListContainers(ctx,
+			runtime.LabelMCPServerID+"="+resource.ServerID,
+			runtime.LabelManagedBy+"="+runtime.ManagedByValue,
+			runtime.LabelResourceType+"="+runtime.ResourceTypeMCP,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("list mcp sidecars for %q: %w", resource.ServerID, err)
 		}
@@ -170,10 +175,12 @@ func stateFromContainerStatus(status runtime.ContainerStatus) (string, string) {
 	switch status {
 	case runtime.ContainerStatusRunning:
 		return ReadinessReady, HealthHealthy
+	case runtime.ContainerStatusPaused:
+		return ReadinessStarting, HealthUnknown
 	case runtime.ContainerStatusStopped, runtime.ContainerStatusRemoved:
 		return ReadinessStopped, HealthFailed
 	default:
-		return ReadinessUnhealthy, HealthFailed
+		return ReadinessUnhealthy, HealthUnknown
 	}
 }
 
@@ -187,10 +194,25 @@ func agentpaasLabels(labels map[string]string) map[string]string {
 	result := make(map[string]string, len(allowed))
 	for key, value := range labels {
 		if _, ok := allowed[key]; ok {
-			result[key] = value
+			result[key] = sanitizeLabelValue(value)
 		}
 	}
 	return result
+}
+
+func sanitizeLabelValue(v string) string {
+	v = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '?'
+		}
+		return r
+	}, v)
+
+	const maxLabelValueLen = 128
+	if len(v) > maxLabelValueLen {
+		v = v[:maxLabelValueLen] + "..."
+	}
+	return v
 }
 
 func networkNames(networks []runtime.ContainerNetworkInfo) []string {
