@@ -2,6 +2,8 @@ package trigger
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
@@ -31,6 +33,8 @@ type ServerConfig struct {
 	CORS            *CORSMiddleware
 	Audit           audit.AuditAppender
 	MaxPayloadBytes int
+	// IdempotencyStore handles idempotency key replay/conflict.
+	IdempotencyStore *IdempotencyStore
 }
 
 // Server is the Trigger API server, serving gRPC and REST gateway endpoints.
@@ -76,7 +80,7 @@ func New(cfg ServerConfig) (*Server, error) {
 	}
 	s.grpcServer = grpc.NewServer(opts...)
 
-	s.triggerService = NewTriggerService(cfg.Audit, cfg.MaxPayloadBytes)
+	s.triggerService = NewTriggerService(cfg.Audit, cfg.MaxPayloadBytes, cfg.IdempotencyStore)
 	triggerv1.RegisterTriggerServiceServer(s.grpcServer, s.triggerService)
 
 	return s, nil
@@ -141,26 +145,58 @@ func (s *Server) Stop() {
 type TriggerService struct {
 	triggerv1.UnimplementedTriggerServiceServer
 
-	audit      audit.AuditAppender
-	maxPayload int
+	audit       audit.AuditAppender
+	maxPayload  int
+	idempotency *IdempotencyStore
 }
 
 // NewTriggerService creates the trigger service implementation.
-func NewTriggerService(a audit.AuditAppender, maxPayload int) *TriggerService {
+func NewTriggerService(a audit.AuditAppender, maxPayload int, stores ...*IdempotencyStore) *TriggerService {
 	if maxPayload == 0 {
 		maxPayload = DefaultMaxPayload
 	}
-	return &TriggerService{audit: a, maxPayload: maxPayload}
+	var store *IdempotencyStore
+	if len(stores) > 0 {
+		store = stores[0]
+	}
+	return &TriggerService{audit: a, maxPayload: maxPayload, idempotency: store}
 }
 
 // Invoke triggers an agent run. T01 returns a pending stub run.
-func (s *TriggerService) Invoke(_ context.Context, req *triggerv1.InvokeRequest) (*triggerv1.InvokeResponse, error) {
+func (s *TriggerService) Invoke(ctx context.Context, req *triggerv1.InvokeRequest) (*triggerv1.InvokeResponse, error) {
 	if len(req.GetPayload()) > s.maxPayload {
 		return nil, status.Errorf(codes.InvalidArgument, "payload exceeds %d bytes", s.maxPayload)
 	}
 
+	runID, err := generateRunID()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "generate run id: %v", err)
+	}
+	if s.idempotency != nil && req.GetIdempotencyKey() != "" {
+		caller, _ := CallerFromContext(ctx)
+		requestHash := CanonicalRequestHash(
+			string(caller),
+			req.GetAgentName(),
+			invokeMetadataValue(req, "agent_lock_digest"),
+			req.GetPayload(),
+			req.GetContentType(),
+			invokeAPIVersion(req),
+		)
+		result, entry, err := s.idempotency.CheckOrReserve(ctx, req.GetIdempotencyKey(), runID, requestHash, string(caller), req.GetAgentName())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "check idempotency: %v", err)
+		}
+		switch result {
+		case IdempotencyReplayed:
+			runID = entry.RunID
+		case IdempotencyConflict:
+			return nil, status.Error(codes.AlreadyExists, "idempotency key conflict: different payload")
+		case IdempotencyNew:
+		}
+	}
+
 	run := &triggerv1.Run{
-		RunId:     "run-stub",
+		RunId:     runID,
 		AgentName: req.GetAgentName(),
 		Status:    triggerv1.RunStatus_RUN_STATUS_PENDING,
 	}
@@ -193,4 +229,26 @@ func (s *TriggerService) CancelRun(context.Context, *triggerv1.CancelRunRequest)
 // ListRuns lists runs. T01 returns an empty page.
 func (s *TriggerService) ListRuns(context.Context, *triggerv1.ListRunsRequest) (*triggerv1.ListRunsResponse, error) {
 	return &triggerv1.ListRunsResponse{}, nil
+}
+
+func generateRunID() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return "run-" + hex.EncodeToString(b[:]), nil
+}
+
+func invokeMetadataValue(req *triggerv1.InvokeRequest, key string) string {
+	if req.GetMetadata() == nil {
+		return ""
+	}
+	return req.GetMetadata()[key]
+}
+
+func invokeAPIVersion(req *triggerv1.InvokeRequest) string {
+	if version := invokeMetadataValue(req, "api_version"); version != "" {
+		return version
+	}
+	return "trigger.v1"
 }
