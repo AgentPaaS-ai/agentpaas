@@ -549,16 +549,14 @@ func addFileToTarWithMode(tw *tar.Writer, filePath string, tarPath string, info 
 
 func addBytesToTar(tw *tar.Writer, name string, data []byte, mode int64, timestamp time.Time) error {
 	header := &tar.Header{
-		Typeflag:   tar.TypeReg,
-		Name:       filepath.ToSlash(name),
-		Size:       int64(len(data)),
-		Mode:       mode,
-		Uid:        0,
-		Gid:        0,
-		ModTime:    timestamp.UTC(),
-		AccessTime: timestamp.UTC(),
-		ChangeTime: timestamp.UTC(),
-		Format:     tar.FormatUSTAR,
+		Typeflag: tar.TypeReg,
+		Name:     filepath.ToSlash(name),
+		Size:     int64(len(data)),
+		Mode:     mode,
+		Uid:      0,
+		Gid:      0,
+		ModTime:  timestamp.UTC(),
+		Format:   tar.FormatUSTAR,
 	}
 	if err := tw.WriteHeader(header); err != nil {
 		return fmt.Errorf("write tar header %s: %w", name, err)
