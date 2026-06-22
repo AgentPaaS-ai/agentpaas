@@ -48,8 +48,8 @@ func newInitCmd() *cobra.Command {
 				return encoder.Encode(result)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Initialized agent project in %s with runtime %s\n", projectDir, runtime)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Initialized agent project in %s with runtime %s\n", projectDir, runtime)
+			return err
 		},
 	}
 	cmd.Flags().String("runtime", "", "Agent runtime: python, langgraph, or crewai (default: auto-detect or python)")
