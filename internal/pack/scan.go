@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -350,27 +349,5 @@ func allowPatternAuditRecord(finding SecretFinding, pattern string) audit.AuditR
 			"secret":  finding.Secret,
 			"pattern": pattern,
 		},
-	}
-}
-
-func rejectSymlinkParents(path string) error {
-	cleaned := filepath.Clean(path)
-	for {
-		info, err := os.Lstat(cleaned)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				cleaned = filepath.Dir(cleaned)
-				continue
-			}
-			return fmt.Errorf("inspect %s: %w", cleaned, err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlinks are not allowed: %s", cleaned)
-		}
-		parent := filepath.Dir(cleaned)
-		if parent == cleaned {
-			return nil
-		}
-		cleaned = parent
 	}
 }
