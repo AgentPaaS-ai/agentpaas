@@ -76,6 +76,16 @@ func TestUnauthenticatedInvokeReturnsUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestUnauthenticatedInvokeStreamReturnsUnauthenticated(t *testing.T) {
+	client, cleanup := startGRPCTestServer(t, testAuthenticator(), DefaultMaxPayload)
+	defer cleanup()
+
+	_, err := client.InvokeStream(context.Background(), &triggerv1.InvokeRequest{AgentName: "agent-a"})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("InvokeStream() code = %v, want %v (err=%v)", status.Code(err), codes.Unauthenticated, err)
+	}
+}
+
 func TestValidAPIKeyInvokeReturnsStubResponse(t *testing.T) {
 	client, cleanup := startGRPCTestServer(t, testAuthenticator(), DefaultMaxPayload)
 	defer cleanup()
@@ -87,6 +97,30 @@ func TestValidAPIKeyInvokeReturnsStubResponse(t *testing.T) {
 	}
 	if got := resp.GetRun().GetRunId(); got != "run-stub" {
 		t.Fatalf("RunId = %q, want %q", got, "run-stub")
+	}
+	if got := resp.GetRun().GetAgentName(); got != "agent-a" {
+		t.Fatalf("AgentName = %q, want %q", got, "agent-a")
+	}
+	if got := resp.GetRun().GetStatus(); got != triggerv1.RunStatus_RUN_STATUS_PENDING {
+		t.Fatalf("Status = %v, want %v", got, triggerv1.RunStatus_RUN_STATUS_PENDING)
+	}
+}
+
+func TestValidAPIKeyInvokeStreamReturnsStubResponse(t *testing.T) {
+	client, cleanup := startGRPCTestServer(t, testAuthenticator(), DefaultMaxPayload)
+	defer cleanup()
+
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer test-key-123")
+	stream, err := client.InvokeStream(ctx, &triggerv1.InvokeRequest{AgentName: "agent-a"})
+	if err != nil {
+		t.Fatalf("InvokeStream(): %v", err)
+	}
+	resp, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("InvokeStream().Recv(): %v", err)
+	}
+	if got := resp.GetRun().GetRunId(); got != "run-stub-stream" {
+		t.Fatalf("RunId = %q, want %q", got, "run-stub-stream")
 	}
 	if got := resp.GetRun().GetAgentName(); got != "agent-a" {
 		t.Fatalf("AgentName = %q, want %q", got, "agent-a")
