@@ -230,15 +230,37 @@ func readProjectFile(path string) ([]byte, error) {
 
 func rejectSymlinkPath(path string, allowMissingLeaf bool) error {
 	cleanPath := filepath.Clean(path)
-	if cleanPath == "." || cleanPath == string(filepath.Separator) {
-		return nil
-	}
-
 	absPath, err := filepath.Abs(cleanPath)
 	if err != nil {
 		return fmt.Errorf("resolve %s: %w", path, err)
 	}
 
+	info, err := os.Lstat(absPath)
+	leafMissing := false
+	if errors.Is(err, fs.ErrNotExist) {
+		if !allowMissingLeaf {
+			return fmt.Errorf("inspect %s: %w", absPath, err)
+		}
+		leafMissing = true
+	} else if err != nil {
+		return fmt.Errorf("inspect %s: %w", absPath, err)
+	} else if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("symlinks are not allowed: %s", absPath)
+	}
+
+	pathToResolve := absPath
+	if leafMissing {
+		pathToResolve = filepath.Dir(absPath)
+	}
+	resolvedPath, err := filepath.EvalSymlinks(pathToResolve)
+	if err != nil {
+		return fmt.Errorf("resolve %s: %w", path, err)
+	}
+
+	return rejectSymlinksInResolvedPath(resolvedPath)
+}
+
+func rejectSymlinksInResolvedPath(absPath string) error {
 	current := filepath.VolumeName(absPath)
 	if current == "" {
 		current = string(filepath.Separator)
@@ -246,19 +268,16 @@ func rejectSymlinkPath(path string, allowMissingLeaf bool) error {
 
 	rel, err := filepath.Rel(current, absPath)
 	if err != nil {
-		return fmt.Errorf("resolve %s: %w", path, err)
+		return fmt.Errorf("resolve %s: %w", absPath, err)
 	}
 
 	parts := strings.Split(rel, string(filepath.Separator))
-	for i, part := range parts {
+	for _, part := range parts {
 		if part == "" || part == "." {
 			continue
 		}
 		current = filepath.Join(current, part)
 		info, err := os.Lstat(current)
-		if errors.Is(err, fs.ErrNotExist) && allowMissingLeaf && i == len(parts)-1 {
-			return nil
-		}
 		if err != nil {
 			return fmt.Errorf("inspect %s: %w", current, err)
 		}
