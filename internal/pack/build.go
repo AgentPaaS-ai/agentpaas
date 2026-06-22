@@ -97,16 +97,11 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	}
 	defer func() { _ = cli.Close() }()
 
-	sourceDateEpoch := fmt.Sprint(cfg.SourceDateEpoch.Unix())
 	buildResp, err := cli.ImageBuild(ctx, buildCtx, build.ImageBuildOptions{
 		Tags:       []string{cfg.ImageTag},
 		Remove:     true,
 		NoCache:    true,
 		PullParent: true,
-		BuildArgs: map[string]*string{
-			"SOURCE_DATE_EPOCH": &sourceDateEpoch,
-		},
-		Version: build.BuilderBuildKit,
 		Labels: map[string]string{
 			"org.opencontainers.image.created":     cfg.SourceDateEpoch.UTC().Format(time.RFC3339),
 			"org.agentpaas.build_input_digest":     inputDigest,
@@ -480,29 +475,7 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 	if err := addBytesToTar(tw, "Dockerfile", []byte(renderDockerfile(cfg, deps)), 0o644, cfg.SourceDateEpoch); err != nil {
 		return nil, err
 	}
-	rootfs, err := createRootfsArchive(cfg, ignore, deps)
-	if err != nil {
-		return nil, err
-	}
-	if err := addBytesToTar(tw, "rootfs.tar", rootfs, 0o644, cfg.SourceDateEpoch); err != nil {
-		return nil, err
-	}
-	if err := tw.Close(); err != nil {
-		return nil, fmt.Errorf("close build context tar: %w", err)
-	}
-
-	return bytes.NewReader(buf.Bytes()), nil
-}
-
-func createRootfsArchive(cfg BuildConfig, ignore *IgnoreMatcher, deps []string) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	defer func() { _ = tw.Close() }()
-
-	if err := addDirToTar(tw, "agentpaas", 0o755, 0, 0, cfg.SourceDateEpoch); err != nil {
-		return nil, err
-	}
-	if err := addDirToTar(tw, "app", 0o755, 0, 0, cfg.SourceDateEpoch); err != nil {
+	if err := addBytesToTar(tw, "agentpaas-locked.txt", []byte(strings.Join(deps, "\n")+"\n"), 0o644, cfg.SourceDateEpoch); err != nil {
 		return nil, err
 	}
 
@@ -513,10 +486,7 @@ func createRootfsArchive(cfg BuildConfig, ignore *IgnoreMatcher, deps []string) 
 	if harnessInfo.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("symlinks are not allowed: %s", cfg.HarnessPath)
 	}
-	if err := addFileToTarWithOwner(tw, cfg.HarnessPath, "agentpaas/harness", harnessInfo, 0o555, 0, 0, cfg.SourceDateEpoch); err != nil {
-		return nil, err
-	}
-	if err := addBytesToTarWithOwner(tw, "agentpaas/requirements.lock", []byte(strings.Join(deps, "\n")+"\n"), 0o644, 0, 0, cfg.SourceDateEpoch); err != nil {
+	if err := addFileToTarWithMode(tw, cfg.HarnessPath, "harness", harnessInfo, 0o555, cfg.SourceDateEpoch); err != nil {
 		return nil, err
 	}
 
@@ -524,53 +494,26 @@ func createRootfsArchive(cfg BuildConfig, ignore *IgnoreMatcher, deps []string) 
 	if err != nil {
 		return nil, err
 	}
-	dirs := projectDirs(files)
-	for _, dir := range dirs {
-		if err := addDirToTar(tw, filepath.ToSlash(filepath.Join("app", dir)), 0o755, cfg.NonRootUID, cfg.NonRootUID, cfg.SourceDateEpoch); err != nil {
-			return nil, err
-		}
-	}
 	for _, file := range files {
-		if err := addFileToTarWithOwner(tw, file.absPath, filepath.ToSlash(filepath.Join("app", file.relPath)), file.info, int64(file.info.Mode().Perm()), cfg.NonRootUID, cfg.NonRootUID, cfg.SourceDateEpoch); err != nil {
+		if err := addFileToTar(tw, file.absPath, filepath.ToSlash(filepath.Join("project", file.relPath)), file.info, cfg.SourceDateEpoch); err != nil {
 			return nil, err
 		}
 	}
 	if err := tw.Close(); err != nil {
-		return nil, fmt.Errorf("close rootfs tar: %w", err)
+		return nil, fmt.Errorf("close build context tar: %w", err)
 	}
 
-	return buf.Bytes(), nil
-}
-
-func projectDirs(files []buildFile) []string {
-	dirs := make(map[string]struct{})
-	for _, file := range files {
-		dir := filepath.Dir(file.relPath)
-		for dir != "." && dir != string(filepath.Separator) {
-			dirs[dir] = struct{}{}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
-		}
-	}
-
-	out := make([]string, 0, len(dirs))
-	for dir := range dirs {
-		out = append(out, dir)
-	}
-	sort.Strings(out)
-
-	return out
+	return bytes.NewReader(buf.Bytes()), nil
 }
 
 func renderDockerfile(cfg BuildConfig, deps []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "FROM %s\n", cfg.BaseImage)
 	fmt.Fprintf(&b, "ENV SOURCE_DATE_EPOCH=%d\n", cfg.SourceDateEpoch.Unix())
-	b.WriteString("ADD rootfs.tar /\n")
 	b.WriteString("WORKDIR /app\n")
+	b.WriteString("COPY --chown=0:0 harness /agentpaas/harness\n")
+	b.WriteString("COPY --chown=0:0 agentpaas-locked.txt /agentpaas/requirements.lock\n")
+	b.WriteString("COPY --chown=64000:64000 project/ /app/\n")
 	if len(deps) > 0 {
 		b.WriteString("ENV AGENTPAAS_DEPS_LOCKED=/agentpaas/requirements.lock\n")
 	}
@@ -590,10 +533,6 @@ func addFileToTar(tw *tar.Writer, filePath string, tarPath string, info fs.FileI
 }
 
 func addFileToTarWithMode(tw *tar.Writer, filePath string, tarPath string, info fs.FileInfo, mode int64, timestamp time.Time) error {
-	return addFileToTarWithOwner(tw, filePath, tarPath, info, mode, 0, 0, timestamp)
-}
-
-func addFileToTarWithOwner(tw *tar.Writer, filePath string, tarPath string, info fs.FileInfo, mode int64, uid int, gid int, timestamp time.Time) error {
 	_ = info
 	if err := rejectSymlinkPath(filePath, false); err != nil {
 		return err
@@ -603,21 +542,17 @@ func addFileToTarWithOwner(tw *tar.Writer, filePath string, tarPath string, info
 		return err
 	}
 
-	return addBytesToTarWithOwner(tw, tarPath, data, mode, uid, gid, timestamp)
+	return addBytesToTar(tw, tarPath, data, mode, timestamp)
 }
 
 func addBytesToTar(tw *tar.Writer, name string, data []byte, mode int64, timestamp time.Time) error {
-	return addBytesToTarWithOwner(tw, name, data, mode, 0, 0, timestamp)
-}
-
-func addBytesToTarWithOwner(tw *tar.Writer, name string, data []byte, mode int64, uid int, gid int, timestamp time.Time) error {
 	header := &tar.Header{
 		Typeflag: tar.TypeReg,
 		Name:     filepath.ToSlash(name),
 		Size:     int64(len(data)),
 		Mode:     mode,
-		Uid:      uid,
-		Gid:      gid,
+		Uid:      0,
+		Gid:      0,
 		ModTime:  timestamp.UTC(),
 		Format:   tar.FormatUSTAR,
 	}
@@ -626,23 +561,6 @@ func addBytesToTarWithOwner(tw *tar.Writer, name string, data []byte, mode int64
 	}
 	if _, err := tw.Write(data); err != nil {
 		return fmt.Errorf("write tar content %s: %w", name, err)
-	}
-
-	return nil
-}
-
-func addDirToTar(tw *tar.Writer, name string, mode int64, uid int, gid int, timestamp time.Time) error {
-	header := &tar.Header{
-		Typeflag: tar.TypeDir,
-		Name:     filepath.ToSlash(name) + "/",
-		Mode:     mode,
-		Uid:      uid,
-		Gid:      gid,
-		ModTime:  timestamp.UTC(),
-		Format:   tar.FormatUSTAR,
-	}
-	if err := tw.WriteHeader(header); err != nil {
-		return fmt.Errorf("write tar header %s: %w", name, err)
 	}
 
 	return nil
