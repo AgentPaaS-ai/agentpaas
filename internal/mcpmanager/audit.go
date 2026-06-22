@@ -36,9 +36,23 @@ func AuditToolCall(appender audit.AuditAppender, serverID, tool, agentID, runID,
 }
 
 // AuditToolDenied records an MCP tool denial audit event with full metadata.
-func AuditToolDenied(appender audit.AuditAppender, serverID, tool, agentID, runID, reason, policyRuleID string) {
+func AuditToolDenied(appender audit.AuditAppender, serverID, tool, agentID, runID, reason, policyRuleID string, metadata ...any) {
 	if appender == nil {
 		return
+	}
+	var (
+		credentialID string
+		inputHash    string
+		timingMS     int64
+	)
+	if len(metadata) > 0 {
+		credentialID, _ = metadata[0].(string)
+	}
+	if len(metadata) > 1 {
+		inputHash, _ = metadata[1].(string)
+	}
+	if len(metadata) > 2 {
+		timingMS, _ = metadata[2].(int64)
 	}
 	_ = appender.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
@@ -53,6 +67,10 @@ func AuditToolDenied(appender audit.AuditAppender, serverID, tool, agentID, runI
 			"decision":       "denied",
 			"reason":         reason,
 			"policy_rule_id": policyRuleID,
+			"credential_id":  credentialID,
+			"input_hash":     inputHash,
+			"output_hash":    "",
+			"timing_ms":      timingMS,
 			"host_affecting": IsHostAffecting(tool),
 		},
 	})

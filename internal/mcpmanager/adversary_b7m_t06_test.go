@@ -61,12 +61,13 @@ func TestAdversary_B7M_T06_ConfirmationTOCTOURace(t *testing.T) {
 }
 
 func TestAdversary_B7M_T06_RedactionMapKeySecret(t *testing.T) {
-	// secret in map KEY is not sanitized (only values)
 	secretMap := map[string]string{"sk-live-1234": "value"}
 	got := RedactToolOutput(secretMap)
 	if strings.Contains(got, "sk-live-1234") {
-		// ADVERSARY BREAK: map keys containing sentinel secrets are not redacted
-		t.Logf("BREAK: key secret leaked: %s", got)
+		t.Fatalf("map key secret leaked: %s", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Fatalf("expected redacted map key marker, got %s", got)
 	}
 }
 
@@ -150,15 +151,19 @@ func TestAdversary_B7M_T06_PromptInjectStateChange(t *testing.T) {
 
 func TestAdversary_B7M_T06_AuditDeniedMissingFields(t *testing.T) {
 	appender := &memoryAuditAppender{}
-	AuditToolDenied(appender, "srv", "shell", "ag", "rn", "reason", "rule")
+	AuditToolDenied(appender, "srv", "shell", "ag", "rn", "reason", "rule", "cred", "input", int64(7))
 	rec := appender.Records()[0]
 	p := rec.Payload
-	// missing credential_id, input_hash, output_hash, timing_ms compared to Call
-	if _, ok := p["credential_id"]; ok {
-		t.Fatal("unexpected field in denied")
+	for key, want := range map[string]interface{}{
+		"credential_id": "cred",
+		"input_hash":    "input",
+		"output_hash":   "",
+		"timing_ms":     int64(7),
+	} {
+		if got, ok := p[key]; !ok || got != want {
+			t.Fatalf("payload[%q] = %v, present %v, want %v", key, got, ok, want)
+		}
 	}
-	// ADVERSARY BREAK: AuditToolDenied omits required audit fields present in AuditToolCall
-	t.Log("BREAK: denied audit record missing fields: credential_id, input_hash etc")
 }
 
 func TestAdversary_B7M_T06_EmptyToolName(t *testing.T) {
@@ -169,15 +174,15 @@ func TestAdversary_B7M_T06_EmptyToolName(t *testing.T) {
 }
 
 func TestAdversary_B7M_T06_SentinelMutable(t *testing.T) {
-	origLen := len(sentinelSecretPatterns)
-	sentinelSecretPatterns = append(sentinelSecretPatterns, "evil-")
-	if len(sentinelSecretPatterns) == origLen {
-		t.Fatal("should be mutable")
+	patterns := sentinelSecretPatternsList()
+	if len(patterns) == 0 {
+		t.Fatal("expected sentinel patterns")
 	}
-	// ADVERSARY BREAK: sentinelSecretPatterns is exported var, not const — can be mutated by package consumers
-	t.Log("BREAK: sentinel list is mutable var")
-	// restore for other tests? but since test file, ok
-	sentinelSecretPatterns = sentinelSecretPatterns[:origLen]
+	original := sentinelSecretPatternsList()[0]
+	patterns[0] = "safe"
+	if got := sentinelSecretPatternsList()[0]; got != original {
+		t.Fatalf("sentinel pattern list mutation leaked: got %q, want %q", got, original)
+	}
 }
 
 func TestAdversary_B7M_T06_RedactTypePreservation(t *testing.T) {
@@ -185,7 +190,7 @@ func TestAdversary_B7M_T06_RedactTypePreservation(t *testing.T) {
 	got := redactToolOutputValue(input)
 	if m, ok := got.(map[string]any); ok {
 		if _, ok := m["num"].(float64); !ok { // json unmarshal makes numbers float64
-			// may mangle types
+			t.Log("redaction changed numeric type")
 		}
 	}
 	// downstream may expect original types — potential corruption

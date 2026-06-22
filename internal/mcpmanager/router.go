@@ -60,21 +60,21 @@ func (r *Router) CallTool(ctx context.Context, serverID, tool string, input any,
 	if r == nil || r.manager == nil {
 		return nil, errors.New("mcp router manager is nil")
 	}
+	start := time.Now()
 	if !r.manager.IsToolAllowed(serverID, tool) {
-		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "mcp server/tool not allowed", "undeclared")
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "mcp server/tool not allowed", "undeclared", "", hashRouterJSON(input), time.Since(start).Milliseconds())
 		return nil, errors.New("mcp server/tool not allowed")
 	}
 	if r.manager.RequiresConfirmation(serverID, tool) {
-		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "host-affecting tool requires confirmation", "host_affecting_unconfirmed")
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "host-affecting tool requires confirmation", "host_affecting_unconfirmed", "", hashRouterJSON(input), time.Since(start).Milliseconds())
 		return nil, errors.New("host-affecting tool requires confirmation: call manager.ConfirmTool first")
 	}
 	server, ok := r.server(serverID)
 	if !ok {
-		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "mcp server/tool not allowed", "undeclared")
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, "mcp server/tool not allowed", "undeclared", "", hashRouterJSON(input), time.Since(start).Milliseconds())
 		return nil, errors.New("mcp server/tool not allowed")
 	}
 
-	start := time.Now()
 	var (
 		result any
 		err    error
