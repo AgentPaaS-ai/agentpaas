@@ -131,7 +131,7 @@ func TestComputeBuildInputDigestEmptyDir(t *testing.T) {
 
 func TestDefaultBaseImage(t *testing.T) {
 	for _, runtimeType := range []RuntimeType{RuntimePython, RuntimeLangGraph, RuntimeCrewAI} {
-		if got := defaultBaseImage(runtimeType); got != "gcr.io/distroless/python3-debian12" {
+		if got := defaultBaseImage(runtimeType); got != "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f" {
 			t.Fatalf("defaultBaseImage(%q) = %q", runtimeType, got)
 		}
 	}
@@ -430,7 +430,7 @@ func dockerBuildConfig(t *testing.T, projectDir string, harnessPath string, tag 
 	return BuildConfig{
 		ProjectDir:      projectDir,
 		Runtime:         RuntimePython,
-		BaseImage:       "gcr.io/distroless/python3-debian12",
+		BaseImage:       "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
 		HarnessPath:     harnessPath,
 		SourceDateEpoch: time.Unix(0, 0),
 		NonRootUID:      64000,

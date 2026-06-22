@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	defaultPythonBaseImage = "gcr.io/distroless/python3-debian12"
+	defaultPythonBaseImage = "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f"
 	defaultNonRootUID      = 64000
 )
 
@@ -33,7 +33,7 @@ type BuildConfig struct {
 	// Runtime is the detected/explicit runtime type.
 	Runtime RuntimeType
 	// BaseImage is the distroless base image ref (digest-pinned).
-	// Default: "gcr.io/distroless/python3-debian12"
+	// Default: "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f"
 	BaseImage string
 	// HarnessPath is the path to the pre-built harness binary to embed as PID 1.
 	// If empty, uses the standard harness binary location.
