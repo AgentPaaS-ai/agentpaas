@@ -31,6 +31,7 @@ jobs:
       block6: ${{ steps.filter.outputs.block6 }}
       block7: ${{ steps.filter.outputs.block7 }}
       block8: ${{ steps.filter.outputs.block8 }}
+      block9: ${{ steps.filter.outputs.block9 }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -55,6 +56,8 @@ jobs:
               - 'internal/secrets/**'
             block8:
               - 'internal/pack/**'
+            block9:
+              - 'internal/trigger/**'
 
   block1-gate:
     name: Block 1 Gate
@@ -123,3 +126,16 @@ jobs:
         run: |
           export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
           make block8-gate
+
+  block9-gate:
+    name: Block 9 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block9 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block9-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block9-gate
