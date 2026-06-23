@@ -45,6 +45,7 @@ type Daemon struct {
 	pidFile       string
 	auditIndex    *audit.SQLiteIndexer
 	confirmations *ConfirmationStore
+	control       *stubControlServer
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -219,11 +220,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	)
 
 	// Register stub ControlService handlers.
-	controlv1.RegisterControlServiceServer(d.server, &stubControlServer{
-		version:       d.version,
-		auditIndex:    d.auditIndex,
-		confirmations: d.confirmations,
-	})
+	controlServer := &stubControlServer{
+		version:    d.version,
+		auditIndex: d.auditIndex,
+	}
+	attachConfirmationStore(controlServer, d.confirmations)
+	d.control = controlServer
+	controlv1.RegisterControlServiceServer(d.server, controlServer)
 
 	d.started = true
 
@@ -301,6 +304,10 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	if d.auditIndex != nil {
 		_ = d.auditIndex.Close()
 		d.auditIndex = nil
+	}
+	if d.control != nil {
+		detachConfirmationStore(d.control)
+		d.control = nil
 	}
 
 	// Clean up files.

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
@@ -361,8 +362,9 @@ func isValidPolicyRuleID(ruleID string) bool {
 }
 
 var (
-	safePolicyToken = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
-	safeDomain      = regexp.MustCompile(`^(?:\*\.)?[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$`)
+	safePolicyToken    = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	safeDomain         = regexp.MustCompile(`^(?:\*\.)?[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$`)
+	confirmationStores sync.Map
 )
 
 // RecommendPolicyPatch proposes, but never applies, a policy change.
@@ -551,12 +553,16 @@ func (s *stubControlServer) policyDenialEvidence(destination string) ([]operator
 }
 
 func (s *stubControlServer) confirmationStore() *ConfirmationStore {
-	s.confirmationMu.Lock()
-	defer s.confirmationMu.Unlock()
-	if s.confirmations == nil {
-		s.confirmations = NewConfirmationStore()
-	}
-	return s.confirmations
+	store, _ := confirmationStores.LoadOrStore(s, NewConfirmationStore())
+	return store.(*ConfirmationStore)
+}
+
+func attachConfirmationStore(server *stubControlServer, store *ConfirmationStore) {
+	confirmationStores.Store(server, store)
+}
+
+func detachConfirmationStore(server *stubControlServer) {
+	confirmationStores.Delete(server)
 }
 
 func (s *stubControlServer) proposeTrustBoundaryChange(change PendingConfirmation) (string, error) {
