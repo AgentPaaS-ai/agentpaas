@@ -8,7 +8,7 @@ import (
 // Patterns for sensitive values that must be redacted.
 var (
 	// apiKeyPattern matches common API key prefixes followed by base64/alphanumeric content.
-	apiKeyPattern = regexp.MustCompile(`(?i)(sk-|key-|token-|bearer\s+)[a-zA-Z0-9+/=_-]{8,}`)
+	apiKeyPattern = regexp.MustCompile(`(?i)(sk-|key-|token-|bearer\s+)[a-zA-Z0-9+/=_.-]{8,}`)
 
 	// gitHubTokenPattern matches GitHub tokens with ghp_, gho_, ghs_, or gh prefix + underscore.
 	gitHubTokenPattern = regexp.MustCompile(`gh[pso]?_[a-zA-Z0-9]{8,}`)
@@ -153,13 +153,13 @@ func Redact(input string) string {
 func replaceAllPatterns(s string) string {
 	// Order matters: apply more specific patterns first, then generic ones.
 	replacements := []*regexp.Regexp{
-		privateKeyPattern,       // Whole block markers
-		jwtPattern,              // JWT tokens
-		gitHubTokenPattern,      // GitHub tokens
-		awsKeyPattern,           // AWS keys
-		apiKeyPattern,           // API key patterns
-		hexWithColonsPattern,    // Colon-separated hex
-		hexStringPattern,        // Long hex strings
+		privateKeyPattern,        // Whole block markers
+		jwtPattern,               // JWT tokens
+		gitHubTokenPattern,       // GitHub tokens
+		awsKeyPattern,            // AWS keys
+		apiKeyPattern,            // API key patterns
+		hexWithColonsPattern,     // Colon-separated hex
+		hexStringPattern,         // Long hex strings
 		base64HighEntropyPattern, // Long base64 strings
 	}
 
