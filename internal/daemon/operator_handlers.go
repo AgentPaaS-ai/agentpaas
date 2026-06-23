@@ -35,6 +35,24 @@ func (s *stubControlServer) ValidateAgentProject(ctx context.Context, req *contr
 		return nil, status.Error(codes.InvalidArgument, "project_path is required")
 	}
 
+	absProjectPath, err := filepath.Abs(projectPath)
+	if err != nil {
+		return validationFailure(
+			projectPath,
+			"",
+			operator.ErrDependencyConflict,
+			fmt.Sprintf("resolve project path: %v", err),
+		), nil
+	}
+	if isSystemPath(absProjectPath) {
+		return validationFailure(
+			projectPath,
+			"",
+			operator.ErrDependencyConflict,
+			"project path must not be a system directory",
+		), nil
+	}
+
 	det, err := pack.DetectProject(projectPath)
 	if err != nil {
 		return validationFailure(
@@ -51,6 +69,24 @@ func (s *stubControlServer) ValidateAgentProject(ctx context.Context, req *contr
 			runtime,
 			operator.ErrDependencyConflict,
 			"agent.yaml not found; run 'agent init --from-code --noninteractive'",
+		), nil
+	}
+
+	agentConfig, err := pack.LoadAgentYAML(projectPath)
+	if err != nil {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrDependencyConflict,
+			err.Error(),
+		), nil
+	}
+	if agentConfig != nil && invalidAgentEntry(agentConfig.Entry) {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrDependencyConflict,
+			"agent entry must be a relative path within the project directory; absolute paths and traversal are not allowed",
 		), nil
 	}
 
@@ -131,6 +167,35 @@ func (s *stubControlServer) ValidateAgentProject(ctx context.Context, req *contr
 		Runtime:       runtime,
 		Issues:        []*controlv1.OperatorIssue{},
 	}, nil
+}
+
+func isSystemPath(path string) bool {
+	cleanPath := filepath.Clean(path)
+	for _, root := range []string{"/etc", "/usr", "/bin", "/sys", "/proc", "/dev", "/root"} {
+		rel, err := filepath.Rel(root, cleanPath)
+		if err == nil && (rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))) {
+			return true
+		}
+	}
+	return cleanPath == "/var" || cleanPath == "/home"
+}
+
+func invalidAgentEntry(entry string) bool {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return false
+	}
+	if filepath.IsAbs(entry) || strings.ContainsRune(entry, 0) {
+		return true
+	}
+	for _, component := range strings.FieldsFunc(entry, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if component == ".." {
+			return true
+		}
+	}
+	return false
 }
 
 func validationFailure(
@@ -374,18 +439,21 @@ func (s *stubControlServer) RecommendPolicyPatch(ctx context.Context, req *contr
 
 	var proposal PendingConfirmation
 	switch {
-	case len(fields) == 4 &&
+	case len(fields) >= 4 &&
 		strings.EqualFold(fields[0], "allow") &&
 		strings.EqualFold(fields[1], "egress") &&
 		strings.EqualFold(fields[2], "to"):
 		domain := strings.ToLower(strings.TrimSuffix(fields[3], "."))
-		if domain == "*" {
+		if strings.Contains(domain, "*") {
 			proposal = PendingConfirmation{
 				ChangeType: "policy_patch",
 				RiskLevel:  string(operator.RiskHigh),
-				Rationale:  "wildcard domain '*' is rejected; specify an explicit destination",
+				Rationale:  "wildcard egress destinations are rejected; this proposal is retained for review only",
 			}
 			return s.policyPatchResponse(proposal)
+		}
+		if len(fields) != 4 {
+			return unableToParsePolicyPatch(), nil
 		}
 		if !safeDomain.MatchString(domain) {
 			return unableToParsePolicyPatch(), nil
@@ -598,7 +666,10 @@ func (s *stubControlServer) GetRunTimeline(ctx context.Context, req *controlv1.G
 	}
 	events := make([]*controlv1.TimelineEvent, 0, len(records))
 	for _, record := range records {
-		detail := logging.Redact(firstAuditString(record.Payload, "detail", "description"))
+		detail, detailErr := timelineDetail(record.Payload)
+		if detailErr != nil {
+			return nil, status.Errorf(codes.Internal, "marshal timeline detail: %v", detailErr)
+		}
 		data, marshalErr := json.Marshal(map[string]interface{}{
 			"audit_seq": record.Seq,
 			"evidence_refs": []map[string]string{{
@@ -621,6 +692,26 @@ func (s *stubControlServer) GetRunTimeline(ctx context.Context, req *controlv1.G
 		RunId:         runID,
 		Events:        events,
 	}, nil
+}
+
+func timelineDetail(payload map[string]interface{}) (string, error) {
+	if detail := firstAuditString(payload, "detail", "description"); detail != "" {
+		return logging.Redact(detail), nil
+	}
+
+	plainPayload := make(map[string]interface{}, len(payload))
+	for key, value := range payload {
+		if strings.HasSuffix(strings.ToLower(key), "_ref") {
+			plainPayload[key] = "[REDACTED]"
+			continue
+		}
+		plainPayload[key] = value
+	}
+	data, err := json.Marshal(plainPayload)
+	if err != nil {
+		return "", err
+	}
+	return logging.Redact(string(data)), nil
 }
 
 // NextAction recommends the next operator action from the latest relevant
