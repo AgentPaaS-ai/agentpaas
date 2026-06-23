@@ -621,6 +621,40 @@ func (s *stubControlServer) GetRunTimeline(ctx context.Context, req *controlv1.G
 // audit event in the supplied run context.
 func (s *stubControlServer) NextAction(ctx context.Context, req *controlv1.NextActionRequest) (*controlv1.NextActionResponse, error) {
 	runID := req.GetContext()
+	if runID == "confirmations:list" {
+		data, err := json.Marshal(s.ListPendingConfirmations())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "marshal pending confirmations: %v", err)
+		}
+		return &controlv1.NextActionResponse{
+			Action:        string(operator.ActionAskUser),
+			Params:        map[string]string{"confirmations_json": string(data)},
+			Reasoning:     "pending confirmations listed",
+			SchemaVersion: operator.SchemaVersion,
+			NextAction:    string(operator.ActionAskUser),
+			Rationale:     "review pending trust-boundary changes",
+		}, nil
+	}
+	if strings.HasPrefix(runID, "confirm-change:") {
+		parts := strings.SplitN(runID, ":", 3)
+		if len(parts) != 3 || (parts[1] != "approve" && parts[1] != "decline") ||
+			!strings.HasPrefix(parts[2], "confirm_") {
+			return nil, status.Error(codes.InvalidArgument, "invalid confirmation decision")
+		}
+		if err := s.ConfirmChange(parts[2], parts[1] == "approve"); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		if parts[1] == "decline" {
+			return s.NextAction(ctx, &controlv1.NextActionRequest{Context: parts[2]})
+		}
+		return &controlv1.NextActionResponse{
+			Action:        string(operator.ActionAskUser),
+			Reasoning:     "approval recorded; the proposed change remains unapplied",
+			SchemaVersion: operator.SchemaVersion,
+			NextAction:    string(operator.ActionAskUser),
+			Rationale:     "approval recorded; apply the change through the separate policy workflow",
+		}, nil
+	}
 	if strings.HasPrefix(runID, "confirm_") {
 		change, err := s.confirmationStore().Get(runID)
 		if err == nil && change.Status == "declined" {
