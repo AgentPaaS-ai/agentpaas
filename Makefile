@@ -123,8 +123,13 @@ block8-gate: build test race lint osv
 	go test -tags=adversary -race -count=1 ./internal/pack/...
 	@echo "✓ Block 8 gate passed"
 
-block9-gate:
-	@echo "Error: block9-gate is not implemented until Block 9" && exit 1
+block9-gate: build test race lint osv
+	@echo "==> Running Block 9 gate: trigger API, event bus, webhooks, cron"
+	# B9-T01..T09 unit + integration tests
+	go test -race -count=1 ./internal/trigger/...
+	# B9 adversary tests
+	go test -tags=adversary -race -count=1 ./internal/trigger/...
+	@echo "✓ Block 9 gate passed"
 
 block10-gate:
 	@echo "Error: block10-gate is not implemented until Block 10" && exit 1
@@ -155,7 +160,7 @@ gates: ## List all available gate targets
 	@echo "  block6-gate  - Agent harness (ACTIVE)"
 	@echo "  block7-gate  - Secret store (ACTIVE)"
 	@echo "  block8-gate  - Packaging pipeline, agent pack (ACTIVE)"
-	@echo "  block9-gate  - Trigger API, event bus (not implemented)"
+	@echo "  block9-gate  - Trigger API, event bus (ACTIVE)"
 	@echo "  block10-gate - OTel pipeline, dashboard (not implemented)"
 	@echo "  block11-gate - Hermes operator contract (not implemented)"
 	@echo "  block12-gate - Red-team smoke gate (not implemented)"

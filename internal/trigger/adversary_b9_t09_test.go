@@ -19,23 +19,23 @@ func TestAdversaryB9T09_MalformedJSONAllCases(t *testing.T) {
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	malformed := []string{
-		`{"agent_name": "test"`,                    // truncated
-		`{"agent_name": }`,                         // invalid value
-		`{"agent_name": "test"]}`,                  // bracket mismatch
-		`{invalid json}`,                          // no quotes
-		`{"agent_name": "test", "payload": }`,      // missing value
-		`{"agent_name": "test", ,}`,                // extra comma
-		`{"agent_name": null, "payload": "test"`,   // truncated after
-		`[{"agent_name": "test"}]`,                 // array top level
-		"{\n  \"agent_name\": \"test\",\n  \"payload\": \n}", // newline issue
-		`{"agent_name": "\u0000test"}`,             // null in string
-		`{"agent_name": "test\x00"}`,               // binary in string
-		"\xef\xbb\xbf{\"agent_name\":\"test\"}",    // BOM
-		"{\"agent_name\":\"test\"\xff\xfe}",        // invalid UTF8 after
+		`{"agent_name": "test"`,                                        // truncated
+		`{"agent_name": }`,                                             // invalid value
+		`{"agent_name": "test"]}`,                                      // bracket mismatch
+		`{invalid json}`,                                               // no quotes
+		`{"agent_name": "test", "payload": }`,                          // missing value
+		`{"agent_name": "test", ,}`,                                    // extra comma
+		`{"agent_name": null, "payload": "test"`,                       // truncated after
+		`[{"agent_name": "test"}]`,                                     // array top level
+		"{\n  \"agent_name\": \"test\",\n  \"payload\": \n}",           // newline issue
+		`{"agent_name": "\u0000test"}`,                                 // null in string
+		`{"agent_name": "test\x00"}`,                                   // binary in string
+		"\xef\xbb\xbf{\"agent_name\":\"test\"}",                        // BOM
+		"{\"agent_name\":\"test\"\xff\xfe}",                            // invalid UTF8 after
 		strings.Repeat(`{"a":`, 100) + `"v"` + strings.Repeat(`}`, 99), // deep but truncated
-		`{`,                                        // single char
-		`}`,                                        // single closing
-		`{"agent_name": true, "payload": false}`,   // bools where strings expected? but valid json
+		`{`,                                      // single char
+		`}`,                                      // single closing
+		`{"agent_name": true, "payload": false}`, // bools where strings expected? but valid json
 		`null`,
 		`true`,
 		`42`,
