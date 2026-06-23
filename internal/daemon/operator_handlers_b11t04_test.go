@@ -75,7 +75,7 @@ func TestExplainPolicyDenial_FoundEvent(t *testing.T) {
 	}))
 
 	resp, err := server.ExplainPolicyDenial(context.Background(), &controlv1.ExplainPolicyDenialRequest{
-		RunId:            "run-denial",
+		RunId:             "run-denial",
 		DeniedDestination: "api.example.com",
 	})
 	if err != nil {

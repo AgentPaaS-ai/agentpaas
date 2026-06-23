@@ -2,15 +2,19 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/logging"
 	"github.com/parvezsyed/agentpaas/internal/operator"
 	"github.com/parvezsyed/agentpaas/internal/pack"
 	"github.com/parvezsyed/agentpaas/internal/policy"
@@ -151,49 +155,177 @@ func validationFailure(
 	}
 }
 
-// SummarizeRun generates a structured summary for a completed run. P1
-// implementation: the run store is not yet wired, so we return a
-// not-found error for unknown run ids. When the harness run store is
-// available, this method will pull the run record and build the summary.
+// SummarizeRun generates a structured summary from the run's audit events.
 func (s *stubControlServer) SummarizeRun(ctx context.Context, req *controlv1.SummarizeRunRequest) (*controlv1.SummarizeRunResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
 	}
-	// P1: return a minimal summary. Full run-store integration is in B11-T04.
-	return &controlv1.SummarizeRunResponse{
-		Summary:       fmt.Sprintf("run %s summary: no run store available in P1 stub", runID),
+
+	records, err := s.auditRecordsForRun(runID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "query audit records: %v", err)
+	}
+	resp := &controlv1.SummarizeRunResponse{
 		SchemaVersion: operator.SchemaVersion,
 		Status:        "unknown",
-	}, nil
+	}
+	if len(records) == 0 {
+		resp.Summary = fmt.Sprintf("no events found for run %s", runID)
+		return resp, nil
+	}
+
+	var startedAt, finishedAt time.Time
+	for _, record := range records {
+		switch {
+		case record.EventType == "run_start":
+			if startedAt.IsZero() {
+				startedAt = parseAuditTime(record.Timestamp)
+			}
+			if resp.Status == "unknown" {
+				resp.Status = "running"
+			}
+		case record.EventType == "run_complete":
+			resp.Status = "completed"
+			finishedAt = parseAuditTime(record.Timestamp)
+			resp.ExitCode = auditInt32(record.Payload, "exit_code")
+		case record.EventType == "run_failed":
+			resp.Status = "failed"
+			finishedAt = parseAuditTime(record.Timestamp)
+			resp.ExitCode = auditInt32(record.Payload, "exit_code")
+			category, _ := diagnosisForRecord(record)
+			resp.ErrorCategory = string(category)
+		}
+		if strings.Contains(record.EventType, "invoke") {
+			resp.Invocations++
+		}
+		if record.EventType == "policy_denied" {
+			resp.PolicyDenials++
+		}
+	}
+
+	resp.StartedAt = toTimestampPB(startedAt)
+	resp.FinishedAt = toTimestampPB(finishedAt)
+	duration := "unknown duration"
+	if !startedAt.IsZero() && !finishedAt.IsZero() {
+		resp.DurationMs = finishedAt.Sub(startedAt).Milliseconds()
+		duration = (time.Duration(resp.DurationMs) * time.Millisecond).String()
+	}
+	resp.Summary = fmt.Sprintf(
+		"Run %s %s after %s, %d invocations, %d policy denials",
+		runID,
+		resp.Status,
+		duration,
+		resp.Invocations,
+		resp.PolicyDenials,
+	)
+	resp.EvidenceRefs = []*controlv1.EvidenceRef{auditEvidence(records[0], "")}
+	return resp, nil
 }
 
-// ExplainFailure diagnoses a failed run. P1 implementation: returns a
-// not-found for unknown run ids. Full failure-context integration is in
-// B11-T04.
+// ExplainFailure diagnoses a failed run from its audit failure context.
 func (s *stubControlServer) ExplainFailure(ctx context.Context, req *controlv1.ExplainFailureRequest) (*controlv1.ExplainFailureResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
 	}
+
+	records, err := s.auditRecordsForRun(runID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "query audit records: %v", err)
+	}
+	failure, found := latestFailureRecord(records)
+	if !found {
+		return &controlv1.ExplainFailureResponse{
+			RootCause:     fmt.Sprintf("no failure events found for run %s", runID),
+			SchemaVersion: operator.SchemaVersion,
+			ErrorCategory: string(operator.ErrAgentRuntimeException),
+			NextAction:    string(operator.ActionAskUser),
+		}, nil
+	}
+
+	category, nextAction := diagnosisForRecord(failure)
+	rootCause := firstAuditString(failure.Payload, "reason", "detail", "redacted_detail")
+	excerpts := make([]*controlv1.RedactedExcerpt, 0, 2)
+	for _, field := range []string{"stderr_ref", "stdout_ref"} {
+		if content := auditString(failure.Payload, field); content != "" {
+			excerpts = append(excerpts, &controlv1.RedactedExcerpt{
+				Source:  strings.TrimSuffix(field, "_ref"),
+				Content: logging.Redact(content),
+			})
+		}
+	}
 	return &controlv1.ExplainFailureResponse{
-		RootCause:     fmt.Sprintf("no failure context available for run %s in P1 stub", runID),
-		SchemaVersion: operator.SchemaVersion,
-		ErrorCategory: string(operator.ErrAgentRuntimeException),
-		NextAction:    string(operator.ActionAskUser),
+		RootCause:        logging.Redact(rootCause),
+		SchemaVersion:    operator.SchemaVersion,
+		ErrorCategory:    string(category),
+		RedactedExcerpts: excerpts,
+		EvidenceRefs:     []*controlv1.EvidenceRef{auditEvidence(failure, "failure event")},
+		NextAction:       string(nextAction),
 	}, nil
 }
 
 // ExplainPolicyDenial identifies the blocking policy rule for a denied action.
-// P1 implementation: the policy compiler integration is in B11-T04.
 func (s *stubControlServer) ExplainPolicyDenial(ctx context.Context, req *controlv1.ExplainPolicyDenialRequest) (*controlv1.ExplainPolicyDenialResponse, error) {
+	records, err := s.auditRecords()
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "query audit records: %v", err)
+	}
+	var denial audit.AuditRecord
+	found := false
+	for i := len(records) - 1; i >= 0; i-- {
+		record := records[i]
+		if record.EventType != "policy_denied" {
+			continue
+		}
+		if req.GetRunId() != "" && auditString(record.Payload, "run_id") != req.GetRunId() {
+			continue
+		}
+		if req.GetDeniedDestination() != "" &&
+			firstAuditString(record.Payload, "destination", "action") != req.GetDeniedDestination() {
+			continue
+		}
+		denial = record
+		found = true
+		break
+	}
+
+	if found {
+		deniedAction := firstAuditString(denial.Payload, "action", "destination")
+		ruleID := auditString(denial.Payload, "rule_id")
+		if ruleID == "" {
+			ruleID = "default_deny"
+		}
+		rationale := auditString(denial.Payload, "reason")
+		if rationale == "" {
+			rationale = "destination not in allowed egress list"
+		}
+		return &controlv1.ExplainPolicyDenialResponse{
+			DeniedDestination: deniedAction,
+			MatchingRule:      ruleID,
+			Explanation:       logging.Redact(rationale),
+			SchemaVersion:     operator.SchemaVersion,
+			RunId:             req.GetRunId(),
+			DeniedAction:      logging.Redact(deniedAction),
+			BlockingRuleId:    ruleID,
+			PolicyDigest:      logging.Redact(auditString(denial.Payload, "policy_digest")),
+			Rationale:         logging.Redact(rationale),
+			EvidenceRefs:      []*controlv1.EvidenceRef{auditEvidence(denial, "")},
+			NextAction:        string(operator.ActionReviewPolicyPatch),
+		}, nil
+	}
+
+	destination := logging.Redact(req.GetDeniedDestination())
 	return &controlv1.ExplainPolicyDenialResponse{
-		SchemaVersion:  operator.SchemaVersion,
-		RunId:          req.GetRunId(),
-		DeniedAction:   fmt.Sprintf("egress to %s", req.GetDeniedDestination()),
-		BlockingRuleId: "default_deny",
-		Rationale:      "destination not in allowed egress list",
-		NextAction:     string(operator.ActionReviewPolicyPatch),
+		DeniedDestination: destination,
+		MatchingRule:      "default_deny",
+		Explanation:       "destination not in allowed egress list",
+		SchemaVersion:     operator.SchemaVersion,
+		RunId:             req.GetRunId(),
+		DeniedAction:      destination,
+		BlockingRuleId:    "default_deny",
+		Rationale:         "destination not in allowed egress list",
+		NextAction:        string(operator.ActionReviewPolicyPatch),
 	}, nil
 }
 
@@ -218,34 +350,86 @@ func (s *stubControlServer) RecommendPolicyPatch(ctx context.Context, req *contr
 	}, nil
 }
 
-// GetRunTimeline returns a chronological event list for a run. P1
-// implementation: the audit store integration is in B11-T04.
+// GetRunTimeline returns a chronological event list for a run.
 func (s *stubControlServer) GetRunTimeline(ctx context.Context, req *controlv1.GetRunTimelineRequest) (*controlv1.GetRunTimelineResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
 	}
+	records, err := s.auditRecordsForRun(runID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "query audit records: %v", err)
+	}
+	events := make([]*controlv1.TimelineEvent, 0, len(records))
+	for _, record := range records {
+		detail := logging.Redact(firstAuditString(record.Payload, "detail", "description"))
+		data, marshalErr := json.Marshal(map[string]interface{}{
+			"audit_seq": record.Seq,
+			"evidence_refs": []map[string]string{{
+				"type": "audit_seq",
+				"ref":  strconv.FormatInt(record.Seq, 10),
+			}},
+		})
+		if marshalErr != nil {
+			return nil, status.Errorf(codes.Internal, "marshal timeline evidence: %v", marshalErr)
+		}
+		events = append(events, &controlv1.TimelineEvent{
+			Timestamp:   toTimestampPB(parseAuditTime(record.Timestamp)),
+			Type:        record.EventType,
+			Description: detail,
+			Data:        data,
+		})
+	}
 	return &controlv1.GetRunTimelineResponse{
 		SchemaVersion: operator.SchemaVersion,
 		RunId:         runID,
-		Events:        []*controlv1.TimelineEvent{},
+		Events:        events,
 	}, nil
 }
 
-// NextAction recommends the next operator action. P1 implementation: returns
-// ask_user when no run context is provided. Full integration is in B11-T04.
+// NextAction recommends the next operator action from the latest relevant
+// audit event in the supplied run context.
 func (s *stubControlServer) NextAction(ctx context.Context, req *controlv1.NextActionRequest) (*controlv1.NextActionResponse, error) {
+	runID := req.GetContext()
+	if runID == "" {
+		return &controlv1.NextActionResponse{
+			Action:        string(operator.ActionAskUser),
+			Reasoning:     "no run context provided",
+			SchemaVersion: operator.SchemaVersion,
+			NextAction:    string(operator.ActionAskUser),
+			Rationale:     "no run context provided",
+		}, nil
+	}
+
+	records, err := s.auditRecordsForRun(runID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "query audit records: %v", err)
+	}
+	for i := len(records) - 1; i >= 0; i-- {
+		record := records[i]
+		switch {
+		case isFailureRecord(record):
+			_, action := diagnosisForRecord(record)
+			rationale := logging.Redact(firstAuditString(record.Payload, "reason", "detail", "redacted_detail"))
+			return nextActionResponse(runID, action, rationale, record), nil
+		case record.EventType == "run_complete":
+			return nextActionResponse(runID, operator.ActionRerun, "run completed successfully", record), nil
+		case record.EventType == "policy_denied":
+			rationale := logging.Redact(firstAuditString(record.Payload, "reason", "detail"))
+			return nextActionResponse(runID, operator.ActionReviewPolicyPatch, rationale, record), nil
+		}
+	}
+
 	return &controlv1.NextActionResponse{
-		Action:        "ask_user",
-		Reasoning:     "no run context available in P1 stub",
+		Action:        string(operator.ActionAskUser),
+		Reasoning:     fmt.Sprintf("no actionable events found for run %s", runID),
 		SchemaVersion: operator.SchemaVersion,
+		RunId:         runID,
 		NextAction:    string(operator.ActionAskUser),
-		Rationale:     "unable to determine next action without run context",
+		Rationale:     fmt.Sprintf("no actionable events found for run %s", runID),
 	}, nil
 }
 
-// toTimestampPB converts a time.Time to a protobuf Timestamp, returning nil
-// for zero times. Kept for future use by B11-T04 run-store integration.
 func toTimestampPB(t time.Time) *timestamppb.Timestamp {
 	if t.IsZero() {
 		return nil
@@ -253,4 +437,149 @@ func toTimestampPB(t time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(t)
 }
 
-var _ = toTimestampPB // referenced by B11-T04 handlers
+func (s *stubControlServer) auditRecords() ([]audit.AuditRecord, error) {
+	if s.auditIndex == nil {
+		return []audit.AuditRecord{}, nil
+	}
+	count, err := s.auditIndex.RecordCount()
+	if err != nil {
+		return nil, err
+	}
+	records := make([]audit.AuditRecord, 0, count)
+	for seq := int64(1); seq <= int64(count); seq++ {
+		record, queryErr := s.auditIndex.QueryBySeq(seq)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+		records = append(records, *record)
+	}
+	return records, nil
+}
+
+func (s *stubControlServer) auditRecordsForRun(runID string) ([]audit.AuditRecord, error) {
+	records, err := s.auditRecords()
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]audit.AuditRecord, 0, len(records))
+	for _, record := range records {
+		if auditString(record.Payload, "run_id") == runID {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered, nil
+}
+
+func latestFailureRecord(records []audit.AuditRecord) (audit.AuditRecord, bool) {
+	for i := len(records) - 1; i >= 0; i-- {
+		if isFailureRecord(records[i]) {
+			return records[i], true
+		}
+	}
+	return audit.AuditRecord{}, false
+}
+
+func isFailureRecord(record audit.AuditRecord) bool {
+	return strings.Contains(record.EventType, "run_failed") ||
+		strings.Contains(record.EventType, "invoke_failed") ||
+		record.EventType == "failure_context" ||
+		record.EventType == "budget_exceeded" ||
+		record.EventType == "policy_denied"
+}
+
+func diagnosisForRecord(record audit.AuditRecord) (operator.ErrorCategory, operator.NextAction) {
+	category := firstAuditString(record.Payload, "category", "error_category")
+	if category == "" {
+		switch record.EventType {
+		case "policy_denied":
+			category = "mcp_denied"
+		case "budget_exceeded":
+			category = "budget_exceeded"
+		}
+	}
+	switch category {
+	case "budget_exceeded":
+		return operator.ErrBudgetExceeded, operator.ActionIncreaseBudget
+	case "import_failed", string(operator.ErrDependencyConflict):
+		return operator.ErrDependencyConflict, operator.ActionInstallDependency
+	case "mcp_denied", string(operator.ErrPolicyDenied):
+		return operator.ErrPolicyDenied, operator.ActionReviewPolicyPatch
+	case string(operator.ErrMissingSecretBinding):
+		return operator.ErrMissingSecretBinding, operator.ActionSetSecret
+	case "task_failed", "tool_failed", "code_failed", "invoke_timeout",
+		"worker_killed", "saas_failed", "mcp_failed",
+		string(operator.ErrAgentRuntimeException):
+		return operator.ErrAgentRuntimeException, operator.ActionFixCode
+	default:
+		return operator.ErrAgentRuntimeException, operator.ActionFixCode
+	}
+}
+
+func auditString(payload map[string]interface{}, key string) string {
+	value, ok := payload[key]
+	if !ok {
+		return ""
+	}
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return text
+}
+
+func firstAuditString(payload map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if value := auditString(payload, key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func auditInt32(payload map[string]interface{}, key string) int32 {
+	switch value := payload[key].(type) {
+	case float64:
+		return int32(value)
+	case int:
+		return int32(value)
+	case int32:
+		return value
+	case int64:
+		return int32(value)
+	default:
+		return 0
+	}
+}
+
+func parseAuditTime(value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func auditEvidence(record audit.AuditRecord, detail string) *controlv1.EvidenceRef {
+	return &controlv1.EvidenceRef{
+		Type:   "audit_seq",
+		Ref:    strconv.FormatInt(record.Seq, 10),
+		Detail: logging.Redact(detail),
+	}
+}
+
+func nextActionResponse(
+	runID string,
+	action operator.NextAction,
+	rationale string,
+	record audit.AuditRecord,
+) *controlv1.NextActionResponse {
+	return &controlv1.NextActionResponse{
+		Action:        string(action),
+		Reasoning:     rationale,
+		SchemaVersion: operator.SchemaVersion,
+		RunId:         runID,
+		NextAction:    string(action),
+		Rationale:     rationale,
+		EvidenceRefs:  []*controlv1.EvidenceRef{auditEvidence(record, "")},
+	}
+}

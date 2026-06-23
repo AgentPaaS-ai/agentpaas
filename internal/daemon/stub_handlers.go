@@ -4,6 +4,7 @@ import (
 	"context"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 // stubControlServer implements the ControlServiceServer interface by embedding
@@ -16,7 +17,8 @@ import (
 type stubControlServer struct {
 	controlv1.UnimplementedControlServiceServer
 
-	version VersionInfo
+	version    VersionInfo
+	auditIndex *audit.SQLiteIndexer
 }
 
 // compile-time interface check.
