@@ -114,7 +114,11 @@ func TestAdversaryB9T07_MaxDepthEnforcement(t *testing.T) {
 }
 
 func TestAdversaryB9T07_CallerIDInjection(t *testing.T) {
-	hm := newAdversaryTestManager(t, &HandoffConfig{SourceAgent: "source", TargetAgent: "target"})
+	hm := NewHandoffManager([]*HandoffConfig{
+		{SourceAgent: "source", TargetAgent: "target"},
+		{SourceAgent: "api_key:admin", TargetAgent: "target"},
+		{SourceAgent: "system:cron:evil", TargetAgent: "target"},
+	}, &adversaryFakeAudit{})
 
 	var gotCaller CallerID
 	hm.invoke = func(ctx context.Context, _ *triggerv1.InvokeRequest) (*triggerv1.InvokeResponse, error) {
@@ -348,7 +352,7 @@ func TestAdversaryB9T07_CycleGuard(t *testing.T) {
 
 	// Simulate chain by pre-setting depth
 	hm.mu.Lock()
-	hm.activeChains["corr-cycle"] = 2
+	hm.activeChains["corr-cycle"] = 3
 	hm.mu.Unlock()
 
 	result, _ := hm.Trigger(context.Background(), &HandoffRequest{SourceAgent: "a", CorrelationID: "corr-cycle"})
