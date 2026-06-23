@@ -176,9 +176,17 @@ func TestAdversaryB9T01_InvokeStreamWithoutAuth(t *testing.T) {
 	client, cleanup := startGRPCTestServer(t, testAuthenticator(), DefaultMaxPayload)
 	defer cleanup()
 
-	_, err := client.InvokeStream(context.Background(), &triggerv1.InvokeRequest{AgentName: "agent-a"})
+	stream, err := client.InvokeStream(context.Background(), &triggerv1.InvokeRequest{AgentName: "agent-a"})
+	if err != nil {
+		if status.Code(err) != codes.Unauthenticated {
+			t.Errorf("SECURITY BREAK: InvokeStream without auth returned wrong code: %v", err)
+		}
+		t.Logf("Tested: InvokeStream without auth — Unauthenticated enforced (stream interceptor)")
+		return
+	}
+	_, err = stream.Recv()
 	if status.Code(err) != codes.Unauthenticated {
-		t.Errorf("SECURITY BREAK: InvokeStream without auth succeeded: %v", err)
+		t.Errorf("SECURITY BREAK: InvokeStream without auth Recv succeeded or wrong code: %v", err)
 	}
 	t.Logf("Tested: InvokeStream without auth — Unauthenticated enforced (stream interceptor)")
 }
