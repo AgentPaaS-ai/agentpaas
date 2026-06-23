@@ -86,8 +86,8 @@ func (s *Server) ServePolicyDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := PolicyDiffView{
-		DigestA:      digestA,
-		DigestB:      digestB,
+		DigestA:      sanitizeHexDigest(digestA),
+		DigestB:      sanitizeHexDigest(digestB),
 		Identical:    digestA == digestB,
 		CanonicalA:   sanitizeMap(sectionsA, maxAttributeValueLen),
 		CanonicalB:   sanitizeMap(sectionsB, maxAttributeValueLen),

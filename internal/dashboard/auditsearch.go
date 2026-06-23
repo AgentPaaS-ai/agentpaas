@@ -284,11 +284,11 @@ func (s *Server) auditVerifyView(result *audit.VerificationResult, auditPath str
 		Verified:               len(result.Issues) == 0,
 		AuditRecordCount:       result.AuditRecordCount,
 		AuditHeadSeq:           result.AuditHeadSeq,
-		AuditHeadHash:          result.AuditHeadHash,
+		AuditHeadHash:          sanitizeHexDigest(result.AuditHeadHash),
 		CheckpointCount:        result.CheckpointCount,
 		LatestAnchorSeq:        result.LatestAnchorSeq,
-		LatestAnchorHash:       result.LatestAnchorHash,
-		TrustAnchorFingerprint: fingerprint,
+		LatestAnchorHash:       sanitizeHexDigest(result.LatestAnchorHash),
+		TrustAnchorFingerprint: sanitizeHexDigest(fingerprint),
 		VerificationCommand: sanitizeString(
 			fmt.Sprintf("agentpaas audit verify --audit %q --checkpoints %q", auditPath, checkpointPath),
 			maxAttributeValueLen,
@@ -303,11 +303,36 @@ func sanitizeBundleManifest(manifest *audit.BundleManifest) {
 		return
 	}
 	manifest.ExportTimestamp = sanitizeString(manifest.ExportTimestamp, maxAttributeValueLen)
+	manifest.AuditHeadHash = sanitizeHexDigest(manifest.AuditHeadHash)
+	manifest.LatestCpHash = sanitizeHexDigest(manifest.LatestCpHash)
+	manifest.PubKeyFingerprint = sanitizeHexDigest(manifest.PubKeyFingerprint)
+	manifest.ManifestHash = sanitizeHexDigest(manifest.ManifestHash)
 }
 
 func sha256Fingerprint(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+func sanitizeHexDigest(value string) string {
+	sanitized := sanitizeString(value, maxAttributeValueLen)
+	if sanitized != "[REDACTED]" || !isHexDigest(value) {
+		return sanitized
+	}
+	return value
+}
+
+func isHexDigest(value string) bool {
+	if value == "" || len(value)%2 != 0 {
+		return false
+	}
+	for _, r := range value {
+		if (r >= '0' && r <= '9') || (r >= 'a' && r <= 'f') || (r >= 'A' && r <= 'F') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func resolveDashboardReadPath(rawPath string, baseDir string) (string, error) {
