@@ -82,9 +82,16 @@ func TestUnauthenticatedInvokeStreamReturnsUnauthenticated(t *testing.T) {
 	client, cleanup := startGRPCTestServer(t, testAuthenticator(), DefaultMaxPayload)
 	defer cleanup()
 
-	_, err := client.InvokeStream(context.Background(), &triggerv1.InvokeRequest{AgentName: "agent-a"})
+	stream, err := client.InvokeStream(context.Background(), &triggerv1.InvokeRequest{AgentName: "agent-a"})
+	if err != nil {
+		if status.Code(err) != codes.Unauthenticated {
+			t.Fatalf("InvokeStream() code = %v, want %v (err=%v)", status.Code(err), codes.Unauthenticated, err)
+		}
+		return
+	}
+	_, err = stream.Recv()
 	if status.Code(err) != codes.Unauthenticated {
-		t.Fatalf("InvokeStream() code = %v, want %v (err=%v)", status.Code(err), codes.Unauthenticated, err)
+		t.Fatalf("InvokeStream().Recv() code = %v, want %v (err=%v)", status.Code(err), codes.Unauthenticated, err)
 	}
 }
 
