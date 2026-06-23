@@ -237,6 +237,26 @@ func TestTimeline_SSE_RequiresAuth(t *testing.T) {
 	}
 }
 
+func TestTimeline_SPA_RendersEventDataWithTextContent(t *testing.T) {
+	js, err := spaFiles.ReadFile("dist/app.js")
+	if err != nil {
+		t.Fatalf("read app.js: %v", err)
+	}
+	source := string(js)
+	start := strings.Index(source, "function createTimelineRow")
+	end := strings.Index(source, "function timelineIcon")
+	if start == -1 || end == -1 || end <= start {
+		t.Fatal("timeline row renderer not found")
+	}
+	renderer := source[start:end]
+	if strings.Contains(renderer, "innerHTML") {
+		t.Fatalf("timeline row renderer must not use innerHTML: %s", renderer)
+	}
+	if strings.Count(renderer, "textContent") < 4 {
+		t.Fatalf("timeline row renderer should render event data with textContent: %s", renderer)
+	}
+}
+
 type sseMessage struct {
 	ID    string
 	Event string
