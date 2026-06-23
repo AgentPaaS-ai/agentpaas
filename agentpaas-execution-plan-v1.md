@@ -133,6 +133,17 @@ Local-first mode eliminates per-subtask: PR creation, CI dispatch, CI wait,
 post-merge CI, GitHub API calls. All work is local. GitHub is updated only at
 block completion via a checkpoint push.
 
+**HARD RULE (pitfall #43): no GitHub issues during the build.** The
+orchestrator's planning pass produces subtask definitions as local files
+(`docs/owa-records/b<N>-t<NN>.md`) and todo list entries — NOT as GitHub
+issues. GitHub issue creation is DEFERRED to `block-checkpoint.sh` which
+runs AFTER the block gate passes. Creating issues mid-build adds zero value
+(the orchestrator already has the plan) and violates the "0 GitHub API
+calls during build" contract. Block 11 created issues #130-#136 at 18:14Z,
+5.5 hours before the gate passed at 21:36Z — this was a process violation.
+Correct ordering: plan locally → implement locally → gate passes →
+checkpoint (push + batch-create issues).
+
 #### Local-first OWA flow (per subtask)
 
 ```
@@ -1066,13 +1077,19 @@ management details.
 
 The "Block Gates" CI workflow (`.github/workflows/block-gates.yml`) uses
 **path filters** — each block gate only runs when its own code or shared
-files change (go.mod, go.sum, Makefile, api/**, .github/workflows/**).
-This prevents unnecessary re-runs of slow gates (e.g. Block 5 Docker
-e2e, ~10 min) when unrelated code changes. When adding a new block gate:
-1) add a `blockN-gate` job with path filter, 2) update Makefile
-`blockN-gate: build test race lint osv`, 3) set Docker env vars if the
-block uses Docker. See the OWA skill's "Block Gates CI Workflow" section
-for the current path-filter mappings.
+files change. Shared files = `go.mod`, `go.sum`,
+`.github/workflows/block-gates.yml` ONLY. `Makefile` and `api/**` are NOT
+shared triggers (pitfall #44, B11 lesson): Makefile changes are additive
+(new gate targets), and api/** changes only affect blocks that import the
+changed proto package. Each block's own code path triggers only its own
+gate. This prevents unnecessary re-runs of slow gates (e.g. Block 5 Docker
+e2e, ~10–13 min) when unrelated code changes. When adding a new block gate:
+1) add the block's package path(s) to the dorny/paths-filter (NOT to the
+shared filter), 2) add a `blockN-gate` job, 3) update Makefile
+`blockN-gate: build test race lint osv`, 4) set Docker env vars if the
+block uses Docker, 5) if the block imports a new proto package, add that
+proto path to the block's own filter. See the OWA skill's "Block Gates CI
+Workflow" section for the current path-filter mappings.
 
 Makefile targets
 `build`, `test`, `proto`, `lint`, `race`, `osv`, `e2e-network`,
