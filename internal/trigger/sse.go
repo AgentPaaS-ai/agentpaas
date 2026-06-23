@@ -24,6 +24,11 @@ func NewSSEHandler(bus *EventBus) *SSEHandler {
 
 // ServeSSE handles an SSE request for a specific run.
 func (h *SSEHandler) ServeSSE(w http.ResponseWriter, r *http.Request, runID string) {
+	if _, ok := CallerFromContext(r.Context()); !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)

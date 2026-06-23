@@ -173,6 +173,7 @@ func TestSSEHeartbeatSentOnIdleConnection(t *testing.T) {
 	defer func() { heartbeatInterval = originalInterval }()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(WithCaller(r.Context(), CallerID("api_key:key-1"), AuthMethodAPIKey))
 		handler.ServeSSE(w, r, "run-1")
 	}))
 	defer func() { server.Close() }()
@@ -184,6 +185,7 @@ func TestSSEHeartbeatSentOnIdleConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
+	req.Header.Set("Authorization", "Bearer test-key-123")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("do request: %v", err)
@@ -199,6 +201,22 @@ func TestSSEHeartbeatSentOnIdleConnection(t *testing.T) {
 	}
 }
 
+func TestSSEHandlerRejectsUnauthenticatedRequest(t *testing.T) {
+	t.Parallel()
+
+	bus := NewEventBus()
+	bus.RegisterRun("run-1")
+	bus.Publish("run-1", EventRunSucceeded, nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/events?run_id=run-1", nil)
+	NewSSEHandler(bus).ServeSSE(rec, req, "run-1")
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d; want %d; body=%s", rec.Code, http.StatusUnauthorized, rec.Body.String())
+	}
+}
+
 func TestSSEHandlerServesEventsOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -208,7 +226,7 @@ func TestSSEHandlerServesEventsOverHTTP(t *testing.T) {
 	bus.Publish("run-1", EventRunSucceeded, nil)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/events?run_id=run-1", nil)
+	req := authenticatedSSERequest("/events?run_id=run-1")
 	NewSSEHandler(bus).ServeSSE(rec, req, "run-1")
 
 	body := rec.Body.String()
@@ -236,7 +254,7 @@ func TestSSEHandlerReconnectUsesLastEventID(t *testing.T) {
 	bus.Publish("run-1", EventRunSucceeded, nil)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/events?run_id=run-1", nil)
+	req := authenticatedSSERequest("/events?run_id=run-1")
 	req.Header.Set("Last-Event-ID", "2")
 	NewSSEHandler(bus).ServeSSE(rec, req, "run-1")
 
@@ -247,6 +265,12 @@ func TestSSEHandlerReconnectUsesLastEventID(t *testing.T) {
 	if !strings.Contains(body, "id: 3\nevent: run_succeeded") {
 		t.Fatalf("reconnect body missing event 3: %s", body)
 	}
+}
+
+func authenticatedSSERequest(target string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req.Header.Set("Authorization", "Bearer test-key-123")
+	return req.WithContext(WithCaller(req.Context(), CallerID("api_key:key-1"), AuthMethodAPIKey))
 }
 
 func TestInvokeStreamSendsEventsToClient(t *testing.T) {
