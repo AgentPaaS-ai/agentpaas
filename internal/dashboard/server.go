@@ -30,6 +30,7 @@ type Server struct {
 	store       *otel.Store
 	resourceMgr ResourceManager
 	timeline    *TimelineHandler
+	logViewer   *LogViewerHandler
 }
 
 // ResourceManager provides inventory data for the dashboard.
@@ -108,6 +109,12 @@ func newServer(addr, apiKey string, store *otel.Store, mgr ResourceManager, bus 
 	if bus != nil || store != nil {
 		s.timeline = NewTimelineHandler(bus, store)
 	}
+	if store != nil {
+		s.logViewer = NewLogViewerHandler(store)
+		if provider, ok := mgr.(DockerArtifactProvider); ok {
+			s.logViewer.artifactProvider = provider
+		}
+	}
 	s.handler = cspMiddleware(loggingMiddleware(timelinePathValidationMiddleware(s.routes())))
 	s.srv = &http.Server{
 		Addr:              addr,
@@ -149,11 +156,26 @@ func (s *Server) routes() http.Handler {
 	apiMux.HandleFunc("/api/gateways", s.getOnly(s.handleGateways))
 	apiMux.HandleFunc("/api/mcp-servers", s.getOnly(s.handleMCPServers))
 	apiMux.HandleFunc("/api/health", s.handleHealth)
-	apiMux.HandleFunc("/api/runs/", s.getOnly(s.handleTimeline))
+	apiMux.HandleFunc("/api/runs/", s.getOnly(s.handleRunAPI))
 
 	root.Handle("/api/", csrfMiddleware(s.csrfToken, authMiddleware(s.apiKey, apiMux)))
 	root.Handle("/", spaHandler(dist))
 	return root
+}
+
+func (s *Server) handleRunAPI(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/timeline"):
+		s.handleTimeline(w, r)
+	case strings.HasSuffix(r.URL.Path, "/logs"):
+		s.handleLogs(w, r)
+	case strings.HasSuffix(r.URL.Path, "/spans"):
+		s.handleSpans(w, r)
+	case strings.HasSuffix(r.URL.Path, "/artifacts"):
+		s.handleDockerArtifacts(w, r)
+	default:
+		writeJSONError(w, http.StatusNotFound, "run endpoint not found")
+	}
 }
 
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
@@ -168,6 +190,36 @@ func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
 	}
 	r.SetPathValue("runID", runID)
 	s.timeline.ServeSSE(w, r)
+}
+
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	if s.logViewer == nil {
+		writeJSONError(w, http.StatusNotFound, "log viewer unavailable")
+		return
+	}
+	runID := runIDFromRunAPIPath(r.URL.Path, "logs")
+	r.SetPathValue("runID", runID)
+	s.logViewer.ServeLogs(w, r)
+}
+
+func (s *Server) handleSpans(w http.ResponseWriter, r *http.Request) {
+	if s.logViewer == nil {
+		writeJSONError(w, http.StatusNotFound, "log viewer unavailable")
+		return
+	}
+	runID := runIDFromRunAPIPath(r.URL.Path, "spans")
+	r.SetPathValue("runID", runID)
+	s.logViewer.ServeSpans(w, r)
+}
+
+func (s *Server) handleDockerArtifacts(w http.ResponseWriter, r *http.Request) {
+	if s.logViewer == nil {
+		writeJSONError(w, http.StatusNotFound, "log viewer unavailable")
+		return
+	}
+	runID := runIDFromRunAPIPath(r.URL.Path, "artifacts")
+	r.SetPathValue("runID", runID)
+	s.logViewer.ServeDockerArtifacts(w, r)
 }
 
 func (s *Server) getOnly(next http.HandlerFunc) http.HandlerFunc {
