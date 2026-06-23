@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"sync"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/parvezsyed/agentpaas/internal/audit"
@@ -19,6 +20,9 @@ type stubControlServer struct {
 
 	version    VersionInfo
 	auditIndex *audit.SQLiteIndexer
+
+	confirmationMu sync.Mutex
+	confirmations  *ConfirmationStore
 }
 
 // compile-time interface check.

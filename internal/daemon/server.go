@@ -34,16 +34,17 @@ type Daemon struct {
 	paths   *home.HomePaths
 	version VersionInfo
 
-	mu         sync.Mutex
-	server     *grpc.Server
-	listener   net.Listener
-	ready      bool
-	started    bool
-	stopped    bool
-	lockFile   *os.File
-	lockIno    lockIno
-	pidFile    string
-	auditIndex *audit.SQLiteIndexer
+	mu            sync.Mutex
+	server        *grpc.Server
+	listener      net.Listener
+	ready         bool
+	started       bool
+	stopped       bool
+	lockFile      *os.File
+	lockIno       lockIno
+	pidFile       string
+	auditIndex    *audit.SQLiteIndexer
+	confirmations *ConfirmationStore
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -79,8 +80,9 @@ func WithAllowRoot() Option {
 // to shut down gracefully.
 func New(paths *home.HomePaths, version VersionInfo, opts ...Option) (*Daemon, error) {
 	d := &Daemon{
-		paths:   paths,
-		version: version,
+		paths:         paths,
+		version:       version,
+		confirmations: NewConfirmationStore(),
 	}
 
 	for _, opt := range opts {
@@ -218,8 +220,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Register stub ControlService handlers.
 	controlv1.RegisterControlServiceServer(d.server, &stubControlServer{
-		version:    d.version,
-		auditIndex: d.auditIndex,
+		version:       d.version,
+		auditIndex:    d.auditIndex,
+		confirmations: d.confirmations,
 	})
 
 	d.started = true
