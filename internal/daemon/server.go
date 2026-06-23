@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 	"github.com/parvezsyed/agentpaas/internal/home"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -32,15 +34,16 @@ type Daemon struct {
 	paths   *home.HomePaths
 	version VersionInfo
 
-	mu       sync.Mutex
-	server   *grpc.Server
-	listener net.Listener
-	ready    bool
-	started  bool
-	stopped  bool
-	lockFile *os.File
-	lockIno  lockIno
-	pidFile  string
+	mu         sync.Mutex
+	server     *grpc.Server
+	listener   net.Listener
+	ready      bool
+	started    bool
+	stopped    bool
+	lockFile   *os.File
+	lockIno    lockIno
+	pidFile    string
+	auditIndex *audit.SQLiteIndexer
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -199,6 +202,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Set socket permissions to 0600.
 	_ = os.Chmod(d.paths.Socket, 0600)
 
+	auditIndex, err := audit.NewSQLiteIndexer(filepath.Join(d.paths.State, "audit.db"))
+	if err != nil {
+		_ = ln.Close()
+		_ = d.cleanupFiles()
+		return fmt.Errorf("daemon: open audit index: %w", err)
+	}
+	d.auditIndex = auditIndex
+
 	// Create gRPC server with readiness interceptor.
 	d.server = grpc.NewServer(
 		grpc.UnaryInterceptor(d.readinessInterceptor),
@@ -207,7 +218,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Register stub ControlService handlers.
 	controlv1.RegisterControlServiceServer(d.server, &stubControlServer{
-		version: d.version,
+		version:    d.version,
+		auditIndex: d.auditIndex,
 	})
 
 	d.started = true
@@ -282,6 +294,10 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	// Close the listener if still open.
 	if d.listener != nil {
 		_ = d.listener.Close()
+	}
+	if d.auditIndex != nil {
+		_ = d.auditIndex.Close()
+		d.auditIndex = nil
 	}
 
 	// Clean up files.
