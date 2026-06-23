@@ -98,7 +98,7 @@ func TestRecommendPolicyPatch_ConfirmationIDGenerated(t *testing.T) {
 	if id == "" {
 		t.Fatal("ConfirmationID is empty")
 	}
-	stored, err := server.confirmations.Get(id)
+	stored, err := server.confirmationStore().Get(id)
 	if err != nil {
 		t.Fatalf("Get confirmation: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestTrustBoundaryChangeTypesRequireConfirmation(t *testing.T) {
 			if err != nil {
 				t.Fatalf("proposeTrustBoundaryChange: %v", err)
 			}
-			change, err := server.confirmations.Get(id)
+			change, err := server.confirmationStore().Get(id)
 			if err != nil {
 				t.Fatalf("Get: %v", err)
 			}
