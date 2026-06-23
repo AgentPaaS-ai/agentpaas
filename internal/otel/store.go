@@ -101,8 +101,8 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
 		return err
@@ -160,13 +160,13 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 					traceIDString(span.TraceID()),
 					spanIDString(span.SpanID()),
 					spanIDString(span.ParentSpanID()),
-					span.Name(),
-					span.Kind().String(),
+					redactString(span.Name()),
+					redactString(span.Kind().String()),
 					timeToUnixNano(timestampToTime(span.StartTimestamp())),
 					timeToUnixNano(timestampToTime(span.EndTimestamp())),
 					attributes,
 					redactString(span.Status().Message()),
-					span.Status().Code().String(),
+					redactString(span.Status().Code().String()),
 					resource,
 					scope,
 				); err != nil {
@@ -188,8 +188,8 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
 		return err
@@ -270,8 +270,8 @@ func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) erro
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
 		return err
@@ -459,8 +459,8 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int64, erro
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
 		return 0, err
@@ -504,8 +504,8 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
 		return err
@@ -689,11 +689,12 @@ func logTimestamp(record plog.LogRecord) time.Time {
 }
 
 func ingestMetric(ctx context.Context, stmt *sql.Stmt, metric pmetric.Metric, resource string) error {
+	name := redactString(metric.Name())
 	switch metric.Type() {
 	case pmetric.MetricTypeGauge:
-		return ingestNumberDataPoints(ctx, stmt, metric.Name(), "gauge", metric.Gauge().DataPoints(), resource)
+		return ingestNumberDataPoints(ctx, stmt, name, redactString("gauge"), metric.Gauge().DataPoints(), resource)
 	case pmetric.MetricTypeSum:
-		return ingestNumberDataPoints(ctx, stmt, metric.Name(), "sum", metric.Sum().DataPoints(), resource)
+		return ingestNumberDataPoints(ctx, stmt, name, redactString("sum"), metric.Sum().DataPoints(), resource)
 	case pmetric.MetricTypeHistogram:
 		points := metric.Histogram().DataPoints()
 		for i := 0; i < points.Len(); i++ {
@@ -707,8 +708,8 @@ func ingestMetric(ctx context.Context, stmt *sql.Stmt, metric pmetric.Metric, re
 			}
 			if _, err := stmt.ExecContext(
 				ctx,
-				metric.Name(),
-				"histogram",
+				name,
+				redactString("histogram"),
 				timeToUnixNano(metricTimestamp(point.Timestamp(), point.StartTimestamp())),
 				histogramValue(point),
 				attributes,
