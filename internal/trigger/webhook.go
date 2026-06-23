@@ -100,8 +100,13 @@ func NewEgressChecker(rules []policy.EgressRule) EgressChecker {
 // NewWebhookDeliverer creates a webhook deliverer.
 func NewWebhookDeliverer(hooks []*WebhookConfig, auditAppender audit.AuditAppender, egressChecker EgressChecker) *WebhookDeliverer {
 	return &WebhookDeliverer{
-		hooks:         hooks,
-		httpClient:    &http.Client{Timeout: webhookTimeout},
+		hooks: hooks,
+		httpClient: &http.Client{
+			Timeout: webhookTimeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		audit:         auditAppender,
 		egressChecker: egressChecker,
 		backoffBase:   time.Second,
