@@ -100,29 +100,11 @@ func (c *triggerServiceClient) InvokeStream(ctx context.Context, in *InvokeReque
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
-	first, err := x.Recv()
-	if err != nil {
-		return nil, err
-	}
-	return &triggerServiceInvokeStreamClient{ServerStreamingClient: x, first: first}, nil
+	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type TriggerService_InvokeStreamClient = grpc.ServerStreamingClient[InvokeResponse]
-
-type triggerServiceInvokeStreamClient struct {
-	grpc.ServerStreamingClient[InvokeResponse]
-	first *InvokeResponse
-}
-
-func (c *triggerServiceInvokeStreamClient) Recv() (*InvokeResponse, error) {
-	if c.first != nil {
-		first := c.first
-		c.first = nil
-		return first, nil
-	}
-	return c.ServerStreamingClient.Recv()
-}
 
 func (c *triggerServiceClient) GetRun(ctx context.Context, in *GetRunRequest, opts ...grpc.CallOption) (*Run, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
