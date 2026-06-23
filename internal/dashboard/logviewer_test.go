@@ -81,7 +81,7 @@ func TestLogViewer_HugeValueTruncated(t *testing.T) {
 	store := openLogViewerTestStore(t, ctx)
 	defer func() { _ = store.Close() }()
 	runID := logViewerTraceID(4).String()
-	ingestLogViewerLog(t, ctx, store, runID, strings.Repeat("a", 100*1024), nil, nil)
+	ingestLogViewerLog(t, ctx, store, runID, strings.Repeat("value: ", 20*1024), nil, nil)
 	server := newLogViewerTestServer(store, nil)
 	defer func() { server.Close() }()
 
@@ -133,6 +133,26 @@ func TestLogViewer_ResourceRedacted(t *testing.T) {
 
 	if strings.Contains(body, secret) {
 		t.Fatalf("response contains raw resource secret: %s", body)
+	}
+	if !strings.Contains(body, "[REDACTED]") {
+		t.Fatalf("response does not contain redaction marker: %s", body)
+	}
+}
+
+func TestLogViewer_SpansRedacted(t *testing.T) {
+	ctx := context.Background()
+	store := openLogViewerTestStore(t, ctx)
+	defer func() { _ = store.Close() }()
+	runID := logViewerTraceID(12).String()
+	secret := "sk-SPANSECRET123456789"
+	ingestTimelineSpan(t, ctx, store, runID, logViewerSpanID(2), "span "+secret, map[string]any{"token": secret})
+	server := newLogViewerTestServer(store, nil)
+	defer func() { server.Close() }()
+
+	body := requestLogViewerEndpoint(t, server, "/api/runs/"+runID+"/spans")
+
+	if strings.Contains(body, secret) {
+		t.Fatalf("response contains raw span secret: %s", body)
 	}
 	if !strings.Contains(body, "[REDACTED]") {
 		t.Fatalf("response does not contain redaction marker: %s", body)
