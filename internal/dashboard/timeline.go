@@ -60,8 +60,8 @@ func (h *TimelineHandler) ServeSSE(w http.ResponseWriter, r *http.Request) {
 
 	fromEventID := parseLastEventID(r.Header.Get("Last-Event-ID"))
 	var ch <-chan trigger.RunEvent
-	cancel := func() {}
 	if h.bus != nil {
+		var cancel func()
 		ch, cancel = h.bus.Subscribe(runID, fromEventID)
 		defer cancel()
 	}
