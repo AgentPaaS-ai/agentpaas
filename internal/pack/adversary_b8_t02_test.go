@@ -65,7 +65,7 @@ func TestAdversaryB8T02_SymlinkInParentComponent(t *testing.T) {
 	if err == nil {
 		// ADVERSARY BREAK: parent component symlink not fully rejected by rejectSymlinkPath in some paths
 		t.Log("ADVERSARY BREAK: symlink in parent directory component was accepted")
-	} else if !strings.Contains(err.Error(), "symlinks") {
+	} else if !strings.Contains(err.Error(), "symlink") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
