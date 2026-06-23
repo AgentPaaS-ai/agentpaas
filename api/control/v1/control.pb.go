@@ -1903,7 +1903,19 @@ type ValidateAgentProjectResponse struct {
 	// Overall pass/fail.
 	Valid bool `protobuf:"varint,2,opt,name=valid,proto3" json:"valid,omitempty"`
 	// Summary message.
-	Summary       string `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
+	Summary string `protobuf:"bytes,3,opt,name=summary,proto3" json:"summary,omitempty"`
+	// --- Block 11 operator contract fields ---
+	// Operator schema version (e.g. "1.0.0").
+	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	// Whether the project is ready to pack/run (same as valid, but named for
+	// the operator schema).
+	Ready bool `protobuf:"varint,11,opt,name=ready,proto3" json:"ready,omitempty"`
+	// Absolute path of the validated project.
+	ProjectDir string `protobuf:"bytes,12,opt,name=project_dir,json=projectDir,proto3" json:"project_dir,omitempty"`
+	// Detected agent runtime ("python", "langgraph", etc.).
+	Runtime string `protobuf:"bytes,13,opt,name=runtime,proto3" json:"runtime,omitempty"`
+	// Readiness issues with error categories and next actions.
+	Issues        []*OperatorIssue `protobuf:"bytes,14,rep,name=issues,proto3" json:"issues,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1959,6 +1971,343 @@ func (x *ValidateAgentProjectResponse) GetSummary() string {
 	return ""
 }
 
+func (x *ValidateAgentProjectResponse) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ValidateAgentProjectResponse) GetReady() bool {
+	if x != nil {
+		return x.Ready
+	}
+	return false
+}
+
+func (x *ValidateAgentProjectResponse) GetProjectDir() string {
+	if x != nil {
+		return x.ProjectDir
+	}
+	return ""
+}
+
+func (x *ValidateAgentProjectResponse) GetRuntime() string {
+	if x != nil {
+		return x.Runtime
+	}
+	return ""
+}
+
+func (x *ValidateAgentProjectResponse) GetIssues() []*OperatorIssue {
+	if x != nil {
+		return x.Issues
+	}
+	return nil
+}
+
+// OperatorIssue is a single readiness problem found during project validation.
+type OperatorIssue struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Stable error category from the versioned enum.
+	Category string `protobuf:"bytes,1,opt,name=category,proto3" json:"category,omitempty"`
+	// Human-readable description of the issue.
+	Message string `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	// Evidence refs supporting this issue.
+	EvidenceRefs []*EvidenceRef `protobuf:"bytes,3,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	// Recommended next action from the fixed enum.
+	NextAction    string `protobuf:"bytes,4,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperatorIssue) Reset() {
+	*x = OperatorIssue{}
+	mi := &file_control_v1_control_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperatorIssue) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperatorIssue) ProtoMessage() {}
+
+func (x *OperatorIssue) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperatorIssue.ProtoReflect.Descriptor instead.
+func (*OperatorIssue) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *OperatorIssue) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *OperatorIssue) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *OperatorIssue) GetEvidenceRefs() []*EvidenceRef {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
+func (x *OperatorIssue) GetNextAction() string {
+	if x != nil {
+		return x.NextAction
+	}
+	return ""
+}
+
+// EvidenceRef points to an auditable artifact that supports a diagnosis.
+type EvidenceRef struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Kind of evidence: "audit_seq", "run_id", "policy_rule", "span", "log",
+	// "redacted_excerpt", "verification".
+	Type string `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+	// Opaque identifier for the evidence.
+	Ref string `protobuf:"bytes,2,opt,name=ref,proto3" json:"ref,omitempty"`
+	// Optional redacted human-readable detail.
+	Detail        string `protobuf:"bytes,3,opt,name=detail,proto3" json:"detail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EvidenceRef) Reset() {
+	*x = EvidenceRef{}
+	mi := &file_control_v1_control_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EvidenceRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EvidenceRef) ProtoMessage() {}
+
+func (x *EvidenceRef) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EvidenceRef.ProtoReflect.Descriptor instead.
+func (*EvidenceRef) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *EvidenceRef) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *EvidenceRef) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *EvidenceRef) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
+}
+
+// RedactedExcerpt is a sanitized snippet of source/log/trace data.
+type RedactedExcerpt struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Source    string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	StartLine int32                  `protobuf:"varint,2,opt,name=start_line,json=startLine,proto3" json:"start_line,omitempty"`
+	EndLine   int32                  `protobuf:"varint,3,opt,name=end_line,json=endLine,proto3" json:"end_line,omitempty"`
+	// Redacted content (secrets stripped).
+	Content       string `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RedactedExcerpt) Reset() {
+	*x = RedactedExcerpt{}
+	mi := &file_control_v1_control_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RedactedExcerpt) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RedactedExcerpt) ProtoMessage() {}
+
+func (x *RedactedExcerpt) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RedactedExcerpt.ProtoReflect.Descriptor instead.
+func (*RedactedExcerpt) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *RedactedExcerpt) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *RedactedExcerpt) GetStartLine() int32 {
+	if x != nil {
+		return x.StartLine
+	}
+	return 0
+}
+
+func (x *RedactedExcerpt) GetEndLine() int32 {
+	if x != nil {
+		return x.EndLine
+	}
+	return 0
+}
+
+func (x *RedactedExcerpt) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+// ConfirmationRequirement encodes the trust-boundary confirmation protocol.
+type ConfirmationRequirement struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	RequiresConfirmation bool                   `protobuf:"varint,1,opt,name=requires_confirmation,json=requiresConfirmation,proto3" json:"requires_confirmation,omitempty"`
+	ConfirmationId       string                 `protobuf:"bytes,2,opt,name=confirmation_id,json=confirmationId,proto3" json:"confirmation_id,omitempty"`
+	// "low", "medium", or "high".
+	RiskLevel            string         `protobuf:"bytes,3,opt,name=risk_level,json=riskLevel,proto3" json:"risk_level,omitempty"`
+	Rationale            string         `protobuf:"bytes,4,opt,name=rationale,proto3" json:"rationale,omitempty"`
+	AffectedDestinations []string       `protobuf:"bytes,5,rep,name=affected_destinations,json=affectedDestinations,proto3" json:"affected_destinations,omitempty"`
+	CredentialIds        []string       `protobuf:"bytes,6,rep,name=credential_ids,json=credentialIds,proto3" json:"credential_ids,omitempty"`
+	EvidenceRefs         []*EvidenceRef `protobuf:"bytes,7,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ConfirmationRequirement) Reset() {
+	*x = ConfirmationRequirement{}
+	mi := &file_control_v1_control_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfirmationRequirement) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfirmationRequirement) ProtoMessage() {}
+
+func (x *ConfirmationRequirement) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfirmationRequirement.ProtoReflect.Descriptor instead.
+func (*ConfirmationRequirement) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ConfirmationRequirement) GetRequiresConfirmation() bool {
+	if x != nil {
+		return x.RequiresConfirmation
+	}
+	return false
+}
+
+func (x *ConfirmationRequirement) GetConfirmationId() string {
+	if x != nil {
+		return x.ConfirmationId
+	}
+	return ""
+}
+
+func (x *ConfirmationRequirement) GetRiskLevel() string {
+	if x != nil {
+		return x.RiskLevel
+	}
+	return ""
+}
+
+func (x *ConfirmationRequirement) GetRationale() string {
+	if x != nil {
+		return x.Rationale
+	}
+	return ""
+}
+
+func (x *ConfirmationRequirement) GetAffectedDestinations() []string {
+	if x != nil {
+		return x.AffectedDestinations
+	}
+	return nil
+}
+
+func (x *ConfirmationRequirement) GetCredentialIds() []string {
+	if x != nil {
+		return x.CredentialIds
+	}
+	return nil
+}
+
+func (x *ConfirmationRequirement) GetEvidenceRefs() []*EvidenceRef {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
 type SummarizeRunRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -1968,7 +2317,7 @@ type SummarizeRunRequest struct {
 
 func (x *SummarizeRunRequest) Reset() {
 	*x = SummarizeRunRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[29]
+	mi := &file_control_v1_control_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1980,7 +2329,7 @@ func (x *SummarizeRunRequest) String() string {
 func (*SummarizeRunRequest) ProtoMessage() {}
 
 func (x *SummarizeRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[29]
+	mi := &file_control_v1_control_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1993,7 +2342,7 @@ func (x *SummarizeRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummarizeRunRequest.ProtoReflect.Descriptor instead.
 func (*SummarizeRunRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{29}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *SummarizeRunRequest) GetRunId() string {
@@ -2014,7 +2363,7 @@ type KeyEvent struct {
 
 func (x *KeyEvent) Reset() {
 	*x = KeyEvent{}
-	mi := &file_control_v1_control_proto_msgTypes[30]
+	mi := &file_control_v1_control_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2026,7 +2375,7 @@ func (x *KeyEvent) String() string {
 func (*KeyEvent) ProtoMessage() {}
 
 func (x *KeyEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[30]
+	mi := &file_control_v1_control_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2039,7 +2388,7 @@ func (x *KeyEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyEvent.ProtoReflect.Descriptor instead.
 func (*KeyEvent) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{30}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *KeyEvent) GetTimestamp() *timestamppb.Timestamp {
@@ -2070,14 +2419,27 @@ type SummarizeRunResponse struct {
 	// Key events extracted from the run.
 	KeyEvents []*KeyEvent `protobuf:"bytes,2,rep,name=key_events,json=keyEvents,proto3" json:"key_events,omitempty"`
 	// Budget consumed during the run.
-	BudgetUsed    string `protobuf:"bytes,3,opt,name=budget_used,json=budgetUsed,proto3" json:"budget_used,omitempty"`
+	BudgetUsed string `protobuf:"bytes,3,opt,name=budget_used,json=budgetUsed,proto3" json:"budget_used,omitempty"`
+	// --- Block 11 operator contract fields ---
+	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	// Run status: "completed", "failed", "running", "stopped".
+	Status        string                 `protobuf:"bytes,11,opt,name=status,proto3" json:"status,omitempty"`
+	ExitCode      int32                  `protobuf:"varint,12,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	DurationMs    int64                  `protobuf:"varint,15,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	Invocations   int32                  `protobuf:"varint,16,opt,name=invocations,proto3" json:"invocations,omitempty"`
+	PolicyDenials int32                  `protobuf:"varint,17,opt,name=policy_denials,json=policyDenials,proto3" json:"policy_denials,omitempty"`
+	// Stable error category (set when status is "failed").
+	ErrorCategory string         `protobuf:"bytes,18,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
+	EvidenceRefs  []*EvidenceRef `protobuf:"bytes,19,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SummarizeRunResponse) Reset() {
 	*x = SummarizeRunResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[31]
+	mi := &file_control_v1_control_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2089,7 +2451,7 @@ func (x *SummarizeRunResponse) String() string {
 func (*SummarizeRunResponse) ProtoMessage() {}
 
 func (x *SummarizeRunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[31]
+	mi := &file_control_v1_control_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2102,7 +2464,7 @@ func (x *SummarizeRunResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummarizeRunResponse.ProtoReflect.Descriptor instead.
 func (*SummarizeRunResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{31}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *SummarizeRunResponse) GetSummary() string {
@@ -2126,6 +2488,76 @@ func (x *SummarizeRunResponse) GetBudgetUsed() string {
 	return ""
 }
 
+func (x *SummarizeRunResponse) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *SummarizeRunResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *SummarizeRunResponse) GetExitCode() int32 {
+	if x != nil {
+		return x.ExitCode
+	}
+	return 0
+}
+
+func (x *SummarizeRunResponse) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *SummarizeRunResponse) GetFinishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FinishedAt
+	}
+	return nil
+}
+
+func (x *SummarizeRunResponse) GetDurationMs() int64 {
+	if x != nil {
+		return x.DurationMs
+	}
+	return 0
+}
+
+func (x *SummarizeRunResponse) GetInvocations() int32 {
+	if x != nil {
+		return x.Invocations
+	}
+	return 0
+}
+
+func (x *SummarizeRunResponse) GetPolicyDenials() int32 {
+	if x != nil {
+		return x.PolicyDenials
+	}
+	return 0
+}
+
+func (x *SummarizeRunResponse) GetErrorCategory() string {
+	if x != nil {
+		return x.ErrorCategory
+	}
+	return ""
+}
+
+func (x *SummarizeRunResponse) GetEvidenceRefs() []*EvidenceRef {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
 type ExplainFailureRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -2135,7 +2567,7 @@ type ExplainFailureRequest struct {
 
 func (x *ExplainFailureRequest) Reset() {
 	*x = ExplainFailureRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[32]
+	mi := &file_control_v1_control_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2147,7 +2579,7 @@ func (x *ExplainFailureRequest) String() string {
 func (*ExplainFailureRequest) ProtoMessage() {}
 
 func (x *ExplainFailureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[32]
+	mi := &file_control_v1_control_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2160,7 +2592,7 @@ func (x *ExplainFailureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainFailureRequest.ProtoReflect.Descriptor instead.
 func (*ExplainFailureRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{32}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ExplainFailureRequest) GetRunId() string {
@@ -2178,13 +2610,21 @@ type ExplainFailureResponse struct {
 	ContributingFactors []string `protobuf:"bytes,2,rep,name=contributing_factors,json=contributingFactors,proto3" json:"contributing_factors,omitempty"`
 	// Suggested code or config changes to fix the issue.
 	SuggestedFixes []string `protobuf:"bytes,3,rep,name=suggested_fixes,json=suggestedFixes,proto3" json:"suggested_fixes,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// --- Block 11 operator contract fields ---
+	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	// Stable error category classifying the failure.
+	ErrorCategory    string             `protobuf:"bytes,11,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
+	RedactedExcerpts []*RedactedExcerpt `protobuf:"bytes,12,rep,name=redacted_excerpts,json=redactedExcerpts,proto3" json:"redacted_excerpts,omitempty"`
+	EvidenceRefs     []*EvidenceRef     `protobuf:"bytes,13,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	// Recommended next action from the fixed enum.
+	NextAction    string `protobuf:"bytes,14,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExplainFailureResponse) Reset() {
 	*x = ExplainFailureResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[33]
+	mi := &file_control_v1_control_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2196,7 +2636,7 @@ func (x *ExplainFailureResponse) String() string {
 func (*ExplainFailureResponse) ProtoMessage() {}
 
 func (x *ExplainFailureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[33]
+	mi := &file_control_v1_control_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2209,7 +2649,7 @@ func (x *ExplainFailureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainFailureResponse.ProtoReflect.Descriptor instead.
 func (*ExplainFailureResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{33}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ExplainFailureResponse) GetRootCause() string {
@@ -2233,6 +2673,41 @@ func (x *ExplainFailureResponse) GetSuggestedFixes() []string {
 	return nil
 }
 
+func (x *ExplainFailureResponse) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ExplainFailureResponse) GetErrorCategory() string {
+	if x != nil {
+		return x.ErrorCategory
+	}
+	return ""
+}
+
+func (x *ExplainFailureResponse) GetRedactedExcerpts() []*RedactedExcerpt {
+	if x != nil {
+		return x.RedactedExcerpts
+	}
+	return nil
+}
+
+func (x *ExplainFailureResponse) GetEvidenceRefs() []*EvidenceRef {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
+func (x *ExplainFailureResponse) GetNextAction() string {
+	if x != nil {
+		return x.NextAction
+	}
+	return ""
+}
+
 type ExplainPolicyDenialRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	RunId string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -2244,7 +2719,7 @@ type ExplainPolicyDenialRequest struct {
 
 func (x *ExplainPolicyDenialRequest) Reset() {
 	*x = ExplainPolicyDenialRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[34]
+	mi := &file_control_v1_control_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2256,7 +2731,7 @@ func (x *ExplainPolicyDenialRequest) String() string {
 func (*ExplainPolicyDenialRequest) ProtoMessage() {}
 
 func (x *ExplainPolicyDenialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[34]
+	mi := &file_control_v1_control_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2269,7 +2744,7 @@ func (x *ExplainPolicyDenialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainPolicyDenialRequest.ProtoReflect.Descriptor instead.
 func (*ExplainPolicyDenialRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{34}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ExplainPolicyDenialRequest) GetRunId() string {
@@ -2293,14 +2768,28 @@ type ExplainPolicyDenialResponse struct {
 	// The OPA/Rego rule that produced the denial.
 	MatchingRule string `protobuf:"bytes,2,opt,name=matching_rule,json=matchingRule,proto3" json:"matching_rule,omitempty"`
 	// Human-readable explanation of why the denial occurred.
-	Explanation   string `protobuf:"bytes,3,opt,name=explanation,proto3" json:"explanation,omitempty"`
+	Explanation string `protobuf:"bytes,3,opt,name=explanation,proto3" json:"explanation,omitempty"`
+	// --- Block 11 operator contract fields ---
+	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	// Run that was denied (empty for pre-run checks).
+	RunId string `protobuf:"bytes,11,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	// What the agent tried to do.
+	DeniedAction string `protobuf:"bytes,12,opt,name=denied_action,json=deniedAction,proto3" json:"denied_action,omitempty"`
+	// Policy rule id that blocked the action (e.g. "egress[0]").
+	BlockingRuleId string `protobuf:"bytes,13,opt,name=blocking_rule_id,json=blockingRuleId,proto3" json:"blocking_rule_id,omitempty"`
+	// SHA-256 digest of the compiled policy at denial time.
+	PolicyDigest string         `protobuf:"bytes,14,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
+	Rationale    string         `protobuf:"bytes,15,opt,name=rationale,proto3" json:"rationale,omitempty"`
+	EvidenceRefs []*EvidenceRef `protobuf:"bytes,16,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	// Always "review_policy_patch".
+	NextAction    string `protobuf:"bytes,17,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ExplainPolicyDenialResponse) Reset() {
 	*x = ExplainPolicyDenialResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[35]
+	mi := &file_control_v1_control_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2312,7 +2801,7 @@ func (x *ExplainPolicyDenialResponse) String() string {
 func (*ExplainPolicyDenialResponse) ProtoMessage() {}
 
 func (x *ExplainPolicyDenialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[35]
+	mi := &file_control_v1_control_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2325,7 +2814,7 @@ func (x *ExplainPolicyDenialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainPolicyDenialResponse.ProtoReflect.Descriptor instead.
 func (*ExplainPolicyDenialResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{35}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ExplainPolicyDenialResponse) GetDeniedDestination() string {
@@ -2349,6 +2838,62 @@ func (x *ExplainPolicyDenialResponse) GetExplanation() string {
 	return ""
 }
 
+func (x *ExplainPolicyDenialResponse) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ExplainPolicyDenialResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *ExplainPolicyDenialResponse) GetDeniedAction() string {
+	if x != nil {
+		return x.DeniedAction
+	}
+	return ""
+}
+
+func (x *ExplainPolicyDenialResponse) GetBlockingRuleId() string {
+	if x != nil {
+		return x.BlockingRuleId
+	}
+	return ""
+}
+
+func (x *ExplainPolicyDenialResponse) GetPolicyDigest() string {
+	if x != nil {
+		return x.PolicyDigest
+	}
+	return ""
+}
+
+func (x *ExplainPolicyDenialResponse) GetRationale() string {
+	if x != nil {
+		return x.Rationale
+	}
+	return ""
+}
+
+func (x *ExplainPolicyDenialResponse) GetEvidenceRefs() []*EvidenceRef {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
+func (x *ExplainPolicyDenialResponse) GetNextAction() string {
+	if x != nil {
+		return x.NextAction
+	}
+	return ""
+}
+
 type RecommendPolicyPatchRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Description of the desired behavior the policy should allow.
@@ -2359,7 +2904,7 @@ type RecommendPolicyPatchRequest struct {
 
 func (x *RecommendPolicyPatchRequest) Reset() {
 	*x = RecommendPolicyPatchRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[36]
+	mi := &file_control_v1_control_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2371,7 +2916,7 @@ func (x *RecommendPolicyPatchRequest) String() string {
 func (*RecommendPolicyPatchRequest) ProtoMessage() {}
 
 func (x *RecommendPolicyPatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[36]
+	mi := &file_control_v1_control_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2384,7 +2929,7 @@ func (x *RecommendPolicyPatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecommendPolicyPatchRequest.ProtoReflect.Descriptor instead.
 func (*RecommendPolicyPatchRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{36}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *RecommendPolicyPatchRequest) GetDesiredBehavior() string {
@@ -2402,13 +2947,26 @@ type RecommendPolicyPatchResponse struct {
 	Explanation string `protobuf:"bytes,2,opt,name=explanation,proto3" json:"explanation,omitempty"`
 	// Risk assessment: "low", "medium", "high".
 	RiskAssessment string `protobuf:"bytes,3,opt,name=risk_assessment,json=riskAssessment,proto3" json:"risk_assessment,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// --- Block 11 operator contract fields ---
+	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	// Proposed patch (YAML snippet or unified diff).
+	ProposedPatch string `protobuf:"bytes,11,opt,name=proposed_patch,json=proposedPatch,proto3" json:"proposed_patch,omitempty"`
+	// "low", "medium", or "high".
+	RiskLevel            string                   `protobuf:"bytes,12,opt,name=risk_level,json=riskLevel,proto3" json:"risk_level,omitempty"`
+	Rationale            string                   `protobuf:"bytes,13,opt,name=rationale,proto3" json:"rationale,omitempty"`
+	AffectedDestinations []string                 `protobuf:"bytes,14,rep,name=affected_destinations,json=affectedDestinations,proto3" json:"affected_destinations,omitempty"`
+	CredentialIds        []string                 `protobuf:"bytes,15,rep,name=credential_ids,json=credentialIds,proto3" json:"credential_ids,omitempty"`
+	EvidenceRefs         []*EvidenceRef           `protobuf:"bytes,16,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	Confirmation         *ConfirmationRequirement `protobuf:"bytes,17,opt,name=confirmation,proto3" json:"confirmation,omitempty"`
+	// Always "review_policy_patch".
+	NextAction    string `protobuf:"bytes,18,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RecommendPolicyPatchResponse) Reset() {
 	*x = RecommendPolicyPatchResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[37]
+	mi := &file_control_v1_control_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2420,7 +2978,7 @@ func (x *RecommendPolicyPatchResponse) String() string {
 func (*RecommendPolicyPatchResponse) ProtoMessage() {}
 
 func (x *RecommendPolicyPatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[37]
+	mi := &file_control_v1_control_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2433,7 +2991,7 @@ func (x *RecommendPolicyPatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecommendPolicyPatchResponse.ProtoReflect.Descriptor instead.
 func (*RecommendPolicyPatchResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{37}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *RecommendPolicyPatchResponse) GetPatchYaml() string {
@@ -2457,6 +3015,69 @@ func (x *RecommendPolicyPatchResponse) GetRiskAssessment() string {
 	return ""
 }
 
+func (x *RecommendPolicyPatchResponse) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *RecommendPolicyPatchResponse) GetProposedPatch() string {
+	if x != nil {
+		return x.ProposedPatch
+	}
+	return ""
+}
+
+func (x *RecommendPolicyPatchResponse) GetRiskLevel() string {
+	if x != nil {
+		return x.RiskLevel
+	}
+	return ""
+}
+
+func (x *RecommendPolicyPatchResponse) GetRationale() string {
+	if x != nil {
+		return x.Rationale
+	}
+	return ""
+}
+
+func (x *RecommendPolicyPatchResponse) GetAffectedDestinations() []string {
+	if x != nil {
+		return x.AffectedDestinations
+	}
+	return nil
+}
+
+func (x *RecommendPolicyPatchResponse) GetCredentialIds() []string {
+	if x != nil {
+		return x.CredentialIds
+	}
+	return nil
+}
+
+func (x *RecommendPolicyPatchResponse) GetEvidenceRefs() []*EvidenceRef {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
+func (x *RecommendPolicyPatchResponse) GetConfirmation() *ConfirmationRequirement {
+	if x != nil {
+		return x.Confirmation
+	}
+	return nil
+}
+
+func (x *RecommendPolicyPatchResponse) GetNextAction() string {
+	if x != nil {
+		return x.NextAction
+	}
+	return ""
+}
+
 type GetRunTimelineRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -2466,7 +3087,7 @@ type GetRunTimelineRequest struct {
 
 func (x *GetRunTimelineRequest) Reset() {
 	*x = GetRunTimelineRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[38]
+	mi := &file_control_v1_control_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2478,7 +3099,7 @@ func (x *GetRunTimelineRequest) String() string {
 func (*GetRunTimelineRequest) ProtoMessage() {}
 
 func (x *GetRunTimelineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[38]
+	mi := &file_control_v1_control_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2491,7 +3112,7 @@ func (x *GetRunTimelineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunTimelineRequest.ProtoReflect.Descriptor instead.
 func (*GetRunTimelineRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{38}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *GetRunTimelineRequest) GetRunId() string {
@@ -2517,7 +3138,7 @@ type TimelineEvent struct {
 
 func (x *TimelineEvent) Reset() {
 	*x = TimelineEvent{}
-	mi := &file_control_v1_control_proto_msgTypes[39]
+	mi := &file_control_v1_control_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2529,7 +3150,7 @@ func (x *TimelineEvent) String() string {
 func (*TimelineEvent) ProtoMessage() {}
 
 func (x *TimelineEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[39]
+	mi := &file_control_v1_control_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2542,7 +3163,7 @@ func (x *TimelineEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TimelineEvent.ProtoReflect.Descriptor instead.
 func (*TimelineEvent) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{39}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *TimelineEvent) GetTimestamp() *timestamppb.Timestamp {
@@ -2574,15 +3195,18 @@ func (x *TimelineEvent) GetData() []byte {
 }
 
 type GetRunTimelineResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Events        []*TimelineEvent       `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Events []*TimelineEvent       `protobuf:"bytes,1,rep,name=events,proto3" json:"events,omitempty"`
+	// --- Block 11 operator contract fields ---
+	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	RunId         string `protobuf:"bytes,11,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GetRunTimelineResponse) Reset() {
 	*x = GetRunTimelineResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[40]
+	mi := &file_control_v1_control_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2594,7 +3218,7 @@ func (x *GetRunTimelineResponse) String() string {
 func (*GetRunTimelineResponse) ProtoMessage() {}
 
 func (x *GetRunTimelineResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[40]
+	mi := &file_control_v1_control_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2607,7 +3231,7 @@ func (x *GetRunTimelineResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunTimelineResponse.ProtoReflect.Descriptor instead.
 func (*GetRunTimelineResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{40}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetRunTimelineResponse) GetEvents() []*TimelineEvent {
@@ -2615,6 +3239,20 @@ func (x *GetRunTimelineResponse) GetEvents() []*TimelineEvent {
 		return x.Events
 	}
 	return nil
+}
+
+func (x *GetRunTimelineResponse) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *GetRunTimelineResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
 }
 
 type NextActionRequest struct {
@@ -2627,7 +3265,7 @@ type NextActionRequest struct {
 
 func (x *NextActionRequest) Reset() {
 	*x = NextActionRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[41]
+	mi := &file_control_v1_control_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2639,7 +3277,7 @@ func (x *NextActionRequest) String() string {
 func (*NextActionRequest) ProtoMessage() {}
 
 func (x *NextActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[41]
+	mi := &file_control_v1_control_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2652,7 +3290,7 @@ func (x *NextActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NextActionRequest.ProtoReflect.Descriptor instead.
 func (*NextActionRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{41}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *NextActionRequest) GetContext() string {
@@ -2671,14 +3309,22 @@ type NextActionResponse struct {
 	// Parameters to pass with the action.
 	Params map[string]string `protobuf:"bytes,3,rep,name=params,proto3" json:"params,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// LLM reasoning behind the recommendation.
-	Reasoning     string `protobuf:"bytes,4,opt,name=reasoning,proto3" json:"reasoning,omitempty"`
+	Reasoning string `protobuf:"bytes,4,opt,name=reasoning,proto3" json:"reasoning,omitempty"`
+	// --- Block 11 operator contract fields ---
+	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	RunId         string `protobuf:"bytes,11,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	// Next action from the fixed enum.
+	NextAction    string                   `protobuf:"bytes,12,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
+	Rationale     string                   `protobuf:"bytes,13,opt,name=rationale,proto3" json:"rationale,omitempty"`
+	EvidenceRefs  []*EvidenceRef           `protobuf:"bytes,14,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	Confirmation  *ConfirmationRequirement `protobuf:"bytes,15,opt,name=confirmation,proto3" json:"confirmation,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NextActionResponse) Reset() {
 	*x = NextActionResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[42]
+	mi := &file_control_v1_control_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2690,7 +3336,7 @@ func (x *NextActionResponse) String() string {
 func (*NextActionResponse) ProtoMessage() {}
 
 func (x *NextActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[42]
+	mi := &file_control_v1_control_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2703,7 +3349,7 @@ func (x *NextActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NextActionResponse.ProtoReflect.Descriptor instead.
 func (*NextActionResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{42}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *NextActionResponse) GetAction() string {
@@ -2732,6 +3378,48 @@ func (x *NextActionResponse) GetReasoning() string {
 		return x.Reasoning
 	}
 	return ""
+}
+
+func (x *NextActionResponse) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *NextActionResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *NextActionResponse) GetNextAction() string {
+	if x != nil {
+		return x.NextAction
+	}
+	return ""
+}
+
+func (x *NextActionResponse) GetRationale() string {
+	if x != nil {
+		return x.Rationale
+	}
+	return ""
+}
+
+func (x *NextActionResponse) GetEvidenceRefs() []*EvidenceRef {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
+func (x *NextActionResponse) GetConfirmation() *ConfirmationRequirement {
+	if x != nil {
+		return x.Confirmation
+	}
+	return nil
 }
 
 var File_control_v1_control_proto protoreflect.FileDescriptor
@@ -2863,61 +3551,147 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x11ProjectValidation\x12\x14\n" +
 	"\x05check\x18\x01 \x01(\tR\x05check\x12\x16\n" +
 	"\x06passed\x18\x02 \x01(\bR\x06passed\x12\x18\n" +
-	"\adetails\x18\x03 \x01(\tR\adetails\"\x99\x01\n" +
+	"\adetails\x18\x03 \x01(\tR\adetails\"\xce\x02\n" +
 	"\x1cValidateAgentProjectResponse\x12I\n" +
 	"\vvalidations\x18\x01 \x03(\v2'.agentpaas.control.v1.ProjectValidationR\vvalidations\x12\x14\n" +
 	"\x05valid\x18\x02 \x01(\bR\x05valid\x12\x18\n" +
-	"\asummary\x18\x03 \x01(\tR\asummary\",\n" +
+	"\asummary\x18\x03 \x01(\tR\asummary\x12%\n" +
+	"\x0eschema_version\x18\n" +
+	" \x01(\tR\rschemaVersion\x12\x14\n" +
+	"\x05ready\x18\v \x01(\bR\x05ready\x12\x1f\n" +
+	"\vproject_dir\x18\f \x01(\tR\n" +
+	"projectDir\x12\x18\n" +
+	"\aruntime\x18\r \x01(\tR\aruntime\x12;\n" +
+	"\x06issues\x18\x0e \x03(\v2#.agentpaas.control.v1.OperatorIssueR\x06issues\"\xae\x01\n" +
+	"\rOperatorIssue\x12\x1a\n" +
+	"\bcategory\x18\x01 \x01(\tR\bcategory\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12F\n" +
+	"\revidence_refs\x18\x03 \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12\x1f\n" +
+	"\vnext_action\x18\x04 \x01(\tR\n" +
+	"nextAction\"K\n" +
+	"\vEvidenceRef\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x10\n" +
+	"\x03ref\x18\x02 \x01(\tR\x03ref\x12\x16\n" +
+	"\x06detail\x18\x03 \x01(\tR\x06detail\"}\n" +
+	"\x0fRedactedExcerpt\x12\x16\n" +
+	"\x06source\x18\x01 \x01(\tR\x06source\x12\x1d\n" +
+	"\n" +
+	"start_line\x18\x02 \x01(\x05R\tstartLine\x12\x19\n" +
+	"\bend_line\x18\x03 \x01(\x05R\aendLine\x12\x18\n" +
+	"\acontent\x18\x04 \x01(\tR\acontent\"\xd8\x02\n" +
+	"\x17ConfirmationRequirement\x123\n" +
+	"\x15requires_confirmation\x18\x01 \x01(\bR\x14requiresConfirmation\x12'\n" +
+	"\x0fconfirmation_id\x18\x02 \x01(\tR\x0econfirmationId\x12\x1d\n" +
+	"\n" +
+	"risk_level\x18\x03 \x01(\tR\triskLevel\x12\x1c\n" +
+	"\trationale\x18\x04 \x01(\tR\trationale\x123\n" +
+	"\x15affected_destinations\x18\x05 \x03(\tR\x14affectedDestinations\x12%\n" +
+	"\x0ecredential_ids\x18\x06 \x03(\tR\rcredentialIds\x12F\n" +
+	"\revidence_refs\x18\a \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\",\n" +
 	"\x13SummarizeRunRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x85\x01\n" +
 	"\bKeyEvent\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1d\n" +
 	"\n" +
-	"event_type\x18\x03 \x01(\tR\teventType\"\x90\x01\n" +
+	"event_type\x18\x03 \x01(\tR\teventType\"\xbd\x04\n" +
 	"\x14SummarizeRunResponse\x12\x18\n" +
 	"\asummary\x18\x01 \x01(\tR\asummary\x12=\n" +
 	"\n" +
 	"key_events\x18\x02 \x03(\v2\x1e.agentpaas.control.v1.KeyEventR\tkeyEvents\x12\x1f\n" +
 	"\vbudget_used\x18\x03 \x01(\tR\n" +
-	"budgetUsed\".\n" +
+	"budgetUsed\x12%\n" +
+	"\x0eschema_version\x18\n" +
+	" \x01(\tR\rschemaVersion\x12\x16\n" +
+	"\x06status\x18\v \x01(\tR\x06status\x12\x1b\n" +
+	"\texit_code\x18\f \x01(\x05R\bexitCode\x129\n" +
+	"\n" +
+	"started_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
+	"\vfinished_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"finishedAt\x12\x1f\n" +
+	"\vduration_ms\x18\x0f \x01(\x03R\n" +
+	"durationMs\x12 \n" +
+	"\vinvocations\x18\x10 \x01(\x05R\vinvocations\x12%\n" +
+	"\x0epolicy_denials\x18\x11 \x01(\x05R\rpolicyDenials\x12%\n" +
+	"\x0eerror_category\x18\x12 \x01(\tR\rerrorCategory\x12F\n" +
+	"\revidence_refs\x18\x13 \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\".\n" +
 	"\x15ExplainFailureRequest\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x93\x01\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x9e\x03\n" +
 	"\x16ExplainFailureResponse\x12\x1d\n" +
 	"\n" +
 	"root_cause\x18\x01 \x01(\tR\trootCause\x121\n" +
 	"\x14contributing_factors\x18\x02 \x03(\tR\x13contributingFactors\x12'\n" +
-	"\x0fsuggested_fixes\x18\x03 \x03(\tR\x0esuggestedFixes\"b\n" +
+	"\x0fsuggested_fixes\x18\x03 \x03(\tR\x0esuggestedFixes\x12%\n" +
+	"\x0eschema_version\x18\n" +
+	" \x01(\tR\rschemaVersion\x12%\n" +
+	"\x0eerror_category\x18\v \x01(\tR\rerrorCategory\x12R\n" +
+	"\x11redacted_excerpts\x18\f \x03(\v2%.agentpaas.control.v1.RedactedExcerptR\x10redactedExcerpts\x12F\n" +
+	"\revidence_refs\x18\r \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12\x1f\n" +
+	"\vnext_action\x18\x0e \x01(\tR\n" +
+	"nextAction\"b\n" +
 	"\x1aExplainPolicyDenialRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12-\n" +
-	"\x12denied_destination\x18\x02 \x01(\tR\x11deniedDestination\"\x93\x01\n" +
+	"\x12denied_destination\x18\x02 \x01(\tR\x11deniedDestination\"\xcc\x03\n" +
 	"\x1bExplainPolicyDenialResponse\x12-\n" +
 	"\x12denied_destination\x18\x01 \x01(\tR\x11deniedDestination\x12#\n" +
 	"\rmatching_rule\x18\x02 \x01(\tR\fmatchingRule\x12 \n" +
-	"\vexplanation\x18\x03 \x01(\tR\vexplanation\"H\n" +
+	"\vexplanation\x18\x03 \x01(\tR\vexplanation\x12%\n" +
+	"\x0eschema_version\x18\n" +
+	" \x01(\tR\rschemaVersion\x12\x15\n" +
+	"\x06run_id\x18\v \x01(\tR\x05runId\x12#\n" +
+	"\rdenied_action\x18\f \x01(\tR\fdeniedAction\x12(\n" +
+	"\x10blocking_rule_id\x18\r \x01(\tR\x0eblockingRuleId\x12#\n" +
+	"\rpolicy_digest\x18\x0e \x01(\tR\fpolicyDigest\x12\x1c\n" +
+	"\trationale\x18\x0f \x01(\tR\trationale\x12F\n" +
+	"\revidence_refs\x18\x10 \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12\x1f\n" +
+	"\vnext_action\x18\x11 \x01(\tR\n" +
+	"nextAction\"H\n" +
 	"\x1bRecommendPolicyPatchRequest\x12)\n" +
-	"\x10desired_behavior\x18\x01 \x01(\tR\x0fdesiredBehavior\"\x88\x01\n" +
+	"\x10desired_behavior\x18\x01 \x01(\tR\x0fdesiredBehavior\"\xab\x04\n" +
 	"\x1cRecommendPolicyPatchResponse\x12\x1d\n" +
 	"\n" +
 	"patch_yaml\x18\x01 \x01(\tR\tpatchYaml\x12 \n" +
 	"\vexplanation\x18\x02 \x01(\tR\vexplanation\x12'\n" +
-	"\x0frisk_assessment\x18\x03 \x01(\tR\x0eriskAssessment\".\n" +
+	"\x0frisk_assessment\x18\x03 \x01(\tR\x0eriskAssessment\x12%\n" +
+	"\x0eschema_version\x18\n" +
+	" \x01(\tR\rschemaVersion\x12%\n" +
+	"\x0eproposed_patch\x18\v \x01(\tR\rproposedPatch\x12\x1d\n" +
+	"\n" +
+	"risk_level\x18\f \x01(\tR\triskLevel\x12\x1c\n" +
+	"\trationale\x18\r \x01(\tR\trationale\x123\n" +
+	"\x15affected_destinations\x18\x0e \x03(\tR\x14affectedDestinations\x12%\n" +
+	"\x0ecredential_ids\x18\x0f \x03(\tR\rcredentialIds\x12F\n" +
+	"\revidence_refs\x18\x10 \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12Q\n" +
+	"\fconfirmation\x18\x11 \x01(\v2-.agentpaas.control.v1.ConfirmationRequirementR\fconfirmation\x12\x1f\n" +
+	"\vnext_action\x18\x12 \x01(\tR\n" +
+	"nextAction\".\n" +
 	"\x15GetRunTimelineRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x93\x01\n" +
 	"\rTimelineEvent\x128\n" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x12\n" +
 	"\x04type\x18\x02 \x01(\tR\x04type\x12 \n" +
 	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x12\n" +
-	"\x04data\x18\x04 \x01(\fR\x04data\"U\n" +
+	"\x04data\x18\x04 \x01(\fR\x04data\"\x93\x01\n" +
 	"\x16GetRunTimelineResponse\x12;\n" +
-	"\x06events\x18\x01 \x03(\v2#.agentpaas.control.v1.TimelineEventR\x06events\"-\n" +
+	"\x06events\x18\x01 \x03(\v2#.agentpaas.control.v1.TimelineEventR\x06events\x12%\n" +
+	"\x0eschema_version\x18\n" +
+	" \x01(\tR\rschemaVersion\x12\x15\n" +
+	"\x06run_id\x18\v \x01(\tR\x05runId\"-\n" +
 	"\x11NextActionRequest\x12\x18\n" +
-	"\acontext\x18\x01 \x01(\tR\acontext\"\xeb\x01\n" +
+	"\acontext\x18\x01 \x01(\tR\acontext\"\x83\x04\n" +
 	"\x12NextActionResponse\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12L\n" +
 	"\x06params\x18\x03 \x03(\v24.agentpaas.control.v1.NextActionResponse.ParamsEntryR\x06params\x12\x1c\n" +
-	"\treasoning\x18\x04 \x01(\tR\treasoning\x1a9\n" +
+	"\treasoning\x18\x04 \x01(\tR\treasoning\x12%\n" +
+	"\x0eschema_version\x18\n" +
+	" \x01(\tR\rschemaVersion\x12\x15\n" +
+	"\x06run_id\x18\v \x01(\tR\x05runId\x12\x1f\n" +
+	"\vnext_action\x18\f \x01(\tR\n" +
+	"nextAction\x12\x1c\n" +
+	"\trationale\x18\r \x01(\tR\trationale\x12F\n" +
+	"\revidence_refs\x18\x0e \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12Q\n" +
+	"\fconfirmation\x18\x0f \x01(\v2-.agentpaas.control.v1.ConfirmationRequirementR\fconfirmation\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*w\n" +
@@ -2982,7 +3756,7 @@ func file_control_v1_control_proto_rawDescGZIP() []byte {
 }
 
 var file_control_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 45)
+var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_control_v1_control_proto_goTypes = []any{
 	(LogLevel)(0),                        // 0: agentpaas.control.v1.LogLevel
 	(EventType)(0),                       // 1: agentpaas.control.v1.EventType
@@ -3016,86 +3790,103 @@ var file_control_v1_control_proto_goTypes = []any{
 	(*ValidateAgentProjectRequest)(nil),  // 29: agentpaas.control.v1.ValidateAgentProjectRequest
 	(*ProjectValidation)(nil),            // 30: agentpaas.control.v1.ProjectValidation
 	(*ValidateAgentProjectResponse)(nil), // 31: agentpaas.control.v1.ValidateAgentProjectResponse
-	(*SummarizeRunRequest)(nil),          // 32: agentpaas.control.v1.SummarizeRunRequest
-	(*KeyEvent)(nil),                     // 33: agentpaas.control.v1.KeyEvent
-	(*SummarizeRunResponse)(nil),         // 34: agentpaas.control.v1.SummarizeRunResponse
-	(*ExplainFailureRequest)(nil),        // 35: agentpaas.control.v1.ExplainFailureRequest
-	(*ExplainFailureResponse)(nil),       // 36: agentpaas.control.v1.ExplainFailureResponse
-	(*ExplainPolicyDenialRequest)(nil),   // 37: agentpaas.control.v1.ExplainPolicyDenialRequest
-	(*ExplainPolicyDenialResponse)(nil),  // 38: agentpaas.control.v1.ExplainPolicyDenialResponse
-	(*RecommendPolicyPatchRequest)(nil),  // 39: agentpaas.control.v1.RecommendPolicyPatchRequest
-	(*RecommendPolicyPatchResponse)(nil), // 40: agentpaas.control.v1.RecommendPolicyPatchResponse
-	(*GetRunTimelineRequest)(nil),        // 41: agentpaas.control.v1.GetRunTimelineRequest
-	(*TimelineEvent)(nil),                // 42: agentpaas.control.v1.TimelineEvent
-	(*GetRunTimelineResponse)(nil),       // 43: agentpaas.control.v1.GetRunTimelineResponse
-	(*NextActionRequest)(nil),            // 44: agentpaas.control.v1.NextActionRequest
-	(*NextActionResponse)(nil),           // 45: agentpaas.control.v1.NextActionResponse
-	nil,                                  // 46: agentpaas.control.v1.LogEntry.FieldsEntry
-	nil,                                  // 47: agentpaas.control.v1.NextActionResponse.ParamsEntry
-	(*timestamppb.Timestamp)(nil),        // 48: google.protobuf.Timestamp
+	(*OperatorIssue)(nil),                // 32: agentpaas.control.v1.OperatorIssue
+	(*EvidenceRef)(nil),                  // 33: agentpaas.control.v1.EvidenceRef
+	(*RedactedExcerpt)(nil),              // 34: agentpaas.control.v1.RedactedExcerpt
+	(*ConfirmationRequirement)(nil),      // 35: agentpaas.control.v1.ConfirmationRequirement
+	(*SummarizeRunRequest)(nil),          // 36: agentpaas.control.v1.SummarizeRunRequest
+	(*KeyEvent)(nil),                     // 37: agentpaas.control.v1.KeyEvent
+	(*SummarizeRunResponse)(nil),         // 38: agentpaas.control.v1.SummarizeRunResponse
+	(*ExplainFailureRequest)(nil),        // 39: agentpaas.control.v1.ExplainFailureRequest
+	(*ExplainFailureResponse)(nil),       // 40: agentpaas.control.v1.ExplainFailureResponse
+	(*ExplainPolicyDenialRequest)(nil),   // 41: agentpaas.control.v1.ExplainPolicyDenialRequest
+	(*ExplainPolicyDenialResponse)(nil),  // 42: agentpaas.control.v1.ExplainPolicyDenialResponse
+	(*RecommendPolicyPatchRequest)(nil),  // 43: agentpaas.control.v1.RecommendPolicyPatchRequest
+	(*RecommendPolicyPatchResponse)(nil), // 44: agentpaas.control.v1.RecommendPolicyPatchResponse
+	(*GetRunTimelineRequest)(nil),        // 45: agentpaas.control.v1.GetRunTimelineRequest
+	(*TimelineEvent)(nil),                // 46: agentpaas.control.v1.TimelineEvent
+	(*GetRunTimelineResponse)(nil),       // 47: agentpaas.control.v1.GetRunTimelineResponse
+	(*NextActionRequest)(nil),            // 48: agentpaas.control.v1.NextActionRequest
+	(*NextActionResponse)(nil),           // 49: agentpaas.control.v1.NextActionResponse
+	nil,                                  // 50: agentpaas.control.v1.LogEntry.FieldsEntry
+	nil,                                  // 51: agentpaas.control.v1.NextActionResponse.ParamsEntry
+	(*timestamppb.Timestamp)(nil),        // 52: google.protobuf.Timestamp
 }
 var file_control_v1_control_proto_depIdxs = []int32{
 	6,  // 0: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
 	0,  // 1: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
-	48, // 2: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	46, // 3: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
+	52, // 2: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	50, // 3: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
 	2,  // 4: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
 	1,  // 5: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
 	21, // 6: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	48, // 7: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
-	48, // 8: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
+	52, // 7: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
+	52, // 8: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
 	1,  // 9: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
-	48, // 10: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
+	52, // 10: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
 	22, // 11: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
 	21, // 12: agentpaas.control.v1.AuditExportRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
 	27, // 13: agentpaas.control.v1.DoctorResponse.checks:type_name -> agentpaas.control.v1.CheckResult
 	30, // 14: agentpaas.control.v1.ValidateAgentProjectResponse.validations:type_name -> agentpaas.control.v1.ProjectValidation
-	48, // 15: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
-	33, // 16: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
-	48, // 17: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
-	42, // 18: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
-	47, // 19: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
-	3,  // 20: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
-	5,  // 21: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
-	8,  // 22: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
-	10, // 23: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
-	12, // 24: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
-	14, // 25: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
-	16, // 26: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
-	18, // 27: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
-	20, // 28: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
-	24, // 29: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
-	26, // 30: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
-	29, // 31: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
-	32, // 32: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
-	35, // 33: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
-	37, // 34: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
-	39, // 35: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
-	41, // 36: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
-	44, // 37: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
-	4,  // 38: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
-	7,  // 39: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
-	9,  // 40: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
-	11, // 41: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
-	13, // 42: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
-	15, // 43: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
-	17, // 44: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
-	19, // 45: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
-	23, // 46: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
-	25, // 47: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
-	28, // 48: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
-	31, // 49: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
-	34, // 50: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
-	36, // 51: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
-	38, // 52: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
-	40, // 53: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
-	43, // 54: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
-	45, // 55: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
-	38, // [38:56] is the sub-list for method output_type
-	20, // [20:38] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	32, // 15: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
+	33, // 16: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	33, // 17: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	52, // 18: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
+	37, // 19: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
+	52, // 20: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
+	52, // 21: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
+	33, // 22: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	34, // 23: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
+	33, // 24: agentpaas.control.v1.ExplainFailureResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	33, // 25: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	33, // 26: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	35, // 27: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
+	52, // 28: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
+	46, // 29: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
+	51, // 30: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
+	33, // 31: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	35, // 32: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
+	3,  // 33: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
+	5,  // 34: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
+	8,  // 35: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
+	10, // 36: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
+	12, // 37: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
+	14, // 38: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
+	16, // 39: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
+	18, // 40: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
+	20, // 41: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
+	24, // 42: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
+	26, // 43: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
+	29, // 44: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
+	36, // 45: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
+	39, // 46: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
+	41, // 47: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
+	43, // 48: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
+	45, // 49: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
+	48, // 50: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
+	4,  // 51: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
+	7,  // 52: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
+	9,  // 53: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
+	11, // 54: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
+	13, // 55: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
+	15, // 56: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
+	17, // 57: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
+	19, // 58: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
+	23, // 59: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
+	25, // 60: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
+	28, // 61: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
+	31, // 62: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
+	38, // 63: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
+	40, // 64: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
+	42, // 65: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
+	44, // 66: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
+	47, // 67: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
+	49, // 68: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
+	51, // [51:69] is the sub-list for method output_type
+	33, // [33:51] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_control_v1_control_proto_init() }
@@ -3109,7 +3900,7 @@ func file_control_v1_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_v1_control_proto_rawDesc), len(file_control_v1_control_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   45,
+			NumMessages:   49,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

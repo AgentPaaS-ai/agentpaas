@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -11,73 +12,427 @@ import (
 	"text/tabwriter"
 	"time"
 
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/operator"
 	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// stubRunE returns a RunE function that prints "not yet implemented".
-func stubRunE(use string) func(cmd *cobra.Command, args []string) error {
-	return func(cmd *cobra.Command, args []string) error {
-		fmt.Printf("'agent %s' not yet implemented\n", use)
-		return nil
-	}
-}
-
-// newPackCmd creates the `agent pack` command (stub).
+// newPackCmd creates the `agent pack` command.
 func newPackCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "pack [project-dir]",
-		Short: "Build an agent image from a project directory (not yet implemented)",
+		Short: "Build an agent image from a project directory",
 		Args:  cobra.MaximumNArgs(1),
-		RunE:  stubRunE("pack"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectDir := "."
+			if len(args) > 0 {
+				projectDir = args[0]
+			}
+			agentName, _ := cmd.Flags().GetString("name")
+			agentVersion, _ := cmd.Flags().GetString("version")
+
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(30 * time.Second)
+			defer cancel()
+
+			resp, err := client.Pack(ctx, &controlv1.PackRequest{
+				AgentProjectPath: projectDir,
+				AgentName:        agentName,
+				AgentVersion:     agentVersion,
+			})
+			if err != nil {
+				return fmt.Errorf("pack failed: %w", err)
+			}
+
+			result := struct {
+				ImageDigest string `json:"image_digest"`
+				BuildLog    string `json:"build_log,omitempty"`
+			}{
+				ImageDigest: resp.GetImageDigest(),
+				BuildLog:    resp.GetBuildLog(),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(struct {
+					ImageDigest string `json:"image_digest"`
+					BuildLog    string `json:"build_log,omitempty"`
+				})
+				return fmt.Sprintf("Image: %s\nDigest: %s", r.ImageDigest, r.ImageDigest)
+			})
+		},
 	}
+	cmd.Flags().String("name", "", "Agent name (overrides agent.yaml)")
+	cmd.Flags().String("version", "", "Agent version (overrides agent.yaml)")
+	return cmd
 }
 
-// newRunCmd creates the `agent run` command (stub).
+// newRunCmd creates the `agent run` command.
 func newRunCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "run [image-or-project]",
-		Short: "Start a new agent run (not yet implemented)",
+		Short: "Start a new agent run",
 		Args:  cobra.MaximumNArgs(1),
-		RunE:  stubRunE("run"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := ""
+			if len(args) > 0 {
+				target = args[0]
+			}
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(30 * time.Second)
+			defer cancel()
+
+			resp, err := client.Run(ctx, &controlv1.RunRequest{
+				AgentName: target,
+			})
+			if err != nil {
+				return fmt.Errorf("run failed: %w", err)
+			}
+
+			result := struct {
+				RunID string `json:"run_id"`
+			}{RunID: resp.GetRunId()}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(struct {
+					RunID string `json:"run_id"`
+				})
+				return fmt.Sprintf("Run started: %s", r.RunID)
+			})
+		},
 	}
+	return cmd
 }
 
-// newStopCmd creates the `agent stop` command (stub).
+// newStopCmd creates the `agent stop` command.
 func newStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop <run-id>",
-		Short: "Terminate a running agent (not yet implemented)",
+		Short: "Terminate a running agent",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("stop"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+
+			_, err = client.Stop(ctx, &controlv1.StopRequest{RunId: runID})
+			if err != nil {
+				return fmt.Errorf("stop failed: %w", err)
+			}
+
+			result := struct {
+				Stopped     bool   `json:"stopped"`
+				RunID       string `json:"run_id"`
+				RequiresConfirm bool `json:"requires_confirm"`
+			}{Stopped: true, RunID: runID, RequiresConfirm: false}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(struct {
+					Stopped     bool   `json:"stopped"`
+					RunID       string `json:"run_id"`
+					RequiresConfirm bool `json:"requires_confirm"`
+				})
+				return fmt.Sprintf("Stopped run: %s", r.RunID)
+			})
+		},
 	}
 }
 
-// newLogsCmd creates the `agent logs` command (stub).
+// newLogsCmd creates the `agent logs` command.
 func newLogsCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "logs <run-id>",
-		Short: "Follow or query agent logs (not yet implemented)",
+		Short: "Follow or query agent logs",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("logs"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := args[0]
+			follow, _ := cmd.Flags().GetBool("follow")
+			tail, _ := cmd.Flags().GetInt32("tail")
+
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(60 * time.Second)
+			defer cancel()
+
+			stream, err := client.Logs(ctx, &controlv1.LogsRequest{
+				RunId: runID,
+				Follow: follow,
+				Tail:   tail,
+			})
+			if err != nil {
+				return fmt.Errorf("logs failed: %w", err)
+			}
+
+			jsonOut := jsonOutput(cmd)
+			for {
+				entry, err := stream.Recv()
+				if err == io.EOF {
+					return nil
+				}
+				if err != nil {
+					return fmt.Errorf("log stream error: %w", err)
+				}
+				if jsonOut {
+					data, _ := json.Marshal(map[string]interface{}{
+						"timestamp": entry.GetTimestamp().AsTime().Format(time.RFC3339Nano),
+						"run_id":    entry.GetRunId(),
+						"level":     entry.GetLevel(),
+						"message":   entry.GetMessage(),
+						"fields":    entry.GetFields(),
+					})
+					fmt.Println(string(data))
+				} else {
+					ts := ""
+					if entry.GetTimestamp() != nil {
+						ts = entry.GetTimestamp().AsTime().Format(time.RFC3339)
+					}
+					fmt.Printf("[%s] %s %s\n", ts, entry.GetLevel(), entry.GetMessage())
+				}
+			}
+		},
 	}
+	cmd.Flags().BoolP("follow", "f", false, "Follow log output in real-time")
+	cmd.Flags().Int32("tail", 100, "Number of historical log entries to return")
+	return cmd
 }
 
-// newPolicyCmd creates the `agent policy` command (stub).
+// newPolicyCmd creates the `agent policy` command.
 func newPolicyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "policy",
-		Short: "Manage OPA/Rego policies (not yet implemented)",
+		Short: "Manage agent policies",
 	}
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "apply <policy-file>",
-		Short: "Apply or validate an OPA/Rego policy (not yet implemented)",
-		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("policy apply"),
-	})
-
+	cmd.AddCommand(newPolicyApplyCmd())
+	cmd.AddCommand(newPolicyShowCmd())
+	cmd.AddCommand(newPolicyExplainCmd())
+	cmd.AddCommand(newPolicyProposeCmd())
 	return cmd
+}
+
+func newPolicyApplyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "apply <policy-file>",
+		Short: "Apply or validate a policy file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			policyFile := args[0]
+			data, err := os.ReadFile(policyFile)
+			if err != nil {
+				return fmt.Errorf("read policy file: %w", err)
+			}
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.PolicyApply(ctx, &controlv1.PolicyApplyRequest{
+				PolicyYaml: string(data),
+				DryRun:     dryRun,
+			})
+			if err != nil {
+				return fmt.Errorf("policy apply failed: %w", err)
+			}
+
+			result := struct {
+				PolicyDigest string   `json:"policy_digest"`
+				RulesApplied int32    `json:"rules_applied"`
+				Warnings     []string `json:"warnings,omitempty"`
+				DryRun       bool     `json:"dry_run"`
+			}{
+				PolicyDigest: resp.GetPolicyDigest(),
+				RulesApplied: resp.GetRulesApplied(),
+				Warnings:     resp.GetWarnings(),
+				DryRun:       dryRun,
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(struct {
+					PolicyDigest string   `json:"policy_digest"`
+					RulesApplied int32    `json:"rules_applied"`
+					Warnings     []string `json:"warnings,omitempty"`
+					DryRun       bool     `json:"dry_run"`
+				})
+				out := fmt.Sprintf("Policy: %s (%d rules)", r.PolicyDigest, r.RulesApplied)
+				if r.DryRun {
+					out += " [dry-run]"
+				}
+				return out
+			})
+		},
+	}
+}
+
+func newPolicyShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show [run-id]",
+		Short: "Show the active policy for a run or project",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := ""
+			if len(args) > 0 {
+				runID = args[0]
+			}
+			result := struct {
+				SchemaVersion string `json:"schema_version"`
+				RunID         string `json:"run_id,omitempty"`
+				PolicyDigest  string `json:"policy_digest"`
+				Message       string `json:"message"`
+			}{
+				SchemaVersion: operator.SchemaVersion,
+				RunID:         runID,
+				PolicyDigest:  "",
+				Message:       "policy show: no active policy store in P1 stub",
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				return result.Message
+			})
+		},
+	}
+}
+
+func newPolicyExplainCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "explain <run-id|destination>",
+		Short: "Explain why a destination was denied by policy",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+
+			resp, err := client.ExplainPolicyDenial(ctx, &controlv1.ExplainPolicyDenialRequest{
+				RunId:             target,
+				DeniedDestination: target,
+			})
+			if err != nil {
+				return fmt.Errorf("explain denial failed: %w", err)
+			}
+
+			// Build operator-schema-shaped JSON output
+			result := operator.ExplainPolicyDenialResponse{
+				SchemaVersion:  resp.GetSchemaVersion(),
+				RunID:          resp.GetRunId(),
+				DeniedAction:   resp.GetDeniedAction(),
+				BlockingRuleID: resp.GetBlockingRuleId(),
+				PolicyDigest:   resp.GetPolicyDigest(),
+				Rationale:      resp.GetRationale(),
+				NextAction:     operator.NextAction(resp.GetNextAction()),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.ExplainPolicyDenialResponse)
+				return fmt.Sprintf("Denied: %s\nRule: %s\nReason: %s\nNext: %s",
+					r.DeniedAction, r.BlockingRuleID, r.Rationale, r.NextAction)
+			})
+		},
+	}
+}
+
+func newPolicyProposeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "propose <desired-behavior>",
+		Short: "Suggest a policy patch for a desired behavior",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			behavior := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+
+			resp, err := client.RecommendPolicyPatch(ctx, &controlv1.RecommendPolicyPatchRequest{
+				DesiredBehavior: behavior,
+			})
+			if err != nil {
+				return fmt.Errorf("recommend patch failed: %w", err)
+			}
+
+			// Build operator-schema-shaped JSON output
+			confirmation := operator.ConfirmationRequirement{
+				RequiresConfirmation: resp.GetConfirmation().GetRequiresConfirmation(),
+				ConfirmationID:       resp.GetConfirmation().GetConfirmationId(),
+				RiskLevel:            operator.RiskLevel(resp.GetConfirmation().GetRiskLevel()),
+				Rationale:            resp.GetConfirmation().GetRationale(),
+				AffectedDestinations: resp.GetConfirmation().GetAffectedDestinations(),
+				CredentialIDs:        resp.GetConfirmation().GetCredentialIds(),
+			}
+			result := operator.RecommendPolicyPatchResponse{
+				SchemaVersion:        resp.GetSchemaVersion(),
+				ProposedPatch:        resp.GetProposedPatch(),
+				RiskLevel:            operator.RiskLevel(resp.GetRiskLevel()),
+				Rationale:            resp.GetRationale(),
+				AffectedDestinations: resp.GetAffectedDestinations(),
+				CredentialIDs:        resp.GetCredentialIds(),
+				Confirmation:          confirmation,
+				NextAction:            operator.NextAction(resp.GetNextAction()),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.RecommendPolicyPatchResponse)
+				return fmt.Sprintf("Patch: %s\nRisk: %s\nReason: %s\nConfirm required: %v",
+					r.ProposedPatch, r.RiskLevel, r.Rationale, r.Confirmation.RequiresConfirmation)
+			})
+		},
+	}
 }
 
 var secretStoreFactory = newDefaultSecretStore
@@ -261,94 +616,530 @@ func formatSecretTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-// newAuditCmd creates the `agent audit` command (stub).
+// newAuditCmd creates the `agent audit` command.
 func newAuditCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "audit",
-		Short: "Query and export audit logs (not yet implemented)",
+		Short: "Query and export audit logs",
 	}
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "query [--since <time>] [--until <time>]",
-		Short: "Query audit log entries (not yet implemented)",
-		RunE:  stubRunE("audit query"),
-	})
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   "export [--format <fmt>]",
-		Short: "Export audit log entries (not yet implemented)",
-		RunE:  stubRunE("audit export"),
-	})
-
+	cmd.AddCommand(newAuditQueryCmd())
+	cmd.AddCommand(newAuditExportCmd())
 	return cmd
 }
 
-// newValidateCmd creates the `agent validate` command (stub).
+func newAuditQueryCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "query",
+		Short: "Query audit log entries",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID, _ := cmd.Flags().GetString("run-id")
+			pageSize, _ := cmd.Flags().GetInt32("page-size")
+
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.AuditQuery(ctx, &controlv1.AuditQueryRequest{
+				RunId:    runID,
+				PageSize: pageSize,
+			})
+			if err != nil {
+				return fmt.Errorf("audit query failed: %w", err)
+			}
+
+			type entryJSON struct {
+				EventID   string    `json:"event_id"`
+				EventType string    `json:"event_type"`
+				RunID     string    `json:"run_id"`
+				Timestamp time.Time `json:"timestamp"`
+			}
+			entries := make([]entryJSON, 0, len(resp.GetEntries()))
+			for _, e := range resp.GetEntries() {
+				var ts time.Time
+				if e.GetTimestamp() != nil {
+					ts = e.GetTimestamp().AsTime()
+				}
+				entries = append(entries, entryJSON{
+					EventID:   e.GetEventId(),
+					EventType: e.GetEventType().String(),
+					RunID:     e.GetRunId(),
+					Timestamp: ts,
+				})
+			}
+			result := struct {
+				Entries      []entryJSON `json:"entries"`
+				TotalCount   int32       `json:"total_count"`
+				NextPageToken string     `json:"next_page_token,omitempty"`
+			}{
+				Entries:       entries,
+				TotalCount:    resp.GetTotalCount(),
+				NextPageToken: resp.GetNextPageToken(),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(struct {
+					Entries      []entryJSON `json:"entries"`
+					TotalCount   int32       `json:"total_count"`
+					NextPageToken string     `json:"next_page_token,omitempty"`
+				})
+				return fmt.Sprintf("%d entries (total: %d)", len(r.Entries), r.TotalCount)
+			})
+		},
+	}
+	cmd.Flags().String("run-id", "", "Filter by run ID")
+	cmd.Flags().Int32("page-size", 50, "Maximum number of results")
+	return cmd
+}
+
+func newAuditExportCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "export",
+		Short: "Export audit log entries",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			format, _ := cmd.Flags().GetString("format")
+			output, _ := cmd.Flags().GetString("output")
+
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(60 * time.Second)
+			defer cancel()
+
+			resp, err := client.AuditExport(ctx, &controlv1.AuditExportRequest{
+				Format: format,
+			})
+			if err != nil {
+				return fmt.Errorf("audit export failed: %w", err)
+			}
+
+			if output != "" {
+				if err := os.WriteFile(output, resp.GetData(), 0644); err != nil {
+					return fmt.Errorf("write export file: %w", err)
+				}
+				result := struct {
+					Output      string `json:"output"`
+					EntryCount  int32  `json:"entry_count"`
+					Format      string `json:"format"`
+				}{Output: output, EntryCount: resp.GetEntryCount(), Format: format}
+				return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+					r := v.(struct {
+						Output      string `json:"output"`
+						EntryCount  int32  `json:"entry_count"`
+						Format      string `json:"format"`
+					})
+					return fmt.Sprintf("Exported %d entries to %s (%s)", r.EntryCount, r.Output, r.Format)
+				})
+			}
+
+			// Write to stdout
+			fmt.Print(string(resp.GetData()))
+			return nil
+		},
+	}
+	cmd.Flags().String("format", "json", "Output format: json, csv, ndjson")
+	cmd.Flags().StringP("output", "o", "", "Write to file instead of stdout")
+	return cmd
+}
+
+// newValidateCmd creates the `agent validate` command.
 func newValidateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate <project-path>",
-		Short: "Validate an agent project directory structure (not yet implemented)",
+		Short: "Validate an agent project directory structure",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("validate"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			projectPath := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.ValidateAgentProject(ctx, &controlv1.ValidateAgentProjectRequest{
+				ProjectPath: projectPath,
+			})
+			if err != nil {
+				return fmt.Errorf("validate failed: %w", err)
+			}
+
+			// Build operator-schema-shaped JSON output
+			issues := make([]operator.ValidationIssue, 0, len(resp.GetIssues()))
+			for _, iss := range resp.GetIssues() {
+				issues = append(issues, operator.ValidationIssue{
+					Category:    operator.ErrorCategory(iss.GetCategory()),
+					Message:      iss.GetMessage(),
+					NextAction:  operator.NextAction(iss.GetNextAction()),
+				})
+			}
+			result := operator.ValidateAgentProjectResponse{
+				SchemaVersion: resp.GetSchemaVersion(),
+				Ready:         resp.GetReady(),
+				ProjectDir:    resp.GetProjectDir(),
+				Runtime:       resp.GetRuntime(),
+				Issues:        issues,
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.ValidateAgentProjectResponse)
+				if r.Ready {
+					return fmt.Sprintf("Project ready: %s (runtime: %s)", r.ProjectDir, r.Runtime)
+				}
+				out := fmt.Sprintf("Project NOT ready: %s\n", r.ProjectDir)
+				for _, iss := range r.Issues {
+					out += fmt.Sprintf("  [%s] %s → %s\n", iss.Category, iss.Message, iss.NextAction)
+				}
+				return out
+			})
+		},
 	}
 }
 
-// newSummarizeCmd creates the `agent summarize` command (stub).
+// newSummarizeCmd creates the `agent summarize` command.
 func newSummarizeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "summarize <run-id>",
-		Short: "Generate a natural-language summary of a completed run (not yet implemented)",
+		Short: "Generate a summary of a completed run",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("summarize"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.SummarizeRun(ctx, &controlv1.SummarizeRunRequest{RunId: runID})
+			if err != nil {
+				return fmt.Errorf("summarize failed: %w", err)
+			}
+
+			result := operator.SummarizeRunResponse{
+				SchemaVersion: resp.GetSchemaVersion(),
+				RunID:         runID,
+				Status:        resp.GetStatus(),
+				ExitCode:      int(resp.GetExitCode()),
+				Summary:       resp.GetSummary(),
+				Invocations:   int(resp.GetInvocations()),
+				PolicyDenials: int(resp.GetPolicyDenials()),
+				ErrorCategory: operator.ErrorCategory(resp.GetErrorCategory()),
+			}
+			if resp.GetStartedAt() != nil {
+				result.StartedAt = resp.GetStartedAt().AsTime()
+			}
+			if resp.GetFinishedAt() != nil {
+				result.FinishedAt = resp.GetFinishedAt().AsTime()
+			}
+			result.DurationMS = resp.GetDurationMs()
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.SummarizeRunResponse)
+				return fmt.Sprintf("Run %s: %s (status: %s)", r.RunID, r.Summary, r.Status)
+			})
+		},
 	}
 }
 
-// newExplainFailureCmd creates the `agent explain-failure` command (stub).
+// newExplainFailureCmd creates the `agent explain-failure` command.
 func newExplainFailureCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "explain-failure <run-id>",
-		Short: "Analyze a failed run and return root cause (not yet implemented)",
+		Short: "Analyze a failed run and return root cause",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("explain-failure"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.ExplainFailure(ctx, &controlv1.ExplainFailureRequest{RunId: runID})
+			if err != nil {
+				return fmt.Errorf("explain-failure failed: %w", err)
+			}
+
+			excerpts := make([]operator.RedactedExcerpt, 0, len(resp.GetRedactedExcerpts()))
+			for _, ex := range resp.GetRedactedExcerpts() {
+				excerpts = append(excerpts, operator.RedactedExcerpt{
+					Source:    ex.GetSource(),
+					StartLine: int(ex.GetStartLine()),
+					EndLine:   int(ex.GetEndLine()),
+					Content:   ex.GetContent(),
+				})
+			}
+			result := operator.ExplainFailureResponse{
+				SchemaVersion:    resp.GetSchemaVersion(),
+				RunID:            runID,
+				ErrorCategory:    operator.ErrorCategory(resp.GetErrorCategory()),
+				RootCause:        resp.GetRootCause(),
+				RedactedExcerpts: excerpts,
+				NextAction:       operator.NextAction(resp.GetNextAction()),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.ExplainFailureResponse)
+				return fmt.Sprintf("Run %s failed [%s]: %s → %s",
+					r.RunID, r.ErrorCategory, r.RootCause, r.NextAction)
+			})
+		},
 	}
 }
 
-// newExplainDenialCmd creates the `agent explain-denial` command (stub).
+// newExplainDenialCmd creates the `agent explain-denial` command.
 func newExplainDenialCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "explain-denial <destination>",
-		Short: "Explain why a destination was denied by policy (not yet implemented)",
+		Short: "Explain why a destination was denied by policy",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("explain-denial"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+
+			resp, err := client.ExplainPolicyDenial(ctx, &controlv1.ExplainPolicyDenialRequest{
+				DeniedDestination: target,
+			})
+			if err != nil {
+				return fmt.Errorf("explain-denial failed: %w", err)
+			}
+
+			result := operator.ExplainPolicyDenialResponse{
+				SchemaVersion:  resp.GetSchemaVersion(),
+				RunID:          resp.GetRunId(),
+				DeniedAction:   resp.GetDeniedAction(),
+				BlockingRuleID: resp.GetBlockingRuleId(),
+				PolicyDigest:   resp.GetPolicyDigest(),
+				Rationale:      resp.GetRationale(),
+				NextAction:     operator.NextAction(resp.GetNextAction()),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.ExplainPolicyDenialResponse)
+				return fmt.Sprintf("Denied: %s\nRule: %s\nReason: %s\nNext: %s",
+					r.DeniedAction, r.BlockingRuleID, r.Rationale, r.NextAction)
+			})
+		},
 	}
 }
 
-// newRecommendPatchCmd creates the `agent recommend-patch` command (stub).
+// newRecommendPatchCmd creates the `agent recommend-patch` command.
 func newRecommendPatchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "recommend-patch <desired-behavior>",
-		Short: "Suggest a policy patch for a desired behavior (not yet implemented)",
+		Short: "Suggest a policy patch for a desired behavior",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("recommend-patch"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			behavior := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+
+			resp, err := client.RecommendPolicyPatch(ctx, &controlv1.RecommendPolicyPatchRequest{
+				DesiredBehavior: behavior,
+			})
+			if err != nil {
+				return fmt.Errorf("recommend-patch failed: %w", err)
+			}
+
+			confirmation := operator.ConfirmationRequirement{
+				RequiresConfirmation: resp.GetConfirmation().GetRequiresConfirmation(),
+				ConfirmationID:       resp.GetConfirmation().GetConfirmationId(),
+				RiskLevel:            operator.RiskLevel(resp.GetConfirmation().GetRiskLevel()),
+				Rationale:            resp.GetConfirmation().GetRationale(),
+				AffectedDestinations: resp.GetConfirmation().GetAffectedDestinations(),
+				CredentialIDs:        resp.GetConfirmation().GetCredentialIds(),
+			}
+			result := operator.RecommendPolicyPatchResponse{
+				SchemaVersion:        resp.GetSchemaVersion(),
+				ProposedPatch:        resp.GetProposedPatch(),
+				RiskLevel:            operator.RiskLevel(resp.GetRiskLevel()),
+				Rationale:            resp.GetRationale(),
+				AffectedDestinations: resp.GetAffectedDestinations(),
+				CredentialIDs:        resp.GetCredentialIds(),
+				Confirmation:          confirmation,
+				NextAction:            operator.NextAction(resp.GetNextAction()),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.RecommendPolicyPatchResponse)
+				return fmt.Sprintf("Patch: %s\nRisk: %s\nReason: %s\nConfirm required: %v",
+					r.ProposedPatch, r.RiskLevel, r.Rationale, r.Confirmation.RequiresConfirmation)
+			})
+		},
 	}
 }
 
-// newTimelineCmd creates the `agent timeline` command (stub).
+// newTimelineCmd creates the `agent timeline` command.
 func newTimelineCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "timeline <run-id>",
-		Short: "Show chronological timeline of events for a run (not yet implemented)",
+		Short: "Show chronological timeline of events for a run",
 		Args:  cobra.ExactArgs(1),
-		RunE:  stubRunE("timeline"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.GetRunTimeline(ctx, &controlv1.GetRunTimelineRequest{RunId: runID})
+			if err != nil {
+				return fmt.Errorf("timeline failed: %w", err)
+			}
+
+			events := make([]operator.TimelineEvent, 0, len(resp.GetEvents()))
+			for _, e := range resp.GetEvents() {
+				var ts time.Time
+				if e.GetTimestamp() != nil {
+					ts = e.GetTimestamp().AsTime()
+				}
+				events = append(events, operator.TimelineEvent{
+					Timestamp:  ts,
+					EventType:  e.GetType(),
+					Detail:     e.GetDescription(),
+					AuditSeq:   0,
+				})
+			}
+			result := operator.GetRunTimelineResponse{
+				SchemaVersion: resp.GetSchemaVersion(),
+				RunID:         runID,
+				Events:        events,
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.GetRunTimelineResponse)
+				out := fmt.Sprintf("Timeline for %s (%d events):\n", r.RunID, len(r.Events))
+				for _, e := range r.Events {
+					out += fmt.Sprintf("  %s [%s] %s\n", e.Timestamp.Format(time.RFC3339), e.EventType, e.Detail)
+				}
+				return out
+			})
+		},
 	}
 }
 
-// newNextActionCmd creates the `agent next-action` command (stub).
+// newNextActionCmd creates the `agent next-action` command.
 func newNextActionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "next-action",
-		Short: "Recommend the next action based on current context (not yet implemented)",
-		Args:  cobra.NoArgs,
-		RunE:  stubRunE("next-action"),
+	cmd := &cobra.Command{
+		Use:   "next-action [run-id]",
+		Short: "Recommend the next action based on current context",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := ""
+			if len(args) > 0 {
+				runID = args[0]
+			}
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+
+			resp, err := client.NextAction(ctx, &controlv1.NextActionRequest{
+				Context: runID,
+			})
+			if err != nil {
+				return fmt.Errorf("next-action failed: %w", err)
+			}
+
+			var confirmation *operator.ConfirmationRequirement
+			if resp.GetConfirmation() != nil {
+				c := operator.ConfirmationRequirement{
+					RequiresConfirmation: resp.GetConfirmation().GetRequiresConfirmation(),
+					ConfirmationID:       resp.GetConfirmation().GetConfirmationId(),
+					RiskLevel:            operator.RiskLevel(resp.GetConfirmation().GetRiskLevel()),
+					Rationale:            resp.GetConfirmation().GetRationale(),
+					AffectedDestinations: resp.GetConfirmation().GetAffectedDestinations(),
+					CredentialIDs:        resp.GetConfirmation().GetCredentialIds(),
+				}
+				confirmation = &c
+			}
+			result := operator.NextActionResponse{
+				SchemaVersion: resp.GetSchemaVersion(),
+				RunID:         runID,
+				NextAction:    operator.NextAction(resp.GetNextAction()),
+				Rationale:     resp.GetRationale(),
+				Confirmation:  confirmation,
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.NextActionResponse)
+				return fmt.Sprintf("Next action: %s\nReason: %s", r.NextAction, r.Rationale)
+			})
+		},
 	}
+	return cmd
 }
+
+// contextWithTimeout is a helper that creates a context with the given timeout.
+func contextWithTimeout(d time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), d)
+}
+
+// ensure timestamppb import is used (for future timestamp conversion helpers)
+var _ = timestamppb.New
