@@ -113,11 +113,15 @@ func (h *RedactingHandler) redactAttrValue(a slog.Attr) slog.Attr {
 			a.Value = slog.StringValue(redacted)
 		} else {
 			// For other non-string types (structs, maps, etc.),
-			// marshal to JSON, redact the JSON string, and store as string value.
+			// marshal to JSON, then recursively redact sensitive keys
+			// by field name (Password, Token, api_key, etc.) before
+			// applying pattern-based Redact() on the final string.
 			jsonBytes, marshalErr := json.Marshal(val)
 			if marshalErr == nil {
-				jsonStr := string(jsonBytes)
-				redacted := Redact(jsonStr)
+				redactedJSON := redactSensitiveJSON(jsonBytes)
+				// Also apply pattern-based redaction for any remaining
+				// sensitive substrings (API keys, tokens, etc.).
+				redacted := Redact(string(redactedJSON))
 				a.Value = slog.StringValue(redacted)
 			} else {
 				a.Value = slog.StringValue(fmt.Sprintf("[REDACTED:%T]", val))
@@ -144,4 +148,49 @@ func NewLogger(level slog.Level, output io.Writer) *slog.Logger {
 	})
 	redactingHandler := NewRedactingHandler(jsonHandler)
 	return slog.New(redactingHandler)
+}
+
+// redactSensitiveJSON unmarshals JSON bytes into a generic structure and
+// recursively walks all map keys, replacing values whose key matches
+// hasSensitiveKey() (e.g. Password, Token, api_key) with "[REDACTED]".
+// This catches sensitive struct fields that pattern-based Redact() alone
+// cannot detect, because the field values (e.g. "hunter2") do not match
+// any regex. After key-based redaction, the result is re-marshalled to JSON.
+//
+// If unmarshalling or re-marshalling fails, the original JSON is returned
+// unchanged so that pattern-based redaction can still apply.
+func redactSensitiveJSON(jsonBytes []byte) []byte {
+	var data any
+	if err := json.Unmarshal(jsonBytes, &data); err != nil {
+		return jsonBytes
+	}
+	redacted := redactSensitiveValue(data)
+	result, err := json.Marshal(redacted)
+	if err != nil {
+		return jsonBytes
+	}
+	return result
+}
+
+// redactSensitiveValue recursively walks a decoded JSON value and replaces
+// values under sensitive keys with "[REDACTED]".
+func redactSensitiveValue(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		for k, elem := range val {
+			if hasSensitiveKey(k) {
+				val[k] = "[REDACTED]"
+			} else {
+				val[k] = redactSensitiveValue(elem)
+			}
+		}
+		return val
+	case []any:
+		for i, elem := range val {
+			val[i] = redactSensitiveValue(elem)
+		}
+		return val
+	default:
+		return v
+	}
 }
