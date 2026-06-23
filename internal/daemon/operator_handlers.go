@@ -177,19 +177,19 @@ func (s *stubControlServer) SummarizeRun(ctx context.Context, req *controlv1.Sum
 
 	var startedAt, finishedAt time.Time
 	for _, record := range records {
-		switch {
-		case record.EventType == "run_start":
+		switch record.EventType {
+		case "run_start":
 			if startedAt.IsZero() {
 				startedAt = parseAuditTime(record.Timestamp)
 			}
 			if resp.Status == "unknown" {
 				resp.Status = "running"
 			}
-		case record.EventType == "run_complete":
+		case "run_complete":
 			resp.Status = "completed"
 			finishedAt = parseAuditTime(record.Timestamp)
 			resp.ExitCode = auditInt32(record.Payload, "exit_code")
-		case record.EventType == "run_failed":
+		case "run_failed":
 			resp.Status = "failed"
 			finishedAt = parseAuditTime(record.Timestamp)
 			resp.ExitCode = auditInt32(record.Payload, "exit_code")
