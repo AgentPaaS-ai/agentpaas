@@ -107,8 +107,39 @@ func TestTimeline_SSE_Heartbeat(t *testing.T) {
 	if event.Event != "heartbeat" {
 		t.Fatalf("event = %q, want heartbeat; data=%s", event.Event, event.Data)
 	}
-	if strings.Contains(string(event.Data), "secret") {
-		t.Fatalf("heartbeat leaked sensitive data: %s", event.Data)
+	if strings.Contains(string(event.Data), runID) || strings.Contains(string(event.Data), "user") || strings.Contains(string(event.Data), "secret") {
+		t.Fatalf("heartbeat leaked user-controlled data: %s", event.Data)
+	}
+}
+
+func TestTimeline_RunIDValidationRejectsUnsafePaths(t *testing.T) {
+	server, _ := newTimelineTestServer(t, nil)
+	defer server.Close()
+
+	badRunIDs := []string{
+		"../../../etc/passwd",
+		"run/../../other",
+		"run%2Fother",
+		"run%5Cother",
+		"run%252Fother",
+		"run.with.dot",
+		"run:with:colon",
+		strings.Repeat("a", maxTimelineRunIDLength+1),
+	}
+	for _, runID := range badRunIDs {
+		req, err := http.NewRequest(http.MethodGet, server.URL+"/api/runs/"+runID+"/timeline", nil)
+		if err != nil {
+			t.Fatalf("new request for %q: %v", runID, err)
+		}
+		req.Header.Set("Authorization", "Bearer "+testAPIKey)
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("do request for %q: %v", runID, err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("runID %q status = %d, want %d", runID, resp.StatusCode, http.StatusBadRequest)
+		}
 	}
 }
 
