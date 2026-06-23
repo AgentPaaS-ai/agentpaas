@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -170,6 +172,9 @@ type TriggerService struct {
 	maxPayload  int
 	idempotency *IdempotencyStore
 	eventBus    *EventBus
+	runStore    *RunStore
+
+	cancelGracePeriod time.Duration
 }
 
 // NewTriggerService creates the trigger service implementation.
@@ -190,7 +195,14 @@ func NewTriggerService(a audit.AuditAppender, maxPayload int, deps ...any) *Trig
 	if bus == nil {
 		bus = NewEventBus()
 	}
-	return &TriggerService{audit: a, maxPayload: maxPayload, idempotency: store, eventBus: bus}
+	return &TriggerService{
+		audit:             a,
+		maxPayload:        maxPayload,
+		idempotency:       store,
+		eventBus:          bus,
+		runStore:          NewRunStore(),
+		cancelGracePeriod: CancelGracePeriod,
+	}
 }
 
 // Invoke triggers an agent run. T01 returns a pending stub run.
@@ -231,6 +243,8 @@ func (s *TriggerService) Invoke(ctx context.Context, req *triggerv1.InvokeReques
 		AgentName: req.GetAgentName(),
 		Status:    triggerv1.RunStatus_RUN_STATUS_PENDING,
 	}
+	entry := s.runStore.Register(runID, req.GetAgentName())
+	run.CreatedAt = entry.toRun().GetCreatedAt()
 	return &triggerv1.InvokeResponse{Run: run}, nil
 }
 
@@ -268,8 +282,10 @@ func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream trigg
 		}
 	}
 
+	s.runStore.Register(runID, req.GetAgentName())
 	s.eventBus.RegisterRun(runID)
 	s.eventBus.Publish(runID, EventRunCreated, map[string]string{"agent": req.GetAgentName()})
+	s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_SUCCEEDED)
 	s.eventBus.Publish(runID, EventRunSucceeded, map[string]string{"agent": req.GetAgentName()})
 
 	ch, cancel := s.eventBus.Subscribe(runID, 0)
@@ -294,19 +310,64 @@ func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream trigg
 	}
 }
 
-// GetRun retrieves a run by ID. T01 leaves storage unimplemented.
-func (s *TriggerService) GetRun(context.Context, *triggerv1.GetRunRequest) (*triggerv1.Run, error) {
-	return nil, status.Error(codes.Unimplemented, "GetRun not implemented in T01 stub")
+// GetRun retrieves a run by ID.
+func (s *TriggerService) GetRun(_ context.Context, req *triggerv1.GetRunRequest) (*triggerv1.Run, error) {
+	if req.GetRunId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "run_id is required")
+	}
+	entry, ok := s.runStore.Get(req.GetRunId())
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "run %s not found", req.GetRunId())
+	}
+	return entry.toRun(), nil
 }
 
-// CancelRun cancels a run. T01 leaves run control unimplemented.
-func (s *TriggerService) CancelRun(context.Context, *triggerv1.CancelRunRequest) (*triggerv1.Run, error) {
-	return nil, status.Error(codes.Unimplemented, "CancelRun not implemented in T01 stub")
-}
+// ListRuns lists known runs.
+func (s *TriggerService) ListRuns(_ context.Context, req *triggerv1.ListRunsRequest) (*triggerv1.ListRunsResponse, error) {
+	start := 0
+	if req.GetPageToken() != "" {
+		offset, err := strconv.Atoi(req.GetPageToken())
+		if err != nil || offset < 0 {
+			return nil, status.Error(codes.InvalidArgument, "invalid page_token")
+		}
+		start = offset
+	}
+	pageSize := int(req.GetPageSize())
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
 
-// ListRuns lists runs. T01 returns an empty page.
-func (s *TriggerService) ListRuns(context.Context, *triggerv1.ListRunsRequest) (*triggerv1.ListRunsResponse, error) {
-	return &triggerv1.ListRunsResponse{}, nil
+	entries := s.runStore.List()
+	sort.Slice(entries, func(i, j int) bool {
+		return runSortKey(entries[i]) < runSortKey(entries[j])
+	})
+
+	runs := make([]*triggerv1.Run, 0, len(entries))
+	for _, entry := range entries {
+		run := entry.toRun()
+		if req.GetAgentName() != "" && run.GetAgentName() != req.GetAgentName() {
+			continue
+		}
+		if req.GetStatus() != triggerv1.RunStatus_RUN_STATUS_UNSPECIFIED && run.GetStatus() != req.GetStatus() {
+			continue
+		}
+		runs = append(runs, run)
+	}
+	if start >= len(runs) {
+		return &triggerv1.ListRunsResponse{}, nil
+	}
+	end := start + pageSize
+	if end > len(runs) {
+		end = len(runs)
+	}
+	resp := &triggerv1.ListRunsResponse{Runs: runs[start:end]}
+	if end < len(runs) {
+		resp.NextPageToken = strconv.Itoa(end)
+	}
+	return resp, nil
 }
 
 func generateRunID() (string, error) {
