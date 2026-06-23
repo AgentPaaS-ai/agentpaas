@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/parvezsyed/agentpaas/internal/pack"
 	"github.com/spf13/cobra"
@@ -25,14 +28,38 @@ func newInitCmd() *cobra.Command {
 				projectDir = args[0]
 			}
 
+			fromCode, _ := cmd.Flags().GetBool("from-code")
+			noninteractive, _ := cmd.Flags().GetBool("noninteractive")
+			if fromCode && !noninteractive {
+				return errors.New("--from-code requires --noninteractive in P1")
+			}
+			if fromCode || noninteractive {
+				resolvedDir, err := validateInitProjectPath(projectDir)
+				if err != nil {
+					return err
+				}
+				projectDir = resolvedDir
+			}
+
 			runtimeFlag, _ := cmd.Flags().GetString("runtime")
 			runtime, err := initRuntime(projectDir, runtimeFlag)
 			if err != nil {
 				return err
 			}
 
-			if err := pack.InitScaffold(projectDir, runtime); err != nil {
-				return err
+			if fromCode {
+				if err := pack.InitFromCode(projectDir, runtime); err != nil {
+					return err
+				}
+			} else {
+				if err := pack.InitScaffold(projectDir, runtime); err != nil {
+					return err
+				}
+			}
+			if noninteractive {
+				if err := pack.InitPolicy(projectDir); err != nil {
+					return err
+				}
 			}
 
 			jsonOutput, _ := cmd.Root().PersistentFlags().GetBool("json")
@@ -53,8 +80,30 @@ func newInitCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("runtime", "", "Agent runtime: python, langgraph, or crewai (default: auto-detect or python)")
+	cmd.Flags().Bool("from-code", false, "Reconcile agent.yaml from existing source files")
+	cmd.Flags().Bool("noninteractive", false, "Initialize without prompts using a default-deny policy")
 
 	return cmd
+}
+
+func validateInitProjectPath(projectDir string) (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("get current directory: %w", err)
+	}
+	absProjectDir, err := filepath.Abs(projectDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve project directory: %w", err)
+	}
+	rel, err := filepath.Rel(cwd, absProjectDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve project path relative to current directory: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", errors.New("project path must be under current directory")
+	}
+
+	return absProjectDir, nil
 }
 
 func initRuntime(projectDir string, runtimeFlag string) (pack.RuntimeType, error) {

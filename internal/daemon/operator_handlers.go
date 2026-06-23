@@ -2,12 +2,18 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/parvezsyed/agentpaas/internal/operator"
 	"github.com/parvezsyed/agentpaas/internal/pack"
+	"github.com/parvezsyed/agentpaas/internal/policy"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -21,46 +27,128 @@ func (s *stubControlServer) ValidateAgentProject(ctx context.Context, req *contr
 		return nil, status.Error(codes.InvalidArgument, "project_path is required")
 	}
 
-	// Use the pack package to detect the project runtime.
 	det, err := pack.DetectProject(projectPath)
-	runtime := ""
-	ready := true
-	var issues []*controlv1.OperatorIssue
-	var validations []*controlv1.ProjectValidation
-
 	if err != nil {
-		ready = false
-		issues = append(issues, &controlv1.OperatorIssue{
-			Category:   string(operator.ErrDependencyConflict),
-			Message:     fmt.Sprintf("project detection failed: %v", err),
-			NextAction: string(operator.ActionFixCode),
-		})
-		validations = append(validations, &controlv1.ProjectValidation{
-			Check:   "project_detection",
-			Passed:  false,
-			Details: fmt.Sprintf("detection error: %v", err),
-		})
-	} else {
-		if det != nil {
-			runtime = string(det.Runtime)
+		return validationFailure(
+			projectPath,
+			"",
+			operator.ErrDependencyConflict,
+			err.Error(),
+		), nil
+	}
+	runtime := string(det.Runtime)
+	if !det.HasAgentYAML {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrDependencyConflict,
+			"agent.yaml not found; run 'agent init --from-code --noninteractive'",
+		), nil
+	}
+
+	policyPath := filepath.Join(projectPath, "policy.yaml")
+	info, err := os.Lstat(policyPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrPolicyValidationFailed,
+			"policy.yaml not found; run 'agent init --noninteractive' to create default-deny policy",
+		), nil
+	}
+	if err != nil {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrPolicyValidationFailed,
+			fmt.Sprintf("inspect policy.yaml: %v", err),
+		), nil
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrPolicyValidationFailed,
+			"policy.yaml must not be a symlink",
+		), nil
+	}
+
+	policyFile, err := os.Open(policyPath)
+	if err != nil {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrPolicyValidationFailed,
+			fmt.Sprintf("open policy.yaml: %v", err),
+		), nil
+	}
+	defer func() { _ = policyFile.Close() }()
+
+	parsedPolicy, err := policy.ParsePolicy(policyFile)
+	if err != nil {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrPolicyValidationFailed,
+			err.Error(),
+		), nil
+	}
+
+	var policyErrors []string
+	for _, validationErr := range policy.ValidatePolicy(parsedPolicy) {
+		if validationErr.Severity == "error" {
+			policyErrors = append(policyErrors, validationErr.Error())
 		}
-		validations = append(validations, &controlv1.ProjectValidation{
-			Check:   "project_detection",
-			Passed:  true,
-			Details: fmt.Sprintf("runtime: %s", runtime),
-		})
+	}
+	if len(policyErrors) > 0 {
+		return validationFailure(
+			projectPath,
+			runtime,
+			operator.ErrPolicyValidationFailed,
+			strings.Join(policyErrors, "; "),
+		), nil
 	}
 
 	return &controlv1.ValidateAgentProjectResponse{
-		Validations:    validations,
-		Valid:          ready,
-		Summary:        fmt.Sprintf("project ready=%v, runtime=%s", ready, runtime),
-		SchemaVersion:  operator.SchemaVersion,
-		Ready:          ready,
-		ProjectDir:     projectPath,
-		Runtime:        runtime,
-		Issues:         issues,
+		Validations: []*controlv1.ProjectValidation{{
+			Check:   "project_validation",
+			Passed:  true,
+			Details: fmt.Sprintf("runtime: %s", runtime),
+		}},
+		Valid:         true,
+		Summary:       fmt.Sprintf("project ready=true, runtime=%s", runtime),
+		SchemaVersion: operator.SchemaVersion,
+		Ready:         true,
+		ProjectDir:    projectPath,
+		Runtime:       runtime,
+		Issues:        []*controlv1.OperatorIssue{},
 	}, nil
+}
+
+func validationFailure(
+	projectPath string,
+	runtime string,
+	category operator.ErrorCategory,
+	message string,
+) *controlv1.ValidateAgentProjectResponse {
+	return &controlv1.ValidateAgentProjectResponse{
+		Validations: []*controlv1.ProjectValidation{{
+			Check:   "project_validation",
+			Passed:  false,
+			Details: message,
+		}},
+		Valid:         false,
+		Summary:       fmt.Sprintf("project ready=false, runtime=%s", runtime),
+		SchemaVersion: operator.SchemaVersion,
+		Ready:         false,
+		ProjectDir:    projectPath,
+		Runtime:       runtime,
+		Issues: []*controlv1.OperatorIssue{{
+			Category:   string(category),
+			Message:    message,
+			NextAction: string(operator.ActionFixCode),
+		}},
+	}
 }
 
 // SummarizeRun generates a structured summary for a completed run. P1
