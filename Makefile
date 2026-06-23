@@ -131,8 +131,13 @@ block9-gate: build test race lint osv
 	go test -tags=adversary -race -count=1 ./internal/trigger/...
 	@echo "✓ Block 9 gate passed"
 
-block10-gate:
-	@echo "Error: block10-gate is not implemented until Block 10" && exit 1
+block10-gate: build test race lint osv
+	@echo "==> Running Block 10 gate: OTel pipeline, dashboard"
+	# B10-T01..T07 unit + integration tests
+	go test -race -count=1 ./internal/dashboard/... ./internal/otel/...
+	# B10 adversary tests
+	go test -tags=adversary -race -count=1 ./internal/dashboard/... ./internal/otel/...
+	@echo "✓ Block 10 gate passed"
 
 block11-gate:
 	@echo "Error: block11-gate is not implemented until Block 11" && exit 1
