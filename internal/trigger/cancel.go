@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,21 +119,25 @@ func (rs *RunStore) SetCancelFunc(runID string, cancel context.CancelFunc) {
 }
 
 func (s *TriggerService) CancelRun(ctx context.Context, req *triggerv1.CancelRunRequest) (*triggerv1.Run, error) {
-	if req.GetRunId() == "" {
+	runID := strings.TrimSpace(req.GetRunId())
+	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
+	}
+	if len(runID) > 256 {
+		return nil, status.Error(codes.InvalidArgument, "run_id exceeds 256 characters")
 	}
 
 	caller, _ := CallerFromContext(ctx)
 	if err := s.appendCancelAudit(EventCancelRequested, caller, map[string]interface{}{
-		"run_id": req.GetRunId(),
+		"run_id": runID,
 		"reason": req.GetReason(),
 	}); err != nil {
 		return nil, err
 	}
 
-	entry, ok := s.runStore.Get(req.GetRunId())
+	entry, ok := s.runStore.Get(runID)
 	if !ok {
-		return nil, status.Errorf(codes.NotFound, "run %s not found", req.GetRunId())
+		return nil, status.Errorf(codes.NotFound, "run %s not found", runID)
 	}
 
 	entry.mu.Lock()
@@ -143,16 +148,16 @@ func (s *TriggerService) CancelRun(ctx context.Context, req *triggerv1.CancelRun
 		return entry.toRun(), nil
 	case isTerminalRunStatus(runStatus):
 		entry.mu.Unlock()
-		return nil, status.Errorf(codes.FailedPrecondition, "run %s already terminal: %s", req.GetRunId(), runStatus.String())
+		return nil, status.Errorf(codes.FailedPrecondition, "run %s already terminal: %s", runID, runStatus.String())
 	case runStatus == triggerv1.RunStatus_RUN_STATUS_PENDING:
 		entry.Status = triggerv1.RunStatus_RUN_STATUS_CANCELLED
 		entry.FinishedAt = time.Now().UTC()
 		entry.cancelGracefulAudited = true
 		entry.mu.Unlock()
 
-		s.eventBus.Publish(req.GetRunId(), EventRunCancelled, map[string]string{"reason": req.GetReason()})
+		s.eventBus.Publish(runID, EventRunCancelled, map[string]string{"reason": req.GetReason()})
 		if err := s.appendCancelAudit(EventCancelGraceful, caller, map[string]interface{}{
-			"run_id": req.GetRunId(),
+			"run_id": runID,
 			"method": "immediate_pending",
 		}); err != nil {
 			return nil, err
@@ -160,7 +165,7 @@ func (s *TriggerService) CancelRun(ctx context.Context, req *triggerv1.CancelRun
 		return entry.toRun(), nil
 	case runStatus != triggerv1.RunStatus_RUN_STATUS_RUNNING:
 		entry.mu.Unlock()
-		return nil, status.Errorf(codes.FailedPrecondition, "run %s cannot be cancelled from status: %s", req.GetRunId(), runStatus.String())
+		return nil, status.Errorf(codes.FailedPrecondition, "run %s cannot be cancelled from status: %s", runID, runStatus.String())
 	}
 
 	cancel := entry.CancelCtx
@@ -183,15 +188,15 @@ func (s *TriggerService) CancelRun(ctx context.Context, req *triggerv1.CancelRun
 			return nil, ctx.Err()
 		case <-timer.C:
 			if s.forceCancel(entry) {
-				s.eventBus.Publish(req.GetRunId(), EventRunCancelled, map[string]string{"reason": "forced: " + req.GetReason()})
+				s.eventBus.Publish(runID, EventRunCancelled, map[string]string{"reason": "forced: " + req.GetReason()})
 				if err := s.appendCancelAudit(EventCancelTimeout, caller, map[string]interface{}{
-					"run_id":  req.GetRunId(),
+					"run_id":  runID,
 					"timeout": s.cancelGracePeriod.String(),
 				}); err != nil {
 					return nil, err
 				}
 				if err := s.appendCancelAudit(EventCancelForced, caller, map[string]interface{}{
-					"run_id": req.GetRunId(),
+					"run_id": runID,
 				}); err != nil {
 					return nil, err
 				}
@@ -204,7 +209,7 @@ func (s *TriggerService) CancelRun(ctx context.Context, req *triggerv1.CancelRun
 			}
 			if graceful {
 				if err := s.appendCancelAudit(EventCancelGraceful, caller, map[string]interface{}{
-					"run_id": req.GetRunId(),
+					"run_id": runID,
 					"method": "graceful",
 				}); err != nil {
 					return nil, err
