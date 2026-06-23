@@ -34,16 +34,18 @@ type Daemon struct {
 	paths   *home.HomePaths
 	version VersionInfo
 
-	mu         sync.Mutex
-	server     *grpc.Server
-	listener   net.Listener
-	ready      bool
-	started    bool
-	stopped    bool
-	lockFile   *os.File
-	lockIno    lockIno
-	pidFile    string
-	auditIndex *audit.SQLiteIndexer
+	mu            sync.Mutex
+	server        *grpc.Server
+	listener      net.Listener
+	ready         bool
+	started       bool
+	stopped       bool
+	lockFile      *os.File
+	lockIno       lockIno
+	pidFile       string
+	auditIndex    *audit.SQLiteIndexer
+	confirmations *ConfirmationStore
+	control       *stubControlServer
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -79,8 +81,9 @@ func WithAllowRoot() Option {
 // to shut down gracefully.
 func New(paths *home.HomePaths, version VersionInfo, opts ...Option) (*Daemon, error) {
 	d := &Daemon{
-		paths:   paths,
-		version: version,
+		paths:         paths,
+		version:       version,
+		confirmations: NewConfirmationStore(),
 	}
 
 	for _, opt := range opts {
@@ -217,10 +220,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	)
 
 	// Register stub ControlService handlers.
-	controlv1.RegisterControlServiceServer(d.server, &stubControlServer{
+	controlServer := &stubControlServer{
 		version:    d.version,
 		auditIndex: d.auditIndex,
-	})
+	}
+	attachConfirmationStore(controlServer, d.confirmations)
+	d.control = controlServer
+	controlv1.RegisterControlServiceServer(d.server, controlServer)
 
 	d.started = true
 
@@ -298,6 +304,10 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	if d.auditIndex != nil {
 		_ = d.auditIndex.Close()
 		d.auditIndex = nil
+	}
+	if d.control != nil {
+		detachConfirmationStore(d.control)
+		d.control = nil
 	}
 
 	// Clean up files.
