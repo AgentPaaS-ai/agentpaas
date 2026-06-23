@@ -1,10 +1,14 @@
 package trigger
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -105,7 +109,7 @@ func (s *Server) Start(parent context.Context) error {
 		_ = s.grpcServer.Serve(grpcListener)
 	}()
 
-	mux := runtime.NewServeMux()
+	mux := newRESTGatewayMux()
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	if err := triggerv1.RegisterTriggerServiceHandlerFromEndpoint(parent, mux, s.cfg.GRPCAddr, opts); err != nil {
 		s.grpcServer.Stop()
@@ -150,6 +154,60 @@ func (s *Server) Start(parent context.Context) error {
 	}()
 
 	return nil
+}
+
+func newRESTGatewayMux() *runtime.ServeMux {
+	jsonMarshaler := &lineNumberJSONMarshaler{JSONPb: &runtime.JSONPb{}}
+	return runtime.NewServeMux(
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, jsonMarshaler),
+		runtime.WithMarshalerOption("application/json", jsonMarshaler),
+	)
+}
+
+type lineNumberJSONMarshaler struct {
+	*runtime.JSONPb
+}
+
+func (m *lineNumberJSONMarshaler) NewDecoder(r io.Reader) runtime.Decoder {
+	return runtime.DecoderFunc(func(v interface{}) error {
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
+
+		var raw json.RawMessage
+		if err := json.NewDecoder(bytes.NewReader(data)).Decode(&raw); err != nil {
+			return jsonErrorWithLine(data, err)
+		}
+		return m.Unmarshal(raw, v)
+	})
+}
+
+func jsonErrorWithLine(data []byte, err error) error {
+	line, column := jsonErrorLineColumn(data, err)
+	return fmt.Errorf("%w at line %d, column %d", err, line, column)
+}
+
+func jsonErrorLineColumn(data []byte, err error) (int, int) {
+	offset := len(data) + 1
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) && syntaxErr.Offset > 0 {
+		offset = int(syntaxErr.Offset)
+	}
+	if offset < 1 {
+		offset = 1
+	}
+	if offset > len(data)+1 {
+		offset = len(data) + 1
+	}
+
+	line := 1 + bytes.Count(data[:offset-1], []byte("\n"))
+	lineStart := bytes.LastIndexByte(data[:offset-1], '\n')
+	column := offset
+	if lineStart >= 0 {
+		column = offset - lineStart - 1
+	}
+	return line, column
 }
 
 // Stop gracefully shuts down the server.
