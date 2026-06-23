@@ -81,7 +81,7 @@ func NewStore(ctx context.Context, dbPath string) (*Store, error) {
 
 // Close closes the underlying database connection.
 func (s *Store) Close() error {
-	if s == nil || s.db == nil {
+	if s == nil {
 		return nil
 	}
 	s.mu.Lock()
@@ -103,8 +103,12 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	db, err := s.database()
+	if err != nil {
+		return err
+	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin trace tx: %w", err)
 	}
@@ -186,8 +190,12 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	db, err := s.database()
+	if err != nil {
+		return err
+	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin log tx: %w", err)
 	}
@@ -264,8 +272,12 @@ func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) erro
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	db, err := s.database()
+	if err != nil {
+		return err
+	}
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin metric tx: %w", err)
 	}
@@ -318,6 +330,10 @@ func (s *Store) QuerySpans(ctx context.Context, runID string, limit int) ([]Span
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	db, err := s.database()
+	if err != nil {
+		return nil, err
+	}
 
 	query := `
 		SELECT id, trace_id, span_id, parent_span_id, name, kind, start_time, end_time,
@@ -335,7 +351,7 @@ func (s *Store) QuerySpans(ctx context.Context, runID string, limit int) ([]Span
 		args = append(args, limit)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query spans: %w", err)
 	}
@@ -382,6 +398,10 @@ func (s *Store) QueryLogs(ctx context.Context, runID string, limit int) ([]LogRe
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	db, err := s.database()
+	if err != nil {
+		return nil, err
+	}
 
 	query := `
 		SELECT id, timestamp, trace_id, span_id, severity, body, attributes, resource, scope
@@ -398,7 +418,7 @@ func (s *Store) QueryLogs(ctx context.Context, runID string, limit int) ([]LogRe
 		args = append(args, limit)
 	}
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
 	}
@@ -441,9 +461,13 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int64, erro
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	db, err := s.database()
+	if err != nil {
+		return 0, err
+	}
 
 	cutoff := time.Now().Add(-retention).UTC().UnixNano()
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin prune tx: %w", err)
 	}
@@ -482,8 +506,12 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	db, err := s.database()
+	if err != nil {
+		return err
+	}
 
-	if _, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+	if _, err := db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
 		return fmt.Errorf("checkpoint wal: %w", err)
 	}
 	return nil
@@ -565,6 +593,13 @@ func unixNanoToTime(n int64) time.Time {
 		return time.Time{}
 	}
 	return time.Unix(0, n).UTC()
+}
+
+func (s *Store) database() (*sql.DB, error) {
+	if s == nil || s.db == nil {
+		return nil, errors.New("otel store is closed")
+	}
+	return s.db, nil
 }
 
 func openSQLiteDB(ctx context.Context, dbPath string) (*sql.DB, error) {
