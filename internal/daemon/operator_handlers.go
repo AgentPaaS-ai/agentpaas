@@ -395,7 +395,7 @@ func (s *stubControlServer) RecommendPolicyPatch(ctx context.Context, req *contr
 		allowWildcard := ""
 		if strings.HasPrefix(domain, "*.") {
 			risk = operator.RiskHigh
-			allowWildcard = "\n      allow_wildcard: true"
+			allowWildcard = "\n    allow_wildcard: true"
 		}
 		proposal = PendingConfirmation{
 			ChangeType:    "policy_patch",
