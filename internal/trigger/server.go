@@ -127,6 +127,16 @@ func (s *Server) Start(parent context.Context) error {
 					http.Error(w, "run_id required", http.StatusBadRequest)
 					return
 				}
+				if s.cfg.Authenticator != nil {
+					ctx := r.Context()
+					if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+						ctx = WithAuthToken(ctx, token)
+					}
+					if caller, method, err := s.cfg.Authenticator.Authenticate(ctx); err == nil {
+						ctx = WithCaller(ctx, caller, method)
+					}
+					r = r.WithContext(ctx)
+				}
 				sseHandler.ServeSSE(w, r, runID)
 				return
 			}
