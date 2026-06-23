@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -148,17 +149,140 @@ func newStopCmd() *cobra.Command {
 			}
 
 			result := struct {
-				Stopped     bool   `json:"stopped"`
-				RunID       string `json:"run_id"`
-				RequiresConfirm bool `json:"requires_confirm"`
+				Stopped         bool   `json:"stopped"`
+				RunID           string `json:"run_id"`
+				RequiresConfirm bool   `json:"requires_confirm"`
 			}{Stopped: true, RunID: runID, RequiresConfirm: false}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(struct {
-					Stopped     bool   `json:"stopped"`
-					RunID       string `json:"run_id"`
-					RequiresConfirm bool `json:"requires_confirm"`
+					Stopped         bool   `json:"stopped"`
+					RunID           string `json:"run_id"`
+					RequiresConfirm bool   `json:"requires_confirm"`
 				})
 				return fmt.Sprintf("Stopped run: %s", r.RunID)
+			})
+		},
+	}
+}
+
+func newConfirmCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "confirm <confirmation-id>",
+		Short: "Approve or decline a pending trust-boundary change",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			approve, _ := cmd.Flags().GetBool("approve")
+			decline, _ := cmd.Flags().GetBool("decline")
+			if approve == decline {
+				return fmt.Errorf("exactly one of --approve or --decline is required")
+			}
+
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			decision := "decline"
+			if approve {
+				decision = "approve"
+			}
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+			resp, err := client.NextAction(ctx, &controlv1.NextActionRequest{
+				Context: "confirm-change:" + decision + ":" + args[0],
+			})
+			if err != nil {
+				return fmt.Errorf("confirm change failed: %w", err)
+			}
+			result := struct {
+				ConfirmationID string `json:"confirmation_id"`
+				Decision       string `json:"decision"`
+				NextAction     string `json:"next_action"`
+				Rationale      string `json:"rationale"`
+			}{
+				ConfirmationID: args[0],
+				Decision:       decision + "d",
+				NextAction:     resp.GetNextAction(),
+				Rationale:      resp.GetRationale(),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(struct {
+					ConfirmationID string `json:"confirmation_id"`
+					Decision       string `json:"decision"`
+					NextAction     string `json:"next_action"`
+					Rationale      string `json:"rationale"`
+				})
+				return fmt.Sprintf("%s: %s\nNext: %s", r.ConfirmationID, r.Decision, r.NextAction)
+			})
+		},
+	}
+	cmd.Flags().Bool("approve", false, "Approve the proposed change")
+	cmd.Flags().Bool("decline", false, "Decline the proposed change")
+	return cmd
+}
+
+type pendingConfirmationOutput struct {
+	ID            string                 `json:"id"`
+	CreatedAt     time.Time              `json:"created_at"`
+	ExpiresAt     time.Time              `json:"expires_at"`
+	ChangeType    string                 `json:"change_type"`
+	RiskLevel     string                 `json:"risk_level"`
+	Rationale     string                 `json:"rationale"`
+	AffectedDests []string               `json:"affected_destinations,omitempty"`
+	CredentialIDs []string               `json:"credential_ids,omitempty"`
+	EvidenceRefs  []operator.EvidenceRef `json:"evidence_refs,omitempty"`
+	ProposedPatch string                 `json:"proposed_patch,omitempty"`
+	Status        string                 `json:"status"`
+}
+
+func newConfirmationsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "confirmations",
+		Short: "List pending trust-boundary confirmations",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(10 * time.Second)
+			defer cancel()
+			resp, err := client.NextAction(ctx, &controlv1.NextActionRequest{Context: "confirmations:list"})
+			if err != nil {
+				return fmt.Errorf("list confirmations failed: %w", err)
+			}
+			var confirmations []pendingConfirmationOutput
+			if err := json.Unmarshal([]byte(resp.GetParams()["confirmations_json"]), &confirmations); err != nil {
+				return fmt.Errorf("decode confirmations: %w", err)
+			}
+			return printTextOrJSON(jsonOutput(cmd), confirmations, func(v interface{}) string {
+				items := v.([]pendingConfirmationOutput)
+				if len(items) == 0 {
+					return "No pending confirmations."
+				}
+				var b strings.Builder
+				for _, item := range items {
+					fmt.Fprintf(
+						&b,
+						"%s\t%s\t%s\t%s\n",
+						item.ID,
+						item.ChangeType,
+						item.RiskLevel,
+						item.Rationale,
+					)
+				}
+				return strings.TrimSuffix(b.String(), "\n")
 			})
 		},
 	}
@@ -189,7 +313,7 @@ func newLogsCmd() *cobra.Command {
 			defer cancel()
 
 			stream, err := client.Logs(ctx, &controlv1.LogsRequest{
-				RunId: runID,
+				RunId:  runID,
 				Follow: follow,
 				Tail:   tail,
 			})
@@ -423,8 +547,8 @@ func newPolicyProposeCmd() *cobra.Command {
 				Rationale:            resp.GetRationale(),
 				AffectedDestinations: resp.GetAffectedDestinations(),
 				CredentialIDs:        resp.GetCredentialIds(),
-				Confirmation:          confirmation,
-				NextAction:            operator.NextAction(resp.GetNextAction()),
+				Confirmation:         confirmation,
+				NextAction:           operator.NextAction(resp.GetNextAction()),
 			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(operator.RecommendPolicyPatchResponse)
@@ -677,9 +801,9 @@ func newAuditQueryCmd() *cobra.Command {
 				})
 			}
 			result := struct {
-				Entries      []entryJSON `json:"entries"`
-				TotalCount   int32       `json:"total_count"`
-				NextPageToken string     `json:"next_page_token,omitempty"`
+				Entries       []entryJSON `json:"entries"`
+				TotalCount    int32       `json:"total_count"`
+				NextPageToken string      `json:"next_page_token,omitempty"`
 			}{
 				Entries:       entries,
 				TotalCount:    resp.GetTotalCount(),
@@ -687,9 +811,9 @@ func newAuditQueryCmd() *cobra.Command {
 			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(struct {
-					Entries      []entryJSON `json:"entries"`
-					TotalCount   int32       `json:"total_count"`
-					NextPageToken string     `json:"next_page_token,omitempty"`
+					Entries       []entryJSON `json:"entries"`
+					TotalCount    int32       `json:"total_count"`
+					NextPageToken string      `json:"next_page_token,omitempty"`
 				})
 				return fmt.Sprintf("%d entries (total: %d)", len(r.Entries), r.TotalCount)
 			})
@@ -734,15 +858,15 @@ func newAuditExportCmd() *cobra.Command {
 					return fmt.Errorf("write export file: %w", err)
 				}
 				result := struct {
-					Output      string `json:"output"`
-					EntryCount  int32  `json:"entry_count"`
-					Format      string `json:"format"`
+					Output     string `json:"output"`
+					EntryCount int32  `json:"entry_count"`
+					Format     string `json:"format"`
 				}{Output: output, EntryCount: resp.GetEntryCount(), Format: format}
 				return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 					r := v.(struct {
-						Output      string `json:"output"`
-						EntryCount  int32  `json:"entry_count"`
-						Format      string `json:"format"`
+						Output     string `json:"output"`
+						EntryCount int32  `json:"entry_count"`
+						Format     string `json:"format"`
 					})
 					return fmt.Sprintf("Exported %d entries to %s (%s)", r.EntryCount, r.Output, r.Format)
 				})
@@ -790,9 +914,9 @@ func newValidateCmd() *cobra.Command {
 			issues := make([]operator.ValidationIssue, 0, len(resp.GetIssues()))
 			for _, iss := range resp.GetIssues() {
 				issues = append(issues, operator.ValidationIssue{
-					Category:    operator.ErrorCategory(iss.GetCategory()),
-					Message:      iss.GetMessage(),
-					NextAction:  operator.NextAction(iss.GetNextAction()),
+					Category:   operator.ErrorCategory(iss.GetCategory()),
+					Message:    iss.GetMessage(),
+					NextAction: operator.NextAction(iss.GetNextAction()),
 				})
 			}
 			result := operator.ValidateAgentProjectResponse{
@@ -1009,8 +1133,8 @@ func newRecommendPatchCmd() *cobra.Command {
 				Rationale:            resp.GetRationale(),
 				AffectedDestinations: resp.GetAffectedDestinations(),
 				CredentialIDs:        resp.GetCredentialIds(),
-				Confirmation:          confirmation,
-				NextAction:            operator.NextAction(resp.GetNextAction()),
+				Confirmation:         confirmation,
+				NextAction:           operator.NextAction(resp.GetNextAction()),
 			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(operator.RecommendPolicyPatchResponse)
@@ -1054,10 +1178,10 @@ func newTimelineCmd() *cobra.Command {
 					ts = e.GetTimestamp().AsTime()
 				}
 				events = append(events, operator.TimelineEvent{
-					Timestamp:  ts,
-					EventType:  e.GetType(),
-					Detail:     e.GetDescription(),
-					AuditSeq:   0,
+					Timestamp: ts,
+					EventType: e.GetType(),
+					Detail:    e.GetDescription(),
+					AuditSeq:  0,
 				})
 			}
 			result := operator.GetRunTimelineResponse{

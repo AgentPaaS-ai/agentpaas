@@ -9,8 +9,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
@@ -358,25 +361,229 @@ func isValidPolicyRuleID(ruleID string) bool {
 	return true
 }
 
-// RecommendPolicyPatch proposes a policy patch. P1 implementation: returns
-// a proposal with confirmation required. Full policy-compiler integration
-// is in B11-T05.
+var (
+	safePolicyToken    = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	safeDomain         = regexp.MustCompile(`^(?:\*\.)?[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$`)
+	confirmationStores sync.Map
+)
+
+// RecommendPolicyPatch proposes, but never applies, a policy change.
 func (s *stubControlServer) RecommendPolicyPatch(ctx context.Context, req *controlv1.RecommendPolicyPatchRequest) (*controlv1.RecommendPolicyPatchResponse, error) {
+	desired := strings.TrimSpace(req.GetDesiredBehavior())
+	fields := strings.Fields(desired)
+
+	var proposal PendingConfirmation
+	switch {
+	case len(fields) == 4 &&
+		strings.EqualFold(fields[0], "allow") &&
+		strings.EqualFold(fields[1], "egress") &&
+		strings.EqualFold(fields[2], "to"):
+		domain := strings.ToLower(strings.TrimSuffix(fields[3], "."))
+		if domain == "*" {
+			proposal = PendingConfirmation{
+				ChangeType: "policy_patch",
+				RiskLevel:  string(operator.RiskHigh),
+				Rationale:  "wildcard domain '*' is rejected; specify an explicit destination",
+			}
+			return s.policyPatchResponse(proposal)
+		}
+		if !safeDomain.MatchString(domain) {
+			return unableToParsePolicyPatch(), nil
+		}
+		risk := operator.RiskMedium
+		if domain == "github.com" || domain == "api.openai.com" {
+			risk = operator.RiskLow
+		}
+		allowWildcard := ""
+		if strings.HasPrefix(domain, "*.") {
+			risk = operator.RiskHigh
+			allowWildcard = "\n    allow_wildcard: true"
+		}
+		proposal = PendingConfirmation{
+			ChangeType:    "policy_patch",
+			RiskLevel:     string(risk),
+			Rationale:     fmt.Sprintf("allow HTTPS egress to %s", domain),
+			AffectedDests: []string{domain},
+			ProposedPatch: fmt.Sprintf(
+				"egress:\n  - domain: %s\n    ports: [443]\n    methods: [GET, POST]%s\n",
+				domain,
+				allowWildcard,
+			),
+		}
+		evidence, err := s.policyDenialEvidence(domain)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "query policy denial evidence: %v", err)
+		}
+		proposal.EvidenceRefs = evidence
+	case isCredentialBinding(fields):
+		directLease := strings.EqualFold(fields[1], "direct_lease") ||
+			(len(fields) == 7 && strings.EqualFold(fields[5], "as") && strings.EqualFold(fields[6], "direct_lease"))
+		idIndex := 2
+		forIndex := 3
+		if directLease && strings.EqualFold(fields[1], "direct_lease") {
+			idIndex = 3
+			forIndex = 4
+		}
+		credentialID := fields[idIndex]
+		service := fields[forIndex+1]
+		if !safePolicyToken.MatchString(credentialID) || !safePolicyToken.MatchString(service) {
+			return unableToParsePolicyPatch(), nil
+		}
+		credentialType := "brokered"
+		changeType := "credential_binding"
+		risk := operator.RiskMedium
+		if directLease {
+			credentialType = "direct_lease"
+			changeType = "direct_lease"
+			risk = operator.RiskHigh
+		}
+		proposal = PendingConfirmation{
+			ChangeType:    changeType,
+			RiskLevel:     string(risk),
+			Rationale:     fmt.Sprintf("bind credential %s for %s", credentialID, service),
+			CredentialIDs: []string{credentialID},
+			ProposedPatch: fmt.Sprintf(
+				"credentials:\n  - id: %s\n    type: %s\n    service: %s\n",
+				credentialID,
+				credentialType,
+				service,
+			),
+		}
+	default:
+		return unableToParsePolicyPatch(), nil
+	}
+
+	return s.policyPatchResponse(proposal)
+}
+
+func isCredentialBinding(fields []string) bool {
+	if len(fields) == 5 {
+		return strings.EqualFold(fields[0], "bind") &&
+			strings.EqualFold(fields[1], "credential") &&
+			strings.EqualFold(fields[3], "for")
+	}
+	if len(fields) == 6 {
+		return strings.EqualFold(fields[0], "bind") &&
+			strings.EqualFold(fields[1], "direct_lease") &&
+			strings.EqualFold(fields[2], "credential") &&
+			strings.EqualFold(fields[4], "for")
+	}
+	return len(fields) == 7 &&
+		strings.EqualFold(fields[0], "bind") &&
+		strings.EqualFold(fields[1], "credential") &&
+		strings.EqualFold(fields[3], "for") &&
+		strings.EqualFold(fields[5], "as") &&
+		strings.EqualFold(fields[6], "direct_lease")
+}
+
+func unableToParsePolicyPatch() *controlv1.RecommendPolicyPatchResponse {
 	return &controlv1.RecommendPolicyPatchResponse{
-		PatchYaml:      "# proposed patch based on desired behavior",
-		Explanation:    "adds egress rule for requested destination",
-		RiskAssessment: string(operator.RiskMedium),
-		SchemaVersion:  operator.SchemaVersion,
-		ProposedPatch:  "# proposed patch based on desired behavior",
-		RiskLevel:      string(operator.RiskMedium),
-		Rationale:      req.GetDesiredBehavior(),
-		Confirmation: &controlv1.ConfirmationRequirement{
-			RequiresConfirmation: true,
-			RiskLevel:            string(operator.RiskMedium),
-			Rationale:            "adds new egress destination — requires confirmation",
-		},
-		NextAction: string(operator.ActionReviewPolicyPatch),
+		SchemaVersion: operator.SchemaVersion,
+		Rationale:     "unable to parse desired behavior",
+		NextAction:    string(operator.ActionAskUser),
+	}
+}
+
+func (s *stubControlServer) policyPatchResponse(
+	proposal PendingConfirmation,
+) (*controlv1.RecommendPolicyPatchResponse, error) {
+	id, err := s.proposeTrustBoundaryChange(proposal)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "create confirmation: %v", err)
+	}
+	evidence := make([]*controlv1.EvidenceRef, 0, len(proposal.EvidenceRefs))
+	for _, ref := range proposal.EvidenceRefs {
+		evidence = append(evidence, &controlv1.EvidenceRef{
+			Type:   ref.Type,
+			Ref:    ref.Ref,
+			Detail: ref.Detail,
+		})
+	}
+	confirmation := &controlv1.ConfirmationRequirement{
+		RequiresConfirmation: true,
+		ConfirmationId:       id,
+		RiskLevel:            proposal.RiskLevel,
+		Rationale:            proposal.Rationale,
+		AffectedDestinations: append([]string(nil), proposal.AffectedDests...),
+		CredentialIds:        append([]string(nil), proposal.CredentialIDs...),
+		EvidenceRefs:         evidence,
+	}
+	return &controlv1.RecommendPolicyPatchResponse{
+		PatchYaml:            proposal.ProposedPatch,
+		Explanation:          proposal.Rationale,
+		RiskAssessment:       proposal.RiskLevel,
+		SchemaVersion:        operator.SchemaVersion,
+		ProposedPatch:        proposal.ProposedPatch,
+		RiskLevel:            proposal.RiskLevel,
+		Rationale:            proposal.Rationale,
+		AffectedDestinations: append([]string(nil), proposal.AffectedDests...),
+		CredentialIds:        append([]string(nil), proposal.CredentialIDs...),
+		EvidenceRefs:         evidence,
+		Confirmation:         confirmation,
+		NextAction:           string(operator.ActionReviewPolicyPatch),
 	}, nil
+}
+
+func (s *stubControlServer) policyDenialEvidence(destination string) ([]operator.EvidenceRef, error) {
+	if s.auditIndex == nil {
+		return nil, nil
+	}
+	records, err := s.auditIndex.QueryByEventType("policy_denied", 0)
+	if err != nil {
+		return nil, err
+	}
+	start := 0
+	if len(records) > 20 {
+		start = len(records) - 20
+	}
+	evidence := make([]operator.EvidenceRef, 0)
+	for i := len(records) - 1; i >= start; i-- {
+		record, queryErr := s.auditIndex.QueryBySeq(records[i].Seq)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+		if firstAuditString(record.Payload, "destination", "action") == destination {
+			evidence = append(evidence, operator.EvidenceRef{
+				Type: "audit_seq",
+				Ref:  strconv.FormatInt(record.Seq, 10),
+			})
+		}
+	}
+	return evidence, nil
+}
+
+func (s *stubControlServer) confirmationStore() *ConfirmationStore {
+	store, _ := confirmationStores.LoadOrStore(s, NewConfirmationStore())
+	return store.(*ConfirmationStore)
+}
+
+func attachConfirmationStore(server *stubControlServer, store *ConfirmationStore) {
+	confirmationStores.Store(server, store)
+}
+
+func detachConfirmationStore(server *stubControlServer) {
+	confirmationStores.Delete(server)
+}
+
+func (s *stubControlServer) proposeTrustBoundaryChange(change PendingConfirmation) (string, error) {
+	return s.confirmationStore().Create(change)
+}
+
+// ConfirmChange records a human decision without applying the proposed change.
+func (s *stubControlServer) ConfirmChange(id string, approved bool) error {
+	if approved {
+		return s.confirmationStore().Approve(id)
+	}
+	return s.confirmationStore().Decline(id)
+}
+
+// ListPendingConfirmations returns all unexpired proposals awaiting review.
+func (s *stubControlServer) ListPendingConfirmations() []PendingConfirmation {
+	pending := s.confirmationStore().ListPending()
+	sort.Slice(pending, func(i, j int) bool {
+		return pending[i].ID < pending[j].ID
+	})
+	return pending
 }
 
 // GetRunTimeline returns a chronological event list for a run.
@@ -420,6 +627,59 @@ func (s *stubControlServer) GetRunTimeline(ctx context.Context, req *controlv1.G
 // audit event in the supplied run context.
 func (s *stubControlServer) NextAction(ctx context.Context, req *controlv1.NextActionRequest) (*controlv1.NextActionResponse, error) {
 	runID := req.GetContext()
+	if runID == "confirmations:list" {
+		data, err := json.Marshal(s.ListPendingConfirmations())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "marshal pending confirmations: %v", err)
+		}
+		return &controlv1.NextActionResponse{
+			Action:        string(operator.ActionAskUser),
+			Params:        map[string]string{"confirmations_json": string(data)},
+			Reasoning:     "pending confirmations listed",
+			SchemaVersion: operator.SchemaVersion,
+			NextAction:    string(operator.ActionAskUser),
+			Rationale:     "review pending trust-boundary changes",
+		}, nil
+	}
+	if strings.HasPrefix(runID, "confirm-change:") {
+		parts := strings.SplitN(runID, ":", 3)
+		if len(parts) != 3 || (parts[1] != "approve" && parts[1] != "decline") ||
+			!strings.HasPrefix(parts[2], "confirm_") {
+			return nil, status.Error(codes.InvalidArgument, "invalid confirmation decision")
+		}
+		if err := s.ConfirmChange(parts[2], parts[1] == "approve"); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		if parts[1] == "decline" {
+			return s.NextAction(ctx, &controlv1.NextActionRequest{Context: parts[2]})
+		}
+		return &controlv1.NextActionResponse{
+			Action:        string(operator.ActionAskUser),
+			Reasoning:     "approval recorded; the proposed change remains unapplied",
+			SchemaVersion: operator.SchemaVersion,
+			NextAction:    string(operator.ActionAskUser),
+			Rationale:     "approval recorded; apply the change through the separate policy workflow",
+		}, nil
+	}
+	if strings.HasPrefix(runID, "confirm_") {
+		change, err := s.confirmationStore().Get(runID)
+		if err == nil && change.Status == "declined" {
+			action := operator.ActionAskUser
+			rationale := "change declined; ask the user how to proceed within the current policy"
+			if change.ChangeType == "policy_patch" || change.ChangeType == "credential_binding" ||
+				change.ChangeType == "direct_lease" {
+				action = operator.ActionFixCode
+				rationale = "policy patch declined; fix the agent code to operate within current policy"
+			}
+			return &controlv1.NextActionResponse{
+				Action:        string(action),
+				Reasoning:     rationale,
+				SchemaVersion: operator.SchemaVersion,
+				NextAction:    string(action),
+				Rationale:     rationale,
+			}, nil
+		}
+	}
 	if runID == "" {
 		return &controlv1.NextActionResponse{
 			Action:        string(operator.ActionAskUser),
