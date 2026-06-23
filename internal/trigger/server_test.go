@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -210,6 +211,62 @@ func TestRESTAuthViaGateway(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("authenticated status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+}
+
+func TestSSEEndpointRequiresAndAcceptsAuth(t *testing.T) {
+	bus := NewEventBus()
+	bus.RegisterRun("run-1")
+	bus.Publish("run-1", EventRunSucceeded, nil)
+
+	restAddr := freeTCPAddr(t)
+	srv, err := New(ServerConfig{
+		GRPCAddr:      freeTCPAddr(t),
+		RESTAddr:      restAddr,
+		Authenticator: testAuthenticator(),
+		CORS:          NewCORSMiddleware(nil),
+		EventBus:      bus,
+	})
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+	t.Cleanup(srv.Stop)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("Start(): %v", err)
+	}
+
+	url := "http://" + restAddr + "/v1/trigger/events?run_id=run-1"
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("unauthenticated SSE request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated SSE status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("authenticated SSE request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer test-key-123")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("authenticated SSE request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read SSE response: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("authenticated SSE status = %d, want %d; body=%s", resp.StatusCode, http.StatusOK, body)
+	}
+	if !strings.Contains(string(body), "event: run_succeeded") {
+		t.Fatalf("SSE body missing event: %s", body)
 	}
 }
 
