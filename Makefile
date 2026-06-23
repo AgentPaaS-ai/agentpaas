@@ -139,8 +139,15 @@ block10-gate: build test race lint osv
 	go test -tags=adversary -race -count=1 ./internal/dashboard/... ./internal/otel/...
 	@echo "✓ Block 10 gate passed"
 
-block11-gate:
-	@echo "Error: block11-gate is not implemented until Block 11" && exit 1
+block11-gate: build test race lint osv
+	@echo "==> Running Block 11 gate: Hermes operator contract"
+	# B11-T01..T07 unit + integration tests
+	go test -race -count=1 ./internal/operator/... ./internal/daemon/... ./internal/cli/... ./internal/pack/...
+	# B11 golden flow test
+	go test -race -count=1 -run TestGoldenFlow_B11T07 ./internal/daemon/...
+	# B11 adversary tests
+	go test -tags=adversary -race -count=1 ./internal/daemon/... ./internal/cli/... ./internal/pack/...
+	@echo "Block 11 gate PASSED: golden flow green"
 
 block12-gate:
 	@echo "Error: block12-gate is not implemented until Block 12" && exit 1
@@ -167,7 +174,7 @@ gates: ## List all available gate targets
 	@echo "  block8-gate  - Packaging pipeline, agent pack (ACTIVE)"
 	@echo "  block9-gate  - Trigger API, event bus (ACTIVE)"
 	@echo "  block10-gate - OTel pipeline, dashboard (not implemented)"
-	@echo "  block11-gate - Hermes operator contract (not implemented)"
+	@echo "  block11-gate - Hermes operator contract (golden flow)"
 	@echo "  block12-gate - Red-team smoke gate (not implemented)"
 	@echo "  block13-gate - Hermes integration plugin (not implemented)"
 	@echo "  block14-gate - Install path, docs, demo, release (not implemented)"
