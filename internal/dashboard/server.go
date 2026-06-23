@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/parvezsyed/agentpaas/internal/audit"
 	"github.com/parvezsyed/agentpaas/internal/otel"
 	"github.com/parvezsyed/agentpaas/internal/trigger"
 )
@@ -21,16 +23,22 @@ var spaFiles embed.FS
 
 // Server serves the dashboard SPA and JSON API.
 type Server struct {
-	mu          sync.RWMutex
-	handler     http.Handler
-	addr        string
-	apiKey      string
-	csrfToken   string
-	srv         *http.Server
-	store       *otel.Store
-	resourceMgr ResourceManager
-	timeline    *TimelineHandler
-	logViewer   *LogViewerHandler
+	mu           sync.RWMutex
+	handler      http.Handler
+	addr         string
+	apiKey       string
+	csrfToken    string
+	srv          *http.Server
+	store        *otel.Store
+	resourceMgr  ResourceManager
+	timeline     *TimelineHandler
+	logViewer    *LogViewerHandler
+	auditIndexer *audit.SQLiteIndexer
+	policyDir    string
+
+	auditSigningKey     *ecdsa.PrivateKey
+	auditPubKeyDER      []byte
+	auditTrustAnchorDER []byte
 }
 
 // ResourceManager provides inventory data for the dashboard.
@@ -95,6 +103,34 @@ func NewServerWithTimeline(addr, apiKey string, store *otel.Store, mgr ResourceM
 	return newServer(addr, apiKey, store, mgr, bus)
 }
 
+// NewServerWithAudit creates a dashboard server with an audit SQLite indexer.
+func NewServerWithAudit(addr, apiKey string, store *otel.Store, mgr ResourceManager, indexer *audit.SQLiteIndexer) *Server {
+	s := newServer(addr, apiKey, store, mgr, nil)
+	s.auditIndexer = indexer
+	return s
+}
+
+// SetAuditIndexer sets the audit SQLite indexer used by audit search routes.
+func (s *Server) SetAuditIndexer(indexer *audit.SQLiteIndexer) {
+	s.auditIndexer = indexer
+}
+
+// SetPolicyDir sets the base directory used to resolve relative policy paths.
+func (s *Server) SetPolicyDir(policyDir string) {
+	s.policyDir = policyDir
+}
+
+// SetAuditSigningKey sets the key material used for signed audit exports.
+func (s *Server) SetAuditSigningKey(key *ecdsa.PrivateKey, pubKeyDER []byte) {
+	s.auditSigningKey = key
+	s.auditPubKeyDER = append([]byte(nil), pubKeyDER...)
+}
+
+// SetAuditTrustAnchor sets the public key DER used for trust-anchor display.
+func (s *Server) SetAuditTrustAnchor(pubKeyDER []byte) {
+	s.auditTrustAnchorDER = append([]byte(nil), pubKeyDER...)
+}
+
 func newServer(addr, apiKey string, store *otel.Store, mgr ResourceManager, bus *trigger.EventBus) *Server {
 	if addr == "" {
 		addr = ":8090"
@@ -157,6 +193,10 @@ func (s *Server) routes() http.Handler {
 	apiMux.HandleFunc("/api/mcp-servers", s.getOnly(s.handleMCPServers))
 	apiMux.HandleFunc("/api/health", s.handleHealth)
 	apiMux.HandleFunc("/api/runs/", s.getOnly(s.handleRunAPI))
+	apiMux.HandleFunc("/api/policy/diff", s.getOnly(s.ServePolicyDiff))
+	apiMux.HandleFunc("/api/audit/search", s.getOnly(s.ServeAuditSearch))
+	apiMux.HandleFunc("/api/audit/export", s.ServeAuditExport)
+	apiMux.HandleFunc("/api/audit/verify", s.getOnly(s.ServeAuditVerify))
 
 	root.Handle("/api/", csrfMiddleware(s.csrfToken, authMiddleware(s.apiKey, apiMux)))
 	root.Handle("/", spaHandler(dist))
