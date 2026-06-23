@@ -86,6 +86,41 @@ func TestFuzzMalformedJSON400(t *testing.T) {
 	t.Logf("Tested: malformed JSON returns 400 (%d cases)", len(malformedPayloads))
 }
 
+func TestFuzzEmptyBody400(t *testing.T) {
+	srv := newFuzzTestServer(t)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Post(srv.URL+"/v1/trigger/invoke", "application/json", strings.NewReader(" \n\t "))
+	if err != nil {
+		t.Fatalf("HTTP error: %v", err)
+	}
+	body := readAndClose(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty JSON body, got %d body=%q", resp.StatusCode, string(body))
+	}
+	if !strings.Contains(string(body), "request body is required") {
+		t.Fatalf("expected required body error, got %q", string(body))
+	}
+}
+
+func TestFuzzNullByteString400(t *testing.T) {
+	srv := newFuzzTestServer(t)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	payload := `{"agent_name":"\u0000test"}`
+	resp, err := client.Post(srv.URL+"/v1/trigger/invoke", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("HTTP error: %v", err)
+	}
+	body := readAndClose(t, resp)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400 for null byte JSON string, got %d body=%q", resp.StatusCode, string(body))
+	}
+	if !strings.Contains(string(body), "request body contains null bytes") {
+		t.Fatalf("expected null byte error, got %q", string(body))
+	}
+}
+
 // TestFuzzRandomFields verifies random field combinations don't crash.
 func TestFuzzRandomFields(t *testing.T) {
 	if testing.Short() {
@@ -188,7 +223,7 @@ func newFuzzTestServer(t *testing.T) *httptest.Server {
 		t.Fatalf("register trigger service REST handler: %v", err)
 	}
 
-	srv := httptest.NewServer(mux)
+	srv := httptest.NewServer(jsonValidationMiddleware(mux))
 	t.Cleanup(srv.Close)
 	return srv
 }
