@@ -1,10 +1,14 @@
 package trigger
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -105,14 +109,14 @@ func (s *Server) Start(parent context.Context) error {
 		_ = s.grpcServer.Serve(grpcListener)
 	}()
 
-	mux := runtime.NewServeMux()
+	mux := newRESTGatewayMux()
 	opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	if err := triggerv1.RegisterTriggerServiceHandlerFromEndpoint(parent, mux, s.cfg.GRPCAddr, opts); err != nil {
 		s.grpcServer.Stop()
 		return fmt.Errorf("register gateway: %w", err)
 	}
 
-	var handler http.Handler = mux
+	handler := jsonValidationMiddleware(mux)
 	if s.cfg.EventBus != nil {
 		sseHandler := NewSSEHandler(s.cfg.EventBus)
 		gatewayHandler := handler
@@ -150,6 +154,186 @@ func (s *Server) Start(parent context.Context) error {
 	}()
 
 	return nil
+}
+
+func newRESTGatewayMux() *runtime.ServeMux {
+	jsonMarshaler := &lineNumberJSONMarshaler{JSONPb: &runtime.JSONPb{}}
+	return runtime.NewServeMux(
+		runtime.WithMarshalerOption(runtime.MIMEWildcard, jsonMarshaler),
+		runtime.WithMarshalerOption("application/json", jsonMarshaler),
+	)
+}
+
+func jsonValidationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost && r.Method != http.MethodPut {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			writeRESTJSONError(w, http.StatusBadRequest, "failed to read body")
+			return
+		}
+		_ = r.Body.Close()
+
+		if len(bytes.TrimSpace(body)) == 0 {
+			writeRESTJSONError(w, http.StatusBadRequest, "request body is required")
+			return
+		}
+		if line, column, ok := rawNullByteLocation(body); ok {
+			writeRESTJSONError(w, http.StatusBadRequest, fmt.Sprintf("request body contains null bytes at line %d, column %d", line, column))
+			return
+		}
+
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		next.ServeHTTP(w, r)
+	})
+}
+
+func writeRESTJSONError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"code":    int(codes.InvalidArgument),
+		"message": msg,
+	})
+}
+
+type lineNumberJSONMarshaler struct {
+	*runtime.JSONPb
+}
+
+func (m *lineNumberJSONMarshaler) NewDecoder(r io.Reader) runtime.Decoder {
+	return runtime.DecoderFunc(func(v interface{}) error {
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return err
+		}
+
+		var raw json.RawMessage
+		if err := json.NewDecoder(bytes.NewReader(data)).Decode(&raw); err != nil {
+			return jsonErrorWithLine(data, err)
+		}
+		if line, column, ok := jsonNullStringLocation(data); ok {
+			return status.Error(codes.InvalidArgument, fmt.Sprintf("request body contains null bytes at line %d, column %d", line, column))
+		}
+		return m.Unmarshal(raw, v)
+	})
+}
+
+func jsonNullStringLocation(data []byte) (int, int, bool) {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return 0, 0, false
+	}
+	if !valueContainsNullString(value) {
+		return 0, 0, false
+	}
+	return escapedNullByteLocation(data)
+}
+
+func valueContainsNullString(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		return bytes.IndexByte([]byte(typed), 0x00) >= 0
+	case []any:
+		for _, item := range typed {
+			if valueContainsNullString(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		for key, item := range typed {
+			if bytes.IndexByte([]byte(key), 0x00) >= 0 || valueContainsNullString(item) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func rawNullByteLocation(data []byte) (int, int, bool) {
+	offset := bytes.IndexByte(data, 0x00)
+	if offset < 0 {
+		return 0, 0, false
+	}
+	line, column := lineColumnAtOffset(data, offset+1)
+	return line, column, true
+}
+
+func escapedNullByteLocation(data []byte) (int, int, bool) {
+	for i := 0; i < len(data); i++ {
+		if data[i] != '"' {
+			continue
+		}
+		i++
+		for i < len(data) {
+			switch data[i] {
+			case '\\':
+				if isEscapedNullByte(data[i:]) {
+					line, column := lineColumnAtOffset(data, i+1)
+					return line, column, true
+				}
+				if i+1 < len(data) {
+					i += 2
+					continue
+				}
+			case '"':
+				goto nextString
+			}
+			i++
+		}
+	nextString:
+	}
+	return 0, 0, false
+}
+
+func isEscapedNullByte(data []byte) bool {
+	if len(data) < 6 || data[0] != '\\' || data[1] != 'u' {
+		return false
+	}
+	for _, b := range data[2:6] {
+		if b != '0' {
+			return false
+		}
+	}
+	return true
+}
+
+func jsonErrorWithLine(data []byte, err error) error {
+	line, column := jsonErrorLineColumn(data, err)
+	return fmt.Errorf("%w at line %d, column %d", err, line, column)
+}
+
+func jsonErrorLineColumn(data []byte, err error) (int, int) {
+	offset := len(data) + 1
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) && syntaxErr.Offset > 0 {
+		offset = int(syntaxErr.Offset)
+	}
+	if offset < 1 {
+		offset = 1
+	}
+	if offset > len(data)+1 {
+		offset = len(data) + 1
+	}
+
+	return lineColumnAtOffset(data, offset)
+}
+
+func lineColumnAtOffset(data []byte, offset int) (int, int) {
+	line := 1 + bytes.Count(data[:offset-1], []byte("\n"))
+	lineStart := bytes.LastIndexByte(data[:offset-1], '\n')
+	column := offset
+	if lineStart >= 0 {
+		column = offset - lineStart - 1
+	}
+	return line, column
 }
 
 // Stop gracefully shuts down the server.
