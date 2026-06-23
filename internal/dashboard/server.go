@@ -173,6 +173,8 @@ func (s *Server) handleRunAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleSpans(w, r)
 	case strings.HasSuffix(r.URL.Path, "/artifacts"):
 		s.handleDockerArtifacts(w, r)
+	case strings.HasSuffix(r.URL.Path, "/cost"):
+		s.handleCost(w, r)
 	default:
 		writeJSONError(w, http.StatusNotFound, "run endpoint not found")
 	}
@@ -220,6 +222,16 @@ func (s *Server) handleDockerArtifacts(w http.ResponseWriter, r *http.Request) {
 	runID := runIDFromRunAPIPath(r.URL.Path, "artifacts")
 	r.SetPathValue("runID", runID)
 	s.logViewer.ServeDockerArtifacts(w, r)
+}
+
+func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		writeJSONError(w, http.StatusNotFound, "cost data unavailable")
+		return
+	}
+	runID := runIDFromRunAPIPath(r.URL.Path, "cost")
+	r.SetPathValue("runID", runID)
+	s.ServeRunCost(w, r)
 }
 
 func (s *Server) getOnly(next http.HandlerFunc) http.HandlerFunc {

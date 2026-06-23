@@ -118,14 +118,19 @@ type TimelineEvent struct {
 
 // LLMTimelineRow represents an LLM call in the timeline.
 type LLMTimelineRow struct {
-	SpanID       string        `json:"span_id"`
-	Model        string        `json:"model"`
-	Provider     string        `json:"provider"`
-	InputTokens  int           `json:"input_tokens"`
-	OutputTokens int           `json:"output_tokens"`
-	Cost         float64       `json:"cost"`
-	Latency      time.Duration `json:"latency"`
-	Status       string        `json:"status"`
+	SpanID            string        `json:"span_id"`
+	Model             string        `json:"model"`
+	Provider          string        `json:"provider"`
+	InputTokens       int           `json:"input_tokens"`
+	OutputTokens      int           `json:"output_tokens"`
+	InputCost         float64       `json:"input_cost,omitempty"`
+	OutputCost        float64       `json:"output_cost,omitempty"`
+	TotalCost         float64       `json:"total_cost,omitempty"`
+	Cost              float64       `json:"cost"`
+	PriceTableVersion string        `json:"price_table_version,omitempty"`
+	Estimated         bool          `json:"estimated"`
+	Latency           time.Duration `json:"latency"`
+	Status            string        `json:"status"`
 }
 
 // MCPTimelineRow represents an MCP tool call in the timeline.
@@ -239,7 +244,7 @@ func spanToTimelineEvent(runID string, span otel.SpanRecord) (TimelineEvent, err
 	var row any
 	switch rowType {
 	case "llm_call":
-		row = LLMTimelineRow{
+		llmRow := LLMTimelineRow{
 			SpanID:       redactedString(span.SpanID),
 			Model:        redactedAttrString(attrs, "llm.model", "gen_ai.request.model"),
 			Provider:     redactedAttrString(attrs, "llm.provider", "gen_ai.system"),
@@ -249,6 +254,16 @@ func spanToTimelineEvent(runID string, span otel.SpanRecord) (TimelineEvent, err
 			Latency:      span.EndTime.Sub(span.StartTime),
 			Status:       spanStatus(span),
 		}
+		if inputs, ok := costInputsFromAttributes(span.Attributes); ok {
+			cost := ComputeCost(inputs.provider, inputs.model, inputs.inputTokens, inputs.outputTokens)
+			llmRow.InputCost = cost.InputCost
+			llmRow.OutputCost = cost.OutputCost
+			llmRow.TotalCost = cost.TotalCost
+			llmRow.Cost = cost.TotalCost
+			llmRow.PriceTableVersion = cost.PriceTableVersion
+			llmRow.Estimated = cost.Estimated
+		}
+		row = llmRow
 	case "mcp_call":
 		row = MCPTimelineRow{
 			SpanID:   redactedString(span.SpanID),
