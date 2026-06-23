@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // InitScaffold creates a new agent project in the given directory.
@@ -60,6 +61,110 @@ func InitScaffold(projectDir string, runtime RuntimeType) error {
 	}
 
 	return nil
+}
+
+// InitFromCode reconciles an agent.yaml from existing source files.
+// If agent.yaml exists, it is left untouched. If not, a minimal one is
+// created with the detected runtime and agent name derived from the dir.
+func InitFromCode(projectDir string, runtime RuntimeType) error {
+	if err := validateProjectDir(projectDir); err != nil {
+		return err
+	}
+	if runtime == "" || runtime == RuntimeUnknown {
+		runtime = RuntimePython
+	}
+	if runtime != RuntimePython && runtime != RuntimeLangGraph && runtime != RuntimeCrewAI {
+		return fmt.Errorf("unsupported runtime: %s", runtime)
+	}
+	if err := rejectSymlinkPath(projectDir, true); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		return fmt.Errorf("create project directory: %w", err)
+	}
+	if err := rejectSymlinkPath(projectDir, false); err != nil {
+		return err
+	}
+
+	agentPath := filepath.Join(projectDir, "agent.yaml")
+	if err := rejectSymlinkPath(agentPath, true); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(agentPath); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("inspect agent.yaml: %w", err)
+	}
+
+	absPath, err := filepath.Abs(projectDir)
+	if err != nil {
+		return fmt.Errorf("resolve project directory: %w", err)
+	}
+	name := sanitizeAgentName(filepath.Base(absPath))
+	content := fmt.Sprintf(
+		"version: \"1\"\nruntime: %s\nname: %s\ndescription: \"\"\n",
+		runtime,
+		name,
+	)
+
+	return writeNewProjectFile(agentPath, content)
+}
+
+// InitPolicy writes a minimal default-deny policy.yaml if one does not exist.
+// If policy.yaml already exists, it is left untouched (never overwrite policy).
+func InitPolicy(projectDir string) error {
+	if err := validateProjectDir(projectDir); err != nil {
+		return err
+	}
+	if err := rejectSymlinkPath(projectDir, false); err != nil {
+		return err
+	}
+
+	policyPath := filepath.Join(projectDir, "policy.yaml")
+	if err := rejectSymlinkPath(policyPath, true); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(policyPath); err == nil {
+		return nil
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("inspect policy.yaml: %w", err)
+	}
+
+	const content = `version: "1"
+agent:
+  name: ""
+  description: ""
+egress: []
+credentials: []
+mcp_servers: []
+hooks: []
+ingress: []
+`
+
+	return writeNewProjectFile(policyPath, content)
+}
+
+func sanitizeAgentName(name string) string {
+	var b strings.Builder
+	lastHyphen := false
+	for _, r := range strings.ToLower(name) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			lastHyphen = false
+			continue
+		}
+		if b.Len() > 0 && !lastHyphen {
+			b.WriteByte('-')
+			lastHyphen = true
+		}
+	}
+
+	sanitized := strings.Trim(b.String(), "-")
+	if sanitized == "" {
+		return "agent"
+	}
+
+	return sanitized
 }
 
 // DefaultAgentYAML returns the minimal agent.yaml content for scaffolding.
