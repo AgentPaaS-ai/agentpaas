@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -35,6 +36,7 @@ type ServerConfig struct {
 	MaxPayloadBytes int
 	// IdempotencyStore handles idempotency key replay/conflict.
 	IdempotencyStore *IdempotencyStore
+	EventBus         *EventBus
 }
 
 // Server is the Trigger API server, serving gRPC and REST gateway endpoints.
@@ -68,6 +70,9 @@ func New(cfg ServerConfig) (*Server, error) {
 	if cfg.MaxPayloadBytes == 0 {
 		cfg.MaxPayloadBytes = DefaultMaxPayload
 	}
+	if cfg.EventBus == nil {
+		cfg.EventBus = NewEventBus()
+	}
 
 	s := &Server{cfg: cfg}
 
@@ -80,7 +85,7 @@ func New(cfg ServerConfig) (*Server, error) {
 	}
 	s.grpcServer = grpc.NewServer(opts...)
 
-	s.triggerService = NewTriggerService(cfg.Audit, cfg.MaxPayloadBytes, cfg.IdempotencyStore)
+	s.triggerService = NewTriggerService(cfg.Audit, cfg.MaxPayloadBytes, cfg.EventBus, cfg.IdempotencyStore)
 	triggerv1.RegisterTriggerServiceServer(s.grpcServer, s.triggerService)
 
 	return s, nil
@@ -106,6 +111,22 @@ func (s *Server) Start(parent context.Context) error {
 	}
 
 	var handler http.Handler = mux
+	if s.cfg.EventBus != nil {
+		sseHandler := NewSSEHandler(s.cfg.EventBus)
+		gatewayHandler := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/v1/trigger/events" && r.Method == http.MethodGet {
+				runID := r.URL.Query().Get("run_id")
+				if runID == "" {
+					http.Error(w, "run_id required", http.StatusBadRequest)
+					return
+				}
+				sseHandler.ServeSSE(w, r, runID)
+				return
+			}
+			gatewayHandler.ServeHTTP(w, r)
+		})
+	}
 	if s.cfg.CORS != nil {
 		handler = s.cfg.CORS.Wrap(handler)
 	}
@@ -148,18 +169,28 @@ type TriggerService struct {
 	audit       audit.AuditAppender
 	maxPayload  int
 	idempotency *IdempotencyStore
+	eventBus    *EventBus
 }
 
 // NewTriggerService creates the trigger service implementation.
-func NewTriggerService(a audit.AuditAppender, maxPayload int, stores ...*IdempotencyStore) *TriggerService {
+func NewTriggerService(a audit.AuditAppender, maxPayload int, deps ...any) *TriggerService {
 	if maxPayload == 0 {
 		maxPayload = DefaultMaxPayload
 	}
 	var store *IdempotencyStore
-	if len(stores) > 0 {
-		store = stores[0]
+	var bus *EventBus
+	for _, dep := range deps {
+		switch typed := dep.(type) {
+		case *EventBus:
+			bus = typed
+		case *IdempotencyStore:
+			store = typed
+		}
 	}
-	return &TriggerService{audit: a, maxPayload: maxPayload, idempotency: store}
+	if bus == nil {
+		bus = NewEventBus()
+	}
+	return &TriggerService{audit: a, maxPayload: maxPayload, idempotency: store, eventBus: bus}
 }
 
 // Invoke triggers an agent run. T01 returns a pending stub run.
@@ -203,17 +234,64 @@ func (s *TriggerService) Invoke(ctx context.Context, req *triggerv1.InvokeReques
 	return &triggerv1.InvokeResponse{Run: run}, nil
 }
 
-// InvokeStream triggers a run and streams updates. T01 sends one pending stub.
+// InvokeStream triggers a run and streams lifecycle updates.
 func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream triggerv1.TriggerService_InvokeStreamServer) error {
+	ctx := stream.Context()
 	if len(req.GetPayload()) > s.maxPayload {
 		return status.Errorf(codes.InvalidArgument, "payload exceeds %d bytes", s.maxPayload)
 	}
-	run := &triggerv1.Run{
-		RunId:     "run-stub-stream",
-		AgentName: req.GetAgentName(),
-		Status:    triggerv1.RunStatus_RUN_STATUS_PENDING,
+
+	runID, err := generateRunID()
+	if err != nil {
+		return status.Errorf(codes.Internal, "generate run id: %v", err)
 	}
-	return stream.Send(&triggerv1.InvokeResponse{Run: run})
+	if s.idempotency != nil && req.GetIdempotencyKey() != "" {
+		caller, _ := CallerFromContext(ctx)
+		requestHash := CanonicalRequestHash(
+			string(caller),
+			req.GetAgentName(),
+			invokeMetadataValue(req, "agent_lock_digest"),
+			req.GetPayload(),
+			req.GetContentType(),
+			invokeAPIVersion(req),
+		)
+		result, entry, err := s.idempotency.CheckOrReserve(ctx, req.GetIdempotencyKey(), runID, requestHash, string(caller), req.GetAgentName())
+		if err != nil {
+			return status.Errorf(codes.Internal, "check idempotency: %v", err)
+		}
+		switch result {
+		case IdempotencyReplayed:
+			runID = entry.RunID
+		case IdempotencyConflict:
+			return status.Error(codes.AlreadyExists, "idempotency key conflict: different payload")
+		case IdempotencyNew:
+		}
+	}
+
+	s.eventBus.RegisterRun(runID)
+	s.eventBus.Publish(runID, EventRunCreated, map[string]string{"agent": req.GetAgentName()})
+	s.eventBus.Publish(runID, EventRunSucceeded, map[string]string{"agent": req.GetAgentName()})
+
+	ch, cancel := s.eventBus.Subscribe(runID, 0)
+	defer cancel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case event, open := <-ch:
+			if !open {
+				return nil
+			}
+			run := eventToRun(&event, runID, req.GetAgentName())
+			if err := stream.Send(&triggerv1.InvokeResponse{Run: run}); err != nil {
+				return err
+			}
+			if event.IsTerminal() {
+				return nil
+			}
+		}
+	}
 }
 
 // GetRun retrieves a run by ID. T01 leaves storage unimplemented.
@@ -251,4 +329,33 @@ func invokeAPIVersion(req *triggerv1.InvokeRequest) string {
 		return version
 	}
 	return "trigger.v1"
+}
+
+func eventToRun(event *RunEvent, runID, agentName string) *triggerv1.Run {
+	run := &triggerv1.Run{
+		RunId:     runID,
+		AgentName: agentName,
+	}
+	switch event.Type {
+	case EventRunCreated:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_PENDING
+	case EventRunStarted:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_RUNNING
+	case EventRunSucceeded:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_SUCCEEDED
+	case EventRunFailed:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_FAILED
+	case EventRunCancelled:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_CANCELLED
+	case EventRunProgress, EventHeartbeat:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_RUNNING
+	}
+
+	ts := timestamppb.New(event.Timestamp)
+	if event.EventID <= 1 {
+		run.CreatedAt = ts
+	} else if event.IsTerminal() {
+		run.FinishedAt = ts
+	}
+	return run
 }

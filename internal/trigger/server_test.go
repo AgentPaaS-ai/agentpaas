@@ -107,7 +107,7 @@ func TestValidAPIKeyInvokeReturnsStubResponse(t *testing.T) {
 	}
 }
 
-func TestValidAPIKeyInvokeStreamReturnsStubResponse(t *testing.T) {
+func TestValidAPIKeyInvokeStreamReturnsLifecycleResponses(t *testing.T) {
 	client, cleanup := startGRPCTestServer(t, testAuthenticator(), DefaultMaxPayload)
 	defer cleanup()
 
@@ -120,14 +120,25 @@ func TestValidAPIKeyInvokeStreamReturnsStubResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InvokeStream().Recv(): %v", err)
 	}
-	if got := resp.GetRun().GetRunId(); got != "run-stub-stream" {
-		t.Fatalf("RunId = %q, want %q", got, "run-stub-stream")
+	if got := resp.GetRun().GetRunId(); !strings.HasPrefix(got, "run-") {
+		t.Fatalf("RunId = %q, want run-*", got)
 	}
 	if got := resp.GetRun().GetAgentName(); got != "agent-a" {
 		t.Fatalf("AgentName = %q, want %q", got, "agent-a")
 	}
 	if got := resp.GetRun().GetStatus(); got != triggerv1.RunStatus_RUN_STATUS_PENDING {
 		t.Fatalf("Status = %v, want %v", got, triggerv1.RunStatus_RUN_STATUS_PENDING)
+	}
+
+	terminal, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("InvokeStream().Recv() terminal: %v", err)
+	}
+	if got := terminal.GetRun().GetRunId(); got != resp.GetRun().GetRunId() {
+		t.Fatalf("terminal RunId = %q, want %q", got, resp.GetRun().GetRunId())
+	}
+	if got := terminal.GetRun().GetStatus(); got != triggerv1.RunStatus_RUN_STATUS_SUCCEEDED {
+		t.Fatalf("terminal Status = %v, want %v", got, triggerv1.RunStatus_RUN_STATUS_SUCCEEDED)
 	}
 }
 
