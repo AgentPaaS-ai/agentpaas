@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/otel"
+	"github.com/parvezsyed/agentpaas/internal/trigger"
 )
 
 //go:embed dist/*
@@ -28,6 +29,7 @@ type Server struct {
 	srv         *http.Server
 	store       *otel.Store
 	resourceMgr ResourceManager
+	timeline    *TimelineHandler
 }
 
 // ResourceManager provides inventory data for the dashboard.
@@ -84,6 +86,15 @@ type MCPServerResource struct {
 // NewServer creates a new dashboard server.
 // apiKey is required for API access; if empty, API returns 401.
 func NewServer(addr, apiKey string, store *otel.Store, mgr ResourceManager) *Server {
+	return newServer(addr, apiKey, store, mgr, nil)
+}
+
+// NewServerWithTimeline creates a dashboard server with live run timeline support.
+func NewServerWithTimeline(addr, apiKey string, store *otel.Store, mgr ResourceManager, bus *trigger.EventBus) *Server {
+	return newServer(addr, apiKey, store, mgr, bus)
+}
+
+func newServer(addr, apiKey string, store *otel.Store, mgr ResourceManager, bus *trigger.EventBus) *Server {
 	if addr == "" {
 		addr = ":8090"
 	}
@@ -94,7 +105,10 @@ func NewServer(addr, apiKey string, store *otel.Store, mgr ResourceManager) *Ser
 		store:       store,
 		resourceMgr: mgr,
 	}
-	s.handler = cspMiddleware(loggingMiddleware(s.routes()))
+	if bus != nil || store != nil {
+		s.timeline = NewTimelineHandler(bus, store)
+	}
+	s.handler = cspMiddleware(loggingMiddleware(timelinePathValidationMiddleware(s.routes())))
 	s.srv = &http.Server{
 		Addr:              addr,
 		Handler:           s.handler,
@@ -135,10 +149,25 @@ func (s *Server) routes() http.Handler {
 	apiMux.HandleFunc("/api/gateways", s.getOnly(s.handleGateways))
 	apiMux.HandleFunc("/api/mcp-servers", s.getOnly(s.handleMCPServers))
 	apiMux.HandleFunc("/api/health", s.handleHealth)
+	apiMux.HandleFunc("/api/runs/", s.getOnly(s.handleTimeline))
 
 	root.Handle("/api/", csrfMiddleware(s.csrfToken, authMiddleware(s.apiKey, apiMux)))
 	root.Handle("/", spaHandler(dist))
 	return root
+}
+
+func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
+	if s.timeline == nil {
+		writeJSONError(w, http.StatusNotFound, "timeline unavailable")
+		return
+	}
+	runID := runIDFromTimelinePath(r.URL.Path)
+	if runID == "" {
+		writeJSONError(w, http.StatusNotFound, "timeline not found")
+		return
+	}
+	r.SetPathValue("runID", runID)
+	s.timeline.ServeSSE(w, r)
 }
 
 func (s *Server) getOnly(next http.HandlerFunc) http.HandlerFunc {
