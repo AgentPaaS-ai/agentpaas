@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -295,6 +296,14 @@ func (s *stubControlServer) ExplainPolicyDenial(ctx context.Context, req *contro
 		ruleID := auditString(denial.Payload, "rule_id")
 		if ruleID == "" {
 			ruleID = "default_deny"
+		} else if !isValidPolicyRuleID(ruleID) {
+			slog.WarnContext(
+				ctx,
+				"rejected invalid policy rule ID from audit event",
+				"rule_id", logging.Redact(ruleID),
+				"audit_seq", denial.Seq,
+			)
+			ruleID = "default_deny"
 		}
 		rationale := auditString(denial.Payload, "reason")
 		if rationale == "" {
@@ -327,6 +336,26 @@ func (s *stubControlServer) ExplainPolicyDenial(ctx context.Context, req *contro
 		Rationale:         "destination not in allowed egress list",
 		NextAction:        string(operator.ActionReviewPolicyPatch),
 	}, nil
+}
+
+func isValidPolicyRuleID(ruleID string) bool {
+	if ruleID == "" || ruleID == "default_deny" {
+		return true
+	}
+	if !strings.HasPrefix(ruleID, "egress[") || !strings.HasSuffix(ruleID, "]") {
+		return false
+	}
+
+	index := ruleID[len("egress[") : len(ruleID)-1]
+	if index == "" {
+		return false
+	}
+	for _, digit := range index {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // RecommendPolicyPatch proposes a policy patch. P1 implementation: returns
