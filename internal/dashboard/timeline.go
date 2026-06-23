@@ -482,13 +482,31 @@ func timelinePathValidationMiddleware(next http.Handler) http.Handler {
 
 func invalidTimelineRequestPath(rawPath string) bool {
 	runID := runIDFromTimelinePath(rawPath)
-	return runID != "" && !validTimelineRunID(runID) ||
-		strings.HasPrefix(rawPath, "/api/runs/") && strings.HasSuffix(rawPath, "/timeline") && runID == ""
+	if runID != "" {
+		return !validTimelineRunID(runID)
+	}
+	if strings.HasPrefix(rawPath, "/api/runs/") && strings.HasSuffix(rawPath, "/timeline") {
+		return true
+	}
+	for _, endpoint := range []string{"logs", "spans", "artifacts"} {
+		runID = runIDFromRunAPIPath(rawPath, endpoint)
+		if runID != "" {
+			return !validTimelineRunID(runID)
+		}
+		if strings.HasPrefix(rawPath, "/api/runs/") && strings.HasSuffix(rawPath, "/"+endpoint) {
+			return true
+		}
+	}
+	return false
 }
 
 func runIDFromTimelinePath(rawPath string) string {
+	return runIDFromRunAPIPath(rawPath, "timeline")
+}
+
+func runIDFromRunAPIPath(rawPath string, endpoint string) string {
 	const prefix = "/api/runs/"
-	const suffix = "/timeline"
+	suffix := "/" + endpoint
 	if !strings.HasPrefix(rawPath, prefix) || !strings.HasSuffix(rawPath, suffix) {
 		return ""
 	}

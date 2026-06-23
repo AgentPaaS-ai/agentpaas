@@ -13,6 +13,12 @@ const state = {
     controller: null,
     reconnectTimer: 0,
     status: 'idle'
+  },
+  logViewer: {
+    runID: '',
+    rows: [],
+    loading: false,
+    error: ''
   }
 };
 
@@ -69,6 +75,10 @@ function renderPanel(title, content) {
 
 function routeContent() {
   const { agents, gateways, mcp_servers: mcpServers } = state.resources;
+  const logViewerRunID = logViewerRunIDFromRoute();
+  if (logViewerRunID) {
+    return renderLogViewerPanel(logViewerRunID);
+  }
   const timelineRunID = timelineRunIDFromRoute();
   if (timelineRunID) {
     return renderTimelinePanel(timelineRunID);
@@ -150,11 +160,176 @@ function render() {
   if (runID) {
     mountTimeline(runID);
   }
+  const logRunID = logViewerRunIDFromRoute();
+  if (logRunID) {
+    mountLogViewer(logRunID);
+  }
 }
 
 window.addEventListener('hashchange', setRoute);
 render();
 loadResources();
+
+function renderLogViewerPanel(runID) {
+  return `
+    <section class="panel log-viewer-panel" tabindex="-1" data-log-viewer-panel data-run-id="${escapeText(runID)}">
+      <div class="timeline-heading">
+        <h2>Logs</h2>
+        <span class="timeline-status" data-log-viewer-status></span>
+      </div>
+      <div class="timeline-viewport" data-log-viewer-viewport>
+        <table class="log-viewer-table">
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Severity</th>
+              <th scope="col">Body</th>
+              <th scope="col">Attributes</th>
+              <th scope="col">Resource</th>
+            </tr>
+          </thead>
+          <tbody data-log-viewer-body></tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function mountLogViewer(runID) {
+  const panel = app.querySelector('[data-log-viewer-panel]');
+  if (!panel) {
+    return;
+  }
+  if (!state.token) {
+    state.logViewer.rows = [];
+    setLogViewerStatus(panel, 'API key required');
+    renderLogViewerRows(panel);
+    return;
+  }
+  if (state.logViewer.runID !== runID) {
+    state.logViewer.runID = runID;
+    state.logViewer.rows = [];
+    state.logViewer.error = '';
+    loadLogViewerRows(runID, panel);
+    return;
+  }
+  renderLogViewerRows(panel);
+}
+
+async function loadLogViewerRows(runID, panel) {
+  state.logViewer.loading = true;
+  setLogViewerStatus(panel, 'Loading');
+  renderLogViewerRows(panel);
+  try {
+    const response = await fetch(`/api/runs/${encodeURIComponent(runID)}/logs`, {
+      headers: authHeader()
+    });
+    if (!response.ok) {
+      throw new Error(`logs request failed: ${response.status}`);
+    }
+    const rows = await response.json();
+    state.logViewer.rows = Array.isArray(rows) ? rows : [];
+    state.logViewer.error = '';
+  } catch (error) {
+    state.logViewer.rows = [];
+    state.logViewer.error = 'Unable to load logs';
+  } finally {
+    state.logViewer.loading = false;
+    renderLogViewerRows(panel);
+  }
+}
+
+function renderLogViewerRows(panel) {
+  const body = panel.querySelector('[data-log-viewer-body]');
+  if (!body) {
+    return;
+  }
+  body.replaceChildren();
+  if (state.logViewer.loading) {
+    body.appendChild(createLogViewerMessageRow('Loading'));
+    return;
+  }
+  if (state.logViewer.error) {
+    body.appendChild(createLogViewerMessageRow(state.logViewer.error));
+    setLogViewerStatus(panel, state.logViewer.error);
+    return;
+  }
+  if (!state.logViewer.rows.length) {
+    body.appendChild(createLogViewerMessageRow('No logs'));
+    setLogViewerStatus(panel, 'No logs');
+    return;
+  }
+  state.logViewer.rows.forEach((entry) => {
+    body.appendChild(createLogViewerRow(entry));
+  });
+  setLogViewerStatus(panel, `${state.logViewer.rows.length} logs`);
+}
+
+function createLogViewerMessageRow(message) {
+  const row = document.createElement('tr');
+  const cell = document.createElement('td');
+  cell.colSpan = 5;
+  cell.className = 'empty';
+  cell.textContent = message;
+  row.appendChild(cell);
+  return row;
+}
+
+function createLogViewerRow(entry) {
+  const row = document.createElement('tr');
+  row.appendChild(createLogViewerCell(formatTimelineTime(entry.timestamp)));
+  row.appendChild(createSeverityCell(entry.severity));
+  const bodyCell = createLogViewerCell(entry.body || '');
+  if (entry.truncated) {
+    const indicator = document.createElement('span');
+    indicator.className = 'timeline-status';
+    indicator.textContent = ' truncated';
+    bodyCell.appendChild(indicator);
+  }
+  row.appendChild(bodyCell);
+  row.appendChild(createLogViewerCell(formatLogViewerMap(entry.attributes)));
+  row.appendChild(createLogViewerCell(formatLogViewerMap(entry.resource)));
+  return row;
+}
+
+function createLogViewerCell(value) {
+  const cell = document.createElement('td');
+  cell.textContent = value || '';
+  return cell;
+}
+
+function createSeverityCell(value) {
+  const cell = createLogViewerCell(value);
+  const severity = String(value || '').toLowerCase();
+  if (severity.includes('error')) {
+    cell.style.color = '#b42318';
+  } else if (severity.includes('warn')) {
+    cell.style.color = '#a15c00';
+  }
+  return cell;
+}
+
+function formatLogViewerMap(value) {
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  return JSON.stringify(value);
+}
+
+function setLogViewerStatus(panel, text) {
+  const status = panel.querySelector('[data-log-viewer-status]');
+  if (status) {
+    status.textContent = text;
+  }
+}
+
+function logViewerRunIDFromRoute() {
+  const match = state.route.match(/^#\/runs\/([^/]+)\/logs$/);
+  if (!match) {
+    return '';
+  }
+  return decodeURIComponent(match[1]);
+}
 
 function timelineRunIDFromRoute() {
   const match = state.route.match(/^#\/runs\/([^/]+)\/timeline$/);
