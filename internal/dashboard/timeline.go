@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ const (
 	timelineSSEContentType  = "text/event-stream"
 	defaultMaxSpansInMemory = 500
 	defaultSpanBatchSize    = 100
+	maxTimelineRunIDLength  = 256
 )
 
 var timelineHeartbeatInterval = 15 * time.Second
@@ -99,7 +101,7 @@ func (h *TimelineHandler) ServeSSE(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-ticker.C:
-			if err := writeTimelineHeartbeat(w, flusher, runID); err != nil {
+			if err := writeTimelineHeartbeat(w, flusher); err != nil {
 				return
 			}
 		}
@@ -348,10 +350,9 @@ func writeTimelineBatch(w http.ResponseWriter, flusher http.Flusher, events []Ti
 	return nil
 }
 
-func writeTimelineHeartbeat(w http.ResponseWriter, flusher http.Flusher, runID string) error {
+func writeTimelineHeartbeat(w http.ResponseWriter, flusher http.Flusher) error {
 	data, err := json.Marshal(TimelineEvent{
 		Type:      "heartbeat",
-		RunID:     redactedString(runID),
 		Timestamp: time.Now().UTC(),
 		Data:      json.RawMessage(`{}`),
 	})
@@ -469,6 +470,22 @@ func parseLastEventID(raw string) int64 {
 	return id
 }
 
+func timelinePathValidationMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if invalidTimelineRequestPath(r.URL.Path) || invalidTimelineRequestPath(r.URL.EscapedPath()) {
+			writeJSONError(w, http.StatusBadRequest, "invalid run id")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func invalidTimelineRequestPath(rawPath string) bool {
+	runID := runIDFromTimelinePath(rawPath)
+	return runID != "" && !validTimelineRunID(runID) ||
+		strings.HasPrefix(rawPath, "/api/runs/") && strings.HasSuffix(rawPath, "/timeline") && runID == ""
+}
+
 func runIDFromTimelinePath(rawPath string) string {
 	const prefix = "/api/runs/"
 	const suffix = "/timeline"
@@ -479,7 +496,17 @@ func runIDFromTimelinePath(rawPath string) string {
 }
 
 func validTimelineRunID(runID string) bool {
-	if runID == "" || len(runID) > 128 || strings.Contains(runID, "..") {
+	if runID == "" || len(runID) > maxTimelineRunIDLength {
+		return false
+	}
+	if strings.ContainsAny(runID, `/\`) || strings.Contains(runID, "..") {
+		return false
+	}
+	lower := strings.ToLower(runID)
+	if strings.Contains(lower, "%2f") || strings.Contains(lower, "%5c") {
+		return false
+	}
+	if path.Clean(runID) != runID {
 		return false
 	}
 	for _, r := range runID {
@@ -487,7 +514,7 @@ func validTimelineRunID(runID string) bool {
 		case r >= 'a' && r <= 'z':
 		case r >= 'A' && r <= 'Z':
 		case r >= '0' && r <= '9':
-		case r == '-' || r == '_' || r == '.' || r == ':':
+		case r == '-' || r == '_':
 		default:
 			return false
 		}

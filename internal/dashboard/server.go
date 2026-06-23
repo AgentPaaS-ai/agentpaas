@@ -108,7 +108,7 @@ func newServer(addr, apiKey string, store *otel.Store, mgr ResourceManager, bus 
 	if bus != nil || store != nil {
 		s.timeline = NewTimelineHandler(bus, store)
 	}
-	s.handler = cspMiddleware(loggingMiddleware(s.routes()))
+	s.handler = cspMiddleware(loggingMiddleware(timelinePathValidationMiddleware(s.routes())))
 	s.srv = &http.Server{
 		Addr:              addr,
 		Handler:           s.handler,
