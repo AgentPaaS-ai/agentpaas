@@ -314,6 +314,62 @@ message ValidateAgentProjectResponse {
   bool valid = 2;
   // Summary message.
   string summary = 3;
+  // --- Block 11 operator contract fields ---
+  // Operator schema version (e.g. "1.0.0").
+  string schema_version = 10;
+  // Whether the project is ready to pack/run (same as valid, but named for
+  // the operator schema).
+  bool ready = 11;
+  // Absolute path of the validated project.
+  string project_dir = 12;
+  // Detected agent runtime ("python", "langgraph", etc.).
+  string runtime = 13;
+  // Readiness issues with error categories and next actions.
+  repeated OperatorIssue issues = 14;
+}
+
+// OperatorIssue is a single readiness problem found during project validation.
+message OperatorIssue {
+  // Stable error category from the versioned enum.
+  string category = 1;
+  // Human-readable description of the issue.
+  string message = 2;
+  // Evidence refs supporting this issue.
+  repeated EvidenceRef evidence_refs = 3;
+  // Recommended next action from the fixed enum.
+  string next_action = 4;
+}
+
+// EvidenceRef points to an auditable artifact that supports a diagnosis.
+message EvidenceRef {
+  // Kind of evidence: "audit_seq", "run_id", "policy_rule", "span", "log",
+  // "redacted_excerpt", "verification".
+  string type = 1;
+  // Opaque identifier for the evidence.
+  string ref = 2;
+  // Optional redacted human-readable detail.
+  string detail = 3;
+}
+
+// RedactedExcerpt is a sanitized snippet of source/log/trace data.
+message RedactedExcerpt {
+  string source = 1;
+  int32 start_line = 2;
+  int32 end_line = 3;
+  // Redacted content (secrets stripped).
+  string content = 4;
+}
+
+// ConfirmationRequirement encodes the trust-boundary confirmation protocol.
+message ConfirmationRequirement {
+  bool requires_confirmation = 1;
+  string confirmation_id = 2;
+  // "low", "medium", or "high".
+  string risk_level = 3;
+  string rationale = 4;
+  repeated string affected_destinations = 5;
+  repeated string credential_ids = 6;
+  repeated EvidenceRef evidence_refs = 7;
 }
 
 message SummarizeRunRequest {
@@ -333,6 +389,19 @@ message SummarizeRunResponse {
   repeated KeyEvent key_events = 2;
   // Budget consumed during the run.
   string budget_used = 3;
+  // --- Block 11 operator contract fields ---
+  string schema_version = 10;
+  // Run status: "completed", "failed", "running", "stopped".
+  string status = 11;
+  int32 exit_code = 12;
+  google.protobuf.Timestamp started_at = 13;
+  google.protobuf.Timestamp finished_at = 14;
+  int64 duration_ms = 15;
+  int32 invocations = 16;
+  int32 policy_denials = 17;
+  // Stable error category (set when status is "failed").
+  string error_category = 18;
+  repeated EvidenceRef evidence_refs = 19;
 }
 
 message ExplainFailureRequest {
@@ -346,6 +415,14 @@ message ExplainFailureResponse {
   repeated string contributing_factors = 2;
   // Suggested code or config changes to fix the issue.
   repeated string suggested_fixes = 3;
+  // --- Block 11 operator contract fields ---
+  string schema_version = 10;
+  // Stable error category classifying the failure.
+  string error_category = 11;
+  repeated RedactedExcerpt redacted_excerpts = 12;
+  repeated EvidenceRef evidence_refs = 13;
+  // Recommended next action from the fixed enum.
+  string next_action = 14;
 }
 
 message ExplainPolicyDenialRequest {
@@ -361,6 +438,20 @@ message ExplainPolicyDenialResponse {
   string matching_rule = 2;
   // Human-readable explanation of why the denial occurred.
   string explanation = 3;
+  // --- Block 11 operator contract fields ---
+  string schema_version = 10;
+  // Run that was denied (empty for pre-run checks).
+  string run_id = 11;
+  // What the agent tried to do.
+  string denied_action = 12;
+  // Policy rule id that blocked the action (e.g. "egress[0]").
+  string blocking_rule_id = 13;
+  // SHA-256 digest of the compiled policy at denial time.
+  string policy_digest = 14;
+  string rationale = 15;
+  repeated EvidenceRef evidence_refs = 16;
+  // Always "review_policy_patch".
+  string next_action = 17;
 }
 
 message RecommendPolicyPatchRequest {
@@ -375,6 +466,19 @@ message RecommendPolicyPatchResponse {
   string explanation = 2;
   // Risk assessment: "low", "medium", "high".
   string risk_assessment = 3;
+  // --- Block 11 operator contract fields ---
+  string schema_version = 10;
+  // Proposed patch (YAML snippet or unified diff).
+  string proposed_patch = 11;
+  // "low", "medium", or "high".
+  string risk_level = 12;
+  string rationale = 13;
+  repeated string affected_destinations = 14;
+  repeated string credential_ids = 15;
+  repeated EvidenceRef evidence_refs = 16;
+  ConfirmationRequirement confirmation = 17;
+  // Always "review_policy_patch".
+  string next_action = 18;
 }
 
 message GetRunTimelineRequest {
@@ -394,6 +498,9 @@ message TimelineEvent {
 
 message GetRunTimelineResponse {
   repeated TimelineEvent events = 1;
+  // --- Block 11 operator contract fields ---
+  string schema_version = 10;
+  string run_id = 11;
 }
 
 message NextActionRequest {
@@ -410,6 +517,14 @@ message NextActionResponse {
   map<string, string> params = 3;
   // LLM reasoning behind the recommendation.
   string reasoning = 4;
+  // --- Block 11 operator contract fields ---
+  string schema_version = 10;
+  string run_id = 11;
+  // Next action from the fixed enum.
+  string next_action = 12;
+  string rationale = 13;
+  repeated EvidenceRef evidence_refs = 14;
+  ConfirmationRequirement confirmation = 15;
 }
 
 // ---------------------------------------------------------------------------
