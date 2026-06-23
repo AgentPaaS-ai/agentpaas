@@ -87,6 +87,9 @@ func newInitCmd() *cobra.Command {
 }
 
 func validateInitProjectPath(projectDir string) (string, error) {
+	if strings.ContainsRune(projectDir, 0) {
+		return "", errors.New("project path contains null byte")
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("get current directory: %w", err)
@@ -95,6 +98,9 @@ func validateInitProjectPath(projectDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve project directory: %w", err)
 	}
+	if strings.ContainsRune(absProjectDir, 0) {
+		return "", errors.New("project path contains null byte")
+	}
 	rel, err := filepath.Rel(cwd, absProjectDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve project path relative to current directory: %w", err)
@@ -102,8 +108,31 @@ func validateInitProjectPath(projectDir string) (string, error) {
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", errors.New("project path must be under current directory")
 	}
+	if err := rejectInitSymlinkPath(absProjectDir); err != nil {
+		return "", err
+	}
 
 	return absProjectDir, nil
+}
+
+func rejectInitSymlinkPath(absPath string) error {
+	current := absPath
+	for {
+		parent := filepath.Dir(current)
+		info, err := os.Lstat(current)
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 && filepath.Dir(parent) != parent {
+				return fmt.Errorf("path component %s is a symlink (potential escape)", current)
+			}
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("inspect path component %s: %w", current, err)
+		}
+
+		if parent == current {
+			return nil
+		}
+		current = parent
+	}
 }
 
 func initRuntime(projectDir string, runtimeFlag string) (pack.RuntimeType, error) {

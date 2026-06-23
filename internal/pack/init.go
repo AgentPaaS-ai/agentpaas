@@ -124,7 +124,10 @@ func InitPolicy(projectDir string) error {
 	if err := rejectSymlinkPath(policyPath, true); err != nil {
 		return err
 	}
-	if _, err := os.Lstat(policyPath); err == nil {
+	if info, err := os.Lstat(policyPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("policy.yaml exists but is not a regular file (mode: %s)", info.Mode())
+		}
 		return nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("inspect policy.yaml: %w", err)

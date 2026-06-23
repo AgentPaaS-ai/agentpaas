@@ -186,8 +186,45 @@ func validateProjectDir(projectDir string) error {
 	if strings.TrimSpace(projectDir) == "" {
 		return errors.New("project directory is required")
 	}
-	if strings.Contains(projectDir, "..") {
-		return fmt.Errorf("invalid project directory %q: path traversal is not allowed", projectDir)
+	if strings.ContainsRune(projectDir, 0) {
+		return errors.New("project directory contains null byte")
+	}
+
+	normalized := strings.ToValidUTF8(projectDir, "")
+	if normalized != projectDir {
+		return errors.New("project directory contains invalid UTF-8")
+	}
+	for _, r := range normalized {
+		if r < 0x20 || r > 0x7e {
+			return fmt.Errorf("invalid project directory %q: non-ASCII or non-printable characters are not allowed", projectDir)
+		}
+	}
+
+	for _, component := range strings.Split(normalized, string(filepath.Separator)) {
+		if component == ".." {
+			return fmt.Errorf("invalid project directory %q: path traversal is not allowed", projectDir)
+		}
+	}
+
+	absProjectDir, err := filepath.Abs(normalized)
+	if err != nil {
+		return fmt.Errorf("resolve project directory: %w", err)
+	}
+	if !filepath.IsAbs(normalized) {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return fmt.Errorf("get current directory: %w", err)
+		}
+		rel, err := filepath.Rel(cwd, absProjectDir)
+		if err != nil {
+			return fmt.Errorf("resolve project path relative to current directory: %w", err)
+		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("invalid project directory %q: path traversal is not allowed", projectDir)
+		}
+	}
+	if err := rejectSymlinkPath(absProjectDir, true); err != nil {
+		return err
 	}
 
 	return nil
@@ -235,56 +272,25 @@ func rejectSymlinkPath(path string, allowMissingLeaf bool) error {
 		return fmt.Errorf("resolve %s: %w", path, err)
 	}
 
-	info, err := os.Lstat(absPath)
-	leafMissing := false
-	if errors.Is(err, fs.ErrNotExist) {
-		if !allowMissingLeaf {
-			return fmt.Errorf("inspect %s: %w", absPath, err)
-		}
-		leafMissing = true
-	} else if err != nil {
-		return fmt.Errorf("inspect %s: %w", absPath, err)
-	} else if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("symlinks are not allowed: %s", absPath)
-	}
-
-	pathToResolve := absPath
-	if leafMissing {
-		pathToResolve = filepath.Dir(absPath)
-	}
-	resolvedPath, err := filepath.EvalSymlinks(pathToResolve)
-	if err != nil {
-		return fmt.Errorf("resolve %s: %w", path, err)
-	}
-
-	return rejectSymlinksInResolvedPath(resolvedPath)
-}
-
-func rejectSymlinksInResolvedPath(absPath string) error {
-	current := filepath.VolumeName(absPath)
-	if current == "" {
-		current = string(filepath.Separator)
-	}
-
-	rel, err := filepath.Rel(current, absPath)
-	if err != nil {
-		return fmt.Errorf("resolve %s: %w", absPath, err)
-	}
-
-	parts := strings.Split(rel, string(filepath.Separator))
-	for _, part := range parts {
-		if part == "" || part == "." {
-			continue
-		}
-		current = filepath.Join(current, part)
+	current := absPath
+	for {
+		parent := filepath.Dir(current)
 		info, err := os.Lstat(current)
-		if err != nil {
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 && filepath.Dir(parent) != parent {
+				return fmt.Errorf("path component %s is a symlink (potential escape)", current)
+			}
+		} else if errors.Is(err, fs.ErrNotExist) {
+			if !allowMissingLeaf {
+				return fmt.Errorf("inspect %s: %w", current, err)
+			}
+		} else {
 			return fmt.Errorf("inspect %s: %w", current, err)
 		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlinks are not allowed: %s", current)
-		}
-	}
 
-	return nil
+		if parent == current {
+			return nil
+		}
+		current = parent
+	}
 }
