@@ -274,11 +274,11 @@ func (d *DockerRuntime) Stats(_ context.Context, _ ContainerID) (ContainerStats,
 
 // Logs returns a reader for a Docker container's stdout/stderr output.
 func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error) {
-	if d.cli == nil {
-		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
-	}
 	if string(id) == "" {
 		return nil, fmt.Errorf("%w: empty container ID", ErrContainerNotFound)
+	}
+	if d.cli == nil {
+		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
 	}
 
 	tail := strconv.Itoa(opts.Tail)
