@@ -106,6 +106,12 @@ func (s *stubControlServer) Pack(ctx context.Context, req *controlv1.PackRequest
 		return nil, status.Errorf(codes.Internal, "pack failed: %v", err)
 	}
 
+	registryRef, err := pack.PushImageToLocalRegistry(ctx, result.ImageRef, agentName, agentVersion)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "push to local registry: %v", err)
+	}
+	result.ImageRef = registryRef
+
 	keyStore, keyID, err := s.openPackageIdentityKey(ctx, agentName)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "identity keystore: %v", err)
