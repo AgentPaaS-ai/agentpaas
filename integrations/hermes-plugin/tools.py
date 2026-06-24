@@ -7,6 +7,14 @@ import shutil
 import subprocess
 import time as _time
 
+try:
+    from . import sanitizer as _sanitizer
+except ImportError:
+    try:
+        import sanitizer as _sanitizer
+    except ImportError:
+        _sanitizer = None
+
 # Session-scoped registry of run IDs created by this Hermes session
 _session_runs = set()
 
@@ -254,7 +262,7 @@ def _resolve_agentpaas_binary():
 
 
 def _run_cli(cmd_args):
-    """Run agentpaas CLI with --json, return parsed dict."""
+    """Run agentpaas CLI with --json, return sanitized parsed dict."""
     binary = _resolve_agentpaas_binary()
     full = [binary, "--json"] + [a for a in cmd_args if a]
     proc = subprocess.run(full, capture_output=True, text=True, timeout=300)
@@ -265,7 +273,7 @@ def _run_cli(cmd_args):
             "error_category": "cli_error",
         }
     try:
-        return json.loads(proc.stdout)
+        result = json.loads(proc.stdout)
     except json.JSONDecodeError:
         return {
             "error": f"CLI returned non-JSON output (length {len(proc.stdout)})",
@@ -273,6 +281,10 @@ def _run_cli(cmd_args):
             "exit_code": proc.returncode,
             "error_category": "cli_non_json_output",
         }
+    # Sanitize: detect injection patterns in evidence fields
+    if _sanitizer and isinstance(result, dict):
+        result = _sanitizer.sanitize_response(result)
+    return result
 
 
 def agentpaas_init_project(args, **kwargs):
