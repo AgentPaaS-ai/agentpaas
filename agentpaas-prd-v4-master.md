@@ -720,6 +720,16 @@ AgentPaaS has two MCP roles that must stay distinct:
    Hermes-only distribution integration. A generic AgentPaaS MCP server for
    Claude Code, Codex, Cursor, and other clients is P2.
 
+   The Block 13 Hermes integration is a single Hermes plugin (not an MCP
+   server and not a bare skill) that registers the Block 11 operator methods
+   as plugin tools via `ctx.register_tool`, bundles a `SKILL.md` that teaches
+   the detect→init→validate→pack→run→inspect→repair flow, and exposes the
+   same operations as in-session slash commands (`/agentpaas deploy`,
+   `/agentpaas status`, `/agentpaas logs`, `/agentpaas metrics`,
+   `/agentpaas repair`) so a user can build, deploy, and operate an agent
+   without leaving the Hermes session. A generic MCP server for non-Hermes
+   clients remains P2; the plugin does not register an `mcp_servers` block.
+
 P1 must support the first role as managed runtime infrastructure, not as an
 unowned subprocess hidden inside the agent:
 - Local and remote MCP servers must be declared in the `mcp_servers` section of

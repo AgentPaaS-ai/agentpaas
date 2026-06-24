@@ -1973,7 +1973,9 @@ Canonical gate: `make block13-gate`
 
 ### B13-T01 Hermes Plugin Skeleton and Tool Manifest
 
-Goal: create Hermes plugin/skill package with required P1 tool names.
+Goal: create the Hermes plugin package (`plugin.yaml` + `__init__.py` +
+`schemas.py` + `tools.py`) with the 17 required P1 tool names registered via
+`ctx.register_tool`.
 
 Scope:
 - Tool list exactly matches Block 13 required tools.
@@ -2116,6 +2118,68 @@ Verifier:
 - Run demo fixture smoke.
 
 Adversary: required for secret/repair flows, optional for pure demo glue.
+
+### B13-T08 In-Session Slash Commands (/agentpaas)
+
+Goal: register `/agentpaas` slash commands via `ctx.register_command` so a
+user can build, deploy, and operate an agent without leaving the Hermes
+session.
+
+Scope:
+- `/agentpaas deploy` — detect agent code → init → validate → pack → run →
+  print run_id and dashboard URL.
+- `/agentpaas status` — `agentpaas_status` across active runs (one-line per
+  run).
+- `/agentpaas logs [run_id]` — `agentpaas_logs` with tail/truncate.
+- `/agentpaas metrics [run_id]` — `agentpaas_get_run_timeline` +
+  `agentpaas_summarize_run` for the budget/denial/health view.
+- `/agentpaas repair [run_id]` — `agentpaas_explain_failure` →
+  `agentpaas_next_action`; auto-drives safe repairs (fix_code,
+  install_dependency, start_docker), surfaces confirmation requirements for
+  trust-boundary actions (policy patch, handoff, secret binding).
+- Each command is a thin orchestrator that calls the plugin's own tools
+  through `ctx.dispatch_tool` (same approval/redaction/budget pipelines as a
+  model-invoked tool call); no logic re-implementation.
+
+Non-goals:
+- No new operator methods or tool names beyond the 17 in B13-T02.
+- No privilege escalation — commands inherit the same confirmation protocol.
+
+Acceptance:
+- Each slash command returns the same structured output as its underlying
+  tool(s) and is exercised in the B13 e2e (SUCCESS GATE).
+
+Verifier:
+- Run slash-command conformance against the tool outputs.
+
+Adversary: required (confirm commands cannot bypass the confirmation
+protocol, cannot stop unrelated runs, and cannot drop evidence refs).
+
+### B13-T09 Bundled SKILL.md and Plugin Manifest
+
+Goal: bundle a `SKILL.md` via `ctx.register_skill` and declare
+`requires_env` for the daemon socket path in `plugin.yaml`.
+
+Scope:
+- `SKILL.md` teaches detect→init→validate→pack→run→inspect→repair with
+  pitfalls (Docker not running → doctor; policy denial → explain +
+  recommend).
+- `plugin.yaml` `requires_env` gates on the daemon socket path; interactive
+  prompt during `hermes plugins install`.
+- Plugin loads cleanly under `hermes plugins list` and appears in `/plugins`.
+
+Non-goals:
+- No MCP server registration (P2).
+
+Acceptance:
+- Fresh `hermes plugins install` of the plugin prompts for the socket path
+  and the 17 tools + 5 slash commands + bundled skill appear in the session.
+
+Verifier:
+- Run install + discovery smoke.
+
+Adversary: required (confirm `requires_env` gating cannot be bypassed and
+the plugin refuses to load with a missing/malformed socket path).
 
 ## Block 14: Install Path, Docs, Demo, Release
 

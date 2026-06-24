@@ -1853,8 +1853,16 @@ is macOS. A Linux runner can be added in P2 for cross-platform certification.)
 ---
 
 ## BLOCK 13 — Hermes integration plugin/skill
-**Builds:** integrations/hermes-plugin — a Hermes plugin/skill exposing the
-daemon's Block 11 operator contract as tools. Required P1 tools:
+**Builds:** integrations/hermes-plugin — a single Hermes plugin (not an MCP
+server, not a bare skill) exposing the daemon's Block 11 operator contract as
+plugin tools. The plugin has four parts: (1) `plugin.yaml` manifest declaring
+the toolset and `requires_env` for the daemon socket path; (2) `__init__.py`
+with `register(ctx)` calling `ctx.register_tool` for each of the 17 required
+P1 tools; (3) `schemas.py` + `tools.py` generated from or schema-tested
+against the Block 11 JSON/protobuf contracts (handlers shell out to the
+`agent` CLI with `--json`, they do not re-implement operator logic); (4) a
+bundled `SKILL.md` registered via `ctx.register_skill` that teaches the
+detect→init→validate→pack→run→inspect→repair flow. Required P1 tools:
 `agentpaas_init_project`/`agentpaas_reconcile_project`,
 `agentpaas_validate_project`, `agentpaas_doctor`, `agentpaas_pack`,
 `agentpaas_run`, `agentpaas_stop`, `agentpaas_logs`, `agentpaas_status`,
@@ -1875,14 +1883,36 @@ trust-boundary action can complete without the daemon confirmation protocol.
 The Hermes integration spec revision and generated schema fixtures are pinned
 in the integration package lock/test fixtures, not in a user's `agent.lock`.
 
-The Hermes plugin/skill includes SKILL.md plus native tool/MCP setup if Hermes
-requires it. It teaches the flow (detect agent code →
-`agentpaas_init_project` scaffold → validate → pack → run → inspect
-timeline/dashboard → show first audit event), with pitfalls (Docker not
-running → `agentpaas_doctor`; policy denial →
-`agentpaas_explain_policy_denial` then
-`agentpaas_recommend_policy_patch`). Terminal CLI commands remain documented
-fallback steps.
+Slash-command surface: in addition to the 17 tools, the plugin registers a
+small set of in-session slash commands via `ctx.register_command` so a user
+can drive the full lifecycle without leaving the Hermes session. Each command
+is a thin orchestrator that calls the plugin's own tools through
+`ctx.dispatch_tool` (so it goes through the same approval/redaction/budget
+pipelines as a model-invoked tool call), never re-implementing logic:
+- `/agentpaas deploy` — detect agent code → `agentpaas_init_project` →
+  validate → pack → run → print run_id and dashboard URL.
+- `/agentpaas status` — `agentpaas_status` across active runs; one-line
+  summary per run.
+- `/agentpaas logs [run_id]` — `agentpaas_logs` with tail/truncate.
+- `/agentpaas metrics [run_id]` — `agentpaas_get_run_timeline` +
+  `agentpaas_summarize_run` for the budget/denial/health view.
+- `/agentpaas repair [run_id]` — `agentpaas_explain_failure` →
+  `agentpaas_next_action` and, if the next action is auto-repairable
+  (fix_code/install_dependency/start_docker), drives it; otherwise surfaces
+  the confirmation requirement (policy patch, handoff, secret binding) for
+  explicit user approval.
+
+The Hermes plugin bundles a `SKILL.md` (via `ctx.register_skill`) that
+teaches the flow (detect agent code → `agentpaas_init_project` scaffold →
+validate → pack → run → inspect timeline/dashboard → show first audit
+event), with pitfalls (Docker not running → `agentpaas_doctor`; policy
+denial → `agentpaas_explain_policy_denial` then
+`agentpaas_recommend_policy_patch`). The `requires_env` manifest field
+gates the plugin on the daemon socket path and is prompted interactively
+during `hermes plugins install`. Terminal CLI commands remain documented
+fallback steps. The plugin does NOT register an `mcp_servers` block; the
+generic MCP server for Claude Code/Codex/Cursor is P2.
+
 Security stance: the Hermes integration talks ONLY to the loopback daemon
 socket; it never accepts remote connections; it inherits the daemon socket's
 local user permissions; and all paths are resolved against the invoking
@@ -1921,13 +1951,17 @@ embedded in agent source/log comments → no policy alteration, secret
 disclosure, audit deletion, gate disabling, or unrelated stop (negative test
 in CI).
 **SUCCESS GATE:** `make block13-gate` passes with scripted e2e on a clean machine after AgentPaaS is already
-installed: Hermes generates an agent → `agentpaas-deploy` → agent running
-governed → dashboard shows a DENIED probe → post-install deploy flow <10
-minutes; then Hermes is asked to change the agent prompt and must drive the
-same immutable redeploy path (edit project prompt/config → validate → pack →
-verify → run), with the second run reflecting the new prompt and audit
-showing distinct old/new digests. Hermes integration conformance tests pass
-against the spec revision pinned in the integration package.
+installed: Hermes generates an agent → `/agentpaas deploy` (or
+`agentpaas-deploy` via the tool) → agent running governed → dashboard shows
+a DENIED probe → post-install deploy flow <10 minutes; then Hermes is asked
+to change the agent prompt and must drive the same immutable redeploy path
+(edit project prompt/config → validate → pack → verify → run), with the
+second run reflecting the new prompt and audit showing distinct old/new
+digests. The `/agentpaas status`, `/agentpaas logs`, `/agentpaas metrics`,
+and `/agentpaas repair` slash commands are exercised in the e2e and return
+the same structured output as their tool counterparts. Hermes integration
+conformance tests pass against the spec revision pinned in the integration
+package.
 
 Demo matrix for P1 differentiation:
 1. **Governed weather/API agent:** generated agent attempts allowed weather
