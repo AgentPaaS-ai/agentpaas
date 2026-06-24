@@ -226,8 +226,17 @@ func (f *operatorInjectionFixture) Run() FixtureResult {
 		result.Detail = fmt.Sprintf("ExplainFailure(secret): %v", err)
 		return result
 	}
-	if strings.Contains(resp2.GetRootCause(), injectedSecret) {
+	rootCause2 := resp2.GetRootCause()
+	if strings.Contains(rootCause2, injectedSecret) {
 		result.Detail = "INJECTION BREAK: injected secret request text returned verbatim"
+		return result
+	}
+	if !strings.Contains(rootCause2, "[REDACTED]") {
+		result.Detail = "INJECTION BREAK: injected secret text not redacted in response"
+		return result
+	}
+	if len(injectedSecret) <= len(rootCause2) {
+		result.Detail = "INJECTION BREAK: response length suggests truncation rather than redaction of injected secret"
 		return result
 	}
 

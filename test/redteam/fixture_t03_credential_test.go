@@ -13,6 +13,51 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/secrets"
 )
 
+// recordingSecretStore wraps a SecretStore and records store.Get calls so
+// fixtures can prove credential material was not fetched before policy denial.
+type recordingSecretStore struct {
+	inner    secrets.SecretStore
+	getCalls int
+}
+
+func (r *recordingSecretStore) Set(ctx context.Context, name string, value []byte) error {
+	return r.inner.Set(ctx, name, value)
+}
+
+func (r *recordingSecretStore) Get(ctx context.Context, name string) ([]byte, error) {
+	r.getCalls++
+	return r.inner.Get(ctx, name)
+}
+
+func (r *recordingSecretStore) List(ctx context.Context) ([]secrets.SecretMeta, error) {
+	return r.inner.List(ctx)
+}
+
+func (r *recordingSecretStore) Delete(ctx context.Context, name string) error {
+	return r.inner.Delete(ctx, name)
+}
+
+func (r *recordingSecretStore) TouchLastUsed(ctx context.Context, name string) error {
+	return r.inner.TouchLastUsed(ctx, name)
+}
+
+func auditRecordsDenyCredential(records []audit.AuditRecord) bool {
+	for _, rec := range records {
+		if rec.EventType == audit.EventTypeSecretInjected {
+			if status, ok := rec.Payload["status"]; ok && fmt.Sprintf("%v", status) == "denied" {
+				return true
+			}
+		}
+		if reason, ok := rec.Payload["reason"]; ok {
+			reasonText := strings.ToLower(fmt.Sprintf("%v", reason))
+			if strings.Contains(reasonText, "denied") || strings.Contains(reasonText, "not allowed") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // credentialMisuseFixture (B12-T03): agent tries an allowed-looking request
 // with a disallowed host/method or brokered credential against the wrong
 // destination. Expect denied + policy rule/audit evidence.
@@ -67,11 +112,12 @@ func (f *credentialMisuseFixture) Run() FixtureResult {
 		},
 	}
 
-	store := secrets.NewFakeKeyStore()
-	if err := store.Set(ctx, "api-token", []byte("Bearer secret-token-T03")); err != nil {
+	baseStore := secrets.NewFakeKeyStore()
+	if err := baseStore.Set(ctx, "api-token", []byte("Bearer secret-token-T03")); err != nil {
 		result.Detail = fmt.Sprintf("store.Set: %v", err)
 		return result
 	}
+	store := &recordingSecretStore{inner: baseStore}
 
 	broker, err := secrets.NewBroker(secrets.BrokerConfig{
 		Store:      store,
@@ -89,7 +135,7 @@ func (f *credentialMisuseFixture) Run() FixtureResult {
 
 	// --- Probe 1: credentialed request to WRONG destination (evil.com) ---
 	// The gateway should deny before injecting the credential.
-evilServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	evilServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// If we see the Authorization header here, the credential leaked to evil.com
 		if r.Header.Get("Authorization") != "" {
 			w.WriteHeader(http.StatusOK)
@@ -112,6 +158,10 @@ evilServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r 
 	}
 	if !containsAny(err.Error(), "denied", "not allowed", "policy") {
 		result.Detail = fmt.Sprintf("wrong-destination denied but unexpected error: %v", err)
+		return result
+	}
+	if store.getCalls != 0 {
+		result.Detail = fmt.Sprintf("credential store.Get called %d time(s) before wrong-destination denial — injection not skipped", store.getCalls)
 		return result
 	}
 
@@ -151,25 +201,10 @@ evilServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r 
 		return result
 	}
 
-	// Check for egress_denied or policy_denied audit events
-	hasDenied := false
-	for _, rec := range records {
-		if strings.Contains(rec.EventType, "denied") || strings.Contains(rec.EventType, "deny") {
-			hasDenied = true
-			break
-		}
-	}
+	hasDenied := auditRecordsDenyCredential(records)
 	if !hasDenied {
-		// The broker may use a different event type; check for any event
-		// with "denied" in the payload reason
-		for _, rec := range records {
-			if reason, ok := rec.Payload["reason"]; ok {
-				if strings.Contains(fmt.Sprintf("%v", reason), "denied") {
-					hasDenied = true
-					break
-				}
-			}
-		}
+		result.Detail = "no secret_injected denied audit event or payload reason with denied/not allowed"
+		return result
 	}
 
 	result.Status = "PASS"

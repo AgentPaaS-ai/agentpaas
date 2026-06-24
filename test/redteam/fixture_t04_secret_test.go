@@ -2,9 +2,8 @@ package redteam
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"time"
@@ -13,6 +12,26 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/policy"
 	"github.com/parvezsyed/agentpaas/internal/secrets"
 )
+
+// sentinelLeakScan returns true when haystack contains the sentinel verbatim
+// or common encoded/truncated leak forms.
+func sentinelLeakScan(haystack, sentinel string) bool {
+	if strings.Contains(haystack, sentinel) {
+		return true
+	}
+	if strings.Contains(haystack, base64.StdEncoding.EncodeToString([]byte(sentinel))) {
+		return true
+	}
+	minTrunc := 12
+	if len(sentinel) > minTrunc {
+		for n := minTrunc; n < len(sentinel); n++ {
+			if strings.Contains(haystack, sentinel[:n]) || strings.Contains(haystack, sentinel[n:]) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // secretInvisibilityFixture (B12-T04): agent probes env, /proc, common
 // files, logs, and mounted secret paths for a brokered sentinel secret.
@@ -92,20 +111,10 @@ func (f *secretInvisibilityFixture) Run() FixtureResult {
 	gw := secrets.NewGateway(broker, nil)
 	_ = gw
 
-	// --- Probe 1: upstream receives the header via gateway injection ---
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = r.Header.Get("Authorization") // receivedHeader checked via broker below
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("OK"))
-	}))
-	defer upstream.Close()
-
-	// The gateway policy allows upstream.example.com, but we're hitting
-	// a local test server. The broker validates the destination against
-	// policy, so we need to use a URL the policy allows. Since the test
-	// server uses 127.0.0.1, the broker will deny it.
-	// Instead, verify the broker injects the credential correctly by
-	// calling RequestCredential directly.
+	// --- Probe 1: broker returns the exact header gateway.Do would inject ---
+	// Gateway.Do calls broker.RequestCredential before setting req.Header; a
+	// policy-matching destination therefore proves the injection payload even
+	// though httptest servers use 127.0.0.1 and cannot satisfy egress domain policy.
 	injection, err := broker.RequestCredential(ctx, "redteam-run-t04", "egress[0]", "https://upstream.example.com/api", "GET")
 	if err != nil {
 		result.Detail = fmt.Sprintf("RequestCredential failed: %v", err)
@@ -125,8 +134,8 @@ func (f *secretInvisibilityFixture) Run() FixtureResult {
 		result.Detail = fmt.Sprintf("readAuditFile: %v", err)
 		return result
 	}
-	if strings.Contains(auditData, sentinel) {
-		result.Detail = "SENTINEL LEAKED: raw sentinel value found in audit records"
+	if sentinelLeakScan(auditData, sentinel) {
+		result.Detail = "SENTINEL LEAKED: sentinel value (or encoded/truncated form) found in audit records"
 		return result
 	}
 
@@ -138,8 +147,8 @@ func (f *secretInvisibilityFixture) Run() FixtureResult {
 			hasInjectionEvent = true
 			// Verify the sentinel is NOT in the payload
 			payloadStr := marshalPayload(rec.Payload)
-			if strings.Contains(payloadStr, sentinel) {
-				result.Detail = "SENTINEL LEAKED: raw sentinel in audit payload"
+			if sentinelLeakScan(payloadStr, sentinel) {
+				result.Detail = "SENTINEL LEAKED: sentinel (or encoded/truncated form) in audit payload"
 				return result
 			}
 		}
@@ -173,7 +182,7 @@ func (f *secretInvisibilityFixture) Run() FixtureResult {
 	result.Containment = "CONTAINED"
 	result.AuditVerdict = "verified"
 	result.Duration = time.Since(start)
-	result.Detail = "sentinel injected via broker, not leaked to audit/env; upstream receives header"
+	result.Detail = "sentinel injected via broker.RequestCredential (gateway injection path), not leaked to audit/env"
 	return result
 }
 
