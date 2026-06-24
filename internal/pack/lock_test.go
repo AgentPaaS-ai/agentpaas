@@ -202,7 +202,7 @@ func TestSignImage(t *testing.T) {
 
 func TestCreateAgentLock(t *testing.T) {
 	installFakeTool(t, "syft", "#!/bin/sh\nprintf '%s' '{\"spdxVersion\":\"SPDX-2.3\",\"name\":\"agentpaas-test\"}'\n")
-	installFakeTool(t, "cosign", "#!/bin/sh\nexit 0\n")
+	installFakeTool(t, "cosign", fakeCosignScript())
 	key, _ := testKeyPair(t)
 	store := testStoreForKey(t, key)
 
@@ -243,7 +243,7 @@ func TestCreateAgentLock(t *testing.T) {
 }
 
 func TestVerifyAgentLock(t *testing.T) {
-	installFakeTool(t, "cosign", "#!/bin/sh\nexit 0\n")
+	installFakeTool(t, "cosign", fakeCosignScript())
 	lock, _ := signedTestLock(t)
 	sbomPath := filepath.Join(testSecureTempDir(t), "sbom.spdx.json")
 	sbom := []byte(`{"spdxVersion":"SPDX-2.3"}`)
@@ -375,6 +375,28 @@ func privateKeyPEMForTest(t *testing.T, key *ecdsa.PrivateKey) []byte {
 		t.Fatalf("MarshalPKCS8PrivateKey: %v", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
+}
+
+func fakeCosignScript() string {
+	return `#!/bin/sh
+if [ "$1" = "import-key-pair" ]; then
+  prefix=""
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -o|--output-key-prefix) prefix="$2"; shift 2 ;;
+      -k|--key) shift 2 ;;
+      -y|--yes) shift ;;
+      *) shift ;;
+    esac
+  done
+  if [ -z "$prefix" ]; then prefix="import-cosign"; fi
+  printf '%s\n' '-----BEGIN ENCRYPTED SIGSTORE PRIVATE KEY-----' 'fake' '-----END ENCRYPTED SIGSTORE PRIVATE KEY-----' > "${prefix}.key"
+  printf '%s\n' '-----BEGIN PUBLIC KEY-----' 'fake' '-----END PUBLIC KEY-----' > "${prefix}.pub"
+  exit 0
+fi
+exit 0
+`
 }
 
 func installFakeTool(t *testing.T, name string, body string) {
