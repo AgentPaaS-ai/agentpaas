@@ -13,6 +13,7 @@ import (
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/dashboard"
 	"github.com/parvezsyed/agentpaas/internal/home"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -46,6 +47,8 @@ type Daemon struct {
 	auditIndex    *audit.SQLiteIndexer
 	confirmations *ConfirmationStore
 	control       *stubControlServer
+	dashboard     *dashboard.Server
+	dashboardAddr string
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -68,6 +71,14 @@ type Option func(*Daemon)
 func WithAllowRoot() Option {
 	return func(d *Daemon) {
 		d.allowRoot = true
+	}
+}
+
+// WithDashboard sets the dashboard listen address. Pass an empty string to
+// disable the dashboard server.
+func WithDashboard(addr string) Option {
+	return func(d *Daemon) {
+		d.dashboardAddr = addr
 	}
 }
 
@@ -213,6 +224,28 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.auditIndex = auditIndex
 
+	dashboardAddr := d.dashboardAddr
+	if dashboardAddr == "" {
+		dashboardAddr = os.Getenv("AGENTPAAS_DASHBOARD_ADDR")
+	}
+	if dashboardAddr == "" {
+		dashboardAddr = "127.0.0.1:8090"
+	}
+	if dashboardAddr != "off" && dashboardAddr != "disabled" {
+		d.dashboard = dashboard.NewServerWithAudit(
+			dashboardAddr,
+			"",
+			nil,
+			nil,
+			d.auditIndex,
+		)
+		go func() {
+			if err := d.dashboard.ListenAndServe(); err != nil {
+				fmt.Fprintf(os.Stderr, "daemon: dashboard error: %v\n", err)
+			}
+		}()
+	}
+
 	// Create gRPC server with readiness interceptor.
 	d.server = grpc.NewServer(
 		grpc.UnaryInterceptor(d.readinessInterceptor),
@@ -309,6 +342,12 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	if d.control != nil {
 		detachConfirmationStore(d.control)
 		d.control = nil
+	}
+	if d.dashboard != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = d.dashboard.Shutdown(shutdownCtx)
+		shutdownCancel()
+		d.dashboard = nil
 	}
 
 	// Clean up files.

@@ -12,6 +12,10 @@ const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 
 
 func authMiddleware(apiKey string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if apiKey == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		auth := r.Header.Get("Authorization")
 		if !strings.HasPrefix(auth, "Bearer ") {
 			writeJSONError(w, http.StatusUnauthorized, "unauthorized")
