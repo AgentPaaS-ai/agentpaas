@@ -42,12 +42,14 @@ TRUSTED_CONTROL_FIELDS = frozenset({
     "duration_ms", "invocations", "policy_denials", "root_cause",
     "denied_action", "proposed_patch", "summary", "events",
     "audit_seq", "event_type", "timestamp", "detail",
+    "category", "message", "type", "ref",
 })
 
 # Untrusted evidence fields (may contain agent/log/source content)
 UNTRUSTED_EVIDENCE_FIELDS = frozenset({
     "redacted_excerpts", "evidence_refs", "raw_output_truncated",
     "content",  # within RedactedExcerpt
+    "source", "start_line", "end_line",
 })
 
 # Per-response required field contracts.
@@ -57,7 +59,8 @@ RESPONSE_CONTRACTS = {
     "validate": {
         "required": ["schema_version", "ready", "project_dir"],
         "optional": ["runtime", "issues"],
-        # if issues present, each issue must have: category, message, next_action
+        # each item in issues follows NESTED_CONTRACTS["validation_issue"]
+        "nested": {"issues": "validation_issue"},
     },
     "summarize": {
         "required": ["schema_version", "run_id", "status", "summary"],
@@ -67,6 +70,7 @@ RESPONSE_CONTRACTS = {
     "explain-failure": {
         "required": ["schema_version", "run_id", "error_category", "root_cause", "next_action"],
         "optional": ["redacted_excerpts", "evidence_refs"],
+        "nested": {"redacted_excerpts": "redacted_excerpt"},
     },
     "explain-denial": {
         "required": ["schema_version", "denied_action", "blocking_rule_id",
@@ -77,11 +81,13 @@ RESPONSE_CONTRACTS = {
         "required": ["schema_version", "proposed_patch", "risk_level",
                       "rationale", "next_action", "confirmation"],
         "optional": ["affected_destinations", "credential_ids", "evidence_refs"],
-        # confirmation must be a dict with requires_confirmation=True
+        # confirmation follows NESTED_CONTRACTS["confirmation_requirement"]
+        "nested": {"confirmation": "confirmation_requirement"},
     },
     "timeline": {
         "required": ["schema_version", "run_id", "events"],
-        # each event: timestamp, event_type, detail
+        # each event in events follows NESTED_CONTRACTS["timeline_event"]
+        "nested": {"events": "timeline_event"},
     },
     "next-action": {
         "required": ["schema_version", "next_action", "rationale"],
@@ -98,4 +104,29 @@ TOOL_TO_CONTRACT = {
     "agentpaas_recommend_policy_patch": ("recommend-patch", "recommend-patch"),
     "agentpaas_get_run_timeline": ("timeline", "timeline"),
     "agentpaas_next_action": ("next-action", "next-action"),
+}
+
+# Nested struct field contracts (fields within complex response fields)
+NESTED_CONTRACTS = {
+    "validation_issue": {
+        "required": ["category", "message", "next_action"],
+        "optional": ["evidence_refs"],
+    },
+    "timeline_event": {
+        "required": ["timestamp", "event_type", "detail"],
+        "optional": ["audit_seq", "evidence_refs"],
+    },
+    "redacted_excerpt": {
+        "required": ["source", "content"],
+        "optional": ["start_line", "end_line"],
+    },
+    "evidence_ref": {
+        "required": ["type", "ref"],
+        "optional": ["detail"],
+    },
+    "confirmation_requirement": {
+        "required": ["requires_confirmation"],
+        "optional": ["confirmation_id", "risk_level", "rationale",
+                      "affected_destinations", "credential_ids", "evidence_refs"],
+    },
 }

@@ -143,8 +143,19 @@ def _minimal_field_value(field):
             "requires_confirmation": True,
             "confirmation_id": "conf_123",
         },
+        "issues": [
+            {
+                "category": "dependency_conflict",
+                "message": "Missing dependency.",
+                "next_action": "install_dependency",
+            }
+        ],
+        "runtime": "python",
     }
     return values[field]
+
+
+_COMPLEX_RESPONSE_FIELDS = frozenset({"issues", "events", "confirmation"})
 
 
 def _build_minimal_response(subcommand, contracts):
@@ -367,6 +378,131 @@ class SchemaVersionParityTests(unittest.TestCase):
                 resp = _build_minimal_response(contract_key, self.contracts)
                 self.assertIn("schema_version", resp)
                 self.assertEqual(resp["schema_version"], self.contracts.SCHEMA_VERSION)
+
+
+class NestedFieldParityTests(unittest.TestCase):
+    """Verify nested struct fields match NESTED_CONTRACTS."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.plugin = _load_plugin_package()
+        cls.contracts = cls.plugin.contracts
+
+    def test_nested_contracts_defined_for_all_complex_fields(self):
+        expected = {
+            "validation_issue", "timeline_event", "redacted_excerpt",
+            "evidence_ref", "confirmation_requirement",
+        }
+        self.assertEqual(set(self.contracts.NESTED_CONTRACTS.keys()), expected)
+
+    def test_validation_issue_fields(self):
+        cli_response = _build_minimal_response("validate", self.contracts)
+        cli_response["issues"] = [
+            {
+                "category": "dependency_conflict",
+                "message": "Package not installed.",
+                "next_action": "install_dependency",
+            }
+        ]
+        parsed = _invoke_handler(
+            self.plugin, "agentpaas_validate_project", cli_response,
+        )
+        nested = self.contracts.NESTED_CONTRACTS["validation_issue"]
+        for issue in parsed["issues"]:
+            for field in nested["required"]:
+                self.assertIn(field, issue)
+
+    def test_timeline_event_fields(self):
+        cli_response = _build_minimal_response("timeline", self.contracts)
+        parsed = _invoke_handler(
+            self.plugin, "agentpaas_get_run_timeline", cli_response,
+        )
+        nested = self.contracts.NESTED_CONTRACTS["timeline_event"]
+        for event in parsed["events"]:
+            for field in nested["required"]:
+                self.assertIn(field, event)
+
+    def test_redacted_excerpt_fields(self):
+        cli_response = _build_minimal_response("explain-failure", self.contracts)
+        cli_response["redacted_excerpts"] = [
+            {"source": "agent/main.py", "content": "raise ValueError('[REDACTED]')"},
+        ]
+        parsed = _invoke_handler(
+            self.plugin, "agentpaas_explain_failure", cli_response,
+        )
+        nested = self.contracts.NESTED_CONTRACTS["redacted_excerpt"]
+        for excerpt in parsed["redacted_excerpts"]:
+            for field in nested["required"]:
+                self.assertIn(field, excerpt)
+
+    def test_evidence_ref_fields(self):
+        cli_response = _build_minimal_response("explain-failure", self.contracts)
+        cli_response["evidence_refs"] = [
+            {"type": "audit_seq", "ref": "42"},
+            {"type": "policy_rule", "ref": "egress[2]", "detail": "denial"},
+        ]
+        parsed = _invoke_handler(
+            self.plugin, "agentpaas_explain_failure", cli_response,
+        )
+        nested = self.contracts.NESTED_CONTRACTS["evidence_ref"]
+        for ref in parsed["evidence_refs"]:
+            for field in nested["required"]:
+                self.assertIn(field, ref)
+
+    def test_confirmation_requirement_fields(self):
+        cli_response = _build_minimal_response("recommend-patch", self.contracts)
+        parsed = _invoke_handler(
+            self.plugin, "agentpaas_recommend_policy_patch", cli_response,
+        )
+        nested = self.contracts.NESTED_CONTRACTS["confirmation_requirement"]
+        for field in nested["required"]:
+            self.assertIn(field, parsed["confirmation"])
+
+
+class TrustBoundaryClassificationTests(unittest.TestCase):
+    """Verify every contract field is classified as trusted or untrusted."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.plugin = _load_plugin_package()
+        cls.contracts = cls.plugin.contracts
+        cls.classified = (
+            cls.contracts.TRUSTED_CONTROL_FIELDS
+            | cls.contracts.UNTRUSTED_EVIDENCE_FIELDS
+            | _COMPLEX_RESPONSE_FIELDS
+        )
+
+    def test_all_contract_fields_are_classified(self):
+        for contract_key, contract in self.contracts.RESPONSE_CONTRACTS.items():
+            with self.subTest(contract=contract_key):
+                fields = set(contract["required"]) | set(contract.get("optional", []))
+                unclassified = fields - self.classified
+                self.assertEqual(
+                    unclassified, set(),
+                    f"unclassified fields in {contract_key}: {sorted(unclassified)}",
+                )
+
+    def test_nested_contract_fields_are_classified(self):
+        trusted = self.contracts.TRUSTED_CONTROL_FIELDS
+        untrusted = self.contracts.UNTRUSTED_EVIDENCE_FIELDS
+        for nested_key, nested in self.contracts.NESTED_CONTRACTS.items():
+            with self.subTest(nested=nested_key):
+                fields = set(nested["required"]) | set(nested.get("optional", []))
+                for field in fields:
+                    self.assertTrue(
+                        field in trusted or field in untrusted,
+                        f"{nested_key}.{field} not classified",
+                    )
+
+    def test_trusted_and_untrusted_sets_are_disjoint(self):
+        overlap = (
+            self.contracts.TRUSTED_CONTROL_FIELDS
+            & self.contracts.UNTRUSTED_EVIDENCE_FIELDS
+        )
+        self.assertEqual(overlap, set())
+
+    def test_error_category_is_trusted(self):
+        self.assertIn("error_category", self.contracts.TRUSTED_CONTROL_FIELDS)
 
 
 class ErrorEnvelopeParityTests(unittest.TestCase):
