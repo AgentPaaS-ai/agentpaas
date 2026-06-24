@@ -125,6 +125,17 @@ func fromContextStore() (host string, contextName string, err error) {
 	return "", cfg.CurrentContext, fmt.Errorf("context %q not found in store", cfg.CurrentContext)
 }
 
+// ResolvedDockerHost returns the Docker daemon endpoint using the same
+// resolution order as New. Child processes (syft, cosign) only honor
+// DOCKER_HOST and do not read the Docker context store.
+func ResolvedDockerHost() (string, error) {
+	host, _, err := resolveHost()
+	if err != nil {
+		return "", fmt.Errorf("resolve Docker host: %w", err)
+	}
+	return host, nil
+}
+
 // New returns a Docker client configured with the resolved endpoint, plus
 // API version negotiation. TLS settings are applied when the resolved host
 // uses TLS (tcp:// with certs configured in the context). It is safe to

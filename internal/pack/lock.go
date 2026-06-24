@@ -18,7 +18,11 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
+
+const noTlogSigningConfigJSON = `{"mediaType":"application/vnd.dev.sigstore.signingconfig.v0.2+json","rekorTlogConfig":{},"tsaConfig":{}}`
 
 // LockSchemaVersion is the current agent.lock schema version.
 const LockSchemaVersion = 1
@@ -122,6 +126,7 @@ func GenerateSBOM(ctx context.Context, imageRef string) (sbom []byte, digest str
 	cmdCtx, cancel := context.WithTimeout(ctx, externalSignatureTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(cmdCtx, "syft", "scan", "--scope", "all-layers", "--output", "spdx-json", imageRef)
+	cmd.Env = append(os.Environ(), dockerHostEnv()...)
 	output, err := cmd.Output()
 	if cmdCtx.Err() != nil {
 		return nil, "", fmt.Errorf("generate sbom: %w", cmdCtx.Err())
@@ -149,16 +154,19 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 
 	cmdCtx, cancel := context.WithTimeout(ctx, externalSignatureTimeout)
 	defer cancel()
-	// cosign v2 used --tlog-upload=false to skip the transparency log. In
-	// cosign v3.x that flag is deprecated and conflicts with the default
-	// --use-signing-config=true. Use --use-signing-config=false to disable
-	// the signing-config path (which requires a tlog), combined with
-	// --tlog-upload=false for older cosign versions that still support it.
+
+	signingConfigPath, cleanupConfig, err := ensureNoTlogSigningConfig()
+	if err != nil {
+		return "", err
+	}
+	defer cleanupConfig()
+
 	cmd := exec.CommandContext(cmdCtx, "cosign", "sign",
 		"--key", keyPath,
-		"--use-signing-config=false",
-		"--tlog-upload=false",
+		"--signing-config", signingConfigPath,
+		"--allow-insecure-registry",
 		"--yes", imageRef)
+	cmd.Env = append(os.Environ(), dockerHostEnv()...)
 	output, err := cmd.CombinedOutput()
 	if cmdCtx.Err() != nil {
 		return "", fmt.Errorf("sign image: %w", cmdCtx.Err())
@@ -505,6 +513,36 @@ func publicKeyPEM(pub *ecdsa.PublicKey) ([]byte, error) {
 		return nil, fmt.Errorf("marshal public key: %w", err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), nil
+}
+
+func dockerHostEnv() []string {
+	host, err := dockerclient.ResolvedDockerHost()
+	if err != nil || host == "" {
+		if env := os.Getenv("DOCKER_HOST"); env != "" {
+			return []string{"DOCKER_HOST=" + env}
+		}
+		return nil
+	}
+	return []string{"DOCKER_HOST=" + host}
+}
+
+func ensureNoTlogSigningConfig() (string, func(), error) {
+	f, err := os.CreateTemp("", "agentpaas-signing-config-*.json")
+	if err != nil {
+		return "", nil, fmt.Errorf("create signing config: %w", err)
+	}
+	path := f.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if _, err := f.WriteString(noTlogSigningConfigJSON); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", nil, fmt.Errorf("write signing config: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("close signing config: %w", err)
+	}
+	return path, cleanup, nil
 }
 
 func writeTempKey(keyPEM []byte) (string, func(), error) {
