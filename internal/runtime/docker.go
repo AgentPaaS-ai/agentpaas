@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
 
 // defaultImage is the default container image used for agent and gateway
@@ -34,9 +36,9 @@ type DockerRuntime struct {
 // API. It discovers the Docker daemon through environment variables
 // (DOCKER_HOST, DOCKER_API_VERSION) or defaults to the local socket.
 func NewDockerRuntime() (*DockerRuntime, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := dockerclient.New()
 	if err != nil {
-		return nil, fmt.Errorf("DockerRuntime: create client: %w", err)
+		return nil, fmt.Errorf("DockerRuntime: %w", err)
 	}
 
 	// Verify the daemon is reachable by pinging it. We return the runtime
@@ -271,9 +273,37 @@ func (d *DockerRuntime) Stats(_ context.Context, _ ContainerID) (ContainerStats,
 	return ContainerStats{}, errDockerNotImplemented
 }
 
-// Logs returns a reader for a Docker container's output. Not yet implemented.
-func (d *DockerRuntime) Logs(_ context.Context, _ ContainerID, _ LogOptions) (io.ReadCloser, error) {
-	return nil, errDockerNotImplemented
+// Logs returns a reader for a Docker container's stdout/stderr output.
+func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error) {
+	if string(id) == "" {
+		return nil, fmt.Errorf("%w: empty container ID", ErrContainerNotFound)
+	}
+	if d.cli == nil {
+		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+	}
+
+	tail := strconv.Itoa(opts.Tail)
+	if opts.Tail <= 0 {
+		tail = "all"
+	}
+	logOpts := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     opts.Follow,
+		Tail:       tail,
+	}
+	if opts.Since != nil {
+		logOpts.Since = opts.Since.Format(time.RFC3339Nano)
+	}
+
+	reader, err := d.cli.ContainerLogs(ctx, string(id), logOpts)
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
+		}
+		return nil, fmt.Errorf("container logs: %w", err)
+	}
+	return reader, nil
 }
 
 // CreateNetwork provisions a new Docker network from the given spec and

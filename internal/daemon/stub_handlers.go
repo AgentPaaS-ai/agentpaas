@@ -2,9 +2,12 @@ package daemon
 
 import (
 	"context"
+	"sync"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/home"
+	"github.com/parvezsyed/agentpaas/internal/runtime"
 )
 
 // stubControlServer implements the ControlServiceServer interface by embedding
@@ -14,11 +17,26 @@ import (
 //
 // This lets the daemon start, accept connections, and respond to the Doctor
 // diagnostic RPC while the remaining methods await real implementations.
+type trackedRun struct {
+	Container runtime.ContainerID
+	Network   string
+}
+
 type stubControlServer struct {
 	controlv1.UnimplementedControlServiceServer
 
 	version    VersionInfo
 	auditIndex *audit.SQLiteIndexer
+	homePaths  *home.HomePaths
+
+	runMu       sync.Mutex
+	runs        map[string]trackedRun
+	secretMu    sync.Mutex
+	secretGrants map[string]map[string]struct{}
+
+	runtimeOnce sync.Once
+	runtimeErr  error
+	dockerRT    *runtime.DockerRuntime
 }
 
 // compile-time interface check.

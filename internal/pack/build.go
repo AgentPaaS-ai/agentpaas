@@ -18,7 +18,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/build"
-	"github.com/docker/docker/client"
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
 
 const (
@@ -91,7 +91,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		return nil, err
 	}
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := dockerclient.New()
 	if err != nil {
 		return nil, fmt.Errorf("create Docker client: %w", err)
 	}

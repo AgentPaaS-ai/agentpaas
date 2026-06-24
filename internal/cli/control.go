@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -31,6 +32,11 @@ func newPackCmd() *cobra.Command {
 			if len(args) > 0 {
 				projectDir = args[0]
 			}
+			absPath, err := resolveCLIProjectPath(projectDir)
+			if err != nil {
+				return err
+			}
+			projectDir = absPath
 			agentName, _ := cmd.Flags().GetString("name")
 			agentVersion, _ := cmd.Flags().GetString("version")
 
@@ -889,7 +895,10 @@ func newValidateCmd() *cobra.Command {
 		Short: "Validate an agent project directory structure",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			projectPath := args[0]
+			projectPath, err := resolveCLIProjectPath(args[0])
+			if err != nil {
+				return err
+			}
 			sock, err := socketPath(cmd)
 			if err != nil {
 				return err
@@ -1258,6 +1267,16 @@ func newNextActionCmd() *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+// resolveCLIProjectPath converts a CLI project path argument to an absolute
+// path in the client's working directory before sending it to the daemon.
+func resolveCLIProjectPath(projectPath string) (string, error) {
+	absPath, err := filepath.Abs(projectPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve project path %q: %w", projectPath, err)
+	}
+	return absPath, nil
 }
 
 // contextWithTimeout is a helper that creates a context with the given timeout.

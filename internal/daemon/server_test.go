@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"runtime"
 	"syscall"
@@ -158,17 +159,17 @@ func TestDaemonReadyReturnsStubResponse(t *testing.T) {
 		t.Errorf("OverallStatus = %q, want %q", resp.OverallStatus, "ok")
 	}
 
-	// Other RPCs should return Unimplemented.
+	// Pack validates required fields before executing.
 	_, err = client.Pack(ctx, &controlv1.PackRequest{})
 	if err == nil {
-		t.Fatal("expected error for unimplemented Pack, got nil")
+		t.Fatal("expected error for empty Pack request, got nil")
 	}
 	st, ok := status.FromError(err)
 	if !ok {
 		t.Fatalf("expected gRPC status error, got: %v", err)
 	}
-	if st.Code() != codes.Unimplemented {
-		t.Errorf("expected Unimplemented, got %s: %v", st.Code(), st.Message())
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %s: %v", st.Code(), st.Message())
 	}
 }
 
@@ -194,17 +195,17 @@ func TestClientConnectsAndGetsUnimplemented(t *testing.T) {
 	conn := dialSocket(t, hp.Socket)
 	client := controlv1.NewControlServiceClient(conn)
 
-	// Run is not implemented by stub — should return Unimplemented.
+	// Run validates required fields before executing.
 	_, err = client.Run(ctx, &controlv1.RunRequest{})
 	if err == nil {
-		t.Fatal("expected error for unimplemented Run, got nil")
+		t.Fatal("expected error for empty Run request, got nil")
 	}
 	st, ok := status.FromError(err)
 	if !ok {
 		t.Fatalf("expected gRPC status error, got: %v", err)
 	}
-	if st.Code() != codes.Unimplemented {
-		t.Errorf("expected Unimplemented, got %s: %v", st.Code(), st.Message())
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %s: %v", st.Code(), st.Message())
 	}
 }
 
@@ -695,4 +696,48 @@ func TestDaemonNoTcpListener(t *testing.T) {
 // Ensure the Doc.go file exists and compiles.
 func TestPackageDocCompiles(t *testing.T) {
 	// Just verify the package exists — compilation check is done by go build.
+}
+
+func TestDaemonStartsDashboard(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close()
+
+	hp := shortTempPaths(t)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := New(hp, testVersion(), WithAllowRoot(), WithDashboard(addr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = d.Stop(context.Background()) }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := d.Start(ctx); err != nil {
+		t.Fatalf("Start() failed: %v", err)
+	}
+	d.Ready()
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	var lastErr error
+	for i := 0; i < 20; i++ {
+		resp, err := client.Get("http://" + addr + "/api/health")
+		if err == nil {
+			_ = resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return
+			}
+			lastErr = fmt.Errorf("status %d", resp.StatusCode)
+		} else {
+			lastErr = err
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("dashboard not reachable at %s: %v", addr, lastErr)
 }

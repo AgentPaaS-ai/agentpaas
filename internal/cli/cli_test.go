@@ -10,7 +10,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/parvezsyed/agentpaas/internal/home"
 	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 )
@@ -308,9 +310,14 @@ func TestDaemonStatus_NotRunningJSON(t *testing.T) {
 func TestDaemonStart_ExitImmediate_NoPanic(t *testing.T) {
 	tmpHome := t.TempDir()
 
-	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
-	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-		t.Fatalf("write fake daemon: %v", err)
+	// Use a compiled binary (/usr/bin/false exits with code 1) instead of a
+	// shell script. Shell scripts incur shell startup overhead which under
+	// heavy parallel test contention (20+ test binaries) can exceed the grace
+	// period, causing a false "success" and a flaky test. A compiled binary
+	// exits within microseconds regardless of system load.
+	fakeDaemon := "/usr/bin/false"
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("fake daemon binary only available on unix")
 	}
 
 	oldResolver := daemonBinaryResolver
@@ -352,7 +359,7 @@ func TestDaemonStart_StaysAlive_Success(t *testing.T) {
 	tmpHome := t.TempDir()
 
 	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
-	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nsleep 2\n"), 0o755); err != nil {
+	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
 		t.Fatalf("write fake daemon: %v", err)
 	}
 
@@ -390,6 +397,153 @@ func TestDaemonStart_StaysAlive_Success(t *testing.T) {
 			_ = proc.Kill()
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// TestBuildDaemonStartCommand_RedirectsStdioToLogFile
+// Tests: daemon subprocess stdout/stderr are redirected to daemon.log, not the
+// terminal.
+// ---------------------------------------------------------------------------
+func TestBuildDaemonStartCommand_RedirectsStdioToLogFile(t *testing.T) {
+	tmpHome := t.TempDir()
+	paths := home.NewHomePaths(tmpHome)
+
+	resetAgentCmd()
+	root := freshCmd()
+	if err := root.PersistentFlags().Set("home", tmpHome); err != nil {
+		t.Fatalf("set home flag: %v", err)
+	}
+	root.PersistentFlags().Lookup("home").Changed = true
+
+	daemonCmd := findSubCmd(root, "daemon")
+	if daemonCmd == nil {
+		t.Fatal("expected 'daemon' subcommand")
+	}
+	startCmd := findSubCmd(daemonCmd, "start")
+	if startCmd == nil {
+		t.Fatal("expected 'daemon start' subcommand")
+	}
+
+	cmdDaemon, logFile, err := buildDaemonStartCommand(startCmd, "/fake/agentpaasd", paths)
+	if err != nil {
+		t.Fatalf("buildDaemonStartCommand: %v", err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+
+	if cmdDaemon.Stdout == os.Stdout {
+		t.Error("daemon stdout must not be os.Stdout")
+	}
+	if cmdDaemon.Stderr == os.Stderr {
+		t.Error("daemon stderr must not be os.Stderr")
+	}
+	if cmdDaemon.Stdin != nil {
+		t.Error("daemon stdin should be nil")
+	}
+
+	logPath := filepath.Join(paths.Logs, "daemon.log")
+	stdoutFile, ok := cmdDaemon.Stdout.(*os.File)
+	if !ok {
+		t.Fatalf("stdout should be *os.File, got %T", cmdDaemon.Stdout)
+	}
+	if stdoutFile.Name() != logPath {
+		t.Errorf("stdout file = %q, want %q", stdoutFile.Name(), logPath)
+	}
+	if stderrFile, ok := cmdDaemon.Stderr.(*os.File); !ok || stderrFile.Name() != logPath {
+		t.Errorf("stderr should point to %s", logPath)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestBuildDaemonStartCommand_DedupesEnvVars
+// Tests: when AGENTPAAS_HOME is already in the environment and --home is passed,
+// the daemon subprocess env has exactly one AGENTPAAS_HOME with the flag value.
+// ---------------------------------------------------------------------------
+func TestBuildDaemonStartCommand_DedupesEnvVars(t *testing.T) {
+	tmpHome := t.TempDir()
+	paths := home.NewHomePaths(tmpHome)
+
+	t.Setenv("AGENTPAAS_HOME", "/old/home")
+	t.Setenv("AGENTPAAS_SOCKET", "/old/socket.sock")
+
+	resetAgentCmd()
+	root := freshCmd()
+	if err := root.PersistentFlags().Set("home", tmpHome); err != nil {
+		t.Fatalf("set home flag: %v", err)
+	}
+	root.PersistentFlags().Lookup("home").Changed = true
+
+	daemonCmd := findSubCmd(root, "daemon")
+	startCmd := findSubCmd(daemonCmd, "start")
+
+	cmdDaemon, logFile, err := buildDaemonStartCommand(startCmd, "/fake/agentpaasd", paths)
+	if err != nil {
+		t.Fatalf("buildDaemonStartCommand: %v", err)
+	}
+	_ = logFile.Close()
+
+	var homeCount int
+	var homeValue string
+	var socketCount int
+	for _, e := range cmdDaemon.Env {
+		if strings.HasPrefix(e, "AGENTPAAS_HOME=") {
+			homeCount++
+			homeValue = strings.TrimPrefix(e, "AGENTPAAS_HOME=")
+		}
+		if strings.HasPrefix(e, "AGENTPAAS_SOCKET=") {
+			socketCount++
+		}
+	}
+
+	if homeCount != 1 {
+		t.Fatalf("expected exactly one AGENTPAAS_HOME, got %d", homeCount)
+	}
+	if homeValue != tmpHome {
+		t.Errorf("AGENTPAAS_HOME = %q, want %q", homeValue, tmpHome)
+	}
+	if socketCount != 1 {
+		t.Fatalf("expected exactly one AGENTPAAS_SOCKET, got %d", socketCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDaemonStart_ReturnsPromptly
+// Tests: runDaemonStart returns within a few seconds when the daemon stays
+// alive (does not hang waiting on inherited terminal FDs).
+// ---------------------------------------------------------------------------
+func TestDaemonStart_ReturnsPromptly(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
+	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatalf("write fake daemon: %v", err)
+	}
+
+	oldResolver := daemonBinaryResolver
+	daemonBinaryResolver = func() (string, error) { return fakeDaemon, nil }
+	t.Cleanup(func() {
+		daemonBinaryResolver = oldResolver
+		resetAgentCmd()
+	})
+
+	resetAgentCmd()
+	cmd := freshCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"daemon", "start", "--home", tmpHome})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Execute()
+	}()
+
+	select {
+	case execErr := <-done:
+		if execErr != nil {
+			t.Fatalf("expected success, got: %v", execErr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("daemon start hung — did not return within 5 seconds")
+	}
 }
 
 // ---------------------------------------------------------------------------

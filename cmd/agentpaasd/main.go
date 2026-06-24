@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/daemon"
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 	"github.com/parvezsyed/agentpaas/internal/home"
 )
 
@@ -33,6 +34,13 @@ func main() {
 		fmt.Println(v.String())
 		os.Exit(0)
 	}
+
+	// Export the resolved Docker endpoint to DOCKER_HOST so that child
+	// processes spawned by the daemon (syft, cosign, etc.) can reach a
+	// Docker daemon that is configured via Docker context (colima, Docker
+	// Desktop) rather than an explicit DOCKER_HOST env var. This is a no-op
+	// when DOCKER_HOST is already set or the default socket is in use.
+	_ = dockerclient.ExportHostToEnv()
 
 	// Resolve home directory.
 	homeDir, err := home.DiscoverHome()
