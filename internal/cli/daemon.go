@@ -153,6 +153,29 @@ func osArchFromString(s string) string {
 	return "unknown"
 }
 
+// daemonBinaryResolver resolves the agentpaasd binary path. Tests may override it.
+var daemonBinaryResolver = resolveDaemonBinary
+
+func resolveDaemonBinary() (string, error) {
+	// Find the agentpaasd binary. First check same directory as the agent binary.
+	agentPath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("cannot locate agent binary: %w", err)
+	}
+	agentDir := filepath.Dir(agentPath)
+	daemonBinary := filepath.Join(agentDir, "agentpaasd")
+
+	// If not found next to the agent, try PATH.
+	if _, err := os.Stat(daemonBinary); os.IsNotExist(err) {
+		var err2 error
+		daemonBinary, err2 = exec.LookPath("agentpaasd")
+		if err2 != nil {
+			return "", fmt.Errorf("cannot find agentpaasd binary (checked next to agent and in PATH): %w", err)
+		}
+	}
+	return daemonBinary, nil
+}
+
 // newDaemonStartCmd creates the `agent daemon start` command.
 func newDaemonStartCmd() *cobra.Command {
 	return &cobra.Command{
@@ -176,21 +199,9 @@ func runDaemonStart(cmd *cobra.Command) error {
 	}
 	paths := home.NewHomePaths(homeDir)
 
-	// Find the agentpaasd binary. First check same directory as the agent binary.
-	agentPath, err := os.Executable()
+	daemonBinary, err := daemonBinaryResolver()
 	if err != nil {
-		return fmt.Errorf("cannot locate agent binary: %w", err)
-	}
-	agentDir := filepath.Dir(agentPath)
-	daemonBinary := filepath.Join(agentDir, "agentpaasd")
-
-	// If not found next to the agent, try PATH.
-	if _, err := os.Stat(daemonBinary); os.IsNotExist(err) {
-		var err2 error
-		daemonBinary, err2 = exec.LookPath("agentpaasd")
-		if err2 != nil {
-			return fmt.Errorf("cannot find agentpaasd binary (checked next to agent and in PATH): %w", err)
-		}
+		return err
 	}
 
 	// Ensure home directory exists.
@@ -218,11 +229,12 @@ func runDaemonStart(cmd *cobra.Command) error {
 	cmdDaemon.Stderr = os.Stderr
 	// Don't inherit the CLI's stdin — the daemon should be independent.
 	// Pass the AGENTPAAS_HOME and AGENTPAAS_SOCKET env vars if overridden.
+	cmdDaemon.Env = os.Environ()
 	if cmd.Root().PersistentFlags().Changed("home") {
-		cmdDaemon.Env = append(os.Environ(), "AGENTPAAS_HOME="+homeDir)
+		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_HOME="+homeDir)
 	}
 	if sock, _ := socketPath(cmd); sock != "" {
-		cmdDaemon.Env = append(os.Environ(), "AGENTPAAS_SOCKET="+sock)
+		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_SOCKET="+sock)
 	}
 
 	if err := cmdDaemon.Start(); err != nil {
@@ -231,14 +243,27 @@ func runDaemonStart(cmd *cobra.Command) error {
 
 	fmt.Printf("Daemon started (PID %d)\n", cmdDaemon.Process.Pid)
 
-	// Wait briefly and check if it's still alive.
-	time.Sleep(500 * time.Millisecond)
-	if !cmdDaemon.ProcessState.Exited() {
+	// Wait for the daemon to either stay alive past the grace period or exit early.
+	// We cannot use cmdDaemon.ProcessState here — it is nil until Wait() returns.
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmdDaemon.Wait()
+	}()
+
+	select {
+	case err := <-waitCh:
+		// Process exited during the grace period.
+		exitCode := -1
+		if cmdDaemon.ProcessState != nil {
+			exitCode = cmdDaemon.ProcessState.ExitCode()
+		}
+		return fmt.Errorf("daemon exited immediately (exit code %d) — check logs at %s: %w",
+			exitCode, paths.Logs, err)
+	case <-time.After(500 * time.Millisecond):
+		// Daemon survived the grace period — consider it started.
 		fmt.Println("Daemon is running. Use 'agent daemon status' to verify.")
 		return nil
 	}
-
-	return fmt.Errorf("daemon exited immediately — check logs at %s", paths.Logs)
 }
 
 // newDaemonStopCmd creates the `agent daemon stop` command.

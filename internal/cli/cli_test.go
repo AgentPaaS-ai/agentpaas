@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -297,6 +298,98 @@ func TestDaemonStatus_NotRunningJSON(t *testing.T) {
 	if _, ok := je["error"]; !ok {
 		t.Errorf("JSON output must contain an 'error' field; got: %+v", je)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDaemonStart_ExitImmediate_NoPanic
+// Tests: runDaemonStart returns an error (not a panic) when the daemon process
+// exits immediately after Start().
+// ---------------------------------------------------------------------------
+func TestDaemonStart_ExitImmediate_NoPanic(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
+	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatalf("write fake daemon: %v", err)
+	}
+
+	oldResolver := daemonBinaryResolver
+	daemonBinaryResolver = func() (string, error) { return fakeDaemon, nil }
+	t.Cleanup(func() {
+		daemonBinaryResolver = oldResolver
+		resetAgentCmd()
+	})
+
+	resetAgentCmd()
+	cmd := freshCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"daemon", "start", "--home", tmpHome})
+
+	var execErr error
+	_ = captureStdout(t, func() {
+		execErr = cmd.Execute()
+	})
+
+	if execErr == nil {
+		t.Fatal("expected error when daemon exits immediately, got nil")
+	}
+	errMsg := execErr.Error()
+	if !strings.Contains(errMsg, "daemon exited immediately") {
+		t.Fatalf("error should mention immediate exit; got: %s", errMsg)
+	}
+	if !strings.Contains(errMsg, "exit code 1") {
+		t.Fatalf("error should include exit code 1; got: %s", errMsg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDaemonStart_StaysAlive_Success
+// Tests: runDaemonStart returns success when the daemon stays alive past the
+// 500ms grace period.
+// ---------------------------------------------------------------------------
+func TestDaemonStart_StaysAlive_Success(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
+	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nsleep 2\n"), 0o755); err != nil {
+		t.Fatalf("write fake daemon: %v", err)
+	}
+
+	oldResolver := daemonBinaryResolver
+	daemonBinaryResolver = func() (string, error) { return fakeDaemon, nil }
+	t.Cleanup(func() {
+		daemonBinaryResolver = oldResolver
+		resetAgentCmd()
+	})
+
+	resetAgentCmd()
+	cmd := freshCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"daemon", "start", "--home", tmpHome})
+
+	var execErr error
+	stdout := captureStdout(t, func() {
+		execErr = cmd.Execute()
+	})
+
+	if execErr != nil {
+		t.Fatalf("expected success when daemon stays alive, got: %v", execErr)
+	}
+	if !strings.Contains(stdout, "Daemon is running") {
+		t.Fatalf("output should mention daemon is running; got:\n%s", stdout)
+	}
+
+	var pid int
+	if _, err := fmt.Sscanf(stdout, "Daemon started (PID %d)", &pid); err != nil {
+		t.Fatalf("parse PID from output: %v; output:\n%s", err, stdout)
+	}
+	t.Cleanup(func() {
+		if proc, err := os.FindProcess(pid); err == nil {
+			_ = proc.Kill()
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
