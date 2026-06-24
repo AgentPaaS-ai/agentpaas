@@ -70,7 +70,10 @@ class SessionRunTrackingTests(ConfirmationTestBase):
         self.assertTrue(self.tools._is_session_run("run_123"))
 
     def test_stop_session_run_no_confirmation(self):
-        self.tools._register_session_run("run_123")
+        with mock.patch.object(
+            self.tools, "_run_cli", return_value={"run_id": "run_123"}
+        ):
+            self.tools.agentpaas_run({"image_or_project": "demo"})
         mock_result = {"schema_version": "1.0.0", "status": "stopped"}
         with mock.patch.object(self.tools, "_run_cli", return_value=mock_result):
             result = json.loads(
@@ -86,7 +89,10 @@ class SessionRunTrackingTests(ConfirmationTestBase):
         self.assertIn("run_999", result["rationale"])
 
     def test_successful_stop_removes_from_session(self):
-        self.tools._register_session_run("run_123")
+        with mock.patch.object(
+            self.tools, "_run_cli", return_value={"run_id": "run_123"}
+        ):
+            self.tools.agentpaas_run({"image_or_project": "demo"})
         self.assertTrue(self.tools._is_session_run("run_123"))
         with mock.patch.object(
             self.tools, "_run_cli", return_value={"status": "stopped"}
@@ -121,7 +127,7 @@ class PolicyPatchConfirmationTests(ConfirmationTestBase):
     def test_self_confirm_refused(self):
         result = json.loads(
             self.tools.agentpaas_recommend_policy_patch(
-                {"confirmation_id": "cf_abc123"}
+                {"confirmation_id": "cf_abcdef123456"}
             )
         )
         self.assertIn("error", result)
@@ -137,7 +143,7 @@ class PolicyPatchConfirmationTests(ConfirmationTestBase):
 
         valid, err = self.tools._validate_confirmation_id("cf_short")
         self.assertFalse(valid)
-        self.assertIn("too short", err)
+        self.assertIn("hex", err)
 
         valid, err = self.tools._validate_confirmation_id("bad_abcdef123456")
         self.assertFalse(valid)
@@ -173,7 +179,10 @@ class AuditExportConfirmationTests(ConfirmationTestBase):
     def test_self_confirm_export_refused(self):
         result = json.loads(
             self.tools.agentpaas_export_audit(
-                {"confirmation_id": "cf_abc123", "output_path": "/tmp/audit.json"}
+                {
+                    "confirmation_id": "cf_abcdef123456",
+                    "output_path": "/tmp/audit.json",
+                }
             )
         )
         self.assertIn("error", result)
@@ -207,6 +216,8 @@ class ConfirmationReplayExpiryTests(ConfirmationTestBase):
                 self.tools.agentpaas_export_audit(
                     {
                         "confirmation_id": confirmation_id,
+                        "issued_at": 1000.0,
+                        "expires_at": 1001.0,
                         "output_path": "/tmp/audit.json",
                     }
                 )
