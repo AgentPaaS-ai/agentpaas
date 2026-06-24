@@ -28,6 +28,19 @@ func localRegistryURL() string {
 	return fmt.Sprintf("%s:%d", localRegistryHost, localRegistryPort)
 }
 
+// LocalImageRef returns a digest-pinned image ref for the local registry.
+func LocalImageRef(agentName, imageDigest string) string {
+	return fmt.Sprintf("%s/agentpaas/%s@%s", localRegistryURL(), agentName, normalizeDigest(imageDigest))
+}
+
+func normalizeDigest(d string) string {
+	d = strings.TrimSpace(d)
+	if !strings.HasPrefix(d, "sha256:") {
+		d = "sha256:" + d
+	}
+	return d
+}
+
 // EnsureLocalRegistry ensures a local OCI registry is running and returns its URL.
 func EnsureLocalRegistry(ctx context.Context) (string, error) {
 	cli, err := dockerclient.New()

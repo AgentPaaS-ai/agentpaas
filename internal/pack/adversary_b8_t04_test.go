@@ -149,7 +149,7 @@ func TestAdversaryB8T04_MalformedLockfileRead(t *testing.T) {
 
 func TestAdversaryB8T04_SourceDateEpochCreatedAt(t *testing.T) {
 	installFakeTool(t, "syft", "#!/bin/sh\nprintf '{\"spdxVersion\":\"SPDX-2.3\"}'\n")
-	installFakeTool(t, "cosign", "#!/bin/sh\nexit 0\n")
+	installFakeTool(t, "cosign", fakeCosignScript())
 	key, _ := testKeyPair(t)
 	store := testStoreForKey(t, key)
 	epoch := time.Unix(1700000000, 0).UTC()
