@@ -9,8 +9,22 @@ import subprocess
 def _resolve_agentpaas_binary():
     """Find the AgentPaaS CLI binary."""
     # 1. Explicit override
-    if os.getenv("AGENTPAAS_CLI"):
-        return os.getenv("AGENTPAAS_CLI")
+    if env_override := os.getenv("AGENTPAAS_CLI"):
+        # Must be an absolute path to an executable file (follow symlinks)
+        real = os.path.realpath(env_override)
+        if not os.path.isabs(env_override):
+            raise ValueError(
+                f"AGENTPAAS_CLI must be an absolute path, got: {env_override}"
+            )
+        if not os.path.isfile(real):
+            raise ValueError(
+                f"AGENTPAAS_CLI is not a file: {env_override}"
+            )
+        if not os.access(real, os.X_OK):
+            raise ValueError(
+                f"AGENTPAAS_CLI is not executable: {env_override}"
+            )
+        return real
     # 2. In PATH (but 'agent' collides with Grok — check 'agentpaas' first)
     p = shutil.which("agentpaas")
     if p:
@@ -42,11 +56,17 @@ def _run_cli(cmd_args):
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError:
-        return {"raw_output": proc.stdout, "exit_code": proc.returncode}
+        return {
+            "error": f"CLI returned non-JSON output (length {len(proc.stdout)})",
+            "raw_output_truncated": proc.stdout[:2000],
+            "exit_code": proc.returncode,
+            "error_category": "cli_non_json_output",
+        }
 
 
 def agentpaas_init_project(args, **kwargs):
     """Initialize a new agent project."""
+    args = args or {}
     project_dir = args.get("project_dir", ".")
     runtime = args.get("runtime", "python")
     try:
@@ -66,6 +86,7 @@ def agentpaas_init_project(args, **kwargs):
 
 def agentpaas_reconcile_project(args, **kwargs):
     """Reconcile agent.yaml from existing source code."""
+    args = args or {}
     project_dir = args.get("project_dir", ".")
     try:
         result = _run_cli(
@@ -83,6 +104,7 @@ def agentpaas_reconcile_project(args, **kwargs):
 
 def agentpaas_validate_project(args, **kwargs):
     """Validate an agent project directory."""
+    args = args or {}
     project_dir = args.get("project_dir", ".")
     try:
         result = _run_cli(["validate", project_dir])
@@ -93,6 +115,7 @@ def agentpaas_validate_project(args, **kwargs):
 
 def agentpaas_doctor(args, **kwargs):
     """Run system diagnostics."""
+    args = args or {}
     try:
         result = _run_cli(["doctor"])
         return json.dumps(result)
@@ -102,6 +125,7 @@ def agentpaas_doctor(args, **kwargs):
 
 def agentpaas_pack(args, **kwargs):
     """Build an agent image from a project directory."""
+    args = args or {}
     project_dir = args.get("project_dir", ".")
     try:
         result = _run_cli(["pack", project_dir])
@@ -112,6 +136,7 @@ def agentpaas_pack(args, **kwargs):
 
 def agentpaas_run(args, **kwargs):
     """Start a new agent run."""
+    args = args or {}
     image_or_project = args.get("image_or_project", "")
     try:
         result = _run_cli(["run", image_or_project] if image_or_project else ["run"])
@@ -122,6 +147,7 @@ def agentpaas_run(args, **kwargs):
 
 def agentpaas_stop(args, **kwargs):
     """Terminate a running agent."""
+    args = args or {}
     run_id = args.get("run_id", "")
     try:
         result = _run_cli(["stop", run_id])
@@ -132,6 +158,7 @@ def agentpaas_stop(args, **kwargs):
 
 def agentpaas_logs(args, **kwargs):
     """Query logs for a run."""
+    args = args or {}
     run_id = args.get("run_id", "")
     tail = args.get("tail")
     try:
@@ -146,6 +173,7 @@ def agentpaas_logs(args, **kwargs):
 
 def agentpaas_status(args, **kwargs):
     """Show daemon or run status."""
+    args = args or {}
     run_id = args.get("run_id")
     try:
         if run_id:
@@ -159,6 +187,7 @@ def agentpaas_status(args, **kwargs):
 
 def agentpaas_get_run_timeline(args, **kwargs):
     """Show chronological timeline for a run."""
+    args = args or {}
     run_id = args.get("run_id", "")
     try:
         result = _run_cli(["timeline", run_id])
@@ -169,6 +198,7 @@ def agentpaas_get_run_timeline(args, **kwargs):
 
 def agentpaas_policy_show(args, **kwargs):
     """Show active policy for a project or run."""
+    args = args or {}
     run_id = args.get("run_id")
     project_dir = args.get("project_dir")
     target = run_id or project_dir or ""
@@ -181,6 +211,7 @@ def agentpaas_policy_show(args, **kwargs):
 
 def agentpaas_explain_policy_denial(args, **kwargs):
     """Explain why a destination was denied by policy."""
+    args = args or {}
     destination = args.get("destination", "")
     try:
         result = _run_cli(["explain-denial", destination])
@@ -191,6 +222,7 @@ def agentpaas_explain_policy_denial(args, **kwargs):
 
 def agentpaas_recommend_policy_patch(args, **kwargs):
     """Suggest a policy patch for a desired behavior."""
+    args = args or {}
     behavior = args.get("destination") or args.get("run_id") or ""
     try:
         result = _run_cli(["recommend-patch", behavior])
@@ -201,6 +233,7 @@ def agentpaas_recommend_policy_patch(args, **kwargs):
 
 def agentpaas_audit_query(args, **kwargs):
     """Query audit log entries."""
+    args = args or {}
     run_id = args.get("run_id")
     try:
         cmd = ["audit", "query"]
@@ -214,6 +247,7 @@ def agentpaas_audit_query(args, **kwargs):
 
 def agentpaas_export_audit(args, **kwargs):
     """Export audit log entries to a file."""
+    args = args or {}
     output_path = args.get("output_path", "")
     try:
         result = _run_cli(["audit", "export", "--output", output_path])
@@ -224,6 +258,7 @@ def agentpaas_export_audit(args, **kwargs):
 
 def agentpaas_summarize_run(args, **kwargs):
     """Summarize a completed or failed run."""
+    args = args or {}
     run_id = args.get("run_id", "")
     try:
         result = _run_cli(["summarize", run_id])
@@ -234,6 +269,7 @@ def agentpaas_summarize_run(args, **kwargs):
 
 def agentpaas_explain_failure(args, **kwargs):
     """Analyze a failed run and return root cause."""
+    args = args or {}
     run_id = args.get("run_id", "")
     try:
         result = _run_cli(["explain-failure", run_id])
@@ -244,6 +280,7 @@ def agentpaas_explain_failure(args, **kwargs):
 
 def agentpaas_next_action(args, **kwargs):
     """Recommend the next operator action."""
+    args = args or {}
     run_id = args.get("run_id")
     try:
         result = _run_cli(["next-action", run_id] if run_id else ["next-action"])

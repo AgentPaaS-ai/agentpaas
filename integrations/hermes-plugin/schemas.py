@@ -37,6 +37,7 @@ AGENTPAAS_INIT_PROJECT = {
                 "enum": ["python", "langgraph", "crewai"],
             },
         },
+        "required": ["project_dir"],
         "additionalProperties": False,
     },
 }
@@ -52,6 +53,7 @@ AGENTPAAS_RECONCILE_PROJECT = {
                 "description": "Project directory to reconcile (default: current directory).",
             },
         },
+        "required": ["project_dir"],
         "additionalProperties": False,
     },
 }
@@ -93,6 +95,7 @@ AGENTPAAS_PACK = {
                 "description": "Project directory to pack (default: current directory).",
             },
         },
+        "required": ["project_dir"],
         "additionalProperties": False,
     },
 }
@@ -195,6 +198,7 @@ AGENTPAAS_POLICY_SHOW = {
                 "description": "Run identifier whose policy to show.",
             },
         },
+        "required": ["project_dir"],
         "additionalProperties": False,
     },
 }
@@ -214,7 +218,7 @@ AGENTPAAS_EXPLAIN_POLICY_DENIAL = {
                 "description": "Denied network destination or action.",
             },
         },
-        "required": ["destination"],
+        "required": ["run_id", "destination"],
         "additionalProperties": False,
     },
 }
@@ -234,6 +238,7 @@ AGENTPAAS_RECOMMEND_POLICY_PATCH = {
                 "description": "Denied destination or desired behavior to allow.",
             },
         },
+        "required": ["run_id"],
         "additionalProperties": False,
     },
 }
@@ -316,6 +321,7 @@ AGENTPAAS_NEXT_ACTION = {
                 "description": "Run identifier for context.",
             },
         },
+        "required": ["run_id"],
         "additionalProperties": False,
     },
 }
