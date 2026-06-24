@@ -162,6 +162,30 @@ func TestLoadAgentYAMLValid(t *testing.T) {
 	}
 }
 
+func TestLoadAgentYAMLV1Schema(t *testing.T) {
+	projectDir := t.TempDir()
+	writeTestFile(t, projectDir, "agent.yaml", `apiVersion: v1
+kind: Agent
+metadata:
+  name: weather-agent
+  description: "Simple weather lookup agent"
+spec:
+  entrypoint: main.py
+  runtime: python
+`)
+
+	agentYAML, err := LoadAgentYAML(projectDir)
+	if err != nil {
+		t.Fatalf("LoadAgentYAML() error = %v", err)
+	}
+	if agentYAML == nil {
+		t.Fatal("LoadAgentYAML() = nil, want value")
+	}
+	if agentYAML.Name != "weather-agent" || agentYAML.Runtime != "python" || agentYAML.Entry != "main.py" {
+		t.Fatalf("LoadAgentYAML() = %#v, want v1 schema fields", agentYAML)
+	}
+}
+
 func TestLoadAgentYAMLInvalid(t *testing.T) {
 	projectDir := t.TempDir()
 	writeTestFile(t, projectDir, "agent.yaml", "name: [\n")

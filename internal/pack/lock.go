@@ -167,6 +167,7 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 		"--allow-insecure-registry",
 		"--yes", imageRef)
 	cmd.Env = append(os.Environ(), dockerHostEnv()...)
+	cmd.Env = append(cmd.Env, "COSIGN_PASSWORD=")
 	output, err := cmd.CombinedOutput()
 	if cmdCtx.Err() != nil {
 		return "", fmt.Errorf("sign image: %w", cmdCtx.Err())
@@ -199,7 +200,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, err
 	}
 
-	keyFile, cleanup, err := writeTempKey(privateKeyPEM)
+	keyFile, cleanup, err := writeCosignSigningKey(privateKeyPEM)
 	if err != nil {
 		return nil, err
 	}
@@ -445,14 +446,28 @@ func privateKeyFromMaterial(material interface{}) (*ecdsa.PrivateKey, []byte, er
 		return v, pemBytes, err
 	case []byte:
 		key, err := parsePrivateKeyPEM(v)
-		return key, v, err
+		if err != nil {
+			return nil, nil, err
+		}
+		pkcs8PEM, err := privateKeyPEM(key)
+		if err != nil {
+			return nil, nil, err
+		}
+		return key, pkcs8PEM, nil
 	default:
 		bytes, ok := exportedBytesField(material)
 		if !ok {
 			return nil, nil, fmt.Errorf("unsupported key material type %T", material)
 		}
 		key, err := parsePrivateKeyPEM(bytes)
-		return key, bytes, err
+		if err != nil {
+			return nil, nil, err
+		}
+		pkcs8PEM, err := privateKeyPEM(key)
+		if err != nil {
+			return nil, nil, err
+		}
+		return key, pkcs8PEM, nil
 	}
 }
 
@@ -545,30 +560,40 @@ func ensureNoTlogSigningConfig() (string, func(), error) {
 	return path, cleanup, nil
 }
 
-func writeTempKey(keyPEM []byte) (string, func(), error) {
-	f, err := os.CreateTemp("", "agentpaas-package-key-*.pem")
+func writeCosignSigningKey(pkcs8PEM []byte) (string, func(), error) {
+	tmpDir, err := os.MkdirTemp("", "agentpaas-cosign-import-*")
 	if err != nil {
-		return "", nil, fmt.Errorf("create temp key: %w", err)
+		return "", nil, fmt.Errorf("create cosign import dir: %w", err)
 	}
-	path := f.Name()
-	cleanup := func() { _ = os.Remove(path) }
-	if _, err := f.Write(keyPEM); err != nil {
-		_ = f.Close()
+	cleanup := func() { _ = os.RemoveAll(tmpDir) }
+
+	srcPath := filepath.Join(tmpDir, "src.pem")
+	if err := os.WriteFile(srcPath, pkcs8PEM, 0o600); err != nil {
 		cleanup()
-		return "", nil, fmt.Errorf("write temp key: %w", err)
+		return "", nil, fmt.Errorf("write source key: %w", err)
 	}
-	if err := f.Close(); err != nil {
-		cleanup()
-		return "", nil, fmt.Errorf("close temp key: %w", err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		cleanup()
-		return "", nil, fmt.Errorf("chmod temp key: %w", err)
-	}
-	realPath, err := filepath.EvalSymlinks(path)
+
+	outputPrefix := filepath.Join(tmpDir, "signing-key")
+	cmd := exec.Command("cosign", "import-key-pair",
+		"--key", srcPath,
+		"--output-key-prefix", outputPrefix,
+		"--yes")
+	cmd.Env = append(os.Environ(), "COSIGN_PASSWORD=")
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		cleanup()
-		return "", nil, fmt.Errorf("resolve temp key path: %w", err)
+		return "", nil, fmt.Errorf("import cosign key: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	keyPath := outputPrefix + ".key"
+	if err := os.Chmod(keyPath, 0o600); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("chmod cosign key: %w", err)
+	}
+	realPath, err := filepath.EvalSymlinks(keyPath)
+	if err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("resolve cosign key path: %w", err)
 	}
 	return realPath, cleanup, nil
 }
@@ -661,15 +686,42 @@ func validateSecurePath(path string, mustExist bool) error {
 			return fmt.Errorf("path must not contain '..': %s", path)
 		}
 	}
+	resolved, err := resolvePathSymlinks(clean, mustExist)
+	if err != nil {
+		return err
+	}
+	resolved = filepath.Clean(resolved)
 	for _, protected := range []string{"/etc", "/usr", "/bin", "/sbin"} {
-		if clean == protected || strings.HasPrefix(clean, protected+string(os.PathSeparator)) {
+		if resolved == protected || strings.HasPrefix(resolved, protected+string(os.PathSeparator)) {
 			return fmt.Errorf("path is in protected system directory: %s", path)
 		}
 	}
-	if err := rejectSymlinkComponents(clean, mustExist); err != nil {
+	if err := rejectSymlinkComponents(resolved, mustExist); err != nil {
 		return err
 	}
 	return nil
+}
+
+func resolvePathSymlinks(path string, mustExist bool) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved, nil
+	}
+	if !os.IsNotExist(err) {
+		return "", fmt.Errorf("resolve symlinks in %s: %w", path, err)
+	}
+	if mustExist {
+		return "", fmt.Errorf("resolve symlinks in %s: %w", path, err)
+	}
+	parent := filepath.Dir(path)
+	resolvedParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return path, nil
+		}
+		return "", fmt.Errorf("resolve parent symlinks in %s: %w", parent, err)
+	}
+	return filepath.Join(resolvedParent, filepath.Base(path)), nil
 }
 
 func rejectSymlinkComponents(path string, mustExist bool) error {

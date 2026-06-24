@@ -171,7 +171,7 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 		return nil, status.Errorf(codes.Internal, "create network: %v", err)
 	}
 
-	imageRef := fmt.Sprintf("agentpaas/%s@sha256:%s", agentName, strings.TrimPrefix(deployed.ImageDigest, "sha256:"))
+	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
 	containerID, err := rt.Create(ctx, runtime.ContainerSpec{
 		Image:      imageRef,
 		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
