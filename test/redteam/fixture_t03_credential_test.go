@@ -2,6 +2,7 @@ package redteam
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -41,14 +42,27 @@ func (r *recordingSecretStore) TouchLastUsed(ctx context.Context, name string) e
 	return r.inner.TouchLastUsed(ctx, name)
 }
 
-func auditRecordsDenyCredential(records []audit.AuditRecord) bool {
-	for _, rec := range records {
-		if rec.EventType == audit.EventTypeSecretInjected {
-			if status, ok := rec.Payload["status"]; ok && fmt.Sprintf("%v", status) == "denied" {
+func auditRecordsDenyCredential(rawAudit string) bool {
+	for _, line := range strings.Split(strings.TrimSpace(rawAudit), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var rec map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			continue
+		}
+		eventType, _ := rec["event_type"].(string)
+		payload, ok := rec["payload"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if eventType == audit.EventTypeSecretInjected {
+			if status, ok := payload["status"]; ok && fmt.Sprintf("%v", status) == "denied" {
 				return true
 			}
 		}
-		if reason, ok := rec.Payload["reason"]; ok {
+		if reason, ok := payload["reason"]; ok {
 			reasonText := strings.ToLower(fmt.Sprintf("%v", reason))
 			if strings.Contains(reasonText, "denied") || strings.Contains(reasonText, "not allowed") {
 				return true
@@ -194,27 +208,30 @@ func (f *credentialMisuseFixture) Run() FixtureResult {
 		return result
 	}
 
-	// Verify audit records were written
-	records, _ := readAuditRecords(auditPath)
-	if len(records) == 0 {
+	// Verify audit records were written (raw JSONL is source of truth; indexer strips payloads)
+	_ = writer.Close()
+	rawAudit, err := readAuditFile(auditPath)
+	if err != nil {
+		result.Detail = fmt.Sprintf("readAuditFile: %v", err)
+		return result
+	}
+	if strings.TrimSpace(rawAudit) == "" {
 		result.Detail = "no audit records written for denied requests"
 		return result
 	}
 
-	hasDenied := auditRecordsDenyCredential(records)
+	hasDenied := auditRecordsDenyCredential(rawAudit)
 	if !hasDenied {
 		result.Detail = "no secret_injected denied audit event or payload reason with denied/not allowed"
 		return result
 	}
 
+	recordCount := len(strings.Split(strings.TrimSpace(rawAudit), "\n"))
+
 	result.Status = "PASS"
 	result.Containment = "REFUSED"
-	if hasDenied {
-		result.AuditVerdict = "verified"
-	} else {
-		result.AuditVerdict = "verified"
-	}
+	result.AuditVerdict = "verified"
 	result.Duration = time.Since(start)
-	result.Detail = fmt.Sprintf("wrong-destination and disallowed-method denied; %d audit records written", len(records))
+	result.Detail = fmt.Sprintf("wrong-destination and disallowed-method denied; %d audit records written", recordCount)
 	return result
 }

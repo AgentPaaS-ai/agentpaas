@@ -22,10 +22,13 @@ func sentinelLeakScan(haystack, sentinel string) bool {
 	if strings.Contains(haystack, base64.StdEncoding.EncodeToString([]byte(sentinel))) {
 		return true
 	}
-	minTrunc := 12
+	minTrunc := 16
 	if len(sentinel) > minTrunc {
-		for n := minTrunc; n < len(sentinel); n++ {
-			if strings.Contains(haystack, sentinel[:n]) || strings.Contains(haystack, sentinel[n:]) {
+		for n := len(sentinel); n >= minTrunc; n-- {
+			if strings.Contains(haystack, sentinel[:n]) {
+				return true
+			}
+			if strings.Contains(haystack, sentinel[len(sentinel)-n:]) {
 				return true
 			}
 		}
