@@ -273,8 +273,17 @@ func runDaemonStart(cmd *cobra.Command) error {
 	// Wait for the daemon to either stay alive past the grace period or exit early.
 	// We cannot use cmdDaemon.ProcessState here — it is nil until Wait() returns.
 	waitCh := make(chan error, 1)
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		waitCh <- cmdDaemon.Wait()
+		select {
+		case waitCh <- cmdDaemon.Wait():
+		case <-done:
+			// Parent is returning; best-effort reap without blocking.
+			if cmdDaemon.Process != nil {
+				_, _ = cmdDaemon.Process.Wait()
+			}
+		}
 	}()
 
 	select {
