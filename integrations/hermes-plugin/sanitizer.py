@@ -8,6 +8,7 @@ This module provides functions that:
 """
 import json
 import re
+import urllib.parse
 
 # Patterns that indicate prompt-injection attempts in untrusted evidence
 # These are patterns that, if found in evidence fields, should be flagged
@@ -39,12 +40,60 @@ _INJECTION_PATTERNS = [
     re.compile(r'(?i)\b(do not|don\'t|must|should|always|never)\b'),
     # JSON/YAML injection attempts (fake control fields in evidence)
     re.compile(r'"(error_category|next_action|requires_confirmation|policy_digest)"\s*:'),
+    # Abbreviations
+    re.compile(r'(?i)\brm\s+(audit|log|evidence|trail)'),
+    re.compile(r'(?i)\bkill\s+(all|unrelated|other|active)\s+runs?'),
+    # Indirect phrasing
+    re.compile(
+        r'(?i)\b(it\s+would\s+be|please|you\s+should|must|need\s+to)\b.{0,30}'
+        r'\b(disable[ds]?|enable[ds]?|allow(?:ed)?|deny|denied|stop(?:ped)?|'
+        r'delete[ds]?|reveal(?:ed)?|bypass(?:ed)?)\b'
+    ),
+    re.compile(
+        r'(?i)\b(policy|gate|audit|sandbox)\s+(should\s+be|must\s+be|were)\s+'
+        r'(disabled|removed|off)\b'
+    ),
 ]
 
 _EVIDENCE_LIST_FIELDS = ("redacted_excerpts", "evidence_refs")
 
 # Fields where injection patterns should be flagged
 _UNTRUSTED_CONTEXTS = ("content", "detail", "raw_output_truncated", "summary", "root_cause")
+
+_CONTROL_FIELD_NAMES = (
+    "error_category", "next_action", "requires_confirmation",
+    "confirmation_id", "risk_level", "policy_digest",
+    "blocking_rule_id", "schema_version",
+)
+
+
+def _decode_evidence_text(text):
+    """Decode common encoding schemes before injection detection."""
+    decoded = text
+    # URL decode (handle %64, %xx)
+    try:
+        url_decoded = urllib.parse.unquote(decoded)
+        if url_decoded != decoded:
+            decoded = url_decoded + " " + decoded  # scan both
+    except Exception:
+        pass
+    return decoded
+
+
+def _detect_structural_injection(text):
+    """Detect JSON-like content in evidence that mimics control fields."""
+    if not text or not isinstance(text, str):
+        return []
+    findings = []
+    # Look for JSON-like patterns containing control field names
+    for field_name in _CONTROL_FIELD_NAMES:
+        pattern = re.compile(rf'"({field_name})"\s*:\s*"([^"]*)"')
+        for m in pattern.finditer(text):
+            findings.append((
+                f"structural_injection:{field_name}",
+                m.group()
+            ))
+    return findings
 
 
 def classify_field(field_name):
@@ -68,12 +117,11 @@ def detect_injection_in_evidence(text):
     """
     if not text or not isinstance(text, str):
         return []
+    decoded = _decode_evidence_text(text)
     findings = []
     for pattern in _INJECTION_PATTERNS:
-        matches = pattern.findall(text)
-        if matches:
-            # Find the actual matched substring for reporting
-            for m in pattern.finditer(text):
+        for source_text in (decoded, text):
+            for m in pattern.finditer(source_text):
                 findings.append((pattern.pattern, m.group()))
     return findings
 
@@ -101,12 +149,18 @@ def sanitize_response(response_dict):
                 {"field": field_path, "pattern": p, "match": m}
                 for p, m in findings
             ])
+        struct_findings = _detect_structural_injection(text)
+        if struct_findings:
+            warnings.extend([
+                {"field": field_path, "pattern": p, "match": m, "severity": "high"}
+                for p, m in struct_findings
+            ])
 
     def _scan_evidence_list(field_name, items):
         for i, item in enumerate(items):
             if isinstance(item, dict):
-                for sub_field in ("content", "detail", "source"):
-                    sub_val = item.get(sub_field)
+                # Scan ALL string values in the item, not just specific subfields
+                for sub_field, sub_val in item.items():
                     if isinstance(sub_val, str):
                         _scan_text(f"{field_name}[{i}].{sub_field}", sub_val)
 
@@ -125,6 +179,9 @@ def sanitize_response(response_dict):
 
     if warnings:
         result["_injection_warnings"] = warnings
+        # Mark the specific evidence fields that contain hostile content
+        flagged_fields = set(w["field"].split("[")[0].split(".")[0] for w in warnings)
+        result["_untrusted_fields"] = sorted(flagged_fields)
         # Ensure trusted control fields are NOT overridden by evidence content
         # (This is the key boundary: even if evidence says "error_category: X",
         #  the trusted error_category from the CLI response is preserved)
