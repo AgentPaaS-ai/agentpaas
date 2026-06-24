@@ -233,11 +233,14 @@ func buildDaemonStartCommand(cmd *cobra.Command, daemonBinary string, paths *hom
 		return nil, nil, fmt.Errorf("cannot determine home directory: %w", err)
 	}
 
-	// Pass the AGENTPAAS_HOME and AGENTPAAS_SOCKET env vars if overridden.
+	// Always pass AGENTPAAS_HOME and AGENTPAAS_SOCKET to the daemon subprocess
+	// explicitly. We strip any inherited copy via filterEnv to avoid duplicate
+	// keys, then set the resolved values unconditionally — whether they
+	// originated from --home/--socket flags or from the env vars. Without this,
+	// a daemon spawned from an env-var-configured CLI would default to
+	// ~/.agentpaas instead of $AGENTPAAS_HOME and fail to find its socket.
 	cmdDaemon.Env = filterEnv(os.Environ(), "AGENTPAAS_HOME", "AGENTPAAS_SOCKET")
-	if cmd.Root().PersistentFlags().Changed("home") {
-		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_HOME="+homeDir)
-	}
+	cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_HOME="+homeDir)
 	if sock, _ := socketPath(cmd); sock != "" {
 		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_SOCKET="+sock)
 	}
