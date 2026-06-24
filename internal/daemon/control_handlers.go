@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"strconv"
@@ -91,9 +92,10 @@ func (s *stubControlServer) Pack(ctx context.Context, req *controlv1.PackRequest
 
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
 	cfg := pack.BuildConfig{
-		ProjectDir: absProjectDir,
-		Runtime:    det.Runtime,
-		ImageTag:   imageTag,
+		ProjectDir:  absProjectDir,
+		Runtime:     det.Runtime,
+		ImageTag:    imageTag,
+		HarnessPath: resolveHarnessBinary(),
 	}
 	if req.GetBaseImage() != "" {
 		cfg.BaseImage = req.GetBaseImage()
@@ -715,5 +717,24 @@ func formatAuditExport(records []audit.AuditRecord, format string, includePayloa
 	default:
 		return nil, fmt.Errorf("unsupported format %q", format)
 	}
+}
+
+// resolveHarnessBinary finds the agentpaas-harness binary by checking:
+// 1. Same directory as the daemon binary itself.
+// 2. PATH lookup (exec.LookPath).
+// Returns an empty string if not found; pack.BuildImage will then fall back
+// to its own exec.LookPath and produce a clear error.
+func resolveHarnessBinary() string {
+	exePath, err := os.Executable()
+	if err == nil {
+		candidate := filepath.Join(filepath.Dir(exePath), "agentpaas-harness")
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	if p, err := exec.LookPath("agentpaas-harness"); err == nil {
+		return p
+	}
+	return ""
 }
 

@@ -461,9 +461,16 @@ func parsePrivateKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	if block == nil {
 		return nil, errors.New("decode private key PEM")
 	}
+	// Try PKCS8 first (what privateKeyPEM generates and what issuer.go uses).
 	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("parse private key: %w", err)
+		// Fall back to SEC1 (ECPrivateKey). The identity keystore (ca.go)
+		// stores keys with x509.MarshalECPrivateKey, which produces SEC1 DER.
+		sec1Key, sec1Err := x509.ParseECPrivateKey(block.Bytes)
+		if sec1Err != nil {
+			return nil, fmt.Errorf("parse private key (tried PKCS8: %v; SEC1: %v): %w", err, sec1Err, err)
+		}
+		parsed = sec1Key
 	}
 	key, ok := parsed.(*ecdsa.PrivateKey)
 	if !ok {
