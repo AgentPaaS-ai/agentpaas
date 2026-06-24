@@ -10,7 +10,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/parvezsyed/agentpaas/internal/home"
 	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 )
@@ -390,6 +392,101 @@ func TestDaemonStart_StaysAlive_Success(t *testing.T) {
 			_ = proc.Kill()
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// TestBuildDaemonStartCommand_RedirectsStdioToLogFile
+// Tests: daemon subprocess stdout/stderr are redirected to daemon.log, not the
+// terminal.
+// ---------------------------------------------------------------------------
+func TestBuildDaemonStartCommand_RedirectsStdioToLogFile(t *testing.T) {
+	tmpHome := t.TempDir()
+	paths := home.NewHomePaths(tmpHome)
+
+	resetAgentCmd()
+	root := freshCmd()
+	if err := root.PersistentFlags().Set("home", tmpHome); err != nil {
+		t.Fatalf("set home flag: %v", err)
+	}
+	root.PersistentFlags().Lookup("home").Changed = true
+
+	daemonCmd := findSubCmd(root, "daemon")
+	if daemonCmd == nil {
+		t.Fatal("expected 'daemon' subcommand")
+	}
+	startCmd := findSubCmd(daemonCmd, "start")
+	if startCmd == nil {
+		t.Fatal("expected 'daemon start' subcommand")
+	}
+
+	cmdDaemon, logFile, err := buildDaemonStartCommand(startCmd, "/fake/agentpaasd", paths)
+	if err != nil {
+		t.Fatalf("buildDaemonStartCommand: %v", err)
+	}
+	t.Cleanup(func() { _ = logFile.Close() })
+
+	if cmdDaemon.Stdout == os.Stdout {
+		t.Error("daemon stdout must not be os.Stdout")
+	}
+	if cmdDaemon.Stderr == os.Stderr {
+		t.Error("daemon stderr must not be os.Stderr")
+	}
+	if cmdDaemon.Stdin != nil {
+		t.Error("daemon stdin should be nil")
+	}
+
+	logPath := filepath.Join(paths.Logs, "daemon.log")
+	stdoutFile, ok := cmdDaemon.Stdout.(*os.File)
+	if !ok {
+		t.Fatalf("stdout should be *os.File, got %T", cmdDaemon.Stdout)
+	}
+	if stdoutFile.Name() != logPath {
+		t.Errorf("stdout file = %q, want %q", stdoutFile.Name(), logPath)
+	}
+	if stderrFile, ok := cmdDaemon.Stderr.(*os.File); !ok || stderrFile.Name() != logPath {
+		t.Errorf("stderr should point to %s", logPath)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestDaemonStart_ReturnsPromptly
+// Tests: runDaemonStart returns within a few seconds when the daemon stays
+// alive (does not hang waiting on inherited terminal FDs).
+// ---------------------------------------------------------------------------
+func TestDaemonStart_ReturnsPromptly(t *testing.T) {
+	tmpHome := t.TempDir()
+
+	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
+	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatalf("write fake daemon: %v", err)
+	}
+
+	oldResolver := daemonBinaryResolver
+	daemonBinaryResolver = func() (string, error) { return fakeDaemon, nil }
+	t.Cleanup(func() {
+		daemonBinaryResolver = oldResolver
+		resetAgentCmd()
+	})
+
+	resetAgentCmd()
+	cmd := freshCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"daemon", "start", "--home", tmpHome})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Execute()
+	}()
+
+	select {
+	case execErr := <-done:
+		if execErr != nil {
+			t.Fatalf("expected success, got: %v", execErr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("daemon start hung — did not return within 5 seconds")
+	}
 }
 
 // ---------------------------------------------------------------------------
