@@ -131,16 +131,14 @@ func (f *resourceContainmentFixture) Run() FixtureResult {
 		cleanupNetworks(ctx, dr, internalNetID)
 	}()
 
-	// Create a resource-stressed agent container with memory limit
-	// The container spec enforces: non-root uid, read-only rootfs, tmpfs /tmp,
-	// cap-drop ALL, no-new-privileges, pids-limit, memory, CPU limits.
+	// Create a resource-stressed agent container with an enforced memory limit.
+	const memoryLimitBytes = 16 * 1024 * 1024 // 16 MiB
 	stressID, err := dr.Create(ctx, docker.ContainerSpec{
-		Image:      "alpine:latest",
-		Command:    []string{"sleep", "120"},
-		NetworkIDs: []string{string(internalNetID)},
-		Labels:     docker.Labels(docker.ResourceTypeAgent, runID),
-		// MemoryLimitBytes: 50MB — the DockerRuntime applies hardening
-		// including memory limits via container config.
+		Image:            "alpine:latest",
+		Command:          []string{"sleep", "120"},
+		NetworkIDs:       []string{string(internalNetID)},
+		Labels:           docker.Labels(docker.ResourceTypeAgent, runID),
+		MemoryLimitBytes: memoryLimitBytes,
 	})
 	if err != nil {
 		result.Detail = fmt.Sprintf("Create(stress agent): %v", err)
@@ -163,20 +161,22 @@ func (f *resourceContainmentFixture) Run() FixtureResult {
 	defer memCancel()
 	memOutput, _ := dockerExec(memCtx, string(stressID),
 		"sh", "-c", "dd if=/dev/zero of=/tmp/fill bs=1M count=200 2>&1; echo EXIT=$?")
-	_ = memOutput
-	// The container may or may not survive this depending on memory limits.
-	// What matters is the daemon is still running.
 
-	// Check the container status — it may have been OOM-killed
 	status, err := dr.Status(ctx, stressID)
 	if err != nil {
 		result.Detail = fmt.Sprintf("Status after memory pressure: %v", err)
 		return result
 	}
 
-	// The container should still exist (may be exited/OOM-killed, but
-	// the daemon should be unaffected).
-	_ = status
+	memoryContained := status == docker.ContainerStatusStopped ||
+		strings.Contains(memOutput, "Killed") ||
+		strings.Contains(memOutput, "No space left on device") ||
+		strings.Contains(memOutput, "Cannot allocate memory") ||
+		!strings.Contains(memOutput, "EXIT=0")
+	if !memoryContained {
+		result.Detail = fmt.Sprintf("memory limit not enforced: status=%s output=%s", status, memOutput)
+		return result
+	}
 
 	// Verify the DockerRuntime is still functional (daemon survived)
 	_, err = dr.ListContainers(ctx, "agentpaas.managed-by=agentpaas")
@@ -189,7 +189,7 @@ func (f *resourceContainmentFixture) Run() FixtureResult {
 	result.Containment = "CONTAINED"
 	result.AuditVerdict = "verified"
 	result.Duration = time.Since(start)
-	result.Detail = "resource pressure contained; daemon/runtime still functional"
+	result.Detail = "memory-limited container killed or write failed under pressure; Docker runtime client still functional"
 	return result
 }
 
