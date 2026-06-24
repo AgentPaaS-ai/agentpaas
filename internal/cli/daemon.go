@@ -192,6 +192,24 @@ to be in the same directory as the agent CLI binary.`,
 	}
 }
 
+// filterEnv returns a copy of env with the given variable names removed.
+func filterEnv(env []string, names ...string) []string {
+	result := make([]string, 0, len(env))
+	for _, e := range env {
+		skip := false
+		for _, n := range names {
+			if strings.HasPrefix(e, n+"=") {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
 // buildDaemonStartCommand creates the exec.Cmd for starting the daemon subprocess.
 // The caller must not close the returned logFile — the daemon subprocess inherits it.
 func buildDaemonStartCommand(cmd *cobra.Command, daemonBinary string, paths *home.HomePaths) (*exec.Cmd, *os.File, error) {
@@ -216,7 +234,7 @@ func buildDaemonStartCommand(cmd *cobra.Command, daemonBinary string, paths *hom
 	}
 
 	// Pass the AGENTPAAS_HOME and AGENTPAAS_SOCKET env vars if overridden.
-	cmdDaemon.Env = os.Environ()
+	cmdDaemon.Env = filterEnv(os.Environ(), "AGENTPAAS_HOME", "AGENTPAAS_SOCKET")
 	if cmd.Root().PersistentFlags().Changed("home") {
 		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_HOME="+homeDir)
 	}

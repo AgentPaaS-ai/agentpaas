@@ -449,6 +449,58 @@ func TestBuildDaemonStartCommand_RedirectsStdioToLogFile(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestBuildDaemonStartCommand_DedupesEnvVars
+// Tests: when AGENTPAAS_HOME is already in the environment and --home is passed,
+// the daemon subprocess env has exactly one AGENTPAAS_HOME with the flag value.
+// ---------------------------------------------------------------------------
+func TestBuildDaemonStartCommand_DedupesEnvVars(t *testing.T) {
+	tmpHome := t.TempDir()
+	paths := home.NewHomePaths(tmpHome)
+
+	t.Setenv("AGENTPAAS_HOME", "/old/home")
+	t.Setenv("AGENTPAAS_SOCKET", "/old/socket.sock")
+
+	resetAgentCmd()
+	root := freshCmd()
+	if err := root.PersistentFlags().Set("home", tmpHome); err != nil {
+		t.Fatalf("set home flag: %v", err)
+	}
+	root.PersistentFlags().Lookup("home").Changed = true
+
+	daemonCmd := findSubCmd(root, "daemon")
+	startCmd := findSubCmd(daemonCmd, "start")
+
+	cmdDaemon, logFile, err := buildDaemonStartCommand(startCmd, "/fake/agentpaasd", paths)
+	if err != nil {
+		t.Fatalf("buildDaemonStartCommand: %v", err)
+	}
+	_ = logFile.Close()
+
+	var homeCount int
+	var homeValue string
+	var socketCount int
+	for _, e := range cmdDaemon.Env {
+		if strings.HasPrefix(e, "AGENTPAAS_HOME=") {
+			homeCount++
+			homeValue = strings.TrimPrefix(e, "AGENTPAAS_HOME=")
+		}
+		if strings.HasPrefix(e, "AGENTPAAS_SOCKET=") {
+			socketCount++
+		}
+	}
+
+	if homeCount != 1 {
+		t.Fatalf("expected exactly one AGENTPAAS_HOME, got %d", homeCount)
+	}
+	if homeValue != tmpHome {
+		t.Errorf("AGENTPAAS_HOME = %q, want %q", homeValue, tmpHome)
+	}
+	if socketCount != 1 {
+		t.Fatalf("expected exactly one AGENTPAAS_SOCKET, got %d", socketCount)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestDaemonStart_ReturnsPromptly
 // Tests: runDaemonStart returns within a few seconds when the daemon stays
 // alive (does not hang waiting on inherited terminal FDs).
