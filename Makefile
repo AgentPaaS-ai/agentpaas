@@ -50,7 +50,8 @@ e2e-network: build
 	@echo "✓ e2e-network gate: PASS"
 
 redteam-smoke:
-	@echo "Error: redteam-smoke is not implemented until Block 12" && exit 1
+	@echo "==> Running P1 red-team smoke gate"
+	AGENTPAAS_DOCKER_TESTS=1 DOCKER_HOST="unix://$$HOME/.colima/default/docker.sock" go test ./test/redteam/... -v -timeout 15m
 
 .PHONY: block1-gate
 block1-gate: proto build test lint
@@ -149,8 +150,9 @@ block11-gate: build test race lint osv
 	go test -tags=adversary -race -count=1 ./internal/daemon/... ./internal/cli/... ./internal/pack/...
 	@echo "Block 11 gate PASSED: golden flow green"
 
-block12-gate:
-	@echo "Error: block12-gate is not implemented until Block 12" && exit 1
+block12-gate: build test race lint osv
+	@echo "==> Running Block 12 gate: P1 red-team smoke gate"
+	$(MAKE) redteam-smoke
 
 block13-gate:
 	@echo "Error: block13-gate is not implemented until Block 13" && exit 1
@@ -175,7 +177,7 @@ gates: ## List all available gate targets
 	@echo "  block9-gate  - Trigger API, event bus (ACTIVE)"
 	@echo "  block10-gate - OTel pipeline, dashboard (not implemented)"
 	@echo "  block11-gate - Hermes operator contract (golden flow)"
-	@echo "  block12-gate - Red-team smoke gate (not implemented)"
+	@echo "  block12-gate - P1 red-team smoke gate"
 	@echo "  block13-gate - Hermes integration plugin (not implemented)"
 	@echo "  block14-gate - Install path, docs, demo, release (not implemented)"
 	@echo "  block15-gate - Sequencing, founder calendar (not implemented)"
