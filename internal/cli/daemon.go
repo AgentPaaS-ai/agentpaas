@@ -354,18 +354,23 @@ func runDaemonStop(cmd *cobra.Command) error {
 	}
 
 	// Wait for process to exit.
-	done := make(chan struct{})
+	waitDone := make(chan struct{})
 	go func() {
 		_, _ = proc.Wait()
-		close(done)
+		select {
+		case waitDone <- struct{}{}:
+		default:
+		}
 	}()
 
 	select {
-	case <-done:
+	case <-waitDone:
 		fmt.Printf("Daemon (PID %d) stopped\n", pid)
 	case <-time.After(10 * time.Second):
 		fmt.Printf("Daemon (PID %d) did not exit within 10 seconds — sending SIGKILL\n", pid)
 		_ = proc.Signal(syscall.SIGKILL)
+		// Best-effort reap the zombie.
+		go func() { _, _ = proc.Wait() }()
 	}
 
 	return nil
