@@ -50,6 +50,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Ensure the home directory structure exists (creates ~/.agentpaas/,
+	// subdirs, and the empty lock/pid/socket files). Without this, daemon.New()
+	// fails because os.OpenFile(paths.Lock, O_RDWR, 0600) does not create the file.
+	if err := home.Ensure(paths); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Create the daemon and acquire the lock file.
 	d, err := daemon.New(paths, daemon.CurrentVersion())
 	if err != nil {
