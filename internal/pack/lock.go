@@ -149,7 +149,16 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 
 	cmdCtx, cancel := context.WithTimeout(ctx, externalSignatureTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(cmdCtx, "cosign", "sign", "--key", keyPath, "--tlog-upload=false", "--yes", imageRef)
+	// cosign v2 used --tlog-upload=false to skip the transparency log. In
+	// cosign v3.x that flag is deprecated and conflicts with the default
+	// --use-signing-config=true. Use --use-signing-config=false to disable
+	// the signing-config path (which requires a tlog), combined with
+	// --tlog-upload=false for older cosign versions that still support it.
+	cmd := exec.CommandContext(cmdCtx, "cosign", "sign",
+		"--key", keyPath,
+		"--use-signing-config=false",
+		"--tlog-upload=false",
+		"--yes", imageRef)
 	output, err := cmd.CombinedOutput()
 	if cmdCtx.Err() != nil {
 		return "", fmt.Errorf("sign image: %w", cmdCtx.Err())
