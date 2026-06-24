@@ -158,17 +158,17 @@ func TestDaemonReadyReturnsStubResponse(t *testing.T) {
 		t.Errorf("OverallStatus = %q, want %q", resp.OverallStatus, "ok")
 	}
 
-	// Other RPCs should return Unimplemented.
+	// Pack validates required fields before executing.
 	_, err = client.Pack(ctx, &controlv1.PackRequest{})
 	if err == nil {
-		t.Fatal("expected error for unimplemented Pack, got nil")
+		t.Fatal("expected error for empty Pack request, got nil")
 	}
 	st, ok := status.FromError(err)
 	if !ok {
 		t.Fatalf("expected gRPC status error, got: %v", err)
 	}
-	if st.Code() != codes.Unimplemented {
-		t.Errorf("expected Unimplemented, got %s: %v", st.Code(), st.Message())
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %s: %v", st.Code(), st.Message())
 	}
 }
 
@@ -194,17 +194,17 @@ func TestClientConnectsAndGetsUnimplemented(t *testing.T) {
 	conn := dialSocket(t, hp.Socket)
 	client := controlv1.NewControlServiceClient(conn)
 
-	// Run is not implemented by stub — should return Unimplemented.
+	// Run validates required fields before executing.
 	_, err = client.Run(ctx, &controlv1.RunRequest{})
 	if err == nil {
-		t.Fatal("expected error for unimplemented Run, got nil")
+		t.Fatal("expected error for empty Run request, got nil")
 	}
 	st, ok := status.FromError(err)
 	if !ok {
 		t.Fatalf("expected gRPC status error, got: %v", err)
 	}
-	if st.Code() != codes.Unimplemented {
-		t.Errorf("expected Unimplemented, got %s: %v", st.Code(), st.Message())
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %s: %v", st.Code(), st.Message())
 	}
 }
 

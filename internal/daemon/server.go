@@ -223,6 +223,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	controlServer := &stubControlServer{
 		version:    d.version,
 		auditIndex: d.auditIndex,
+		homePaths:  d.paths,
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
 	d.control = controlServer

@@ -79,13 +79,12 @@ func TestDockerRuntime_Stats_NotImplemented(t *testing.T) {
 	}
 }
 
-// TestDockerRuntime_Logs_NotImplemented verifies Logs returns
-// errDockerNotImplemented.
-func TestDockerRuntime_Logs_NotImplemented(t *testing.T) {
+// TestDockerRuntime_Logs_Uninitialized verifies Logs rejects empty container ID.
+func TestDockerRuntime_Logs_Uninitialized(t *testing.T) {
 	d := &DockerRuntime{}
-	reader, err := d.Logs(context.Background(), "test-id", LogOptions{Tail: 100})
-	if !errors.Is(err, errDockerNotImplemented) {
-		t.Errorf("Logs() error = %v, want errDockerNotImplemented", err)
+	reader, err := d.Logs(context.Background(), "", LogOptions{Tail: 100})
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("Logs() error = %v, want ErrContainerNotFound", err)
 	}
 	if reader != nil {
 		t.Error("Logs() returned non-nil reader when error expected")
