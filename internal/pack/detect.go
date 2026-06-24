@@ -23,12 +23,49 @@ const (
 
 // AgentYAML is a minimal subset of agent.yaml fields needed for detection
 // and packaging. The runtime field overrides auto-detection.
+// Both flat fields and the v1 metadata/spec schema are supported.
 type AgentYAML struct {
 	Name        string `yaml:"name"`
 	Version     string `yaml:"version"`
 	Runtime     string `yaml:"runtime"`
 	Entry       string `yaml:"entry"`
 	Description string `yaml:"description"`
+	Metadata    struct {
+		Name        string `yaml:"name"`
+		Version     string `yaml:"version"`
+		Description string `yaml:"description"`
+	} `yaml:"metadata"`
+	Spec struct {
+		Runtime    string `yaml:"runtime"`
+		Entrypoint string `yaml:"entrypoint"`
+		Entry      string `yaml:"entry"`
+	} `yaml:"spec"`
+}
+
+func (agent *AgentYAML) normalize() {
+	if agent == nil {
+		return
+	}
+	if strings.TrimSpace(agent.Name) == "" {
+		agent.Name = agent.Metadata.Name
+	}
+	if strings.TrimSpace(agent.Version) == "" {
+		agent.Version = agent.Metadata.Version
+	}
+	if strings.TrimSpace(agent.Description) == "" {
+		agent.Description = agent.Metadata.Description
+	}
+	if strings.TrimSpace(agent.Runtime) == "" {
+		agent.Runtime = agent.Spec.Runtime
+	}
+	if strings.TrimSpace(agent.Entry) == "" {
+		switch {
+		case strings.TrimSpace(agent.Spec.Entrypoint) != "":
+			agent.Entry = agent.Spec.Entrypoint
+		case strings.TrimSpace(agent.Spec.Entry) != "":
+			agent.Entry = agent.Spec.Entry
+		}
+	}
 }
 
 // DetectionResult holds the outcome of project type detection.
@@ -104,6 +141,7 @@ func LoadAgentYAML(projectDir string) (*AgentYAML, error) {
 	if err := yaml.Unmarshal(data, &agent); err != nil {
 		return nil, fmt.Errorf("parse agent.yaml: %w", err)
 	}
+	agent.normalize()
 
 	return &agent, nil
 }
