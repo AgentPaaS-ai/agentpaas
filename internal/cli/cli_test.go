@@ -310,9 +310,14 @@ func TestDaemonStatus_NotRunningJSON(t *testing.T) {
 func TestDaemonStart_ExitImmediate_NoPanic(t *testing.T) {
 	tmpHome := t.TempDir()
 
-	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
-	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
-		t.Fatalf("write fake daemon: %v", err)
+	// Use a compiled binary (/usr/bin/false exits with code 1) instead of a
+	// shell script. Shell scripts incur shell startup overhead which under
+	// heavy parallel test contention (20+ test binaries) can exceed the grace
+	// period, causing a false "success" and a flaky test. A compiled binary
+	// exits within microseconds regardless of system load.
+	fakeDaemon := "/usr/bin/false"
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("fake daemon binary only available on unix")
 	}
 
 	oldResolver := daemonBinaryResolver
@@ -354,7 +359,7 @@ func TestDaemonStart_StaysAlive_Success(t *testing.T) {
 	tmpHome := t.TempDir()
 
 	fakeDaemon := filepath.Join(t.TempDir(), "agentpaasd")
-	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nsleep 2\n"), 0o755); err != nil {
+	if err := os.WriteFile(fakeDaemon, []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
 		t.Fatalf("write fake daemon: %v", err)
 	}
 

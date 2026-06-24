@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
+	"errors"
 	"io/fs"
 	"net/http"
 	"path"
@@ -165,6 +166,9 @@ func (s *Server) ListenAndServe() error {
 	s.mu.RLock()
 	srv := s.srv
 	s.mu.RUnlock()
+	if srv == nil {
+		return errors.New("dashboard server not initialized")
+	}
 	return srv.ListenAndServe()
 }
 

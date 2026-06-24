@@ -288,20 +288,16 @@ func runDaemonStart(cmd *cobra.Command) error {
 
 	fmt.Printf("Daemon started (PID %d)\n", cmdDaemon.Process.Pid)
 
-	// Wait for the daemon to either stay alive past the grace period or exit early.
-	// We cannot use cmdDaemon.ProcessState here — it is nil until Wait() returns.
+	// The 1-second grace period balances two needs:
+	//   - Fast enough for good CLI UX (user waits this long before "running").
+	//   - Long enough that a crashing daemon (which exits in <100ms under normal
+	//     load) is reliably caught even under heavy parallel test contention.
+	// The canonical example: if the daemon binary is missing or the config is
+	// bad, the process exits within milliseconds. A 1s window catches this with
+	// high margin while keeping the happy-path snappy.
 	waitCh := make(chan error, 1)
-	done := make(chan struct{})
-	defer close(done)
 	go func() {
-		select {
-		case waitCh <- cmdDaemon.Wait():
-		case <-done:
-			// Parent is returning; best-effort reap without blocking.
-			if cmdDaemon.Process != nil {
-				_, _ = cmdDaemon.Process.Wait()
-			}
-		}
+		waitCh <- cmdDaemon.Wait()
 	}()
 
 	select {
@@ -313,8 +309,10 @@ func runDaemonStart(cmd *cobra.Command) error {
 		}
 		return fmt.Errorf("daemon exited immediately (exit code %d) — check logs at %s: %w",
 			exitCode, paths.Logs, err)
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1 * time.Second):
 		// Daemon survived the grace period — consider it started.
+		// The Wait() goroutine above remains blocked until the daemon eventually
+		// exits; it will be reaped when this CLI process exits (benign leak).
 		fmt.Println("Daemon is running. Use 'agent daemon status' to verify.")
 		return nil
 	}
