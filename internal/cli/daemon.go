@@ -192,6 +192,62 @@ to be in the same directory as the agent CLI binary.`,
 	}
 }
 
+// filterEnv returns a copy of env with the given variable names removed.
+func filterEnv(env []string, names ...string) []string {
+	result := make([]string, 0, len(env))
+	for _, e := range env {
+		skip := false
+		for _, n := range names {
+			if strings.HasPrefix(e, n+"=") {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			result = append(result, e)
+		}
+	}
+	return result
+}
+
+// buildDaemonStartCommand creates the exec.Cmd for starting the daemon subprocess.
+// The caller must not close the returned logFile — the daemon subprocess inherits it.
+func buildDaemonStartCommand(cmd *cobra.Command, daemonBinary string, paths *home.HomePaths) (*exec.Cmd, *os.File, error) {
+	if err := os.MkdirAll(paths.Logs, 0700); err != nil {
+		return nil, nil, fmt.Errorf("cannot create logs directory %s: %w", paths.Logs, err)
+	}
+	logPath := filepath.Join(paths.Logs, "daemon.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot open daemon log file %s: %w", logPath, err)
+	}
+
+	cmdDaemon := exec.Command(daemonBinary)
+	cmdDaemon.Stdout = logFile
+	cmdDaemon.Stderr = logFile
+	cmdDaemon.Stdin = nil
+
+	homeDir, err := homeDirPath(cmd)
+	if err != nil {
+		_ = logFile.Close()
+		return nil, nil, fmt.Errorf("cannot determine home directory: %w", err)
+	}
+
+	// Always pass AGENTPAAS_HOME and AGENTPAAS_SOCKET to the daemon subprocess
+	// explicitly. We strip any inherited copy via filterEnv to avoid duplicate
+	// keys, then set the resolved values unconditionally — whether they
+	// originated from --home/--socket flags or from the env vars. Without this,
+	// a daemon spawned from an env-var-configured CLI would default to
+	// ~/.agentpaas instead of $AGENTPAAS_HOME and fail to find its socket.
+	cmdDaemon.Env = filterEnv(os.Environ(), "AGENTPAAS_HOME", "AGENTPAAS_SOCKET")
+	cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_HOME="+homeDir)
+	if sock, _ := socketPath(cmd); sock != "" {
+		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_SOCKET="+sock)
+	}
+
+	return cmdDaemon, logFile, nil
+}
+
 func runDaemonStart(cmd *cobra.Command) error {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
@@ -224,17 +280,9 @@ func runDaemonStart(cmd *cobra.Command) error {
 	}
 
 	// Start the daemon subprocess.
-	cmdDaemon := exec.Command(daemonBinary)
-	cmdDaemon.Stdout = os.Stdout
-	cmdDaemon.Stderr = os.Stderr
-	// Don't inherit the CLI's stdin — the daemon should be independent.
-	// Pass the AGENTPAAS_HOME and AGENTPAAS_SOCKET env vars if overridden.
-	cmdDaemon.Env = os.Environ()
-	if cmd.Root().PersistentFlags().Changed("home") {
-		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_HOME="+homeDir)
-	}
-	if sock, _ := socketPath(cmd); sock != "" {
-		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_SOCKET="+sock)
+	cmdDaemon, _, err := buildDaemonStartCommand(cmd, daemonBinary, paths)
+	if err != nil {
+		return err
 	}
 
 	if err := cmdDaemon.Start(); err != nil {
@@ -243,8 +291,13 @@ func runDaemonStart(cmd *cobra.Command) error {
 
 	fmt.Printf("Daemon started (PID %d)\n", cmdDaemon.Process.Pid)
 
-	// Wait for the daemon to either stay alive past the grace period or exit early.
-	// We cannot use cmdDaemon.ProcessState here — it is nil until Wait() returns.
+	// The 1-second grace period balances two needs:
+	//   - Fast enough for good CLI UX (user waits this long before "running").
+	//   - Long enough that a crashing daemon (which exits in <100ms under normal
+	//     load) is reliably caught even under heavy parallel test contention.
+	// The canonical example: if the daemon binary is missing or the config is
+	// bad, the process exits within milliseconds. A 1s window catches this with
+	// high margin while keeping the happy-path snappy.
 	waitCh := make(chan error, 1)
 	go func() {
 		waitCh <- cmdDaemon.Wait()
@@ -259,8 +312,10 @@ func runDaemonStart(cmd *cobra.Command) error {
 		}
 		return fmt.Errorf("daemon exited immediately (exit code %d) — check logs at %s: %w",
 			exitCode, paths.Logs, err)
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1 * time.Second):
 		// Daemon survived the grace period — consider it started.
+		// The Wait() goroutine above remains blocked until the daemon eventually
+		// exits; it will be reaped when this CLI process exits (benign leak).
 		fmt.Println("Daemon is running. Use 'agent daemon status' to verify.")
 		return nil
 	}
@@ -318,18 +373,23 @@ func runDaemonStop(cmd *cobra.Command) error {
 	}
 
 	// Wait for process to exit.
-	done := make(chan struct{})
+	waitDone := make(chan struct{})
 	go func() {
 		_, _ = proc.Wait()
-		close(done)
+		select {
+		case waitDone <- struct{}{}:
+		default:
+		}
 	}()
 
 	select {
-	case <-done:
+	case <-waitDone:
 		fmt.Printf("Daemon (PID %d) stopped\n", pid)
 	case <-time.After(10 * time.Second):
 		fmt.Printf("Daemon (PID %d) did not exit within 10 seconds — sending SIGKILL\n", pid)
 		_ = proc.Signal(syscall.SIGKILL)
+		// Best-effort reap the zombie.
+		go func() { _, _ = proc.Wait() }()
 	}
 
 	return nil
