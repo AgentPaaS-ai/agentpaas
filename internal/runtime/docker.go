@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
 
 // defaultImage is the default container image used for agent and gateway
@@ -35,9 +36,9 @@ type DockerRuntime struct {
 // API. It discovers the Docker daemon through environment variables
 // (DOCKER_HOST, DOCKER_API_VERSION) or defaults to the local socket.
 func NewDockerRuntime() (*DockerRuntime, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := dockerclient.New()
 	if err != nil {
-		return nil, fmt.Errorf("DockerRuntime: create client: %w", err)
+		return nil, fmt.Errorf("DockerRuntime: %w", err)
 	}
 
 	// Verify the daemon is reachable by pinging it. We return the runtime
