@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -271,9 +272,37 @@ func (d *DockerRuntime) Stats(_ context.Context, _ ContainerID) (ContainerStats,
 	return ContainerStats{}, errDockerNotImplemented
 }
 
-// Logs returns a reader for a Docker container's output. Not yet implemented.
-func (d *DockerRuntime) Logs(_ context.Context, _ ContainerID, _ LogOptions) (io.ReadCloser, error) {
-	return nil, errDockerNotImplemented
+// Logs returns a reader for a Docker container's stdout/stderr output.
+func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error) {
+	if d.cli == nil {
+		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+	}
+	if string(id) == "" {
+		return nil, fmt.Errorf("%w: empty container ID", ErrContainerNotFound)
+	}
+
+	tail := strconv.Itoa(opts.Tail)
+	if opts.Tail <= 0 {
+		tail = "all"
+	}
+	logOpts := container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Follow:     opts.Follow,
+		Tail:       tail,
+	}
+	if opts.Since != nil {
+		logOpts.Since = opts.Since.Format(time.RFC3339Nano)
+	}
+
+	reader, err := d.cli.ContainerLogs(ctx, string(id), logOpts)
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
+		}
+		return nil, fmt.Errorf("container logs: %w", err)
+	}
+	return reader, nil
 }
 
 // CreateNetwork provisions a new Docker network from the given spec and
