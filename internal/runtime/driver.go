@@ -99,6 +99,12 @@ type ContainerSpec struct {
 	// NanoCPUs is the CPU quota in nanoseconds of CPU time per period.
 	// 0 means no limit. Populated from agent.yaml by the upper orchestrator.
 	NanoCPUs int64
+
+	// Binds is a list of host-path:container-path bind mounts. Each entry
+	// follows the Docker --volume format: "host_path:container_path" or
+	// "host_path:container_path:ro" for read-only. Used to mount audit
+	// volumes and other host directories into the container.
+	Binds []string
 }
 
 // NetworkSpec defines the parameters for creating a Docker network.

@@ -24,6 +24,19 @@ func main() {
 		StderrPath:     envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
 	}
 
+	// Wire the audit appender if a path is provided. The daemon mounts
+	// a volume and sets AGENTPAAS_AUDIT_PATH so harness audit events
+	// (egress decisions, MCP calls) flow back to the daemon.
+	if auditPath := os.Getenv("AGENTPAAS_AUDIT_PATH"); auditPath != "" {
+		appender, err := harness.NewFileAuditAppender(auditPath)
+		if err != nil {
+			log.Printf("harness: audit appender: %v", err)
+		} else {
+			cfg.Audit = appender
+			defer func() { _ = appender.Close() }()
+		}
+	}
+
 	server := harness.NewServer(cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
