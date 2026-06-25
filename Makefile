@@ -65,7 +65,7 @@ redteam-smoke:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a-gate block14b-gate block14c-gate block15-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -182,6 +182,20 @@ block13-gate: build lint
 	@python3 -c "import ast; ast.parse(open('integrations/hermes-plugin/tools.py').read()); print('plugin tools.py syntax OK')"
 	@echo "✓ Block 13 gate passed: plugin + demos + e2e governance verified"
 
+block14a0-gate: build lint
+	@echo "==> Running Block 14A0 gate: B13 correctness fixes"
+	# Run status tracking, invoke/Stop sync, orphan reconciliation tests
+	go test -race -count=1 ./internal/daemon/...
+	# Immutable redeploy path
+	go test -race -count=1 -run TestImmutablePromptUpdatePath ./internal/pack/...
+	# Docker e2e (skips gracefully if Docker not available)
+	@if [ "$$AGENTPAAS_DOCKER_TESTS" = "1" ]; then \
+		AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run TestE2E_PackRunInvokeStopAudit ./internal/daemon/... -timeout 300s; \
+	else \
+		echo "(skipping Docker e2e — set AGENTPAAS_DOCKER_TESTS=1 to run)"; \
+	fi
+	@echo "✓ Block 14A0 gate passed: B13 correctness fixes verified"
+
 block14a-gate:
 	@echo "Error: block14a-gate (security remediation) is not implemented until Block 14A" && exit 1
 
@@ -191,8 +205,8 @@ block14b-gate:
 block14c-gate:
 	@echo "Error: block14c-gate (install/docs/demo/release) is not implemented until Block 14C" && exit 1
 
-block14-gate: block14a-gate block14b-gate block14c-gate
-	@echo "==> All Block 14 sub-segment gates passed"
+block14-gate: block14a0-gate block14a-gate block14b-gate block14c-gate
+	@echo "==> All Block 14 sub-segment gates passed (14A0 → 14A → 14B → 14C)"
 
 block15-gate:
 	@echo "Error: block15-gate is a manual/docs-only gate. See execution plan §15.2 use-case matrix." && exit 1
@@ -213,7 +227,8 @@ gates: ## List all available gate targets
 	@echo "  block11-gate - Hermes operator contract (golden flow)"
 	@echo "  block12-gate - P1 red-team smoke gate"
 	@echo "  block13-gate - Hermes integration plugin + e2e governance (ACTIVE)"
-	@echo "  block14-gate - Post-B13 consolidated: security + egress + release (not implemented)"
+	@echo "  block14-gate  - Post-B13 consolidated: correctness + security + egress + release (not implemented)"
+	@echo "  block14a0-gate - B13 correctness fixes: run status, orphan reconciliation, sync, e2e"
 	@echo "  block14a-gate - Security remediation (B13.1, 9 tasks)"
 	@echo "  block14b-gate - Real-time egress timeline (B13.5)"
 	@echo "  block14c-gate - Install path, docs, demo, v0.1.0 release"

@@ -1983,17 +1983,146 @@ This block consolidates ALL post-Block-13 build work into one block with
 sub-segments. Each sub-segment has its own gate target but they share a single
 `make block14-gate` that runs all of them in sequence. The sub-segments are:
 
+- **14A0** — B13 correctness fixes (4 tasks from B13 risk analysis: run status, orphan reconciliation, invoke/Stop sync, Docker e2e test)
 - **14A** — Block 13.1 security remediation (9 tasks from the B13 security audit)
 - **14B** — Block 13.5 real-time egress timeline (deferred from B13)
 - **14C** — Install path, docs, demo, and v0.1.0 release (former standalone Block 14)
 
-Block 13 must be fully complete (T01-T09 + block13-gate green) before 14A starts.
+Block 13 must be fully complete (T01-T09 + block13-gate green) before 14A0 starts.
 
 **Session discipline (Block 13+):** All build sessions are capped at 40 turns.
 Work is divided into micro-chunks (3-6 turns each), merged to main after each,
 checkpointed every 2-3 chunks, and every session ends with a mandatory exit
 prompt for fast restart. See the `agentpaas-40-turn-rhythm` skill for the full
 protocol, checkpoint format, and exit prompt template.
+
+### 14A0 — B13 Correctness Fixes (from B13 Risk Analysis)
+
+**Source:** `docs/b13-risk-analysis.md` — 4 runtime correctness bugs identified
+during the B13 in-depth review. These are foundational issues in the daemon's
+run lifecycle that must be fixed BEFORE the 14A security hardening, because the
+security work assumes the run lifecycle is correct. All fixes are in the Go
+daemon (no plugin changes).
+
+**14A0-T01: Run status tracking (CRITICAL — fix this first)**
+
+- **Problem:** `invokeAgent` discards the invoke result (`_ = stdout`). Every
+  Stop publishes `EventRunSucceeded` regardless of whether the agent crashed,
+  the invoke failed, or the container exited with a non-zero code. The dashboard
+  and audit always show green.
+- **Files:** `internal/daemon/control_handlers.go`, `internal/daemon/server.go`
+- **Fix:**
+  1. Add a `status` field to `trackedRun`: `"running"` | `"succeeded"` |
+     `"failed"`. Default `"running"` on `trackRun()`.
+  2. In the auto-invoke goroutine: set status to `"failed"` if `invokeAgent`
+     returns error; set to `"succeeded"` if the invoke completes without error.
+  3. In `Stop()`: check the container's exit code via `rt.Status()` or Docker
+     inspect before removing. If exit code != 0, override status to `"failed"`.
+  4. Publish `EventRunFailed` instead of `EventRunSucceeded` when status is
+     `"failed"`. Add the event type if it doesn't exist in `trigger/events.go`.
+  5. Record the run status in the `run_stop` audit payload.
+- **Test:** `TestRun_FailedInvoke_SetsFailedStatus` — mock Docker driver returns
+  error on Exec; verify Stop publishes EventRunFailed and audit payload has
+  `"status": "failed"`.
+- **Effort:** 2 micro-chunks.
+
+**14A0-T02: Orphan container reconciliation on daemon start (CRITICAL)**
+
+- **Problem:** If the daemon crashes or is killed, all running agent containers
+  become invisible to the restarted daemon. The `s.runs` map is in-memory only.
+  Orphaned containers accumulate, consuming resources.
+- **Files:** `internal/daemon/server.go`, `internal/daemon/control_handlers.go`
+- **Fix:**
+  1. On daemon `Start()` (after gRPC server is listening, before returning), call
+     a new `reconcileOrphanedContainers()` method.
+  2. `reconcileOrphanedContainers()` uses `rt.ListContainers(ctx,
+     "agentpaas/resource-type=agent")` to find all AgentPaaS-managed containers.
+  3. For each container found: extract `runID` from labels. Check if it's in
+     `s.runs`. If not, it's an orphan.
+  4. For orphans: check container status. If running, either re-track it (best
+     effort — extract network ID from `InspectContainerNetworks`) or stop +
+     remove it + remove its network. Default: stop + remove (safe cleanup).
+     Log the reconciliation action. Emit a `container_reconciled` audit event.
+  5. Also reconcile orphaned networks via `rt.ListNetworks(ctx,
+     "agentpaas/resource-type=net-*")`.
+- **Test:** `TestReconcileOrphans_StopsOrphanedContainers` — pre-create a
+  container with agentpaas labels via mock driver; start daemon; verify the
+  container is stopped and removed.
+- **Pattern:** The Block 5 reconciliation tests
+  (`TestE2E_CrashReconciliation` in `internal/runtime/`) already test this
+  pattern against real Docker. Reference them.
+- **Effort:** 2-3 micro-chunks.
+
+**14A0-T03: Invoke/Stop synchronization (HIGH)**
+
+- **Problem:** The auto-invoke goroutine uses
+  `context.WithTimeout(context.Background(), 2*time.Minute)` — detached from the
+  run lifecycle. If `Stop()` removes the container while `invokeAgent()` is
+  polling `/readyz`, the next `rt.Exec()` fails against a removed container.
+  There is no synchronization between the invoke goroutine and Stop.
+- **Files:** `internal/daemon/control_handlers.go`
+- **Fix:**
+  1. Store a `context.CancelFunc` in `trackedRun` (add `cancelInvoke context.CancelFunc`
+     field).
+  2. In the Run handler, create the invoke context with cancel:
+     `invokeCtx, cancel := context.WithCancel(context.Background())`. Store
+     `cancel` in the trackedRun before launching the goroutine. The goroutine
+     uses `invokeCtx` (with the 2-minute timeout applied via
+     `context.WithTimeout(invokeCtx, 2*time.Minute)`).
+  3. In `Stop()`, BEFORE removing the container: look up the run, call
+     `tracked.cancelInvoke()` to signal the invoke goroutine to exit, then wait
+     briefly (e.g., 2 seconds via a `sync.WaitGroup` or a done channel) for the
+     goroutine to finish before proceeding with container removal.
+  4. The invoke goroutine already checks `ctx.Done()` in its polling loop —
+     cancelling will cause it to return cleanly.
+- **Test:** `TestStop_RaceWithInvoke_GoroutineExitsCleanly` — mock driver; call
+  Run then immediately Stop; verify no panic, no "container not found" errors in
+  logs, invoke goroutine exits.
+- **Effort:** 1-2 micro-chunks.
+
+**14A0-T04: Docker e2e test in block13-gate (HIGH)**
+
+- **Problem:** `block13-gate` runs unit tests with a mock Docker driver but does
+  NOT exercise the real pack→run→invoke→stop→audit flow. CI won't catch
+  regressions in the Docker integration. The "e2e governance verified" message
+  is misleading.
+- **Files:** `internal/daemon/control_handlers_e2e_test.go` (new),
+  `Makefile`
+- **Fix:**
+  1. Create `TestE2E_PackRunInvokeStopAudit` gated behind
+     `AGENTPAAS_DOCKER_TESTS=1` (same pattern as Block 5 tests).
+  2. The test:
+     a. Starts a daemon with a temp AGENTPAAS_HOME under `~/` (NOT `/tmp` —
+        colima mount limitation).
+     b. Packs the test agent from `/tmp/agentpaas-e2e-agent/` (or a fixture in
+        `demo/governed-weather/` with SDK bundled).
+     c. Calls Run, waits up to 60s for the auto-invoke goroutine to complete
+        (poll container status or sleep).
+     d. Calls Stop.
+     e. Queries audit and asserts that `egress_denied` events exist with
+        destination matching the agent's HTTP call target.
+     f. Asserts the audit hash chain is intact (seq is sequential, prev_hash
+        matches).
+  3. Add to `block13-gate` in the Makefile:
+     ```
+     ifeq ($(AGENTPAAS_DOCKER_TESTS),1)
+         AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run TestE2E_PackRunInvokeStopAudit ./internal/daemon/... -timeout 300s
+     else
+         @echo "(skipping Docker e2e — set AGENTPAAS_DOCKER_TESTS=1 to run)"
+     endif
+     ```
+  4. Verify the test passes with real Docker (colima).
+- **Effort:** 2-3 micro-chunks (write test, wire into gate, verify).
+
+**14A0 GATE:** `make block14a0-gate` — all daemon tests pass with -race,
+reconciliation test passes, invoke/Stop race test passes, Docker e2e test
+passes with `AGENTPAAS_DOCKER_TESTS=1` (skips gracefully otherwise). Run this
+gate BEFORE starting 14A security work.
+
+**Order:** T01 (run status) → T03 (invoke/Stop sync) → T02 (orphan
+reconciliation) → T04 (Docker e2e test). T01 and T03 touch the same code paths
+and should be done together; T02 depends on T01's status field; T04 validates
+everything.
 
 ### 14A — Security Remediation (Block 13.1)
 
@@ -2149,8 +2278,9 @@ verification documented-and-green; v0.1.0 tagged with goreleaser; all P1 CI gate
 (lint, test, -race, fuzz corpus, e2e-network on macOS, Hermes integration
 conformance, redteam-smoke 6/6, docs smoke) green on the tag.
 
-**BLOCK 14 SUCCESS GATE:** `make block14-gate` runs all three sub-segment gates
-in sequence (14A → 14B → 14C). All must pass. This is the final P1 build gate.
+**BLOCK 14 SUCCESS GATE:** `make block14-gate` runs all four sub-segment gates
+in sequence (14A0 → 14A → 14B → 14C). All must pass. This is the final P1
+build gate.
 
 ---
 
