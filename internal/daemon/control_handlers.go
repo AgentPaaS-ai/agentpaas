@@ -725,21 +725,40 @@ func formatAuditExport(records []audit.AuditRecord, format string, includePayloa
 	}
 }
 
-// resolveHarnessBinary finds the agentpaas-harness binary by checking:
-// 1. Same directory as the daemon binary itself.
-// 2. PATH lookup (exec.LookPath).
-// Returns an empty string if not found; pack.BuildImage will then fall back
-// to its own exec.LookPath and produce a clear error.
+// resolveExecutable returns the path to the current executable. Tests may override it.
+var resolveExecutable = os.Executable
+
+// resolveHarnessBinary finds the agentpaas-harness binary for container images.
+// It prefers the linux/arm64 cross-compile (agentpaas-harness-linux) over the
+// darwin/arm64 Mac binary. Returns an empty string if not found; pack.BuildImage
+// will then fall back to its own exec.LookPath and produce a clear error.
 func resolveHarnessBinary() string {
-	exePath, err := os.Executable()
+	exePath, err := resolveExecutable()
 	if err == nil {
-		candidate := filepath.Join(filepath.Dir(exePath), "agentpaas-harness")
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
-			return candidate
+		exeDir := filepath.Dir(exePath)
+		if p := harnessCandidate(filepath.Join(exeDir, "agentpaas-harness-linux")); p != "" {
+			return p
 		}
+		if p := harnessCandidate(filepath.Join(exeDir, "..", "bin", "agentpaas-harness-linux")); p != "" {
+			return p
+		}
+		if p := harnessCandidate(filepath.Join(exeDir, "agentpaas-harness")); p != "" {
+			return p
+		}
+	}
+	if p, err := exec.LookPath("agentpaas-harness-linux"); err == nil {
+		return p
 	}
 	if p, err := exec.LookPath("agentpaas-harness"); err == nil {
 		return p
+	}
+	return ""
+}
+
+func harnessCandidate(path string) string {
+	info, err := os.Stat(path)
+	if err == nil && !info.IsDir() {
+		return path
 	}
 	return ""
 }

@@ -176,6 +176,37 @@ func TestAuditExport_ReadsJSONL(t *testing.T) {
 	}
 }
 
+func TestResolveHarnessBinary_PrefersLinux(t *testing.T) {
+	dir := t.TempDir()
+	macHarness := filepath.Join(dir, "agentpaas-harness")
+	linuxHarness := filepath.Join(dir, "agentpaas-harness-linux")
+	daemonBinary := filepath.Join(dir, "agentpaasd")
+
+	for _, path := range []string{macHarness, linuxHarness, daemonBinary} {
+		if err := os.WriteFile(path, []byte("stub"), 0o755); err != nil {
+			t.Fatalf("os.WriteFile(%s) error = %v", path, err)
+		}
+	}
+
+	oldResolveExecutable := resolveExecutable
+	resolveExecutable = func() (string, error) { return daemonBinary, nil }
+	t.Cleanup(func() { resolveExecutable = oldResolveExecutable })
+
+	got := resolveHarnessBinary()
+	if got != linuxHarness {
+		t.Fatalf("resolveHarnessBinary() = %q, want %q", got, linuxHarness)
+	}
+
+	if err := os.Remove(linuxHarness); err != nil {
+		t.Fatalf("os.Remove(linuxHarness) error = %v", err)
+	}
+
+	got = resolveHarnessBinary()
+	if got != macHarness {
+		t.Fatalf("resolveHarnessBinary() without linux = %q, want %q", got, macHarness)
+	}
+}
+
 func TestPack_RecordsDeploymentWhenBuildSucceeds(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping docker pack integration in short mode")
