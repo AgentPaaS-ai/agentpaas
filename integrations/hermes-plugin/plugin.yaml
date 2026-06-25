@@ -4,13 +4,23 @@ version: 0.1.0
 toolset: agentpaas
 author: AgentPaaS
 provides_tools:
+  - agentpaas_init_project
+  - agentpaas_reconcile_project
+  - agentpaas_validate_project
+  - agentpaas_doctor
   - agentpaas_pack
   - agentpaas_run
   - agentpaas_stop
-  - agentpaas_status
-  - agentpaas_audit_query
   - agentpaas_logs
-  - agentpaas_validate_project
-  - agentpaas_doctor
+  - agentpaas_status
+  - agentpaas_get_run_timeline
+  - agentpaas_policy_show
+  - agentpaas_explain_policy_denial
+  - agentpaas_recommend_policy_patch
+  - agentpaas_audit_query
+  - agentpaas_export_audit
+  - agentpaas_summarize_run
+  - agentpaas_explain_failure
+  - agentpaas_next_action
 requires_env:
   - AGENTPAAS_SOCKET_PATH
