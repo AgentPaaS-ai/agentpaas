@@ -237,6 +237,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	bodyMarker, bodyHash := redactedBodyEvidence(body)
 	httpReq, err := http.NewRequestWithContext(context.Background(), method, rawURL, strings.NewReader(body))
 	if err != nil {
+		s.auditEgressDecision("harness", rawURL, method, "", "", "denied", "invalid request: "+err.Error())
 		state.setFailureEvidence(&UpstreamEvidence{
 			Availability: AvailabilityUnavailable,
 			Method:       method,
@@ -254,6 +255,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		credID := stringParam(req.Params, "credential_id")
 		cred, ok := state.credentials[credID]
 		if !ok {
+			s.auditEgressDecision("harness", rawURL, method, credID, "", "denied", "credential not declared")
 			state.setFailureEvidence(&UpstreamEvidence{
 				Availability: AvailabilityForbidden,
 				Method:       method,
@@ -272,6 +274,10 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		// HTTP request failed — this is an egress denial when the container
+		// is on an internal-only network (connection refused, timeout, no route).
+		reason := "http request failed: " + err.Error()
+		s.auditEgressDecision("harness", rawURL, method, "", "", "denied", reason)
 		headers := hashedHeaders(httpReq.Header)
 		if withCredential {
 			headers["credential"] = sha256HexString(redactedCredentialEvidence())
@@ -291,6 +297,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
+		s.auditEgressDecision("harness", rawURL, method, "", "", "denied", "response read failed: "+err.Error())
 		state.setFailureEvidence(&UpstreamEvidence{
 			StatusCode:   resp.StatusCode,
 			Availability: availabilityFromStatus(resp.StatusCode),
@@ -303,6 +310,8 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		})
 		return rpcError(req.ID, err.Error(), "http_failed")
 	}
+	// HTTP request succeeded — record as allowed egress.
+	s.auditEgressDecision("harness", rawURL, method, "", "", "allowed", "")
 	return rpcResponse{
 		ID: req.ID,
 		OK: true,
@@ -363,6 +372,33 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 		OK:     true,
 		Result: result,
 	}
+}
+
+func (s *harnessRPCServer) auditEgressDecision(actor, destination, method, credentialID, statusCode, decision, reason string) {
+	if s.audit == nil {
+		return
+	}
+	payload := map[string]interface{}{
+		"destination": destination,
+		"method":      method,
+		"decision":    decision,
+	}
+	if credentialID != "" {
+		payload["credential_id"] = credentialID
+	}
+	if statusCode != "" {
+		payload["status_code"] = statusCode
+	}
+	if reason != "" {
+		payload["reason"] = reason
+	}
+	_ = s.audit.Append(audit.AuditRecord{
+		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+		EventType:      "egress_" + decision,
+		DeploymentMode: "local",
+		Actor:          actor,
+		Payload:        payload,
+	})
 }
 
 func (s *harnessRPCServer) auditMCPDenied(serverID, tool, reason string) {

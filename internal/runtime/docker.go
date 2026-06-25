@@ -136,6 +136,11 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 		Sysctls: map[string]string{
 			"net.ipv6.conf.all.disable_ipv6": "1",
 		},
+
+		// Binds mounts host directories into the container. Used for
+		// audit volumes — the harness writes egress audit events to a
+		// mounted volume that the daemon reads after the run.
+		Binds: spec.Binds,
 	}
 
 	// Resource limits (embedded Resources struct — set separately for clarity)
