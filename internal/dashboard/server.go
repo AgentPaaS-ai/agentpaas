@@ -121,6 +121,13 @@ func (s *Server) SetPolicyDir(policyDir string) {
 	s.policyDir = policyDir
 }
 
+// SetResourceManager sets the resource inventory provider for dashboard APIs.
+func (s *Server) SetResourceManager(mgr ResourceManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resourceMgr = mgr
+}
+
 // SetAuditSigningKey sets the key material used for signed audit exports.
 func (s *Server) SetAuditSigningKey(key *ecdsa.PrivateKey, pubKeyDER []byte) {
 	s.auditSigningKey = key
