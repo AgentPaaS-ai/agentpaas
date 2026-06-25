@@ -187,11 +187,20 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 		return nil, status.Errorf(codes.Internal, "create network: %v", err)
 	}
 
+	// Create host audit directory for harness audit JSONL.
+	hostAuditDir := filepath.Join(s.homePaths.State, "runs", runID, "harness-audit")
+	if err := os.MkdirAll(hostAuditDir, 0o700); err != nil {
+		_ = rt.RemoveNetwork(ctx, netID)
+		return nil, status.Errorf(codes.Internal, "create audit dir: %v", err)
+	}
+
 	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
 	containerID, err := rt.Create(ctx, runtime.ContainerSpec{
 		Image:      imageRef,
 		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
 		NetworkIDs: []string{string(netID)},
+		Binds:      []string{fmt.Sprintf("%s:/audit", hostAuditDir)},
+		Env:        []string{"AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl"},
 	})
 	if err != nil {
 		_ = rt.RemoveNetwork(ctx, netID)
@@ -204,7 +213,7 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 		return nil, status.Errorf(codes.Internal, "start container: %v", err)
 	}
 
-	s.trackRun(runID, containerID, string(netID))
+	s.trackRun(runID, containerID, string(netID), hostAuditDir)
 	if s.eventBus != nil {
 		s.eventBus.RegisterRun(runID)
 		s.eventBus.Publish(runID, trigger.EventRunStarted, map[string]interface{}{
@@ -530,13 +539,17 @@ func (s *stubControlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error)
 	return s.dockerRT, nil
 }
 
-func (s *stubControlServer) trackRun(runID string, containerID runtime.ContainerID, networkID string) {
+func (s *stubControlServer) trackRun(runID string, containerID runtime.ContainerID, networkID, auditDir string) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if s.runs == nil {
 		s.runs = make(map[string]trackedRun)
 	}
-	s.runs[runID] = trackedRun{Container: containerID, Network: networkID}
+	s.runs[runID] = trackedRun{
+		Container: containerID,
+		Network:   networkID,
+		AuditDir:  auditDir,
+	}
 }
 
 // activeRunCount returns the number of currently tracked active runs.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -142,7 +143,7 @@ func TestRunTracking(t *testing.T) {
 	containerID := runtime.ContainerID("container-abc")
 	networkID := "network-xyz"
 
-	server.trackRun(runID, containerID, networkID)
+	server.trackRun(runID, containerID, networkID, "")
 	gotContainer, gotNetwork := server.lookupRun(runID)
 	if gotContainer != containerID {
 		t.Fatalf("lookupRun() container = %q, want %q", gotContainer, containerID)
@@ -351,8 +352,8 @@ func TestActiveRunCount(t *testing.T) {
 		t.Fatalf("activeRunCount() = %d, want 0", got)
 	}
 
-	server.trackRun("run-1", "container-1", "network-1")
-	server.trackRun("run-2", "container-2", "network-2")
+	server.trackRun("run-1", "container-1", "network-1", "")
+	server.trackRun("run-2", "container-2", "network-2", "")
 
 	if got := server.activeRunCount(); got != 2 {
 		t.Fatalf("activeRunCount() = %d, want 2", got)
@@ -362,6 +363,169 @@ func TestActiveRunCount(t *testing.T) {
 	if got := server.activeRunCount(); got != 1 {
 		t.Fatalf("activeRunCount() after untrack = %d, want 1", got)
 	}
+}
+
+func deployTestAgent(t *testing.T, hp *home.HomePaths, agentName string) {
+	t.Helper()
+	deployedDir := pack.DeployedAgentPath(hp.Home, agentName)
+	if err := os.MkdirAll(deployedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	lockJSON := fmt.Sprintf(`{"version":"v1","agent":{"name":%q},"image":{"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}`, agentName)
+	if err := os.WriteFile(filepath.Join(deployedDir, "agent.lock"), []byte(lockJSON), 0o644); err != nil {
+		t.Fatalf("WriteFile agent.lock: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deployedDir, "image.digest"), []byte("sha256:0000000000000000000000000000000000000000000000000000000000000000"), 0o644); err != nil {
+		t.Fatalf("WriteFile image.digest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deployedDir, "source_digest"), []byte("sha256:abc"), 0o644); err != nil {
+		t.Fatalf("WriteFile source_digest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deployedDir, "deployed_at"), []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644); err != nil {
+		t.Fatalf("WriteFile deployed_at: %v", err)
+	}
+}
+
+func TestRun_MountsAuditVolume(t *testing.T) {
+	dir := t.TempDir()
+	hp := home.NewHomePaths(dir)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatalf("home.Ensure: %v", err)
+	}
+	deployTestAgent(t, hp, "test-agent")
+
+	var capturedSpec runtime.ContainerSpec
+	mock := &mockRuntimeDriver{
+		createNetworkFunc: func(_ context.Context, _ runtime.NetworkSpec) (runtime.NetworkID, error) {
+			return runtime.NetworkID("network-test"), nil
+		},
+		createFunc: func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+			capturedSpec = spec
+			return runtime.ContainerID("container-test"), nil
+		},
+		startFunc: func(_ context.Context, _ runtime.ContainerID) error {
+			return nil
+		},
+	}
+
+	server := &stubControlServer{homePaths: hp}
+	server.runtimeOnce.Do(func() {}) // skip real Docker init
+	server.dockerRT = runtime.NewDockerRuntimeWithDriver(mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+	if runID == "" {
+		t.Fatal("Run() returned empty run_id")
+	}
+
+	hostAuditDir := filepath.Join(hp.State, "runs", runID, "harness-audit")
+	info, err := os.Stat(hostAuditDir)
+	if err != nil {
+		t.Fatalf("Stat(%s) error = %v", hostAuditDir, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("audit path %s is not a directory", hostAuditDir)
+	}
+
+	wantBind := fmt.Sprintf("%s:/audit", hostAuditDir)
+	if len(capturedSpec.Binds) != 1 || capturedSpec.Binds[0] != wantBind {
+		t.Fatalf("ContainerSpec.Binds = %v, want [%q]", capturedSpec.Binds, wantBind)
+	}
+
+	wantEnv := "AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl"
+	if !containsEnv(capturedSpec.Env, wantEnv) {
+		t.Fatalf("ContainerSpec.Env = %v, want to contain %q", capturedSpec.Env, wantEnv)
+	}
+
+	server.runMu.Lock()
+	tracked, ok := server.runs[runID]
+	server.runMu.Unlock()
+	if !ok {
+		t.Fatalf("run %q not tracked", runID)
+	}
+	if tracked.AuditDir != hostAuditDir {
+		t.Fatalf("tracked AuditDir = %q, want %q", tracked.AuditDir, hostAuditDir)
+	}
+}
+
+func containsEnv(env []string, want string) bool {
+	for _, e := range env {
+		if e == want {
+			return true
+		}
+	}
+	return false
+}
+
+// mockRuntimeDriver implements runtime.RuntimeDriver for daemon unit tests.
+type mockRuntimeDriver struct {
+	createFunc        func(ctx context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error)
+	startFunc         func(ctx context.Context, id runtime.ContainerID) error
+	createNetworkFunc func(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error)
+}
+
+func (m *mockRuntimeDriver) Create(ctx context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+	if m.createFunc != nil {
+		return m.createFunc(ctx, spec)
+	}
+	return "", fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) Start(ctx context.Context, id runtime.ContainerID) error {
+	if m.startFunc != nil {
+		return m.startFunc(ctx, id)
+	}
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) Stop(context.Context, runtime.ContainerID, *time.Duration) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) Remove(context.Context, runtime.ContainerID, bool) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) Status(context.Context, runtime.ContainerID) (runtime.ContainerStatus, error) {
+	return runtime.ContainerStatusUnknown, fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) Stats(context.Context, runtime.ContainerID) (runtime.ContainerStats, error) {
+	return runtime.ContainerStats{}, fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) Logs(context.Context, runtime.ContainerID, runtime.LogOptions) (io.ReadCloser, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) CreateNetwork(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error) {
+	if m.createNetworkFunc != nil {
+		return m.createNetworkFunc(ctx, spec)
+	}
+	return "", fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) RemoveNetwork(context.Context, runtime.NetworkID) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) InspectNetwork(context.Context, runtime.NetworkID) (runtime.NetworkInfo, error) {
+	return runtime.NetworkInfo{}, fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) InspectContainerNetworks(context.Context, runtime.ContainerID) ([]runtime.ContainerNetworkInfo, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) ListContainers(context.Context, ...string) ([]runtime.ContainerInfo, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) ListNetworks(context.Context, ...string) ([]runtime.NetworkInfo, error) {
+	return nil, fmt.Errorf("not implemented")
 }
 
 func TestRun_RejectsWhenConcurrentLimitReached(t *testing.T) {
@@ -375,7 +539,7 @@ func TestRun_RejectsWhenConcurrentLimitReached(t *testing.T) {
 	// Pre-fill the runs map to the limit without Docker.
 	for i := 0; i < maxConcurrentRuns; i++ {
 		runID := fmt.Sprintf("run-pre-%d", i)
-		server.trackRun(runID, runtime.ContainerID(fmt.Sprintf("c-%d", i)), fmt.Sprintf("n-%d", i))
+		server.trackRun(runID, runtime.ContainerID(fmt.Sprintf("c-%d", i)), fmt.Sprintf("n-%d", i), "")
 	}
 
 	// Deploy a fake agent so we get past the LoadDeployedAgent check.
