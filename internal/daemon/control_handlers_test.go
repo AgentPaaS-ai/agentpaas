@@ -443,6 +443,10 @@ func TestRun_MountsAuditVolume(t *testing.T) {
 	if !containsEnv(capturedSpec.Env, wantEnv) {
 		t.Fatalf("ContainerSpec.Env = %v, want to contain %q", capturedSpec.Env, wantEnv)
 	}
+	wantAgentEnv := "AGENTPAAS_AGENT_PATH=/app/main.py"
+	if !containsEnv(capturedSpec.Env, wantAgentEnv) {
+		t.Fatalf("ContainerSpec.Env = %v, want to contain %q", capturedSpec.Env, wantAgentEnv)
+	}
 
 	server.runMu.Lock()
 	tracked, ok := server.runs[runID]

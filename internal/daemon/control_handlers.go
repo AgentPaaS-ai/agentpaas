@@ -208,7 +208,12 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
 		NetworkIDs: []string{string(netID)},
 		Binds:      []string{fmt.Sprintf("%s:/audit", hostAuditDir)},
-		Env:        []string{"AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl"},
+		Env: []string{
+			"AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl",
+			// Project files are copied to /app/ by the pack Dockerfile. The
+			// harness default is /agent/main.py which does not exist.
+			"AGENTPAAS_AGENT_PATH=/app/main.py",
+		},
 	})
 	if err != nil {
 		_ = rt.RemoveNetwork(ctx, netID)
