@@ -741,3 +741,38 @@ func TestDaemonStartsDashboard(t *testing.T) {
 	}
 	t.Fatalf("dashboard not reachable at %s: %v", addr, lastErr)
 }
+
+// TestDaemonStartStopRace exercises the concurrent access pattern between
+// Start() (which launches a dashboard goroutine) and Stop() (which shuts
+// down the dashboard and nils the field). This test is designed to be run
+// with -race to detect data races on d.dashboard.
+func TestDaemonStartStopRace(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("Listen: %v", err)
+		}
+		addr := ln.Addr().String()
+		_ = ln.Close()
+
+		hp := shortTempPaths(t)
+		if err := home.Ensure(hp); err != nil {
+			t.Fatal(err)
+		}
+
+		d, err := New(hp, testVersion(), WithAllowRoot(), WithDashboard(addr))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := d.Start(ctx); err != nil {
+			t.Fatalf("Start() failed on iter %d: %v", i, err)
+		}
+		// Immediately stop — races with the dashboard goroutine.
+		if err := d.Stop(context.Background()); err != nil {
+			t.Fatalf("Stop() failed on iter %d: %v", i, err)
+		}
+	}
+}

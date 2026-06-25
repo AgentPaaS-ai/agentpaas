@@ -24,6 +24,7 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/policy"
 	"github.com/parvezsyed/agentpaas/internal/runtime"
 	"github.com/parvezsyed/agentpaas/internal/secrets"
+	"github.com/parvezsyed/agentpaas/internal/trigger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -197,6 +198,15 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 	}
 
 	s.trackRun(runID, containerID, string(netID))
+	if s.eventBus != nil {
+		s.eventBus.RegisterRun(runID)
+		s.eventBus.Publish(runID, trigger.EventRunStarted, map[string]interface{}{
+			"agent_name":   agentName,
+			"image_ref":    imageRef,
+			"container_id": string(containerID),
+			"network":      string(netID),
+		})
+	}
 	s.recordAudit("run_start", "cli", map[string]interface{}{
 		"run_id":       runID,
 		"agent_name":   agentName,
@@ -236,6 +246,16 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(netID))
 	}
 	s.untrackRun(runID)
+	if s.eventBus != nil {
+		eventType := trigger.EventRunSucceeded
+		if req.GetForce() {
+			eventType = trigger.EventRunCancelled
+		}
+		s.eventBus.Publish(runID, eventType, map[string]interface{}{
+			"container_id": string(containerID),
+			"force":        req.GetForce(),
+		})
+	}
 	s.recordAudit("run_stop", "cli", map[string]interface{}{
 		"run_id":       runID,
 		"container_id": string(containerID),

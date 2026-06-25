@@ -8,6 +8,7 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/audit"
 	"github.com/parvezsyed/agentpaas/internal/home"
 	"github.com/parvezsyed/agentpaas/internal/runtime"
+	"github.com/parvezsyed/agentpaas/internal/trigger"
 )
 
 // stubControlServer implements the ControlServiceServer interface by embedding
@@ -29,10 +30,11 @@ type stubControlServer struct {
 	auditIndex  *audit.SQLiteIndexer
 	auditWriter *audit.AuditWriter
 	homePaths   *home.HomePaths
+	eventBus    *trigger.EventBus
 
-	runMu       sync.Mutex
-	runs        map[string]trackedRun
-	secretMu    sync.Mutex
+	runMu        sync.Mutex
+	runs         map[string]trackedRun
+	secretMu     sync.Mutex
 	secretGrants map[string]map[string]struct{}
 
 	runtimeOnce sync.Once

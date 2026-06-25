@@ -15,6 +15,8 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/audit"
 	"github.com/parvezsyed/agentpaas/internal/dashboard"
 	"github.com/parvezsyed/agentpaas/internal/home"
+	"github.com/parvezsyed/agentpaas/internal/otel"
+	"github.com/parvezsyed/agentpaas/internal/trigger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -44,11 +46,13 @@ type Daemon struct {
 	lockFile      *os.File
 	lockIno       lockIno
 	pidFile       string
-	auditIndex    *audit.SQLiteIndexer
+	auditIndexer *audit.SQLiteIndexer
 	confirmations *ConfirmationStore
 	control       *stubControlServer
 	dashboard     *dashboard.Server
 	dashboardAddr string
+	otelStore     *otel.Store
+	eventBus      *trigger.EventBus
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -222,7 +226,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		_ = d.cleanupFiles()
 		return fmt.Errorf("daemon: open audit index: %w", err)
 	}
-	d.auditIndex = auditIndex
+	d.auditIndexer = auditIndex
 
 	auditWriter, err := audit.NewAuditWriter(filepath.Join(d.paths.State, "audit.jsonl"))
 	if err != nil {
@@ -245,15 +249,30 @@ func (d *Daemon) Start(ctx context.Context) error {
 		dashboardAddr = "127.0.0.1:8090"
 	}
 	if dashboardAddr != "off" && dashboardAddr != "disabled" {
+		// Create otel store for timeline/logs/cost data.
+		otelStore, err := otel.NewStore(ctx, filepath.Join(d.paths.State, "otel.db"))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: otel store: %v\n", err)
+		} else {
+			d.otelStore = otelStore
+		}
+
+		// Create event bus for live run timeline events.
+		d.eventBus = trigger.NewEventBus()
+
 		d.dashboard = dashboard.NewServerWithAudit(
 			dashboardAddr,
 			"",
-			nil,
-			nil,
-			d.auditIndex,
+			d.otelStore,
+			nil, // ResourceManager wired below after control server is created
+			d.auditIndexer,
 		)
+		d.dashboard.SetEventBus(d.eventBus)
+		// Capture the dashboard reference before starting the goroutine
+		// to avoid a data race with Stop() which sets d.dashboard = nil.
+		dash := d.dashboard
 		go func() {
-			if err := d.dashboard.ListenAndServe(); err != nil {
+			if err := dash.ListenAndServe(); err != nil {
 				fmt.Fprintf(os.Stderr, "daemon: dashboard error: %v\n", err)
 			}
 		}()
@@ -268,9 +287,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Register stub ControlService handlers.
 	controlServer := &stubControlServer{
 		version:     d.version,
-		auditIndex:  d.auditIndex,
+		auditIndex:  d.auditIndexer,
 		auditWriter: auditWriter,
 		homePaths:   d.paths,
+		eventBus:    d.eventBus,
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
 	d.control = controlServer
@@ -354,9 +374,13 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	if d.listener != nil {
 		_ = d.listener.Close()
 	}
-	if d.auditIndex != nil {
-		_ = d.auditIndex.Close()
-		d.auditIndex = nil
+	if d.auditIndexer != nil {
+		_ = d.auditIndexer.Close()
+		d.auditIndexer = nil
+	}
+	if d.otelStore != nil {
+		_ = d.otelStore.Close()
+		d.otelStore = nil
 	}
 	if d.control != nil && d.control.auditWriter != nil {
 		_ = d.control.auditWriter.Close()
@@ -365,11 +389,16 @@ func (d *Daemon) Stop(ctx context.Context) error {
 		detachConfirmationStore(d.control)
 		d.control = nil
 	}
-	if d.dashboard != nil {
+	// Read dashboard under lock to avoid racing with the goroutine in
+	// Start() that reads it without holding the mutex.
+	d.mu.Lock()
+	dash := d.dashboard
+	d.dashboard = nil
+	d.mu.Unlock()
+	if dash != nil {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = d.dashboard.Shutdown(shutdownCtx)
+		_ = dash.Shutdown(shutdownCtx)
 		shutdownCancel()
-		d.dashboard = nil
 	}
 
 	// Clean up files.
