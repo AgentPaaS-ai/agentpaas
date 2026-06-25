@@ -188,10 +188,18 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 	}
 
 	// Create host audit directory for harness audit JSONL.
+	// The container runs as UID 64000 (non-root). The bind mount exposes this
+	// host directory to the container. We must ensure UID 64000 can write, so
+	// we chmod 0777 after mkdir to defeat the process umask (MkdirAll applies
+	// umask to the mode, yielding 0755 which denies write to "other").
 	hostAuditDir := filepath.Join(s.homePaths.State, "runs", runID, "harness-audit")
 	if err := os.MkdirAll(hostAuditDir, 0o777); err != nil {
 		_ = rt.RemoveNetwork(ctx, netID)
 		return nil, status.Errorf(codes.Internal, "create audit dir: %v", err)
+	}
+	if err := os.Chmod(hostAuditDir, 0o777); err != nil {
+		_ = rt.RemoveNetwork(ctx, netID)
+		return nil, status.Errorf(codes.Internal, "chmod audit dir: %v", err)
 	}
 
 	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
