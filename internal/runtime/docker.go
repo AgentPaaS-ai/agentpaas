@@ -210,6 +210,9 @@ func (d *DockerRuntime) Start(ctx context.Context, id ContainerID) error {
 // Stop halts a running container. If timeout is non-nil, the runtime waits
 // at most that long for graceful shutdown before force-killing.
 func (d *DockerRuntime) Stop(ctx context.Context, id ContainerID, timeout *time.Duration) error {
+	if d.driver != nil {
+		return d.driver.Stop(ctx, id, timeout)
+	}
 	if string(id) == "" {
 		return ErrContainerNotFound
 	}
