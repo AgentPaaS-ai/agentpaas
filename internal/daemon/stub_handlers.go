@@ -23,6 +23,10 @@ type trackedRun struct {
 	Network   string
 }
 
+// maxConcurrentRuns is the hard limit on simultaneously active agent runs.
+// Enforced in the Run handler before any Docker resources are created.
+const maxConcurrentRuns = 3
+
 type stubControlServer struct {
 	controlv1.UnimplementedControlServiceServer
 
