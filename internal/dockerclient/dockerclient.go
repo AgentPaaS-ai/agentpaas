@@ -195,24 +195,24 @@ func Ping(timeout time.Duration) error {
 	if u, err := url.Parse(host); err == nil && u.Scheme == "unix" {
 		sockPath := u.Path
 		if _, err := os.Stat(sockPath); err != nil {
-			return fmt.Errorf("Docker socket not found at %s (context/colima/Docker Desktop may not be running): %w", sockPath, err)
+			return fmt.Errorf("docker socket not found at %s (context/colima/Docker Desktop may not be running): %w", sockPath, err)
 		}
 		// Quick dial to confirm it's a live socket.
 		c, err := net.DialTimeout("unix", sockPath, 2*time.Second)
 		if err != nil {
-			return fmt.Errorf("cannot connect to Docker socket %s: %w", sockPath, err)
+			return fmt.Errorf("cannot connect to docker socket %s: %w", sockPath, err)
 		}
 		_ = c.Close()
 	}
 
 	if _, err := cli.Ping(ctx); err != nil {
-		return fmt.Errorf("Docker daemon ping failed: %w", err)
+		return fmt.Errorf("docker daemon ping failed: %w", err)
 	}
 	return nil
 }
 
 // ErrDaemonUnreachable is returned when the Docker daemon cannot be reached.
-var ErrDaemonUnreachable = errors.New("Docker daemon unreachable")
+var ErrDaemonUnreachable = errors.New("docker daemon unreachable")
 
 // ExportHostToEnv resolves the Docker endpoint (same order as New) and, if it
 // was discovered from the Docker context store rather than an explicit
