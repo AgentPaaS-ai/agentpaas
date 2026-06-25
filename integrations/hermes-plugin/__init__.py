@@ -13,11 +13,11 @@ def _cmd_deploy(args_str, ctx=None):
     path = (args_str or "").strip()
     if not path:
         return "Usage: /agentpaas deploy <project_path>"
-    pack_result = json.loads(tools.agentpaas_pack({"agent_project_path": path}))
+    pack_result = json.loads(tools.agentpaas_pack({"project_dir": path}))
     if "error" in pack_result:
         return f"Pack failed: {pack_result['error']}"
     agent_name = pack_result.get("agent_name", "")
-    run_result = json.loads(tools.agentpaas_run({"agent_name": agent_name}))
+    run_result = json.loads(tools.agentpaas_run({"image_or_project": agent_name}))
     if "error" in run_result:
         return f"Run failed: {run_result['error']}"
     run_id = run_result.get("run_id", "?")
@@ -90,10 +90,10 @@ def register(ctx):
 
     # Register bundled SKILL.md
     if hasattr(ctx, "register_skill"):
-        import os
-        skill_path = os.path.join(os.path.dirname(__file__), "SKILL.md")
-        if os.path.exists(skill_path):
-            ctx.register_skill(skill_path)
+        from pathlib import Path
+        skill_path = Path(__file__).resolve().parent / "SKILL.md"
+        if skill_path.is_file():
+            ctx.register_skill("deploy", skill_path, description="AgentPaaS deploy workflow")
 
     logger.debug("AgentPaaS plugin registered %d tools + %d slash commands",
                  len(schemas.TOOL_NAMES), len(slash_commands))
