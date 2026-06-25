@@ -240,7 +240,7 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
 	}
 
-	containerID, netID := s.lookupRun(runID)
+	containerID, netID, auditDir := s.lookupRun(runID)
 	if containerID == "" {
 		return nil, status.Errorf(codes.NotFound, "run %q not found", runID)
 	}
@@ -261,6 +261,10 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 	if netID != "" {
 		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(netID))
 	}
+
+	// Ingest harness audit records before untracking.
+	s.ingestHarnessAudit(runID, auditDir)
+
 	s.untrackRun(runID)
 	if s.eventBus != nil {
 		eventType := trigger.EventRunSucceeded
@@ -286,7 +290,7 @@ func (s *stubControlServer) Logs(req *controlv1.LogsRequest, stream controlv1.Co
 		return status.Error(codes.InvalidArgument, "run_id is required")
 	}
 
-	containerID, _ := s.lookupRun(runID)
+	containerID, _, _ := s.lookupRun(runID)
 	if containerID == "" {
 		return status.Errorf(codes.NotFound, "run %q not found", runID)
 	}
@@ -559,17 +563,52 @@ func (s *stubControlServer) activeRunCount() int {
 	return len(s.runs)
 }
 
-func (s *stubControlServer) lookupRun(runID string) (runtime.ContainerID, string) {
+func (s *stubControlServer) lookupRun(runID string) (runtime.ContainerID, string, string) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if s.runs == nil {
-		return "", ""
+		return "", "", ""
 	}
 	tracked, ok := s.runs[runID]
 	if !ok {
-		return "", ""
+		return "", "", ""
 	}
-	return tracked.Container, tracked.Network
+	return tracked.Container, tracked.Network, tracked.AuditDir
+}
+
+// ingestHarnessAudit reads the harness audit JSONL from the host audit
+// directory and appends each record to the daemon's audit chain.
+// Errors are logged but do not fail the Stop operation — the container
+// is already stopped, and missing audit data is a best-effort concern.
+func (s *stubControlServer) ingestHarnessAudit(runID, auditDir string) {
+	if auditDir == "" {
+		return
+	}
+	auditPath := filepath.Join(auditDir, "harness-audit.jsonl")
+	records, err := readAuditJSONL(auditPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: ingest harness audit (%s): %v\n", runID, err)
+		return
+	}
+	if len(records) == 0 {
+		return
+	}
+	for _, record := range records {
+		// Ensure run_id is present in payload for audit queries.
+		if record.Payload == nil {
+			record.Payload = make(map[string]interface{})
+		}
+		if _, ok := record.Payload["run_id"]; !ok {
+			record.Payload["run_id"] = runID
+		}
+		if err := s.auditWriter.Append(record); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: append harness audit record (%s): %v\n", runID, err)
+		}
+	}
+	// Refresh the SQLite index so dashboard queries see the new records.
+	if s.auditIndex != nil && s.homePaths != nil {
+		_ = s.auditIndex.Rebuild(filepath.Join(s.homePaths.State, "audit.jsonl"))
+	}
 }
 
 func (s *stubControlServer) untrackRun(runID string) {
