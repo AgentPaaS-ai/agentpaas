@@ -128,6 +128,17 @@ func (s *Server) SetResourceManager(mgr ResourceManager) {
 	s.resourceMgr = mgr
 }
 
+// SetEventBus sets the event bus for live run timeline events. If the
+// timeline handler was not created at construction time (because both bus
+// and store were nil), this creates it now.
+func (s *Server) SetEventBus(bus *trigger.EventBus) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.timeline == nil && (bus != nil || s.store != nil) {
+		s.timeline = NewTimelineHandler(bus, s.store)
+	}
+}
+
 // SetAuditSigningKey sets the key material used for signed audit exports.
 func (s *Server) SetAuditSigningKey(key *ecdsa.PrivateKey, pubKeyDER []byte) {
 	s.auditSigningKey = key
