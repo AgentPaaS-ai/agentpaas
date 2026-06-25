@@ -226,7 +226,14 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 		return nil, status.Errorf(codes.Internal, "start container: %v", err)
 	}
 
-	s.trackRun(runID, containerID, string(netID), hostAuditDir)
+	tracked := &trackedRun{
+		Container:  containerID,
+		Network:    string(netID),
+		AuditDir:   hostAuditDir,
+		Status:     "running",
+		InvokeDone: make(chan struct{}),
+	}
+	s.trackRunPtr(runID, tracked)
 	if s.eventBus != nil {
 		s.eventBus.RegisterRun(runID)
 		s.eventBus.Publish(runID, trigger.EventRunStarted, map[string]interface{}{
@@ -248,13 +255,30 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 	// there is no separate trigger server. The daemon invokes the harness
 	// directly via docker exec (the harness binds to 127.0.0.1 inside the
 	// container, unreachable from the host).
-	go func() {
-		invokeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		if err := s.invokeAgent(invokeCtx, containerID); err != nil {
+	invokeCtx, cancel := context.WithCancel(context.Background())
+	tracked.CancelInvoke = cancel
+	go func(tr *trackedRun) {
+		defer close(tr.InvokeDone)
+		timeoutCtx, timeoutCancel := context.WithTimeout(invokeCtx, 2*time.Minute)
+		defer timeoutCancel()
+		if err := s.invokeAgent(timeoutCtx, containerID); err != nil {
+			// Write directly to the pointer under the lock. This works
+			// whether the run is still in s.runs or has been claimed by
+			// Stop (claimRun deletes from the map but the pointer is
+			// shared). After close(InvokeDone), Stop reads tr.Status —
+			// the channel establishes happens-before, so no lock needed
+			// on the read side.
+			s.runMu.Lock()
+			tr.Status = "failed"
+			tr.InvokeErr = err
+			s.runMu.Unlock()
 			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
+		} else {
+			s.runMu.Lock()
+			tr.Status = "succeeded"
+			s.runMu.Unlock()
 		}
-	}()
+	}(tracked)
 
 	_ = deployed
 	return &controlv1.RunResponse{RunId: runID}, nil
@@ -266,14 +290,28 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
 	}
 
-	containerID, netID, auditDir := s.lookupRun(runID)
-	if containerID == "" {
+	tracked, ok := s.claimRun(runID)
+	if !ok {
 		return nil, status.Errorf(codes.NotFound, "run %q not found", runID)
 	}
+	containerID := tracked.Container
+	netID := tracked.Network
+	auditDir := tracked.AuditDir
 
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "docker runtime not available: %v", err)
+	}
+
+	if tracked.CancelInvoke != nil {
+		tracked.CancelInvoke()
+	}
+	if tracked.InvokeDone != nil {
+		select {
+		case <-tracked.InvokeDone:
+		case <-time.After(3 * time.Second):
+			tracked.Status = "failed"
+		}
 	}
 
 	timeout := 10 * time.Second
@@ -283,19 +321,35 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 	if err := rt.Stop(ctx, containerID, &timeout); err != nil {
 		return nil, status.Errorf(codes.Internal, "stop container: %v", err)
 	}
+
+	finalStatus := tracked.Status
+	if req.GetForce() {
+		finalStatus = "cancelled"
+	} else {
+		switch tracked.Status {
+		case "failed":
+			finalStatus = "failed"
+		case "succeeded":
+			finalStatus = "succeeded"
+		case "running":
+			finalStatus = "succeeded"
+		}
+	}
+
 	_ = rt.Remove(ctx, containerID, req.GetForce())
 	if netID != "" {
 		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(netID))
 	}
 
-	// Ingest harness audit records before untracking.
+	// Ingest harness audit records after invoke goroutine has finished.
 	s.ingestHarnessAudit(runID, auditDir)
-
-	s.untrackRun(runID)
 	if s.eventBus != nil {
 		eventType := trigger.EventRunSucceeded
-		if req.GetForce() {
+		switch {
+		case req.GetForce():
 			eventType = trigger.EventRunCancelled
+		case finalStatus == "failed":
+			eventType = trigger.EventRunFailed
 		}
 		s.eventBus.Publish(runID, eventType, map[string]interface{}{
 			"container_id": string(containerID),
@@ -306,6 +360,7 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 		"run_id":       runID,
 		"container_id": string(containerID),
 		"force":        req.GetForce(),
+		"status":       finalStatus,
 	})
 	return &controlv1.StopResponse{Acknowledged: true}, nil
 }
@@ -613,16 +668,62 @@ func (s *stubControlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error)
 }
 
 func (s *stubControlServer) trackRun(runID string, containerID runtime.ContainerID, networkID, auditDir string) {
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
-	if s.runs == nil {
-		s.runs = make(map[string]trackedRun)
-	}
-	s.runs[runID] = trackedRun{
+	s.trackRunPtr(runID, &trackedRun{
 		Container: containerID,
 		Network:   networkID,
 		AuditDir:  auditDir,
+		Status:    "running",
+	})
+}
+
+func (s *stubControlServer) trackRunPtr(runID string, tr *trackedRun) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.runs == nil {
+		s.runs = make(map[string]*trackedRun)
 	}
+	s.runs[runID] = tr
+}
+
+func (s *stubControlServer) claimRun(runID string) (*trackedRun, bool) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.runs == nil {
+		return nil, false
+	}
+	tracked, ok := s.runs[runID]
+	if !ok {
+		return nil, false
+	}
+	delete(s.runs, runID)
+	return tracked, true
+}
+
+func (s *stubControlServer) setRunStatus(runID, status string) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if tracked, ok := s.runs[runID]; ok {
+		tracked.Status = status
+	}
+}
+
+func (s *stubControlServer) lookupRunWithStatus(runID string) (trackedRun, bool) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.runs == nil {
+		return trackedRun{}, false
+	}
+	tracked, ok := s.runs[runID]
+	if !ok {
+		return trackedRun{}, false
+	}
+	return trackedRun{
+		Container:    tracked.Container,
+		Network:      tracked.Network,
+		AuditDir:     tracked.AuditDir,
+		Status:       tracked.Status,
+		CancelInvoke: tracked.CancelInvoke,
+	}, true
 }
 
 // activeRunCount returns the number of currently tracked active runs.
