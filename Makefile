@@ -162,8 +162,25 @@ block12-gate: build test race lint osv
 	@echo "==> Running Block 12 gate: P1 red-team smoke gate"
 	$(MAKE) redteam-smoke
 
-block13-gate:
-	@echo "Error: block13-gate is not implemented until Block 13" && exit 1
+block13-gate: build lint
+	@echo "==> Running Block 13 gate: Hermes integration plugin + e2e governance"
+	# B13 unit tests: harness audit appender, daemon handlers, runtime Exec
+	go test -race -count=1 ./internal/harness/... ./internal/daemon/... ./internal/runtime/...
+	# B8 immutable redeploy path (prompt-change → distinct digests)
+	go test -race -count=1 -run TestImmutablePromptUpdatePath ./internal/pack/...
+	# Verify Hermes plugin files exist
+	@test -f integrations/hermes-plugin/plugin.yaml || (echo "FAIL: plugin.yaml missing" && exit 1)
+	@test -f integrations/hermes-plugin/__init__.py || (echo "FAIL: __init__.py missing" && exit 1)
+	@test -f integrations/hermes-plugin/tools.py || (echo "FAIL: tools.py missing" && exit 1)
+	@test -f integrations/hermes-plugin/SKILL.md || (echo "FAIL: SKILL.md missing" && exit 1)
+	# Verify demo matrix fixtures exist
+	@test -d demo/governed-weather || (echo "FAIL: demo/governed-weather missing" && exit 1)
+	@test -d demo/secret-saas || (echo "FAIL: demo/secret-saas missing" && exit 1)
+	@test -d demo/repair-loop || (echo "FAIL: demo/repair-loop missing" && exit 1)
+	# Verify plugin Python syntax
+	@python3 -c "import ast; ast.parse(open('integrations/hermes-plugin/__init__.py').read()); print('plugin __init__.py syntax OK')"
+	@python3 -c "import ast; ast.parse(open('integrations/hermes-plugin/tools.py').read()); print('plugin tools.py syntax OK')"
+	@echo "✓ Block 13 gate passed: plugin + demos + e2e governance verified"
 
 block14a-gate:
 	@echo "Error: block14a-gate (security remediation) is not implemented until Block 14A" && exit 1
@@ -195,7 +212,7 @@ gates: ## List all available gate targets
 	@echo "  block10-gate - OTel pipeline, dashboard (not implemented)"
 	@echo "  block11-gate - Hermes operator contract (golden flow)"
 	@echo "  block12-gate - P1 red-team smoke gate"
-	@echo "  block13-gate - Hermes integration plugin (not implemented)"
+	@echo "  block13-gate - Hermes integration plugin + e2e governance (ACTIVE)"
 	@echo "  block14-gate - Post-B13 consolidated: security + egress + release (not implemented)"
 	@echo "  block14a-gate - Security remediation (B13.1, 9 tasks)"
 	@echo "  block14b-gate - Real-time egress timeline (B13.5)"

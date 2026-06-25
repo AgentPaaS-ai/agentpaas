@@ -1,29 +1,16 @@
 name: agentpaas
+description: "Deploy and govern AI agents with AgentPaaS"
 version: 0.1.0
-description: AgentPaaS governance — build, deploy, and operate governed agents from inside Hermes
+toolset: agentpaas
 author: AgentPaaS
 provides_tools:
-  - agentpaas_init_project
-  - agentpaas_reconcile_project
-  - agentpaas_validate_project
-  - agentpaas_doctor
   - agentpaas_pack
   - agentpaas_run
   - agentpaas_stop
-  - agentpaas_logs
   - agentpaas_status
-  - agentpaas_get_run_timeline
-  - agentpaas_policy_show
-  - agentpaas_explain_policy_denial
-  - agentpaas_recommend_policy_patch
   - agentpaas_audit_query
-  - agentpaas_export_audit
-  - agentpaas_summarize_run
-  - agentpaas_explain_failure
-  - agentpaas_next_action
+  - agentpaas_logs
+  - agentpaas_validate_project
+  - agentpaas_doctor
 requires_env:
-  - name: AGENTPAAS_HOME
-    description: "AgentPaaS home directory (where daemon socket and state live)"
-  - name: AGENTPAAS_SOCKET
-    description: "AgentPaaS daemon Unix socket path"
-    secret: false
+  - AGENTPAAS_SOCKET_PATH
