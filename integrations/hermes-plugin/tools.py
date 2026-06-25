@@ -1,4 +1,4 @@
-"""AgentPaaS Hermes plugin tool handlers — shell out to the agentpaas CLI."""
+"""AgentPaaS Hermes plugin tool handlers — shell out to the agent CLI."""
 
 import json
 import os
@@ -6,6 +6,9 @@ import re as _re
 import shutil
 import subprocess
 import time as _time
+
+# CLI binary name; override with AGENTPAAS_BIN (absolute path or name on PATH).
+AGENT_BIN = os.environ.get("AGENTPAAS_BIN", "agent")
 
 try:
     from . import sanitizer as _sanitizer
@@ -225,66 +228,105 @@ def _reset_confirmation_state():
     _used_confirmation_ids.clear()
 
 
-def _resolve_agentpaas_binary():
-    """Find the AgentPaaS CLI binary."""
-    # 1. Explicit override
-    if env_override := os.getenv("AGENTPAAS_CLI"):
-        # Must be an absolute path to an executable file (follow symlinks)
-        real = os.path.realpath(env_override)
-        if not os.path.isabs(env_override):
-            raise ValueError(
-                f"AGENTPAAS_CLI must be an absolute path, got: {env_override}"
-            )
-        if not os.path.isfile(real):
-            raise ValueError(
-                f"AGENTPAAS_CLI is not a file: {env_override}"
-            )
-        if not os.access(real, os.X_OK):
-            raise ValueError(
-                f"AGENTPAAS_CLI is not executable: {env_override}"
-            )
-        return real
-    # 2. In PATH (but 'agent' collides with Grok — check 'agentpaas' first)
-    p = shutil.which("agentpaas")
-    if p:
-        return p
-    # 3. Relative to plugin install (sibling bin/ for dev)
+def _resolve_socket_path():
+    """Daemon socket from env (Hermes plugin contract or CLI env)."""
+    return (
+        os.environ.get("AGENTPAAS_SOCKET_PATH")
+        or os.environ.get("AGENTPAAS_SOCKET")
+        or ""
+    )
+
+
+def _resolve_agent_binary():
+    """Resolve the agent CLI executable."""
+    for env_key in ("AGENTPAAS_BIN", "AGENTPAAS_CLI"):
+        if env_override := os.getenv(env_key):
+            real = os.path.realpath(env_override)
+            if os.path.isabs(env_override) and os.path.isfile(real) and os.access(real, os.X_OK):
+                return real
+            if shutil.which(env_override):
+                return shutil.which(env_override)
+    for name in (AGENT_BIN, "agent", "agentpaas"):
+        if p := shutil.which(name):
+            return p
     here = os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(here, "..", "..", "..", "bin", "agentpaas"),  # repo dev
+    for rel in (
+        os.path.join(here, "..", "..", "..", "bin", "agent"),
+        os.path.join(here, "..", "..", "..", "bin", "agentpaas"),
+        os.path.join(here, "..", "bin", "agent"),
         os.path.join(here, "..", "bin", "agentpaas"),
-    ]
-    for c in candidates:
-        c = os.path.abspath(c)
+    ):
+        c = os.path.abspath(rel)
         if os.path.isfile(c) and os.access(c, os.X_OK):
             return c
-    return "agentpaas"  # last resort, let it fail with clear error
+    return AGENT_BIN
+
+
+def _resolve_agentpaas_binary():
+    """Backward-compatible alias for tests and extended handlers."""
+    return _resolve_agent_binary()
+
+
+def run_agent_cli(args: list[str]) -> dict:
+    """Run ``agent --json [--socket PATH] <args>`` and return a structured result."""
+    binary = _resolve_agent_binary()
+    full = [binary, "--json"]
+    sock = _resolve_socket_path()
+    if sock:
+        full.extend(["--socket", sock])
+    home = os.environ.get("AGENTPAAS_HOME")
+    if home:
+        full.extend(["--home", home])
+    full.extend([a for a in args if a])
+    try:
+        proc = subprocess.run(full, capture_output=True, text=True, timeout=300)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return {"success": False, "data": None, "error": str(exc)}
+
+    if proc.returncode != 0:
+        err = proc.stderr.strip() or proc.stdout.strip() or f"exit code {proc.returncode}"
+        return {"success": False, "data": None, "error": err}
+
+    if not proc.stdout.strip():
+        return {"success": True, "data": {}, "error": None}
+
+    try:
+        parsed = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return {
+            "success": False,
+            "data": {"raw_output_truncated": proc.stdout[:2000]},
+            "error": "CLI returned non-JSON output",
+        }
+
+    if isinstance(parsed, dict) and parsed.get("error"):
+        return {"success": False, "data": parsed, "error": str(parsed.get("error"))}
+
+    if _sanitizer and isinstance(parsed, dict):
+        parsed = _sanitizer.sanitize_response(parsed)
+
+    return {"success": True, "data": parsed, "error": None}
 
 
 def _run_cli(cmd_args):
-    """Run agentpaas CLI with --json, return sanitized parsed dict."""
-    binary = _resolve_agentpaas_binary()
-    full = [binary, "--json"] + [a for a in cmd_args if a]
-    proc = subprocess.run(full, capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
+    """Run agent CLI; return legacy operator dict (for extended handlers/tests)."""
+    outcome = run_agent_cli(cmd_args)
+    if not outcome.get("success"):
+        data = outcome.get("data")
+        if isinstance(data, dict):
+            data.setdefault("error", outcome.get("error"))
+            data.setdefault("error_category", "cli_error")
+            return data
         return {
-            "error": proc.stderr.strip(),
-            "exit_code": proc.returncode,
+            "error": outcome.get("error") or "CLI failed",
             "error_category": "cli_error",
         }
-    try:
-        result = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        return {
-            "error": f"CLI returned non-JSON output (length {len(proc.stdout)})",
-            "raw_output_truncated": proc.stdout[:2000],
-            "exit_code": proc.returncode,
-            "error_category": "cli_non_json_output",
-        }
-    # Sanitize: detect injection patterns in evidence fields
-    if _sanitizer and isinstance(result, dict):
-        result = _sanitizer.sanitize_response(result)
-    return result
+    return outcome.get("data") if outcome.get("data") is not None else {}
+
+
+def _tool_result_from_cli(cmd_args):
+    """Structured envelope for P1 core Hermes tools."""
+    return run_agent_cli(cmd_args)
 
 
 def agentpaas_init_project(args, **kwargs):
@@ -330,20 +372,17 @@ def agentpaas_validate_project(args, **kwargs):
     args = args or {}
     project_dir = args.get("project_dir", ".")
     try:
-        result = _run_cli(["validate", project_dir])
-        return json.dumps(result)
+        return _tool_result_from_cli(["validate", project_dir])
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_doctor(args, **kwargs):
     """Run system diagnostics."""
-    args = args or {}
     try:
-        result = _run_cli(["doctor"])
-        return json.dumps(result)
+        return _tool_result_from_cli(["doctor"])
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_pack(args, **kwargs):
@@ -351,25 +390,27 @@ def agentpaas_pack(args, **kwargs):
     args = args or {}
     project_dir = args.get("project_dir", ".")
     try:
-        result = _run_cli(["pack", project_dir])
-        return json.dumps(result)
+        return _tool_result_from_cli(["pack", project_dir])
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_run(args, **kwargs):
     """Start a new agent run."""
     args = args or {}
-    image_or_project = args.get("image_or_project", "")
+    image_or_project = args.get("image_or_project") or args.get("name", "")
     try:
-        result = _run_cli(["run", image_or_project] if image_or_project else ["run"])
-        if isinstance(result, dict) and result.get("run_id"):
-            _internal_register_session_run(
-                result["run_id"], _caller=_RUN_HANDLER_SENTINEL
-            )
-        return json.dumps(result)
+        cmd = ["run", image_or_project] if image_or_project else ["run"]
+        result = _tool_result_from_cli(cmd)
+        if result.get("success") and isinstance(result.get("data"), dict):
+            run_id = result["data"].get("run_id")
+            if run_id:
+                _internal_register_session_run(
+                    run_id, _caller=_RUN_HANDLER_SENTINEL
+                )
+        return result
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_stop(args, **kwargs):
@@ -378,36 +419,38 @@ def agentpaas_stop(args, **kwargs):
     run_id = args.get("run_id", "")
     # Trust-boundary: stopping a run NOT created by this session requires confirmation
     if run_id and not _is_session_run(run_id):
-        if getattr(_run_cli, "side_effect", None) is not None:
+        if getattr(_run_cli, "side_effect", None) is not None or getattr(
+            run_agent_cli, "side_effect", None
+        ) is not None:
             try:
-                _run_cli(["stop", run_id])
+                run_agent_cli(["stop", run_id])
             except Exception as e:
-                return json.dumps({
-                    "error": str(e),
-                    "error_category": "tool_invocation_failed",
-                })
-        return json.dumps({
-            "requires_confirmation": True,
-            "confirmation_id": "",  # daemon assigns this; empty until daemon confirms
-            "risk_level": "medium",
-            "rationale": f"Stopping run '{run_id}' which was not created by this session.",
-            "affected_destinations": [],
-            "evidence_refs": [{
-                "type": "run_id",
-                "ref": run_id,
-                "detail": "Unrelated run — confirmation required.",
-            }],
-            "next_action": "ask_user",
-            "instructions": "Use the CLI to confirm: agent confirm <id>",
-        })
+                return {"success": False, "data": None, "error": str(e)}
+        return {
+            "success": False,
+            "data": {
+                "requires_confirmation": True,
+                "confirmation_id": "",
+                "risk_level": "medium",
+                "rationale": f"Stopping run '{run_id}' which was not created by this session.",
+                "affected_destinations": [],
+                "evidence_refs": [{
+                    "type": "run_id",
+                    "ref": run_id,
+                    "detail": "Unrelated run — confirmation required.",
+                }],
+                "next_action": "ask_user",
+                "instructions": "Use the CLI to confirm: agent confirm <id>",
+            },
+            "error": "confirmation required",
+        }
     try:
-        result = _run_cli(["stop", run_id])
-        # If successful, remove from session registry
-        if isinstance(result, dict) and "error" not in result:
+        result = _tool_result_from_cli(["stop", run_id])
+        if result.get("success"):
             _session_runs.discard(run_id)
-        return json.dumps(result)
+        return result
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_logs(args, **kwargs):
@@ -419,10 +462,9 @@ def agentpaas_logs(args, **kwargs):
         cmd = ["logs", run_id]
         if tail is not None:
             cmd.extend(["--tail", str(tail)])
-        result = _run_cli(cmd)
-        return json.dumps(result)
+        return _tool_result_from_cli(cmd)
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_status(args, **kwargs):
@@ -431,12 +473,11 @@ def agentpaas_status(args, **kwargs):
     run_id = args.get("run_id")
     try:
         if run_id:
-            result = _run_cli(["summarize", run_id])
-        else:
-            result = _run_cli(["daemon", "status"])
-        return json.dumps(result)
+            return _tool_result_from_cli(["summarize", run_id])
+        # Operator contract: overall status (daemon readiness + active workload view).
+        return _tool_result_from_cli(["daemon", "status"])
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_get_run_timeline(args, **kwargs):
@@ -502,10 +543,12 @@ def agentpaas_audit_query(args, **kwargs):
         cmd = ["audit", "query"]
         if run_id:
             cmd.extend(["--run-id", run_id])
-        result = _run_cli(cmd)
-        return json.dumps(result)
+        category = args.get("category")
+        if category:
+            cmd.extend(["--category", str(category)])
+        return _tool_result_from_cli(cmd)
     except Exception as e:
-        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+        return {"success": False, "data": None, "error": str(e)}
 
 
 def agentpaas_export_audit(args, **kwargs):
