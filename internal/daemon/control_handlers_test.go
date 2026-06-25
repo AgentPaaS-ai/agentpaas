@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -144,18 +145,21 @@ func TestRunTracking(t *testing.T) {
 	networkID := "network-xyz"
 
 	server.trackRun(runID, containerID, networkID, "")
-	gotContainer, gotNetwork := server.lookupRun(runID)
+	gotContainer, gotNetwork, gotAuditDir := server.lookupRun(runID)
 	if gotContainer != containerID {
 		t.Fatalf("lookupRun() container = %q, want %q", gotContainer, containerID)
 	}
 	if gotNetwork != networkID {
 		t.Fatalf("lookupRun() network = %q, want %q", gotNetwork, networkID)
 	}
+	if gotAuditDir != "" {
+		t.Fatalf("lookupRun() auditDir = %q, want empty", gotAuditDir)
+	}
 
 	server.untrackRun(runID)
-	gotContainer, gotNetwork = server.lookupRun(runID)
-	if gotContainer != "" || gotNetwork != "" {
-		t.Fatalf("lookupRun() after untrack = (%q, %q), want empty", gotContainer, gotNetwork)
+	gotContainer, gotNetwork, gotAuditDir = server.lookupRun(runID)
+	if gotContainer != "" || gotNetwork != "" || gotAuditDir != "" {
+		t.Fatalf("lookupRun() after untrack = (%q, %q, %q), want empty", gotContainer, gotNetwork, gotAuditDir)
 	}
 }
 
@@ -451,6 +455,142 @@ func TestRun_MountsAuditVolume(t *testing.T) {
 	}
 }
 
+func TestStop_IngestsHarnessAudit(t *testing.T) {
+	dir := t.TempDir()
+	hp := home.NewHomePaths(dir)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatalf("home.Ensure: %v", err)
+	}
+	deployTestAgent(t, hp, "test-agent")
+
+	auditPath := filepath.Join(hp.State, "audit.jsonl")
+	writer, err := audit.NewAuditWriter(auditPath)
+	if err != nil {
+		t.Fatalf("NewAuditWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+
+	indexer, err := audit.NewSQLiteIndexer(filepath.Join(hp.State, "audit.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIndexer: %v", err)
+	}
+	t.Cleanup(func() { _ = indexer.Close() })
+
+	mock := &mockRuntimeDriver{
+		createNetworkFunc: func(_ context.Context, _ runtime.NetworkSpec) (runtime.NetworkID, error) {
+			return runtime.NetworkID("network-test"), nil
+		},
+		createFunc: func(_ context.Context, _ runtime.ContainerSpec) (runtime.ContainerID, error) {
+			return runtime.ContainerID("container-test"), nil
+		},
+		startFunc: func(_ context.Context, _ runtime.ContainerID) error {
+			return nil
+		},
+		stopFunc: func(_ context.Context, _ runtime.ContainerID, _ *time.Duration) error {
+			return nil
+		},
+		removeFunc: func(_ context.Context, _ runtime.ContainerID, _ bool) error {
+			return nil
+		},
+		removeNetworkFunc: func(_ context.Context, _ runtime.NetworkID) error {
+			return nil
+		},
+	}
+
+	server := &stubControlServer{
+		homePaths:   hp,
+		auditWriter: writer,
+		auditIndex:  indexer,
+	}
+	server.runtimeOnce.Do(func() {})
+	server.dockerRT = runtime.NewDockerRuntimeWithDriver(mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+	if runID == "" {
+		t.Fatal("Run() returned empty run_id")
+	}
+
+	harnessAuditPath := filepath.Join(hp.State, "runs", runID, "harness-audit", "harness-audit.jsonl")
+	harnessLines := `{"timestamp":"2026-01-02T03:04:05Z","event_type":"egress_denied","deployment_mode":"local","actor":"harness","payload":{"destination":"evil.com","method":"GET","decision":"denied"}}
+{"timestamp":"2026-01-02T03:04:06Z","event_type":"egress_allowed","deployment_mode":"local","actor":"harness","payload":{"destination":"api.example.com","method":"GET","decision":"allowed"}}`
+	if err := os.WriteFile(harnessAuditPath, []byte(harnessLines+"\n"), 0o600); err != nil {
+		t.Fatalf("write harness audit: %v", err)
+	}
+
+	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	records, err := readAuditJSONL(auditPath)
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+
+	var egressDenied, egressAllowed *audit.AuditRecord
+	for i := range records {
+		switch records[i].EventType {
+		case "egress_denied":
+			egressDenied = &records[i]
+		case "egress_allowed":
+			egressAllowed = &records[i]
+		}
+	}
+	if egressDenied == nil {
+		t.Fatal("daemon audit chain missing egress_denied record")
+	}
+	if egressAllowed == nil {
+		t.Fatal("daemon audit chain missing egress_allowed record")
+	}
+	if got := auditString(egressDenied.Payload, "run_id"); got != runID {
+		t.Fatalf("egress_denied run_id = %q, want %q", got, runID)
+	}
+	if got := auditString(egressDenied.Payload, "destination"); got != "evil.com" {
+		t.Fatalf("egress_denied destination = %q, want evil.com", got)
+	}
+	if got := auditString(egressAllowed.Payload, "run_id"); got != runID {
+		t.Fatalf("egress_allowed run_id = %q, want %q", got, runID)
+	}
+	if got := auditString(egressAllowed.Payload, "destination"); got != "api.example.com" {
+		t.Fatalf("egress_allowed destination = %q, want api.example.com", got)
+	}
+
+	queryResp, err := server.AuditQuery(context.Background(), &controlv1.AuditQueryRequest{
+		RunId:    runID,
+		PageSize: 50,
+	})
+	if err != nil {
+		t.Fatalf("AuditQuery() error = %v", err)
+	}
+
+	var queryDenied, queryAllowed bool
+	for _, entry := range queryResp.GetEntries() {
+		if entry.GetRunId() != runID {
+			t.Fatalf("AuditQuery entry run_id = %q, want %q", entry.GetRunId(), runID)
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(entry.GetPayload(), &payload); err != nil {
+			continue
+		}
+		switch auditString(payload, "destination") {
+		case "evil.com":
+			queryDenied = true
+		case "api.example.com":
+			queryAllowed = true
+		}
+	}
+	if !queryDenied {
+		t.Fatal("AuditQuery missing egress_denied record for run")
+	}
+	if !queryAllowed {
+		t.Fatal("AuditQuery missing egress_allowed record for run")
+	}
+}
+
 func containsEnv(env []string, want string) bool {
 	for _, e := range env {
 		if e == want {
@@ -464,7 +604,10 @@ func containsEnv(env []string, want string) bool {
 type mockRuntimeDriver struct {
 	createFunc        func(ctx context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error)
 	startFunc         func(ctx context.Context, id runtime.ContainerID) error
+	stopFunc          func(ctx context.Context, id runtime.ContainerID, timeout *time.Duration) error
+	removeFunc        func(ctx context.Context, id runtime.ContainerID, force bool) error
 	createNetworkFunc func(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error)
+	removeNetworkFunc func(ctx context.Context, id runtime.NetworkID) error
 }
 
 func (m *mockRuntimeDriver) Create(ctx context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
@@ -481,11 +624,17 @@ func (m *mockRuntimeDriver) Start(ctx context.Context, id runtime.ContainerID) e
 	return fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) Stop(context.Context, runtime.ContainerID, *time.Duration) error {
+func (m *mockRuntimeDriver) Stop(ctx context.Context, id runtime.ContainerID, timeout *time.Duration) error {
+	if m.stopFunc != nil {
+		return m.stopFunc(ctx, id, timeout)
+	}
 	return fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) Remove(context.Context, runtime.ContainerID, bool) error {
+func (m *mockRuntimeDriver) Remove(ctx context.Context, id runtime.ContainerID, force bool) error {
+	if m.removeFunc != nil {
+		return m.removeFunc(ctx, id, force)
+	}
 	return fmt.Errorf("not implemented")
 }
 
@@ -508,7 +657,10 @@ func (m *mockRuntimeDriver) CreateNetwork(ctx context.Context, spec runtime.Netw
 	return "", fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) RemoveNetwork(context.Context, runtime.NetworkID) error {
+func (m *mockRuntimeDriver) RemoveNetwork(ctx context.Context, id runtime.NetworkID) error {
+	if m.removeNetworkFunc != nil {
+		return m.removeNetworkFunc(ctx, id)
+	}
 	return fmt.Errorf("not implemented")
 }
 
