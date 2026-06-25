@@ -243,6 +243,19 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 		"container_id": string(containerID),
 		"network":      string(netID),
 	})
+
+	// Auto-invoke the agent after container start. In local-first P1 mode,
+	// there is no separate trigger server. The daemon invokes the harness
+	// directly via docker exec (the harness binds to 127.0.0.1 inside the
+	// container, unreachable from the host).
+	go func() {
+		invokeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := s.invokeAgent(invokeCtx, containerID); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
+		}
+	}()
+
 	_ = deployed
 	return &controlv1.RunResponse{RunId: runID}, nil
 }
@@ -541,6 +554,49 @@ func (s *stubControlServer) recordAudit(eventType, actor string, payload map[str
 	if s.auditIndex != nil && s.homePaths != nil {
 		_ = s.auditIndex.Rebuild(filepath.Join(s.homePaths.State, "audit.jsonl"))
 	}
+}
+
+func (s *stubControlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID) error {
+	rt, err := s.getOrCreateRuntime()
+	if err != nil {
+		return fmt.Errorf("runtime: %w", err)
+	}
+
+	// Wait for harness to be ready (agent import phase).
+	readyCmd := []string{"python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=5)"}
+	ready := false
+	for i := 0; i < 30; i++ {
+		_, _, exitCode, _ := rt.Exec(ctx, containerID, readyCmd)
+		if exitCode == 0 {
+			ready = true
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
+	if !ready {
+		return fmt.Errorf("harness /readyz not ready after 30 attempts")
+	}
+
+	// Invoke the agent.
+	invokeCmd := []string{"python3", "-c",
+		"import urllib.request,json;" +
+			"req=urllib.request.Request('http://127.0.0.1:8080/invoke'," +
+			"data=json.dumps({}).encode()," +
+			"headers={'Content-Type':'application/json'});" +
+			"print(urllib.request.urlopen(req,timeout=60).read().decode())"}
+	stdout, stderr, exitCode, err := rt.Exec(ctx, containerID, invokeCmd)
+	if err != nil {
+		return fmt.Errorf("exec invoke: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("invoke failed (exit %d): %s", exitCode, stderr)
+	}
+	_ = stdout
+	return nil
 }
 
 func (s *stubControlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error) {

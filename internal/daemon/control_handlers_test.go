@@ -654,6 +654,10 @@ func (m *mockRuntimeDriver) Logs(context.Context, runtime.ContainerID, runtime.L
 	return nil, fmt.Errorf("not implemented")
 }
 
+func (m *mockRuntimeDriver) Exec(context.Context, runtime.ContainerID, []string) (string, string, int, error) {
+	return "", "", -1, fmt.Errorf("not implemented")
+}
+
 func (m *mockRuntimeDriver) CreateNetwork(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error) {
 	if m.createNetworkFunc != nil {
 		return m.createNetworkFunc(ctx, spec)

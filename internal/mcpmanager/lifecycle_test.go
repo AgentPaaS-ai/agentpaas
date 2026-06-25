@@ -381,6 +381,10 @@ func (d *fakeRuntimeDriver) Logs(context.Context, runtime.ContainerID, runtime.L
 	return nil, errors.New("not implemented")
 }
 
+func (d *fakeRuntimeDriver) Exec(context.Context, runtime.ContainerID, []string) (string, string, int, error) {
+	return "", "", -1, errors.New("not implemented")
+}
+
 func (d *fakeRuntimeDriver) CreateNetwork(context.Context, runtime.NetworkSpec) (runtime.NetworkID, error) {
 	return "", errors.New("not implemented")
 }

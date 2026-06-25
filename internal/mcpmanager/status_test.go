@@ -378,6 +378,10 @@ func (d *statusFakeRuntimeDriver) Logs(context.Context, runtime.ContainerID, run
 	return io.NopCloser(strings.NewReader("")), nil
 }
 
+func (d *statusFakeRuntimeDriver) Exec(context.Context, runtime.ContainerID, []string) (string, string, int, error) {
+	return "", "", 0, nil
+}
+
 func (d *statusFakeRuntimeDriver) CreateNetwork(context.Context, runtime.NetworkSpec) (runtime.NetworkID, error) {
 	return "", nil
 }

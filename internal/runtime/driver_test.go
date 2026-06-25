@@ -28,6 +28,7 @@ type mockRuntimeDriver struct {
 	statusFunc             func(ctx context.Context, id ContainerID) (ContainerStatus, error)
 	statsFunc              func(ctx context.Context, id ContainerID) (ContainerStats, error)
 	logsFunc               func(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error)
+	execFunc               func(ctx context.Context, id ContainerID, cmd []string) (string, string, int, error)
 	createNetworkFunc      func(ctx context.Context, spec NetworkSpec) (NetworkID, error)
 	removeNetworkFunc      func(ctx context.Context, id NetworkID) error
 	inspectNetworkFunc     func(ctx context.Context, id NetworkID) (NetworkInfo, error)
@@ -83,6 +84,13 @@ func (m *mockRuntimeDriver) Logs(ctx context.Context, id ContainerID, opts LogOp
 		return m.logsFunc(ctx, id, opts)
 	}
 	return nil, errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) Exec(ctx context.Context, id ContainerID, cmd []string) (string, string, int, error) {
+	if m.execFunc != nil {
+		return m.execFunc(ctx, id, cmd)
+	}
+	return "", "", -1, errors.New("not implemented")
 }
 
 func (m *mockRuntimeDriver) CreateNetwork(ctx context.Context, spec NetworkSpec) (NetworkID, error) {
