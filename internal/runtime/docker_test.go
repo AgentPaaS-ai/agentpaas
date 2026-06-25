@@ -166,3 +166,48 @@ func TestDockerRuntime_Status_NotFound(t *testing.T) {
 		t.Error("Status(nonexistent) should return error")
 	}
 }
+
+// TestDockerRuntime_Exec_InvalidID verifies Exec rejects empty container ID.
+func TestDockerRuntime_Exec_InvalidID(t *testing.T) {
+	d := &DockerRuntime{}
+	_, _, exitCode, err := d.Exec(context.Background(), "", []string{"echo", "hi"})
+	if !errors.Is(err, ErrContainerNotFound) {
+		t.Errorf("Exec(empty) error = %v, want ErrContainerNotFound", err)
+	}
+	if exitCode != -1 {
+		t.Errorf("Exec(empty) exitCode = %d, want -1", exitCode)
+	}
+}
+
+// TestDockerRuntime_Exec_NoClient verifies Exec fails without a Docker client.
+func TestDockerRuntime_Exec_NoClient(t *testing.T) {
+	d := &DockerRuntime{}
+	_, _, _, err := d.Exec(context.Background(), "some-id", []string{"echo", "hi"})
+	if err == nil {
+		t.Error("Exec without Docker client should return error")
+	}
+}
+
+// TestDockerRuntime_Exec_DelegatesToDriver verifies Exec delegates when a test driver is set.
+func TestDockerRuntime_Exec_DelegatesToDriver(t *testing.T) {
+	wantStdout := "hello"
+	mock := &mockRuntimeDriver{
+		execFunc: func(_ context.Context, id ContainerID, cmd []string) (string, string, int, error) {
+			if string(id) != "cid-1" {
+				t.Errorf("Exec id = %q, want cid-1", id)
+			}
+			if len(cmd) != 1 || cmd[0] != "test" {
+				t.Errorf("Exec cmd = %v, want [test]", cmd)
+			}
+			return wantStdout, "", 0, nil
+		},
+	}
+	d := NewDockerRuntimeWithDriver(mock)
+	stdout, stderr, code, err := d.Exec(context.Background(), "cid-1", []string{"test"})
+	if err != nil {
+		t.Fatalf("Exec() error = %v", err)
+	}
+	if stdout != wantStdout || stderr != "" || code != 0 {
+		t.Errorf("Exec() = (%q, %q, %d), want (%q, \"\", 0)", stdout, stderr, code, wantStdout)
+	}
+}

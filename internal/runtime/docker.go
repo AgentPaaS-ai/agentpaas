@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
 
@@ -322,6 +324,46 @@ func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOption
 		return nil, fmt.Errorf("container logs: %w", err)
 	}
 	return reader, nil
+}
+
+// Exec runs a command inside a running container and returns stdout, stderr,
+// and the process exit code.
+func (d *DockerRuntime) Exec(ctx context.Context, id ContainerID, cmd []string) (string, string, int, error) {
+	if d.driver != nil {
+		return d.driver.Exec(ctx, id, cmd)
+	}
+	if string(id) == "" {
+		return "", "", -1, ErrContainerNotFound
+	}
+	if d.cli == nil {
+		return "", "", -1, errors.New("DockerRuntime: not initialized")
+	}
+
+	execCreate, err := d.cli.ContainerExecCreate(ctx, string(id), container.ExecOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	})
+	if err != nil {
+		return "", "", -1, fmt.Errorf("exec create: %w", err)
+	}
+
+	hijacked, err := d.cli.ContainerExecAttach(ctx, execCreate.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return "", "", -1, fmt.Errorf("exec attach: %w", err)
+	}
+	defer hijacked.Close()
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	if _, err := stdcopy.StdCopy(&stdoutBuf, &stderrBuf, hijacked.Reader); err != nil {
+		return "", "", -1, fmt.Errorf("exec demux: %w", err)
+	}
+
+	inspect, err := d.cli.ContainerExecInspect(ctx, execCreate.ID)
+	if err != nil {
+		return stdoutBuf.String(), stderrBuf.String(), -1, fmt.Errorf("exec inspect: %w", err)
+	}
+	return stdoutBuf.String(), stderrBuf.String(), inspect.ExitCode, nil
 }
 
 // CreateNetwork provisions a new Docker network from the given spec and

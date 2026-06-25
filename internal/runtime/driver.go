@@ -223,6 +223,11 @@ type RuntimeDriver interface {
 	// The caller MUST close the returned reader when done.
 	Logs(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error)
 
+	// Exec runs a command inside a running container and returns stdout, stderr,
+	// and exit code. Used by the daemon to invoke the harness /invoke endpoint
+	// from inside the container (the harness binds to 127.0.0.1 only).
+	Exec(ctx context.Context, id ContainerID, cmd []string) (stdout, stderr string, exitCode int, err error)
+
 	// CreateNetwork provisions a new Docker network from the given spec and
 	// returns its NetworkID. An internal:true network restricts external
 	// access (used for the per-agent internal bridge).
