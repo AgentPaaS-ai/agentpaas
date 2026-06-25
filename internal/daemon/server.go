@@ -224,6 +224,19 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.auditIndex = auditIndex
 
+	auditWriter, err := audit.NewAuditWriter(filepath.Join(d.paths.State, "audit.jsonl"))
+	if err != nil {
+		_ = auditIndex.Close()
+		_ = ln.Close()
+		_ = d.cleanupFiles()
+		return fmt.Errorf("daemon: open audit writer: %w", err)
+	}
+	// Rebuild the index from the existing chain (if any) for recovery.
+	if err := auditIndex.Rebuild(filepath.Join(d.paths.State, "audit.jsonl")); err != nil {
+		// Non-fatal: index will be empty, dashboard queries return empty.
+		fmt.Fprintf(os.Stderr, "daemon: audit index rebuild: %v\n", err)
+	}
+
 	dashboardAddr := d.dashboardAddr
 	if dashboardAddr == "" {
 		dashboardAddr = os.Getenv("AGENTPAAS_DASHBOARD_ADDR")
@@ -254,9 +267,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Register stub ControlService handlers.
 	controlServer := &stubControlServer{
-		version:    d.version,
-		auditIndex: d.auditIndex,
-		homePaths:  d.paths,
+		version:     d.version,
+		auditIndex:  d.auditIndex,
+		auditWriter: auditWriter,
+		homePaths:   d.paths,
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
 	d.control = controlServer
@@ -338,6 +352,9 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	if d.auditIndex != nil {
 		_ = d.auditIndex.Close()
 		d.auditIndex = nil
+	}
+	if d.control != nil && d.control.auditWriter != nil {
+		_ = d.control.auditWriter.Close()
 	}
 	if d.control != nil {
 		detachConfirmationStore(d.control)
