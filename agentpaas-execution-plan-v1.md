@@ -1983,9 +1983,9 @@ This block consolidates ALL post-Block-13 build work into one block with
 sub-segments. Each sub-segment has its own gate target but they share a single
 `make block14-gate` that runs all of them in sequence. The sub-segments are:
 
-- **14A0** — B13 correctness fixes (4 tasks from B13 risk analysis: run status, orphan reconciliation, invoke/Stop sync, Docker e2e test)
-- **14A** — Block 13.1 security remediation (9 tasks from the B13 security audit)
-- **14B** — Block 13.5 real-time egress timeline (deferred from B13)
+- **14A0** — B13 correctness fixes (5 tasks: run status, orphan reconciliation, invoke/Stop sync, Docker e2e test, code hygiene rename)
+- **14A** — Block 13.1 security remediation (9 tasks from the B13 security audit, T09 resolved)
+- **14B** — Gateway container, policy enforcement, real-time egress, Stats, trigger server (5 tasks — core product value)
 - **14C** — Install path, docs, demo, and v0.1.0 release (former standalone Block 14)
 
 Block 13 must be fully complete (T01-T09 + block13-gate green) before 14A0 starts.
@@ -2124,6 +2124,29 @@ reconciliation) → T04 (Docker e2e test). T01 and T03 touch the same code paths
 and should be done together; T02 depends on T01's status field; T04 validates
 everything.
 
+**14A0-T05: Code hygiene — rename stubControlServer + fix stale CLI doc.go (LOW)**
+
+- **Problem:** The production daemon's control server is named
+  `stubControlServer` (misleading — it's not a stub). The CLI doc.go says
+  `pack`, `run`, `stop`, `logs`, `policy`, `secrets`, `audit`, `validate`,
+  `summarize`, `explain-failure`, `explain-denial`, `recommend-patch`,
+  `timeline`, `next-action` are all "not yet implemented" when they ARE
+  implemented.
+- **Files:** `internal/daemon/control_handlers.go`, `internal/daemon/server.go`,
+  `internal/daemon/operator_handlers.go`, `internal/daemon/operator_handlers_b11t04_test.go`,
+  `internal/cli/doc.go`
+- **Fix:**
+  1. Global rename `stubControlServer` → `controlServer` in all daemon files.
+     Mechanical `gofmt -r` or sed pass. Verify build + tests pass.
+  2. Update `internal/cli/doc.go` — remove "(not yet implemented)" from
+     commands that are implemented. Leave "install"/"uninstall" as "not yet
+     implemented" (those are actually stubs).
+  3. Update `internal/cli/doctor.go` — the v0 stub comment should stay until
+     `agent doctor` is fully implemented (14A-T06 wires the pre-flight check;
+     full doctor is later).
+- **Test:** Existing tests pass unchanged after rename. Run `go test ./internal/daemon/... ./internal/cli/...`.
+- **Effort:** 1 micro-chunk (mechanical rename + doc update + verify).
+
 ### 14A — Security Remediation (Block 13.1)
 
 **Source:** `agentpaas-b13-security-audit` skill — 8 gaps + 6 shortcuts identified.
@@ -2173,47 +2196,144 @@ of B13's working plugin — they do not change the P1 plugin surface.
 - Real image signing test against localhost:5001, guarded by build tag.
 - Mutation check: break a flag → test goes RED.
 
-**14A-T09: T08+T09 catch-up (SHORTCUT-4, SHORTCUT-5)**
-- Implement /agentpaas slash commands via ctx.register_command
-  (deploy, status, logs, metrics, repair).
-- Write bundled SKILL.md via ctx.register_skill.
-- Each slash command is a thin orchestrator calling ctx.dispatch_tool.
+**14A-T09: T08+T09 catch-up (SHORTCUT-4, SHORTCUT-5) — RESOLVED**
+- `/agentpaas` slash commands (deploy, status, logs, audit) implemented via
+  `ctx.register_command` in commit `bd5afc9`.
+- Bundled SKILL.md registered via `ctx.register_skill` in commit `bd5afc9`.
+- These were deferred in the original audit but completed during B13.
+- No work needed here. Mark as done.
 
 **14A GATE:** `make block14a-gate` — all plugin tests pass (target 130+),
 adversary tests for each gap pass, `go test ./internal/harness/...` passes with
 -race, real cosign integration test green with AGENTPAAS_PACK_REAL_TOOLS=1.
 
-### 14B — Real-time Egress Timeline (Block 13.5)
+### 14B — Gateway Container, Policy Enforcement, and Real-time Egress (consolidated)
 
-**Source:** `b13-deploy-e2e-checkpoint-v5.md` §"Block 13.5" — deferred from B13.
+**Source:** `docs/b13-risk-analysis.md` §1.1/§2.5 (no gateway, no policy
+enforcement) + `b13-deploy-e2e-checkpoint-v5.md` §"Block 13.5" (deferred
+real-time egress).
 
-The harness emits egress audit events via FileAuditAppender, but these are only
-ingested by the daemon AFTER the run completes. During a long-running agent,
-egress attempts are invisible to the dashboard. This sub-segment wires live
-egress visibility.
+This is the most critical sub-segment for the product's value proposition.
+B13's egress "denial" is network isolation (DNS fails on an internal-only
+network), NOT actual policy enforcement. The Block 5 topology tests create
+dual-homed gateways with agentgateway, but the daemon's Run handler never
+creates one. This sub-segment wires the real gateway topology into the Run
+handler, connects policy.yaml to runtime enforcement, adds real-time egress
+visibility, and implements resource monitoring.
 
-**14B-T01: Harness egress event stream**
-- Harness `handleHTTP` already emits audit events via FileAuditAppender.
-- Add an RPC method on the harness Unix socket: `egress_event` — the harness
-  writes egress decisions as they happen.
-- Alternatively: daemon tails the harness audit JSONL file via mounted volume.
+**14B-T01: Gateway container in Run handler (CRITICAL — core product)**
 
-**14B-T02: Daemon real-time ingestion**
-- Daemon tails the egress event stream during the run.
-- Each new event → `otelStore.IngestTraces` → EventBus publishes.
-- Dashboard timeline `classifySpan` already classifies egress spans
-  (`egress.allowed` attr → `egress_allowed`/`egress_denied`). No dashboard changes.
+- **Problem:** The Run handler creates an internal-only network and puts the
+  agent on it. No gateway container, no agentgateway, no egress network. When
+  the agent calls `agent.http()`, the request fails with DNS error (network
+  isolation), not a policy decision. The audit event says `egress_denied` but
+  it's really `egress_unreachable`. Policy.yaml has zero runtime effect.
+- **Files:** `internal/daemon/control_handlers.go`, `internal/runtime/driver.go`,
+  `internal/runtime/docker.go`
+- **Fix:**
+  1. In the Run handler, after creating the internal network, create a second
+     non-internal network (the egress network).
+  2. Create a gateway container running the agentgateway binary (from
+     `third_party/agentgateway/`). The gateway is dual-homed: connected to both
+     the internal network and the egress network.
+  3. Connect the agent container to BOTH networks (internal + egress), OR
+     configure the gateway as the only path out (agent on internal-only, gateway
+     dual-homed, agent's default route goes through gateway).
+     Follow the topology locked in the PRD: agent on `internal: true` network,
+     gateway dual-homed, DNS only via gateway stub.
+  4. The gateway container gets the compiled gateway config from `PolicyApply`
+     (already written to `config/gateway.yaml` by the daemon). The config
+     contains the allow/deny rules from policy.yaml.
+  5. Agent egress now flows: agent → gateway (via internal network) → allowed
+     destinations (via egress network). Denied destinations return a real HTTP
+     403 from the gateway, not a connection error.
+  6. The harness `handleHTTP` already emits `egress_denied`/`egress_allowed`
+     audit events — now they reflect actual policy decisions, not network errors.
+- **Reference:** Block 5 topology tests (`TestE2E_Network_PositivePath`,
+  `TestAdversaryB5T04a-d`) create this exact topology in test code. The patterns
+  for creating gateway containers, connecting networks, and asserting topology
+  are already proven. Port them from test code to the Run handler.
+- **Test:** E2E test with policy allowing `api.weather.gov` but denying
+  `evil.example.com`. Agent calls both. Verify: allowed call succeeds through
+  gateway; denied call gets 403 from gateway; audit events have distinct reasons
+  ("policy_denied" vs "network_unreachable"). Test gated behind
+  `AGENTPAAS_DOCKER_TESTS=1`.
+- **Effort:** 3-4 micro-chunks (gateway container creation, network wiring,
+  policy config mounting, e2e test).
 
-**14B-T03: E2E test for live egress visibility**
-- Long-running agent that makes multiple HTTP calls (some allowed, some denied).
-- Verify egress_allowed/egress_denied rows appear in timeline SSE stream
-  in real time (within 2s of the HTTP attempt).
-- Verify dashboard shows DENIED probe live during a running agent, not just
-  after the run completes.
+**14B-T02: Policy enforcement at runtime (CRITICAL — depends on T01)**
 
-**14B GATE:** `make block14b-gate` — e2e test shows live egress events in
-dashboard timeline during a running agent; B13 DENIED probe test still passes;
-no regression in audit chain integrity.
+- **Problem:** `PolicyApply` writes policy.yaml and compiles a gateway config,
+  but the config was never consumed by a running gateway. Now that T01 creates
+  a gateway container, the config must flow to it.
+- **Files:** `internal/daemon/control_handlers.go`, `internal/policy/compiler.go`
+- **Fix:**
+  1. The compiled gateway config (`config/gateway.yaml`) must be mounted into
+     the gateway container at start time.
+  2. The gateway container reads this config on startup and enforces it.
+  3. If no policy has been applied, default-deny (the locked architecture
+     decision from PRD §2.5).
+  4. Verify that `policy.CompileGatewayConfig` produces a config that
+     agentgateway actually accepts. The Block 4 tests validate the compiler
+     output; now verify it against a real gateway.
+- **Test:** Apply a policy that allows specific domains. Run agent that calls
+  an allowed domain (succeeds) and a denied domain (403). Verify audit records
+  show the policy decision, not a network error.
+- **Effort:** 2 micro-chunks.
+
+**14B-T03: Real-time egress visibility (from original 14B)**
+
+- **Problem:** Harness emits egress audit events via FileAuditAppender, but
+  these are only ingested by the daemon AFTER the run completes. During a
+  long-running agent, egress attempts are invisible to the dashboard.
+- **Files:** `internal/harness/rpc_server.go`, `internal/daemon/control_handlers.go`,
+  `internal/otel/store.go`
+- **Fix:**
+  1. Daemon tails the harness audit JSONL file (via mounted volume) during the
+     run, not just after Stop.
+  2. Each new audit line → parse → `otelStore.IngestTraces` → EventBus publishes.
+  3. Dashboard timeline `classifySpan` already classifies egress spans — no
+     dashboard changes needed.
+  4. Events appear in dashboard within 2s of the HTTP attempt.
+- **Test:** Long-running agent makes HTTP calls; verify egress_allowed /
+  egress_denied rows appear in timeline SSE stream in real time.
+- **Effort:** 2 micro-chunks.
+
+**14B-T04: DockerRuntime Stats implementation (MEDIUM)**
+
+- **Problem:** `DockerRuntime.Stats()` returns `errDockerNotImplemented`.
+  Dashboard resource monitoring (CPU, memory, PIDs) doesn't work.
+- **Files:** `internal/runtime/docker.go`, `internal/daemon/resource_manager.go`
+- **Fix:**
+  1. Implement Stats using Docker API `ContainerStats` (streaming) or
+     `ContainerInspect` (snapshot). Use one-shot snapshot for P1 (no streaming).
+  2. Parse Docker stats JSON: `cpu_stats.cpu_usage.total_usage`,
+     `memory_stats.usage`, `memory_stats.limit`. Compute CPU percentage.
+  3. Map to `ContainerStats{CPUPercent, MemoryMB, PIDs}`.
+  4. Wire into `dockerResourceManager` so the dashboard shows live resource usage.
+- **Test:** Unit test with mock stats response. Docker e2e test verifies non-zero
+  stats for a running container.
+- **Effort:** 1-2 micro-chunks.
+
+**14B-T05: Trigger server startup in local-first mode (LOW)**
+
+- **Problem:** The daemon creates an EventBus but does not start the trigger API
+  server (gRPC :7718 / REST :7717). External invocations are impossible. The
+  auto-invoke via docker exec is the ONLY invocation path.
+- **Status:** Acceptable for P1 local-first (spec says "loopback-only unless
+  `--expose`"). But the trigger server should at least start on loopback so
+  external tools (and the trigger API tests) can invoke agents directly.
+- **Fix:** Start `trigger.New(ServerConfig{GRPCAddr: "127.0.0.1:7718"})` in
+  daemon `Start()`. Wire the trigger service's `Invoke` to actually call the
+  daemon's Run + invokeAgent flow (currently `TriggerService.Invoke` just
+  creates a stub run in a RunStore).
+- **Effort:** 2 micro-chunks.
+
+**14B GATE:** `make block14b-gate` — gateway container created in Run handler,
+policy enforcement verified via e2e (allowed call succeeds, denied call gets
+403), real-time egress events visible in dashboard timeline during running agent,
+Stats returns non-zero values for running containers, B13 DENIED probe test still
+passes, no regression in audit chain integrity.
 
 ### 14C — Install Path, Docs, Demo, and v0.1.0 Release
 
@@ -2281,6 +2401,23 @@ conformance, redteam-smoke 6/6, docs smoke) green on the tag.
 **BLOCK 14 SUCCESS GATE:** `make block14-gate` runs all four sub-segment gates
 in sequence (14A0 → 14A → 14B → 14C). All must pass. This is the final P1
 build gate.
+
+**Accepted for P1 (tracked, not blocking release):**
+
+These items from the B13 risk analysis are deliberately deferred beyond P1.
+They are documented here so they don't get lost:
+
+- **Fake LLM handler** (`agent.llm()` returns "agentpaas fake llm response"):
+  The harness is designed to broker LLM calls through the gateway with
+  credentials, but actual LLM provider integration (OpenAI, Anthropic, etc.) is
+  post-P1. Budget tracking and audit plumbing work correctly. A real agent demo
+  would need this wired — track for P2.
+- **Contract parity tests use Python fixtures, not Go schema** (SHORTCUT-3):
+  Fragile but functional. The Go schema and Python fixtures can drift. Track for
+  P2 schema generation from Go protobuf.
+- **Sanitizer is advisory, not enforcement** (SHORTCUT-2): The plugin's
+  prompt-injection sanitizer filters untrusted data but is not a hard enforcement
+  boundary. Acceptable for P1 (the container sandbox is the real boundary).
 
 ---
 
