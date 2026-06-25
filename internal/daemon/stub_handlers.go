@@ -21,6 +21,7 @@ import (
 type trackedRun struct {
 	Container runtime.ContainerID
 	Network   string
+	AuditDir  string // host path to harness-audit directory for post-run ingestion
 }
 
 // maxConcurrentRuns is the hard limit on simultaneously active agent runs.
