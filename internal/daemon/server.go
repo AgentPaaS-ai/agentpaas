@@ -274,6 +274,11 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
 	d.control = controlServer
+	if d.dashboard != nil {
+		if rt, err := controlServer.getOrCreateRuntime(); err == nil {
+			d.dashboard.SetResourceManager(NewDockerResourceManager(rt))
+		}
+	}
 	controlv1.RegisterControlServiceServer(d.server, controlServer)
 
 	d.started = true
