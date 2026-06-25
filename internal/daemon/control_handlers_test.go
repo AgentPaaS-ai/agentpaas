@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/home"
 	"github.com/parvezsyed/agentpaas/internal/pack"
 	"github.com/parvezsyed/agentpaas/internal/runtime"
+	"github.com/parvezsyed/agentpaas/internal/trigger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -610,6 +613,8 @@ type mockRuntimeDriver struct {
 	startFunc         func(ctx context.Context, id runtime.ContainerID) error
 	stopFunc          func(ctx context.Context, id runtime.ContainerID, timeout *time.Duration) error
 	removeFunc        func(ctx context.Context, id runtime.ContainerID, force bool) error
+	statusFunc        func(ctx context.Context, id runtime.ContainerID) (runtime.ContainerStatus, error)
+	execFunc          func(ctx context.Context, id runtime.ContainerID, cmd []string) (string, string, int, error)
 	createNetworkFunc func(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error)
 	removeNetworkFunc func(ctx context.Context, id runtime.NetworkID) error
 }
@@ -642,7 +647,10 @@ func (m *mockRuntimeDriver) Remove(ctx context.Context, id runtime.ContainerID, 
 	return fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) Status(context.Context, runtime.ContainerID) (runtime.ContainerStatus, error) {
+func (m *mockRuntimeDriver) Status(ctx context.Context, id runtime.ContainerID) (runtime.ContainerStatus, error) {
+	if m.statusFunc != nil {
+		return m.statusFunc(ctx, id)
+	}
 	return runtime.ContainerStatusUnknown, fmt.Errorf("not implemented")
 }
 
@@ -654,7 +662,10 @@ func (m *mockRuntimeDriver) Logs(context.Context, runtime.ContainerID, runtime.L
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) Exec(context.Context, runtime.ContainerID, []string) (string, string, int, error) {
+func (m *mockRuntimeDriver) Exec(ctx context.Context, id runtime.ContainerID, cmd []string) (string, string, int, error) {
+	if m.execFunc != nil {
+		return m.execFunc(ctx, id, cmd)
+	}
 	return "", "", -1, fmt.Errorf("not implemented")
 }
 
@@ -686,6 +697,296 @@ func (m *mockRuntimeDriver) ListContainers(context.Context, ...string) ([]runtim
 
 func (m *mockRuntimeDriver) ListNetworks(context.Context, ...string) ([]runtime.NetworkInfo, error) {
 	return nil, fmt.Errorf("not implemented")
+}
+
+func testServerWithMockRuntime(t *testing.T, mock *mockRuntimeDriver) (*stubControlServer, *home.HomePaths) {
+	t.Helper()
+	dir := t.TempDir()
+	hp := home.NewHomePaths(dir)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatalf("home.Ensure: %v", err)
+	}
+	deployTestAgent(t, hp, "test-agent")
+
+	auditPath := filepath.Join(hp.State, "audit.jsonl")
+	writer, err := audit.NewAuditWriter(auditPath)
+	if err != nil {
+		t.Fatalf("NewAuditWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+
+	indexer, err := audit.NewSQLiteIndexer(filepath.Join(hp.State, "audit.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIndexer: %v", err)
+	}
+	t.Cleanup(func() { _ = indexer.Close() })
+
+	server := &stubControlServer{
+		homePaths:   hp,
+		auditWriter: writer,
+		auditIndex:  indexer,
+		eventBus:    trigger.NewEventBus(),
+	}
+	server.runtimeOnce.Do(func() {})
+	server.dockerRT = runtime.NewDockerRuntimeWithDriver(mock)
+	return server, hp
+}
+
+func waitForRunStatus(t *testing.T, server *stubControlServer, runID, want string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		tracked, ok := server.lookupRunWithStatus(runID)
+		if ok && tracked.Status == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	tracked, ok := server.lookupRunWithStatus(runID)
+	if !ok {
+		t.Fatalf("run %q not tracked", runID)
+	}
+	t.Fatalf("run %q status = %q, want %q", runID, tracked.Status, want)
+}
+
+func defaultMockRuntimeDriver() *mockRuntimeDriver {
+	return &mockRuntimeDriver{
+		createNetworkFunc: func(_ context.Context, _ runtime.NetworkSpec) (runtime.NetworkID, error) {
+			return runtime.NetworkID("network-test"), nil
+		},
+		createFunc: func(_ context.Context, _ runtime.ContainerSpec) (runtime.ContainerID, error) {
+			return runtime.ContainerID("container-test"), nil
+		},
+		startFunc: func(_ context.Context, _ runtime.ContainerID) error {
+			return nil
+		},
+		stopFunc: func(_ context.Context, _ runtime.ContainerID, _ *time.Duration) error {
+			return nil
+		},
+		removeFunc: func(_ context.Context, _ runtime.ContainerID, _ bool) error {
+			return nil
+		},
+		removeNetworkFunc: func(_ context.Context, _ runtime.NetworkID) error {
+			return nil
+		},
+		statusFunc: func(_ context.Context, _ runtime.ContainerID) (runtime.ContainerStatus, error) {
+			return runtime.ContainerStatusStopped, nil
+		},
+	}
+}
+
+func TestRun_FailedInvoke_SetsFailedStatus(t *testing.T) {
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(_ context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") {
+			return "", "", 0, nil
+		}
+		if strings.Contains(cmdStr, "invoke") {
+			return "", "invoke error", 1, nil
+		}
+		return "", "", -1, fmt.Errorf("unexpected exec: %s", cmdStr)
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+	waitForRunStatus(t, server, runID, "failed")
+
+	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	events := server.eventBus.GetEvents(runID)
+	var terminalEvent *trigger.RunEvent
+	for i := range events {
+		if events[i].IsTerminal() {
+			terminalEvent = &events[i]
+		}
+	}
+	if terminalEvent == nil {
+		t.Fatal("no terminal event published")
+	}
+	if terminalEvent.Type != trigger.EventRunFailed {
+		t.Fatalf("terminal event type = %q, want %q", terminalEvent.Type, trigger.EventRunFailed)
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var runStop *audit.AuditRecord
+	for i := range records {
+		if records[i].EventType == "run_stop" {
+			runStop = &records[i]
+		}
+	}
+	if runStop == nil {
+		t.Fatal("run_stop audit record missing")
+	}
+	if got := auditString(runStop.Payload, "status"); got != "failed" {
+		t.Fatalf("run_stop status = %q, want failed", got)
+	}
+}
+
+func TestStop_CancelsInvokeContext(t *testing.T) {
+	execBlocked := make(chan struct{})
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(ctx context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") {
+			close(execBlocked)
+			<-ctx.Done()
+			return "", "", -1, ctx.Err()
+		}
+		return "", "", 0, nil
+	}
+
+	server, _ := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+
+	select {
+	case <-execBlocked:
+	case <-time.After(5 * time.Second):
+		t.Fatal("invoke goroutine did not reach readyz polling")
+	}
+
+	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_, ok := server.lookupRunWithStatus(runID)
+		if !ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("run still tracked after Stop")
+}
+
+func TestStop_Force_SetsCancelledStatus(t *testing.T) {
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(_ context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") || strings.Contains(cmdStr, "invoke") {
+			return "ok", "", 0, nil
+		}
+		return "", "", -1, fmt.Errorf("unexpected exec: %s", cmdStr)
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+	waitForRunStatus(t, server, runID, "succeeded")
+
+	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID, Force: true})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	events := server.eventBus.GetEvents(runID)
+	var terminalEvent *trigger.RunEvent
+	for i := range events {
+		if events[i].IsTerminal() {
+			terminalEvent = &events[i]
+		}
+	}
+	if terminalEvent == nil {
+		t.Fatal("no terminal event published")
+	}
+	if terminalEvent.Type != trigger.EventRunCancelled {
+		t.Fatalf("terminal event type = %q, want %q", terminalEvent.Type, trigger.EventRunCancelled)
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var runStop *audit.AuditRecord
+	for i := range records {
+		if records[i].EventType == "run_stop" {
+			runStop = &records[i]
+		}
+	}
+	if runStop == nil {
+		t.Fatal("run_stop audit record missing")
+	}
+	if got := auditString(runStop.Payload, "status"); got != "cancelled" {
+		t.Fatalf("run_stop status = %q, want cancelled", got)
+	}
+}
+
+func TestStop_NormalSuccess_Succeeds(t *testing.T) {
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(_ context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") || strings.Contains(cmdStr, "invoke") {
+			return "ok", "", 0, nil
+		}
+		return "", "", -1, fmt.Errorf("unexpected exec: %s", cmdStr)
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+	waitForRunStatus(t, server, runID, "succeeded")
+
+	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	events := server.eventBus.GetEvents(runID)
+	var terminalEvent *trigger.RunEvent
+	for i := range events {
+		if events[i].IsTerminal() {
+			terminalEvent = &events[i]
+		}
+	}
+	if terminalEvent == nil {
+		t.Fatal("no terminal event published")
+	}
+	if terminalEvent.Type != trigger.EventRunSucceeded {
+		t.Fatalf("terminal event type = %q, want %q", terminalEvent.Type, trigger.EventRunSucceeded)
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var runStop *audit.AuditRecord
+	for i := range records {
+		if records[i].EventType == "run_stop" {
+			runStop = &records[i]
+		}
+	}
+	if runStop == nil {
+		t.Fatal("run_stop audit record missing")
+	}
+	if got := auditString(runStop.Payload, "status"); got != "succeeded" {
+		t.Fatalf("run_stop status = %q, want succeeded", got)
+	}
 }
 
 func TestRun_RejectsWhenConcurrentLimitReached(t *testing.T) {
@@ -730,5 +1031,382 @@ func TestRun_RejectsWhenConcurrentLimitReached(t *testing.T) {
 	}
 	if status.Code(err) != codes.ResourceExhausted {
 		t.Fatalf("Run() code = %v, want ResourceExhausted", status.Code(err))
+	}
+}
+
+// --- Adversarial break tests (14A0-T01+T03) ---
+
+func TestAdv_ConcurrentSetStatusAndStop(t *testing.T) {
+	invokeReached := make(chan struct{})
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(ctx context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") {
+			select {
+			case invokeReached <- struct{}{}:
+			default:
+			}
+			select {
+			case <-ctx.Done():
+				return "", "", -1, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+				return "", "", 0, nil
+			}
+		}
+		if strings.Contains(cmdStr, "invoke") {
+			select {
+			case <-ctx.Done():
+				return "", "", -1, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+				return "ok", "", 0, nil
+			}
+		}
+		return "", "", -1, fmt.Errorf("unexpected exec: %s", cmdStr)
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+
+	select {
+	case <-invokeReached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("invoke goroutine did not start")
+	}
+
+	var stopErr error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			if i%2 == 0 {
+				server.setRunStatus(runID, "succeeded")
+			} else {
+				server.setRunStatus(runID, "failed")
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		_, stopErr = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	}()
+	wg.Wait()
+
+	if stopErr != nil {
+		t.Fatalf("Stop() error = %v", stopErr)
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var runStop *audit.AuditRecord
+	for i := range records {
+		if records[i].EventType == "run_stop" {
+			runStop = &records[i]
+		}
+	}
+	if runStop == nil {
+		t.Fatal("run_stop audit record missing")
+	}
+	gotStatus := auditString(runStop.Payload, "status")
+	switch gotStatus {
+	case "succeeded", "failed":
+	default:
+		t.Fatalf("run_stop status = %q, want succeeded or failed", gotStatus)
+	}
+
+	events := server.eventBus.GetEvents(runID)
+	var terminalEvent *trigger.RunEvent
+	for i := range events {
+		if events[i].IsTerminal() {
+			terminalEvent = &events[i]
+		}
+	}
+	if terminalEvent == nil {
+		t.Fatal("no terminal event published")
+	}
+	switch terminalEvent.Type {
+	case trigger.EventRunSucceeded, trigger.EventRunFailed, trigger.EventRunCancelled:
+	default:
+		t.Fatalf("terminal event type = %q, want a valid terminal type", terminalEvent.Type)
+	}
+}
+
+func TestAdv_StopAfterUntrackReturnsNotFound(t *testing.T) {
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(_ context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") || strings.Contains(cmdStr, "invoke") {
+			return "ok", "", 0, nil
+		}
+		return "", "", -1, fmt.Errorf("unexpected exec: %s", cmdStr)
+	}
+
+	server, _ := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+	waitForRunStatus(t, server, runID, "succeeded")
+
+	var err1, err2 error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, err1 = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	}()
+	go func() {
+		defer wg.Done()
+		_, err2 = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	}()
+	wg.Wait()
+
+	successCount := 0
+	notFoundCount := 0
+	for _, err := range []error{err1, err2} {
+		if err == nil {
+			successCount++
+			continue
+		}
+		if status.Code(err) == codes.NotFound {
+			notFoundCount++
+		}
+	}
+	if successCount != 1 || notFoundCount != 1 {
+		t.Fatalf("want one success and one NotFound, got success=%d notFound=%d err1=%v err2=%v",
+			successCount, notFoundCount, err1, err2)
+	}
+}
+
+func TestAdv_StopBeforeCancelSet(t *testing.T) {
+	mock := defaultMockRuntimeDriver()
+	server, _ := testServerWithMockRuntime(t, mock)
+
+	runID := "run-no-cancel"
+	server.trackRun(runID, runtime.ContainerID("container-test"), "network-test", "")
+
+	_, err := server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	if err != nil {
+		t.Fatalf("Stop() with nil CancelInvoke errored: %v", err)
+	}
+
+	_, ok := server.lookupRunWithStatus(runID)
+	if ok {
+		t.Fatal("run still tracked after Stop")
+	}
+}
+
+func TestAdv_LateStatusUpdateAfterStop(t *testing.T) {
+	readyzBlocked := make(chan struct{})
+	stopDone := make(chan struct{})
+	invokeRelease := make(chan struct{})
+
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(_ context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") {
+			<-readyzBlocked
+			return "", "", 0, nil
+		}
+		if strings.Contains(cmdStr, "invoke") {
+			<-invokeRelease
+			return "ok", "", 0, nil
+		}
+		return "", "", -1, fmt.Errorf("unexpected exec: %s", cmdStr)
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+
+	close(readyzBlocked)
+
+	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID, Force: true})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+	close(stopDone)
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var runStop *audit.AuditRecord
+	for i := range records {
+		if records[i].EventType == "run_stop" {
+			runStop = &records[i]
+		}
+	}
+	if runStop == nil {
+		t.Fatal("run_stop audit record missing")
+	}
+	auditStatusAtStop := auditString(runStop.Payload, "status")
+	if auditStatusAtStop != "cancelled" {
+		t.Fatalf("run_stop status at Stop time = %q, want cancelled", auditStatusAtStop)
+	}
+
+	eventsAtStop := server.eventBus.GetEvents(runID)
+	var terminalAtStop *trigger.RunEvent
+	for i := range eventsAtStop {
+		if eventsAtStop[i].IsTerminal() {
+			terminalAtStop = &eventsAtStop[i]
+		}
+	}
+	if terminalAtStop == nil || terminalAtStop.Type != trigger.EventRunCancelled {
+		t.Fatalf("terminal event at Stop = %v, want EventRunCancelled", terminalAtStop)
+	}
+
+	close(invokeRelease)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := server.lookupRunWithStatus(runID); !ok {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	_, ok := server.lookupRunWithStatus(runID)
+	if ok {
+		t.Fatal("late setRunStatus re-tracked the run")
+	}
+
+	recordsAfter, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL after late invoke: %v", err)
+	}
+	var runStopAfter *audit.AuditRecord
+	for i := range recordsAfter {
+		if recordsAfter[i].EventType == "run_stop" {
+			runStopAfter = &recordsAfter[i]
+		}
+	}
+	if runStopAfter == nil {
+		t.Fatal("run_stop audit record missing after late invoke")
+	}
+	if got := auditString(runStopAfter.Payload, "status"); got != auditStatusAtStop {
+		t.Fatalf("run_stop status changed after late invoke: was %q, now %q", auditStatusAtStop, got)
+	}
+
+	eventsAfter := server.eventBus.GetEvents(runID)
+	if len(eventsAfter) != len(eventsAtStop) {
+		t.Fatalf("event count changed after late invoke: was %d, now %d", len(eventsAtStop), len(eventsAfter))
+	}
+}
+
+func TestAdv_ForceStopSucceededAuditInconsistent(t *testing.T) {
+	mock := defaultMockRuntimeDriver()
+	mock.execFunc = func(_ context.Context, _ runtime.ContainerID, cmd []string) (string, string, int, error) {
+		cmdStr := strings.Join(cmd, " ")
+		if strings.Contains(cmdStr, "readyz") || strings.Contains(cmdStr, "invoke") {
+			return "ok", "", 0, nil
+		}
+		return "", "", -1, fmt.Errorf("unexpected exec: %s", cmdStr)
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+	waitForRunStatus(t, server, runID, "succeeded")
+
+	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID, Force: true})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	events := server.eventBus.GetEvents(runID)
+	var terminalEvent *trigger.RunEvent
+	for i := range events {
+		if events[i].IsTerminal() {
+			terminalEvent = &events[i]
+		}
+	}
+	if terminalEvent == nil {
+		t.Fatal("no terminal event published")
+	}
+	if terminalEvent.Type != trigger.EventRunCancelled {
+		t.Fatalf("terminal event type = %q, want %q", terminalEvent.Type, trigger.EventRunCancelled)
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var runStop *audit.AuditRecord
+	for i := range records {
+		if records[i].EventType == "run_stop" {
+			runStop = &records[i]
+		}
+	}
+	if runStop == nil {
+		t.Fatal("run_stop audit record missing")
+	}
+	// Per spec, force stop should be "cancelled" in both event and audit payload.
+	if got := auditString(runStop.Payload, "status"); got != "cancelled" {
+		t.Fatalf("audit status = %q, want cancelled (event is %q — inconsistent)", got, terminalEvent.Type)
+	}
+}
+
+func TestAdv_StatusCheckDetectsCrash(t *testing.T) {
+	mock := defaultMockRuntimeDriver()
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	runID := "run-crash-detect"
+	containerID := runtime.ContainerID("container-crashed")
+	server.trackRun(runID, containerID, "network-test", filepath.Join(hp.State, "runs", runID, "harness-audit"))
+	server.setRunStatus(runID, "running")
+
+	_, err := server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var runStop *audit.AuditRecord
+	for i := range records {
+		if records[i].EventType == "run_stop" && auditString(records[i].Payload, "run_id") == runID {
+			runStop = &records[i]
+		}
+	}
+	if runStop == nil {
+		t.Fatal("run_stop audit record missing")
+	}
+	// Invoke never started (no invoke goroutine); status still "running".
+	// Non-force Stop maps "running" → "succeeded".
+	if got := auditString(runStop.Payload, "status"); got != "succeeded" {
+		t.Fatalf("run_stop status = %q, want succeeded (invoke not tracked)", got)
+	}
+
+	events := server.eventBus.GetEvents(runID)
+	var terminalEvent *trigger.RunEvent
+	for i := range events {
+		if events[i].IsTerminal() {
+			terminalEvent = &events[i]
+		}
+	}
+	if terminalEvent == nil {
+		t.Fatal("no terminal event published")
+	}
+	if terminalEvent.Type != trigger.EventRunSucceeded {
+		t.Fatalf("terminal event type = %q, want %q", terminalEvent.Type, trigger.EventRunSucceeded)
 	}
 }
