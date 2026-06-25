@@ -136,6 +136,14 @@ func (s *stubControlServer) Pack(ctx context.Context, req *controlv1.PackRequest
 		return nil, status.Errorf(codes.Internal, "record deployment: %v", err)
 	}
 
+	s.recordAudit("pack", "cli", map[string]interface{}{
+		"agent_name":    agentName,
+		"agent_version": agentVersion,
+		"image_digest":  result.ImageDigest,
+		"image_ref":     result.ImageRef,
+		"runtime":       det.Runtime,
+	})
+
 	return &controlv1.PackResponse{
 		ImageDigest: result.ImageDigest,
 		BuildLog:    fmt.Sprintf("Built %s, digest: %s", result.ImageRef, result.ImageDigest),
@@ -189,6 +197,13 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 	}
 
 	s.trackRun(runID, containerID, string(netID))
+	s.recordAudit("run_start", "cli", map[string]interface{}{
+		"run_id":       runID,
+		"agent_name":   agentName,
+		"image_ref":    imageRef,
+		"container_id": string(containerID),
+		"network":      string(netID),
+	})
 	_ = deployed
 	return &controlv1.RunResponse{RunId: runID}, nil
 }
@@ -221,6 +236,11 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(netID))
 	}
 	s.untrackRun(runID)
+	s.recordAudit("run_stop", "cli", map[string]interface{}{
+		"run_id":       runID,
+		"container_id": string(containerID),
+		"force":        req.GetForce(),
+	})
 	return &controlv1.StopResponse{Acknowledged: true}, nil
 }
 
@@ -448,6 +468,26 @@ func (s *stubControlServer) AuditExport(ctx context.Context, req *controlv1.Audi
 		Data:       data,
 		EntryCount: int32(len(records)),
 	}, nil
+}
+
+func (s *stubControlServer) recordAudit(eventType, actor string, payload map[string]interface{}) {
+	if s.auditWriter == nil {
+		return
+	}
+	record := audit.AuditRecord{
+		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+		EventType:      eventType,
+		DeploymentMode: "local",
+		Actor:          actor,
+		Payload:        payload,
+	}
+	if err := s.auditWriter.Append(record); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: audit append (%s): %v\n", eventType, err)
+	}
+	// Refresh the SQLite index so dashboard queries see the new record.
+	if s.auditIndex != nil && s.homePaths != nil {
+		_ = s.auditIndex.Rebuild(filepath.Join(s.homePaths.State, "audit.jsonl"))
+	}
 }
 
 func (s *stubControlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error) {
