@@ -189,7 +189,7 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 
 	// Create host audit directory for harness audit JSONL.
 	hostAuditDir := filepath.Join(s.homePaths.State, "runs", runID, "harness-audit")
-	if err := os.MkdirAll(hostAuditDir, 0o700); err != nil {
+	if err := os.MkdirAll(hostAuditDir, 0o777); err != nil {
 		_ = rt.RemoveNetwork(ctx, netID)
 		return nil, status.Errorf(codes.Internal, "create audit dir: %v", err)
 	}
