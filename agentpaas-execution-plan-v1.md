@@ -1990,11 +1990,11 @@ sub-segments. Each sub-segment has its own gate target but they share a single
 
 Block 13 must be fully complete (T01-T09 + block13-gate green) before 14A0 starts.
 
-**Session discipline (Block 13+):** All build sessions are capped at 40 turns.
-Work is divided into micro-chunks (3-6 turns each), merged to main after each,
-checkpointed every 2-3 chunks, and every session ends with a mandatory exit
-prompt for fast restart. See the `agentpaas-40-turn-rhythm` skill for the full
-protocol, checkpoint format, and exit prompt template.
+**Session discipline (Block 13+):** Work is divided into micro-chunks (3-6 turns
+each), merged to main after each, checkpointed every 2-3 chunks, and every
+session ends with an exit prompt for fast restart. See the
+`agentpaas-build-rhythm` skill for the full protocol, checkpoint format, and
+exit prompt template.
 
 ### 14A0 — B13 Correctness Fixes (from B13 Risk Analysis)
 
