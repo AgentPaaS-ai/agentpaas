@@ -19,9 +19,13 @@ import (
 // This lets the daemon start, accept connections, and respond to the Doctor
 // diagnostic RPC while the remaining methods await real implementations.
 type trackedRun struct {
-	Container runtime.ContainerID
-	Network   string
-	AuditDir  string // host path to harness-audit directory for post-run ingestion
+	Container    runtime.ContainerID
+	Network      string
+	AuditDir     string // host path to harness-audit directory for post-run ingestion
+	Status       string // "running" | "succeeded" | "failed" | "cancelled"
+	CancelInvoke context.CancelFunc
+	InvokeDone   chan struct{} // closed when invoke goroutine exits
+	InvokeErr    error         // written before close(InvokeDone); safe to read after channel receive
 }
 
 // maxConcurrentRuns is the hard limit on simultaneously active agent runs.
@@ -38,7 +42,7 @@ type stubControlServer struct {
 	eventBus    *trigger.EventBus
 
 	runMu        sync.Mutex
-	runs         map[string]trackedRun
+	runs         map[string]*trackedRun
 	secretMu     sync.Mutex
 	secretGrants map[string]map[string]struct{}
 
