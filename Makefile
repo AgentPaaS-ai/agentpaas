@@ -1,7 +1,15 @@
-.PHONY: build test proto lint race osv e2e-network redteam-smoke
+.PHONY: build build-harness-linux build-all test proto lint race osv e2e-network redteam-smoke
 
 build:
 	go build ./...
+
+build-harness-linux:
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -o bin/agentpaas-harness-linux ./cmd/harness
+
+build-all: build build-harness-linux
+	go build -o bin/agentpaas ./cmd/agent
+	go build -o bin/agentpaasd ./cmd/agentpaasd
+	go build -o bin/agentpaas-harness ./cmd/harness
 
 test:
 	go test ./...
