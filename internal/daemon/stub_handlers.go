@@ -25,9 +25,10 @@ type trackedRun struct {
 type stubControlServer struct {
 	controlv1.UnimplementedControlServiceServer
 
-	version    VersionInfo
-	auditIndex *audit.SQLiteIndexer
-	homePaths  *home.HomePaths
+	version     VersionInfo
+	auditIndex  *audit.SQLiteIndexer
+	auditWriter *audit.AuditWriter
+	homePaths   *home.HomePaths
 
 	runMu       sync.Mutex
 	runs        map[string]trackedRun
