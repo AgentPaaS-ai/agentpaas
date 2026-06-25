@@ -29,7 +29,8 @@ var errDockerNotImplemented = errors.New("DockerRuntime: not yet implemented")
 // DockerRuntime is a Docker Engine implementation of RuntimeDriver that
 // delegates method calls to the Docker Engine API.
 type DockerRuntime struct {
-	cli *client.Client
+	cli    *client.Client
+	driver RuntimeDriver // non-nil when constructed via NewDockerRuntimeWithDriver
 }
 
 // NewDockerRuntime creates a new DockerRuntime backed by the Docker Engine
@@ -79,6 +80,9 @@ func (d *DockerRuntime) ensureImage(ctx context.Context, imageRef string) error 
 // its ContainerID. The container is created but not started; call Start
 // to begin execution.
 func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (ContainerID, error) {
+	if d.driver != nil {
+		return d.driver.Create(ctx, spec)
+	}
 	if d.cli == nil {
 		return "", errors.New("DockerRuntime: not initialized (no Docker client)")
 	}
@@ -185,6 +189,9 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 
 // Start begins execution of a previously created container.
 func (d *DockerRuntime) Start(ctx context.Context, id ContainerID) error {
+	if d.driver != nil {
+		return d.driver.Start(ctx, id)
+	}
 	if string(id) == "" {
 		return ErrContainerNotFound
 	}
@@ -226,6 +233,9 @@ func (d *DockerRuntime) Stop(ctx context.Context, id ContainerID, timeout *time.
 // Remove deletes a container. If force is true, the container is killed
 // first if running.
 func (d *DockerRuntime) Remove(ctx context.Context, id ContainerID, force bool) error {
+	if d.driver != nil {
+		return d.driver.Remove(ctx, id, force)
+	}
 	if string(id) == "" {
 		return ErrContainerNotFound
 	}
@@ -314,6 +324,9 @@ func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOption
 // CreateNetwork provisions a new Docker network from the given spec and
 // returns its NetworkID.
 func (d *DockerRuntime) CreateNetwork(ctx context.Context, spec NetworkSpec) (NetworkID, error) {
+	if d.driver != nil {
+		return d.driver.CreateNetwork(ctx, spec)
+	}
 	if spec.Name == "" {
 		return "", fmt.Errorf("%w: network name is required", ErrInvalidSpec)
 	}
@@ -337,6 +350,9 @@ func (d *DockerRuntime) CreateNetwork(ctx context.Context, spec NetworkSpec) (Ne
 
 // RemoveNetwork deletes a Docker network.
 func (d *DockerRuntime) RemoveNetwork(ctx context.Context, id NetworkID) error {
+	if d.driver != nil {
+		return d.driver.RemoveNetwork(ctx, id)
+	}
 	if string(id) == "" {
 		return ErrNetworkNotFound
 	}
