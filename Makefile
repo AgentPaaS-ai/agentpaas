@@ -65,7 +65,7 @@ redteam-smoke:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block15-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a-gate block14b-gate block14c-gate block15-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -165,11 +165,20 @@ block12-gate: build test race lint osv
 block13-gate:
 	@echo "Error: block13-gate is not implemented until Block 13" && exit 1
 
-block14-gate:
-	@echo "Error: block14-gate is not implemented until Block 14" && exit 1
+block14a-gate:
+	@echo "Error: block14a-gate (security remediation) is not implemented until Block 14A" && exit 1
+
+block14b-gate:
+	@echo "Error: block14b-gate (real-time egress timeline) is not implemented until Block 14B" && exit 1
+
+block14c-gate:
+	@echo "Error: block14c-gate (install/docs/demo/release) is not implemented until Block 14C" && exit 1
+
+block14-gate: block14a-gate block14b-gate block14c-gate
+	@echo "==> All Block 14 sub-segment gates passed"
 
 block15-gate:
-	@echo "Error: block15-gate is not implemented until Block 15" && exit 1
+	@echo "Error: block15-gate is a manual/docs-only gate. See execution plan §15.2 use-case matrix." && exit 1
 
 .PHONY: gates
 gates: ## List all available gate targets
@@ -187,5 +196,8 @@ gates: ## List all available gate targets
 	@echo "  block11-gate - Hermes operator contract (golden flow)"
 	@echo "  block12-gate - P1 red-team smoke gate"
 	@echo "  block13-gate - Hermes integration plugin (not implemented)"
-	@echo "  block14-gate - Install path, docs, demo, release (not implemented)"
-	@echo "  block15-gate - Sequencing, founder calendar (not implemented)"
+	@echo "  block14-gate - Post-B13 consolidated: security + egress + release (not implemented)"
+	@echo "  block14a-gate - Security remediation (B13.1, 9 tasks)"
+	@echo "  block14b-gate - Real-time egress timeline (B13.5)"
+	@echo "  block14c-gate - Install path, docs, demo, v0.1.0 release"
+	@echo "  block15-gate - Manual use-case assessment (docs-only gate)"

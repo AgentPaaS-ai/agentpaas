@@ -165,6 +165,13 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 		return nil, status.Errorf(codes.FailedPrecondition, "agent %q not deployed: %v (run pack first)", agentName, err)
 	}
 
+	// Enforce concurrent run limit before creating any Docker resources.
+	if s.activeRunCount() >= maxConcurrentRuns {
+		return nil, status.Errorf(codes.ResourceExhausted,
+			"concurrent run limit reached (%d/%d active); stop an existing run before starting a new one",
+			s.activeRunCount(), maxConcurrentRuns)
+	}
+
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "docker runtime not available: %v", err)
@@ -530,6 +537,13 @@ func (s *stubControlServer) trackRun(runID string, containerID runtime.Container
 		s.runs = make(map[string]trackedRun)
 	}
 	s.runs[runID] = trackedRun{Container: containerID, Network: networkID}
+}
+
+// activeRunCount returns the number of currently tracked active runs.
+func (s *stubControlServer) activeRunCount() int {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	return len(s.runs)
 }
 
 func (s *stubControlServer) lookupRun(runID string) (runtime.ContainerID, string) {

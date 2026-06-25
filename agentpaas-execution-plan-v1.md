@@ -1977,153 +1977,333 @@ Demo matrix for P1 differentiation:
 
 ---
 
-## BLOCK 14 — Install path, docs, demo, and v0.1.0 release
-**Builds:** distribution surface area —
-- P1 is macOS-first. Homebrew tap (`brew install agentpaas/tap/agentpaas`)
-  is the primary install path for darwin/arm64 and darwin/amd64. Linux native
-  packages, Linux CI release certification, deb/rpm via nfpm, and Windows/WSL2
-  docs move to P2 unless a design partner creates a hard requirement before
-  launch.
-- Installer trust posture: no blind `curl|bash`; Homebrew installs the binary
-  but does not silently start background services. First run is explicit:
-  `agent doctor` checks Docker Desktop/Colima, keychain, loopback ports,
-  daemon socket permissions, release signature status, and dashboard port.
-  `agent setup launchd` or documented `brew services start agentpaas` creates
-  the user-level launchd service only after explaining what will run, where
-  logs/state live, and how to uninstall.
-- Release pipeline: goreleaser builds darwin/arm64+amd64, produces checksums,
-  SBOMs, provenance, and cosign signatures. Verification follows Sigstore
-  keyless best practice using GitHub Actions OIDC identity, with a single
-  copy-paste `cosign verify-blob` command plus an `agent verify-release`
-  helper so early adopters are not forced to learn the whole supply-chain
-  stack on day one.
-- Docs site (docs/ → static): Quickstart (the <15-minute path), policy
-  reference, secrets guide, "How enforcement actually works" (the
-  network-topology page — security engineers read this one first),
-  threat model (§3 of PRD published verbatim), known limitations (§3.3),
-  audit-export verification guide for a second machine, privacy/telemetry
-  page, Hermes plugin/skill setup, and demo scripts. Claude Code, Codex,
-  Cursor, and generic MCP integration docs move to P2.
-- The 3-minute demo video script + asciinema recordings embedded in
-  README and landing page. Minimum v0.1.0 launch demo: Hermes writes an
-  agent → AgentPaaS packs/signs/SBOMs it → governed run → blocked
-  exfil attempt → signed audit export. Stretch launch demos: secret-brokered
-  SaaS action and agentic repair loop from Block 13.
-- README: the 60-second story above the fold, containment table from
-  `make redteam-smoke` pasted as proof, explicit "zero telemetry, zero
-  phone-home by default" statement, prerequisites called out up front
-  (macOS, Homebrew, Docker Desktop or Colima), and a "known limitations"
-  link near the install command.
-- Air-gapped/offline path: P1 documents a macOS offline bundle containing
-  signed binaries, checksums, SBOMs, container images, policy/demo fixtures,
-  and verification instructions. The offline path may be more manual than
-  Homebrew, but it must prove that release artifacts and audit exports can be
-  verified without network access.
-- Docs/release CI: broken-link check, command-snippet smoke scripts,
-  README quickstart smoke, release-artifact verification matrix, screenshot
-  and asciinema freshness check, and explicit docs issue filing for every
-  clean-machine deviation.
-**Edge cases:** clean-machine test on macOS (fresh user account) following
-ONLY the README, with Docker Desktop or Colima already installed as a stated
-prerequisite — every deviation found is a docs bug, filed and fixed before
-release; brew upgrade preserves daemon state + restarts cleanly; failed daemon
-state migration rolls back or leaves a clear manual recovery path; uninstall
-(`agent uninstall`) removes launchd units, containers, networks, sockets, and
-generated config, and says what it deliberately keeps (audit logs, keychain
-items, offline bundles) and how to purge them; zero telemetry means no
-analytics, update checks, crash reports, or usage pings leave the machine in
-P1. Any future telemetry is separate, explicit opt-in only, and absent from
-the launch demo path.
-**SUCCESS GATE:** `make block14-gate` passes and release evidence shows two
-volunteers (not you) each reach a running governed
-agent in <15 minutes from the README on their own macOS machines after
-installing Docker Desktop or Colima; the Hermes post-install deploy demo
-completes in <10 minutes; at least one Block 13 differentiation demo is
-recorded and embedded (two additional demos are stretch); `cosign verify-blob`
-and `agent verify-release` are
-documented-and-green on released artifacts; offline bundle verification is
-documented-and-green; v0.1.0 tagged with goreleaser, all P1 CI gates (lint,
-test, -race, fuzz corpus, e2e-network on macOS, Hermes integration conformance,
-redteam-smoke 6/6, docs smoke) green on the tag.
+## BLOCK 14 — Post-B13 Security Hardening, Release, and Distribution (consolidated)
+
+This block consolidates ALL post-Block-13 build work into one block with
+sub-segments. Each sub-segment has its own gate target but they share a single
+`make block14-gate` that runs all of them in sequence. The sub-segments are:
+
+- **14A** — Block 13.1 security remediation (9 tasks from the B13 security audit)
+- **14B** — Block 13.5 real-time egress timeline (deferred from B13)
+- **14C** — Install path, docs, demo, and v0.1.0 release (former standalone Block 14)
+
+Block 13 must be fully complete (T01-T09 + block13-gate green) before 14A starts.
+
+**Session discipline (Block 13+):** All build sessions are capped at 40 turns.
+Work is divided into micro-chunks (3-6 turns each), merged to main after each,
+checkpointed every 2-3 chunks, and every session ends with a mandatory exit
+prompt for fast restart. See the `agentpaas-40-turn-rhythm` skill for the full
+protocol, checkpoint format, and exit prompt template.
+
+### 14A — Security Remediation (Block 13.1)
+
+**Source:** `agentpaas-b13-security-audit` skill — 8 gaps + 6 shortcuts identified.
+Each gap is a worker-dispatchable subtask. All fixes are defense-in-depth on top
+of B13's working plugin — they do not change the P1 plugin surface.
+
+**14A-T01: Plugin path allow-list (GAP-1, HIGH)**
+- `_validate_project_path()` in tools.py: resolves symlinks, rejects paths
+  outside project root + /tmp for e2e agents, rejects `..` after resolution.
+- Called before every `_run_cli` that takes a project_dir.
+- Adversary: /etc/passwd, ../../, /tmp/../etc, symlinks.
+
+**14A-T02: AGENTPAAS_CLI binary verification (GAP-2, HIGH)**
+- Path allow-list: /usr/local/bin, /opt/homebrew/bin, $HOME/.local/bin, repo bin/.
+- `--version` must contain "agentpaas".
+- Adversary: point AGENTPAAS_CLI at /bin/echo, symlink to non-agentpaas binary.
+
+**14A-T03: Subprocess output cap + configurable timeout (GAP-3, MEDIUM)**
+- AGENTPAAS_CLI_TIMEOUT env var (default 300, min 10, max 600).
+- stdout cap 50KB, stderr cap 10KB, add `output_truncated` flag.
+- Adversary: CLI returns 100KB JSON → result has output_truncated.
+
+**14A-T04: Thread-safe confirmation state (GAP-5, MEDIUM)**
+- Replace module-level sets with a class wrapping `threading.Lock`.
+- check-and-add is atomic.
+- Adversary: 10 threads replay same confirmation_id → exactly 1 succeeds.
+
+**14A-T05: Hash-chained harness audit (GAP-6, MEDIUM)**
+- FileAuditAppender: hash = sha256(prev_hash + record_json) per record.
+- Daemon ingestion verifies chain before re-chaining.
+- Adversary: tamper with JSONL record → daemon detects broken chain, refuses.
+
+**14A-T06: Pre-flight daemon socket check (GAP-8, LOW)**
+- Check AGENTPAAS_SOCKET exists as Unix socket before spawning CLI.
+- Return `daemon_unavailable` error with `next_action: start_docker` immediately.
+- Adversary: daemon down → plugin returns in <1s, not 300s.
+
+**14A-T07: Sanitizer improvements (GAP-4, MEDIUM)**
+- Add base64 + hex decode steps.
+- Narrow false-positive pattern to security-relevant verbs only.
+- Add YAML-structure injection detection.
+- Adversary: base64-encoded "disable policy" → detected.
+
+**14A-T08: cosign tlog fix + real integration test (SHORTCUT-6)**
+- Execute plan in `docs/plans/b13-cosign-coverage-fix.md`.
+- Fix `--tlog-upload=false` → correct cosign v3.x flag.
+- Real image signing test against localhost:5001, guarded by build tag.
+- Mutation check: break a flag → test goes RED.
+
+**14A-T09: T08+T09 catch-up (SHORTCUT-4, SHORTCUT-5)**
+- Implement /agentpaas slash commands via ctx.register_command
+  (deploy, status, logs, metrics, repair).
+- Write bundled SKILL.md via ctx.register_skill.
+- Each slash command is a thin orchestrator calling ctx.dispatch_tool.
+
+**14A GATE:** `make block14a-gate` — all plugin tests pass (target 130+),
+adversary tests for each gap pass, `go test ./internal/harness/...` passes with
+-race, real cosign integration test green with AGENTPAAS_PACK_REAL_TOOLS=1.
+
+### 14B — Real-time Egress Timeline (Block 13.5)
+
+**Source:** `b13-deploy-e2e-checkpoint-v5.md` §"Block 13.5" — deferred from B13.
+
+The harness emits egress audit events via FileAuditAppender, but these are only
+ingested by the daemon AFTER the run completes. During a long-running agent,
+egress attempts are invisible to the dashboard. This sub-segment wires live
+egress visibility.
+
+**14B-T01: Harness egress event stream**
+- Harness `handleHTTP` already emits audit events via FileAuditAppender.
+- Add an RPC method on the harness Unix socket: `egress_event` — the harness
+  writes egress decisions as they happen.
+- Alternatively: daemon tails the harness audit JSONL file via mounted volume.
+
+**14B-T02: Daemon real-time ingestion**
+- Daemon tails the egress event stream during the run.
+- Each new event → `otelStore.IngestTraces` → EventBus publishes.
+- Dashboard timeline `classifySpan` already classifies egress spans
+  (`egress.allowed` attr → `egress_allowed`/`egress_denied`). No dashboard changes.
+
+**14B-T03: E2E test for live egress visibility**
+- Long-running agent that makes multiple HTTP calls (some allowed, some denied).
+- Verify egress_allowed/egress_denied rows appear in timeline SSE stream
+  in real time (within 2s of the HTTP attempt).
+- Verify dashboard shows DENIED probe live during a running agent, not just
+  after the run completes.
+
+**14B GATE:** `make block14b-gate` — e2e test shows live egress events in
+dashboard timeline during a running agent; B13 DENIED probe test still passes;
+no regression in audit chain integrity.
+
+### 14C — Install Path, Docs, Demo, and v0.1.0 Release
+
+This is the former standalone Block 14 — distribution surface area.
+
+**Install path (macOS-first):**
+- Homebrew tap (`brew install agentpaas/tap/agentpaas`) for darwin/arm64+amd64.
+- No blind `curl|bash`; first run is explicit via `agent doctor`.
+- `agent setup launchd` or `brew services start agentpaas` for background service.
+
+**Release pipeline:**
+- goreleaser: darwin/arm64+amd64, checksums, SBOMs, provenance, cosign signatures.
+- Sigstore keyless verification via GitHub Actions OIDC.
+- `cosign verify-blob` + `agent verify-release` helper.
+
+**Docs site (docs/ → static):**
+- Quickstart (<15-minute path), policy reference, secrets guide.
+- "How enforcement actually works" (network-topology page).
+- Threat model (PRD §3 verbatim), known limitations (§3.3).
+- Audit-export verification guide for a second machine.
+- Privacy/telemetry page, Hermes plugin/skill setup, demo scripts.
+- Claude Code, Codex, Cursor, generic MCP docs → P2.
+
+**Demo assets:**
+- 3-minute demo video script + asciinema recordings.
+- Minimum v0.1.0 launch demo: Hermes writes agent → AgentPaaS packs/signs/SBOMs →
+  governed run → blocked exfil → signed audit export.
+- Stretch demos: secret-brokered SaaS action, agentic repair loop.
+
+**README:**
+- 60-second story above the fold, containment table from `make redteam-smoke`.
+- "Zero telemetry, zero phone-home by default" statement.
+- Prerequisites: macOS, Homebrew, Docker Desktop or Colima.
+- "Known limitations" link near install command.
+
+**Air-gapped/offline path:**
+- macOS offline bundle: signed binaries, checksums, SBOMs, container images,
+  policy/demo fixtures, verification instructions.
+- Must prove release artifacts + audit exports verifiable without network.
+
+**Docs/release CI:**
+- Broken-link check, command-snippet smoke, README quickstart smoke.
+- Release-artifact verification matrix, screenshot/asciinema freshness check.
+- Docs issue filed for every clean-machine deviation.
+
+**14C EDGE CASES:**
+clean-machine test on macOS (fresh user account) following ONLY the README,
+with Docker Desktop or Colima already installed — every deviation is a docs bug,
+filed and fixed before release; brew upgrade preserves daemon state + restarts
+cleanly; failed daemon state migration rolls back or leaves clear manual recovery;
+uninstall removes launchd units, containers, networks, sockets, generated config,
+and says what it keeps (audit logs, keychain items, offline bundles) and how to
+purge; zero telemetry = no analytics, update checks, crash reports, or usage
+pings in P1. Future telemetry is separate, explicit opt-in only.
+
+**14C GATE:** `make block14c-gate` — two volunteers (not you) each reach a
+running governed agent in <15 minutes from README on their own macOS machines;
+Hermes post-install deploy demo <10 minutes; at least one Block 13 differentiation
+demo recorded and embedded (two additional = stretch); `cosign verify-blob` and
+`agent verify-release` documented-and-green on released artifacts; offline bundle
+verification documented-and-green; v0.1.0 tagged with goreleaser; all P1 CI gates
+(lint, test, -race, fuzz corpus, e2e-network on macOS, Hermes integration
+conformance, redteam-smoke 6/6, docs smoke) green on the tag.
+
+**BLOCK 14 SUCCESS GATE:** `make block14-gate` runs all three sub-segment gates
+in sequence (14A → 14B → 14C). All must pass. This is the final P1 build gate.
 
 ---
 
-## BLOCK 15 — Sequencing, founder calendar, and execution control
+## BLOCK 15 — Assisted Use-Case Assessment and Manual Testing
+
+This block replaces the former "Sequencing, founder calendar, and execution
+control" block. The old sequencing content is preserved below in §15.3 for
+reference but is no longer a gate.
+
+Block 15 is the founder-driven manual testing phase. You (Parvez) work through
+real-world use cases one at a time, with Hermes as the assistant, to find
+leftover rough edges before v0.1.0 ships. This is NOT automated testing — it
+is human-in-the-loop exploratory testing of the full product experience.
+
+### 15.1 Use-Case Assessment Protocol
+
+Each use case is assessed one at a time. For each:
+
+1. **Define the scenario** — what agent type, what policy, what egress, what
+   secrets, what the expected outcome is.
+2. **Run it manually** — use the Hermes plugin (`/agentpaas deploy`) or the CLI
+   directly (`agent pack`, `agent run`). Do NOT use test fixtures — use real
+   agent code that a coding agent would generate.
+3. **Observe the full experience** — dashboard, audit trail, logs, timeline,
+   policy denials, error messages. Check each surface for clarity and correctness.
+4. **Record findings** — any rough edge, confusing message, missing feature,
+   or unexpected behavior gets filed as a bug or a docs issue.
+5. **Fix or defer** — critical bugs get fixed immediately (back to Block 14
+   sub-segments). Non-critical findings get tracked for P2.
+
+### 15.2 Use-Case Matrix
+
+The following use cases must be assessed. Each is a separate session. Do not
+batch — the point is to find rough edges through focused attention.
+
+**UC-01: Weather/API agent (the canonical demo)**
+- Agent calls a weather API, attempts a denied exfil probe.
+- Verify: dashboard shows DENIED probe, audit trail is complete and signed,
+  export bundle verifies on a second machine.
+- This is the minimum viable demo — it must be flawless.
+
+**UC-02: Secret-brokered SaaS action**
+- Agent uses a brokered credential through the gateway to call a SaaS API.
+- Verify: secret value never visible in code/logs/audit, upstream receives
+  authorized request, credential rotates after use.
+- Tests the secrets broker + gateway injection end-to-end.
+
+**UC-03: Agentic repair loop**
+- Agent has a dependency/code defect + missing egress policy.
+- Verify: `agentpaas_explain_failure` → `agentpaas_next_action` fixes code
+  automatically, proposes policy (waits for confirmation), reruns, exports
+  signed audit bundle.
+- Tests the full operator repair loop.
+
+**UC-04: Prompt-change immutable redeploy**
+- Agent is already running. Change the agent prompt, redeploy.
+- Verify: new run has distinct digests, old run stops cleanly, audit shows
+  both old and new runs with distinct image/policy digests.
+- Tests the immutable redeploy path.
+
+**UC-05: Long-running agent with mixed egress**
+- Agent runs for 5+ minutes, makes multiple HTTP calls (some allowed, some
+  denied).
+- Verify: live egress events in dashboard timeline (14B), audit trail grows
+  in real time, budget enforcement works.
+- Tests 14B real-time visibility + budget caps.
+
+**UC-06: Clean-machine install (your own fresh account)**
+- Install AgentPaaS from scratch on a fresh macOS user account using ONLY
+  the README.
+- Verify: <15 minutes to first governed agent, no undocumented steps, no
+  missing prerequisites.
+- This is the volunteer test done by you first — you are the harshest
+  critic of your own docs.
+
+**UC-07: Policy authoring experience**
+- Write a `policy.yaml` from scratch for a custom agent with mixed egress
+  (some domains allowed, some denied, some credential-backed).
+- Verify: policy validates, compiles to agentgateway config, enforced at
+  runtime, denials are explainable via `agentpaas_explain_policy_denial`.
+- Tests the policy UX end-to-end.
+
+**UC-08: Audit export + verification on second machine**
+- Export audit trail from a completed run, transfer to a second machine,
+  verify integrity.
+- Verify: `agent audit verify` passes, hash chain is intact, signed export
+  manifest validates, a security reviewer could trust this evidence.
+- Tests the audit export story for design partners.
+
+**UC-09: Daemon lifecycle (start/stop/restart/upgrade)**
+- Start daemon, run agents, stop daemon mid-run, restart, verify state
+  recovery. Upgrade via `brew upgrade`, verify state migration.
+- Verify: no orphaned containers/networks, daemon state survives restart,
+  upgrade path is clean.
+- Tests operational reliability.
+
+**UC-10: Hermes integration depth**
+- Use the Hermes plugin exclusively (no CLI) for a full session: detect
+  agent code → deploy → status → logs → metrics → repair → redeploy.
+- Verify: every slash command works, every tool returns structured output,
+  prompt-injection boundary holds (inject hostile instructions in agent
+  source/comments, verify no policy alteration or secret disclosure).
+- Tests the Hermes operator experience as a real user would use it.
+
+### 15.3 Sequencing Reference (not a gate — context only)
+
 ```
-B1 → B2 → B3 ─┬→ B4 → B5 ─┬→ B6 → B7 → B8 ─┬→ B9 → B10 → B11 → B12 → B13 → B14
+B1 → B2 → B3 ─┬→ B4 → B5 ─┬→ B6 → B7 → B8 ─┬→ B9 → B10 → B11 → B12 → B13 → B14 → B15
               │            │                 │
               └ B3 gates everything security-spine-first
 ```
+
 B4/B5 can interleave with B6 SDK design once Block 1 contracts are frozen.
 B10 dashboard can start once B9 events exist. B11 operator contract depends on
 B1-B10 JSON/control surfaces. B12 red-team needs B5-B8 plus B11 operator
-methods. B13 integrations depend on B11 and B12. B14 release/docs/demo closes
-only after every P1 gate is green.
+methods. B13 integrations depend on B11 and B12. B14 (consolidated) closes
+all post-B13 build work. B15 is manual use-case assessment.
 
-Founder calendar target (rough, week-by-week progress, not a relaxed gate):
-- **Week 1:** B1-B3 green. Repo/protos/CI, daemon/CLI skeleton, identity and
-  audit spine. Output: local CLI talks to daemon; audit hash chain and signed
-  export skeleton exist.
-- **Week 2:** B4-B8 green. Policy compiler, fenced macOS Docker
-  Desktop/Colima runtime, harness/Python SDK, secrets broker, packaging.
-  Output: a plain Python/LangGraph/CrewAI-generated project can pack into a
-  signed artifact and run behind default-deny egress.
-- **Week 3:** B9-B12 green. Trigger API/events/cron, dashboard, operator
-  contract, redteam-smoke. Output: governed run is observable, machine-readable
-  operator loop works, and 6/6 smoke proof is release-blocking.
-- **Week 4:** B13-B14 green. Hermes plugin/skill plus install/docs/demo/release
-  path. Output: post-install Hermes demo completes in <10 minutes; README
-  clean-machine path works on macOS.
-- **Week 5:** P1 release buffer only. Bug fixes, volunteer clean-machine
-  verification, offline bundle verification, video/asciinema polish, tag
-  v0.1.0. If Week 4 is clean, ship in Week 4; if not, Week 5 is the cap.
+**P2 calendar target (four weeks after P1 ships):**
+- Week 6: Linux certification (dockerd, systemd, libsecret, seccomp/AppArmor, deb/rpm).
+- Week 7: Customer-facing control-plane (team/fleet, hosted identity/audit,
+  registry/promotion, tenant metadata, support bundle).
+- Week 8: Commercial observability + opt-in telemetry (consent UX, privacy docs,
+  fleet health, team dashboards).
+- Week 9: P2 release hardening (production docs, support playbook, design-partner
+  onboarding, upgrade/rollback, pricing hooks, RC + launch packet).
 
-P2 calendar target after P1 (four additional weeks):
-- **Week 6:** Linux certification track: Linux `dockerd`, systemd, libsecret,
-  CI runners, seccomp/AppArmor profiles, deb/rpm packaging.
-- **Week 7:** Customer-facing control-plane foundations: team/fleet model,
-  hosted identity/audit abstractions, registry/promotion flow, tenant/project
-  metadata, governed run artifact export for agent-modified files, support
-  bundle.
-- **Week 8:** Commercial observability and opt-in telemetry: explicit consent
-  UX, payload contract, privacy docs, fleet health, upgrade/error reporting,
-  dashboard views for teams.
-- **Week 9:** P2 customer release hardening: production docs, support playbook,
-  design-partner onboarding, upgrade/rollback, pricing hooks, release
-  candidate and customer-facing launch packet.
-
-Execution control decisions:
-- The plan is now 15 blocks: 14 product/release build blocks plus this founder
-  calendar/control block. Former Block 10.5 is now Block 11.
+**Execution control decisions (carried forward):**
 - Once implementation starts, do not silently slip P1 blocks. If the calendar
   is impossible, stop and explicitly rescope before continuing.
-- Block 13 P1 scope is Hermes-only: Hermes plugin/skill, contract parity gate,
-  prompt-injection boundaries, and post-install <10-minute demo are required.
-  Generic MCP server distribution plus Claude Code, Codex, and Cursor
+- Block 13 P1 scope is Hermes-only. Generic MCP server + Claude Code/Codex/Cursor
   integrations move to P2.
-- The extra Block 13 demo recordings beyond the minimum launch video are launch
-  asset prioritization, not skipped product functionality.
-- CrewAI is the Python multi-agent framework. P1 support means an AI-generated
-  CrewAI project packs/runs through the generic Python harness and examples;
-  AgentPaaS is not building a CrewAI authoring framework or custom orchestration
-  layer.
+- CrewAI support means AI-generated CrewAI projects pack/run through the generic
+  Python harness. AgentPaaS is not building a CrewAI authoring framework.
 - Node SDK remains explicitly deferred and is not part of the P1 gate.
 - Audit, policy, network enforcement, secrets invisibility, packaging/signing,
   Hermes operator contract, redteam-smoke, and integration contract parity are
   never cut from P1.
 
-**SUCCESS GATE:** `make block15-gate` passes once the Makefile exists, proving
-the plan/checkpoint consistency checks still have no stale block numbering,
-P1/P2 scope drift, missing gate commands, or cut security invariants. Before
-Block 1 creates the Makefile, the equivalent docs-only gate is this whole-plan
-review, `git diff --check`, and a committed checkpoint.
+**BLOCK 15 SUCCESS GATE:** `make block15-gate` is a docs-only gate: a checklist
+confirming all 10 use cases in §15.2 have been assessed, with findings recorded
+and critical bugs resolved. There is no automated gate — this block is
+inherently human-driven. "Done" means you have personally walked through every
+use case and signed off on the experience.
 
 ## 16. DEFINITION OF DONE (PHASE 1)
+
 The execution plan is complete when PRD v4 §8 (Success Definition) items
 1–8 are demonstrably true via the gates above. Blocks 1-14 are complete only
 when their `make blockN-gate` wrappers exit 0, and Block 14 must also collect
-the volunteer/release evidence named in PRD §8. Block 15 is the sequencing
-control gate. "Done" is always a command plus recorded evidence, never a
+the volunteer/release evidence named in PRD §8. Block 15 is the manual
+use-case assessment — done when all 10 use cases are assessed and signed off
+by the founder. "Done" is always a command plus recorded evidence, never a
 judgment call.
 
-**END OF EXECUTION PLAN v1.0 — companion to agentpaas-prd-v4-master.md**
+**END OF EXECUTION PLAN v1.1 — companion to agentpaas-prd-v4-master.md**

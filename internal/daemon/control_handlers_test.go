@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/parvezsyed/agentpaas/internal/audit"
@@ -340,5 +341,70 @@ func TestPack_RecordsDeploymentWhenBuildSucceeds(t *testing.T) {
 	_, err := pack.LoadDeployedAgent(server.homePaths.Home, "nonexistent")
 	if err == nil {
 		t.Fatal("LoadDeployedAgent() error = nil, want not exist")
+	}
+}
+
+func TestActiveRunCount(t *testing.T) {
+	server := &stubControlServer{}
+
+	if got := server.activeRunCount(); got != 0 {
+		t.Fatalf("activeRunCount() = %d, want 0", got)
+	}
+
+	server.trackRun("run-1", "container-1", "network-1")
+	server.trackRun("run-2", "container-2", "network-2")
+
+	if got := server.activeRunCount(); got != 2 {
+		t.Fatalf("activeRunCount() = %d, want 2", got)
+	}
+
+	server.untrackRun("run-1")
+	if got := server.activeRunCount(); got != 1 {
+		t.Fatalf("activeRunCount() after untrack = %d, want 1", got)
+	}
+}
+
+func TestRun_RejectsWhenConcurrentLimitReached(t *testing.T) {
+	dir := t.TempDir()
+	hp := home.NewHomePaths(dir)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatalf("home.Ensure: %v", err)
+	}
+	server := &stubControlServer{homePaths: hp}
+
+	// Pre-fill the runs map to the limit without Docker.
+	for i := 0; i < maxConcurrentRuns; i++ {
+		runID := fmt.Sprintf("run-pre-%d", i)
+		server.trackRun(runID, runtime.ContainerID(fmt.Sprintf("c-%d", i)), fmt.Sprintf("n-%d", i))
+	}
+
+	// Deploy a fake agent so we get past the LoadDeployedAgent check.
+	// LoadDeployedAgent reads from state/agents/<name>/ with individual files.
+	deployedDir := pack.DeployedAgentPath(hp.Home, "test-agent")
+	if err := os.MkdirAll(deployedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	// Write minimal files LoadDeployedAgent expects.
+	lockJSON := `{"version":"v1","agent":{"name":"test-agent"},"image":{"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}`
+	if err := os.WriteFile(filepath.Join(deployedDir, "agent.lock"), []byte(lockJSON), 0o644); err != nil {
+		t.Fatalf("WriteFile agent.lock: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deployedDir, "image.digest"), []byte("sha256:0000000000000000000000000000000000000000000000000000000000000000"), 0o644); err != nil {
+		t.Fatalf("WriteFile image.digest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deployedDir, "source_digest"), []byte("sha256:abc"), 0o644); err != nil {
+		t.Fatalf("WriteFile source_digest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(deployedDir, "deployed_at"), []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644); err != nil {
+		t.Fatalf("WriteFile deployed_at: %v", err)
+	}
+
+	// Now Run should hit the concurrent limit before touching Docker.
+	_, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err == nil {
+		t.Fatal("Run() error = nil, want ResourceExhausted")
+	}
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("Run() code = %v, want ResourceExhausted", status.Code(err))
 	}
 }
