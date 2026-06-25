@@ -71,6 +71,4 @@ and real policy enforcement (the core product value prop). Block 14B-T01 creates
 a dual-homed gateway container in the Run handler, wiring policy.yaml to actual
 runtime enforcement. This is the single most important piece of work in Block 14.
 
-If you reach turn 35 before finishing all 5 tasks, checkpoint and write exit prompt for the remainder.
-
 Start at: 14A0-T01 — add status field to trackedRun in internal/daemon/control_handlers.go.
