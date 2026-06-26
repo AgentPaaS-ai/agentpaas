@@ -155,16 +155,11 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 	cmdCtx, cancel := context.WithTimeout(ctx, externalSignatureTimeout)
 	defer cancel()
 
-	signingConfigPath, cleanupConfig, err := ensureNoTlogSigningConfig()
+	signArgs, cleanupConfig, err := buildCosignSignArgs(imageRef, keyPath)
 	if err != nil {
 		return "", err
 	}
 	defer cleanupConfig()
-
-	signArgs := []string{"sign", "--key", keyPath, "--signing-config", signingConfigPath, "--yes"}
-	if isLocalRegistryRef(imageRef) {
-		signArgs = append(signArgs, "--allow-insecure-registry")
-	}
 	signArgs = append(signArgs, imageRef)
 	cmd := exec.CommandContext(cmdCtx, "cosign", signArgs...)
 	cmd.Env = append(os.Environ(), dockerHostEnv()...)
@@ -537,6 +532,33 @@ func isLocalRegistryRef(imageRef string) bool {
 		strings.Contains(imageRef, "127.0.0.1:")
 }
 
+// buildCosignSignArgs constructs cosign sign CLI args for imageRef.
+// Local registry refs suppress Rekor/tlog upload via --signing-config; production refs use cosign defaults.
+func buildCosignSignArgs(imageRef, keyPath string) (args []string, cleanup func(), err error) {
+	cleanup = func() {}
+	args = []string{"sign", "--key", keyPath, "--yes"}
+	if isLocalRegistryRef(imageRef) {
+		signingConfigPath, cleanupConfig, cfgErr := ensureNoTlogSigningConfig()
+		if cfgErr != nil {
+			return nil, nil, cfgErr
+		}
+		cleanup = cleanupConfig
+		args = append(args, "--signing-config", signingConfigPath, "--allow-insecure-registry")
+	}
+	return args, cleanup, nil
+}
+
+// buildCosignVerifyArgs constructs cosign verify CLI args for imageRef.
+// Local registry refs skip tlog verification; production refs require Rekor transparency log.
+func buildCosignVerifyArgs(imageRef, pubKeyPath string) []string {
+	verifyArgs := []string{"verify"}
+	if isLocalRegistryRef(imageRef) {
+		verifyArgs = append(verifyArgs, "--insecure-ignore-tlog", "--allow-insecure-registry")
+	}
+	verifyArgs = append(verifyArgs, "--key", pubKeyPath, imageRef)
+	return verifyArgs
+}
+
 func dockerHostEnv() []string {
 	host, err := dockerclient.ResolvedDockerHost()
 	if err != nil || host == "" {
@@ -642,11 +664,7 @@ func verifyImageSignature(packageAID string, imageRef string) error {
 
 	cmdCtx, cancel := context.WithTimeout(context.Background(), externalSignatureTimeout)
 	defer cancel()
-	verifyArgs := []string{"verify", "--insecure-ignore-tlog"}
-	if isLocalRegistryRef(imageRef) {
-		verifyArgs = append(verifyArgs, "--allow-insecure-registry")
-	}
-	verifyArgs = append(verifyArgs, "--key", pubFile, imageRef)
+	verifyArgs := buildCosignVerifyArgs(imageRef, pubFile)
 	cmd := exec.CommandContext(cmdCtx, "cosign", verifyArgs...)
 	output, err := cmd.CombinedOutput()
 	if cmdCtx.Err() != nil {
