@@ -1559,3 +1559,106 @@ func TestReconcileOrphans_NoDocker_SkipsGracefully(t *testing.T) {
 	})
 	server.reconcileOrphanedContainers(context.Background())
 }
+
+func TestReconcileOrphans_RemoveFailure_EmitsAuditEvent(t *testing.T) {
+	runID := "run-remove-fail"
+	containerID := "orphan-container-fail"
+
+	mock := defaultMockRuntimeDriver()
+	mock.listContainersFunc = func(_ context.Context, _ ...string) ([]runtime.ContainerInfo, error) {
+		return []runtime.ContainerInfo{{
+			ID:           containerID,
+			RunID:        runID,
+			Status:       runtime.ContainerStatusRunning,
+			ResourceType: runtime.ResourceTypeAgent,
+			Labels:       runtime.Labels(runtime.ResourceTypeAgent, runID),
+		}}, nil
+	}
+	mock.listNetworksFunc = func(_ context.Context, _ ...string) ([]runtime.NetworkInfo, error) {
+		return nil, nil
+	}
+	mock.stopFunc = func(_ context.Context, _ runtime.ContainerID, _ *time.Duration) error {
+		return nil
+	}
+	mock.removeFunc = func(_ context.Context, _ runtime.ContainerID, _ bool) error {
+		return fmt.Errorf("remove failed")
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+	server.reconcileOrphanedContainers(context.Background())
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var removeFailed, complete bool
+	for _, record := range records {
+		switch record.EventType {
+		case "container_reconciled":
+			if auditString(record.Payload, "action") == "remove_failed" {
+				removeFailed = true
+				if auditString(record.Payload, "run_id") != runID {
+					t.Errorf("container_reconciled run_id = %q, want %q", auditString(record.Payload, "run_id"), runID)
+				}
+				if auditString(record.Payload, "container_id") != containerID {
+					t.Errorf("container_reconciled container_id = %q, want %q", auditString(record.Payload, "container_id"), containerID)
+				}
+			}
+		case "reconciliation_complete":
+			complete = true
+		}
+	}
+	if !removeFailed {
+		t.Error("container_reconciled audit record with action remove_failed missing")
+	}
+	if !complete {
+		t.Error("reconciliation_complete audit record missing")
+	}
+}
+
+func TestReconcileOrphans_ListContainersError_ProceedsToNetworkReconciliation(t *testing.T) {
+	runID := "run-orphan-net"
+	networkID := "orphan-network-only"
+
+	var removeNetworkCalled bool
+
+	mock := defaultMockRuntimeDriver()
+	mock.listContainersFunc = func(_ context.Context, _ ...string) ([]runtime.ContainerInfo, error) {
+		return nil, fmt.Errorf("docker list containers failed")
+	}
+	mock.listNetworksFunc = func(_ context.Context, _ ...string) ([]runtime.NetworkInfo, error) {
+		return []runtime.NetworkInfo{{
+			ID:       networkID,
+			Internal: true,
+			Labels:   runtime.Labels(runtime.ResourceTypeNetInternal, runID),
+		}}, nil
+	}
+	mock.removeNetworkFunc = func(_ context.Context, id runtime.NetworkID) error {
+		removeNetworkCalled = true
+		if id != runtime.NetworkID(networkID) {
+			t.Errorf("removeNetwork called with id %q, want %q", id, networkID)
+		}
+		return nil
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+	server.reconcileOrphanedContainers(context.Background())
+
+	if !removeNetworkCalled {
+		t.Error("expected RemoveNetwork to be called for orphaned network")
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var complete bool
+	for _, record := range records {
+		if record.EventType == "reconciliation_complete" {
+			complete = true
+		}
+	}
+	if !complete {
+		t.Error("reconciliation_complete audit record missing")
+	}
+}
