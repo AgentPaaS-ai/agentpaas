@@ -740,6 +740,12 @@ func resolvePathSymlinks(path string, mustExist bool) (string, error) {
 }
 
 func rejectSymlinkComponents(path string, mustExist bool) error {
+	// macOS has standard system-level symlinks (/var → /private/var,
+	// /tmp → /private/tmp, /etc → /private/etc) that are safe to traverse.
+	// Only reject symlinks that are NOT in this known-safe set.
+	safeSystemSymlinks := map[string]bool{
+		"/var": true, "/tmp": true, "/etc": true,
+	}
 	current := string(os.PathSeparator)
 	parts := strings.Split(strings.TrimPrefix(path, string(os.PathSeparator)), string(os.PathSeparator))
 	for i, part := range parts {
@@ -752,6 +758,9 @@ func rejectSymlinkComponents(path string, mustExist bool) error {
 			return fmt.Errorf("lstat %s: %w", current, err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
+			if safeSystemSymlinks[current] {
+				continue
+			}
 			return fmt.Errorf("path must not contain symlink: %s", current)
 		}
 	}
