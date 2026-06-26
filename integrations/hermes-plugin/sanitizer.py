@@ -41,7 +41,8 @@ _INJECTION_PATTERNS = [
     # Instruction-like directives in evidence context
     re.compile(
         r'(?i)\b(do not|don\'t|must|should|always|never)\b.{0,30}'
-        r'\b(disable|enable|allow|deny|delete|remove|bypass|stop|kill|reveal|expose)\b'
+        r'\b(disable|enable|allow|deny|delete|remove|bypass|stop|kill|reveal|expose|'
+        r'purge|wipe|destroy|override|grant|revoke)\b'
     ),
     # JSON/YAML injection attempts (fake control fields in evidence)
     re.compile(r'"(error_category|next_action|requires_confirmation|policy_digest)"\s*:'),
@@ -72,6 +73,17 @@ _CONTROL_FIELD_NAMES = (
 )
 
 
+def _accept_decoded_text(decoded_str):
+    """Accept valid UTF-8 text that isn't empty or pure binary noise."""
+    if decoded_str and len(decoded_str) >= 4:
+        printable_count = sum(
+            1 for c in decoded_str if 32 <= ord(c) <= 126 or c in '\n\r\t'
+        )
+        if printable_count / len(decoded_str) > 0.7:
+            return True
+    return False
+
+
 def _decode_evidence_text(text):
     """Decode common encoding schemes before injection detection.
 
@@ -96,8 +108,18 @@ def _decode_evidence_text(text):
         try:
             decoded_bytes = base64.b64decode(chunk, validate=True)
             decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
-            # Only add if it contains printable ASCII text (not binary noise)
-            if decoded_str and all(32 <= ord(c) <= 126 or c in '\n\r\t' for c in decoded_str):
+            if _accept_decoded_text(decoded_str):
+                decoded_parts.append(decoded_str)
+        except (binascii.Error, ValueError):
+            pass
+
+    # Base64url decode — URL-safe variant using - and _
+    for m in re.finditer(r'[A-Za-z0-9-_]{16,}={0,2}', text):
+        chunk = m.group()
+        try:
+            decoded_bytes = base64.urlsafe_b64decode(chunk)
+            decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
+            if _accept_decoded_text(decoded_str):
                 decoded_parts.append(decoded_str)
         except (binascii.Error, ValueError):
             pass
@@ -108,7 +130,7 @@ def _decode_evidence_text(text):
         try:
             decoded_bytes = bytes.fromhex(chunk)
             decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
-            if decoded_str and all(32 <= ord(c) <= 126 or c in '\n\r\t' for c in decoded_str):
+            if _accept_decoded_text(decoded_str):
                 decoded_parts.append(decoded_str)
         except ValueError:
             pass
