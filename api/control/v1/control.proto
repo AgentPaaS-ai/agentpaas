@@ -249,10 +249,26 @@ message AuditEntry {
   bytes payload = 6;
 }
 
+message AuditCheckpointIssue {
+  string type = 1;
+  string message = 2;
+  int64 seq = 3;
+  int32 line = 4;
+}
+
+message AuditChainVerification {
+  bool verified = 1;
+  int64 audit_record_count = 2;
+  int64 audit_head_seq = 3;
+  int32 checkpoint_count = 4;
+  repeated AuditCheckpointIssue issues = 5;
+}
+
 message AuditQueryResponse {
   repeated AuditEntry entries = 1;
   string next_page_token = 2;
   int32 total_count = 3;
+  AuditChainVerification chain_verification = 4;
 }
 
 message AuditExportRequest {
