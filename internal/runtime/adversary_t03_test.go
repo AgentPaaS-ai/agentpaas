@@ -41,11 +41,11 @@ func TestAdversaryT03_PrivilegeEscalationUserRoot(t *testing.T) {
 	// Confirmed safe at runtime level: User is passed verbatim; enforcement is policy in orchestrator.
 }
 
-// TestAdversaryT03_CapabilityBypassViaSpec confirms no CapAdd field on spec
-// (compile-time prevention of capability bypass).
+// TestAdversaryT03_CapabilityBypassViaSpec confirms CapAdd is orchestrator-only;
+// callers cannot set CapDrop or bypass the CapDrop ALL baseline via the public spec.
 func TestAdversaryT03_CapabilityBypassViaSpec(t *testing.T) {
-	// ContainerSpec has no CapAdd/CapDrop fields. Hardcoded in docker.go.
-	// Confirmed safe: capability bypass prevented at API boundary.
+	// CapAdd exists for daemon-controlled NET_ADMIN (egress firewall) only.
+	// CapDrop remains hardcoded in docker.go — no CapDrop field on ContainerSpec.
 	spec := ContainerSpec{
 		Image:      "alpine:latest",
 		Command:    []string{"sleep", "10"},

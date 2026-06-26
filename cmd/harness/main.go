@@ -13,6 +13,8 @@ import (
 )
 
 func main() {
+	harness.InitEgressFirewall()
+
 	cfg := harness.Config{
 		Addr:           envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
 		AgentPath:      envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),

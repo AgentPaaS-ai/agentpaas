@@ -289,8 +289,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		// harness default is /agent/main.py which does not exist.
 		"AGENTPAAS_AGENT_PATH=/app/main.py",
 	}
+	if egressFirewallEnabled() {
+		proxyEnv = append(proxyEnv, "AGENTPAAS_EGRESS_FIREWALL=1")
+	} else {
+		proxyEnv = append(proxyEnv, "AGENTPAAS_EGRESS_FIREWALL=0")
+	}
 	if gatewayIP != "" {
 		proxyEnv = append(proxyEnv,
+			fmt.Sprintf("AGENTPAAS_GATEWAY_IP=%s", gatewayIP),
 			fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
 			fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
 			fmt.Sprintf("http_proxy=http://%s:7799", gatewayIP),
@@ -300,14 +306,19 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		)
 	}
 
-	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
-	containerID, err := rt.Create(ctx, runtime.ContainerSpec{
-		Image:      imageRef,
+	agentSpec := runtime.ContainerSpec{
 		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
 		NetworkIDs: []string{string(netID)},
 		Binds:      []string{fmt.Sprintf("%s:/audit", hostAuditDir)},
 		Env:        proxyEnv,
-	})
+	}
+	if egressFirewallEnabled() {
+		agentSpec.CapAdd = []string{"NET_ADMIN"}
+	}
+
+	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
+	agentSpec.Image = imageRef
+	containerID, err := rt.Create(ctx, agentSpec)
 	if err != nil {
 		_ = rt.Remove(ctx, gatewayID, true)
 		_ = rt.RemoveNetwork(ctx, egressNetID)

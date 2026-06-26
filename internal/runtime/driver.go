@@ -107,6 +107,10 @@ type ContainerSpec struct {
 	// "host_path:container_path:ro" for read-only. Used to mount audit
 	// volumes and other host directories into the container.
 	Binds []string
+
+	// CapAdd lists Linux capabilities to add after the runtime's CapDrop ALL
+	// baseline. Used by the orchestrator for agent egress firewall (NET_ADMIN).
+	CapAdd []string
 }
 
 // NetworkSpec defines the parameters for creating a Docker network.
