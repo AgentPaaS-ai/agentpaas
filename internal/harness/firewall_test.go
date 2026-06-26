@@ -31,6 +31,8 @@ func TestEmbeddedFirewallScript_Content(t *testing.T) {
 		"AGENTPAAS_GATEWAY_IP",
 		"iptables -A OUTPUT -o lo -j ACCEPT",
 		"iptables -P OUTPUT DROP",
+		"ip6tables -A OUTPUT -o lo -j ACCEPT",
+		"ip6tables -P OUTPUT DROP",
 		"172.16.0.0/12",
 		"|| true",
 	} {
