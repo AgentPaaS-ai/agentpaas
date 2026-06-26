@@ -569,10 +569,10 @@ func (s *controlServer) PolicyApply(ctx context.Context, req *controlv1.PolicyAp
 	}
 	policyPath := filepath.Join(s.homePaths.Config, "policy.yaml")
 	gatewayPath := filepath.Join(s.homePaths.Config, "gateway.yaml")
-	if err := os.WriteFile(policyPath, []byte(yamlContent), 0o600); err != nil {
+	if err := writeFileAtomic(policyPath, []byte(yamlContent), 0o600); err != nil {
 		return nil, status.Errorf(codes.Internal, "write policy: %v", err)
 	}
-	if err := os.WriteFile(gatewayPath, compiled, 0o600); err != nil {
+	if err := writeFileAtomic(gatewayPath, compiled, 0o600); err != nil {
 		return nil, status.Errorf(codes.Internal, "write gateway config: %v", err)
 	}
 
@@ -1334,4 +1334,37 @@ func harnessCandidate(path string) string {
 		return path
 	}
 	return ""
+}
+
+// writeFileAtomic replaces path with data using a same-directory temp file and rename,
+// so concurrent readers (e.g. Run bind-mounting gateway.yaml) never see a partial write.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	cleanup = false
+	return nil
 }
