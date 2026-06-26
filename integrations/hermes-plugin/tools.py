@@ -3,6 +3,7 @@
 import json
 import os
 import pwd
+from collections import OrderedDict
 import re as _re
 import shutil
 import stat
@@ -24,10 +25,12 @@ except ImportError:
 class _ConfirmationState:
     """Thread-safe state for session runs and confirmation tracking."""
 
+    MAX_CONFIRMATION_IDS = 10000
+
     def __init__(self):
         self._lock = threading.Lock()
         self._session_runs = set()
-        self._used_confirmation_ids = set()
+        self._used_confirmation_ids = OrderedDict()
 
     def register_session_run(self, run_id):
         """Thread-safe add to session runs."""
@@ -57,7 +60,9 @@ class _ConfirmationState:
         with self._lock:
             if confirmation_id in self._used_confirmation_ids:
                 return True, True
-            self._used_confirmation_ids.add(confirmation_id)
+            if len(self._used_confirmation_ids) >= self.MAX_CONFIRMATION_IDS:
+                self._used_confirmation_ids.popitem(last=False)
+            self._used_confirmation_ids[confirmation_id] = None
             return False, False
 
     def reset(self):
