@@ -10,17 +10,19 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
-// FileAuditAppender is a simple audit appender that writes JSONL records
-// to a file. Unlike audit.AuditWriter, it does NOT maintain a hash chain
-// — it writes flat records that the daemon can ingest later.
+// FileAuditAppender writes hash-chained JSONL audit records to a file.
+// Each record includes prev_hash and record_hash so the daemon can verify
+// the chain before re-chaining into its own audit trail.
 //
 // This is used by the harness binary running inside the container to
 // record egress decisions, MCP calls, and other audit-worthy events.
-// The daemon reads the file after (or during) the run and ingests the
-// records into its own hash-chained audit trail.
+// The daemon reads the file after (or during) the run, verifies the
+// harness-side chain, and ingests the records into its own hash-chained
+// audit trail.
 type FileAuditAppender struct {
-	mu   sync.Mutex
-	file *os.File
+	mu       sync.Mutex
+	file     *os.File
+	prevHash string // hash of the last written record
 }
 
 // NewFileAuditAppender opens (or creates) the file at path for appending.
@@ -36,8 +38,8 @@ func NewFileAuditAppender(path string) (*FileAuditAppender, error) {
 	return &FileAuditAppender{file: f}, nil
 }
 
-// Append writes a single audit record as a JSON line.
-// It sets the timestamp if empty and marshals the record.
+// Append writes a single hash-chained audit record as a JSON line.
+// It sets the timestamp if empty and maintains prev_hash/record_hash.
 func (a *FileAuditAppender) Append(record audit.AuditRecord) error {
 	if a == nil || a.file == nil {
 		return nil
@@ -48,15 +50,30 @@ func (a *FileAuditAppender) Append(record audit.AuditRecord) error {
 	if record.DeploymentMode == "" {
 		record.DeploymentMode = "local"
 	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	record.PrevHash = a.prevHash
+
+	recordHash, err := record.ComputeRecordHash()
+	if err != nil {
+		return fmt.Errorf("harness: compute record hash: %w", err)
+	}
+	record.RecordHash = recordHash
+
 	data, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("harness: marshal audit record: %w", err)
 	}
 	data = append(data, '\n')
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	_, err = a.file.Write(data)
-	return err
+
+	if _, err = a.file.Write(data); err != nil {
+		return err
+	}
+
+	a.prevHash = recordHash
+	return nil
 }
 
 // Close closes the underlying file.
