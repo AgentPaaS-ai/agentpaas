@@ -11,7 +11,7 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/trigger"
 )
 
-// stubControlServer implements the ControlServiceServer interface by embedding
+// controlServer implements the ControlServiceServer interface by embedding
 // UnimplementedControlServiceServer and overriding only the Doctor method with
 // a stub response. All other RPCs return Unimplemented via the embedded default
 // implementations.
@@ -32,7 +32,7 @@ type trackedRun struct {
 // Enforced in the Run handler before any Docker resources are created.
 const maxConcurrentRuns = 3
 
-type stubControlServer struct {
+type controlServer struct {
 	controlv1.UnimplementedControlServiceServer
 
 	version     VersionInfo
@@ -52,11 +52,11 @@ type stubControlServer struct {
 }
 
 // compile-time interface check.
-var _ controlv1.ControlServiceServer = (*stubControlServer)(nil)
+var _ controlv1.ControlServiceServer = (*controlServer)(nil)
 
 // Doctor returns a stub diagnostic response with version info and a single
 // "ok" check indicating the daemon skeleton is running.
-func (s *stubControlServer) Doctor(ctx context.Context, req *controlv1.DoctorRequest) (*controlv1.DoctorResponse, error) {
+func (s *controlServer) Doctor(ctx context.Context, req *controlv1.DoctorRequest) (*controlv1.DoctorResponse, error) {
 	checks := []*controlv1.CheckResult{
 		{
 			Name:    "version",

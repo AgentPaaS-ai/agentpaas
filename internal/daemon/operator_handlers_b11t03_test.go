@@ -28,7 +28,7 @@ func TestValidateAgentProject_Ready(t *testing.T) {
 	writeOperatorTestFile(t, projectDir, "agent.yaml", "version: \"1\"\nruntime: python\nname: test\n")
 	writeOperatorTestFile(t, projectDir, "policy.yaml", validDefaultDenyPolicy)
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectDir},
 	)
@@ -53,7 +53,7 @@ func TestValidateAgentProject_MissingAgentYaml(t *testing.T) {
 	projectDir := t.TempDir()
 	writeOperatorTestFile(t, projectDir, "policy.yaml", validDefaultDenyPolicy)
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectDir},
 	)
@@ -67,7 +67,7 @@ func TestValidateAgentProject_MissingPolicyYaml(t *testing.T) {
 	projectDir := t.TempDir()
 	writeOperatorTestFile(t, projectDir, "agent.yaml", "version: \"1\"\nruntime: python\nname: test\n")
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectDir},
 	)
@@ -82,7 +82,7 @@ func TestValidateAgentProject_InvalidPolicy(t *testing.T) {
 	writeOperatorTestFile(t, projectDir, "agent.yaml", "version: \"1\"\nruntime: python\nname: test\n")
 	writeOperatorTestFile(t, projectDir, "policy.yaml", "version: \"1\"\negress: \"not-a-list\"\n")
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectDir},
 	)
@@ -93,7 +93,7 @@ func TestValidateAgentProject_InvalidPolicy(t *testing.T) {
 }
 
 func TestValidateAgentProject_EmptyProjectPath(t *testing.T) {
-	_, err := (&stubControlServer{}).ValidateAgentProject(
+	_, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{},
 	)

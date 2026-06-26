@@ -48,7 +48,7 @@ type Daemon struct {
 	pidFile       string
 	auditIndexer  *audit.SQLiteIndexer
 	confirmations *ConfirmationStore
-	control       *stubControlServer
+	control       *controlServer
 	dashboard     *dashboard.Server
 	dashboardAddr string
 	otelStore     *otel.Store
@@ -285,7 +285,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	)
 
 	// Register stub ControlService handlers.
-	controlServer := &stubControlServer{
+	controlServer := &controlServer{
 		version:     d.version,
 		auditIndex:  d.auditIndexer,
 		auditWriter: auditWriter,

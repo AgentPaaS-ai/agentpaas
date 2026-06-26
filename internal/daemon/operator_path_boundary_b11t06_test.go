@@ -41,7 +41,7 @@ func TestOperatorPathBoundaryRejectsSymlinkEscape(t *testing.T) {
 		t.Fatalf("Symlink: %v", err)
 	}
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectLink},
 	)
@@ -58,7 +58,7 @@ func TestOperatorPathBoundaryRejectsSymlinkEscape(t *testing.T) {
 func TestOperatorPathBoundaryRejectsNullByte(t *testing.T) {
 	passwdBefore := operatorFileSnapshot(t, "/etc/passwd")
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: "/tmp/project\x00/etc/passwd"},
 	)
@@ -75,7 +75,7 @@ func TestOperatorPathBoundaryRejectsNullByte(t *testing.T) {
 func TestOperatorPathBoundaryRejectsUnicodeTraversal(t *testing.T) {
 	projectPath := filepath.Join(t.TempDir(), "\uff0e\uff0e", "escaped")
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectPath},
 	)
@@ -99,7 +99,7 @@ entry: /etc/passwd
 `)
 	writeOperatorTestFile(t, projectDir, "policy.yaml", validDefaultDenyPolicy)
 
-	resp, err := (&stubControlServer{}).ValidateAgentProject(
+	resp, err := (&controlServer{}).ValidateAgentProject(
 		context.Background(),
 		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectDir},
 	)

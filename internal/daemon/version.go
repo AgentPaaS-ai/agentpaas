@@ -55,14 +55,14 @@ type VersionInfo struct {
 // and runtime values. This is the canonical version snapshot for the daemon.
 func CurrentVersion() VersionInfo {
 	return VersionInfo{
-		CLIVersion:        CLIVersion,
-		DaemonVersion:     DaemonVersion,
-		ProtoVersion:      ProtoVersion,
-		GitCommit:         GitCommit,
-		GoVersion:         runtime.Version(),
-		OsArch:            fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
-		DockerContext:     "",
-		DockerAPIVersion:  "",
+		CLIVersion:       CLIVersion,
+		DaemonVersion:    DaemonVersion,
+		ProtoVersion:     ProtoVersion,
+		GitCommit:        GitCommit,
+		GoVersion:        runtime.Version(),
+		OsArch:           fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
+		DockerContext:    "",
+		DockerAPIVersion: "",
 	}
 }
 

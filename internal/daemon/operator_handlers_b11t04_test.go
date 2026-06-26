@@ -230,7 +230,7 @@ func TestExplainFailure_MissingSecretBinding(t *testing.T) {
 	}
 }
 
-func newOperatorTestServer(t *testing.T, records ...audit.AuditRecord) *stubControlServer {
+func newOperatorTestServer(t *testing.T, records ...audit.AuditRecord) *controlServer {
 	t.Helper()
 	dir := t.TempDir()
 	auditPath := filepath.Join(dir, "audit.jsonl")
@@ -255,7 +255,7 @@ func newOperatorTestServer(t *testing.T, records ...audit.AuditRecord) *stubCont
 	if err := indexer.Rebuild(auditPath); err != nil {
 		t.Fatalf("Rebuild: %v", err)
 	}
-	return &stubControlServer{auditIndex: indexer}
+	return &controlServer{auditIndex: indexer}
 }
 
 func operatorTestRecord(eventType, runID string, payload map[string]interface{}) audit.AuditRecord {

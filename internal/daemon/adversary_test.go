@@ -471,7 +471,7 @@ func TestAdversarialUnimplementedInfoLeak(t *testing.T) {
 		}
 		msg := err.Error()
 		// Check for sensitive info patterns.
-		if strings.Contains(msg, "stubControlServer") ||
+		if strings.Contains(msg, "controlServer") ||
 			strings.Contains(msg, "internal/daemon") ||
 			strings.Contains(msg, "/Users/") ||
 			strings.Contains(msg, "home directory") ||

@@ -51,7 +51,7 @@ func (a *packKeyStoreAdapter) Sign(id interface{}, digest []byte) ([]byte, error
 	return a.store.Sign(keyID, digest)
 }
 
-func (s *stubControlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*controlv1.PackResponse, error) {
+func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*controlv1.PackResponse, error) {
 	projectDir := req.GetAgentProjectPath()
 	if projectDir == "" {
 		return nil, status.Error(codes.InvalidArgument, "agent_project_path is required")
@@ -151,7 +151,7 @@ func (s *stubControlServer) Pack(ctx context.Context, req *controlv1.PackRequest
 	}, nil
 }
 
-func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*controlv1.RunResponse, error) {
+func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*controlv1.RunResponse, error) {
 	agentName := req.GetAgentName()
 	if agentName == "" {
 		return nil, status.Error(codes.InvalidArgument, "agent_name is required")
@@ -284,7 +284,7 @@ func (s *stubControlServer) Run(ctx context.Context, req *controlv1.RunRequest) 
 	return &controlv1.RunResponse{RunId: runID}, nil
 }
 
-func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*controlv1.StopResponse, error) {
+func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*controlv1.StopResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
@@ -365,7 +365,7 @@ func (s *stubControlServer) Stop(ctx context.Context, req *controlv1.StopRequest
 	return &controlv1.StopResponse{Acknowledged: true}, nil
 }
 
-func (s *stubControlServer) Logs(req *controlv1.LogsRequest, stream controlv1.ControlService_LogsServer) error {
+func (s *controlServer) Logs(req *controlv1.LogsRequest, stream controlv1.ControlService_LogsServer) error {
 	runID := req.GetRunId()
 	if runID == "" {
 		return status.Error(codes.InvalidArgument, "run_id is required")
@@ -409,7 +409,7 @@ func (s *stubControlServer) Logs(req *controlv1.LogsRequest, stream controlv1.Co
 	return scanner.Err()
 }
 
-func (s *stubControlServer) PolicyApply(ctx context.Context, req *controlv1.PolicyApplyRequest) (*controlv1.PolicyApplyResponse, error) {
+func (s *controlServer) PolicyApply(ctx context.Context, req *controlv1.PolicyApplyRequest) (*controlv1.PolicyApplyResponse, error) {
 	yamlContent := req.GetPolicyYaml()
 	if yamlContent == "" {
 		return nil, status.Error(codes.InvalidArgument, "policy_yaml is required")
@@ -462,7 +462,7 @@ func (s *stubControlServer) PolicyApply(ctx context.Context, req *controlv1.Poli
 	}, nil
 }
 
-func (s *stubControlServer) SecretSet(ctx context.Context, req *controlv1.SecretSetRequest) (*controlv1.SecretSetResponse, error) {
+func (s *controlServer) SecretSet(ctx context.Context, req *controlv1.SecretSetRequest) (*controlv1.SecretSetResponse, error) {
 	name := req.GetName()
 	if name == "" {
 		return nil, status.Error(codes.InvalidArgument, "secret name is required")
@@ -482,7 +482,7 @@ func (s *stubControlServer) SecretSet(ctx context.Context, req *controlv1.Secret
 	return &controlv1.SecretSetResponse{Created: created}, nil
 }
 
-func (s *stubControlServer) SecretGrant(ctx context.Context, req *controlv1.SecretGrantRequest) (*controlv1.SecretGrantResponse, error) {
+func (s *controlServer) SecretGrant(ctx context.Context, req *controlv1.SecretGrantRequest) (*controlv1.SecretGrantResponse, error) {
 	runID := req.GetRunId()
 	secretName := req.GetSecretName()
 	if runID == "" {
@@ -504,7 +504,7 @@ func (s *stubControlServer) SecretGrant(ctx context.Context, req *controlv1.Secr
 	return &controlv1.SecretGrantResponse{Acknowledged: true}, nil
 }
 
-func (s *stubControlServer) SecretRevoke(ctx context.Context, req *controlv1.SecretRevokeRequest) (*controlv1.SecretRevokeResponse, error) {
+func (s *controlServer) SecretRevoke(ctx context.Context, req *controlv1.SecretRevokeRequest) (*controlv1.SecretRevokeResponse, error) {
 	runID := req.GetRunId()
 	secretName := req.GetSecretName()
 	if runID == "" {
@@ -522,7 +522,7 @@ func (s *stubControlServer) SecretRevoke(ctx context.Context, req *controlv1.Sec
 	return &controlv1.SecretRevokeResponse{Acknowledged: true}, nil
 }
 
-func (s *stubControlServer) AuditQuery(ctx context.Context, req *controlv1.AuditQueryRequest) (*controlv1.AuditQueryResponse, error) {
+func (s *controlServer) AuditQuery(ctx context.Context, req *controlv1.AuditQueryRequest) (*controlv1.AuditQueryResponse, error) {
 	if s.auditIndex == nil {
 		return nil, status.Error(codes.Unavailable, "audit index not initialized")
 	}
@@ -564,7 +564,7 @@ func (s *stubControlServer) AuditQuery(ctx context.Context, req *controlv1.Audit
 	}, nil
 }
 
-func (s *stubControlServer) AuditExport(ctx context.Context, req *controlv1.AuditExportRequest) (*controlv1.AuditExportResponse, error) {
+func (s *controlServer) AuditExport(ctx context.Context, req *controlv1.AuditExportRequest) (*controlv1.AuditExportResponse, error) {
 	if s.homePaths == nil {
 		return nil, status.Error(codes.FailedPrecondition, "daemon home paths not configured")
 	}
@@ -591,7 +591,7 @@ func (s *stubControlServer) AuditExport(ctx context.Context, req *controlv1.Audi
 	}, nil
 }
 
-func (s *stubControlServer) recordAudit(eventType, actor string, payload map[string]interface{}) {
+func (s *controlServer) recordAudit(eventType, actor string, payload map[string]interface{}) {
 	if s.auditWriter == nil {
 		return
 	}
@@ -611,7 +611,7 @@ func (s *stubControlServer) recordAudit(eventType, actor string, payload map[str
 	}
 }
 
-func (s *stubControlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID) error {
+func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID) error {
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return fmt.Errorf("runtime: %w", err)
@@ -654,7 +654,7 @@ func (s *stubControlServer) invokeAgent(ctx context.Context, containerID runtime
 	return nil
 }
 
-func (s *stubControlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error) {
+func (s *controlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error) {
 	s.runtimeOnce.Do(func() {
 		s.dockerRT, s.runtimeErr = runtime.NewDockerRuntime()
 	})
@@ -667,7 +667,7 @@ func (s *stubControlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error)
 	return s.dockerRT, nil
 }
 
-func (s *stubControlServer) trackRun(runID string, containerID runtime.ContainerID, networkID, auditDir string) {
+func (s *controlServer) trackRun(runID string, containerID runtime.ContainerID, networkID, auditDir string) {
 	s.trackRunPtr(runID, &trackedRun{
 		Container: containerID,
 		Network:   networkID,
@@ -676,7 +676,7 @@ func (s *stubControlServer) trackRun(runID string, containerID runtime.Container
 	})
 }
 
-func (s *stubControlServer) trackRunPtr(runID string, tr *trackedRun) {
+func (s *controlServer) trackRunPtr(runID string, tr *trackedRun) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if s.runs == nil {
@@ -685,7 +685,7 @@ func (s *stubControlServer) trackRunPtr(runID string, tr *trackedRun) {
 	s.runs[runID] = tr
 }
 
-func (s *stubControlServer) claimRun(runID string) (*trackedRun, bool) {
+func (s *controlServer) claimRun(runID string) (*trackedRun, bool) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if s.runs == nil {
@@ -699,7 +699,7 @@ func (s *stubControlServer) claimRun(runID string) (*trackedRun, bool) {
 	return tracked, true
 }
 
-func (s *stubControlServer) setRunStatus(runID, status string) {
+func (s *controlServer) setRunStatus(runID, status string) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if tracked, ok := s.runs[runID]; ok {
@@ -707,7 +707,7 @@ func (s *stubControlServer) setRunStatus(runID, status string) {
 	}
 }
 
-func (s *stubControlServer) lookupRunWithStatus(runID string) (trackedRun, bool) {
+func (s *controlServer) lookupRunWithStatus(runID string) (trackedRun, bool) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if s.runs == nil {
@@ -727,13 +727,13 @@ func (s *stubControlServer) lookupRunWithStatus(runID string) (trackedRun, bool)
 }
 
 // activeRunCount returns the number of currently tracked active runs.
-func (s *stubControlServer) activeRunCount() int {
+func (s *controlServer) activeRunCount() int {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	return len(s.runs)
 }
 
-func (s *stubControlServer) lookupRun(runID string) (runtime.ContainerID, string, string) {
+func (s *controlServer) lookupRun(runID string) (runtime.ContainerID, string, string) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	if s.runs == nil {
@@ -750,7 +750,7 @@ func (s *stubControlServer) lookupRun(runID string) (runtime.ContainerID, string
 // directory and appends each record to the daemon's audit chain.
 // Errors are logged but do not fail the Stop operation — the container
 // is already stopped, and missing audit data is a best-effort concern.
-func (s *stubControlServer) ingestHarnessAudit(runID, auditDir string) {
+func (s *controlServer) ingestHarnessAudit(runID, auditDir string) {
 	if auditDir == "" {
 		return
 	}
@@ -781,7 +781,7 @@ func (s *stubControlServer) ingestHarnessAudit(runID, auditDir string) {
 	}
 }
 
-func (s *stubControlServer) untrackRun(runID string) {
+func (s *controlServer) untrackRun(runID string) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
 	delete(s.runs, runID)
@@ -795,7 +795,7 @@ func generateRunID() string {
 	return "run-" + hex.EncodeToString(buf)
 }
 
-func (s *stubControlServer) openPackageIdentityKey(ctx context.Context, agentName string) (identity.KeyStore, identity.KeyID, error) {
+func (s *controlServer) openPackageIdentityKey(ctx context.Context, agentName string) (identity.KeyStore, identity.KeyID, error) {
 	store, err := s.openIdentityStore()
 	if err != nil {
 		return nil, "", err
@@ -812,7 +812,7 @@ func (s *stubControlServer) openPackageIdentityKey(ctx context.Context, agentNam
 	return store, keyID, nil
 }
 
-func (s *stubControlServer) openIdentityStore() (identity.KeyStore, error) {
+func (s *controlServer) openIdentityStore() (identity.KeyStore, error) {
 	if goruntime.GOOS == "darwin" {
 		if store, err := identity.NewKeychainKeyStore("agentpaas-daemon"); err == nil {
 			return store, nil
@@ -847,7 +847,7 @@ func ensureKeystorePassphrase(stateDir string) (string, error) {
 	return pass, nil
 }
 
-func (s *stubControlServer) recentAuditRecords(limit int) ([]audit.AuditRecord, error) {
+func (s *controlServer) recentAuditRecords(limit int) ([]audit.AuditRecord, error) {
 	count, err := s.auditIndex.RecordCount()
 	if err != nil {
 		return nil, err
@@ -1021,7 +1021,7 @@ func formatAuditExport(records []audit.AuditRecord, format string, includePayloa
 	}
 }
 
-func (s *stubControlServer) reconcileOrphanedContainers(ctx context.Context) {
+func (s *controlServer) reconcileOrphanedContainers(ctx context.Context) {
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: runtime unavailable: %v\n", err)
