@@ -1,0 +1,56 @@
+
+session_id: 20260625_174300_970097
+All checks complete. Here is the verification report.
+
+========================================
+BLOCK 14A0 VERIFICATION REPORT
+========================================
+
+RESULT: PASS — all gates green, all subtasks verified on merged main.
+
+GATE EVIDENCE (make block14a0-gate with AGENTPAAS_DOCKER_TESTS=1):
+- go build ./...                         → BUILD_EXIT=0
+- golangci-lint run --timeout 5m         → 0 issues
+- go test -race -count=1 ./internal/daemon/... → ok 15.110s
+- go test -race -count=1 -run TestImmutablePromptUpdatePath ./internal/pack/... → ok 1.311s
+- TestE2E_PackRunInvokeStopAudit         → PASS (7.17s)
+- "✓ Block 14A0 gate passed: B13 correctness fixes verified"
+- GATE_EXIT=0
+
+DETAILED RESULTS:
+- BUILD: pass (exit 0)
+- VET (./internal/daemon/... ./internal/cli/... ./internal/runtime/...): pass (exit 0, no issues)
+- RACE TEST (./internal/daemon/... -race -count=1): pass, 7.496s, 131 PASS / 0 FAIL
+- LINT (golangci-lint run): 0 issues
+- ADVERSARY TESTS (-run Adversary -race): PASS (11 tests, exit 0)
+  TestAdversaryB11T05_* (6 tests) + TestAdversaryB11T04_* (5 tests) all green
+- E2E DOCKER (TestE2E_PackRunInvokeStopAudit): PASS (7.84s)
+
+SCOPE CHECK (git diff main~11...HEAD --stat):
+Touches only task-scope files: Makefile, docs/b14*, internal/cli/doc.go, internal/daemon/* (control_handlers.go, control_handlers_e2e_test.go, control_handlers_test.go, adversary_test.go, operator_handlers.go, server.go, stub_handlers.go, version.go, doc.go + test files), internal/runtime/docker.go, execution-plan docs. No out-of-scope files. PASS.
+
+CROSS-SUBTASK INTEGRATION REVIEW (T01 + T02 + T03 interaction):
+1. T01 (Status field): trackedRun.Status field at stub_handlers.go:25 holds "running"|"succeeded"|"failed"|"cancelled". Run handler (control_handlers.go:229-236) creates trackedRun with Status="running" and InvokeDone channel; invoke goroutine writes Status="failed"/"succeeded" under runMu. Stop handler (control_handlers.go:325-337) maps final status to terminal event (EventRunSucceeded/Failed/Cancelled). EventRunFailed constant confirmed in eventbus.go:16.
+2. T03 (InvokeDone channel): trackedRun.InvokeDone (chan struct{}) created at control_handlers.go:234, closed by invoke goroutine via defer (line 261). Stop handler (lines 309-315) blocks on InvokeDone with 3s timeout — establishes happens-before so Status read after channel receive needs no lock. claimRun (line 688) deletes from map but the *trackedRun pointer is shared, so Stop reads tr.Status after close(InvokeDone) safely. CancelInvoke (context.CancelFunc) wired at line 259, invoked by Stop at lines 306-308. Interaction is correct.
+3. T02 (reconciliation): reconcileOrphanedContainers (control_handlers.go:1024) runs at daemon Start (server.go:306) with 30s timeout. Lists containers/networks labelled managed-by agentpaas, cross-references against s.runs (under runMu, lines 1031-1036), removes orphans, stops running orphans before remove, also cleans orphaned internal networks by run-ID label. Records container_reconciled + reconciliation_complete audit events. Correctly avoids touching known runs. Adversary hardening (commit 0f9bdab) covered by 5 reconciliation test sites in control_handlers_test.go.
+All three subtasks interact correctly — no race, no leak, no status-loss window.
+
+SPECIAL CHECKS:
+- stubControlServer references in *.go files: 0 (T05 rename complete). Remaining mentions are only in docs/ and execution-plan (historical context, expected).
+- internal/cli/doc.go: no stale "not yet implemented" for implemented commands. The only "not yet implemented" markers are for `install` and `uninstall` daemon subcommands, which are genuinely unimplemented CLI commands (accurate). No stale stub references.
+- internal/daemon/doc.go and stub_handlers.go comment: controlServer correctly documented as production server (not stub).
+
+METADATA:
+- test_count: 131 (daemon package, non-race)
+- pass_count: 131
+- lint_issues: 0
+- build_status: pass
+- vet_status: pass
+- gate_status: pass (block14a0-gate, exit 0)
+- adversary_tests: pass (11 tests, exit 0)
+- scope_check: pass (task-scope only)
+
+kanban_complete
+metadata: {test_count: 131, pass_count: 131, lint_issues: 0, build_status: pass, vet_status: pass, gate_status: pass, adversary_tests: pass, scope_check: pass}
+
+Note: Local main is 11 commits ahead of origin/main (not pushed) — these are the merged subtask commits including bf8d4b0 (T04 merge). All verification ran against the merged state. When origin catches up, no further verification needed unless new commits land.

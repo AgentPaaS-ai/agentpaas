@@ -1,0 +1,192 @@
+Reviewing the implementation against the spec — reading the key files and running verification checks.
+Checking runtime APIs for exit-code handling and reviewing the execution plan spec.
+Reading the spec and adversary tests to identify gaps.
+# Verifier Report: 14A0-T01 + T03
+
+## PASS
+
+### 1. Status field (partial)
+- `trackedRun.Status` exists with `"running" | "succeeded" | "failed"` in `stub_handlers.go`.
+- `trackRun()` defaults to `"running"`.
+- Auto-invoke goroutine sets `"failed"` on error, `"succeeded"` on success.
+- Force stop sets `finalStatus = "failed"`.
+- `setRunStatus` / `setRunCancel` / `lookupRunWithStatus` are mutex-protected.
+
+### 2. Events (partial)
+- `EventRunFailed` published when `finalStatus == "failed"` (non-force).
+- `EventRunCancelled` published on force stop.
+- `EventRunSucceeded` is the default for non-force, non-failed paths.
+
+### 3. Audit payload (partial)
+- `run_stop` audit includes `"status": finalStatus`.
+- Failed invoke → audit `"failed"` (`TestRun_FailedInvoke_SetsFailedStatus`).
+- Force stop → audit `"failed"` (`TestStop_Force_SetsCancelledStatus`).
+
+### 4. Cancel func lifecycle
+- Cancel func stored **before** goroutine launch (`setRunCancel` then `go func()`).
+- Nil guard in `Stop()`: `if tracked.CancelInvoke != nil`.
+- `TestAdv_StopBeforeCancelSet` passes (Stop with nil cancel).
+
+### 5. Context hierarchy (T03 core)
+- Invoke uses `context.WithCancel(context.Background())` + `WithTimeout(invokeCtx, 2*time.Minute)` — cancellable, not a bare detached timeout.
+- `invokeAgent` checks `ctx.Done()` in the `/readyz` polling loop.
+- `Stop()` calls `CancelInvoke()` before `rt.Stop()` / `rt.Remove()`.
+
+### 6. Goroutine safety
+- `runID` and `containerID` captured safely in the closure (string/value types).
+- `setRunStatus` no-ops if run was untracked — no map access after `untrackRun`.
+- Goroutine does not read `s.runs` without locking.
+
+### 7. Regression: Logs handler
+- `Logs` still uses `lookupRun()` unchanged; no breakage from the new fields.
+
+### 8. Tests: 3 main scenarios pass
+- `TestRun_FailedInvoke_SetsFailedStatus` — failed invoke → failed status, `EventRunFailed`, audit.
+- `TestStop_CancelsInvokeContext` — cancel propagates, run untracked cleanly.
+- `TestStop_Force_SetsCancelledStatus` — force → `EventRunCancelled`, audit `"failed"`.
+
+---
+
+## ISSUES
+
+### ISSUE 1 (CRITICAL): Container crash / exit-code detection not implemented
+
+**Spec T01.4:** Check container exit code before remove; override to `"failed"` if non-zero.
+
+**Actual behavior in `Stop()`:**
+
+```300:317:internal/daemon/control_handlers.go
+	finalStatus := tracked.Status
+	if req.GetForce() {
+		finalStatus = "failed"
+	} else {
+		switch tracked.Status {
+		case "failed":
+			finalStatus = "failed"
+		case "succeeded":
+			finalStatus = "succeeded"
+		case "running":
+			finalStatus = "succeeded"
+		}
+	}
+	if containerStatus, statusErr := rt.Status(ctx, containerID); statusErr == nil {
+		if containerStatus == runtime.ContainerStatusStopped && tracked.Status == "failed" {
+			finalStatus = "failed"
+		}
+	}
+```
+
+Problems:
+1. **`rt.Status()` returns lifecycle state only** — no exit code. `DockerRuntime.Status` inspects `State.Status`, not `State.ExitCode`.
+2. **The `rt.Status()` guard is a no-op** — it only reinforces `"failed"` when status is already `"failed"`. It cannot detect a crash the invoke goroutine missed.
+3. **`"running"` → `"succeeded"` on normal Stop** — if invoke never completed but the container exited/crashed, Stop reports success. `TestAdv_StatusCheckDetectsCrash` fails with audit `"succeeded"`, event `EventRunSucceeded`.
+
+**Fix:** After `rt.Stop()`, inspect container exit code (or extend runtime API). If exit code ≠ 0 **or** container is stopped while `tracked.Status == "running"`, set `finalStatus = "failed"`. Also add `d.driver` delegation in `DockerRuntime.Status()` for mock tests.
+
+---
+
+### ISSUE 2 (HIGH): Stale status snapshot in `Stop()`
+
+`Stop()` reads `tracked.Status` once at lookup (line 275) and never re-reads after `CancelInvoke()`. The invoke goroutine may set `"failed"` asynchronously after cancel, but `Stop()` uses the stale snapshot.
+
+**Scenario:** Normal Stop while invoke is in progress → cancel fires → goroutine will set `"failed"`, but Stop already computed `finalStatus = "succeeded"` from `"running"`.
+
+**Fix:** Re-read status after cancel (with brief wait per T03 spec), or treat `"running"` at stop time as `"failed"` when invoke was cancelled.
+
+---
+
+### ISSUE 3 (HIGH): T03 missing invoke-goroutine wait
+
+**Spec T03.3:** Cancel invoke, then **wait briefly** for the goroutine to finish before container removal.
+
+**Actual:** `CancelInvoke()` is called, then `rt.Stop()` / `rt.Remove()` proceed immediately. No `WaitGroup`, done channel, or timeout wait.
+
+**Risk:** `rt.Exec()` in the invoke loop can race with container removal (the original T03 bug). `TestStop_CancelsInvokeContext` only checks untrack timing, not cancel-before-remove ordering.
+
+**Fix:** Add `invokeDone chan struct{}` or `sync.WaitGroup` to `trackedRun`; signal on goroutine exit; `Stop()` waits up to ~2s after cancel.
+
+---
+
+### ISSUE 4 (MEDIUM): Double-Stop is not idempotent
+
+`TestAdv_StopAfterUntrackReturnsNotFound` fails: two concurrent `Stop()` calls both succeed (`success=2 notFound=0`).
+
+There is no serialization between lookup and `untrackRun`. Both goroutines can pass `lookupRunWithStatus` before either deletes the entry.
+
+**Fix:** Hold `runMu` across the stop sequence, or use a per-run `sync.Mutex` / `"stopping"` flag so the second call gets `NotFound`.
+
+---
+
+### ISSUE 5 (MEDIUM): Force-stop event/audit inconsistency
+
+| Channel | Force stop value |
+|---------|------------------|
+| Event   | `EventRunCancelled` |
+| Audit   | `"failed"` |
+
+`TestStop_Force_SetsCancelledStatus` expects audit `"failed"`. `TestAdv_ForceStopSucceededAuditInconsistent` expects audit `"cancelled"` for consistency with the event.
+
+The user's checklist treats force as `EventRunCancelled` + audit `"failed"`. The adversary test documents the inconsistency as a product bug. **Pick one convention** and align event + audit.
+
+---
+
+### ISSUE 6 (LOW): `DockerRuntime.Status` doesn't delegate to mock driver
+
+`Create`, `Start`, `Stop`, `Remove`, `Exec` delegate to `d.driver`; `Status` does not. In unit tests with `NewDockerRuntimeWithDriver`, `rt.Status()` always errors (`cli == nil`), so the status-check block is skipped entirely in mocks. Crash-detection logic cannot be unit-tested until this is fixed.
+
+---
+
+### ISSUE 7 (LOW): Test coverage gaps
+
+| Scenario | Covered? |
+|----------|------------|
+| Failed invoke → failed status/event/audit | Yes |
+| Force stop → cancelled event | Yes |
+| Cancel invoke on Stop | Yes |
+| Normal success stop → `EventRunSucceeded` + audit `"succeeded"` | **No** |
+| Container crash / non-zero exit while invoke still `"running"` | **No** (adversary test exists, fails) |
+| Normal Stop while invoke in progress | **No** |
+| Double Stop idempotency | Adversary test exists, fails |
+| Invoke goroutine wait before remove | **No** |
+
+---
+
+### ISSUE 9: Logical races (even with `-race` clean)
+
+`-race` passes on the 3 main tests, but logical races remain:
+
+1. **Status snapshot race** (Issue 2) — not a memory race, but wrong terminal status.
+2. **Concurrent Stop race** (Issue 4) — duplicate cleanup attempts.
+3. **Cancel vs Remove race** (Issue 3) — invoke `Exec` vs container removal.
+
+---
+
+## Checklist Answers
+
+| # | Question | Verdict |
+|---|----------|---------|
+| 1 | Status field all paths | **Partial** — missing crash/exit-code path; `"running"` → `"succeeded"` is wrong for incomplete invoke |
+| 2 | Events | **Pass** for the 3 main paths; crash path publishes wrong event |
+| 3 | Audit payload | **Partial** — field present; crash and in-progress-stop scenarios wrong |
+| 4 | Cancel func lifecycle | **Pass** |
+| 5 | Context hierarchy | **Pass** |
+| 6 | Goroutine safety | **Pass** |
+| 7 | `rt.Status()` meaningful? | **No** — redundant guard; no exit-code check; skipped in mocks |
+| 8 | Test coverage | **Gaps** — 3 main tests pass; adversary tests expose 3 failures |
+| 9 | Race conditions | **Logical races present**; memory races clean on main tests |
+| 10 | Regression risk | **Low** for Logs; **medium** for Stop semantics |
+
+---
+
+## VERDICT: **CHANGES NEEDED**
+
+The T01/T03 skeleton is in place and the 3 specified unit tests pass, but the implementation does not fully satisfy the spec. Blockers before merge:
+
+1. **Implement real crash/exit-code detection in `Stop()`** — fix the `rt.Status()` block to detect `stopped + running` and/or non-zero exit code; do not map `"running"` → `"succeeded"` blindly.
+2. **Add invoke-goroutine synchronization** — wait after cancel before container removal (T03.3).
+3. **Re-read or derive final status after cancel** — avoid stale snapshot.
+4. **Serialize `Stop()`** — second concurrent Stop should return `NotFound`.
+5. **Delegate `DockerRuntime.Status` to mock driver** — required for unit testing status logic.
+6. **Resolve force-stop audit convention** — `"failed"` vs `"cancelled"`; align with event type.
+
+Recommended additional tests: normal success stop, crash detection, Stop-during-invoke, double-Stop idempotency.
