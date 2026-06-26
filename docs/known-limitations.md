@@ -98,6 +98,14 @@ reach a governed agent in under 15 minutes following the README/quickstart,
 with evidence committed under `docs/release/volunteer-evidence/`. This manual
 gate has not been completed for v0.1.0 until volunteer evidence is collected.
 
+## Demo recordings
+
+### No demo video or asciinema (B15 scope)
+
+End-to-end demo video and asciinema recordings are not part of the P1 doc set.
+They are planned for Block 15 (manual testing) and will be produced during the
+assisted use-case assessment. This is a known documentation gap, not a code defect.
+
 ## Additional P1 honesty statements
 
 From the PRD threat model (§3.3):
