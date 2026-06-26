@@ -346,6 +346,26 @@ def _resolve_agent_binary():
     return _resolve_agentpaas_binary()
 
 
+_STDOUT_CAP = 51200  # 50KB
+_STDERR_CAP = 10240  # 10KB
+
+
+def _get_cli_timeout():
+    """Get CLI timeout from AGENTPAAS_CLI_TIMEOUT env var, with bounds.
+
+    Default: 300s. Min: 10s. Max: 600s.
+    """
+    default = 300
+    env_val = os.environ.get("AGENTPAAS_CLI_TIMEOUT", "")
+    if not env_val:
+        return default
+    try:
+        timeout = int(env_val)
+    except (ValueError, TypeError):
+        return default
+    return max(10, min(600, timeout))
+
+
 def _run_cli(cmd_args):
     """Run agent CLI with --json; return sanitized operator dict."""
     binary = _resolve_agent_binary()
@@ -357,24 +377,58 @@ def _run_cli(cmd_args):
     if home:
         full.extend(["--home", home])
     full.extend([a for a in cmd_args if a])
-    proc = subprocess.run(full, capture_output=True, text=True, timeout=300)
+    timeout = _get_cli_timeout()
+    proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+
+    stdout_truncated = False
+    stderr_truncated = False
+    stdout_size = len(proc.stdout) if proc.stdout else 0
+    stderr_size = len(proc.stderr) if proc.stderr else 0
+
+    stdout = proc.stdout
+    if stdout_size > _STDOUT_CAP:
+        stdout = proc.stdout[:_STDOUT_CAP]
+        stdout_truncated = True
+    stderr = proc.stderr
+    if stderr_size > _STDERR_CAP:
+        stderr = proc.stderr[:_STDERR_CAP]
+        stderr_truncated = True
+
     if proc.returncode != 0:
-        return {
-            "error": proc.stderr.strip(),
+        result = {
+            "error": stderr.strip(),
             "exit_code": proc.returncode,
             "error_category": "cli_error",
         }
+        if stdout_truncated:
+            result["output_truncated"] = True
+            result["output_size"] = stdout_size
+        if stderr_truncated:
+            result["stderr_truncated"] = True
+            result["stderr_size"] = stderr_size
+        return result
     try:
-        result = json.loads(proc.stdout)
+        result = json.loads(stdout)
     except json.JSONDecodeError:
-        return {
-            "error": f"CLI returned non-JSON output (length {len(proc.stdout)})",
-            "raw_output_truncated": proc.stdout[:2000],
+        result = {
+            "error": f"CLI returned non-JSON output (length {stdout_size})",
+            "raw_output_truncated": stdout[:2000],
             "exit_code": proc.returncode,
             "error_category": "cli_non_json_output",
         }
+        if stdout_truncated:
+            result["output_truncated"] = True
+            result["output_size"] = stdout_size
+        return result
     if _sanitizer and isinstance(result, dict):
         result = _sanitizer.sanitize_response(result)
+    if isinstance(result, dict) and (stdout_truncated or stderr_truncated):
+        if stdout_truncated:
+            result["output_truncated"] = True
+            result["output_size"] = stdout_size
+        if stderr_truncated:
+            result["stderr_truncated"] = True
+            result["stderr_size"] = stderr_size
     return result
 
 
