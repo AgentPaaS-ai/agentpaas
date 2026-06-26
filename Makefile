@@ -218,8 +218,19 @@ block14a-gate: build lint
 	fi
 	@echo "✓ Block 14A gate passed: security remediation T01-T08 verified"
 
-block14b-gate:
-	@echo "Error: block14b-gate (real-time egress timeline) is not implemented until Block 14B" && exit 1
+block14b-gate: build lint
+	@echo "==> Running Block 14B gate: gateway container, policy enforcement, egress, stats, trigger server"
+	@go test ./internal/runtime/... -race -count=1 -run "TestStats"
+	@go test ./internal/runtime/... -race -count=1 -run "TestInspectContainerIP"
+	@go test ./internal/daemon/... -race -count=1 -run "TestRun_CreatesGateway"
+	@go test ./internal/daemon/... -race -count=1 -run "TestRun_DefaultDeny"
+	@go test ./internal/daemon/... -race -count=1 -run "TestRun_SetsProxyEnv"
+	@go test ./internal/daemon/... -race -count=1 -run "TestRun_OmitsProxyEnv"
+	@go test ./internal/daemon/... -race -count=1 -run "TestTriggerServer"
+	@go test ./internal/daemon/... -race -count=1 -run "TestTriggerService"
+	@go test ./internal/daemon/... -race -count=1 -run "TestAdversaryT02"
+	@go test ./internal/daemon/... -race -count=1 -run "TestAuditTailer"
+	@echo "✓ Block 14B gate passed: gateway topology, policy enforcement, real-time egress, Stats, trigger server verified"
 
 block14c-gate:
 	@echo "Error: block14c-gate (install/docs/demo/release) is not implemented until Block 14C" && exit 1
