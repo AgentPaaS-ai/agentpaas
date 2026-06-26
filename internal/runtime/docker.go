@@ -132,8 +132,9 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 		},
 
 		// Drop all Linux capabilities — the agent has no need for any
-		// privileged operations.
+		// privileged operations unless CapAdd is set by the orchestrator.
 		CapDrop: []string{"ALL"},
+		CapAdd:  spec.CapAdd,
 
 		// Prevent privilege escalation via setuid binaries or similar.
 		SecurityOpt: []string{"no-new-privileges:true"},
