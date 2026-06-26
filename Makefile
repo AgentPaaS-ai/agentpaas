@@ -196,8 +196,27 @@ block14a0-gate: build lint
 	fi
 	@echo "✓ Block 14A0 gate passed: B13 correctness fixes verified"
 
-block14a-gate:
-	@echo "Error: block14a-gate (security remediation) is not implemented until Block 14A" && exit 1
+block14a-gate: build lint
+	@echo "==> Running Block 14A gate: Security remediation (T01-T08)"
+	# Go security tests: hash chain verification, harness audit ingestion
+	go test -race -count=1 ./internal/daemon/... -run TestVerifyHarnessChain
+	go test -race -count=1 ./internal/daemon/... -run TestIngestHarnessAudit
+	# Go pack tests: cosign signing, key import, path validation
+	go test -race -count=1 ./internal/pack/...
+	# Go harness tests: file appender hash chain
+	go test -race -count=1 ./internal/harness/...
+	# Go audit tests: no regressions
+	go test -race -count=1 ./internal/audit/...
+	# Python plugin tests: path allow-list, binary verification, output cap,
+	# thread-safe confirmation, sanitizer, socket check (166 tests)
+	cd integrations/hermes-plugin && python3 -m unittest discover -s tests -t . -v
+	# Cosign integration test (only if real tools enabled)
+	@if [ "$$AGENTPAAS_PACK_REAL_TOOLS" = "1" ]; then \
+		AGENTPAAS_PACK_REAL_TOOLS=1 go test -tags=integration -count=1 -run TestSignImage_RealCosign ./internal/pack/ -timeout 5m; \
+	else \
+		echo "(skipping cosign integration test — set AGENTPAAS_PACK_REAL_TOOLS=1 to run)"; \
+	fi
+	@echo "✓ Block 14A gate passed: security remediation T01-T08 verified"
 
 block14b-gate:
 	@echo "Error: block14b-gate (real-time egress timeline) is not implemented until Block 14B" && exit 1
@@ -229,7 +248,7 @@ gates: ## List all available gate targets
 	@echo "  block13-gate - Hermes integration plugin + e2e governance (ACTIVE)"
 	@echo "  block14-gate  - Post-B13 consolidated: correctness + security + egress + release (not implemented)"
 	@echo "  block14a0-gate - B13 correctness fixes: run status, orphan reconciliation, sync, e2e"
-	@echo "  block14a-gate - Security remediation (B13.1, 9 tasks)"
+	@echo "  block14a-gate - Security remediation (B13.1, 8 tasks: T01-T08) (ACTIVE)"
 	@echo "  block14b-gate - Real-time egress timeline (B13.5)"
 	@echo "  block14c-gate - Install path, docs, demo, v0.1.0 release"
 	@echo "  block15-gate - Manual use-case assessment (docs-only gate)"

@@ -391,12 +391,58 @@ if [ "$1" = "import-key-pair" ]; then
     esac
   done
   if [ -z "$prefix" ]; then prefix="import-cosign"; fi
-  printf '%s\n' '-----BEGIN ENCRYPTED SIGSTORE PRIVATE KEY-----' 'fake' '-----END ENCRYPTED SIGSTORE PRIVATE KEY-----' > "${prefix}.key"
+  printf '%s\n' '-----BEGIN ENCRYPTED SIGSTORE PRIVATE KEY-----' \
+    'fake-sentinel-key-body' \
+    '-----END ENCRYPTED SIGSTORE PRIVATE KEY-----' > "${prefix}.key"
   printf '%s\n' '-----BEGIN PUBLIC KEY-----' 'fake' '-----END PUBLIC KEY-----' > "${prefix}.pub"
+  exit 0
+fi
+if [ "$1" = "sign" ]; then
+  has_key=0; has_config=0; has_yes=0; key_path=""
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --key) has_key=1; key_path="$2"; shift 2 ;;
+      --signing-config) has_config=1; shift 2 ;;
+      --yes) has_yes=1; shift ;;
+      --allow-insecure-registry) shift ;;
+      *) shift ;;
+    esac
+  done
+  if [ $has_key -eq 0 ] || [ $has_config -eq 0 ] || [ $has_yes -eq 0 ]; then
+    echo "fake-cosign: missing required flag" >&2
+    exit 1
+  fi
+  if [ ! -f "$key_path" ]; then
+    echo "fake-cosign: key file does not exist: $key_path" >&2
+    exit 1
+  fi
+  exit 0
+fi
+if [ "$1" = "verify" ]; then
   exit 0
 fi
 exit 0
 `
+}
+
+func TestValidateSecurePath_macOSVarFolders(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "agentpaas-symlink-test-*")
+	if err != nil {
+		t.Fatalf("CreateTemp: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(tmpFile.Name()) })
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	resolved, err := filepath.EvalSymlinks(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	if err := validateSecurePath(resolved, true); err != nil {
+		t.Fatalf("validateSecurePath(%q) = %v, want nil", resolved, err)
+	}
 }
 
 func installFakeTool(t *testing.T, name string, body string) {
