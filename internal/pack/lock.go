@@ -635,7 +635,10 @@ func verifyImageSignature(packageAID string, imageRef string) error {
 
 	cmdCtx, cancel := context.WithTimeout(context.Background(), externalSignatureTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(cmdCtx, "cosign", "verify", "--offline", "--key", pubFile, imageRef)
+	cmd := exec.CommandContext(cmdCtx, "cosign", "verify",
+		"--insecure-ignore-tlog",
+		"--allow-insecure-registry",
+		"--key", pubFile, imageRef)
 	output, err := cmd.CombinedOutput()
 	if cmdCtx.Err() != nil {
 		return fmt.Errorf("verify image signature: %w", cmdCtx.Err())
