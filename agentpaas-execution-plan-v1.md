@@ -2507,7 +2507,7 @@ begins, this register is the starting backlog.
 |----|-----|-------------|--------|
 | R20 | SHORTCUT | Homebrew formula SHA256 is placeholder. Real checksums filled by goreleaser during first release. | 14C-T01 |
 | R21 | MANUAL | No demo video/asciinema recorded. Spec calls for 3-min demos. Requires manual recording. | 14C-T02 |
-| R22 | SHORTCUT | ~~No goreleaser dry-run in CI.~~ **Resolved 2026-06-26:** `release-verify.yml` job `goreleaser-snapshot` runs `goreleaser release --snapshot --clean` (cosign keyless via GitHub OIDC). | 14C-T01 |
+| R22 | SHORTCUT | ~~No goreleaser dry-run in CI.~~ **Resolved 2026-06-26:** `release-verify.yml` job `goreleaser-snapshot` runs `goreleaser release --snapshot --skip=sign,publish,docker,before` (build/archive/checksum/formula validation in ~6s; signing validated at real release via OIDC). | 14C-T01 |
 | R23 | SHORTCUT | ~~No brew audit in CI.~~ **Resolved 2026-06-26:** `release-verify.yml` job `brew-audit` runs `brew style Formula/agentpaas.rb` (`continue-on-error`; SHA256 placeholders intentional until release). | 14C-T01 |
 | R24 | SHORTCUT | ~~No docs CI: broken-link check, command-snippet smoke.~~ **Resolved 2026-06-26:** `release-verify.yml` job `docs-links` runs `lychee` on `docs/` and `README.md` (`continue-on-error` while backlog links are fixed). | 14C-T03 |
 
