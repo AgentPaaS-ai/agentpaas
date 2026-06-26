@@ -29,7 +29,7 @@ import (
 
 // ValidateAgentProject validates an agent project directory and returns a
 // structured readiness response with the Block 11 operator schema fields.
-func (s *stubControlServer) ValidateAgentProject(ctx context.Context, req *controlv1.ValidateAgentProjectRequest) (*controlv1.ValidateAgentProjectResponse, error) {
+func (s *controlServer) ValidateAgentProject(ctx context.Context, req *controlv1.ValidateAgentProjectRequest) (*controlv1.ValidateAgentProjectResponse, error) {
 	projectPath := req.GetProjectPath()
 	if projectPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "project_path is required")
@@ -225,7 +225,7 @@ func validationFailure(
 }
 
 // SummarizeRun generates a structured summary from the run's audit events.
-func (s *stubControlServer) SummarizeRun(ctx context.Context, req *controlv1.SummarizeRunRequest) (*controlv1.SummarizeRunResponse, error) {
+func (s *controlServer) SummarizeRun(ctx context.Context, req *controlv1.SummarizeRunRequest) (*controlv1.SummarizeRunResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
@@ -293,7 +293,7 @@ func (s *stubControlServer) SummarizeRun(ctx context.Context, req *controlv1.Sum
 }
 
 // ExplainFailure diagnoses a failed run from its audit failure context.
-func (s *stubControlServer) ExplainFailure(ctx context.Context, req *controlv1.ExplainFailureRequest) (*controlv1.ExplainFailureResponse, error) {
+func (s *controlServer) ExplainFailure(ctx context.Context, req *controlv1.ExplainFailureRequest) (*controlv1.ExplainFailureResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
@@ -335,7 +335,7 @@ func (s *stubControlServer) ExplainFailure(ctx context.Context, req *controlv1.E
 }
 
 // ExplainPolicyDenial identifies the blocking policy rule for a denied action.
-func (s *stubControlServer) ExplainPolicyDenial(ctx context.Context, req *controlv1.ExplainPolicyDenialRequest) (*controlv1.ExplainPolicyDenialResponse, error) {
+func (s *controlServer) ExplainPolicyDenial(ctx context.Context, req *controlv1.ExplainPolicyDenialRequest) (*controlv1.ExplainPolicyDenialResponse, error) {
 	records, err := s.auditRecords()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "query audit records: %v", err)
@@ -433,7 +433,7 @@ var (
 )
 
 // RecommendPolicyPatch proposes, but never applies, a policy change.
-func (s *stubControlServer) RecommendPolicyPatch(ctx context.Context, req *controlv1.RecommendPolicyPatchRequest) (*controlv1.RecommendPolicyPatchResponse, error) {
+func (s *controlServer) RecommendPolicyPatch(ctx context.Context, req *controlv1.RecommendPolicyPatchRequest) (*controlv1.RecommendPolicyPatchResponse, error) {
 	desired := strings.TrimSpace(req.GetDesiredBehavior())
 	fields := strings.Fields(desired)
 
@@ -552,7 +552,7 @@ func unableToParsePolicyPatch() *controlv1.RecommendPolicyPatchResponse {
 	}
 }
 
-func (s *stubControlServer) policyPatchResponse(
+func (s *controlServer) policyPatchResponse(
 	proposal PendingConfirmation,
 ) (*controlv1.RecommendPolicyPatchResponse, error) {
 	id, err := s.proposeTrustBoundaryChange(proposal)
@@ -592,7 +592,7 @@ func (s *stubControlServer) policyPatchResponse(
 	}, nil
 }
 
-func (s *stubControlServer) policyDenialEvidence(destination string) ([]operator.EvidenceRef, error) {
+func (s *controlServer) policyDenialEvidence(destination string) ([]operator.EvidenceRef, error) {
 	if s.auditIndex == nil {
 		return nil, nil
 	}
@@ -620,25 +620,25 @@ func (s *stubControlServer) policyDenialEvidence(destination string) ([]operator
 	return evidence, nil
 }
 
-func (s *stubControlServer) confirmationStore() *ConfirmationStore {
+func (s *controlServer) confirmationStore() *ConfirmationStore {
 	store, _ := confirmationStores.LoadOrStore(s, NewConfirmationStore())
 	return store.(*ConfirmationStore)
 }
 
-func attachConfirmationStore(server *stubControlServer, store *ConfirmationStore) {
+func attachConfirmationStore(server *controlServer, store *ConfirmationStore) {
 	confirmationStores.Store(server, store)
 }
 
-func detachConfirmationStore(server *stubControlServer) {
+func detachConfirmationStore(server *controlServer) {
 	confirmationStores.Delete(server)
 }
 
-func (s *stubControlServer) proposeTrustBoundaryChange(change PendingConfirmation) (string, error) {
+func (s *controlServer) proposeTrustBoundaryChange(change PendingConfirmation) (string, error) {
 	return s.confirmationStore().Create(change)
 }
 
 // ConfirmChange records a human decision without applying the proposed change.
-func (s *stubControlServer) ConfirmChange(id string, approved bool) error {
+func (s *controlServer) ConfirmChange(id string, approved bool) error {
 	if approved {
 		return s.confirmationStore().Approve(id)
 	}
@@ -646,7 +646,7 @@ func (s *stubControlServer) ConfirmChange(id string, approved bool) error {
 }
 
 // ListPendingConfirmations returns all unexpired proposals awaiting review.
-func (s *stubControlServer) ListPendingConfirmations() []PendingConfirmation {
+func (s *controlServer) ListPendingConfirmations() []PendingConfirmation {
 	pending := s.confirmationStore().ListPending()
 	sort.Slice(pending, func(i, j int) bool {
 		return pending[i].ID < pending[j].ID
@@ -655,7 +655,7 @@ func (s *stubControlServer) ListPendingConfirmations() []PendingConfirmation {
 }
 
 // GetRunTimeline returns a chronological event list for a run.
-func (s *stubControlServer) GetRunTimeline(ctx context.Context, req *controlv1.GetRunTimelineRequest) (*controlv1.GetRunTimelineResponse, error) {
+func (s *controlServer) GetRunTimeline(ctx context.Context, req *controlv1.GetRunTimelineRequest) (*controlv1.GetRunTimelineResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
@@ -716,7 +716,7 @@ func timelineDetail(payload map[string]interface{}) (string, error) {
 
 // NextAction recommends the next operator action from the latest relevant
 // audit event in the supplied run context.
-func (s *stubControlServer) NextAction(ctx context.Context, req *controlv1.NextActionRequest) (*controlv1.NextActionResponse, error) {
+func (s *controlServer) NextAction(ctx context.Context, req *controlv1.NextActionRequest) (*controlv1.NextActionResponse, error) {
 	runID := req.GetContext()
 	if runID == "confirmations:list" {
 		data, err := json.Marshal(s.ListPendingConfirmations())
@@ -817,7 +817,7 @@ func toTimestampPB(t time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(t)
 }
 
-func (s *stubControlServer) auditRecords() ([]audit.AuditRecord, error) {
+func (s *controlServer) auditRecords() ([]audit.AuditRecord, error) {
 	if s.auditIndex == nil {
 		return []audit.AuditRecord{}, nil
 	}
@@ -836,7 +836,7 @@ func (s *stubControlServer) auditRecords() ([]audit.AuditRecord, error) {
 	return records, nil
 }
 
-func (s *stubControlServer) auditRecordsForRun(runID string) ([]audit.AuditRecord, error) {
+func (s *controlServer) auditRecordsForRun(runID string) ([]audit.AuditRecord, error) {
 	records, err := s.auditRecords()
 	if err != nil {
 		return nil, err

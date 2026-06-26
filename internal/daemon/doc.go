@@ -11,7 +11,7 @@
 //  3. Shutdown  – SIGTERM/SIGINT triggers graceful shutdown: new RPCs are
 //     rejected and in-flight requests are drained with a configurable timeout.
 //
-// Single-instance enforcement
+// # Single-instance enforcement
 //
 // The daemon uses POSIX flock(2) on a lock file inside the home directory.
 // A second daemon trying to start will fail with EWOULDBLOCK.
@@ -23,7 +23,7 @@
 //   - The Unix socket file is created with mode 0600.
 //   - The home directory and socket permissions are validated before serving.
 //
-// Versioning
+// # Versioning
 //
 // VersionInfo is embedded in gRPC response trailers and returned as a
 // diagnostic check in the Doctor RPC so that the CLI can verify daemon

@@ -23,14 +23,14 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func testControlServer(t *testing.T) *stubControlServer {
+func testControlServer(t *testing.T) *controlServer {
 	t.Helper()
 	dir := t.TempDir()
 	hp := home.NewHomePaths(dir)
 	if err := home.Ensure(hp); err != nil {
 		t.Fatalf("home.Ensure: %v", err)
 	}
-	return &stubControlServer{
+	return &controlServer{
 		homePaths: hp,
 	}
 }
@@ -142,7 +142,7 @@ func TestSecretSet_RequiresName(t *testing.T) {
 }
 
 func TestRunTracking(t *testing.T) {
-	server := &stubControlServer{}
+	server := &controlServer{}
 	runID := "run-track-test"
 	containerID := runtime.ContainerID("container-abc")
 	networkID := "network-xyz"
@@ -239,7 +239,7 @@ func TestAuditEvents_PackRunStop(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = indexer.Close() })
 
-	server := &stubControlServer{
+	server := &controlServer{
 		auditWriter: writer,
 		auditIndex:  indexer,
 		homePaths:   hp,
@@ -353,7 +353,7 @@ func TestPack_RecordsDeploymentWhenBuildSucceeds(t *testing.T) {
 }
 
 func TestActiveRunCount(t *testing.T) {
-	server := &stubControlServer{}
+	server := &controlServer{}
 
 	if got := server.activeRunCount(); got != 0 {
 		t.Fatalf("activeRunCount() = %d, want 0", got)
@@ -415,7 +415,7 @@ func TestRun_MountsAuditVolume(t *testing.T) {
 		},
 	}
 
-	server := &stubControlServer{homePaths: hp}
+	server := &controlServer{homePaths: hp}
 	server.runtimeOnce.Do(func() {}) // skip real Docker init
 	server.dockerRT = runtime.NewDockerRuntimeWithDriver(mock)
 
@@ -504,7 +504,7 @@ func TestStop_IngestsHarnessAudit(t *testing.T) {
 		},
 	}
 
-	server := &stubControlServer{
+	server := &controlServer{
 		homePaths:   hp,
 		auditWriter: writer,
 		auditIndex:  indexer,
@@ -707,7 +707,7 @@ func (m *mockRuntimeDriver) ListNetworks(ctx context.Context, labelFilters ...st
 	return nil, fmt.Errorf("not implemented")
 }
 
-func testServerWithMockRuntime(t *testing.T, mock *mockRuntimeDriver) (*stubControlServer, *home.HomePaths) {
+func testServerWithMockRuntime(t *testing.T, mock *mockRuntimeDriver) (*controlServer, *home.HomePaths) {
 	t.Helper()
 	dir := t.TempDir()
 	hp := home.NewHomePaths(dir)
@@ -729,7 +729,7 @@ func testServerWithMockRuntime(t *testing.T, mock *mockRuntimeDriver) (*stubCont
 	}
 	t.Cleanup(func() { _ = indexer.Close() })
 
-	server := &stubControlServer{
+	server := &controlServer{
 		homePaths:   hp,
 		auditWriter: writer,
 		auditIndex:  indexer,
@@ -740,7 +740,7 @@ func testServerWithMockRuntime(t *testing.T, mock *mockRuntimeDriver) (*stubCont
 	return server, hp
 }
 
-func waitForRunStatus(t *testing.T, server *stubControlServer, runID, want string) {
+func waitForRunStatus(t *testing.T, server *controlServer, runID, want string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -1003,7 +1003,7 @@ func TestRun_RejectsWhenConcurrentLimitReached(t *testing.T) {
 	if err := home.Ensure(hp); err != nil {
 		t.Fatalf("home.Ensure: %v", err)
 	}
-	server := &stubControlServer{homePaths: hp}
+	server := &controlServer{homePaths: hp}
 
 	// Pre-fill the runs map to the limit without Docker.
 	for i := 0; i < maxConcurrentRuns; i++ {
@@ -1553,7 +1553,7 @@ func TestReconcileOrphans_KeepsTrackedContainers(t *testing.T) {
 }
 
 func TestReconcileOrphans_NoDocker_SkipsGracefully(t *testing.T) {
-	server := &stubControlServer{}
+	server := &controlServer{}
 	server.runtimeOnce.Do(func() {
 		server.runtimeErr = fmt.Errorf("docker not available")
 	})
