@@ -336,16 +336,71 @@ def _tool_result_from_cli(cmd_args):
     return run_agent_cli(cmd_args)
 
 
+def _validate_project_path(path):
+    """Validate a project path is within allowed directories.
+
+    Returns (is_valid, resolved_path, error_dict).
+    - is_valid: True if path is allowed
+    - resolved_path: the realpath() of the input (for use in _run_cli)
+    - error_dict: None if valid, else {"error": ..., "error_category": "path_rejected"}
+    """
+    if not path or not isinstance(path, str):
+        return False, None, {
+            "error": "project_dir is required",
+            "error_category": "path_rejected",
+        }
+
+    if path == ".":
+        resolved = os.path.realpath(os.getcwd())
+    else:
+        resolved = os.path.realpath(os.path.expanduser(path))
+
+    if ".." in resolved.split(os.sep):
+        return False, None, {
+            "error": f"path contains directory traversal: {path}",
+            "error_category": "path_rejected",
+        }
+
+    project_root = os.environ.get("AGENTPAAS_PROJECT_ROOT", "")
+    if not project_root:
+        project_root = os.getcwd()
+    project_root = os.path.realpath(project_root)
+
+    allowed_roots = [
+        project_root,
+        "/tmp",
+        os.path.expanduser("~"),
+    ]
+
+    is_allowed = False
+    for root in allowed_roots:
+        root_resolved = os.path.realpath(root)
+        if resolved == root_resolved or resolved.startswith(root_resolved + os.sep):
+            is_allowed = True
+            break
+
+    if not is_allowed:
+        return False, None, {
+            "error": f"project_dir outside allowed roots: {path} (resolved: {resolved})",
+            "error_category": "path_rejected",
+        }
+
+    return True, resolved, None
+
+
 def agentpaas_init_project(args, **kwargs):
     """Initialize a new agent project."""
     args = args or {}
     project_dir = args.get("project_dir", ".")
+    is_valid, resolved, err = _validate_project_path(project_dir)
+    if not is_valid:
+        return json.dumps(err)
     runtime = args.get("runtime", "python")
     try:
         result = _run_cli(
             [
                 "init",
-                project_dir,
+                resolved,
                 "--noninteractive",
                 "--runtime",
                 runtime,
@@ -360,11 +415,14 @@ def agentpaas_reconcile_project(args, **kwargs):
     """Reconcile agent.yaml from existing source code."""
     args = args or {}
     project_dir = args.get("project_dir", ".")
+    is_valid, resolved, err = _validate_project_path(project_dir)
+    if not is_valid:
+        return json.dumps(err)
     try:
         result = _run_cli(
             [
                 "init",
-                project_dir,
+                resolved,
                 "--from-code",
                 "--noninteractive",
             ]
@@ -378,8 +436,11 @@ def agentpaas_validate_project(args, **kwargs):
     """Validate an agent project directory."""
     args = args or {}
     project_dir = args.get("project_dir", ".")
+    is_valid, resolved, err = _validate_project_path(project_dir)
+    if not is_valid:
+        return json.dumps(err)
     try:
-        result = _run_cli(["validate", project_dir])
+        result = _run_cli(["validate", resolved])
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
@@ -399,8 +460,11 @@ def agentpaas_pack(args, **kwargs):
     """Build an agent image from a project directory."""
     args = args or {}
     project_dir = args.get("project_dir") or args.get("agent_project_path", ".")
+    is_valid, resolved, err = _validate_project_path(project_dir)
+    if not is_valid:
+        return json.dumps(err)
     try:
-        result = _run_cli(["pack", project_dir])
+        result = _run_cli(["pack", resolved])
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
@@ -507,6 +571,11 @@ def agentpaas_policy_show(args, **kwargs):
     args = args or {}
     run_id = args.get("run_id")
     project_dir = args.get("project_dir")
+    if project_dir and not run_id:
+        is_valid, resolved, err = _validate_project_path(project_dir)
+        if not is_valid:
+            return json.dumps(err)
+        project_dir = resolved
     target = run_id or project_dir or ""
     try:
         result = _run_cli(["policy", "show", target] if target else ["policy", "show"])
