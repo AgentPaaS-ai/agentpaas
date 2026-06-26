@@ -127,6 +127,42 @@ class PathAllowlistValidationTests(unittest.TestCase):
         self.assertIsNone(resolved)
         self.assertEqual(err["error_category"], "path_rejected")
 
+    def test_reject_home_override(self):
+        """HOME=/etc must not add /etc to allowed_roots (pwd module used instead)."""
+        with mock.patch.dict(os.environ, {"HOME": "/etc"}, clear=False):
+            is_valid, resolved, err = self.tools._validate_project_path("/etc/passwd")
+        self.assertFalse(is_valid)
+        self.assertIsNone(resolved)
+        self.assertEqual(err["error_category"], "path_rejected")
+
+    def test_project_root_system_dir_fallback(self):
+        """AGENTPAAS_PROJECT_ROOT=/ must fall back to cwd, not allow everything."""
+        cwd = os.path.realpath(os.getcwd())
+        outside = "/var/log" if cwd != "/var/log" else "/etc"
+        with mock.patch.dict(
+            os.environ, {"AGENTPAAS_PROJECT_ROOT": "/"}, clear=False
+        ):
+            is_valid, resolved, err = self.tools._validate_project_path(outside)
+        self.assertFalse(is_valid)
+        self.assertIsNone(resolved)
+        self.assertEqual(err["error_category"], "path_rejected")
+
+    def test_no_dead_traversal_check(self):
+        """../../etc is rejected by allowed_roots after realpath (no '..' check)."""
+        with tempfile.TemporaryDirectory(dir="/tmp") as project:
+            project = os.path.realpath(project)
+            with _chdir(project):
+                with mock.patch.dict(
+                    os.environ, {"AGENTPAAS_PROJECT_ROOT": project}, clear=False
+                ):
+                    is_valid, resolved, err = self.tools._validate_project_path(
+                        "../../etc"
+                    )
+            self.assertFalse(is_valid)
+            self.assertIsNone(resolved)
+            self.assertEqual(err["error_category"], "path_rejected")
+            self.assertIn("outside allowed roots", err["error"])
+
 
 class PathAllowlistIntegrationTests(unittest.TestCase):
     @classmethod
