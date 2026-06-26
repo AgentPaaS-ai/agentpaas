@@ -2,6 +2,7 @@
 
 import json
 import os
+import pwd
 import re as _re
 import shutil
 import subprocess
@@ -355,21 +356,26 @@ def _validate_project_path(path):
     else:
         resolved = os.path.realpath(os.path.expanduser(path))
 
-    if ".." in resolved.split(os.sep):
-        return False, None, {
-            "error": f"path contains directory traversal: {path}",
-            "error_category": "path_rejected",
-        }
-
     project_root = os.environ.get("AGENTPAAS_PROJECT_ROOT", "")
     if not project_root:
         project_root = os.getcwd()
     project_root = os.path.realpath(project_root)
 
+    # Validate project root is not a system directory (defense against env override)
+    _SYSTEM_DIRS = ("/", "/etc", "/usr", "/bin", "/sbin", "/var", "/sys", "/dev", "/proc")
+    if project_root in _SYSTEM_DIRS:
+        project_root = os.getcwd()
+
+    # Use pwd module, not $HOME env var, to prevent override attacks
+    try:
+        home_dir = pwd.getpwuid(os.getuid()).pw_dir
+    except (KeyError, OSError):
+        home_dir = os.path.expanduser("~")
+
     allowed_roots = [
         project_root,
         "/tmp",
-        os.path.expanduser("~"),
+        home_dir,
     ]
 
     is_allowed = False
