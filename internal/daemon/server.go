@@ -53,6 +53,8 @@ type Daemon struct {
 	dashboardAddr string
 	otelStore     *otel.Store
 	eventBus      *trigger.EventBus
+	triggerServer *trigger.Server
+	triggerCancel context.CancelFunc
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -301,6 +303,44 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	controlv1.RegisterControlServiceServer(d.server, controlServer)
 
+	// Start trigger server for external invocations (loopback-only for P1).
+	triggerGRPCAddr := os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR")
+	if triggerGRPCAddr == "" {
+		triggerGRPCAddr = "127.0.0.1:7718"
+	}
+	triggerRESTAddr := os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR")
+	if triggerRESTAddr == "" {
+		triggerRESTAddr = "127.0.0.1:7717"
+	}
+
+	triggerSrv, err := trigger.New(trigger.ServerConfig{
+		GRPCAddr: triggerGRPCAddr,
+		RESTAddr: triggerRESTAddr,
+		EventBus: d.eventBus,
+		Audit:    auditWriter,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: trigger server init: %v\n", err)
+	} else {
+		triggerSrv.SetInvokeFunc(func(ctx context.Context, agentName string) (string, error) {
+			resp, err := controlServer.Run(ctx, &controlv1.RunRequest{
+				AgentName: agentName,
+			})
+			if err != nil {
+				return "", err
+			}
+			return resp.GetRunId(), nil
+		})
+		triggerCtx, triggerCancel := context.WithCancel(context.Background())
+		if err := triggerSrv.Start(triggerCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: trigger server start: %v\n", err)
+			triggerCancel()
+		} else {
+			d.triggerServer = triggerSrv
+			d.triggerCancel = triggerCancel
+		}
+	}
+
 	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer reconcileCancel()
 	controlServer.reconcileOrphanedContainers(reconcileCtx)
@@ -403,6 +443,13 @@ func (d *Daemon) Stop(ctx context.Context) error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = dash.Shutdown(shutdownCtx)
 		shutdownCancel()
+	}
+
+	if d.triggerCancel != nil {
+		d.triggerCancel()
+	}
+	if d.triggerServer != nil {
+		d.triggerServer.Stop()
 	}
 
 	// Clean up files.
