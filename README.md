@@ -69,7 +69,7 @@ Each agent run gets two containers on isolated Docker networks:
 Ingress, egress, MCP tool calls, and credential use all pass through the
 gateway. Denials are recorded in the signed audit chain.
 
-Deep dive: [docs/enforcement.md](docs/enforcement.md)
+Deep dive: [docs/how-enforcement-works.md](docs/how-enforcement-works.md)
 
 ## Containment (P1 Red-Team Smoke)
 
@@ -112,11 +112,11 @@ P1 accepted limitations:
 ## Documentation
 
 - [Quickstart](docs/quickstart.md)
-- [Policy reference](docs/policy.md)
+- [Policy reference](docs/policy-reference.md)
 - [Secrets guide](docs/secrets.md)
-- [Enforcement topology](docs/enforcement.md)
+- [Enforcement topology](docs/how-enforcement-works.md)
 - [Threat model](docs/threat-model.md)
-- [Audit verification](docs/audit-verification.md)
+- [Audit verification](docs/audit-export.md)
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
 
 ## Repository Layout

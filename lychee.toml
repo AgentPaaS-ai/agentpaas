@@ -1,0 +1,9 @@
+# Lychee link checker configuration
+# Exclude archived build prompts (contain example URLs like http://attacker:1234/)
+exclude_path = ["docs/archive"]
+
+# Exclude external URLs (CI runner has limited network access)
+# Only check internal file links
+exclude = [
+    "^https?://"
+]
