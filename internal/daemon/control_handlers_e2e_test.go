@@ -18,6 +18,144 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/runtime"
 )
 
+const weatherPolicyYAML = `version: "1"
+agent:
+  name: governed-weather
+  description: ""
+egress:
+  - domain: "api.weather.gov"
+    ports: [443]
+credentials: []
+mcp_servers: []
+hooks: []
+ingress: []
+`
+
+func TestE2E_PolicyEnforcement_AllowedAndDenied(t *testing.T) {
+	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
+		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
+	}
+
+	homeDir := filepath.Join(os.Getenv("HOME"), "agentpaas-e2e-policy-"+fmt.Sprint(time.Now().UnixNano()))
+	t.Cleanup(func() { _ = os.RemoveAll(homeDir) })
+
+	hp := home.NewHomePaths(homeDir)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatalf("home.Ensure: %v", err)
+	}
+
+	rt, err := runtime.NewDockerRuntime()
+	if err != nil {
+		t.Fatalf("NewDockerRuntime: %v", err)
+	}
+
+	auditPath := filepath.Join(hp.State, "audit.jsonl")
+	writer, err := audit.NewAuditWriter(auditPath)
+	if err != nil {
+		t.Fatalf("NewAuditWriter: %v", err)
+	}
+	t.Cleanup(func() { _ = writer.Close() })
+
+	indexer, err := audit.NewSQLiteIndexer(filepath.Join(hp.State, "audit.db"))
+	if err != nil {
+		t.Fatalf("NewSQLiteIndexer: %v", err)
+	}
+	t.Cleanup(func() { _ = indexer.Close() })
+
+	server := &controlServer{
+		homePaths:   hp,
+		auditWriter: writer,
+		auditIndex:  indexer,
+	}
+	server.runtimeOnce.Do(func() {})
+	server.dockerRT = rt
+
+	repoRoot := e2eRepoRoot(t)
+	ensureHarnessLinux(t, repoRoot)
+	t.Setenv("PATH", filepath.Join(repoRoot, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	projectDir := prepareGovernedWeatherProject(t, repoRoot, homeDir)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer cancel()
+
+	_, err = server.PolicyApply(ctx, &controlv1.PolicyApplyRequest{
+		PolicyYaml: weatherPolicyYAML,
+	})
+	if err != nil {
+		t.Fatalf("PolicyApply() error = %v", err)
+	}
+
+	_, err = server.Pack(ctx, &controlv1.PackRequest{
+		AgentProjectPath: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("Pack() error = %v", err)
+	}
+
+	const agentName = "governed-weather"
+	runResp, err := server.Run(ctx, &controlv1.RunRequest{AgentName: agentName})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := runResp.GetRunId()
+	if runID == "" {
+		t.Fatal("Run() returned empty run_id")
+	}
+	t.Cleanup(func() {
+		_, _ = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
+	})
+
+	waitForInvokeComplete(t, server, runID, 2*time.Minute)
+
+	_, err = server.Stop(ctx, &controlv1.StopRequest{RunId: runID})
+	if err != nil {
+		t.Fatalf("Stop() error = %v", err)
+	}
+
+	records, err := readAuditJSONL(auditPath)
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	if len(records) == 0 {
+		t.Fatal("audit.jsonl is empty after stop")
+	}
+	assertAuditHashChain(t, records)
+
+	var hasEgressAllowed, hasEgressDenied bool
+	var allowedWeather, deniedExfil bool
+	for _, record := range records {
+		if auditString(record.Payload, "run_id") != runID {
+			continue
+		}
+		dest := auditString(record.Payload, "destination")
+		switch record.EventType {
+		case "egress_allowed":
+			hasEgressAllowed = true
+			if strings.Contains(dest, "api.weather.gov") {
+				allowedWeather = true
+			}
+		case "egress_denied":
+			hasEgressDenied = true
+			if strings.Contains(dest, "evil-exfil.example.com") {
+				deniedExfil = true
+			}
+		}
+	}
+	if !hasEgressAllowed {
+		t.Error("expected egress_allowed audit event for policy-permitted call")
+	}
+	if !allowedWeather {
+		t.Error("expected egress_allowed event with destination api.weather.gov")
+	}
+	if !hasEgressDenied {
+		t.Error("expected egress_denied audit event for policy-denied call")
+	}
+	if !deniedExfil {
+		t.Error("expected egress_denied event with destination evil-exfil.example.com")
+	}
+}
+
 func TestE2E_PackRunInvokeStopAudit(t *testing.T) {
 	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
 		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
