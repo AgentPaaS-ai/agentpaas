@@ -332,11 +332,29 @@ func parseContainerStatsJSON(data []byte) (ContainerStats, error) {
 		return ContainerStats{}, fmt.Errorf("parse container stats JSON: %w", err)
 	}
 
-	cpuDelta := int64(raw.CPUStats.CPUUsage.TotalUsage) - int64(raw.PreCPUStats.CPUUsage.TotalUsage)
-	systemDelta := int64(raw.CPUStats.SystemCPUUsage) - int64(raw.PreCPUStats.SystemCPUUsage)
+	if raw.PreCPUStats.CPUUsage.TotalUsage == 0 {
+		return ContainerStats{}, ErrStatsNotReady
+	}
+	if raw.CPUStats.CPUUsage.TotalUsage == 0 || raw.CPUStats.SystemCPUUsage == 0 {
+		return ContainerStats{}, fmt.Errorf("container stats: missing or zero cpu_stats/precpu_stats")
+	}
+
+	cpuUsage := raw.CPUStats.CPUUsage.TotalUsage
+	preCPU := raw.PreCPUStats.CPUUsage.TotalUsage
+	var cpuDelta uint64
+	if cpuUsage > preCPU {
+		cpuDelta = cpuUsage - preCPU
+	}
+
+	sysUsage := raw.CPUStats.SystemCPUUsage
+	preSys := raw.PreCPUStats.SystemCPUUsage
+	var systemDelta uint64
+	if sysUsage > preSys {
+		systemDelta = sysUsage - preSys
+	}
 
 	return ContainerStats{
-		CPUPercent: computeCPUPercent(cpuDelta, systemDelta, raw.CPUStats.OnlineCPUs),
+		CPUPercent: computeCPUPercent(int64(cpuDelta), int64(systemDelta), raw.CPUStats.OnlineCPUs),
 		MemoryMB:   float64(raw.MemoryStats.Usage) / 1024 / 1024,
 		PIDs:       int(raw.PidsStats.Current),
 	}, nil
