@@ -114,6 +114,16 @@ func TestSignImage_RealCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cosign verify: %v\n%s", err, verifyOut)
 	}
+
+	// Also exercise the production verifyImageSignature function
+	// to ensure the verify path is regression-protected.
+	pubKeyPEM, err := publicKeyPEM(&key.PublicKey)
+	if err != nil {
+		t.Fatalf("publicKeyPEM: %v", err)
+	}
+	if err := verifyImageSignature(string(pubKeyPEM), imageRef); err != nil {
+		t.Fatalf("verifyImageSignature() = %v, want nil", err)
+	}
 }
 
 func waitForRegistryReady(ctx context.Context, registryURL string) error {
