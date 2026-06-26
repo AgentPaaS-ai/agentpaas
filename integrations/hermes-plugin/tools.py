@@ -5,6 +5,7 @@ import os
 import pwd
 import re as _re
 import shutil
+import stat
 import subprocess
 import threading
 import time as _time
@@ -275,6 +276,66 @@ def _resolve_socket_path():
     )
 
 
+def _check_daemon_socket():
+    """Pre-flight check: is the daemon socket available?
+
+    Returns (is_available, error_dict):
+    - is_available: True if socket exists and is a Unix socket
+    - error_dict: None if available, else structured error
+    """
+    sock_path = _resolve_socket_path()
+    if not sock_path:
+        home = os.environ.get("AGENTPAAS_HOME", "")
+        if home:
+            sock_path = os.path.join(home, "run", "agentpaas.sock")
+
+    if not sock_path:
+        return False, {
+            "error": "daemon socket not configured (AGENTPAAS_SOCKET or AGENTPAAS_HOME)",
+            "error_category": "daemon_unavailable",
+            "next_action": "start_docker",
+            "hint": "Run: agentpaas daemon start",
+        }
+
+    if not os.path.exists(sock_path):
+        return False, {
+            "error": f"daemon socket not found: {sock_path}",
+            "error_category": "daemon_unavailable",
+            "next_action": "start_docker",
+            "hint": "Run: agentpaas daemon start",
+        }
+
+    try:
+        st = os.stat(sock_path)
+        if not stat.S_ISSOCK(st.st_mode):
+            return False, {
+                "error": f"socket path is not a Unix socket: {sock_path}",
+                "error_category": "daemon_unavailable",
+                "next_action": "start_docker",
+                "hint": "Run: agentpaas daemon start",
+            }
+    except OSError as e:
+        return False, {
+            "error": f"cannot stat socket: {e}",
+            "error_category": "daemon_unavailable",
+            "next_action": "start_docker",
+            "hint": "Run: agentpaas daemon start",
+        }
+
+    return True, None
+
+
+_NO_DAEMON_COMMANDS = frozenset({"doctor", "--version", "help", "--help"})
+
+
+def _needs_daemon(cmd_args):
+    """Check if the command needs the daemon."""
+    if not cmd_args:
+        return True
+    first = cmd_args[0]
+    return first not in _NO_DAEMON_COMMANDS
+
+
 _CLI_BINARY_ALLOW_LIST = (
     "/usr/local/bin",
     "/opt/homebrew/bin",
@@ -405,6 +466,11 @@ def _get_cli_timeout():
 
 def _run_cli(cmd_args):
     """Run agent CLI with --json; return sanitized operator dict."""
+    if _needs_daemon(cmd_args):
+        sock_available, sock_err = _check_daemon_socket()
+        if not sock_available:
+            return sock_err
+
     binary = _resolve_agent_binary()
     full = [binary, "--json"]
     sock = _resolve_socket_path()
