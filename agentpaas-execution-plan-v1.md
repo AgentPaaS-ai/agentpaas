@@ -2446,67 +2446,67 @@ begins, this register is the starting backlog.
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R1 | HIGH→P1 | `--insecure-ignore-tlog` passed unconditionally to cosign verify. Signing suppresses Rekor upload, so verify must skip tlog too. Consistent but means no transparency log guarantee. | 14A-T08 |
-| R2 | MED | Hash chain record deletion undetectable. Truncating JSONL tail leaves valid prefix chain. No external anchor exists. | 14A-T05 |
-| R3 | MED | No signed checkpoint mechanism for hash chain. Overlaps R2. Daemon chain is authoritative but not tamper-evident against file-level post-container edits. | 14A-T05+T08 |
+| R1 | HIGH→P1 | ~~`--insecure-ignore-tlog` passed unconditionally to cosign verify.~~ **Resolved 2026-06-26 (B14E):** tlog suppression now conditional via `buildCosignSignArgs`/`buildCosignVerifyArgs`. Local refs suppress tlog; production refs use cosign defaults (Rekor required). Adversary-hardened host parsing. Commits 93527fc, 8fcb45c. | 14A-T08 |
+| R2 | MED | ~~Hash chain record deletion undetectable.~~ **Resolved 2026-06-26 (B14E):** Signed checkpoints wired into AuditWriter. `VerifyAuditChain` detects tail truncation via checkpoint hash mismatch. Commit 85049bf. | 14A-T05 |
+| R3 | MED | ~~No signed checkpoint mechanism.~~ **Resolved 2026-06-26 (B14E):** CheckpointManager creates ECDSA-signed checkpoints every N records, persisted key, daemon verification. Commit 85049bf. | 14A-T05+T08 |
 
 #### Security: Cosign / Test Infrastructure (5)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R4 | MED | Registry container not cleaned up after integration test. `EnsureLocalRegistry` starts persistent named container, no teardown helper. | 14A-T08 |
-| R5 | MED | D3 tlog suppression check is loose substring match. Tests for absence of "rekor"/"tlog" in output. Future cosign versions could change format. | 14A-T08 |
-| R6 | MED | Port 5001 conflict unhandled. Integration test fails hard if port bound, no skip or configurable port. | 14A-T08 |
-| R7 | MED | Fake cosign verify does zero flag validation. Fake verify branch checks nothing. | 14A-T08 |
+| R4 | MED | ~~Registry container not cleaned up after integration test.~~ **Resolved 2026-06-26 (B14E):** `CleanupLocalRegistry` helper added, called via defer. Commit c88ab87. | 14A-T08 |
+| R5 | MED | ~~D3 tlog suppression check is loose substring match.~~ **Resolved 2026-06-26 (B14E):** Precise output parsing replaces substring match. Commit bab6c88. | 14A-T08 |
+| R6 | MED | ~~Port 5001 conflict unhandled.~~ **Resolved 2026-06-26 (B14E):** `AGENTPAAS_TEST_REGISTRY_PORT` env var + conflict detection with clear skip. Commit c88ab87. | 14A-T08 |
+| R7 | MED | ~~Fake cosign verify does zero flag validation.~~ **Resolved 2026-06-26 (B14E):** Fake verify validates all flags, mutation test added. Commit bab6c88. | 14A-T08 |
 | R8 | SHORTCUT | ~~Cosign integration test not in default CI.~~ **Resolved 2026-06-26:** `release-verify.yml` job `cosign-integration` runs `TestSignImage_RealCosign` with `AGENTPAAS_PACK_REAL_TOOLS=1` on self-hosted runner. | 14A-T08 |
 
 #### Daemon: Concurrency & State (3)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R9 | MED | Unbounded confirmation set growth. `_used_confirmation_ids` grows forever in long sessions. | 14A-T04 |
-| R10 | MED | `NewFileAuditAppender` prevHash not seeded on re-open. Reopened log starts empty instead of from last record's hash. | 14A-T05 |
-| R11 | LOW | Policy file write race. `os.Stat` then bind mount. Concurrent `PolicyApply` can write between check and mount. | 14B-T01 |
+| R9 | MED | ~~Unbounded confirmation set growth.~~ **Resolved 2026-06-26 (B14E):** OrderedDict with MAX_CONFIRMATION_IDS=10000, FIFO eviction. Commit 95deae4. | 14A-T04 |
+| R10 | MED | ~~`NewFileAuditAppender` prevHash not seeded on re-open.~~ **Resolved 2026-06-26 (B14E):** `lastRecordHashFromFile` seeds prevHash from last record. Commit 139e728. | 14A-T05 |
+| R11 | LOW | ~~Policy file write race.~~ **Resolved 2026-06-26 (B14E):** Atomic write via temp-file + os.Rename. Commit 3802321. | 14B-T01 |
 
 #### Daemon: Orphan Reconciliation (1)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R12 | MED | `reconcileOrphanedContainers` doesn't remove orphaned gateway containers or networks. Groups gateways but only removes agents/MCPs. Crashed daemon leaves gateway + 2 networks behind. | 14B-T01 |
+| R12 | MED | ~~`reconcileOrphanedContainers` doesn't remove orphaned gateway containers or networks.~~ **Resolved 2026-06-26 (B14E):** Verified gateway+egress cleanup already implemented (B14A0-T02) with dual-label filter. `TestReconcile_RemovesGatewayAndEgressNetwork` confirms. Risk register was stale. | 14B-T01 |
 
 #### Docker Runtime: Stats (4)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R13 | MED | uint64→int64 overflow in CPU delta. Long-running containers with high CPU overflow. Clamped to 0 on negative delta (no crash, wrong value). | 14B-T04 |
-| R14 | MED | Stats error path tests missing. No tests for `cli.ContainerStats` error, `ReadAll` failure, parse failure inside `Stats()`. | 14B-T04 |
-| R15 | MED | Stats JSON partial fields produce zeros without error. Missing `precpu_stats`/`cpu_stats` → zero values silently. | 14B-T04 |
-| R16 | MED | No `-race` test for concurrent `Stats()` calls. | 14B-T04 |
+| R13 | MED | ~~uint64→int64 overflow in CPU delta.~~ **Resolved 2026-06-26 (B14E):** uint64 saturating subtraction. Commit b2f94af. | 14B-T04 |
+| R14 | MED | ~~Stats error path tests missing.~~ **Resolved 2026-06-26 (B14E):** Error path tests for ContainerStats/ReadAll/parse. Commit b2f94af. | 14B-T04 |
+| R15 | MED | ~~Stats JSON partial fields produce zeros without error.~~ **Resolved 2026-06-26 (B14E):** Field validation, error on missing precpu/cpu_stats. Commit b2f94af. | 14B-T04 |
+| R16 | MED | ~~No `-race` test for concurrent `Stats()` calls.~~ **Resolved 2026-06-26 (B14E):** `TestStats_ConcurrentNoRace` passes -race detector. Commit b2f94af. | 14B-T04 |
 
 #### Network Enforcement (1)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R17 | SHORTCUT | HTTP_PROXY only — non-HTTP protocols bypass gateway. Raw TCP, DNS bypass. Agent that unsets HTTP_PROXY fails (internal-only net) but non-HTTP isn't proxied. P2: iptables/DNS transparent proxy. | 14B-T02 |
+| R17 | SHORTCUT | ~~HTTP_PROXY only — non-HTTP protocols bypass gateway.~~ **Resolved 2026-06-26 (B14E):** iptables egress firewall added. Agent container gets CAP_NET_ADMIN (dropped after init via capset). firewall_init.sh blocks all direct outbound except loopback/established/private/gateway. IPv6 covered via ip6tables. Configurable via `AGENTPAAS_EGRESS_FIREWALL`. Research-backed (mattolson/agent-sandbox pattern). Commits e245144, 8fcb45c. Residual: broad RFC1918 allow (P2 tighten), NET_ADMIN on agent (P2: init container pattern). | 14B-T02 |
 
 #### Trigger Server (1)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R18 | SHORTCUT | Trigger server has no authentication. Loopback-only for P1. Any localhost process can invoke agents. | 14B-T05 |
+| R18 | SHORTCUT | ~~Trigger server has no authentication.~~ **Resolved 2026-06-26 (B14E):** Daemon reads `AGENTPAAS_TRIGGER_API_KEY`, builds APIKeyAuthenticator. `--expose` requires key. Backward compatible (loopback-only) when unset. Commit c159494. | 14B-T05 |
 
 #### Resource (1)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R19 | LOW | `maxConcurrentRuns` resource multiplier undocumented. Each run creates 2 containers + 2 networks (was 1+1). Limit 3 = 6 containers. Not documented. | 14B-T01 |
+| R19 | LOW | ~~`maxConcurrentRuns` resource multiplier undocumented.~~ **Resolved 2026-06-26 (B14E):** Documented in `docs/known-limitations.md` — each run = 2 containers + 2 networks, limit 3 = 6+6. Commit 3802321. | 14B-T01 |
 
 #### Release / Docs (5)
 
 | ID | Sev | Description | Source |
 |----|-----|-------------|--------|
-| R20 | SHORTCUT | Homebrew formula SHA256 is placeholder. Real checksums filled by goreleaser during first release. | 14C-T01 |
-| R21 | MANUAL | No demo video/asciinema recorded. Spec calls for 3-min demos. Requires manual recording. | 14C-T02 |
+| R20 | SHORTCUT | ~~Homebrew formula SHA256 is placeholder.~~ **Resolved by design (B14E):** Comment added documenting goreleaser fills checksum at release. Commits b5d04dc. | 14C-T01 |
+| R21 | MANUAL | ~~No demo video/asciinema recorded.~~ **B15 scope (B14E):** Documented in `docs/known-limitations.md` as planned for Block 15 manual testing. Commit b5d04dc. | 14C-T02 |
 | R22 | SHORTCUT | ~~No goreleaser dry-run in CI.~~ **Resolved 2026-06-26:** `release-verify.yml` job `goreleaser-snapshot` runs `goreleaser release --snapshot --skip=sign,publish,docker,before` (build/archive/checksum/formula validation in ~6s; signing validated at real release via OIDC). | 14C-T01 |
 | R23 | SHORTCUT | ~~No brew audit in CI.~~ **Resolved 2026-06-26:** `release-verify.yml` job `brew-audit` runs `brew style Formula/agentpaas.rb` (`continue-on-error`; SHA256 placeholders intentional until release). | 14C-T01 |
 | R24 | SHORTCUT | ~~No docs CI: broken-link check, command-snippet smoke.~~ **Resolved 2026-06-26:** `release-verify.yml` job `docs-links` runs `lychee` on `docs/` and `README.md` (`continue-on-error` while backlog links are fixed). | 14C-T03 |
