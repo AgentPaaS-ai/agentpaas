@@ -1,3 +1,5 @@
+version: 2
+
 project_name: agentpaas
 
 before:
@@ -58,21 +60,20 @@ sboms:
 signs:
   - id: cosign
     cmd: cosign
-    signature: "${artifact}.sig"
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.sigstore.json"
     args:
       - sign-blob
-      - "--output-signature=${signature}"
-      - "--output-certificate=${certificate}"
+      - "--bundle=${signature}"
+      - "--yes"
       - "${artifact}"
-    artifacts: all
+    artifacts: checksum
 
 brews:
   - name: agentpaas
     homepage: https://github.com/AgentPaaS-ai/agentpaas
     description: "Governed, local-first runtime for AI-generated agents"
     license: MIT
-    folder: Formula
+    directory: Formula
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
