@@ -475,6 +475,9 @@ func int64Ptr(v int64) *int64 {
 // filters. Each filter should be in "key=value" format. The results include
 // each container's ID, name, status, and Docker labels.
 func (d *DockerRuntime) ListContainers(ctx context.Context, labelFilters ...string) ([]ContainerInfo, error) {
+	if d.driver != nil {
+		return d.driver.ListContainers(ctx, labelFilters...)
+	}
 	if d.cli == nil {
 		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
 	}
@@ -533,6 +536,9 @@ func (d *DockerRuntime) ListContainers(ctx context.Context, labelFilters ...stri
 // ListNetworks returns all Docker networks matching the given label filters.
 // Each filter should be in "key=value" format.
 func (d *DockerRuntime) ListNetworks(ctx context.Context, labelFilters ...string) ([]NetworkInfo, error) {
+	if d.driver != nil {
+		return d.driver.ListNetworks(ctx, labelFilters...)
+	}
 	if d.cli == nil {
 		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
 	}

@@ -1021,6 +1021,95 @@ func formatAuditExport(records []audit.AuditRecord, format string, includePayloa
 	}
 }
 
+func (s *stubControlServer) reconcileOrphanedContainers(ctx context.Context) {
+	rt, err := s.getOrCreateRuntime()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: runtime unavailable: %v\n", err)
+		return
+	}
+
+	s.runMu.Lock()
+	knownRuns := make(map[string]struct{}, len(s.runs))
+	for runID := range s.runs {
+		knownRuns[runID] = struct{}{}
+	}
+	s.runMu.Unlock()
+
+	var removals int
+
+	containers, err := rt.ListContainers(ctx, runtime.LabelResourceType+"="+runtime.ResourceTypeAgent)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list containers: %v\n", err)
+	} else {
+		for _, c := range containers {
+			if _, known := knownRuns[c.RunID]; known {
+				continue
+			}
+			if c.Status == runtime.ContainerStatusRunning {
+				timeout := 10 * time.Second
+				if err := rt.Stop(ctx, runtime.ContainerID(c.ID), &timeout); err != nil {
+					fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: stop container %s: %v\n", c.ID, err)
+				}
+			}
+			if err := rt.Remove(ctx, runtime.ContainerID(c.ID), true); err != nil {
+				fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: remove container %s: %v\n", c.ID, err)
+				continue
+			}
+			removals++
+
+			networks, err := rt.ListNetworks(ctx, runtime.LabelResourceType+"="+runtime.ResourceTypeNetInternal)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list internal networks: %v\n", err)
+			} else {
+				for _, net := range networks {
+					if net.Labels[runtime.LabelRunID] == c.RunID {
+						if err := rt.RemoveNetwork(ctx, runtime.NetworkID(net.ID)); err != nil {
+							fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: remove network %s: %v\n", net.ID, err)
+						} else {
+							removals++
+						}
+					}
+				}
+			}
+
+			s.recordAudit("container_reconciled", "daemon", map[string]interface{}{
+				"run_id":       c.RunID,
+				"container_id": c.ID,
+				"action":       "stopped_and_removed",
+			})
+		}
+	}
+
+	networks, err := rt.ListNetworks(ctx, runtime.LabelManagedBy+"="+runtime.ManagedByValue)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list managed networks: %v\n", err)
+	} else {
+		for _, net := range networks {
+			runID := net.Labels[runtime.LabelRunID]
+			if runID == "" {
+				continue
+			}
+			if _, known := knownRuns[runID]; known {
+				continue
+			}
+			if net.Labels[runtime.LabelResourceType] != runtime.ResourceTypeNetInternal {
+				continue
+			}
+			if err := rt.RemoveNetwork(ctx, runtime.NetworkID(net.ID)); err != nil {
+				fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: remove orphaned network %s: %v\n", net.ID, err)
+			} else {
+				removals++
+			}
+		}
+	}
+
+	if removals > 0 {
+		s.recordAudit("reconciliation_complete", "daemon", map[string]interface{}{
+			"removals": removals,
+		})
+	}
+}
+
 // resolveExecutable returns the path to the current executable. Tests may override it.
 var resolveExecutable = os.Executable
 
@@ -1058,4 +1147,3 @@ func harnessCandidate(path string) string {
 	}
 	return ""
 }
-

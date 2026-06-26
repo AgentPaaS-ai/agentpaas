@@ -609,14 +609,16 @@ func containsEnv(env []string, want string) bool {
 
 // mockRuntimeDriver implements runtime.RuntimeDriver for daemon unit tests.
 type mockRuntimeDriver struct {
-	createFunc        func(ctx context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error)
-	startFunc         func(ctx context.Context, id runtime.ContainerID) error
-	stopFunc          func(ctx context.Context, id runtime.ContainerID, timeout *time.Duration) error
-	removeFunc        func(ctx context.Context, id runtime.ContainerID, force bool) error
-	statusFunc        func(ctx context.Context, id runtime.ContainerID) (runtime.ContainerStatus, error)
-	execFunc          func(ctx context.Context, id runtime.ContainerID, cmd []string) (string, string, int, error)
-	createNetworkFunc func(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error)
-	removeNetworkFunc func(ctx context.Context, id runtime.NetworkID) error
+	createFunc         func(ctx context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error)
+	startFunc          func(ctx context.Context, id runtime.ContainerID) error
+	stopFunc           func(ctx context.Context, id runtime.ContainerID, timeout *time.Duration) error
+	removeFunc         func(ctx context.Context, id runtime.ContainerID, force bool) error
+	statusFunc         func(ctx context.Context, id runtime.ContainerID) (runtime.ContainerStatus, error)
+	execFunc           func(ctx context.Context, id runtime.ContainerID, cmd []string) (string, string, int, error)
+	createNetworkFunc  func(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error)
+	removeNetworkFunc  func(ctx context.Context, id runtime.NetworkID) error
+	listContainersFunc func(ctx context.Context, labelFilters ...string) ([]runtime.ContainerInfo, error)
+	listNetworksFunc   func(ctx context.Context, labelFilters ...string) ([]runtime.NetworkInfo, error)
 }
 
 func (m *mockRuntimeDriver) Create(ctx context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
@@ -691,11 +693,17 @@ func (m *mockRuntimeDriver) InspectContainerNetworks(context.Context, runtime.Co
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) ListContainers(context.Context, ...string) ([]runtime.ContainerInfo, error) {
+func (m *mockRuntimeDriver) ListContainers(ctx context.Context, labelFilters ...string) ([]runtime.ContainerInfo, error) {
+	if m.listContainersFunc != nil {
+		return m.listContainersFunc(ctx, labelFilters...)
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) ListNetworks(context.Context, ...string) ([]runtime.NetworkInfo, error) {
+func (m *mockRuntimeDriver) ListNetworks(ctx context.Context, labelFilters ...string) ([]runtime.NetworkInfo, error) {
+	if m.listNetworksFunc != nil {
+		return m.listNetworksFunc(ctx, labelFilters...)
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -1409,4 +1417,145 @@ func TestAdv_StatusCheckDetectsCrash(t *testing.T) {
 	if terminalEvent.Type != trigger.EventRunSucceeded {
 		t.Fatalf("terminal event type = %q, want %q", terminalEvent.Type, trigger.EventRunSucceeded)
 	}
+}
+
+func TestReconcileOrphans_StopsOrphanedContainers(t *testing.T) {
+	runID := "run-deadbeef"
+	containerID := "orphan-container-1"
+	networkID := "orphan-network-1"
+
+	var stopCalled, removeCalled, removeNetworkCalled bool
+
+	mock := defaultMockRuntimeDriver()
+	mock.listContainersFunc = func(_ context.Context, _ ...string) ([]runtime.ContainerInfo, error) {
+		return []runtime.ContainerInfo{{
+			ID:           containerID,
+			RunID:        runID,
+			Status:       runtime.ContainerStatusRunning,
+			ResourceType: runtime.ResourceTypeAgent,
+			Labels:       runtime.Labels(runtime.ResourceTypeAgent, runID),
+		}}, nil
+	}
+	mock.listNetworksFunc = func(_ context.Context, _ ...string) ([]runtime.NetworkInfo, error) {
+		return []runtime.NetworkInfo{{
+			ID:       networkID,
+			Internal: true,
+			Labels:   runtime.Labels(runtime.ResourceTypeNetInternal, runID),
+		}}, nil
+	}
+	mock.stopFunc = func(_ context.Context, id runtime.ContainerID, _ *time.Duration) error {
+		stopCalled = true
+		if id != runtime.ContainerID(containerID) {
+			t.Errorf("stop called with id %q, want %q", id, containerID)
+		}
+		return nil
+	}
+	mock.removeFunc = func(_ context.Context, id runtime.ContainerID, force bool) error {
+		removeCalled = true
+		if id != runtime.ContainerID(containerID) {
+			t.Errorf("remove called with id %q, want %q", id, containerID)
+		}
+		if !force {
+			t.Error("remove called without force=true")
+		}
+		return nil
+	}
+	mock.removeNetworkFunc = func(_ context.Context, id runtime.NetworkID) error {
+		removeNetworkCalled = true
+		if id != runtime.NetworkID(networkID) {
+			t.Errorf("removeNetwork called with id %q, want %q", id, networkID)
+		}
+		return nil
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+	server.reconcileOrphanedContainers(context.Background())
+
+	if !stopCalled {
+		t.Error("expected Stop to be called for orphaned container")
+	}
+	if !removeCalled {
+		t.Error("expected Remove to be called for orphaned container")
+	}
+	if !removeNetworkCalled {
+		t.Error("expected RemoveNetwork to be called for orphaned network")
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var reconciled, complete bool
+	for _, record := range records {
+		switch record.EventType {
+		case "container_reconciled":
+			reconciled = true
+			if auditString(record.Payload, "run_id") != runID {
+				t.Errorf("container_reconciled run_id = %q, want %q", auditString(record.Payload, "run_id"), runID)
+			}
+		case "reconciliation_complete":
+			complete = true
+		}
+	}
+	if !reconciled {
+		t.Error("container_reconciled audit record missing")
+	}
+	if !complete {
+		t.Error("reconciliation_complete audit record missing")
+	}
+}
+
+func TestReconcileOrphans_KeepsTrackedContainers(t *testing.T) {
+	runID := "run-active"
+	containerID := "active-container-1"
+
+	var stopCalled, removeCalled, removeNetworkCalled bool
+
+	mock := defaultMockRuntimeDriver()
+	mock.listContainersFunc = func(_ context.Context, _ ...string) ([]runtime.ContainerInfo, error) {
+		return []runtime.ContainerInfo{{
+			ID:           containerID,
+			RunID:        runID,
+			Status:       runtime.ContainerStatusRunning,
+			ResourceType: runtime.ResourceTypeAgent,
+			Labels:       runtime.Labels(runtime.ResourceTypeAgent, runID),
+		}}, nil
+	}
+	mock.listNetworksFunc = func(_ context.Context, _ ...string) ([]runtime.NetworkInfo, error) {
+		return nil, nil
+	}
+	mock.stopFunc = func(context.Context, runtime.ContainerID, *time.Duration) error {
+		stopCalled = true
+		return nil
+	}
+	mock.removeFunc = func(context.Context, runtime.ContainerID, bool) error {
+		removeCalled = true
+		return nil
+	}
+	mock.removeNetworkFunc = func(context.Context, runtime.NetworkID) error {
+		removeNetworkCalled = true
+		return nil
+	}
+
+	server, _ := testServerWithMockRuntime(t, mock)
+	server.trackRun(runID, runtime.ContainerID(containerID), "network-active", "")
+	server.reconcileOrphanedContainers(context.Background())
+
+	if stopCalled {
+		t.Error("Stop should not be called for tracked container")
+	}
+	if removeCalled {
+		t.Error("Remove should not be called for tracked container")
+	}
+	if removeNetworkCalled {
+		t.Error("RemoveNetwork should not be called for tracked container")
+	}
+}
+
+func TestReconcileOrphans_NoDocker_SkipsGracefully(t *testing.T) {
+	server := &stubControlServer{}
+	server.runtimeOnce.Do(func() {
+		server.runtimeErr = fmt.Errorf("docker not available")
+	})
+	server.reconcileOrphanedContainers(context.Background())
 }
