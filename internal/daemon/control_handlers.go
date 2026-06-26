@@ -750,6 +750,7 @@ func (s *controlServer) lookupRun(runID string) (runtime.ContainerID, string, st
 // It checks:
 // 1. Each record's prev_hash matches the previous record's record_hash
 // 2. Each record's record_hash matches a recomputed hash from canonical JSON
+// 3. The first (genesis) record has prev_hash == ""
 // Returns nil if the chain is valid, or an error describing the break.
 func verifyHarnessChain(records []audit.AuditRecord) error {
 	if len(records) == 0 {
@@ -764,7 +765,11 @@ func verifyHarnessChain(records []audit.AuditRecord) error {
 			return fmt.Errorf("harness chain: line %d: record_hash mismatch: stored %q, recomputed %q",
 				i+1, rec.RecordHash, computedHash)
 		}
-		if i > 0 {
+		if i == 0 {
+			if rec.PrevHash != "" {
+				return fmt.Errorf("harness chain: line %d: genesis record must have empty prev_hash, got %q", i+1, rec.PrevHash)
+			}
+		} else {
 			if rec.PrevHash != records[i-1].RecordHash {
 				return fmt.Errorf("harness chain: line %d: prev_hash mismatch: got %q, expected %q",
 					i+1, rec.PrevHash, records[i-1].RecordHash)
