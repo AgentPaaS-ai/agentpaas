@@ -401,6 +401,10 @@ func (d *fakeRuntimeDriver) InspectContainerNetworks(context.Context, runtime.Co
 	return nil, errors.New("not implemented")
 }
 
+func (d *fakeRuntimeDriver) InspectContainerIP(context.Context, runtime.ContainerID, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
 func (d *fakeRuntimeDriver) ListContainers(_ context.Context, _ ...string) ([]runtime.ContainerInfo, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
