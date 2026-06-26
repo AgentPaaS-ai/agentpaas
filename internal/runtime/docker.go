@@ -517,6 +517,9 @@ func (d *DockerRuntime) InspectNetwork(ctx context.Context, id NetworkID) (Netwo
 // InspectContainerNetworks returns the list of networks a container is
 // attached to. Used for topology assertions.
 func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error) {
+	if d.driver != nil {
+		return d.driver.InspectContainerNetworks(ctx, id)
+	}
 	if string(id) == "" {
 		return nil, ErrContainerNotFound
 	}
@@ -534,13 +537,35 @@ func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id Contain
 	var result []ContainerNetworkInfo
 	for netName, netSettings := range json.NetworkSettings.Networks {
 		info := ContainerNetworkInfo{
-			ID:      netSettings.NetworkID,
-			Name:    netName,
-			Aliases: netSettings.Aliases,
+			ID:        netSettings.NetworkID,
+			Name:      netName,
+			IPAddress: netSettings.IPAddress,
+			Aliases:   netSettings.Aliases,
 		}
 		result = append(result, info)
 	}
 	return result, nil
+}
+
+// InspectContainerIP returns the IP address of a container on a specific network.
+// Returns empty string if the container is not attached to the network.
+func (d *DockerRuntime) InspectContainerIP(ctx context.Context, id ContainerID, networkID string) (string, error) {
+	if d.driver != nil {
+		return d.driver.InspectContainerIP(ctx, id, networkID)
+	}
+	if string(id) == "" {
+		return "", ErrContainerNotFound
+	}
+	networks, err := d.InspectContainerNetworks(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	for _, n := range networks {
+		if n.ID == networkID || n.Name == networkID {
+			return n.IPAddress, nil
+		}
+	}
+	return "", nil
 }
 
 // int64Ptr returns a pointer to the given int64 value. Used for Docker API

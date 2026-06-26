@@ -267,18 +267,37 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Errorf(codes.Internal, "start gateway container: %v", err)
 	}
 
+	// Discover gateway IP on internal network for HTTP proxy configuration.
+	gatewayIP, err := rt.InspectContainerIP(ctx, gatewayID, string(netID))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: discover gateway IP: %v\n", err)
+		// Non-fatal: agent will use direct connections (which fail on internal network)
+	}
+
+	proxyEnv := []string{
+		"AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl",
+		// Project files are copied to /app/ by the pack Dockerfile. The
+		// harness default is /agent/main.py which does not exist.
+		"AGENTPAAS_AGENT_PATH=/app/main.py",
+	}
+	if gatewayIP != "" {
+		proxyEnv = append(proxyEnv,
+			fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
+			fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
+			fmt.Sprintf("http_proxy=http://%s:7799", gatewayIP),
+			fmt.Sprintf("https_proxy=http://%s:7799", gatewayIP),
+			"NO_PROXY=localhost,127.0.0.1",
+			"no_proxy=localhost,127.0.0.1",
+		)
+	}
+
 	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
 	containerID, err := rt.Create(ctx, runtime.ContainerSpec{
 		Image:      imageRef,
 		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
 		NetworkIDs: []string{string(netID)},
 		Binds:      []string{fmt.Sprintf("%s:/audit", hostAuditDir)},
-		Env: []string{
-			"AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl",
-			// Project files are copied to /app/ by the pack Dockerfile. The
-			// harness default is /agent/main.py which does not exist.
-			"AGENTPAAS_AGENT_PATH=/app/main.py",
-		},
+		Env:        proxyEnv,
 	})
 	if err != nil {
 		_ = rt.Remove(ctx, gatewayID, true)

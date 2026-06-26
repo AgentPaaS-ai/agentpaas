@@ -403,6 +403,17 @@ func (d *statusFakeRuntimeDriver) InspectContainerNetworks(_ context.Context, id
 	return result, nil
 }
 
+func (d *statusFakeRuntimeDriver) InspectContainerIP(_ context.Context, id runtime.ContainerID, networkID string) (string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	for _, n := range d.networks[string(id)] {
+		if n.ID == networkID || n.Name == networkID {
+			return n.IPAddress, nil
+		}
+	}
+	return "", nil
+}
+
 func (d *statusFakeRuntimeDriver) ListContainers(_ context.Context, labelFilters ...string) ([]runtime.ContainerInfo, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
