@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bufio"
+	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -20,6 +21,10 @@ type AuditWriter struct {
 	path string
 	seq  int64
 	hash string
+
+	checkpointMgr    *CheckpointManager
+	checkpointKeyDER []byte
+	checkpointPath   string
 }
 
 // NewAuditWriter opens or creates the JSONL file at path and reconstructs the
@@ -45,6 +50,43 @@ func NewAuditWriter(path string) (*AuditWriter, error) {
 	}
 
 	return w, nil
+}
+
+// NewAuditWriterWithCheckpoints opens the audit JSONL at path and a signed checkpoint
+// manager at checkpointPath. cadence is the record interval for automatic checkpoints
+// (values <= 0 use DefaultCheckpointCadence). keyDER is the PKCS#8 ECDSA signing key.
+func NewAuditWriterWithCheckpoints(path string, checkpointPath string, cadence int64, keyDER []byte) (*AuditWriter, error) {
+	w, err := NewAuditWriter(path)
+	if err != nil {
+		return nil, err
+	}
+	if cadence <= 0 {
+		cadence = DefaultCheckpointCadence
+	}
+	mgr, err := NewCheckpointManager(checkpointPath, cadence, keyDER)
+	if err != nil {
+		_ = w.Close()
+		return nil, fmt.Errorf("checkpoint manager: %w", err)
+	}
+	w.checkpointMgr = mgr
+	w.checkpointPath = checkpointPath
+	if len(keyDER) > 0 {
+		w.checkpointKeyDER = append([]byte(nil), keyDER...)
+	}
+	return w, nil
+}
+
+// CheckpointPublicKey returns the ECDSA public key for verifying signed checkpoints.
+func (w *AuditWriter) CheckpointPublicKey() (*ecdsa.PublicKey, error) {
+	if len(w.checkpointKeyDER) == 0 {
+		return nil, fmt.Errorf("audit writer: no checkpoint signing key configured")
+	}
+	return PublicKeyFromCheckpointKeyDER(w.checkpointKeyDER)
+}
+
+// CheckpointsPath returns the checkpoint JSONL path when checkpoints are enabled.
+func (w *AuditWriter) CheckpointsPath() string {
+	return w.checkpointPath
 }
 
 // replay reads all existing lines from the JSONL file and validates the full
@@ -182,6 +224,12 @@ func (w *AuditWriter) Append(record AuditRecord) error {
 	w.seq = record.Seq
 	w.hash = record.RecordHash
 
+	if w.checkpointMgr != nil && w.checkpointMgr.ShouldCheckpoint(w.seq) {
+		if _, err := w.checkpointMgr.CreateCheckpoint(w.seq, w.hash); err != nil {
+			return fmt.Errorf("create checkpoint at seq %d: %w", w.seq, err)
+		}
+	}
+
 	return nil
 }
 
@@ -199,10 +247,17 @@ func (w *AuditWriter) CurrentHead() (seq int64, hash string) {
 func (w *AuditWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.file == nil {
-		return nil
+	var err error
+	if w.checkpointMgr != nil {
+		err = w.checkpointMgr.Close()
+		w.checkpointMgr = nil
 	}
-	err := w.file.Close()
+	if w.file == nil {
+		return err
+	}
+	if closeErr := w.file.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
 	w.file = nil
 	return err
 }

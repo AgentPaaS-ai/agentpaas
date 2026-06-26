@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"sync"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
@@ -44,6 +45,9 @@ type controlServer struct {
 	auditWriter *audit.AuditWriter
 	homePaths   *home.HomePaths
 	eventBus    *trigger.EventBus
+
+	auditCheckpointPubKey *ecdsa.PublicKey
+	auditCheckpointsPath  string
 
 	runMu        sync.Mutex
 	runs         map[string]*trackedRun

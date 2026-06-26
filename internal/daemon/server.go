@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -233,7 +234,23 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.auditIndexer = auditIndex
 
-	auditWriter, err := audit.NewAuditWriter(filepath.Join(d.paths.State, "audit.jsonl"))
+	auditPath := filepath.Join(d.paths.State, "audit.jsonl")
+	checkpointPath := filepath.Join(d.paths.State, "audit.jsonl.checkpoints")
+	keyPath := filepath.Join(d.paths.State, "audit-checkpoint-key.der")
+	keyDER, checkpointPubKey, err := audit.LoadOrGenerateCheckpointKey(keyPath)
+	if err != nil {
+		_ = auditIndex.Close()
+		_ = ln.Close()
+		_ = d.cleanupFiles()
+		return fmt.Errorf("daemon: load checkpoint signing key: %w", err)
+	}
+	checkpointCadence := audit.DefaultCheckpointCadence
+	if raw := strings.TrimSpace(os.Getenv("AGENTPAAS_AUDIT_CHECKPOINT_CADENCE")); raw != "" {
+		if n, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil && n > 0 {
+			checkpointCadence = n
+		}
+	}
+	auditWriter, err := audit.NewAuditWriterWithCheckpoints(auditPath, checkpointPath, checkpointCadence, keyDER)
 	if err != nil {
 		_ = auditIndex.Close()
 		_ = ln.Close()
@@ -241,7 +258,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("daemon: open audit writer: %w", err)
 	}
 	// Rebuild the index from the existing chain (if any) for recovery.
-	if err := auditIndex.Rebuild(filepath.Join(d.paths.State, "audit.jsonl")); err != nil {
+	if err := auditIndex.Rebuild(auditPath); err != nil {
 		// Non-fatal: index will be empty, dashboard queries return empty.
 		fmt.Fprintf(os.Stderr, "daemon: audit index rebuild: %v\n", err)
 	}
@@ -273,6 +290,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 			d.auditIndexer,
 		)
 		d.dashboard.SetEventBus(d.eventBus)
+		if pubDER, marshalErr := x509.MarshalPKIXPublicKey(checkpointPubKey); marshalErr == nil {
+			d.dashboard.SetAuditTrustAnchor(pubDER)
+		}
 		// Capture the dashboard reference before starting the goroutine
 		// to avoid a data race with Stop() which sets d.dashboard = nil.
 		dash := d.dashboard
@@ -291,11 +311,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Register stub ControlService handlers.
 	controlServer := &controlServer{
-		version:     d.version,
-		auditIndex:  d.auditIndexer,
-		auditWriter: auditWriter,
-		homePaths:   d.paths,
-		eventBus:    d.eventBus,
+		version:               d.version,
+		auditIndex:            d.auditIndexer,
+		auditWriter:           auditWriter,
+		homePaths:             d.paths,
+		eventBus:              d.eventBus,
+		auditCheckpointPubKey: checkpointPubKey,
+		auditCheckpointsPath:  checkpointPath,
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
 	d.control = controlServer

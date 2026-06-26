@@ -681,9 +681,23 @@ func (s *controlServer) AuditQuery(ctx context.Context, req *controlv1.AuditQuer
 	for _, record := range records {
 		entries = append(entries, auditRecordToEntry(record))
 	}
+
+	var chainVerification *controlv1.AuditChainVerification
+	if s.homePaths != nil {
+		auditPath := filepath.Join(s.homePaths.State, "audit.jsonl")
+		checkpointsPath := s.auditCheckpointsPath
+		if checkpointsPath == "" {
+			checkpointsPath = filepath.Join(s.homePaths.State, "audit.jsonl.checkpoints")
+		}
+		if result, verifyErr := audit.VerifyAuditChain(auditPath, checkpointsPath, s.auditCheckpointPubKey); verifyErr == nil {
+			chainVerification = auditChainVerificationToProto(result)
+		}
+	}
+
 	return &controlv1.AuditQueryResponse{
-		Entries:    entries,
-		TotalCount: int32(len(entries)),
+		Entries:           entries,
+		TotalCount:        int32(len(entries)),
+		ChainVerification: chainVerification,
 	}, nil
 }
 
@@ -1041,6 +1055,31 @@ func (s *controlServer) recentAuditRecords(limit int) ([]audit.AuditRecord, erro
 		records = append(records, *record)
 	}
 	return records, nil
+}
+
+func auditChainVerificationToProto(result *audit.VerificationResult) *controlv1.AuditChainVerification {
+	if result == nil {
+		return nil
+	}
+	issues := make([]*controlv1.AuditCheckpointIssue, 0, len(result.Issues))
+	for _, issue := range result.Issues {
+		if issue == nil {
+			continue
+		}
+		issues = append(issues, &controlv1.AuditCheckpointIssue{
+			Type:    string(issue.Type),
+			Message: issue.Message,
+			Seq:     issue.Seq,
+			Line:    int32(issue.Line),
+		})
+	}
+	return &controlv1.AuditChainVerification{
+		Verified:          len(result.Issues) == 0,
+		AuditRecordCount:  result.AuditRecordCount,
+		AuditHeadSeq:      result.AuditHeadSeq,
+		CheckpointCount:   int32(result.CheckpointCount),
+		Issues:            issues,
+	}
 }
 
 func auditRecordToEntry(record audit.AuditRecord) *controlv1.AuditEntry {
