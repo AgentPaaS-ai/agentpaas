@@ -219,12 +219,31 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// The gateway reads the compiled policy config and enforces allow/deny rules.
 	gatewayConfigPath := filepath.Join(s.homePaths.Config, "gateway.yaml")
 
-	// Determine if a policy has been applied (gateway.yaml exists).
-	// If no policy: default-deny gateway (still creates the container, but no egress allowed).
+	// Determine gateway config mount.
 	var gatewayBinds []string
+	var gatewayConfigDir string
 	if _, err := os.Stat(gatewayConfigPath); err == nil {
-		// Policy exists — mount it read-only into the gateway container.
+		// Policy exists — mount it read-only.
 		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", gatewayConfigPath)}
+	} else {
+		// No policy applied — write a minimal default-deny config to a per-run
+		// temp file and mount it. This ensures the gateway starts with a valid
+		// config and enforces deny-all (no egress allowed).
+		denyAllConfig := []byte("config:\n  dns:\n    lookupFamily: V4Only\nbinds: []\n")
+		perRunConfigDir := filepath.Join(s.homePaths.State, "runs", runID, "gateway-config")
+		if err := os.MkdirAll(perRunConfigDir, 0o700); err != nil {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.Internal, "create gateway config dir: %v", err)
+		}
+		denyAllPath := filepath.Join(perRunConfigDir, "config.yaml")
+		if err := os.WriteFile(denyAllPath, denyAllConfig, 0o600); err != nil {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.Internal, "write default-deny config: %v", err)
+		}
+		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", denyAllPath)}
+		gatewayConfigDir = perRunConfigDir
 	}
 
 	gatewayID, err := rt.Create(ctx, runtime.ContainerSpec{
@@ -233,6 +252,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		Labels:     runtime.Labels(runtime.ResourceTypeGateway, runID),
 		NetworkIDs: []string{string(netID), string(egressNetID)}, // dual-homed
 		Binds:      gatewayBinds,
+		User:       "64000",
 	})
 	if err != nil {
 		_ = rt.RemoveNetwork(ctx, egressNetID)
@@ -276,13 +296,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}
 
 	tracked := &trackedRun{
-		Container:     containerID,
-		Network:       string(netID),
-		EgressNetwork: string(egressNetID),
-		Gateway:       gatewayID,
-		AuditDir:      hostAuditDir,
-		Status:        "running",
-		InvokeDone:    make(chan struct{}),
+		Container:        containerID,
+		Network:          string(netID),
+		EgressNetwork:    string(egressNetID),
+		Gateway:          gatewayID,
+		AuditDir:         hostAuditDir,
+		GatewayConfigDir: gatewayConfigDir,
+		Status:           "running",
+		InvokeDone:       make(chan struct{}),
 	}
 	s.trackRunPtr(runID, tracked)
 	if s.eventBus != nil {
@@ -294,6 +315,12 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			"network":      string(netID),
 		})
 	}
+
+	// Start real-time audit tailer for live egress visibility.
+	auditPath := filepath.Join(hostAuditDir, "harness-audit.jsonl")
+	tracked.Tailer = newAuditTailer(auditPath, runID, s.auditWriter, s.auditIndex, s.eventBus)
+	tracked.Tailer.start()
+
 	s.recordAudit("run_start", "cli", map[string]interface{}{
 		"run_id":       runID,
 		"agent_name":   agentName,
@@ -401,8 +428,16 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(tracked.EgressNetwork))
 	}
 
+	// Stop the real-time audit tailer (does a final read).
+	if tracked.Tailer != nil {
+		tracked.Tailer.stop()
+	}
+
 	// Ingest harness audit records after invoke goroutine has finished.
 	s.ingestHarnessAudit(runID, auditDir)
+	if tracked.GatewayConfigDir != "" {
+		_ = os.RemoveAll(tracked.GatewayConfigDir)
+	}
 	if s.eventBus != nil {
 		eventType := trigger.EventRunSucceeded
 		switch {
