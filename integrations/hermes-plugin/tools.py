@@ -6,6 +6,7 @@ import pwd
 import re as _re
 import shutil
 import subprocess
+import threading
 import time as _time
 
 # CLI binary name; override with AGENTPAAS_BIN (absolute path or name on PATH).
@@ -19,11 +20,53 @@ except ImportError:
     except ImportError:
         _sanitizer = None
 
-# Session-scoped registry of run IDs created by this Hermes session
-_session_runs = set()
+class _ConfirmationState:
+    """Thread-safe state for session runs and confirmation tracking."""
 
-# Track daemon-issued confirmation IDs that have been presented (replay protection)
-_used_confirmation_ids = set()
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._session_runs = set()
+        self._used_confirmation_ids = set()
+
+    def register_session_run(self, run_id):
+        """Thread-safe add to session runs."""
+        if run_id:
+            with self._lock:
+                self._session_runs.add(run_id)
+
+    def is_session_run(self, run_id):
+        """Thread-safe check if run was created by this session."""
+        with self._lock:
+            return run_id in self._session_runs
+
+    def discard_session_run(self, run_id):
+        """Thread-safe remove from session runs."""
+        with self._lock:
+            self._session_runs.discard(run_id)
+
+    def check_and_add_confirmation(self, confirmation_id):
+        """Thread-safe check-and-add for replay protection.
+
+        Returns (is_replay, should_refuse):
+        - If ID is already in set: (True, True) — it's a replay
+        - If ID is new: (False, False) — add it, not a replay
+        """
+        if not confirmation_id:
+            return False, True
+        with self._lock:
+            if confirmation_id in self._used_confirmation_ids:
+                return True, True
+            self._used_confirmation_ids.add(confirmation_id)
+            return False, False
+
+    def reset(self):
+        """Thread-safe clear all state. For testing and session restart."""
+        with self._lock:
+            self._session_runs.clear()
+            self._used_confirmation_ids.clear()
+
+
+_state = _ConfirmationState()
 
 _CONFIRM_ID_KEYS = frozenset({
     "confirmation_id", "confirm_id", "confirmationId",
@@ -90,7 +133,7 @@ def _internal_register_session_run(run_id, _caller=None):
             "automatically by agentpaas_run on success"
         )
     if run_id:
-        _session_runs.add(run_id)
+        _state.register_session_run(run_id)
 
 
 def _register_session_run(run_id):
@@ -100,7 +143,7 @@ def _register_session_run(run_id):
 
 def _is_session_run(run_id):
     """Check if a run was created by this session (read-only)."""
-    return run_id in _session_runs
+    return _state.is_session_run(run_id)
 
 
 def _validate_confirmation_id(confirmation_id):
@@ -116,12 +159,7 @@ def _validate_confirmation_id(confirmation_id):
 
 def _check_confirmation_replay(confirmation_id):
     """Check if a confirmation ID has already been used. Returns (is_replay, should_refuse)."""
-    if not confirmation_id:
-        return False, True
-    if confirmation_id in _used_confirmation_ids:
-        return True, True
-    _used_confirmation_ids.add(confirmation_id)
-    return False, False
+    return _state.check_and_add_confirmation(confirmation_id)
 
 
 def _is_confirmation_expired(issued_at, expires_at=None):
@@ -225,8 +263,7 @@ def _reset_confirmation_state():
 
     Must be called in test setUp/tearDown to avoid module-global state pollution.
     """
-    _session_runs.clear()
-    _used_confirmation_ids.clear()
+    _state.reset()
 
 
 def _resolve_socket_path():
@@ -643,7 +680,7 @@ def agentpaas_stop(args, **kwargs):
     try:
         result = _run_cli(["stop", run_id])
         if isinstance(result, dict) and "error" not in result:
-            _session_runs.discard(run_id)
+            _state.discard_session_run(run_id)
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
