@@ -8,6 +8,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -89,17 +90,12 @@ func TestSignImage_RealCosign(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build and push D3 probe image: %v", err)
 	}
-	signOutput, err := captureCosignSignOutput(ctx, d3ImageRef, cosignKeyPath)
+	bundlePath := filepath.Join(t.TempDir(), "sign.bundle.json")
+	signOutput, err := captureCosignSignOutput(ctx, d3ImageRef, cosignKeyPath, bundlePath)
 	if err != nil {
 		t.Fatalf("capture cosign sign output: %v\n%s", err, signOutput)
 	}
-	lower := strings.ToLower(signOutput)
-	if strings.Contains(lower, "rekor") {
-		t.Fatalf("cosign sign output mentions rekor (D3 tlog suppression failed):\n%s", signOutput)
-	}
-	if strings.Contains(lower, "tlog") {
-		t.Fatalf("cosign sign output mentions tlog (D3 tlog suppression failed):\n%s", signOutput)
-	}
+	assertSignOutputSuppressesTlogUpload(t, signOutput, bundlePath)
 
 	gotReferrer, err := SignImage(ctx, imageRef, cosignKeyPath)
 	if err != nil {
@@ -207,7 +203,59 @@ func buildAndPushTinyImage(ctx context.Context, t *testing.T, sourceTag, registr
 	return fmt.Sprintf("%s/agentpaas/%s@%s", registryURL, agentName, digest), nil
 }
 
-func captureCosignSignOutput(ctx context.Context, imageRef, keyPath string) (string, error) {
+// cosign Rekor/tlog upload is indicated by explicit progress lines (e.g. "Pushing to Rekor",
+// "tlog entry created") and by non-empty verificationMaterial.tlogEntries in --bundle JSON.
+// noTlog signing config should produce neither; bare "rekor"/"tlog" substrings are not used.
+var cosignTlogUploadLogPhrases = []string{
+	"pushing to rekor",
+	"tlog entry created",
+	"uploading to the transparency log",
+	"published to rekor",
+}
+
+type cosignSignBundle struct {
+	VerificationMaterial *struct {
+		TlogEntries []json.RawMessage `json:"tlogEntries"`
+	} `json:"verificationMaterial"`
+}
+
+func assertSignOutputSuppressesTlogUpload(t *testing.T, signOutput, bundlePath string) {
+	t.Helper()
+	for _, line := range strings.Split(signOutput, "\n") {
+		lower := strings.ToLower(strings.TrimSpace(line))
+		if lower == "" {
+			continue
+		}
+		for _, phrase := range cosignTlogUploadLogPhrases {
+			if strings.Contains(lower, phrase) {
+				t.Fatalf("cosign sign log indicates Rekor/tlog upload (%q):\n%s", phrase, signOutput)
+			}
+		}
+	}
+	if bundlePath == "" {
+		return
+	}
+	bundleBytes, err := os.ReadFile(bundlePath)
+	if err != nil {
+		t.Fatalf("read sign bundle %s: %v", bundlePath, err)
+	}
+	if len(bytesTrimSpace(bundleBytes)) == 0 {
+		return
+	}
+	var bundle cosignSignBundle
+	if err := json.Unmarshal(bundleBytes, &bundle); err != nil {
+		t.Fatalf("parse sign bundle JSON: %v\n%s", err, bundleBytes)
+	}
+	if bundle.VerificationMaterial != nil && len(bundle.VerificationMaterial.TlogEntries) > 0 {
+		t.Fatalf("sign bundle contains tlogEntries (D3 tlog suppression failed):\n%s", bundleBytes)
+	}
+}
+
+func bytesTrimSpace(b []byte) []byte {
+	return []byte(strings.TrimSpace(string(b)))
+}
+
+func captureCosignSignOutput(ctx context.Context, imageRef, keyPath, bundlePath string) (string, error) {
 	signingConfigPath, cleanupConfig, err := ensureNoTlogSigningConfig()
 	if err != nil {
 		return "", err
@@ -217,11 +265,16 @@ func captureCosignSignOutput(ctx context.Context, imageRef, keyPath string) (str
 	cmdCtx, cancel := context.WithTimeout(ctx, externalSignatureTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, "cosign", "sign",
+	signArgs := []string{
+		"sign",
 		"--key", keyPath,
 		"--signing-config", signingConfigPath,
 		"--allow-insecure-registry",
-		"--yes", imageRef)
+		"--bundle", bundlePath,
+		"--yes",
+		imageRef,
+	}
+	cmd := exec.CommandContext(cmdCtx, "cosign", signArgs...)
 	cmd.Env = append(os.Environ(), dockerHostEnv()...)
 	cmd.Env = append(cmd.Env, "COSIGN_PASSWORD=")
 	output, err := cmd.CombinedOutput()

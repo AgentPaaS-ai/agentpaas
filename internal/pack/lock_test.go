@@ -259,6 +259,75 @@ func TestVerifyAgentLock(t *testing.T) {
 	}
 }
 
+func TestVerifyImageSignature_PassesCosignVerifyFlags(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "cosign", fakeCosignScript())
+	lock, _ := signedTestLock(t)
+	imageRef := "agentpaas-test@sha256:" + digestString("image")
+	if err := verifyImageSignature(lock.PackageAID, imageRef); err != nil {
+		t.Fatalf("verifyImageSignature: %v", err)
+	}
+}
+
+func TestFakeCosignVerify_RejectsMissingInsecureIgnoreTlog(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "cosign", fakeCosignScript())
+	lock, _ := signedTestLock(t)
+	pubFile, cleanup, err := writeTempPublicKey([]byte(lock.PackageAID))
+	if err != nil {
+		t.Fatalf("writeTempPublicKey: %v", err)
+	}
+	defer cleanup()
+	imageRef := "agentpaas-test@sha256:" + digestString("image")
+	cmd := exec.Command("cosign", "verify", "--key", pubFile, imageRef)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("fake cosign verify should reject missing --insecure-ignore-tlog, output: %s", out)
+	}
+}
+
+func TestFakeCosignVerify_LocalRegistryRequiresAllowInsecureRegistry(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "cosign", fakeCosignScript())
+	lock, _ := signedTestLock(t)
+	pubFile, cleanup, err := writeTempPublicKey([]byte(lock.PackageAID))
+	if err != nil {
+		t.Fatalf("writeTempPublicKey: %v", err)
+	}
+	defer cleanup()
+	imageRef := "localhost:5000/agentpaas/test@sha256:" + digestString("image")
+	cmd := exec.Command("cosign", "verify", "--insecure-ignore-tlog", "--key", pubFile, imageRef)
+	if err := cmd.Run(); err == nil {
+		t.Fatal("fake cosign verify should reject local registry ref without --allow-insecure-registry")
+	}
+	cmdOK := exec.Command("cosign", "verify",
+		"--insecure-ignore-tlog",
+		"--allow-insecure-registry",
+		"--key", pubFile,
+		imageRef)
+	if err := cmdOK.Run(); err != nil {
+		t.Fatalf("fake cosign verify with required flags: %v", err)
+	}
+}
+
+func TestVerifyImageSignature_LocalRegistryPassesAllowInsecureRegistry(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "cosign", fakeCosignScript())
+	lock, _ := signedTestLock(t)
+	imageRef := "127.0.0.1:5000/agentpaas/test@sha256:" + digestString("image")
+	if err := verifyImageSignature(lock.PackageAID, imageRef); err != nil {
+		t.Fatalf("verifyImageSignature local registry: %v", err)
+	}
+}
+
 func signedTestLock(t *testing.T) (*AgentLock, *ecdsa.PrivateKey) {
 	t.Helper()
 
@@ -420,6 +489,64 @@ if [ "$1" = "sign" ]; then
   exit 0
 fi
 if [ "$1" = "verify" ]; then
+  has_ignore_tlog=0
+  has_key=0
+  has_allow_insecure=0
+  key_path=""
+  image_ref=""
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --insecure-ignore-tlog) has_ignore_tlog=1; shift ;;
+      --allow-insecure-registry) has_allow_insecure=1; shift ;;
+      --key) has_key=1; key_path="$2"; shift 2 ;;
+      --certificate-identity)
+        if [ -z "$2" ]; then
+          echo "fake-cosign: --certificate-identity requires a value" >&2
+          exit 1
+        fi
+        shift 2 ;;
+      --certificate-identity-regex)
+        if [ -z "$2" ]; then
+          echo "fake-cosign: --certificate-identity-regex requires a value" >&2
+          exit 1
+        fi
+        shift 2 ;;
+      --certificate-oidc-issuer)
+        if [ -z "$2" ]; then
+          echo "fake-cosign: --certificate-oidc-issuer requires a value" >&2
+          exit 1
+        fi
+        shift 2 ;;
+      --*) shift 2 ;;
+      -*) shift ;;
+      *) image_ref="$1"; shift ;;
+    esac
+  done
+  if [ $has_ignore_tlog -eq 0 ]; then
+    echo "fake-cosign: verify missing --insecure-ignore-tlog" >&2
+    exit 1
+  fi
+  if [ $has_key -eq 0 ]; then
+    echo "fake-cosign: verify missing --key" >&2
+    exit 1
+  fi
+  if [ ! -f "$key_path" ]; then
+    echo "fake-cosign: verify key file does not exist: $key_path" >&2
+    exit 1
+  fi
+  if [ -z "$image_ref" ]; then
+    echo "fake-cosign: verify missing image reference" >&2
+    exit 1
+  fi
+  case "$image_ref" in
+    *localhost:*|*127.0.0.1:*)
+      if [ $has_allow_insecure -eq 0 ]; then
+        echo "fake-cosign: local registry ref requires --allow-insecure-registry" >&2
+        exit 1
+      fi
+      ;;
+  esac
   exit 0
 fi
 exit 0
