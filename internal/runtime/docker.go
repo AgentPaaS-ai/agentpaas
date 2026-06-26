@@ -25,6 +25,10 @@ import (
 // containers when no image is specified in the spec.
 const defaultImage = "alpine:latest"
 
+// GatewayImage is the official agentgateway Docker image for the egress gateway.
+// Pinned to v1.3.0 (matches third_party/agentgateway/VERSION).
+const GatewayImage = "ghcr.io/agentgateway/agentgateway:v1.3.0"
+
 // DockerRuntime is a Docker Engine implementation of RuntimeDriver that
 // delegates method calls to the Docker Engine API.
 type DockerRuntime struct {

@@ -187,6 +187,17 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Errorf(codes.Internal, "create network: %v", err)
 	}
 
+	// Create egress network (non-internal — has internet access).
+	egressNetID, err := rt.CreateNetwork(ctx, runtime.NetworkSpec{
+		Name:     runtime.NetworkName("egress", runID),
+		Internal: false,
+		Labels:   runtime.Labels(runtime.ResourceTypeNetEgress, runID),
+	})
+	if err != nil {
+		_ = rt.RemoveNetwork(ctx, netID)
+		return nil, status.Errorf(codes.Internal, "create egress network: %v", err)
+	}
+
 	// Create host audit directory for harness audit JSONL.
 	// The container runs as UID 64000 (non-root). The bind mount exposes this
 	// host directory to the container. We must ensure UID 64000 can write, so
@@ -194,12 +205,46 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// umask to the mode, yielding 0755 which denies write to "other").
 	hostAuditDir := filepath.Join(s.homePaths.State, "runs", runID, "harness-audit")
 	if err := os.MkdirAll(hostAuditDir, 0o777); err != nil {
+		_ = rt.RemoveNetwork(ctx, egressNetID)
 		_ = rt.RemoveNetwork(ctx, netID)
 		return nil, status.Errorf(codes.Internal, "create audit dir: %v", err)
 	}
 	if err := os.Chmod(hostAuditDir, 0o777); err != nil {
+		_ = rt.RemoveNetwork(ctx, egressNetID)
 		_ = rt.RemoveNetwork(ctx, netID)
 		return nil, status.Errorf(codes.Internal, "chmod audit dir: %v", err)
+	}
+
+	// Create gateway container (dual-homed: internal + egress).
+	// The gateway reads the compiled policy config and enforces allow/deny rules.
+	gatewayConfigPath := filepath.Join(s.homePaths.Config, "gateway.yaml")
+
+	// Determine if a policy has been applied (gateway.yaml exists).
+	// If no policy: default-deny gateway (still creates the container, but no egress allowed).
+	var gatewayBinds []string
+	if _, err := os.Stat(gatewayConfigPath); err == nil {
+		// Policy exists — mount it read-only into the gateway container.
+		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", gatewayConfigPath)}
+	}
+
+	gatewayID, err := rt.Create(ctx, runtime.ContainerSpec{
+		Image:      runtime.GatewayImage,
+		Command:    []string{"-f", "/config.yaml"},
+		Labels:     runtime.Labels(runtime.ResourceTypeGateway, runID),
+		NetworkIDs: []string{string(netID), string(egressNetID)}, // dual-homed
+		Binds:      gatewayBinds,
+	})
+	if err != nil {
+		_ = rt.RemoveNetwork(ctx, egressNetID)
+		_ = rt.RemoveNetwork(ctx, netID)
+		return nil, status.Errorf(codes.Internal, "create gateway container: %v", err)
+	}
+
+	if err := rt.Start(ctx, gatewayID); err != nil {
+		_ = rt.Remove(ctx, gatewayID, true)
+		_ = rt.RemoveNetwork(ctx, egressNetID)
+		_ = rt.RemoveNetwork(ctx, netID)
+		return nil, status.Errorf(codes.Internal, "start gateway container: %v", err)
 	}
 
 	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
@@ -216,22 +261,28 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		},
 	})
 	if err != nil {
+		_ = rt.Remove(ctx, gatewayID, true)
+		_ = rt.RemoveNetwork(ctx, egressNetID)
 		_ = rt.RemoveNetwork(ctx, netID)
 		return nil, status.Errorf(codes.Internal, "create container: %v", err)
 	}
 
 	if err := rt.Start(ctx, containerID); err != nil {
 		_ = rt.Remove(ctx, containerID, true)
+		_ = rt.Remove(ctx, gatewayID, true)
+		_ = rt.RemoveNetwork(ctx, egressNetID)
 		_ = rt.RemoveNetwork(ctx, netID)
 		return nil, status.Errorf(codes.Internal, "start container: %v", err)
 	}
 
 	tracked := &trackedRun{
-		Container:  containerID,
-		Network:    string(netID),
-		AuditDir:   hostAuditDir,
-		Status:     "running",
-		InvokeDone: make(chan struct{}),
+		Container:     containerID,
+		Network:       string(netID),
+		EgressNetwork: string(egressNetID),
+		Gateway:       gatewayID,
+		AuditDir:      hostAuditDir,
+		Status:        "running",
+		InvokeDone:    make(chan struct{}),
 	}
 	s.trackRunPtr(runID, tracked)
 	if s.eventBus != nil {
@@ -322,6 +373,12 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 		return nil, status.Errorf(codes.Internal, "stop container: %v", err)
 	}
 
+	// Stop and remove gateway container.
+	if tracked.Gateway != "" {
+		_ = rt.Stop(ctx, tracked.Gateway, &timeout)
+		_ = rt.Remove(ctx, tracked.Gateway, req.GetForce())
+	}
+
 	finalStatus := tracked.Status
 	if req.GetForce() {
 		finalStatus = "cancelled"
@@ -339,6 +396,9 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 	_ = rt.Remove(ctx, containerID, req.GetForce())
 	if netID != "" {
 		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(netID))
+	}
+	if tracked.EgressNetwork != "" {
+		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(tracked.EgressNetwork))
 	}
 
 	// Ingest harness audit records after invoke goroutine has finished.

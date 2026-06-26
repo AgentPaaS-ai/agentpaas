@@ -403,10 +403,16 @@ func TestRun_MountsAuditVolume(t *testing.T) {
 
 	var capturedSpec runtime.ContainerSpec
 	mock := &mockRuntimeDriver{
-		createNetworkFunc: func(_ context.Context, _ runtime.NetworkSpec) (runtime.NetworkID, error) {
-			return runtime.NetworkID("network-test"), nil
+		createNetworkFunc: func(_ context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error) {
+			if spec.Internal {
+				return runtime.NetworkID("network-internal"), nil
+			}
+			return runtime.NetworkID("network-egress"), nil
 		},
 		createFunc: func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+			if spec.Image == runtime.GatewayImage {
+				return runtime.ContainerID("gateway-test"), nil
+			}
 			capturedSpec = spec
 			return runtime.ContainerID("container-test"), nil
 		},
@@ -483,25 +489,15 @@ func TestStop_IngestsHarnessAudit(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = indexer.Close() })
 
-	mock := &mockRuntimeDriver{
-		createNetworkFunc: func(_ context.Context, _ runtime.NetworkSpec) (runtime.NetworkID, error) {
-			return runtime.NetworkID("network-test"), nil
-		},
-		createFunc: func(_ context.Context, _ runtime.ContainerSpec) (runtime.ContainerID, error) {
-			return runtime.ContainerID("container-test"), nil
-		},
-		startFunc: func(_ context.Context, _ runtime.ContainerID) error {
-			return nil
-		},
-		stopFunc: func(_ context.Context, _ runtime.ContainerID, _ *time.Duration) error {
-			return nil
-		},
-		removeFunc: func(_ context.Context, _ runtime.ContainerID, _ bool) error {
-			return nil
-		},
-		removeNetworkFunc: func(_ context.Context, _ runtime.NetworkID) error {
-			return nil
-		},
+	mock := defaultMockRuntimeDriver()
+	mock.stopFunc = func(_ context.Context, _ runtime.ContainerID, _ *time.Duration) error {
+		return nil
+	}
+	mock.removeFunc = func(_ context.Context, _ runtime.ContainerID, _ bool) error {
+		return nil
+	}
+	mock.removeNetworkFunc = func(_ context.Context, _ runtime.NetworkID) error {
+		return nil
 	}
 
 	server := &controlServer{
@@ -776,10 +772,16 @@ func waitForRunStatus(t *testing.T, server *controlServer, runID, want string) {
 
 func defaultMockRuntimeDriver() *mockRuntimeDriver {
 	return &mockRuntimeDriver{
-		createNetworkFunc: func(_ context.Context, _ runtime.NetworkSpec) (runtime.NetworkID, error) {
-			return runtime.NetworkID("network-test"), nil
+		createNetworkFunc: func(_ context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error) {
+			if spec.Internal {
+				return runtime.NetworkID("network-internal"), nil
+			}
+			return runtime.NetworkID("network-egress"), nil
 		},
-		createFunc: func(_ context.Context, _ runtime.ContainerSpec) (runtime.ContainerID, error) {
+		createFunc: func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+			if spec.Image == runtime.GatewayImage {
+				return runtime.ContainerID("gateway-test"), nil
+			}
 			return runtime.ContainerID("container-test"), nil
 		},
 		startFunc: func(_ context.Context, _ runtime.ContainerID) error {
