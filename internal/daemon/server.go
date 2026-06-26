@@ -46,7 +46,7 @@ type Daemon struct {
 	lockFile      *os.File
 	lockIno       lockIno
 	pidFile       string
-	auditIndexer *audit.SQLiteIndexer
+	auditIndexer  *audit.SQLiteIndexer
 	confirmations *ConfirmationStore
 	control       *stubControlServer
 	dashboard     *dashboard.Server
@@ -300,6 +300,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 		}
 	}
 	controlv1.RegisterControlServiceServer(d.server, controlServer)
+
+	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer reconcileCancel()
+	controlServer.reconcileOrphanedContainers(reconcileCtx)
 
 	d.started = true
 
