@@ -522,11 +522,28 @@ func TestStop_IngestsHarnessAudit(t *testing.T) {
 	}
 
 	harnessAuditPath := filepath.Join(hp.State, "runs", runID, "harness-audit", "harness-audit.jsonl")
-	harnessLines := `{"timestamp":"2026-01-02T03:04:05Z","event_type":"egress_denied","deployment_mode":"local","actor":"harness","payload":{"destination":"evil.com","method":"GET","decision":"denied"}}
-{"timestamp":"2026-01-02T03:04:06Z","event_type":"egress_allowed","deployment_mode":"local","actor":"harness","payload":{"destination":"api.example.com","method":"GET","decision":"allowed"}}`
-	if err := os.WriteFile(harnessAuditPath, []byte(harnessLines+"\n"), 0o644); err != nil {
-		t.Fatalf("write harness audit: %v", err)
-	}
+	writeHarnessAuditChain(t, harnessAuditPath, []audit.AuditRecord{
+		{
+			Timestamp: "2026-01-02T03:04:05Z",
+			EventType: "egress_denied",
+			Actor:     "harness",
+			Payload: map[string]interface{}{
+				"destination": "evil.com",
+				"method":      "GET",
+				"decision":    "denied",
+			},
+		},
+		{
+			Timestamp: "2026-01-02T03:04:06Z",
+			EventType: "egress_allowed",
+			Actor:     "harness",
+			Payload: map[string]interface{}{
+				"destination": "api.example.com",
+				"method":      "GET",
+				"decision":    "allowed",
+			},
+		},
+	})
 
 	_, err = server.Stop(context.Background(), &controlv1.StopRequest{RunId: runID})
 	if err != nil {
