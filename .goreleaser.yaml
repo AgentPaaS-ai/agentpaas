@@ -1,0 +1,100 @@
+project_name: agentpaas
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: agent
+    main: ./cmd/agent
+    binary: agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.CLIVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.DaemonVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.GitCommit={{.Commit}}
+
+  - id: agentpaasd
+    main: ./cmd/agentpaasd
+    binary: agentpaasd
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.CLIVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.DaemonVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.GitCommit={{.Commit}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - demo/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+sboms:
+  - id: default
+    artifacts: archive
+
+signs:
+  - id: cosign
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
+      - "${artifact}"
+    artifacts: all
+
+brews:
+  - name: agentpaas
+    homepage: https://github.com/AgentPaaS-ai/agentpaas
+    description: "Governed, local-first runtime for AI-generated agents"
+    license: MIT
+    folder: Formula
+    repository:
+      owner: AgentPaaS-ai
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    install: |
+      bin.install "agent"
+      bin.install "agentpaasd"
+    test: |
+      system "#{bin}/agent", "version"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+
+release:
+  github:
+    owner: AgentPaaS-ai
+    name: agentpaas
+  draft: true
+  prerelease: auto
+  name_template: "v{{.Version}}"
