@@ -66,13 +66,12 @@ func TestDockerRuntime_Status_InvalidID(t *testing.T) {
 	}
 }
 
-// TestDockerRuntime_Stats_NotImplemented verifies Stats returns
-// errDockerNotImplemented.
-func TestDockerRuntime_Stats_NotImplemented(t *testing.T) {
+// TestDockerRuntime_Stats_NoClient verifies Stats fails without a Docker client.
+func TestDockerRuntime_Stats_NoClient(t *testing.T) {
 	d := &DockerRuntime{}
 	stats, err := d.Stats(context.Background(), "test-id")
-	if !errors.Is(err, errDockerNotImplemented) {
-		t.Errorf("Stats() error = %v, want errDockerNotImplemented", err)
+	if err == nil {
+		t.Error("Stats without Docker client should return error")
 	}
 	if stats.CPUPercent != 0 || stats.MemoryMB != 0 || stats.PIDs != 0 {
 		t.Errorf("Stats() = %+v, want zero-value ContainerStats", stats)
