@@ -253,8 +253,14 @@ def _check_binary_in_allow_list(path):
     """
     here = os.path.dirname(os.path.abspath(__file__))
     repo_bin = os.path.abspath(os.path.join(here, "..", "..", "bin"))
+    # Use pwd module, not $HOME env var, to prevent override attacks
+    # (same fix as _validate_project_path in T01)
+    try:
+        home_dir = pwd.getpwuid(os.getuid()).pw_dir
+    except (KeyError, OSError):
+        home_dir = os.path.expanduser("~")
     allowed_dirs = list(_CLI_BINARY_ALLOW_LIST) + [
-        os.path.expanduser("~/.local/bin"),
+        os.path.join(home_dir, ".local", "bin"),
         repo_bin,
     ]
     for allowed in allowed_dirs:
