@@ -282,7 +282,7 @@ func TestFakeCosignVerify_RejectsMissingInsecureIgnoreTlog(t *testing.T) {
 		t.Fatalf("writeTempPublicKey: %v", err)
 	}
 	defer cleanup()
-	imageRef := "agentpaas-test@sha256:" + digestString("image")
+	imageRef := "localhost:5000/agentpaas/test@sha256:" + digestString("image")
 	cmd := exec.Command("cosign", "verify", "--key", pubFile, imageRef)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -467,7 +467,7 @@ if [ "$1" = "import-key-pair" ]; then
   exit 0
 fi
 if [ "$1" = "sign" ]; then
-  has_key=0; has_config=0; has_yes=0; key_path=""
+  has_key=0; has_config=0; has_yes=0; key_path=""; image_ref=""
   shift
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -475,13 +475,29 @@ if [ "$1" = "sign" ]; then
       --signing-config) has_config=1; shift 2 ;;
       --yes) has_yes=1; shift ;;
       --allow-insecure-registry) shift ;;
-      *) shift ;;
+      --*) shift 2 ;;
+      -*) shift ;;
+      *) image_ref="$1"; shift ;;
     esac
   done
-  if [ $has_key -eq 0 ] || [ $has_config -eq 0 ] || [ $has_yes -eq 0 ]; then
+  if [ $has_key -eq 0 ] || [ $has_yes -eq 0 ]; then
     echo "fake-cosign: missing required flag" >&2
     exit 1
   fi
+  case "$image_ref" in
+    *localhost:*|*127.0.0.1:*)
+      if [ $has_config -eq 0 ]; then
+        echo "fake-cosign: local registry sign requires --signing-config" >&2
+        exit 1
+      fi
+      ;;
+    *)
+      if [ $has_config -eq 1 ]; then
+        echo "fake-cosign: production sign must not use --signing-config" >&2
+        exit 1
+      fi
+      ;;
+  esac
   if [ ! -f "$key_path" ]; then
     echo "fake-cosign: key file does not exist: $key_path" >&2
     exit 1
@@ -523,10 +539,6 @@ if [ "$1" = "verify" ]; then
       *) image_ref="$1"; shift ;;
     esac
   done
-  if [ $has_ignore_tlog -eq 0 ]; then
-    echo "fake-cosign: verify missing --insecure-ignore-tlog" >&2
-    exit 1
-  fi
   if [ $has_key -eq 0 ]; then
     echo "fake-cosign: verify missing --key" >&2
     exit 1
@@ -541,8 +553,18 @@ if [ "$1" = "verify" ]; then
   fi
   case "$image_ref" in
     *localhost:*|*127.0.0.1:*)
+      if [ $has_ignore_tlog -eq 0 ]; then
+        echo "fake-cosign: verify missing --insecure-ignore-tlog" >&2
+        exit 1
+      fi
       if [ $has_allow_insecure -eq 0 ]; then
         echo "fake-cosign: local registry ref requires --allow-insecure-registry" >&2
+        exit 1
+      fi
+      ;;
+    *)
+      if [ $has_ignore_tlog -eq 1 ]; then
+        echo "fake-cosign: production verify must not use --insecure-ignore-tlog" >&2
         exit 1
       fi
       ;;
@@ -617,4 +639,56 @@ func digestString(seed string) string {
 func sha256Hex(content []byte) string {
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])
+}
+
+func cosignArgsContainFlag(args []string, flag string) bool {
+	for _, a := range args {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSignImage_LocalVsProdTlogArgs(t *testing.T) {
+	const keyPath = "/tmp/test-signing.key"
+	localRef := "localhost:5001/agentpaas/test@sha256:abc"
+	prodRef := "ghcr.io/foo/bar:1.0"
+
+	localSign, cleanupLocal, err := buildCosignSignArgs(localRef, keyPath)
+	if err != nil {
+		t.Fatalf("buildCosignSignArgs(local): %v", err)
+	}
+	cleanupLocal()
+
+	if !cosignArgsContainFlag(localSign, "--signing-config") {
+		t.Fatalf("local sign args missing --signing-config: %v", localSign)
+	}
+	if !cosignArgsContainFlag(localSign, "--allow-insecure-registry") {
+		t.Fatalf("local sign args missing --allow-insecure-registry: %v", localSign)
+	}
+
+	prodSign, cleanupProd, err := buildCosignSignArgs(prodRef, keyPath)
+	if err != nil {
+		t.Fatalf("buildCosignSignArgs(prod): %v", err)
+	}
+	cleanupProd()
+
+	if cosignArgsContainFlag(prodSign, "--signing-config") {
+		t.Fatalf("prod sign args must not include --signing-config: %v", prodSign)
+	}
+	if cosignArgsContainFlag(prodSign, "--allow-insecure-registry") {
+		t.Fatalf("prod sign args must not include --allow-insecure-registry: %v", prodSign)
+	}
+
+	const pubKey = "/tmp/verify.pub"
+	localVerify := buildCosignVerifyArgs(localRef, pubKey)
+	if !cosignArgsContainFlag(localVerify, "--insecure-ignore-tlog") {
+		t.Fatalf("local verify args missing --insecure-ignore-tlog: %v", localVerify)
+	}
+
+	prodVerify := buildCosignVerifyArgs(prodRef, pubKey)
+	if cosignArgsContainFlag(prodVerify, "--insecure-ignore-tlog") {
+		t.Fatalf("prod verify args must not include --insecure-ignore-tlog: %v", prodVerify)
+	}
 }
