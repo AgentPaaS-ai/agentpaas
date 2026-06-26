@@ -6,6 +6,8 @@ This module provides functions that:
 3. Detect prompt-injection attempts in evidence fields
 4. Ensure trusted control fields are never sourced from untrusted evidence
 """
+import base64
+import binascii
 import json
 import re
 import urllib.parse
@@ -37,7 +39,11 @@ _INJECTION_PATTERNS = [
     re.compile(r'(?i)\b(increase|raise|remove)\s+(budget|limit|cap|quota)\b'),
     re.compile(r'(?i)\ballow\s+all\s+egress\b'),
     # Instruction-like directives in evidence context
-    re.compile(r'(?i)\b(do not|don\'t|must|should|always|never)\b'),
+    re.compile(
+        r'(?i)\b(do not|don\'t|must|should|always|never)\b.{0,30}'
+        r'\b(disable|enable|allow|deny|delete|remove|bypass|stop|kill|reveal|expose|'
+        r'purge|wipe|destroy|override|grant|revoke)\b'
+    ),
     # JSON/YAML injection attempts (fake control fields in evidence)
     re.compile(r'"(error_category|next_action|requires_confirmation|policy_digest)"\s*:'),
     # Abbreviations
@@ -67,17 +73,69 @@ _CONTROL_FIELD_NAMES = (
 )
 
 
+def _accept_decoded_text(decoded_str):
+    """Accept valid UTF-8 text that isn't empty or pure binary noise."""
+    if decoded_str and len(decoded_str) >= 4:
+        printable_count = sum(
+            1 for c in decoded_str if 32 <= ord(c) <= 126 or c in '\n\r\t'
+        )
+        if printable_count / len(decoded_str) > 0.7:
+            return True
+    return False
+
+
 def _decode_evidence_text(text):
-    """Decode common encoding schemes before injection detection."""
-    decoded = text
+    """Decode common encoding schemes before injection detection.
+
+    Decodes: URL encoding, base64, hex. Returns the decoded text
+    concatenated with the original so both are scanned.
+    """
+    decoded_parts = [text]
+
     # URL decode (handle %64, %xx)
     try:
-        url_decoded = urllib.parse.unquote(decoded)
-        if url_decoded != decoded:
-            decoded = url_decoded + " " + decoded  # scan both
+        url_decoded = urllib.parse.unquote(text)
+        if url_decoded != text:
+            decoded_parts.append(url_decoded)
     except Exception:
         pass
-    return decoded
+
+    # Base64 decode — scan for base64-looking substrings and decode them
+    # Match sequences of base64 characters that are at least 16 chars long
+    # (shorter sequences have too many false positives)
+    for m in re.finditer(r'[A-Za-z0-9+/]{16,}={0,2}', text):
+        chunk = m.group()
+        try:
+            decoded_bytes = base64.b64decode(chunk, validate=True)
+            decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
+            if _accept_decoded_text(decoded_str):
+                decoded_parts.append(decoded_str)
+        except (binascii.Error, ValueError):
+            pass
+
+    # Base64url decode — URL-safe variant using - and _
+    for m in re.finditer(r'[A-Za-z0-9-_]{16,}={0,2}', text):
+        chunk = m.group()
+        try:
+            decoded_bytes = base64.urlsafe_b64decode(chunk)
+            decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
+            if _accept_decoded_text(decoded_str):
+                decoded_parts.append(decoded_str)
+        except (binascii.Error, ValueError):
+            pass
+
+    # Hex decode — scan for hex-looking substrings (even length, at least 20 chars)
+    for m in re.finditer(r'[0-9a-fA-F]{20,}', text):
+        chunk = m.group()
+        try:
+            decoded_bytes = bytes.fromhex(chunk)
+            decoded_str = decoded_bytes.decode('utf-8', errors='ignore')
+            if _accept_decoded_text(decoded_str):
+                decoded_parts.append(decoded_str)
+        except ValueError:
+            pass
+
+    return " ".join(decoded_parts)
 
 
 def _detect_structural_injection(text):
@@ -91,6 +149,30 @@ def _detect_structural_injection(text):
         for m in pattern.finditer(text):
             findings.append((
                 f"structural_injection:{field_name}",
+                m.group()
+            ))
+    return findings
+
+
+def _detect_yaml_injection(text):
+    """Detect YAML-like content in evidence that mimics control fields.
+
+    Looks for patterns like:  next_action: some_value
+    or:  error_category: "malicious"
+    when they appear outside a JSON structure (not inside a {...} block).
+    """
+    if not text or not isinstance(text, str):
+        return []
+    findings = []
+    for field_name in _CONTROL_FIELD_NAMES:
+        # Match YAML key-value: field_name: value  (not inside JSON quotes)
+        pattern = re.compile(
+            rf'(?<!["\'\w])({field_name})\s*:\s*["\']?([^"\'\n\r]{{1,80}})["\']?',
+            re.IGNORECASE
+        )
+        for m in pattern.finditer(text):
+            findings.append((
+                f"yaml_injection:{field_name}",
                 m.group()
             ))
     return findings
@@ -154,6 +236,12 @@ def sanitize_response(response_dict):
             warnings.extend([
                 {"field": field_path, "pattern": p, "match": m, "severity": "high"}
                 for p, m in struct_findings
+            ])
+        yaml_findings = _detect_yaml_injection(text)
+        if yaml_findings:
+            warnings.extend([
+                {"field": field_path, "pattern": p, "match": m, "severity": "high"}
+                for p, m in yaml_findings
             ])
 
     def _scan_evidence_list(field_name, items):
