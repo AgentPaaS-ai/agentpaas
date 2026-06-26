@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -35,7 +36,7 @@ func TestContainerSpec_CapAdd_NET_ADMIN(t *testing.T) {
 	}
 	hasNetAdmin := false
 	for _, cap := range info.HostConfig.CapAdd {
-		if cap == "NET_ADMIN" {
+		if strings.HasSuffix(cap, "NET_ADMIN") {
 			hasNetAdmin = true
 			break
 		}

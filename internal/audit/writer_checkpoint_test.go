@@ -144,6 +144,24 @@ func TestLoadOrGenerateCheckpointKeyPersists(t *testing.T) {
 	}
 }
 
+func TestLoadOrGenerateCheckpointKey_FilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "audit-checkpoint-key.der")
+
+	_, _, err := LoadOrGenerateCheckpointKey(keyPath)
+	if err != nil {
+		t.Fatalf("LoadOrGenerateCheckpointKey: %v", err)
+	}
+
+	fi, err := os.Stat(keyPath)
+	if err != nil {
+		t.Fatalf("Stat checkpoint key file: %v", err)
+	}
+	if fi.Mode().Perm() != 0600 {
+		t.Errorf("checkpoint key file permissions = %#o, want 0600", fi.Mode().Perm())
+	}
+}
+
 func TestNewAuditWriterBackwardCompatNoCheckpoints(t *testing.T) {
 	dir := t.TempDir()
 	auditPath := filepath.Join(dir, "audit.jsonl")
