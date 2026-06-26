@@ -708,7 +708,10 @@ func validateSecurePath(path string, mustExist bool) error {
 			return fmt.Errorf("path is in protected system directory: %s", path)
 		}
 	}
-	if err := rejectSymlinkComponents(resolved, mustExist); err != nil {
+	// Reject symlinks in the ORIGINAL clean path, not the resolved path.
+	// resolvePathSymlinks() resolves symlinks away, so checking the resolved
+	// path would never find them (security bug caught by adversary test).
+	if err := rejectSymlinkComponents(clean, mustExist); err != nil {
 		return err
 	}
 	return nil
