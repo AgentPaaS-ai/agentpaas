@@ -346,6 +346,16 @@ func lineColumnAtOffset(data []byte, offset int) (int, int) {
 	return line, column
 }
 
+// SetInvokeFunc wires Invoke to call the daemon's Run handler.
+func (s *Server) SetInvokeFunc(fn func(ctx context.Context, agentName string) (string, error)) {
+	s.triggerService.SetInvokeFunc(fn)
+}
+
+// SetInvokeFunc wires Invoke to the given run handler.
+func (s *TriggerService) SetInvokeFunc(fn func(ctx context.Context, agentName string) (string, error)) {
+	s.invokeFunc = fn
+}
+
 // Stop gracefully shuts down the server.
 func (s *Server) Stop() {
 	if s.restServer != nil {
@@ -369,6 +379,8 @@ type TriggerService struct {
 	runStore    *RunStore
 
 	cancelGracePeriod time.Duration
+
+	invokeFunc func(ctx context.Context, agentName string) (string, error)
 }
 
 // NewTriggerService creates the trigger service implementation.
@@ -430,6 +442,23 @@ func (s *TriggerService) Invoke(ctx context.Context, req *triggerv1.InvokeReques
 			return nil, status.Error(codes.AlreadyExists, "idempotency key conflict: different payload")
 		case IdempotencyNew:
 		}
+	}
+
+	if s.invokeFunc != nil {
+		actualRunID, err := s.invokeFunc(ctx, req.GetAgentName())
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "invoke agent: %v", err)
+		}
+		runID = actualRunID
+		run := &triggerv1.Run{
+			RunId:     runID,
+			AgentName: req.GetAgentName(),
+			Status:    triggerv1.RunStatus_RUN_STATUS_RUNNING,
+		}
+		entry := s.runStore.Register(runID, req.GetAgentName())
+		run.CreatedAt = entry.toRun().GetCreatedAt()
+		s.runStore.MarkStarted(runID)
+		return &triggerv1.InvokeResponse{Run: run}, nil
 	}
 
 	run := &triggerv1.Run{
