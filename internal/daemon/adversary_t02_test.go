@@ -14,14 +14,11 @@ import (
 // Tests attempt to break proxy routing, IP discovery, NO_PROXY, env injection claims.
 // Run: go test ./internal/daemon -race -count=1 -run 'AdversaryT02' -v
 
-// TestAdversaryT02_ProxyEnvInjection_MaliciousGatewayIP verifies that a malformed
-// gateway IP containing injection characters (newlines, quotes) does not
-// produce injectable env vars. This is a negative test for env var sanitization.
 func TestAdversaryT02_ProxyEnvInjection_MaliciousGatewayIP(t *testing.T) {
-	badIP := "172.18.0.42\nHTTP_PROXY=http://attacker:1234\n" // newline injection attempt
+	badIP := "172.18.0.42\nHTTP_PROXY=http://attacker:1234\n"
 	var capturedSpec runtime.ContainerSpec
 	mock := defaultMockRuntimeDriver()
-	mock.inspectContainerIPFunc = func(_ context.Context, id runtime.ContainerID, networkID string) (string, error) {
+	mock.inspectContainerIPFunc = func(_ context.Context, _ runtime.ContainerID, _ string) (string, error) {
 		return badIP, nil
 	}
 	mock.createFunc = func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
@@ -38,16 +35,14 @@ func TestAdversaryT02_ProxyEnvInjection_MaliciousGatewayIP(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Check that no env var contains the injected newline or attacker string.
+	// After fix: malicious IP should be rejected, no proxy env vars set.
 	for _, env := range capturedSpec.Env {
-		if strings.Contains(env, "\n") || strings.Contains(env, "attacker") {
-			t.Fatalf("ADVERSARY BREAK: env var injection succeeded: %q", env)
+		if strings.Contains(env, "HTTP_PROXY") || strings.Contains(env, "HTTPS_PROXY") {
+			t.Fatalf("ADVERSARY: proxy env var set despite malicious gateway IP: %q", env)
 		}
-	}
-	// Confirm the bad IP is used literally (current impl does no sanitization beyond fmt).
-	want := fmt.Sprintf("HTTP_PROXY=http://%s:7799", badIP)
-	if !containsEnv(capturedSpec.Env, want) {
-		t.Logf("note: literal bad IP used in proxy env (potential future sanitization gap)")
+		if strings.Contains(env, "\n") || strings.Contains(env, "attacker") {
+			t.Fatalf("ADVERSARY: env var injection succeeded: %q", env)
+		}
 	}
 }
 
