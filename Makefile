@@ -232,8 +232,21 @@ block14b-gate: build lint
 	@go test ./internal/daemon/... -race -count=1 -run "TestAuditTailer"
 	@echo "✓ Block 14B gate passed: gateway topology, policy enforcement, real-time egress, Stats, trigger server verified"
 
-block14c-gate:
-	@echo "Error: block14c-gate (install/docs/demo/release) is not implemented until Block 14C" && exit 1
+block14c-gate: build lint
+	@echo "==> Running Block 14C gate: install path, docs, demo, release"
+	@test -f .goreleaser.yaml || (echo "FAIL: .goreleaser.yaml missing" && exit 1)
+	@test -f Formula/agentpaas.rb || (echo "FAIL: Formula/agentpaas.rb missing" && exit 1)
+	@test -f .github/workflows/release.yml || (echo "FAIL: release.yml missing" && exit 1)
+	@test -f README.md || (echo "FAIL: README.md missing" && exit 1)
+	@test -f docs/quickstart.md || (echo "FAIL: docs/quickstart.md missing" && exit 1)
+	@test -f docs/how-enforcement-works.md || (echo "FAIL: docs/how-enforcement-works.md missing" && exit 1)
+	@test -f docs/known-limitations.md || (echo "FAIL: docs/known-limitations.md missing" && exit 1)
+	@test -f docs/policy-reference.md || (echo "FAIL: docs/policy-reference.md missing" && exit 1)
+	@test -f docs/audit-export.md || (echo "FAIL: docs/audit-export.md missing" && exit 1)
+	@grep -q "brew install agentpaas/tap/agentpaas" README.md || (echo "FAIL: README missing install command" && exit 1)
+	@grep -q "Zero telemetry" README.md || (echo "FAIL: README missing zero telemetry statement" && exit 1)
+	@echo "✓ Block 14C gate passed: goreleaser, formula, CI, README, docs verified"
+	@echo "  NOTE: volunteer clean-machine test (2 users <15 min) is a manual gate — see execution plan §14C"
 
 block14-gate: block14a0-gate block14a-gate block14b-gate block14c-gate
 	@echo "==> All Block 14 sub-segment gates passed (14A0 → 14A → 14B → 14C)"
