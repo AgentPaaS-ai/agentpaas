@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -272,6 +273,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: discover gateway IP: %v\n", err)
 		// Non-fatal: agent will use direct connections (which fail on internal network)
+	}
+	if gatewayIP != "" {
+		// Validate the IP address to prevent env var injection.
+		// Docker returns a valid IP, but we validate defensively.
+		if ip := net.ParseIP(gatewayIP); ip == nil {
+			fmt.Fprintf(os.Stderr, "daemon: gateway IP %q is not a valid IP address, skipping proxy env\n", gatewayIP)
+			gatewayIP = ""
+		}
 	}
 
 	proxyEnv := []string{
