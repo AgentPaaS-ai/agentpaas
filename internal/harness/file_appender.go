@@ -1,8 +1,10 @@
 package harness
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -25,17 +27,79 @@ type FileAuditAppender struct {
 	prevHash string // hash of the last written record
 }
 
+// lastRecordHashFromFile reads the record_hash from the last non-empty JSONL line.
+// Returns empty string if the file is empty, unreadable, or the last line is invalid.
+func lastRecordHashFromFile(path string) string {
+	fi, err := os.Stat(path)
+	if err != nil || fi.Size() == 0 {
+		return ""
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "harness: seed prevHash: open %s: %v\n", path, err)
+		return ""
+	}
+	defer func() { _ = f.Close() }()
+
+	const tailRead = 4096
+	readSize := int64(tailRead)
+	if fi.Size() < readSize {
+		readSize = fi.Size()
+	}
+	if _, err := f.Seek(-readSize, io.SeekEnd); err != nil {
+		fmt.Fprintf(os.Stderr, "harness: seed prevHash: seek %s: %v\n", path, err)
+		return ""
+	}
+	buf := make([]byte, readSize)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		fmt.Fprintf(os.Stderr, "harness: seed prevHash: read %s: %v\n", path, err)
+		return ""
+	}
+	buf = buf[:n]
+
+	lines := bytes.Split(buf, []byte{'\n'})
+	var lastLine []byte
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		if len(line) > 0 {
+			lastLine = line
+			break
+		}
+	}
+	if len(lastLine) == 0 {
+		fmt.Fprintf(os.Stderr, "harness: seed prevHash: no non-empty line in %s\n", path)
+		return ""
+	}
+
+	var tail struct {
+		RecordHash string `json:"record_hash"`
+	}
+	if err := json.Unmarshal(lastLine, &tail); err != nil {
+		fmt.Fprintf(os.Stderr, "harness: seed prevHash: parse last line in %s: %v\n", path, err)
+		return ""
+	}
+	if tail.RecordHash == "" {
+		fmt.Fprintf(os.Stderr, "harness: seed prevHash: missing record_hash in last line of %s\n", path)
+		return ""
+	}
+	return tail.RecordHash
+}
+
 // NewFileAuditAppender opens (or creates) the file at path for appending.
-// The file is created with mode 0600.
+// The file is created with mode 0600. If the file already contains records,
+// prevHash is seeded from the last line's record_hash so the hash chain continues.
 func NewFileAuditAppender(path string) (*FileAuditAppender, error) {
 	if path == "" {
 		return nil, fmt.Errorf("harness: audit path is empty")
 	}
+	prevHash := lastRecordHashFromFile(path)
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("harness: open audit file %s: %w", path, err)
 	}
-	return &FileAuditAppender{file: f}, nil
+	return &FileAuditAppender{file: f, prevHash: prevHash}, nil
 }
 
 // Append writes a single hash-chained audit record as a JSON line.

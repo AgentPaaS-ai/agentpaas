@@ -191,3 +191,60 @@ func TestFileAuditAppender_ConcurrentAppends(t *testing.T) {
 		t.Fatalf("genesis prev_hash seen %d times, want 1", seenPrev[""])
 	}
 }
+
+func TestFileAuditAppender_SeedsPrevHashOnReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "harness-audit.jsonl")
+
+	appender1, err := NewFileAuditAppender(path)
+	if err != nil {
+		t.Fatalf("NewFileAuditAppender: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := appender1.Append(audit.AuditRecord{
+			Timestamp: "2026-01-02T03:04:05Z",
+			EventType: "event",
+			Actor:     "harness",
+			Payload:   map[string]interface{}{"n": i},
+		}); err != nil {
+			t.Fatalf("Append record %d: %v", i, err)
+		}
+	}
+	if err := appender1.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	recordsBefore := readHarnessAuditJSONL(t, path)
+	if len(recordsBefore) != 3 {
+		t.Fatalf("record count before reopen = %d, want 3", len(recordsBefore))
+	}
+	thirdHash := recordsBefore[2].RecordHash
+	if thirdHash == "" {
+		t.Fatal("third record RecordHash is empty")
+	}
+
+	appender2, err := NewFileAuditAppender(path)
+	if err != nil {
+		t.Fatalf("NewFileAuditAppender reopen: %v", err)
+	}
+	defer func() { _ = appender2.Close() }()
+
+	if err := appender2.Append(audit.AuditRecord{
+		Timestamp: "2026-01-02T03:04:06Z",
+		EventType: "event",
+		Actor:     "harness",
+		Payload:   map[string]interface{}{"n": 3},
+	}); err != nil {
+		t.Fatalf("Append 4th record: %v", err)
+	}
+
+	records := readHarnessAuditJSONL(t, path)
+	if len(records) != 4 {
+		t.Fatalf("record count = %d, want 4", len(records))
+	}
+	if records[3].PrevHash != thirdHash {
+		t.Fatalf("4th record PrevHash = %q, want %q (3rd record_hash)", records[3].PrevHash, thirdHash)
+	}
+	if records[3].PrevHash == "" {
+		t.Fatal("4th record PrevHash must not be empty after reopen")
+	}
+}
