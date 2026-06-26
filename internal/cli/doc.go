@@ -12,20 +12,20 @@
 //	    install            — Install as a system service (not yet implemented)
 //	    uninstall          — Remove from system services (not yet implemented)
 //	  doctor               — Run system diagnostics (v0 stub)
-//	  pack                 — Build an agent image (not yet implemented)
-//	  run                  — Start a new agent run (not yet implemented)
-//	  stop                 — Terminate a running agent (not yet implemented)
-//	  logs                 — Follow agent logs (not yet implemented)
-//	  policy               — Policy management commands (not yet implemented)
-//	  secrets              — Secret management commands (not yet implemented)
-//	  audit                — Audit log commands (not yet implemented)
-//	  validate             — Validate an agent project (not yet implemented)
-//	  summarize            — Summarize a completed run (not yet implemented)
-//	  explain-failure      — Analyze a failed run (not yet implemented)
-//	  explain-denial       — Explain a policy denial (not yet implemented)
-//	  recommend-patch      — Suggest a policy patch (not yet implemented)
-//	  timeline             — Show run timeline (not yet implemented)
-//	  next-action          — Recommend next action (not yet implemented)
+//	  pack                 — Build an agent image
+//	  run                  — Start a new agent run
+//	  stop                 — Terminate a running agent
+//	  logs                 — Follow agent logs
+//	  policy               — Policy management commands
+//	  secrets              — Secret management commands
+//	  audit                — Audit log commands
+//	  validate             — Validate an agent project
+//	  summarize            — Summarize a completed run
+//	  explain-failure      — Analyze a failed run
+//	  explain-denial       — Explain a policy denial
+//	  recommend-patch      — Suggest a policy patch
+//	  timeline             — Show run timeline
+//	  next-action          — Recommend next action
 //
 // Global flags:
 //
