@@ -115,6 +115,8 @@ class AdversarySanitizerBypassTests(unittest.TestCase):
         }
         with mock.patch.object(
             self.plugin.tools, "_resolve_agentpaas_binary", return_value="agentpaas"
+        ), mock.patch.object(
+            self.plugin.tools, "_check_daemon_socket", return_value=(True, None)
         ), mock.patch(
             "subprocess.run",
             return_value=mock.Mock(
