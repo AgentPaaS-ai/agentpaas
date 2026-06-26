@@ -65,7 +65,7 @@ redteam-smoke:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -251,6 +251,9 @@ block14c-gate: build lint
 block14-gate: block14a0-gate block14a-gate block14b-gate block14c-gate
 	@echo "==> All Block 14 sub-segment gates passed (14A0 → 14A → 14B → 14C)"
 
+block16-gate:
+	@echo "Error: block16-gate not yet implemented. See execution plan §16 (BLOCK 16)." && exit 1
+
 block15-gate:
 	@echo "Error: block15-gate is a manual/docs-only gate. See execution plan §15.2 use-case matrix." && exit 1
 
@@ -270,9 +273,10 @@ gates: ## List all available gate targets
 	@echo "  block11-gate - Hermes operator contract (golden flow)"
 	@echo "  block12-gate - P1 red-team smoke gate"
 	@echo "  block13-gate - Hermes integration plugin + e2e governance (ACTIVE)"
-	@echo "  block14-gate  - Post-B13 consolidated: correctness + security + egress + release (not implemented)"
+	@echo "  block14-gate  - Post-B13 consolidated: correctness + security + egress + release"
 	@echo "  block14a0-gate - B13 correctness fixes: run status, orphan reconciliation, sync, e2e"
 	@echo "  block14a-gate - Security remediation (B13.1, 8 tasks: T01-T08) (ACTIVE)"
 	@echo "  block14b-gate - Real-time egress timeline (B13.5)"
 	@echo "  block14c-gate - Install path, docs, demo, v0.1.0 release"
 	@echo "  block15-gate - Manual use-case assessment (docs-only gate)"
+	@echo "  block16-gate - P1 completion: LLM, credentials, policy, hardening, release"
