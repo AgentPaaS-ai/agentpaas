@@ -1,0 +1,29 @@
+I'll start by reading the orphan reconciliation code and tests, then apply all six adversary fixes on branch `feat/b14a0-t02-fix`.
+Checking the mock runtime driver and audit helpers used in tests.
+Implementing all six fixes in `reconcileOrphanedContainers` and adding the two new tests.
+Running build, tests, and lint to verify the changes.
+All 6 adversary findings are fixed on branch `feat/b14a0-t02-fix` and committed.
+
+### Changes in `reconcileOrphanedContainers`
+
+1. **Security (Fix 1):** `ListContainers` now filters on both `LabelManagedBy` and `LabelResourceType`, so only AgentPaaS-owned agent containers are reconciled.
+
+2. **Efficiency (Fix 2):** Internal networks are listed once before the container loop (with managed-by + resource-type filters) and reused per container.
+
+3. **Audit (Fix 3):** `reconciliation_complete` is always emitted, including when `removals` is 0.
+
+4. **Audit (Fix 4):** `container_reconciled` action is `"stopped_and_removed"` only when Stop succeeds on a running container; otherwise `"removed"`.
+
+5. **Audit (Fix 5):** On Remove failure, a `container_reconciled` event is emitted with `action: "remove_failed"` before continuing.
+
+6. **Tests (Fix 6):** Added `TestReconcileOrphans_RemoveFailure_EmitsAuditEvent` and `TestReconcileOrphans_ListContainersError_ProceedsToNetworkReconciliation`.
+
+### Verification
+
+- `go build ./...` — passed
+- `go test ./internal/daemon/... -count=1 -race -timeout 120s` — all tests passed
+- `golangci-lint run ./internal/daemon/...` — 0 issues
+
+### Commit
+
+`fix(14a0-t02): harden orphan reconciliation per adversary review` (`0f9bdab`)

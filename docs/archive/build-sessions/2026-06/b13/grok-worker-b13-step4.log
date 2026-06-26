@@ -1,0 +1,35 @@
+I'll implement harness audit ingestion on Stop: read the current handlers and tests, then wire up `lookupRun`, `ingestHarnessAudit`, and the new test.
+Implementing the changes: updating `lookupRun`, adding `ingestHarnessAudit`, and modifying the Stop handler.
+Adding `TestStop_IngestsHarnessAudit` and extending the mock runtime with Stop/Remove support.
+Fixing the AuditQuery test: egress events map to `EVENT_TYPE_UNSPECIFIED`, so I'll verify via payload content instead.
+Running build, tests, and lint.
+`Stop` doesn't delegate to the mock driver unlike `Create` and `Remove`. Adding driver delegation so the test can run.
+Step 4 is implemented. Here's what changed:
+
+### `control_handlers.go`
+
+1. **`lookupRun`** now returns `(containerID, netID, auditDir)` and includes `tracked.AuditDir`.
+
+2. **`ingestHarnessAudit`** reads `{AuditDir}/harness-audit.jsonl`, appends each record to the daemon audit chain (injecting `run_id` when missing), rebuilds the SQLite index, and logs errors without failing Stop.
+
+3. **`Stop`** calls `ingestHarnessAudit` after container/network removal and before `untrackRun`.
+
+4. **`Logs`** updated for the new `lookupRun` signature.
+
+### `control_handlers_test.go`
+
+- **`TestStop_IngestsHarnessAudit`** — Run → write harness JSONL → Stop → verify records in daemon audit chain and via `AuditQuery`.
+- **`TestRunTracking`** updated for the third return value.
+- **`mockRuntimeDriver`** extended with `Stop`, `Remove`, and `RemoveNetwork` hooks.
+
+### `internal/runtime/docker.go` (small fix)
+
+`Stop` now delegates to the test driver when set (same pattern as `Create`/`Remove`). Without this, the mock runtime couldn't satisfy `Stop()` in the test.
+
+### Verification
+
+```
+go build ./...                              ✓
+go test ./internal/daemon/... -count=1      ✓
+golangci-lint run ./internal/daemon/...     ✓ (0 issues)
+```

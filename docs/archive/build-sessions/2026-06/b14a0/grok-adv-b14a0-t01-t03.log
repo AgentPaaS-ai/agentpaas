@@ -1,0 +1,71 @@
+I'll read the implementation and existing tests first, then add all six adversarial break tests and run them with the race detector.
+Checking helper functions and event types to design the adversarial tests.
+Writing all six adversarial tests and running them with the race detector.
+Fixing the late-status test: `waitForRunStatus` with an empty string was incorrect.
+Investigating why `Status()` wasn't called and why double `Stop` succeeds.
+Updating Break 6: `DockerRuntime.Status` doesn't delegate to the mock driver, so I'll test the behavioral outcome instead.
+## Adversarial Test Results
+
+Ran `go test -race -count=1 -run TestAdv ./internal/daemon/...`. Summary:
+
+### PASS — implementation handles correctly
+
+| Test | What it verified |
+|------|------------------|
+| **Break 1: `TestAdv_ConcurrentSetStatusAndStop`** | Concurrent `setRunStatus` + `Stop` under `-race`: no panic, no data race. Audit status is `succeeded` or `failed`; terminal event is valid. |
+| **Break 3: `TestAdv_StopBeforeCancelSet`** | `Stop` with `CancelInvoke == nil` does not panic; run is untracked cleanly. |
+| **Break 4: `TestAdv_LateStatusUpdateAfterStop`** | After force-`Stop` untracks the run, a late invoke completion does not change audit status or events. `setRunStatus` after untrack is a no-op. |
+
+### FAIL — real bugs found
+
+| Test | Bug |
+|------|-----|
+| **Break 2: `TestAdv_StopAfterUntrackReturnsNotFound`** | Two concurrent `Stop` calls both succeed (`success=2, notFound=0`). No serialization: both pass `lookupRunWithStatus` before either calls `untrackRun`. Second `Stop` should return `NotFound`. |
+| **Break 5: `TestAdv_ForceStopSucceededAuditInconsistent`** | Force-stop after succeeded invoke: event is `run_cancelled` but audit `status` is `"failed"`. Event and audit disagree; spec expects `"cancelled"` in both. |
+| **Break 6: `TestAdv_StatusCheckDetectsCrash`** | Invoke still `"running"` at stop time → audit `status` is `"succeeded"`. Crash while invoke is in flight is not detected. The `rt.Status()` guard only reinforces `"failed"` when already failed — it never upgrades `running` → `failed`. Also, `DockerRuntime.Status` does not delegate to the test driver (`d.cli == nil`), so that branch errors silently in unit tests. |
+
+### Bug details
+
+**Break 2 — double Stop race** (`control_handlers.go`):
+
+```275:278:internal/daemon/control_handlers.go
+	tracked, ok := s.lookupRunWithStatus(runID)
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "run %q not found", runID)
+	}
+```
+
+No lock is held through untrack; concurrent `Stop` calls can both observe the run as tracked.
+
+**Break 5 — force-stop inconsistency** (`control_handlers.go`):
+
+```300:302:internal/daemon/control_handlers.go
+	finalStatus := tracked.Status
+	if req.GetForce() {
+		finalStatus = "failed"
+```
+
+vs.
+
+```331:332:internal/daemon/control_handlers.go
+		case req.GetForce():
+			eventType = trigger.EventRunCancelled
+```
+
+Audit says `"failed"`; event says cancelled.
+
+**Break 6 — dead/useless Status logic** (`control_handlers.go`):
+
+```309:316:internal/daemon/control_handlers.go
+		case "running":
+			finalStatus = "succeeded"
+		}
+	}
+	if containerStatus, statusErr := rt.Status(ctx, containerID); statusErr == nil {
+		if containerStatus == runtime.ContainerStatusStopped && tracked.Status == "failed" {
+			finalStatus = "failed"
+```
+
+`running` maps to `succeeded`. The `Status()` check only re-asserts `"failed"` when already failed — it cannot detect a container crash the invoke goroutine missed.
+
+All six tests are in `internal/daemon/control_handlers_test.go`. No fixes were applied per your instructions.
