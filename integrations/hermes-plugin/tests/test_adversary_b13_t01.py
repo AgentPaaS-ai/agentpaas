@@ -27,9 +27,9 @@ class AdversaryBinaryResolverTests(unittest.TestCase):
         os.environ.clear()
         os.environ.update(self.original_env)
 
-    # REGRESSION: relative AGENTPAAS_CLI rejected; absolute executable path accepted
+    # REGRESSION: relative AGENTPAAS_CLI rejected; non-agentpaas binary rejected
     def test_adversary_agentpaas_cli_env_injection(self):
-        """HIGH: Relative AGENTPAAS_CLI is rejected; explicit absolute path is accepted."""
+        """HIGH: Relative AGENTPAAS_CLI is rejected; /bin/echo is rejected (not agentpaas)."""
         with mock.patch.dict(os.environ, {"AGENTPAAS_CLI": "bin/echo"}, clear=False):
             with self.assertRaises(ValueError) as ctx:
                 self.plugin.tools._resolve_agentpaas_binary()
@@ -37,8 +37,9 @@ class AdversaryBinaryResolverTests(unittest.TestCase):
 
         absolute = "/bin/echo"
         with mock.patch.dict(os.environ, {"AGENTPAAS_CLI": absolute}, clear=False):
-            resolved = self.plugin.tools._resolve_agentpaas_binary()
-            self.assertEqual(resolved, os.path.realpath(absolute))
+            with self.assertRaises(ValueError) as ctx:
+                self.plugin.tools._resolve_agentpaas_binary()
+            self.assertIn("agentpaas", str(ctx.exception).lower())
 
     # REGRESSION: empty AGENTPAAS_CLI is ignored (falls through to normal resolution)
     def test_adversary_agentpaas_cli_empty(self):
@@ -57,9 +58,9 @@ class AdversaryBinaryResolverTests(unittest.TestCase):
                     self.plugin.tools._resolve_agentpaas_binary()
                 self.assertIn("not a file", str(ctx.exception))
 
-    # REGRESSION: symlink AGENTPAAS_CLI resolves to real target path
+    # REGRESSION: symlink AGENTPAAS_CLI outside allow-list is rejected
     def test_adversary_agentpaas_cli_symlink(self):
-        """HIGH: AGENTPAAS_CLI symlink is resolved to the real executable path."""
+        """HIGH: AGENTPAAS_CLI symlink outside allowed dirs is rejected."""
         with tempfile.TemporaryDirectory() as tmpdir:
             real_bin = Path(tmpdir) / "real"
             real_bin.write_text("#!/bin/sh\necho malicious")
@@ -67,8 +68,9 @@ class AdversaryBinaryResolverTests(unittest.TestCase):
             link = Path(tmpdir) / "evil_link"
             link.symlink_to(real_bin)
             with mock.patch.dict(os.environ, {"AGENTPAAS_CLI": str(link)}, clear=False):
-                resolved = self.plugin.tools._resolve_agentpaas_binary()
-                self.assertEqual(resolved, os.path.realpath(str(link)))
+                with self.assertRaises(ValueError) as ctx:
+                    self.plugin.tools._resolve_agentpaas_binary()
+                self.assertIn("outside allowed directories", str(ctx.exception))
 
     # ADVERSARY BREAK: path traversal via relative AGENTPAAS_CLI or candidates
     def test_adversary_path_traversal_in_candidates(self):

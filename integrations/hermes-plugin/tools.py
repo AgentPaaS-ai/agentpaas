@@ -238,6 +238,61 @@ def _resolve_socket_path():
     )
 
 
+_CLI_BINARY_ALLOW_LIST = (
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+    "/usr/bin",
+    "/bin",
+)
+
+
+def _check_binary_in_allow_list(path):
+    """Check that the binary path is under an allowed directory.
+
+    Raises ValueError if not.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_bin = os.path.abspath(os.path.join(here, "..", "..", "bin"))
+    allowed_dirs = list(_CLI_BINARY_ALLOW_LIST) + [
+        os.path.expanduser("~/.local/bin"),
+        repo_bin,
+    ]
+    for allowed in allowed_dirs:
+        allowed_real = os.path.realpath(allowed)
+        if path == allowed_real or path.startswith(allowed_real + os.sep):
+            return
+    raise ValueError(
+        f"AGENTPAAS_CLI binary outside allowed directories: {path}. "
+        f"Allowed: {', '.join(allowed_dirs)}"
+    )
+
+
+def _verify_agentpaas_binary(path):
+    """Verify a binary is actually agentpaas by checking --version output.
+
+    Returns True if verified, False otherwise.
+    Raises ValueError with details if verification fails.
+    """
+    try:
+        result = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        output = (result.stdout + " " + result.stderr).lower()
+        if "agentpaas" in output:
+            return True
+        raise ValueError(
+            f"AGENTPAAS_CLI binary does not appear to be agentpaas "
+            f"(--version output: {result.stdout[:200]})"
+        )
+    except subprocess.TimeoutExpired:
+        raise ValueError(
+            "AGENTPAAS_CLI binary --version timed out (not a valid agentpaas binary?)"
+        )
+
+
 def _resolve_agentpaas_binary():
     """Find the AgentPaaS CLI binary (strict AGENTPAAS_CLI validation)."""
     if env_override := os.getenv("AGENTPAAS_CLI"):
@@ -253,6 +308,8 @@ def _resolve_agentpaas_binary():
                 raise ValueError(f"AGENTPAAS_CLI is not a file: {env_override}")
             if not os.access(real, os.X_OK):
                 raise ValueError(f"AGENTPAAS_CLI is not executable: {env_override}")
+            _check_binary_in_allow_list(real)
+            _verify_agentpaas_binary(real)
             return real
     p = shutil.which("agentpaas")
     if p:
