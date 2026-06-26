@@ -23,6 +23,8 @@ func EgressFirewallEnabled() bool {
 
 // InitEgressFirewall applies best-effort iptables OUTPUT rules before the Python worker starts.
 // Skips gracefully when disabled, not on Linux, or when iptables is unavailable.
+// Call DropNetAdminCapability immediately after this (see cmd/harness/main.go) so the agent
+// process cannot flush rules via inherited CAP_NET_ADMIN.
 func InitEgressFirewall() {
 	if !EgressFirewallEnabled() {
 		log.Printf("harness: egress firewall disabled (AGENTPAAS_EGRESS_FIREWALL=%q)", os.Getenv("AGENTPAAS_EGRESS_FIREWALL"))

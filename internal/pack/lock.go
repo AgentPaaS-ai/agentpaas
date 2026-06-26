@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -528,8 +529,19 @@ func publicKeyPEM(pub *ecdsa.PublicKey) ([]byte, error) {
 
 // isLocalRegistryRef returns true if the image reference points to a local registry.
 func isLocalRegistryRef(imageRef string) bool {
-	return strings.Contains(imageRef, "localhost:") ||
-		strings.Contains(imageRef, "127.0.0.1:")
+	// Extract the registry host from the image ref.
+	// Image refs: [host[:port]/]path[:tag][@digest]
+	// The host is everything before the first "/".
+	host := imageRef
+	if idx := strings.Index(imageRef, "/"); idx > 0 {
+		host = imageRef[:idx]
+	}
+	// Check if the host is exactly localhost or 127.0.0.1 (with optional port)
+	// Must be a prefix match on the host component, not a substring of the whole ref.
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 // buildCosignSignArgs constructs cosign sign CLI args for imageRef.

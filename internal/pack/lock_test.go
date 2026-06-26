@@ -691,4 +691,26 @@ func TestSignImage_LocalVsProdTlogArgs(t *testing.T) {
 	if cosignArgsContainFlag(prodVerify, "--insecure-ignore-tlog") {
 		t.Fatalf("prod verify args must not include --insecure-ignore-tlog: %v", prodVerify)
 	}
+
+	spoofRefs := []string{
+		"localhost.evil.com:5000/img",
+		"127.0.0.1.attacker.net:5000/img",
+	}
+	for _, ref := range spoofRefs {
+		if isLocalRegistryRef(ref) {
+			t.Fatalf("spoof ref %q must not be treated as local registry", ref)
+		}
+		signArgs, cleanup, err := buildCosignSignArgs(ref, keyPath)
+		if err != nil {
+			t.Fatalf("buildCosignSignArgs(%q): %v", ref, err)
+		}
+		cleanup()
+		if cosignArgsContainFlag(signArgs, "--signing-config") {
+			t.Fatalf("spoof ref %q sign args must not include --signing-config (production): %v", ref, signArgs)
+		}
+		verifyArgs := buildCosignVerifyArgs(ref, pubKey)
+		if cosignArgsContainFlag(verifyArgs, "--insecure-ignore-tlog") {
+			t.Fatalf("spoof ref %q verify args must not include --insecure-ignore-tlog: %v", ref, verifyArgs)
+		}
+	}
 }

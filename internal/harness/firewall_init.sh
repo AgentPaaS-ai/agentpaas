@@ -24,3 +24,9 @@ iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT 2>/dev/null || true
 
 # Drop all other outbound (direct internet access blocked)
 iptables -P OUTPUT DROP 2>/dev/null || true
+
+# IPv6: same policy (drop all outbound except loopback/established)
+ip6tables -A OUTPUT -o lo -j ACCEPT 2>/dev/null || true
+ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+# Drop all other IPv6 outbound
+ip6tables -P OUTPUT DROP 2>/dev/null || true

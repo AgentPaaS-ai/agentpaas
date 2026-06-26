@@ -14,6 +14,7 @@ import (
 
 func main() {
 	harness.InitEgressFirewall()
+	harness.DropNetAdminCapability()
 
 	cfg := harness.Config{
 		Addr:           envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
