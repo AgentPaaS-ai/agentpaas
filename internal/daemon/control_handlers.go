@@ -746,6 +746,34 @@ func (s *controlServer) lookupRun(runID string) (runtime.ContainerID, string, st
 	return tracked.Container, tracked.Network, tracked.AuditDir
 }
 
+// verifyHarnessChain validates the hash chain of harness audit records.
+// It checks:
+// 1. Each record's prev_hash matches the previous record's record_hash
+// 2. Each record's record_hash matches a recomputed hash from canonical JSON
+// Returns nil if the chain is valid, or an error describing the break.
+func verifyHarnessChain(records []audit.AuditRecord) error {
+	if len(records) == 0 {
+		return nil
+	}
+	for i, rec := range records {
+		computedHash, err := rec.ComputeRecordHash()
+		if err != nil {
+			return fmt.Errorf("harness chain: line %d: compute hash: %w", i+1, err)
+		}
+		if rec.RecordHash != computedHash {
+			return fmt.Errorf("harness chain: line %d: record_hash mismatch: stored %q, recomputed %q",
+				i+1, rec.RecordHash, computedHash)
+		}
+		if i > 0 {
+			if rec.PrevHash != records[i-1].RecordHash {
+				return fmt.Errorf("harness chain: line %d: prev_hash mismatch: got %q, expected %q",
+					i+1, rec.PrevHash, records[i-1].RecordHash)
+			}
+		}
+	}
+	return nil
+}
+
 // ingestHarnessAudit reads the harness audit JSONL from the host audit
 // directory and appends each record to the daemon's audit chain.
 // Errors are logged but do not fail the Stop operation — the container
@@ -763,6 +791,23 @@ func (s *controlServer) ingestHarnessAudit(runID, auditDir string) {
 	if len(records) == 0 {
 		return
 	}
+
+	if err := verifyHarnessChain(records); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: harness audit chain verification failed (%s): %v\n", runID, err)
+		tamperRecord := audit.AuditRecord{
+			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+			EventType: "harness_audit_chain_broken",
+			Actor:     "daemon",
+			Payload: map[string]interface{}{
+				"run_id": runID,
+				"error":  err.Error(),
+				"action": "audit_ingestion_refused",
+			},
+		}
+		_ = s.auditWriter.Append(tamperRecord)
+		return
+	}
+
 	for _, record := range records {
 		// Ensure run_id is present in payload for audit queries.
 		if record.Payload == nil {
