@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,10 +24,6 @@ import (
 // defaultImage is the default container image used for agent and gateway
 // containers when no image is specified in the spec.
 const defaultImage = "alpine:latest"
-
-// errDockerNotImplemented is returned by DockerRuntime methods that are
-// not yet implemented (Stats, Logs).
-var errDockerNotImplemented = errors.New("DockerRuntime: not yet implemented")
 
 // DockerRuntime is a Docker Engine implementation of RuntimeDriver that
 // delegates method calls to the Docker Engine API.
@@ -288,9 +285,86 @@ func (d *DockerRuntime) Status(ctx context.Context, id ContainerID) (ContainerSt
 	}
 }
 
-// Stats returns resource usage for a Docker container. Not yet implemented.
-func (d *DockerRuntime) Stats(_ context.Context, _ ContainerID) (ContainerStats, error) {
-	return ContainerStats{}, errDockerNotImplemented
+// dockerStatsJSON mirrors the subset of Docker's container stats JSON needed
+// for resource monitoring. Field names match the Docker Engine API response.
+type dockerStatsJSON struct {
+	CPUStats struct {
+		CPUUsage struct {
+			TotalUsage uint64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+		OnlineCPUs     uint32 `json:"online_cpus"`
+	} `json:"cpu_stats"`
+	PreCPUStats struct {
+		CPUUsage struct {
+			TotalUsage uint64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemCPUUsage uint64 `json:"system_cpu_usage"`
+	} `json:"precpu_stats"`
+	MemoryStats struct {
+		Usage uint64 `json:"usage"`
+		Limit uint64 `json:"limit"`
+	} `json:"memory_stats"`
+	PidsStats struct {
+		Current uint64 `json:"current"`
+	} `json:"pids_stats"`
+}
+
+// computeCPUPercent calculates container CPU usage as a percentage (0.0-100.0)
+// from Docker stats deltas. Returns 0 for edge cases (zero deltas, negative
+// deltas, or zero online_cpus).
+func computeCPUPercent(cpuDelta, systemDelta int64, onlineCPUs uint32) float64 {
+	if onlineCPUs == 0 || systemDelta <= 0 || cpuDelta < 0 {
+		return 0
+	}
+	return (float64(cpuDelta) / float64(systemDelta)) * float64(onlineCPUs) * 100.0
+}
+
+// parseContainerStatsJSON decodes a one-shot Docker stats JSON payload into
+// ContainerStats. Exported for unit testing of parsing and calculation logic.
+func parseContainerStatsJSON(data []byte) (ContainerStats, error) {
+	var raw dockerStatsJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return ContainerStats{}, fmt.Errorf("parse container stats JSON: %w", err)
+	}
+
+	cpuDelta := int64(raw.CPUStats.CPUUsage.TotalUsage) - int64(raw.PreCPUStats.CPUUsage.TotalUsage)
+	systemDelta := int64(raw.CPUStats.SystemCPUUsage) - int64(raw.PreCPUStats.SystemCPUUsage)
+
+	return ContainerStats{
+		CPUPercent: computeCPUPercent(cpuDelta, systemDelta, raw.CPUStats.OnlineCPUs),
+		MemoryMB:   float64(raw.MemoryStats.Usage) / 1024 / 1024,
+		PIDs:       int(raw.PidsStats.Current),
+	}, nil
+}
+
+// Stats returns resource usage for a Docker container.
+func (d *DockerRuntime) Stats(ctx context.Context, id ContainerID) (ContainerStats, error) {
+	if d.driver != nil {
+		return d.driver.Stats(ctx, id)
+	}
+	if string(id) == "" {
+		return ContainerStats{}, fmt.Errorf("%w: empty container ID", ErrContainerNotFound)
+	}
+	if d.cli == nil {
+		return ContainerStats{}, errors.New("DockerRuntime: not initialized (no Docker client)")
+	}
+
+	statsResp, err := d.cli.ContainerStats(ctx, string(id), false)
+	if err != nil {
+		if errdefs.IsNotFound(err) {
+			return ContainerStats{}, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
+		}
+		return ContainerStats{}, fmt.Errorf("container stats %q: %w", string(id), err)
+	}
+	defer func() { _ = statsResp.Body.Close() }()
+
+	data, err := io.ReadAll(statsResp.Body)
+	if err != nil {
+		return ContainerStats{}, fmt.Errorf("read container stats %q: %w", string(id), err)
+	}
+
+	return parseContainerStatsJSON(data)
 }
 
 // Logs returns a reader for a Docker container's stdout/stderr output.
