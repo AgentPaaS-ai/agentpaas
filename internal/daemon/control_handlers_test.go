@@ -1689,3 +1689,102 @@ func TestReconcileOrphans_ListContainersError_ProceedsToNetworkReconciliation(t 
 		t.Error("reconciliation_complete audit record missing")
 	}
 }
+
+func TestReconcile_RemovesGatewayAndEgressNetwork(t *testing.T) {
+	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
+		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
+	}
+
+	runID := "run-orphan-gateway"
+	gatewayID := "orphan-gateway-1"
+	egressNetworkID := "orphan-egress-net-1"
+
+	var stopCalled, removeCalled, removeNetworkCalled bool
+
+	mock := defaultMockRuntimeDriver()
+	mock.listContainersFunc = func(_ context.Context, labelFilters ...string) ([]runtime.ContainerInfo, error) {
+		for _, f := range labelFilters {
+			if f == runtime.LabelResourceType+"="+runtime.ResourceTypeGateway {
+				return []runtime.ContainerInfo{{
+					ID:           gatewayID,
+					RunID:        runID,
+					Status:       runtime.ContainerStatusRunning,
+					ResourceType: runtime.ResourceTypeGateway,
+					Labels:       runtime.Labels(runtime.ResourceTypeGateway, runID),
+				}}, nil
+			}
+		}
+		return nil, nil
+	}
+	mock.listNetworksFunc = func(_ context.Context, labelFilters ...string) ([]runtime.NetworkInfo, error) {
+		for _, f := range labelFilters {
+			if f == runtime.LabelResourceType+"="+runtime.ResourceTypeNetEgress {
+				return []runtime.NetworkInfo{{
+					ID:     egressNetworkID,
+					Labels: runtime.Labels(runtime.ResourceTypeNetEgress, runID),
+				}}, nil
+			}
+		}
+		return nil, nil
+	}
+	mock.stopFunc = func(_ context.Context, id runtime.ContainerID, _ *time.Duration) error {
+		stopCalled = true
+		if id != runtime.ContainerID(gatewayID) {
+			t.Errorf("stop called with id %q, want %q", id, gatewayID)
+		}
+		return nil
+	}
+	mock.removeFunc = func(_ context.Context, id runtime.ContainerID, force bool) error {
+		removeCalled = true
+		if id != runtime.ContainerID(gatewayID) {
+			t.Errorf("remove called with id %q, want %q", id, gatewayID)
+		}
+		if !force {
+			t.Error("remove called without force=true")
+		}
+		return nil
+	}
+	mock.removeNetworkFunc = func(_ context.Context, id runtime.NetworkID) error {
+		removeNetworkCalled = true
+		if id != runtime.NetworkID(egressNetworkID) {
+			t.Errorf("removeNetwork called with id %q, want %q", id, egressNetworkID)
+		}
+		return nil
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+	server.reconcileOrphanedContainers(context.Background())
+
+	if !stopCalled {
+		t.Error("expected Stop to be called for orphaned gateway container")
+	}
+	if !removeCalled {
+		t.Error("expected Remove to be called for orphaned gateway container")
+	}
+	if !removeNetworkCalled {
+		t.Error("expected RemoveNetwork to be called for orphaned egress network")
+	}
+
+	records, err := readAuditJSONL(filepath.Join(hp.State, "audit.jsonl"))
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+	var reconciled, complete bool
+	for _, record := range records {
+		switch record.EventType {
+		case "container_reconciled":
+			reconciled = true
+			if auditString(record.Payload, "run_id") != runID {
+				t.Errorf("container_reconciled run_id = %q, want %q", auditString(record.Payload, "run_id"), runID)
+			}
+		case "reconciliation_complete":
+			complete = true
+		}
+	}
+	if !reconciled {
+		t.Error("container_reconciled audit record missing")
+	}
+	if !complete {
+		t.Error("reconciliation_complete audit record missing")
+	}
+}

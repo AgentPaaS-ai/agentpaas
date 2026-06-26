@@ -2,11 +2,14 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -313,12 +316,34 @@ func (d *Daemon) Start(ctx context.Context) error {
 		triggerRESTAddr = "127.0.0.1:7717"
 	}
 
-	triggerSrv, err := trigger.New(trigger.ServerConfig{
+	triggerAPIKey := os.Getenv("AGENTPAAS_TRIGGER_API_KEY")
+	triggerExpose := os.Getenv("AGENTPAAS_TRIGGER_EXPOSE")
+	exposeTrigger := triggerExpose == "1" || strings.EqualFold(triggerExpose, "true")
+	if exposeTrigger && triggerAPIKey == "" {
+		fmt.Fprintf(os.Stderr, "--expose requires AGENTPAAS_TRIGGER_API_KEY to be set\n")
+		return fmt.Errorf("--expose requires AGENTPAAS_TRIGGER_API_KEY to be set")
+	}
+
+	triggerCfg := trigger.ServerConfig{
 		GRPCAddr: triggerGRPCAddr,
 		RESTAddr: triggerRESTAddr,
 		EventBus: d.eventBus,
 		Audit:    auditWriter,
-	})
+		Exposed:  exposeTrigger,
+	}
+	if triggerAPIKey != "" {
+		keyHash := sha256.Sum256([]byte(triggerAPIKey))
+		keyID := "env-" + hex.EncodeToString(keyHash[:8])
+		triggerCfg.Authenticator = trigger.NewAPIKeyAuthenticator(map[string]*trigger.APIKeyMeta{
+			triggerAPIKey: {
+				ID:     keyID,
+				Scopes: []string{"trigger"},
+			},
+		})
+		fmt.Fprintf(os.Stderr, "daemon: trigger server API key authentication enabled\n")
+	}
+
+	triggerSrv, err := trigger.New(triggerCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: trigger server init: %v\n", err)
 	} else {
