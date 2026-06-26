@@ -4,25 +4,38 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 	"github.com/docker/go-connections/nat"
 	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
 
 const (
-	// localRegistryPort avoids 5000, which macOS reserves for AirPlay Receiver.
-	localRegistryPort  = 5001
-	localRegistryName  = "agentpaas-registry"
-	localRegistryImage = "registry:2"
-	localRegistryHost  = "localhost"
+	// defaultLocalRegistryPort avoids 5000, which macOS reserves for AirPlay Receiver.
+	defaultLocalRegistryPort = 5001
+	localRegistryName        = "agentpaas-registry"
+	localRegistryImage       = "registry:2"
+	localRegistryHost        = "localhost"
 )
+
+var localRegistryPort = defaultLocalRegistryPort
+
+func init() {
+	if v := os.Getenv("AGENTPAAS_TEST_REGISTRY_PORT"); v != "" {
+		if p, err := strconv.Atoi(v); err == nil && p > 0 && p <= 65535 {
+			localRegistryPort = p
+		}
+	}
+}
 
 func localRegistryURL() string {
 	return fmt.Sprintf("%s:%d", localRegistryHost, localRegistryPort)
@@ -41,6 +54,18 @@ func normalizeDigest(d string) string {
 	return d
 }
 
+// IsRegistryPortConflict reports whether err indicates the configured registry
+// host port is already bound by a non-agentpaas process.
+func IsRegistryPortConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "agentpaas_test_registry_port") ||
+		strings.Contains(msg, "port is already allocated") ||
+		strings.Contains(msg, "bind for")
+}
+
 // EnsureLocalRegistry ensures a local OCI registry is running and returns its URL.
 func EnsureLocalRegistry(ctx context.Context) (string, error) {
 	cli, err := dockerclient.New()
@@ -53,6 +78,44 @@ func EnsureLocalRegistry(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return localRegistryURL(), nil
+}
+
+// CleanupLocalRegistry stops and removes the agentpaas-registry test container.
+func CleanupLocalRegistry(ctx context.Context) error {
+	cli, err := dockerclient.New()
+	if err != nil {
+		return fmt.Errorf("create Docker client: %w", err)
+	}
+	defer func() { _ = cli.Close() }()
+
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filters.NewArgs(filters.Arg("name", localRegistryName)),
+	})
+	if err != nil {
+		return fmt.Errorf("list registry container: %w", err)
+	}
+	if len(containers) == 0 {
+		return nil
+	}
+
+	id := containers[0].ID
+	stopTimeoutSec := 10
+	stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := cli.ContainerStop(stopCtx, id, container.StopOptions{Timeout: &stopTimeoutSec}); err != nil {
+		if !errdefs.IsNotFound(err) {
+			return fmt.Errorf("stop registry container: %w", err)
+		}
+	}
+
+	if err := cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil {
+		if errdefs.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("remove registry container: %w", err)
+	}
+	return nil
 }
 
 // PushImageToLocalRegistry tags and pushes a locally built image to the local
@@ -145,11 +208,34 @@ func createRegistryContainer(ctx context.Context, cli *client.Client) error {
 		localRegistryName,
 	)
 	if err != nil {
+		if isPortBindConflict(err) {
+			return fmt.Errorf(
+				"registry port %d is already in use; set AGENTPAAS_TEST_REGISTRY_PORT to choose another port: %w",
+				localRegistryPort, err,
+			)
+		}
 		return fmt.Errorf("create registry container: %w", err)
 	}
 
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		if isPortBindConflict(err) {
+			_ = cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+			return fmt.Errorf(
+				"registry port %d is already in use; set AGENTPAAS_TEST_REGISTRY_PORT to choose another port: %w",
+				localRegistryPort, err,
+			)
+		}
 		return fmt.Errorf("start registry container: %w", err)
 	}
 	return nil
+}
+
+func isPortBindConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "port is already allocated") ||
+		strings.Contains(msg, "bind for") ||
+		strings.Contains(msg, "address already in use")
 }

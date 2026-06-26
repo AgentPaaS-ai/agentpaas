@@ -36,8 +36,12 @@ func TestSignImage_RealCosign(t *testing.T) {
 
 	registryURL, err := EnsureLocalRegistry(ctx)
 	if err != nil {
+		if IsRegistryPortConflict(err) {
+			t.Skipf("local registry port conflict: %v", err)
+		}
 		t.Skipf("local registry unavailable: %v", err)
 	}
+	defer func() { _ = CleanupLocalRegistry(ctx) }()
 	if err := waitForRegistryReady(ctx, registryURL); err != nil {
 		t.Fatalf("wait for registry: %v", err)
 	}
