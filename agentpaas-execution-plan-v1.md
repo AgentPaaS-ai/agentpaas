@@ -2720,7 +2720,7 @@ batch — the point is to find rough edges through focused attention.
 ### 15.3 Sequencing Reference (not a gate — context only)
 
 ```
-B1 → B2 → B3 ─┬→ B4 → B5 ─┬→ B6 → B7 → B8 ─┬→ B9 → B10 → B11 → B12 → B13 → B14 → B15
+B1 → B2 → B3 ─┬→ B4 → B5 ─┬→ B6 → B7 → B8 ─┬→ B9 → B10 → B11 → B12 → B13 → B14 → B16 → B15
               │            │                 │
               └ B3 gates everything security-spine-first
 ```
@@ -2729,7 +2729,10 @@ B4/B5 can interleave with B6 SDK design once Block 1 contracts are frozen.
 B10 dashboard can start once B9 events exist. B11 operator contract depends on
 B1-B10 JSON/control surfaces. B12 red-team needs B5-B8 plus B11 operator
 methods. B13 integrations depend on B11 and B12. B14 (consolidated) closes
-all post-B13 build work. B15 is manual use-case assessment.
+all post-B13 build work. B16 closes P1 pre-release gaps (LLM integration,
+credential onboarding, policy authoring, production hardening, release
+binary). B15 is manual use-case assessment — done after B16 so the full
+experience is testable.
 
 **P2 calendar target (four weeks after P1 ships):**
 - Week 6: Linux certification (dockerd, systemd, libsecret, seccomp/AppArmor, deb/rpm).
@@ -2758,14 +2761,232 @@ and critical bugs resolved. There is no automated gate — this block is
 inherently human-driven. "Done" means you have personally walked through every
 use case and signed off on the experience.
 
+## BLOCK 16 — P1 Completion Items (Pre-Release Gap Closure)
+
+Block 14 built the security spine, runtime, governance, and CI. Block 15 is
+manual use-case assessment. Block 16 closes the remaining gaps that block the
+full "build → package → launch governed agent" experience before v0.1.0 ships.
+
+These items were identified during the B14 final verification (2026-06-26) when
+asking: "If I tell Hermes to build me an agent and package it with AgentPaaS,
+will it work end-to-end with security and governance?" The answer was: the
+infrastructure works (e2e verified), but LLM integration, credential
+onboarding, clean-machine prerequisites, and production hardening are missing.
+
+### P1 Items (must close before v0.1.0 release)
+
+#### 16-T01: LLM Provider Integration via Hermes Agent Design Time
+
+**Problem:** `agent.llm()` returns "agentpaas fake llm response." No real LLM
+provider is wired. Agents can fetch data via HTTP but cannot reason.
+
+**Design:** At agent design time, Hermes decides the right LLM to integrate
+based on the agent's purpose. Hermes selects the provider (OpenAI, Anthropic,
+xAI, etc.) and installs the appropriate API key into the Keychain broker as
+part of the agent packaging step. The agent's `agent.yaml` declares the LLM
+provider and model. The gateway sidecar resolves the provider credential from
+Keychain and proxies the LLM call, attaching the API key to the outbound
+request. Budget tracking and audit plumbing already exist — they just need a
+real backend.
+
+**Scope:**
+- Provider adapter interface in the gateway (OpenAI, Anthropic, xAI)
+- `agent.llm(prompt, model?)` SDK method → gateway proxy → provider API
+- Keychain credential storage for LLM API keys at pack time
+- `agent.yaml` schema: `llm.provider` and `llm.model` fields
+- Budget enforcement on LLM calls (token counting, cost caps)
+- Audit events for LLM calls (provider, model, token count, cost, allowed/denied)
+
+**Depends on:** 16-T05 (credential onboarding), existing gateway + audit chain
+
+**Verification:** `agent.llm("What is 2+2?")` returns a real response from the
+configured provider. Audit trail records the LLM call with token count and cost.
+
+#### 16-T02: Release Binary (macOS)
+
+**Problem:** No release binary exists. Users must build from source.
+
+**Scope:**
+- Cut v0.1.0 tag → triggers `release.yml` (goreleaser + cosign keyless via OIDC)
+- `brew install agentpaas` (Formula exists, SHA filled by goreleaser at release)
+- `agentpaas doctor` first-run check (Docker, daemon, keychain — already built)
+- First-run experience: daemon auto-start, local registry setup, policy scaffold
+- `cosign verify-blob` on real release artifacts
+- Offline bundle creation + verification
+
+**Note:** Linux release (deb/rpm) is P2 — see 16-P2-01.
+
+**Verification:** Fresh macOS machine: `brew install agentpaas`, `agentpaas
+doctor` passes, `agentpaas pack` + `agentpaas run` works end-to-end.
+
+#### 16-T03: Clean-Machine Prerequisites Documentation
+
+**Problem:** We know it works on this machine. We haven't proven a fresh macOS
+works. The 2-user <15 min test is Block 15 scope, but Block 16 must provide
+Hermes with the information on what software is needed on a clean machine.
+
+**Scope:**
+- Document prerequisites: macOS version, Docker Desktop or Colima, Homebrew
+- `agentpaas doctor` checks all prerequisites and reports what's missing with
+  install commands
+- README quickstart verified on a fresh macOS user account
+- Prerequisite checklist provided to Hermes so it can guide users
+
+**Verification:** A user following the README on a fresh macOS reaches a
+running governed agent in under 15 minutes.
+
+#### 16-T04: Policy Authoring via Hermes (No UX Needed)
+
+**Problem:** policy.yaml exists and compiles into gateway rules, but there's no
+tooling to help users write it. Users must read docs and hand-write YAML.
+
+**Design:** No policy UX is needed. Hermes sets up all policies by asking
+questions or through its skills. AgentPaaS provides:
+- Default policy templates for common patterns (allow one API, allow read-only
+  S3, allow LLM calls, deny all by default)
+- `agentpaas policy init` scaffold command that generates a starter policy.yaml
+- Policy validation with clear error messages (syntax errors caught at pack time,
+  not run time)
+- Hermes plugin skill that asks the user about egress requirements and generates
+  the policy.yaml automatically
+
+**Scope:**
+- `agentpaas policy init` command (interactive or template-based)
+- Default policy templates: `allow-http`, `allow-llm`, `allow-mcp`, `deny-all`
+- Policy validation at pack time (not just run time)
+- Hermes plugin: policy generation skill (ask questions → generate YAML)
+
+**Verification:** `agentpaas policy init` produces a valid policy.yaml. Hermes
+generates a correct policy.yaml from user Q&A. Invalid policies are rejected at
+pack time with a clear error.
+
+#### 16-T05: Credential Onboarding (P1)
+
+**Problem:** The Keychain broker works but setup is manual. No `agentpaas secret
+add` command. No way to list secrets. No rotation flow.
+
+**Scope:**
+- `agentpaas secret add <name>` — stores a credential in macOS Keychain
+- `agentpaas secret list` — lists which secrets the daemon can access (by label,
+  never by value)
+- `agentpaas secret remove <name>` — removes a credential
+- `agentpaas secret rotate <name>` — replaces a credential (add + remove atomic)
+- Keychain service name convention documented and enforced
+- Hermes plugin: secret onboarding skill (guide user through adding credentials)
+
+**Verification:** `agentpaas secret add openweather-api-key` stores a key.
+`agentpaas run weather-agent` uses it via the gateway broker. Secret value
+never appears in container env, logs, or audit trail.
+
+#### 16-T06: HTTP/HTTPS Egress Enforcement (P1 Complete)
+
+**Problem:** HTTP/HTTPS egress goes through the gateway via HTTP_PROXY. Raw
+TCP, DNS tunneling, IPv6 are blocked by iptables but not inspected. This is
+acceptable for P1.
+
+**Scope (P1):**
+- HTTP/HTTPS egress via gateway proxy — already working (B14B)
+- iptables egress firewall for non-HTTP — already working (B14E R17)
+- IPv6 blocked via ip6tables — already working (B14E R17)
+
+**P2 scope (not blocking v0.1.0):**
+- Transparent proxy (iptables redirect instead of HTTP_PROXY env)
+- DNS-level inspection
+- Raw TCP/UDP deep inspection
+- DLP on outbound content (semantic, not fingerprint-based)
+
+**Verification (P1):** Agent's HTTP call to an allowed domain succeeds. HTTP
+call to a denied domain is blocked by the gateway. Raw TCP attempt is blocked
+by iptables. IPv6 attempt is blocked by ip6tables. All denials audited.
+
+#### 16-T07: Production Hardening (P1 — Don't Skip)
+
+**Problem:** Several P2 items from the B14E risk register should be closed
+before v0.1.0 ships, not deferred.
+
+**Scope:**
+- **R17 init container pattern:** Remove CAP_NET_ADMIN from the agent container
+  entirely. Use an init container that programs iptables rules in a shared
+  network namespace, then exits. The agent container never has NET_ADMIN.
+- **R17 tighten RFC1918 allow:** Replace broad 172.16/12, 10/8, 192.168/16
+  allow with the specific gateway subnet only.
+- **R1 Rekor retry fallback:** If Rekor is down during production image signing,
+  implement automatic retry with backoff. Don't silently fail.
+- **Checkpoint key encryption at rest:** The ECDSA P-256 checkpoint signing key
+  is currently stored as unencrypted PKCS#8 DER at
+  `state/audit-checkpoint-key.der`. Encrypt it at rest (passphrase-derived AES
+  or macOS Keychain Secure Enclave).
+- **CAP_NET_ADMIN capset verification:** Add an integration test that verifies
+  the agent process (UID 64000) cannot run `iptables -F` after the firewall init
+  script runs and capabilities are dropped.
+
+**Verification:** Agent container has no NET_ADMIN capability. Checkpoint key
+file is encrypted. Rekor retry works on transient failures. iptables rules
+cannot be flushed by the agent process.
+
+### P2 Items (tracked, not blocking v0.1.0)
+
+#### 16-P2-01: Linux Support
+macOS-only (Colima/Docker Desktop). Linux dockerd is P2:
+- systemd service unit for the daemon
+- libsecret or D-Bus Secrets API instead of macOS Keychain
+- seccomp/AppArmor profiles
+- deb/rpm packaging via goreleaser
+- CI on Linux runner
+
+#### 16-P2-02: Dashboard / Observability
+Real-time event timeline exists (audit tailer → EventBus → dashboard on port
+8080). P2 additions:
+- Policy diff viewer
+- Run comparison view
+- Cost tracking UI
+- Visual timeline of runs, denials, costs
+- "What did this agent do" view without CLI
+
+#### 16-P2-03: Multi-Agent Orchestration
+Currently one agent = one run = one container. P2:
+- Chain agents (agent A output feeds agent B)
+- Shared state between runs
+- Scheduled/triggered runs from external webhooks
+- Agent versioning beyond image digest pinning
+
+#### 16-P2-04: Non-HTTP Egress Deep Inspection
+HTTP/HTTPS is gateway-proxied (P1). P2:
+- Transparent proxy (iptables redirect instead of HTTP_PROXY env)
+- DNS-level inspection
+- Raw TCP/UDP deep inspection
+- Semantic DLP on outbound content
+
+### BLOCK 16 SUCCESS GATE
+
+`make block16-gate` runs all P1 sub-segment gates:
+- 16-T01: LLM provider integration test (real LLM call, audited)
+- 16-T02: Release binary exists and `brew install` works
+- 16-T03: Clean-machine prerequisites documented and verified
+- 16-T04: Policy authoring via Hermes (default templates, validation at pack time)
+- 16-T05: Credential onboarding (`secret add/list/remove/rotate`)
+- 16-T06: HTTP/HTTPS egress enforcement (already working, regression gate)
+- 16-T07: Production hardening (init container, encrypted key, Rekor retry)
+
+All must pass. This is the final gate before Block 15 manual testing.
+
+**Build order:** 16-T05 (credential onboarding) → 16-T01 (LLM integration,
+depends on T05) → 16-T04 (policy authoring) → 16-T07 (production hardening) →
+16-T02 (release binary) → 16-T03 (clean-machine docs) → 16-T06 (regression
+gate, already passing). Then Block 15 manual testing.
+
+---
+
 ## 16. DEFINITION OF DONE (PHASE 1)
 
 The execution plan is complete when PRD v4 §8 (Success Definition) items
 1–8 are demonstrably true via the gates above. Blocks 1-14 are complete only
 when their `make blockN-gate` wrappers exit 0, and Block 14 must also collect
-the volunteer/release evidence named in PRD §8. Block 15 is the manual
-use-case assessment — done when all 10 use cases are assessed and signed off
-by the founder. "Done" is always a command plus recorded evidence, never a
-judgment call.
+the volunteer/release evidence named in PRD §8. Block 16 closes the remaining
+P1 pre-release gaps (LLM integration, credential onboarding, policy authoring,
+production hardening, release binary) — `make block16-gate` must exit 0. Block
+15 is the manual use-case assessment — done when all 10 use cases are assessed
+and signed off by the founder. "Done" is always a command plus recorded
+evidence, never a judgment call.
 
 **END OF EXECUTION PLAN v1.1 — companion to agentpaas-prd-v4-master.md**
