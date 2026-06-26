@@ -193,6 +193,10 @@ var (
 	// ErrNetworkNotFound is returned when the target network does not
 	// exist or has been removed.
 	ErrNetworkNotFound = errors.New("network not found")
+
+	// ErrStatsNotReady is returned when Docker container stats lack a prior
+	// CPU sample (precpu_stats are zero on the first stats read).
+	ErrStatsNotReady = errors.New("container stats not ready")
 )
 
 // RuntimeDriver is the abstraction over container runtimes (Docker, etc.)
