@@ -161,11 +161,12 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 	}
 	defer cleanupConfig()
 
-	cmd := exec.CommandContext(cmdCtx, "cosign", "sign",
-		"--key", keyPath,
-		"--signing-config", signingConfigPath,
-		"--allow-insecure-registry",
-		"--yes", imageRef)
+	signArgs := []string{"sign", "--key", keyPath, "--signing-config", signingConfigPath, "--yes"}
+	if isLocalRegistryRef(imageRef) {
+		signArgs = append(signArgs, "--allow-insecure-registry")
+	}
+	signArgs = append(signArgs, imageRef)
+	cmd := exec.CommandContext(cmdCtx, "cosign", signArgs...)
 	cmd.Env = append(os.Environ(), dockerHostEnv()...)
 	cmd.Env = append(cmd.Env, "COSIGN_PASSWORD=")
 	output, err := cmd.CombinedOutput()
@@ -530,6 +531,12 @@ func publicKeyPEM(pub *ecdsa.PublicKey) ([]byte, error) {
 	return pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), nil
 }
 
+// isLocalRegistryRef returns true if the image reference points to a local registry.
+func isLocalRegistryRef(imageRef string) bool {
+	return strings.Contains(imageRef, "localhost:") ||
+		strings.Contains(imageRef, "127.0.0.1:")
+}
+
 func dockerHostEnv() []string {
 	host, err := dockerclient.ResolvedDockerHost()
 	if err != nil || host == "" {
@@ -635,10 +642,12 @@ func verifyImageSignature(packageAID string, imageRef string) error {
 
 	cmdCtx, cancel := context.WithTimeout(context.Background(), externalSignatureTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(cmdCtx, "cosign", "verify",
-		"--insecure-ignore-tlog",
-		"--allow-insecure-registry",
-		"--key", pubFile, imageRef)
+	verifyArgs := []string{"verify", "--insecure-ignore-tlog"}
+	if isLocalRegistryRef(imageRef) {
+		verifyArgs = append(verifyArgs, "--allow-insecure-registry")
+	}
+	verifyArgs = append(verifyArgs, "--key", pubFile, imageRef)
+	cmd := exec.CommandContext(cmdCtx, "cosign", verifyArgs...)
 	output, err := cmd.CombinedOutput()
 	if cmdCtx.Err() != nil {
 		return fmt.Errorf("verify image signature: %w", cmdCtx.Err())
