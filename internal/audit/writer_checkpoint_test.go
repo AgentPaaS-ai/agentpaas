@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bufio"
+	"crypto/x509"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -130,7 +131,15 @@ func TestLoadOrGenerateCheckpointKeyPersists(t *testing.T) {
 	if string(der1) != string(der2) {
 		t.Fatal("expected same key DER on reload")
 	}
-	if pub1.X.Cmp(pub2.X) != 0 || pub1.Y.Cmp(pub2.Y) != 0 {
+	pubDER1, err := x509.MarshalPKIXPublicKey(pub1)
+	if err != nil {
+		t.Fatalf("MarshalPKIXPublicKey (first): %v", err)
+	}
+	pubDER2, err := x509.MarshalPKIXPublicKey(pub2)
+	if err != nil {
+		t.Fatalf("MarshalPKIXPublicKey (second): %v", err)
+	}
+	if string(pubDER1) != string(pubDER2) {
 		t.Fatal("expected same public key on reload")
 	}
 }
