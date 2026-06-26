@@ -21,6 +21,8 @@ type ContainerNetworkInfo struct {
 	ID string
 	// Name is the Docker network name.
 	Name string
+	// IPAddress is the container's IP on this network.
+	IPAddress string
 	// Aliases are network-scoped DNS aliases for the container.
 	Aliases []string
 }
@@ -244,6 +246,11 @@ type RuntimeDriver interface {
 	// InspectContainerNetworks returns the list of networks a container is
 	// attached to, with network names and IDs. Used for topology assertions.
 	InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error)
+
+	// InspectContainerIP returns the IP address of a container on a specific
+	// network. Returns empty string if the container is not attached to the
+	// network.
+	InspectContainerIP(ctx context.Context, id ContainerID, networkID string) (string, error)
 
 	// ListContainers returns all containers matching the given label filters.
 	// Each filter is a "key=value" pair. Results are returned as a slice of

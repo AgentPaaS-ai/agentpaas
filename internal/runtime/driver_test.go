@@ -33,6 +33,7 @@ type mockRuntimeDriver struct {
 	removeNetworkFunc      func(ctx context.Context, id NetworkID) error
 	inspectNetworkFunc     func(ctx context.Context, id NetworkID) (NetworkInfo, error)
 	inspectContainerNetFunc func(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error)
+	inspectContainerIPFunc func(ctx context.Context, id ContainerID, networkID string) (string, error)
 	listContainersFunc      func(ctx context.Context, labelFilters ...string) ([]ContainerInfo, error)
 	listNetworksFunc        func(ctx context.Context, labelFilters ...string) ([]NetworkInfo, error)
 }
@@ -119,6 +120,28 @@ func (m *mockRuntimeDriver) InspectContainerNetworks(ctx context.Context, id Con
 		return m.inspectContainerNetFunc(ctx, id)
 	}
 	return nil, errors.New("not implemented")
+}
+
+func (m *mockRuntimeDriver) InspectContainerIP(ctx context.Context, id ContainerID, networkID string) (string, error) {
+	if m.inspectContainerIPFunc != nil {
+		return m.inspectContainerIPFunc(ctx, id, networkID)
+	}
+	if m.inspectContainerNetFunc == nil {
+		return "", errors.New("not implemented")
+	}
+	if string(id) == "" {
+		return "", ErrContainerNotFound
+	}
+	networks, err := m.inspectContainerNetFunc(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	for _, n := range networks {
+		if n.ID == networkID || n.Name == networkID {
+			return n.IPAddress, nil
+		}
+	}
+	return "", nil
 }
 
 func (m *mockRuntimeDriver) ListContainers(ctx context.Context, labelFilters ...string) ([]ContainerInfo, error) {
