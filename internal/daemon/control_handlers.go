@@ -1210,13 +1210,21 @@ func (s *controlServer) reconcileOrphanedContainers(ctx context.Context) {
 
 	var removals int
 
-	// List internal networks once for cleanup.
+	// List internal and egress networks once for cleanup.
 	internalNetworks, netErr := rt.ListNetworks(ctx,
 		runtime.LabelManagedBy+"="+runtime.ManagedByValue,
 		runtime.LabelResourceType+"="+runtime.ResourceTypeNetInternal,
 	)
 	if netErr != nil {
 		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list internal networks: %v\n", netErr)
+	}
+
+	egressNetworks, egressNetErr := rt.ListNetworks(ctx,
+		runtime.LabelManagedBy+"="+runtime.ManagedByValue,
+		runtime.LabelResourceType+"="+runtime.ResourceTypeNetEgress,
+	)
+	if egressNetErr != nil {
+		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list egress networks: %v\n", egressNetErr)
 	}
 
 	containers, err := rt.ListContainers(ctx,
@@ -1270,6 +1278,57 @@ func (s *controlServer) reconcileOrphanedContainers(ctx context.Context) {
 		}
 	}
 
+	gatewayContainers, err := rt.ListContainers(ctx,
+		runtime.LabelManagedBy+"="+runtime.ManagedByValue,
+		runtime.LabelResourceType+"="+runtime.ResourceTypeGateway,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list gateway containers: %v\n", err)
+	} else {
+		for _, c := range gatewayContainers {
+			if _, known := knownRuns[c.RunID]; known {
+				continue
+			}
+			action := "removed"
+			if c.Status == runtime.ContainerStatusRunning {
+				timeout := 10 * time.Second
+				if err := rt.Stop(ctx, runtime.ContainerID(c.ID), &timeout); err != nil {
+					fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: stop gateway %s: %v\n", c.ID, err)
+				} else {
+					action = "stopped_and_removed"
+				}
+			}
+			if err := rt.Remove(ctx, runtime.ContainerID(c.ID), true); err != nil {
+				fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: remove gateway %s: %v\n", c.ID, err)
+				s.recordAudit("container_reconciled", "daemon", map[string]interface{}{
+					"run_id":       c.RunID,
+					"container_id": c.ID,
+					"action":       "remove_failed",
+				})
+				continue
+			}
+			removals++
+
+			if egressNetErr == nil {
+				for _, net := range egressNetworks {
+					if net.Labels[runtime.LabelRunID] == c.RunID {
+						if err := rt.RemoveNetwork(ctx, runtime.NetworkID(net.ID)); err != nil {
+							fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: remove egress network %s: %v\n", net.ID, err)
+						} else {
+							removals++
+						}
+					}
+				}
+			}
+
+			s.recordAudit("container_reconciled", "daemon", map[string]interface{}{
+				"run_id":       c.RunID,
+				"container_id": c.ID,
+				"action":       action,
+			})
+		}
+	}
+
 	networks, err := rt.ListNetworks(ctx, runtime.LabelManagedBy+"="+runtime.ManagedByValue)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list managed networks: %v\n", err)
@@ -1287,6 +1346,23 @@ func (s *controlServer) reconcileOrphanedContainers(ctx context.Context) {
 			}
 			if err := rt.RemoveNetwork(ctx, runtime.NetworkID(net.ID)); err != nil {
 				fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: remove orphaned network %s: %v\n", net.ID, err)
+			} else {
+				removals++
+			}
+		}
+	}
+
+	if egressNetErr == nil {
+		for _, net := range egressNetworks {
+			runID := net.Labels[runtime.LabelRunID]
+			if runID == "" {
+				continue
+			}
+			if _, known := knownRuns[runID]; known {
+				continue
+			}
+			if err := rt.RemoveNetwork(ctx, runtime.NetworkID(net.ID)); err != nil {
+				fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: remove orphaned egress network %s: %v\n", net.ID, err)
 			} else {
 				removals++
 			}

@@ -12,7 +12,10 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/runtime"
 	"github.com/parvezsyed/agentpaas/internal/trigger"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func freeTCPAddr(t *testing.T) string {
@@ -193,6 +196,51 @@ func TestTriggerService_InvokeFuncWired(t *testing.T) {
 	}
 	if got := resp.GetRun().GetStatus(); got != triggerv1.RunStatus_RUN_STATUS_RUNNING {
 		t.Fatalf("Status = %v, want %v", got, triggerv1.RunStatus_RUN_STATUS_RUNNING)
+	}
+}
+
+func TestTriggerServer_APIKeyAuthRequired(t *testing.T) {
+	const testAPIKey = "test-trigger-api-key"
+	grpcAddr := freeTCPAddr(t)
+	restAddr := freeTCPAddr(t)
+
+	t.Setenv("AGENTPAAS_TRIGGER_API_KEY", testAPIKey)
+	t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", grpcAddr)
+	t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", restAddr)
+
+	d, _ := startDaemonWithTriggerAddrs(t, grpcAddr, restAddr)
+	defer func() { _ = d.Stop(context.Background()) }()
+
+	conn := dialTriggerGRPC(t, grpcAddr)
+	client := triggerv1.NewTriggerServiceClient(conn)
+	ctx := context.Background()
+
+	_, err := client.Invoke(ctx, &triggerv1.InvokeRequest{AgentName: "any-agent"})
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("Invoke() without auth code = %v, want %v (err=%v)", status.Code(err), codes.Unauthenticated, err)
+	}
+
+	authedCtx := metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+testAPIKey)
+	_, err = client.Invoke(authedCtx, &triggerv1.InvokeRequest{AgentName: "any-agent"})
+	if status.Code(err) == codes.Unauthenticated {
+		t.Fatalf("Invoke() with valid API key code = %v, want not Unauthenticated (err=%v)", codes.Unauthenticated, err)
+	}
+}
+
+func TestTriggerServer_NoAuthWhenKeyUnset(t *testing.T) {
+	grpcAddr := freeTCPAddr(t)
+	restAddr := freeTCPAddr(t)
+
+	t.Setenv("AGENTPAAS_TRIGGER_API_KEY", "")
+	d, _ := startDaemonWithTriggerAddrs(t, grpcAddr, restAddr)
+	defer func() { _ = d.Stop(context.Background()) }()
+
+	conn := dialTriggerGRPC(t, grpcAddr)
+	client := triggerv1.NewTriggerServiceClient(conn)
+
+	_, err := client.Invoke(context.Background(), &triggerv1.InvokeRequest{AgentName: "any-agent"})
+	if status.Code(err) == codes.Unauthenticated {
+		t.Fatalf("Invoke() without auth code = %v, want not Unauthenticated for backward compat (err=%v)", codes.Unauthenticated, err)
 	}
 }
 
