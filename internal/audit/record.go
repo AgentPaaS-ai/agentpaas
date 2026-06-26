@@ -127,6 +127,11 @@ func (r *AuditRecord) CanonicalMarshal() ([]byte, error) {
 	return json.Marshal(cr)
 }
 
+// ComputeRecordHash is an exported wrapper for computeRecordHash.
+func (r *AuditRecord) ComputeRecordHash() (string, error) {
+	return r.computeRecordHash()
+}
+
 // computeRecordHash computes the SHA-256 hex digest of the canonical JSON
 // representation of the record (without the record_hash field).
 func (r *AuditRecord) computeRecordHash() (string, error) {
