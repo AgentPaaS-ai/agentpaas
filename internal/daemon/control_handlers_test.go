@@ -1691,10 +1691,6 @@ func TestReconcileOrphans_ListContainersError_ProceedsToNetworkReconciliation(t 
 }
 
 func TestReconcile_RemovesGatewayAndEgressNetwork(t *testing.T) {
-	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
-		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
-	}
-
 	runID := "run-orphan-gateway"
 	gatewayID := "orphan-gateway-1"
 	egressNetworkID := "orphan-egress-net-1"
