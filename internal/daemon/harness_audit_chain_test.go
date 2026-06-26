@@ -80,6 +80,34 @@ func TestVerifyHarnessChain_TamperedRecord(t *testing.T) {
 	}
 }
 
+func TestVerifyHarnessChain_GenesisNonEmptyPrevHash(t *testing.T) {
+	records := validHarnessChainRecords()
+	path := filepath.Join(t.TempDir(), "harness-audit.jsonl")
+	writeHarnessAuditChain(t, path, records)
+
+	stored, err := readAuditJSONL(path)
+	if err != nil {
+		t.Fatalf("readAuditJSONL: %v", err)
+	}
+
+	// Tamper: set non-empty prev_hash on genesis record
+	stored[0].PrevHash = "deadbeef"
+	// Recompute record_hash so the record_hash check passes, isolating the genesis check
+	recomputed, err := stored[0].ComputeRecordHash()
+	if err != nil {
+		t.Fatalf("ComputeRecordHash: %v", err)
+	}
+	stored[0].RecordHash = recomputed
+
+	err = verifyHarnessChain(stored)
+	if err == nil {
+		t.Fatal("verifyHarnessChain() = nil, want genesis prev_hash error")
+	}
+	if !strings.Contains(err.Error(), "genesis record must have empty prev_hash") {
+		t.Fatalf("verifyHarnessChain() error = %q, want genesis prev_hash error", err)
+	}
+}
+
 func TestVerifyHarnessChain_BrokenLink(t *testing.T) {
 	records := validHarnessChainRecords()
 	path := filepath.Join(t.TempDir(), "harness-audit.jsonl")
