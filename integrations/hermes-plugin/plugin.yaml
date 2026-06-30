@@ -22,5 +22,10 @@ provides_tools:
   - agentpaas_summarize_run
   - agentpaas_explain_failure
   - agentpaas_next_action
+  - agentpaas_secret_add
+  - agentpaas_secret_list
+  - agentpaas_secret_remove
+  - agentpaas_secret_rotate
+  - agentpaas_secret_test
 requires_env:
   - AGENTPAAS_SOCKET_PATH

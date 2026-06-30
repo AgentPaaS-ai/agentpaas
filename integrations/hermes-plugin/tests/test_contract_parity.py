@@ -112,6 +112,11 @@ def _sample_args(tool_name):
         "agentpaas_summarize_run": {"run_id": "run_test"},
         "agentpaas_explain_failure": {"run_id": "run_test"},
         "agentpaas_next_action": {"run_id": "run_test"},
+        "agentpaas_secret_add": {"name": "mykey", "value": "secret123"},
+        "agentpaas_secret_list": {},
+        "agentpaas_secret_remove": {"name": "mykey"},
+        "agentpaas_secret_rotate": {"name": "mykey", "value": "newval"},
+        "agentpaas_secret_test": {"name": "openai-key", "provider": "openai"},
     }
     return samples.get(tool_name, {})
 
