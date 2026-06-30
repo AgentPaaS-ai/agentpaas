@@ -54,7 +54,7 @@ func TestHandleLLM_RealCall_OpenAI(t *testing.T) {
 			t.Errorf("Content-Type = %q, want application/json", ct)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "Hello from OpenAI"}},
 			},
@@ -172,11 +172,11 @@ func TestHandleLLM_ModelOverride(t *testing.T) {
 		var reqBody struct {
 			Model string `json:"model"`
 		}
-		json.NewDecoder(r.Body).Decode(&reqBody)
+		_ = json.NewDecoder(r.Body).Decode(&reqBody)
 		actualModel = reqBody.Model
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "Model override works"}},
 			},
@@ -227,7 +227,7 @@ func TestHandleLLM_ModelOverride(t *testing.T) {
 func TestHandleLLM_HTTPFailure(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "internal error"}`))
+		_, _ = w.Write([]byte(`{"error": "internal error"}`))
 	}))
 	defer ts.Close()
 
@@ -268,7 +268,7 @@ func TestHandleLLM_HTTPFailure(t *testing.T) {
 func TestHandleLLM_AuditRecorded(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "audit test"}},
 			},
@@ -332,7 +332,7 @@ func TestHandleLLM_AuditRecorded(t *testing.T) {
 func TestHandleLLM_SecretNotInResult(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "clean response"}},
 			},
@@ -384,7 +384,7 @@ func TestHandleLLM_SecretNotInResult(t *testing.T) {
 func TestHandleLLM_BudgetExceededTerminates(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "budget busting response"}},
 			},
@@ -429,7 +429,7 @@ func TestHandleLLM_TokensZeroFallbackToWordCount(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		// Return 0 tokens to trigger word-count fallback.
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "four word response here"}},
 			},
@@ -475,7 +475,7 @@ func TestHandleLLM_TokensZeroFallbackToWordCount(t *testing.T) {
 func TestHandleLLM_BudgetExceededWithoutTerminateReturnsLLMFailed(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "response"}},
 			},
@@ -547,7 +547,7 @@ func TestHandleLLM_AnthropicAdapter(t *testing.T) {
 			t.Errorf("anthropic-version = %q, want 2023-06-01", anthropicVersion)
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"content": []map[string]any{
 				{"type": "text", "text": "Claude response"},
 			},
@@ -594,7 +594,7 @@ func TestHandleLLM_AnthropicAdapter(t *testing.T) {
 func TestHandleLLM_NilAuditDoesNotPanic(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "ok"}},
 			},
