@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/parvezsyed/agentpaas/internal/audit"
 	"github.com/parvezsyed/agentpaas/internal/identity"
+	"github.com/parvezsyed/agentpaas/internal/llm"
 	"github.com/parvezsyed/agentpaas/internal/pack"
 	"github.com/parvezsyed/agentpaas/internal/policy"
 	"github.com/parvezsyed/agentpaas/internal/runtime"
@@ -378,7 +380,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		defer close(tr.InvokeDone)
 		timeoutCtx, timeoutCancel := context.WithTimeout(invokeCtx, 2*time.Minute)
 		defer timeoutCancel()
-		if err := s.invokeAgent(timeoutCtx, containerID); err != nil {
+		if err := s.invokeAgent(timeoutCtx, containerID, agentName); err != nil {
 			// Write directly to the pointer under the lock. This works
 			// whether the run is still in s.runs or has been claimed by
 			// Stop (claimRun deletes from the map but the pointer is
@@ -759,7 +761,7 @@ func (s *controlServer) recordAudit(eventType, actor string, payload map[string]
 	}
 }
 
-func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID) error {
+func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID, agentName string) error {
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return fmt.Errorf("runtime: %w", err)
@@ -784,14 +786,27 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 		return fmt.Errorf("harness /readyz not ready after 30 attempts")
 	}
 
-	// Invoke the agent.
+	// Build the invoke payload with LLM config and resolved credentials.
+	payload, err := s.buildInvokePayload(ctx, agentName)
+	if err != nil {
+		return fmt.Errorf("build invoke payload: %w", err)
+	}
+
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal invoke payload: %w", err)
+	}
+
+	// Invoke the agent. The payload is passed via stdin to keep the credential
+	// value out of process args (visible via ps). The python script reads stdin.
 	invokeCmd := []string{"python3", "-c",
-		"import urllib.request,json;" +
+		"import urllib.request,json,sys;" +
+			"payload=sys.stdin.buffer.read();" +
 			"req=urllib.request.Request('http://127.0.0.1:8080/invoke'," +
-			"data=json.dumps({}).encode()," +
+			"data=payload," +
 			"headers={'Content-Type':'application/json'});" +
 			"print(urllib.request.urlopen(req,timeout=60).read().decode())"}
-	stdout, stderr, exitCode, err := rt.Exec(ctx, containerID, invokeCmd)
+	stdout, stderr, exitCode, err := rt.ExecWithStdin(ctx, containerID, invokeCmd, payloadJSON)
 	if err != nil {
 		return fmt.Errorf("exec invoke: %w", err)
 	}
@@ -800,6 +815,76 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 	}
 	_ = stdout
 	return nil
+}
+
+// buildInvokePayload builds the invoke payload with LLM config and resolved credentials.
+// If the agent has no llm config in agent.yaml, returns an empty payload (backward compat).
+// The credential value NEVER appears in logs or error messages.
+func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string) (map[string]any, error) {
+	payload := map[string]any{}
+
+	// Load the deployed agent lock to get AgentYAML with LLM config.
+	lockPath := filepath.Join(pack.DeployedAgentPath(s.homePaths.Home, agentName), "agent.lock")
+	lock, err := pack.ReadAgentLock(lockPath)
+	if err != nil {
+		// Not deployed or load failed — return empty payload (backward compat)
+		return payload, nil
+	}
+
+	if lock.AgentYAML == nil || lock.AgentYAML.LLM.Provider == "" {
+		// No LLM config — return empty payload
+		return payload, nil
+	}
+
+	credentialName := lock.AgentYAML.LLM.Credential
+	if credentialName == "" {
+		return payload, nil
+	}
+
+	// Resolve credential from Keychain.
+	var store secrets.SecretStore
+	if s.secretStoreForTest != nil {
+		store = s.secretStoreForTest
+	} else {
+		var err error
+		store, err = secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
+		if err != nil {
+			return payload, nil // graceful: no keychain, no LLM
+		}
+	}
+	credValue, err := store.Get(ctx, credentialName)
+	if err != nil {
+		return payload, nil // graceful: credential not found, harness will error at call time
+	}
+
+	// Get the auth header for this provider.
+	adapter := llm.GetAdapter(lock.AgentYAML.LLM.Provider)
+	headerName := "Authorization"
+	if adapter != nil {
+		headerName = adapter.AuthHeader()
+	}
+
+	payload["llm"] = map[string]any{
+		"provider":   lock.AgentYAML.LLM.Provider,
+		"model":      lock.AgentYAML.LLM.Model,
+		"credential": credentialName,
+	}
+	payload["credentials"] = []map[string]any{
+		{
+			"id":     credentialName,
+			"header": headerName,
+			"value":  string(credValue),
+		},
+	}
+
+	return payload, nil
+}
+
+// secretServiceName derives a deterministic macOS Keychain service name from the
+// home directory path. This matches the CLI convention in internal/cli/control.go.
+func secretServiceName(homeDir string) string {
+	sum := sha256.Sum256([]byte(homeDir))
+	return "ai.agentpaas.secrets." + hex.EncodeToString(sum[:8])
 }
 
 func (s *controlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error) {

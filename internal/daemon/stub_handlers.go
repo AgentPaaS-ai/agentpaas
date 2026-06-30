@@ -9,6 +9,7 @@ import (
 	"github.com/parvezsyed/agentpaas/internal/audit"
 	"github.com/parvezsyed/agentpaas/internal/home"
 	"github.com/parvezsyed/agentpaas/internal/runtime"
+	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/parvezsyed/agentpaas/internal/trigger"
 )
 
@@ -53,6 +54,11 @@ type controlServer struct {
 	runs         map[string]*trackedRun
 	secretMu     sync.Mutex
 	secretGrants map[string]map[string]struct{}
+
+	// secretStoreForTest is a SecretStore override for unit tests. When non-nil,
+	// buildInvokePayload uses this instead of creating a real KeychainStore.
+	// This field is NOT accessed outside tests and is NEVER set in production.
+	secretStoreForTest secrets.SecretStore
 
 	runtimeOnce sync.Once
 	runtimeErr  error

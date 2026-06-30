@@ -463,6 +463,69 @@ func (d *DockerRuntime) Exec(ctx context.Context, id ContainerID, cmd []string) 
 	return stdoutBuf.String(), stderrBuf.String(), inspect.ExitCode, nil
 }
 
+// ExecWithStdin runs a command inside a running container with stdin data fed
+// through the Docker multiplexed attach protocol. stdinData is written to the
+// container process's stdin and then EOF is signaled. The credential value in
+// stdinData NEVER appears in process args or logs.
+func (d *DockerRuntime) ExecWithStdin(ctx context.Context, id ContainerID, cmd []string, stdinData []byte) (string, string, int, error) {
+	if d.driver != nil {
+		return d.driver.Exec(ctx, id, cmd)
+	}
+	if string(id) == "" {
+		return "", "", -1, ErrContainerNotFound
+	}
+	if d.cli == nil {
+		return "", "", -1, errors.New("DockerRuntime: not initialized")
+	}
+
+	execCreate, err := d.cli.ContainerExecCreate(ctx, string(id), container.ExecOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+		AttachStdin:  true,
+	})
+	if err != nil {
+		return "", "", -1, fmt.Errorf("exec create: %w", err)
+	}
+
+	hijacked, err := d.cli.ContainerExecAttach(ctx, execCreate.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return "", "", -1, fmt.Errorf("exec attach: %w", err)
+	}
+	defer hijacked.Close()
+
+	// Write stdin using Docker's multiplexed stream protocol.
+	// Frame header: 1 byte stream ID (0=stdin) + 4 bytes big-endian length.
+	if len(stdinData) > 0 {
+		header := []byte{0} // stdin stream
+		header = append(header,
+			byte(len(stdinData)>>24),
+			byte(len(stdinData)>>16),
+			byte(len(stdinData)>>8),
+			byte(len(stdinData)),
+		)
+		if _, err := hijacked.Conn.Write(append(header, stdinData...)); err != nil {
+			return "", "", -1, fmt.Errorf("exec stdin write: %w", err)
+		}
+	}
+
+	// Close the write side to signal EOF to the container process.
+	if conn, ok := hijacked.Conn.(interface{ CloseWrite() error }); ok {
+		_ = conn.CloseWrite()
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	if _, err := stdcopy.StdCopy(&stdoutBuf, &stderrBuf, hijacked.Reader); err != nil {
+		return "", "", -1, fmt.Errorf("exec demux: %w", err)
+	}
+
+	inspect, err := d.cli.ContainerExecInspect(ctx, execCreate.ID)
+	if err != nil {
+		return stdoutBuf.String(), stderrBuf.String(), -1, fmt.Errorf("exec inspect: %w", err)
+	}
+	return stdoutBuf.String(), stderrBuf.String(), inspect.ExitCode, nil
+}
+
 // CreateNetwork provisions a new Docker network from the given spec and
 // returns its NetworkID.
 func (d *DockerRuntime) CreateNetwork(ctx context.Context, spec NetworkSpec) (NetworkID, error) {
