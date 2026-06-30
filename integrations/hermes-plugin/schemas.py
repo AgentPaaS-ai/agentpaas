@@ -24,6 +24,7 @@ TOOL_NAMES = [
     "agentpaas_secret_remove",
     "agentpaas_secret_rotate",
     "agentpaas_secret_test",
+    "agentpaas_llm_configure",
 ]
 
 AGENTPAAS_INIT_PROJECT = {
@@ -413,6 +414,34 @@ AGENTPAAS_SECRET_TEST = {
             },
         },
         "required": ["name"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_LLM_CONFIGURE = {
+    "name": "agentpaas_llm_configure",
+    "description": "Write the llm: section into agent.yaml for LLM provider integration. Provider, model, and credential are user decisions.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_dir": {
+                "type": "string",
+                "description": "Project directory containing agent.yaml.",
+            },
+            "provider": {
+                "type": "string",
+                "description": "LLM provider: openai, anthropic, or xai.",
+            },
+            "model": {
+                "type": "string",
+                "description": "Model name (e.g. gpt-4o, claude-sonnet-4, grok-beta).",
+            },
+            "credential": {
+                "type": "string",
+                "description": "Keychain secret name (label, not value). Must match a secret added via agentpaas_secret_add.",
+            },
+        },
+        "required": ["project_dir", "provider", "model", "credential"],
         "additionalProperties": False,
     },
 }

@@ -229,6 +229,7 @@ def _sample_args(tool_name):
         "agentpaas_secret_remove": {"name": "mykey"},
         "agentpaas_secret_rotate": {"name": "mykey", "value": "newval"},
         "agentpaas_secret_test": {"name": "openai-key", "provider": "openai"},
+        "agentpaas_llm_configure": {"project_dir": ".", "provider": "openai", "model": "gpt-4o", "credential": "openai-key"},
     }
     return samples.get(tool_name, {})
 
