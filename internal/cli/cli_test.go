@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -911,3 +913,48 @@ func TestSecretRotateRejectsOversizePreservesOld(t *testing.T) {
 func errorsIsSecretNotFound(err error) bool {
 	return err != nil && strings.Contains(err.Error(), secrets.ErrSecretNotFound.Error())
 }
+func TestSecretTest_CommandExists(t *testing.T) {
+	resetAgentCmd()
+	cmd := AgentCmd()
+
+	testCmd, _, err := cmd.Find([]string{"secret", "test"})
+	if err != nil {
+		t.Fatalf("Find secret test: %v", err)
+	}
+	if testCmd == nil {
+		t.Fatal("secret test command not found")
+	}
+
+	// Verify it is indeed the test subcommand by checking the name.
+	if testCmd.Name() != "test" {
+		t.Fatalf("unexpected command name: %s", testCmd.Name())
+	}
+}
+
+func TestSecretTest_NeverPrintsValue(t *testing.T) {
+	store := secrets.NewFakeKeyStore()
+	secretValue := "sk-this-must-never-leak-abc123"
+	if err := store.Set(context.Background(), "openai-key", []byte(secretValue)); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+
+	// Set up a mock server that returns 401 (invalid key).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	restore := secrets.SetTestEndpoints(srv.URL, srv.URL, srv.URL)
+	defer restore()
+
+	stdout, stderr, _ := executeSecretCmd(t, store, "", "secret", "test", "openai-key")
+
+	// Neither stdout nor stderr should contain the secret value.
+	if strings.Contains(stdout, secretValue) {
+		t.Fatalf("stdout leaked secret value:\n%s", stdout)
+	}
+	if strings.Contains(stderr, secretValue) {
+		t.Fatalf("stderr leaked secret value:\n%s", stderr)
+	}
+}
+
