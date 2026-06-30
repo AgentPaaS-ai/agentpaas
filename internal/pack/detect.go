@@ -21,6 +21,15 @@ const (
 	RuntimeUnknown   RuntimeType = "unknown"
 )
 
+// LLMConfig defines the LLM provider and credential binding for the agent.
+// This is used by the harness to route agent.llm() calls through the gateway
+// as credentialed HTTP egress (Option B unified egress).
+type LLMConfig struct {
+	Provider   string `yaml:"provider"`   // openai|anthropic|xai
+	Model      string `yaml:"model"`      // e.g. "gpt-4o", "claude-sonnet-4", "grok-beta"
+	Credential string `yaml:"credential"` // Keychain secret name (e.g. "openai-key")
+}
+
 // AgentYAML is a minimal subset of agent.yaml fields needed for detection
 // and packaging. The runtime field overrides auto-detection.
 // Both flat fields and the v1 metadata/spec schema are supported.
@@ -30,6 +39,7 @@ type AgentYAML struct {
 	Runtime     string `yaml:"runtime"`
 	Entry       string `yaml:"entry"`
 	Description string `yaml:"description"`
+	LLM         LLMConfig `yaml:"llm"`
 	Metadata    struct {
 		Name        string `yaml:"name"`
 		Version     string `yaml:"version"`
