@@ -48,7 +48,7 @@ session. Do not batch.
   "deploy" verb despite SKILL.md mentioning `/agentpaas deploy`). The
   confirm-then-deploy flow is a Hermes orchestration behavior Hermes must
   perform, not an AgentPaaS feature. **Blocker: `agent.llm()` returns a
-  hardcoded fake string (B16-T01). Agents that need LLM reasoning will not
+  hardcoded fake string (B15-T01). Agents that need LLM reasoning will not
   actually reason. HTTP-only agents work.**
 
 ### LC-03: Set triggers to launch the agent
@@ -70,7 +70,7 @@ session. Do not batch.
   - No plugin tool for triggers, events, or cron.
   - Schedules are only configurable programmatically via `CronConfig.Schedules`.
   - You can curl `/v1/trigger/invoke` directly to test (a), but (b) and (c)
-    have no user-facing surface. **This is a real gap — likely needs a B16
+    have no user-facing surface. **This is a real gap — likely needs a B15
     task or a B15 sub-block before v0.1.0.**
 
 ### LC-04: Agent output available in Hermes
@@ -118,15 +118,15 @@ depth — overlaps LC-01/02/04).
 
 | Gap | Use case | Severity | Where to fix |
 |-----|----------|----------|--------------|
-| `agent.llm()` returns fake string | LC-02 | BLOCKER | B16-T01 |
-| No trigger/cron CLI or plugin surface | LC-03 | BLOCKER for LC-03 | New B16 task or B15 sub-block |
+| `agent.llm()` returns fake string | LC-02 | BLOCKER | B15-T01 |
+| No trigger/cron CLI or plugin surface | LC-03 | BLOCKER for LC-03 | New B15 task or B15 sub-block |
 | No single "deploy"/"redeploy" verb | LC-02, LC-05 | Polish | Plugin/SKILL update |
-| No "rotate" secret CLI | UC-02 | Minor | B16-T05 |
-| No event-trigger registration path | LC-03(b) | BLOCKER for LC-03(b) | New B16 task |
+| No "rotate" secret CLI | UC-02 | Minor | B15-T05 |
+| No event-trigger registration path | LC-03(b) | BLOCKER for LC-03(b) | New B15 task |
 
-## 3a. B16-T01 Design Gaps (must resolve before implementation)
+## 3a. B15-T01 Design Gaps (must resolve before implementation)
 
-B16-T01 (LLM provider integration) has three gaps between the founder's
+B15-T01 (LLM provider integration) has three gaps between the founder's
 vision and the current plan/code. These must be decided before coding starts.
 
 ### Gap 1: Interactive provider selection at design time
@@ -181,7 +181,7 @@ vision and the current plan/code. These must be decided before coding starts.
   APIs, etc.), all keys and pathways must be validated before deployment.
 - **Current state**: The secrets broker (internal/secrets/broker.go) handles
   credential injection for HTTP egress. Policy.yaml supports credentials[]
-  with brokered access. B16-T05 adds secret add/list/remove/rotate CLI.
+  with brokered access. B15-T05 adds secret add/list/remove/rotate CLI.
 - **Missing**: No pre-deployment "validate all credential paths resolve"
   step. You find out a key is broken at runtime, inside the container.
 - **Fix needed**: Extend the Gap 2 solution to ALL credential types, not
@@ -189,7 +189,7 @@ vision and the current plan/code. These must be decided before coding starts.
   credential — make a trivial authenticated call to the target service,
   verify it works, before deploying the agent.
 
-### Summary: what B16-T01 should deliver (revised)
+### Summary: what B15-T01 should deliver (revised)
 
 1. Interactive provider selection in the plugin (ask user, write to agent.yaml)
 2. `agentpaas secret test <name>` — pre-deployment credential validation
