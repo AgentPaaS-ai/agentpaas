@@ -664,55 +664,7 @@ func newSecretCmd() *cobra.Command {
 		},
 	})
 
-	testCmd := &cobra.Command{
-		Use:   "test <name>",
-		Short: "Validate a credential by making a trivial authenticated call to the provider",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			name := args[0]
-			if err := secrets.ValidateSecretName(name); err != nil {
-				return err
-			}
-			provider, _ := cmd.Flags().GetString("provider")
-			if provider == "" {
-				provider = detectProviderFromName(name)
-			}
-			store, err := secretStoreFactory(cmd)
-			if err != nil {
-				return err
-			}
-			value, err := store.Get(cmd.Context(), name)
-			if err != nil {
-				return fmt.Errorf("secret %q: %w", name, err)
-			}
-			result := secrets.TestProvider(cmd.Context(), provider, value)
-			if result.Status == "ok" {
-				fmt.Fprintf(cmd.OutOrStdout(), "secret %q: %s test OK (%s, HTTP %d)\n", name, result.Provider, result.Endpoint, result.HTTPStatus)
-			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "secret %q: %s test FAILED: %s\n", name, result.Provider, result.Detail)
-				return fmt.Errorf("credential test failed for %q", name)
-			}
-			return nil
-		},
-	}
-	testCmd.Flags().String("provider", "", "credential provider: openai|anthropic|xiai (auto-detected from name if omitted)")
-	cmd.AddCommand(testCmd)
-
 	return cmd
-}
-
-func detectProviderFromName(name string) string {
-	lower := strings.ToLower(name)
-	if strings.Contains(lower, "openai") || strings.Contains(lower, "gpt") {
-		return "openai"
-	}
-	if strings.Contains(lower, "anthropic") || strings.Contains(lower, "claude") {
-		return "anthropic"
-	}
-	if strings.Contains(lower, "xai") || strings.Contains(lower, "grok") {
-		return "xiai"
-	}
-	return "openai"
 }
 
 func newDefaultSecretStore(cmd *cobra.Command) (secrets.SecretStore, error) {
