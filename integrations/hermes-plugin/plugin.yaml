@@ -27,5 +27,6 @@ provides_tools:
   - agentpaas_secret_remove
   - agentpaas_secret_rotate
   - agentpaas_secret_test
+  - agentpaas_llm_configure
 requires_env:
   - AGENTPAAS_SOCKET_PATH

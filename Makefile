@@ -258,9 +258,11 @@ block15-gate: build lint
 	@echo "==> Running Block 15 gate: P1 completion items"
 	@echo "  T01: credential onboarding (secret add/list/remove/rotate/test)"
 	go test -race -count=1 ./internal/secrets/... ./internal/cli/...
-	@echo "  Plugin: secret onboarding tools"
+	@echo "  T02: LLM provider integration (adapter + handleLLM + buildInvokePayload)"
+	go test -race -count=1 ./internal/llm/... ./internal/harness/... ./internal/daemon/... ./internal/pack/...
+	@echo "  Plugin: secret onboarding + LLM configure tools"
 	cd integrations/hermes-plugin && python3 -m unittest discover -s tests -t . 2>&1 | tail -5
-	@echo "==> Block 15 gate passed (T01 complete; T02-T08 to be added as blocks complete)"
+	@echo "==> Block 15 gate passed (T01+T02 complete; T03-T08 to be added as blocks complete)"
 
 .PHONY: gates
 gates: ## List all available gate targets

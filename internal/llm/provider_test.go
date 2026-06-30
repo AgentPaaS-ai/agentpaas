@@ -114,7 +114,9 @@ func TestOpenAIAdapter_BuildRequest_EmptyModel(t *testing.T) {
 	}
 	bodyBytes, _ := io.ReadAll(req.Body)
 	var body map[string]interface{}
-	json.Unmarshal(bodyBytes, &body)
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		t.Fatalf("Unmarshal body: %v", err)
+	}
 	if body["model"] != defaultOpenAIModel {
 		t.Errorf("empty model default = %v, want %q", body["model"], defaultOpenAIModel)
 	}
@@ -242,7 +244,9 @@ func TestAnthropicAdapter_BuildRequest_EmptyModel(t *testing.T) {
 	}
 	bodyBytes, _ := io.ReadAll(req.Body)
 	var body map[string]interface{}
-	json.Unmarshal(bodyBytes, &body)
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		t.Fatalf("Unmarshal body: %v", err)
+	}
 	if body["model"] != defaultAnthropicModel {
 		t.Errorf("empty model default = %v, want %q", body["model"], defaultAnthropicModel)
 	}
@@ -354,7 +358,9 @@ func TestXAIAdapter_BuildRequest_EmptyModel(t *testing.T) {
 	}
 	bodyBytes, _ := io.ReadAll(req.Body)
 	var body map[string]interface{}
-	json.Unmarshal(bodyBytes, &body)
+	if err := json.Unmarshal(bodyBytes, &body); err != nil {
+		t.Fatalf("Unmarshal body: %v", err)
+	}
 	if body["model"] != defaultXAIModel {
 		t.Errorf("empty model default = %v, want %q", body["model"], defaultXAIModel)
 	}
@@ -523,7 +529,7 @@ func TestRoundTrip_OpenAI(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"choices":[{"message":{"content":"Hi from test server!"}}],"usage":{"total_tokens":10},"model":"gpt-4o-mini"}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Hi from test server!"}}],"usage":{"total_tokens":10},"model":"gpt-4o-mini"}`))
 	}))
 	defer server.Close()
 
@@ -540,7 +546,7 @@ func TestRoundTrip_OpenAI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HTTP Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	result, err := adapter.ParseResponse(resp.StatusCode, body)
@@ -570,7 +576,7 @@ func TestRoundTrip_Anthropic(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"content":[{"type":"text","text":"Claude here!"}],"usage":{"output_tokens":20},"model":"claude-3-5-sonnet-20241022"}`))
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"Claude here!"}],"usage":{"output_tokens":20},"model":"claude-3-5-sonnet-20241022"}`))
 	}))
 	defer server.Close()
 
@@ -587,7 +593,7 @@ func TestRoundTrip_Anthropic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HTTP Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	result, err := adapter.ParseResponse(resp.StatusCode, body)
@@ -613,7 +619,7 @@ func TestRoundTrip_XAI(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"choices":[{"message":{"content":"Grok responds!"}}],"usage":{"total_tokens":30},"model":"grok-beta"}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Grok responds!"}}],"usage":{"total_tokens":30},"model":"grok-beta"}`))
 	}))
 	defer server.Close()
 
@@ -630,7 +636,7 @@ func TestRoundTrip_XAI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HTTP Do: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	result, err := adapter.ParseResponse(resp.StatusCode, body)
