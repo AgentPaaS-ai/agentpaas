@@ -2616,7 +2616,12 @@ runs. Future P2 work references this register as the starting backlog.
 
 ---
 
-## BLOCK 15 — Assisted Use-Case Assessment and Manual Testing
+## BLOCK 15 — Manual Use-Case Assessment (runs AFTER Block 16)
+
+**SEQUENCE: Block 16 → Block 15.** This block runs only after Block 16's
+success gate passes. Block 16 closes the pre-release gaps (LLM integration,
+credential onboarding, triggers, release binary, production hardening).
+Testing before those are closed finds the wrong rough edges.
 
 This block replaces the former "Sequencing, founder calendar, and execution
 control" block. The old sequencing content is preserved below in §15.3 for
@@ -2626,6 +2631,9 @@ Block 15 is the founder-driven manual testing phase. You (Parvez) work through
 real-world use cases one at a time, with Hermes as the assistant, to find
 leftover rough edges before v0.1.0 ships. This is NOT automated testing — it
 is human-in-the-loop exploratory testing of the full product experience.
+
+See `docs/b15-e2e-test-plan.md` for the lifecycle use cases (LC-01..LC-05) that
+supplement the security-focused UC-01..UC-10 matrix below.
 
 ### 15.1 Use-Case Assessment Protocol
 
@@ -2729,10 +2737,12 @@ B4/B5 can interleave with B6 SDK design once Block 1 contracts are frozen.
 B10 dashboard can start once B9 events exist. B11 operator contract depends on
 B1-B10 JSON/control surfaces. B12 red-team needs B5-B8 plus B11 operator
 methods. B13 integrations depend on B11 and B12. B14 (consolidated) closes
-all post-B13 build work. B16 closes P1 pre-release gaps (LLM integration,
-credential onboarding, policy authoring, production hardening, release
-binary). B15 is manual use-case assessment — done after B16 so the full
-experience is testable.
+all post-B13 build work. **B16 (P1 gap closure) runs before B15 (manual
+testing)** — B15 tests the experience that B16 makes possible. Testing with
+fake LLM, no credential onboarding, and no triggers finds the wrong rough
+edges. B16 closes P1 pre-release gaps (LLM integration, credential onboarding,
+policy authoring, production hardening, release binary). B15 is manual
+use-case assessment — done after B16 so the full experience is testable.
 
 **P2 calendar target (four weeks after P1 ships):**
 - Week 6: Linux certification (dockerd, systemd, libsecret, seccomp/AppArmor, deb/rpm).
@@ -2756,16 +2766,24 @@ experience is testable.
   never cut from P1.
 
 **BLOCK 15 SUCCESS GATE:** `make block15-gate` is a docs-only gate: a checklist
-confirming all 10 use cases in §15.2 have been assessed, with findings recorded
-and critical bugs resolved. There is no automated gate — this block is
-inherently human-driven. "Done" means you have personally walked through every
-use case and signed off on the experience.
+confirming all 10 use cases in §15.2 (plus LC-01..LC-05 from
+docs/b15-e2e-test-plan.md) have been assessed, with findings recorded and
+critical bugs resolved. There is no automated gate — this block is inherently
+human-driven. "Done" means you have personally walked through every use case
+and signed off on the experience. **Block 15 gate cannot run until Block 16
+gate passes.**
 
 ## BLOCK 16 — P1 Completion Items (Pre-Release Gap Closure)
 
-Block 14 built the security spine, runtime, governance, and CI. Block 15 is
-manual use-case assessment. Block 16 closes the remaining gaps that block the
-full "build → package → launch governed agent" experience before v0.1.0 ships.
+**EXECUTION ORDER: Block 16 BEFORE Block 15.** Block 16 closes the gaps that
+make the full product experience testable. Block 15 (manual use-case
+assessment) only starts after Block 16's success gate passes. Testing a
+product with fake LLM responses and no credential onboarding finds the wrong
+rough edges.
+
+Block 14 built the security spine, runtime, governance, and CI. Block 16 closes
+the remaining gaps that block the full "build → package → launch governed
+agent" experience before v0.1.0 ships.
 
 These items were identified during the B14 final verification (2026-06-26) when
 asking: "If I tell Hermes to build me an agent and package it with AgentPaaS,
