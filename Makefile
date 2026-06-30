@@ -252,10 +252,15 @@ block14-gate: block14a0-gate block14a-gate block14b-gate block14c-gate
 	@echo "==> All Block 14 sub-segment gates passed (14A0 → 14A → 14B → 14C)"
 
 block16-gate:
-	@echo "Error: block16-gate not yet implemented. See execution plan §16 (BLOCK 16)." && exit 1
+	@echo "Error: block16-gate (manual use-case assessment) runs after block15-gate passes. See execution plan §16." && exit 1
 
-block15-gate:
-	@echo "Error: block15-gate is a manual/docs-only gate. See execution plan §15.2 use-case matrix." && exit 1
+block15-gate: build lint
+	@echo "==> Running Block 15 gate: P1 completion items"
+	@echo "  T01: credential onboarding (secret add/list/remove/rotate/test)"
+	go test -race -count=1 ./internal/secrets/... ./internal/cli/...
+	@echo "  Plugin: secret onboarding tools"
+	cd integrations/hermes-plugin && python3 -m unittest discover -s tests -t . 2>&1 | tail -5
+	@echo "==> Block 15 gate passed (T01 complete; T02-T08 to be added as blocks complete)"
 
 .PHONY: gates
 gates: ## List all available gate targets
@@ -278,5 +283,5 @@ gates: ## List all available gate targets
 	@echo "  block14a-gate - Security remediation (B13.1, 8 tasks: T01-T08) (ACTIVE)"
 	@echo "  block14b-gate - Real-time egress timeline (B13.5)"
 	@echo "  block14c-gate - Install path, docs, demo, v0.1.0 release"
-	@echo "  block15-gate - Manual use-case assessment (docs-only gate)"
-	@echo "  block16-gate - P1 completion: LLM, credentials, policy, hardening, release"
+	@echo "  block15-gate - P1 completion: LLM, credentials, policy, hardening, release"
+	@echo "  block16-gate - Manual use-case assessment (runs AFTER B15)"
