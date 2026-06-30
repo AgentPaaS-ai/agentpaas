@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/dockerclient"
+	"github.com/parvezsyed/agentpaas/internal/policy"
 )
 
 const noTlogSigningConfigJSON = `{"mediaType":"application/vnd.dev.sigstore.signingconfig.v0.2+json","rekorTlogConfig":{},"tsaConfig":{}}`
@@ -54,7 +56,7 @@ type AgentLock struct {
 	// SBOMDigest is the SHA-256 digest of the SBOM (SPDX-json).
 	SBOMDigest string `json:"sbom_digest"`
 	// PolicyDigest is the SHA-256 digest of the policy.yaml.
-	// Placeholder: empty string for P1 (policy package integration later).
+	// Computed at pack time from the project's policy.yaml.
 	PolicyDigest string `json:"policy_digest"`
 	// PackageAID is the Agent Identity Document - the public key PEM.
 	PackageAID string `json:"package_aid"`
@@ -111,6 +113,9 @@ type LockConfig struct {
 	KeyStore identityKeyStore
 	// KeyID is the package identity key ID to use for signing.
 	KeyID string
+	// PolicyYAML is the raw policy.yaml file contents. If nil/empty (no policy.yaml
+	// in the project), the lockfile's PolicyDigest is left empty for backward compat.
+	PolicyYAML []byte
 }
 
 // identityKeyStore is a minimal interface for signing (subset of identity.KeyStore).
@@ -216,6 +221,11 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, err
 	}
 
+	policyDigest, err := computePolicyDigest(cfg.PolicyYAML)
+	if err != nil {
+		return nil, fmt.Errorf("policy validation: %w", err)
+	}
+
 	lock := &AgentLock{
 		SchemaVersion:        LockSchemaVersion,
 		AgentName:            agentYAMLString(cfg.AgentYAML, "Name", "AgentName"),
@@ -227,7 +237,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		BuildInputDigest:     cfg.BuildResult.BuildInputDigest,
 		ImageDigest:          cfg.BuildResult.ImageDigest,
 		SBOMDigest:           sbomDigest,
-		PolicyDigest:         "",
+		PolicyDigest:         policyDigest,
 		PackageAID:           string(publicKeyPEM),
 		PublicKeyFingerprint: PublicKeyFingerprint(&privateKey.PublicKey),
 		SBOMReferrer:         "oci://" + cfg.BuildResult.ImageRef + "#sbom@sha256:" + sbomDigest,
@@ -822,4 +832,56 @@ func agentYAMLString(agentYAML *AgentYAML, names ...string) string {
 		}
 	}
 	return ""
+}
+
+// computePolicyDigest parses, validates, and computes the SHA-256 digest of
+// the policy YAML. Returns empty string if yamlBytes is nil/empty (no policy
+// in project — backward compat). Returns error if parsing fails or
+// validation finds errors.
+func computePolicyDigest(yamlBytes []byte) (string, error) {
+	if len(yamlBytes) == 0 {
+		return "", nil
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(yamlBytes))
+	if err != nil {
+		return "", fmt.Errorf("parse policy.yaml: %w", err)
+	}
+	if errs := policy.ValidatePolicy(parsed); policy.HasErrors(errs) {
+		return "", fmt.Errorf("policy.yaml validation failed: %s", policyValidationErrorString(errs))
+	}
+	canonical, err := canonicalPolicyJSON(parsed)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize policy: %w", err)
+	}
+	sum := sha256.Sum256(canonical)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// policyValidationErrorString formats the first few validation errors for
+// inclusion in an error message.
+func policyValidationErrorString(errs []policy.ValidationError) string {
+	n := len(errs)
+	if n > 3 {
+		n = 3
+	}
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			b.WriteString("; ")
+		}
+		b.WriteString(errs[i].Error())
+	}
+	if len(errs) > 3 {
+		fmt.Fprintf(&b, "; ... (%d more)", len(errs)-3)
+	}
+	return b.String()
+}
+
+// canonicalPolicyJSON marshals the parsed policy to canonical, sorted-key JSON
+// for deterministic SHA-256 digest computation.
+func canonicalPolicyJSON(p *policy.Policy) ([]byte, error) {
+	if p == nil {
+		return nil, errors.New("policy must not be nil")
+	}
+	return json.Marshal(p)
 }

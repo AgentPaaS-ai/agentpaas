@@ -94,6 +94,14 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		agentVersion = "latest"
 	}
 
+	var policyYAML []byte
+	policyPath := filepath.Join(absProjectDir, "policy.yaml")
+	if data, err := os.ReadFile(policyPath); err == nil {
+		policyYAML = data
+	} else if !os.IsNotExist(err) {
+		return nil, status.Errorf(codes.Internal, "read policy.yaml: %v", err)
+	}
+
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
 	cfg := pack.BuildConfig{
 		ProjectDir:  absProjectDir,
@@ -131,6 +139,7 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		SourceDateEpoch: time.Unix(0, 0).UTC(),
 		KeyStore:        &packKeyStoreAdapter{store: keyStore},
 		KeyID:           string(keyID),
+		PolicyYAML:      policyYAML,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "create agent lock: %v", err)
