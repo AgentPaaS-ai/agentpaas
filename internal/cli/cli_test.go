@@ -851,6 +851,63 @@ func TestSecretRmDeletesSecret(t *testing.T) {
 	}
 }
 
+func TestSecretRotateReplacesValue(t *testing.T) {
+	store := secrets.NewFakeKeyStore()
+	oldValue := "old-secret-value"
+	if err := store.Set(context.Background(), "rotate_key", []byte(oldValue)); err != nil {
+		t.Fatalf("Set old value: %v", err)
+	}
+
+	newValue := "new-secret-value"
+	stdout, stderr, err := executeSecretCmd(t, store, newValue, "secret", "rotate", "rotate_key")
+	if err != nil {
+		t.Fatalf("secret rotate returned error: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+	}
+
+	got, err := store.Get(context.Background(), "rotate_key")
+	if err != nil {
+		t.Fatalf("Get rotate_key: %v", err)
+	}
+	if string(got) != newValue {
+		t.Fatalf("stored value = %q, want %q", got, newValue)
+	}
+
+	if !strings.Contains(stdout, "rotated") {
+		t.Fatalf("output does not contain 'rotated':\n%s", stdout)
+	}
+	if strings.Contains(stdout, oldValue) {
+		t.Fatalf("output leaked old value %q:\n%s", oldValue, stdout)
+	}
+	if strings.Contains(stdout, newValue) {
+		t.Fatalf("output leaked new value %q:\n%s", newValue, stdout)
+	}
+}
+
+func TestSecretRotateRejectsOversizePreservesOld(t *testing.T) {
+	store := secrets.NewFakeKeyStore()
+	oldValue := "preserved-old-value"
+	if err := store.Set(context.Background(), "rotate_oversize", []byte(oldValue)); err != nil {
+		t.Fatalf("Set old value: %v", err)
+	}
+
+	oversize := strings.Repeat("x", secrets.MaxSecretValueSize+1)
+	_, _, err := executeSecretCmd(t, store, oversize, "secret", "rotate", "rotate_oversize")
+	if err == nil {
+		t.Fatal("secret rotate oversize value: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exceeds 65536 byte limit") {
+		t.Fatalf("oversize error = %v, want clear size limit", err)
+	}
+
+	got, err := store.Get(context.Background(), "rotate_oversize")
+	if err != nil {
+		t.Fatalf("Get rotate_oversize after oversize rotate: %v", err)
+	}
+	if string(got) != oldValue {
+		t.Fatalf("old value = %q, want preserved %q", got, oldValue)
+	}
+}
+
 func errorsIsSecretNotFound(err error) bool {
 	return err != nil && strings.Contains(err.Error(), secrets.ErrSecretNotFound.Error())
 }
