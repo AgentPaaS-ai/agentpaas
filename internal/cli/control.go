@@ -370,6 +370,7 @@ func newPolicyCmd() *cobra.Command {
 	cmd.AddCommand(newPolicyShowCmd())
 	cmd.AddCommand(newPolicyExplainCmd())
 	cmd.AddCommand(newPolicyProposeCmd())
+	cmd.AddCommand(newPolicyInitCmd())
 	return cmd
 }
 
