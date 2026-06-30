@@ -185,6 +185,10 @@ func DefaultAgentYAML(runtime RuntimeType) string {
 	fmt.Fprintf(&b, "version: 0.1.0\n")
 	fmt.Fprintf(&b, "runtime: %s\n", runtimeValue)
 	fmt.Fprintf(&b, "entry: main:app\n")
+	fmt.Fprintf(&b, "# llm:\n")
+	fmt.Fprintf(&b, "#   provider: openai  # openai|anthropic|xai\n")
+	fmt.Fprintf(&b, "#   model: gpt-4o\n")
+	fmt.Fprintf(&b, "#   credential: openai-key  # Keychain secret name (agentpaas secret add openai-key)\n")
 
 	return b.String()
 }

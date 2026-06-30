@@ -3,6 +3,7 @@ package pack
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -193,6 +194,81 @@ func TestLoadAgentYAMLInvalid(t *testing.T) {
 	agentYAML, err := LoadAgentYAML(projectDir)
 	if err == nil {
 		t.Fatalf("LoadAgentYAML() error = nil, value = %#v", agentYAML)
+	}
+}
+
+func TestLoadAgentYAML_WithLLM(t *testing.T) {
+	projectDir := t.TempDir()
+	writeTestFile(t, projectDir, "agent.yaml", `name: test-agent
+version: 1.2.3
+runtime: python3.12
+entry: main:app
+description: test agent
+llm:
+  provider: openai
+  model: gpt-4o
+  credential: openai-key
+`)
+
+	agentYAML, err := LoadAgentYAML(projectDir)
+	if err != nil {
+		t.Fatalf("LoadAgentYAML() error = %v", err)
+	}
+	if agentYAML == nil {
+		t.Fatal("LoadAgentYAML() = nil, want value")
+	}
+	if agentYAML.LLM.Provider != "openai" {
+		t.Fatalf("LLM.Provider = %q, want %q", agentYAML.LLM.Provider, "openai")
+	}
+	if agentYAML.LLM.Model != "gpt-4o" {
+		t.Fatalf("LLM.Model = %q, want %q", agentYAML.LLM.Model, "gpt-4o")
+	}
+	if agentYAML.LLM.Credential != "openai-key" {
+		t.Fatalf("LLM.Credential = %q, want %q", agentYAML.LLM.Credential, "openai-key")
+	}
+	// Also verify non-LLM fields still parse correctly
+	if agentYAML.Name != "test-agent" || agentYAML.Version != "1.2.3" || agentYAML.Runtime != "python3.12" {
+		t.Fatalf("non-LLM fields = %#v, want parsed fields", agentYAML)
+	}
+}
+
+func TestLoadAgentYAML_WithoutLLM(t *testing.T) {
+	projectDir := t.TempDir()
+	writeTestFile(t, projectDir, "agent.yaml", "name: test-agent\nversion: 1.2.3\nruntime: python3.12\nentry: main:app\ndescription: test agent\n")
+
+	agentYAML, err := LoadAgentYAML(projectDir)
+	if err != nil {
+		t.Fatalf("LoadAgentYAML() error = %v", err)
+	}
+	if agentYAML == nil {
+		t.Fatal("LoadAgentYAML() = nil, want value")
+	}
+	// LLM fields should be zero values (backward compatible)
+	if agentYAML.LLM.Provider != "" {
+		t.Fatalf("LLM.Provider = %q, want empty", agentYAML.LLM.Provider)
+	}
+	if agentYAML.LLM.Model != "" {
+		t.Fatalf("LLM.Model = %q, want empty", agentYAML.LLM.Model)
+	}
+	if agentYAML.LLM.Credential != "" {
+		t.Fatalf("LLM.Credential = %q, want empty", agentYAML.LLM.Credential)
+	}
+	// Existing fields should still parse
+	if agentYAML.Name != "test-agent" || agentYAML.Version != "1.2.3" {
+		t.Fatalf("existing fields = %#v, want parsed fields", agentYAML)
+	}
+}
+
+func TestDefaultAgentYAML_HasLLMComment(t *testing.T) {
+	content := DefaultAgentYAML(RuntimePython)
+	if !strings.Contains(content, "# llm:") {
+		t.Fatalf("DefaultAgentYAML() missing llm comment:\n%s", content)
+	}
+	if !strings.Contains(content, "#   provider: openai") {
+		t.Fatal("DefaultAgentYAML() missing provider comment")
+	}
+	if !strings.Contains(content, "#   credential: openai-key") {
+		t.Fatal("DefaultAgentYAML() missing credential comment")
 	}
 }
 
