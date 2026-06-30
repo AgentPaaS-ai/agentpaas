@@ -72,6 +72,9 @@ type AgentLock struct {
 	// CreatedAt is the wall-clock time the lockfile was created.
 	// For reproducibility, this is set to SOURCE_DATE_EPOCH, not time.Now().
 	CreatedAt time.Time `json:"created_at"`
+	// AgentYAML is the parsed agent.yaml (including LLM config). Stored as part
+	// of the lockfile for runtime LLM credential resolution. nil when absent.
+	AgentYAML *AgentYAML `json:"agent_yaml,omitempty"`
 }
 
 // ReproducibilityMeta holds metadata for verifying build reproducibility.
@@ -236,6 +239,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 			TarOrder:        "sorted",
 		},
 		CreatedAt: cfg.SourceDateEpoch.UTC(),
+		AgentYAML: cfg.AgentYAML,
 	}
 
 	canonical, err := canonicalJSON(lock)
@@ -432,6 +436,9 @@ func lockCanonicalMap(lock *AgentLock, includeSignature bool) map[string]interfa
 	}
 	if includeSignature {
 		m["lockfile_signature"] = lock.LockfileSignature
+	}
+	if lock.AgentYAML != nil {
+		m["agent_yaml"] = lock.AgentYAML
 	}
 	return m
 }
