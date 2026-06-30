@@ -19,6 +19,11 @@ TOOL_NAMES = [
     "agentpaas_summarize_run",
     "agentpaas_explain_failure",
     "agentpaas_next_action",
+    "agentpaas_secret_add",
+    "agentpaas_secret_list",
+    "agentpaas_secret_remove",
+    "agentpaas_secret_rotate",
+    "agentpaas_secret_test",
 ]
 
 AGENTPAAS_INIT_PROJECT = {
@@ -322,6 +327,92 @@ AGENTPAAS_NEXT_ACTION = {
             },
         },
         "required": ["run_id"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_SECRET_ADD = {
+    "name": "agentpaas_secret_add",
+    "description": "Store a credential in macOS Keychain. Value passed via 'value' arg.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Credential name/label.",
+            },
+            "value": {
+                "type": "string",
+                "description": "Credential value (sent through stdin, never logged to argv).",
+            },
+        },
+        "required": ["name", "value"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_SECRET_LIST = {
+    "name": "agentpaas_secret_list",
+    "description": "List stored credentials by label (never by value).",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_SECRET_REMOVE = {
+    "name": "agentpaas_secret_remove",
+    "description": "Remove a stored credential.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Credential name to remove.",
+            },
+        },
+        "required": ["name"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_SECRET_ROTATE = {
+    "name": "agentpaas_secret_rotate",
+    "description": "Replace a credential with a new value (atomic). New value via 'value' arg.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Credential name to rotate.",
+            },
+            "value": {
+                "type": "string",
+                "description": "New credential value (sent through stdin, never logged to argv).",
+            },
+        },
+        "required": ["name", "value"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_SECRET_TEST = {
+    "name": "agentpaas_secret_test",
+    "description": "Validate a credential by making a trivial authenticated call to the provider.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Credential name to test.",
+            },
+            "provider": {
+                "type": "string",
+                "description": "Provider to validate against (openai, anthropic, google, azure).",
+            },
+        },
+        "required": ["name"],
         "additionalProperties": False,
     },
 }
