@@ -575,8 +575,9 @@ func newSecretCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "set <name>",
-		Short: "Create or update a secret from stdin",
+		Use:     "add <name>",
+		Aliases: []string{"set"},
+		Short:   "Create or update a secret from stdin",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -617,8 +618,9 @@ func newSecretCmd() *cobra.Command {
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "rm <name>",
-		Short: "Remove a secret",
+		Use:     "remove <name>",
+		Aliases: []string{"rm"},
+		Short:   "Remove a secret",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
