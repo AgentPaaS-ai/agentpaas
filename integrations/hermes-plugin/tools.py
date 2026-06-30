@@ -846,6 +846,25 @@ def agentpaas_policy_show(args, **kwargs):
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
 
 
+def agentpaas_policy_init(args, **kwargs):
+    """Scaffold a policy.yaml from a named template."""
+    args = args or {}
+    project_dir = args.get("project_dir", ".")
+    is_valid, resolved, err = _validate_project_path(project_dir)
+    if not is_valid:
+        return json.dumps(err)
+    template = args.get("template", "deny-all")
+    force = args.get("force", False)
+    cmd = ["policy", "init", resolved, "--template", template]
+    if force:
+        cmd.append("--force")
+    try:
+        result = _run_cli(cmd)
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
 def agentpaas_explain_policy_denial(args, **kwargs):
     """Explain why a destination was denied by policy."""
     args = args or {}

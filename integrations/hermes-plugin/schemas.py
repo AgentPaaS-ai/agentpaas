@@ -25,6 +25,7 @@ TOOL_NAMES = [
     "agentpaas_secret_rotate",
     "agentpaas_secret_test",
     "agentpaas_llm_configure",
+    "agentpaas_policy_init",
 ]
 
 AGENTPAAS_INIT_PROJECT = {
@@ -442,6 +443,31 @@ AGENTPAAS_LLM_CONFIGURE = {
             },
         },
         "required": ["project_dir", "provider", "model", "credential"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_POLICY_INIT = {
+    "name": "agentpaas_policy_init",
+    "description": "Scaffold a policy.yaml from a named egress template. Templates: deny-all, allow-http, allow-llm, allow-mcp.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_dir": {
+                "type": "string",
+                "description": "Project directory to scaffold policy.yaml into (default: current directory).",
+            },
+            "template": {
+                "type": "string",
+                "description": "Egress policy template.",
+                "enum": ["deny-all", "allow-http", "allow-llm", "allow-mcp"],
+            },
+            "force": {
+                "type": "boolean",
+                "description": "Overwrite an existing policy.yaml if present.",
+            },
+        },
+        "required": ["project_dir"],
         "additionalProperties": False,
     },
 }
