@@ -1028,3 +1028,97 @@ def agentpaas_secret_test(args, **kwargs):
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_llm_configure(args, **kwargs):
+    """Write the llm: section into agent.yaml for LLM provider integration."""
+    args = args or {}
+    project_dir = args.get("project_dir")
+    provider = args.get("provider")
+    model = args.get("model")
+    credential = args.get("credential")
+
+    # Validate required args
+    if not project_dir:
+        return json.dumps({
+            "error": "project_dir is required",
+            "error_category": "tool_invocation_failed",
+        })
+    if not provider:
+        return json.dumps({
+            "error": "provider is required",
+            "error_category": "tool_invocation_failed",
+        })
+    if provider not in {"openai", "anthropic", "xai"}:
+        return json.dumps({
+            "error": f"invalid provider '{provider}': must be openai, anthropic, or xai",
+            "error_category": "tool_invocation_failed",
+        })
+    if not model:
+        return json.dumps({
+            "error": "model is required",
+            "error_category": "tool_invocation_failed",
+        })
+    if not credential:
+        return json.dumps({
+            "error": "credential is required",
+            "error_category": "tool_invocation_failed",
+        })
+
+    # Resolve project_dir
+    resolved_dir = os.path.abspath(project_dir) if project_dir != "." else os.getcwd()
+    agent_yaml_path = os.path.join(resolved_dir, "agent.yaml")
+
+    if not os.path.isfile(agent_yaml_path):
+        return json.dumps({
+            "error": f"agent.yaml not found in {resolved_dir}",
+            "error_category": "tool_invocation_failed",
+        })
+
+    try:
+        # Read the existing agent.yaml as text
+        with open(agent_yaml_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Build the new llm: section
+        new_section = (
+            f"llm:\n"
+            f"  provider: {provider}  # openai|anthropic|xai\n"
+            f"  model: {model}\n"
+            f"  credential: {credential}  # Keychain secret name\n"
+        )
+
+        # Regex to match an existing llm: block (regular or commented).
+        # Matches from the llm: or # llm: header through all indented lines
+        # and adjacent comments, up to the next top-level key or EOF.
+        llm_pattern = _re.compile(
+            r'(?:#\s*)?llm:\n'
+            r'(?:[\t ]+(?:#\s*)?[^\n]*\n)*'
+        )
+        match = llm_pattern.search(content)
+        if match:
+            # Replace existing llm block
+            content = content[:match.start()] + new_section + content[match.end():]
+        else:
+            # Append at end
+            if content and not content.endswith("\n"):
+                content += "\n"
+            if content and content.strip() and not content.endswith("\n\n"):
+                content += "\n"
+            content += new_section
+
+        # Write back
+        with open(agent_yaml_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        return json.dumps({
+            "configured": True,
+            "provider": provider,
+            "model": model,
+            "credential": credential,
+        })
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "error_category": "tool_invocation_failed",
+        })
