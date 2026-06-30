@@ -2775,32 +2775,95 @@ onboarding, clean-machine prerequisites, and production hardening are missing.
 
 ### P1 Items (must close before v0.1.0 release)
 
-#### 16-T01: LLM Provider Integration via Hermes Agent Design Time
+#### 16-T01: LLM Provider Integration via Unified Gateway Egress
 
 **Problem:** `agent.llm()` returns "agentpaas fake llm response." No real LLM
 provider is wired. Agents can fetch data via HTTP but cannot reason.
 
-**Design:** At agent design time, Hermes decides the right LLM to integrate
-based on the agent's purpose. Hermes selects the provider (OpenAI, Anthropic,
-xAI, etc.) and installs the appropriate API key into the Keychain broker as
-part of the agent packaging step. The agent's `agent.yaml` declares the LLM
-provider and model. The gateway sidecar resolves the provider credential from
-Keychain and proxies the LLM call, attaching the API key to the outbound
-request. Budget tracking and audit plumbing already exist — they just need a
-real backend.
+**Design decision (Option B — Unified Egress):** LLM calls are NOT special.
+They route through the gateway as credentialed HTTP egress, exactly like any
+third-party API call. The existing secrets broker, gateway proxy, audit
+chain, and policy engine already handle credentialed HTTP egress (B7
+adversary-tested, B14 risk-closed). `agent.llm()` becomes thin sugar over
+`agent.http_with_credential` to the provider's chat-completions endpoint.
+This unifies LLM and third-party API access under one security model — all
+pathways are baked into the egress gateway before deployment, none bypass it.
+
+**Design — four pillars:**
+
+1. **Interactive provider selection at design time.** The Hermes plugin ASKS
+   the user which LLM provider + model to use (or proposes and confirms),
+   rather than silently deciding. The choice is written to `agent.yaml`
+   `llm.provider` + `llm.model`. This is a user decision, not a Hermes
+   decision.
+
+2. **Pre-deployment credential validation ("test before baking in").** Before
+   `agentpaas pack`/`run`, the user can validate that every credential path
+   resolves — API key works, provider responds, egress policy allows the
+   provider domain. `agentpaas secret test <name>` makes a trivial
+   authenticated call (e.g. LLM: "say OK"; third-party API: GET /health or
+   equivalent) OUTSIDE the container, before deployment. Fail fast with a
+   clear error if the key is wrong, the provider is unreachable, or the
+   egress policy doesn't allow the destination. This applies to ALL brokered
+   credentials, not just LLM.
+
+3. **Unified LLM routing (Option B).** Route LLM calls through the gateway as
+   credentialed HTTP egress. `agent.llm(prompt, model?)` SDK method becomes
+   sugar over `agent.http_with_credential` to the provider's API endpoint.
+   - The harness `handleLLM` RPC (internal/harness/rpc_server.go) is deprecated
+     or converted to a thin wrapper that calls `handleHTTP` with the provider
+     URL + credential_id resolved from agent.yaml.
+   - The gateway resolves the LLM provider credential from Keychain via the
+     existing broker, attaches it to the outbound request as an
+     Authorization header (or provider-specific header), and proxies the call.
+   - Budget enforcement (token counting), audit events, and policy enforcement
+     all reuse the existing egress path — no new code path for LLM.
+
+4. **agent.yaml schema.** `llm.provider` (openai|anthropic|xai|...),
+   `llm.model` (e.g. "gpt-4o", "claude-sonnet-4"), and the credential binding
+   (which Keychain secret to use for this provider). The policy.yaml
+   `credentials[]` and egress rules already support this — the LLM provider
+   domain (e.g. api.openai.com) is just another allowed egress destination
+   with a credential binding.
 
 **Scope:**
-- Provider adapter interface in the gateway (OpenAI, Anthropic, xAI)
-- `agent.llm(prompt, model?)` SDK method → gateway proxy → provider API
-- Keychain credential storage for LLM API keys at pack time
-- `agent.yaml` schema: `llm.provider` and `llm.model` fields
-- Budget enforcement on LLM calls (token counting, cost caps)
-- Audit events for LLM calls (provider, model, token count, cost, allowed/denied)
+- Interactive provider selection in the Hermes plugin (ask user → write
+  agent.yaml `llm.provider` + `llm.model`)
+- `agentpaas secret test <name>` — pre-deployment credential validation for
+  LLM AND third-party API keys (trivial authenticated call, fail fast)
+- LLM provider adapter: maps `llm.provider` → provider API endpoint URL +
+  auth header name + request/response format (OpenAI, Anthropic, xAI)
+- `agent.llm(prompt, model?)` SDK method → gateway-proxied credentialed HTTP
+  (sugar over `agent.http_with_credential`)
+- Deprecate/convert the fake `handleLLM` harness RPC to a thin wrapper
+- agent.yaml schema: `llm.provider`, `llm.model`, credential binding
+- Budget enforcement on LLM calls (token counting — already in harness, must
+  apply to gateway-proxied calls via response body parsing or header)
+- Audit events for LLM calls (provider, model, token count, cost,
+  allowed/denied — already supported by the egress audit path)
 
-**Depends on:** 16-T05 (credential onboarding), existing gateway + audit chain
+**Depends on:** 16-T05 (credential onboarding — `secret add` + `secret test`),
+existing gateway + audit chain + secrets broker (all built in B7/B14).
 
-**Verification:** `agent.llm("What is 2+2?")` returns a real response from the
-configured provider. Audit trail records the LLM call with token count and cost.
+**Verification:**
+1. `agentpaas secret test openai-key` — returns success, key works, provider
+   responds with a trivial completion. (Pre-deployment.)
+2. `agent.llm("What is 2+2?")` returns a real response from the configured
+   provider, routed through the gateway. (Runtime.)
+3. Audit trail records the LLM call as an egress event with provider, model,
+   token count, cost, allowed.
+4. Policy denial: remove the provider domain from the egress allowlist →
+   `agent.llm()` returns a policy-denied error, audit shows `egress_denied`.
+5. Credential revocation: revoke the LLM key via `agentpaas secret remove` →
+   next `agent.llm()` call fails with credential-revoked error.
+
+**What this does NOT do:**
+- Does not create a special LLM code path. LLM is credentialed HTTP egress.
+- Does not store API keys in container env, agent source, or anywhere the
+  agent process can read directly. Keys live in Keychain, resolved by the
+  broker at call time, injected as headers on the outbound request.
+- Does not skip pre-deployment validation. All credential paths must resolve
+  before `agentpaas run`.
 
 #### 16-T02: Release Binary (macOS)
 
@@ -2871,10 +2934,18 @@ add` command. No way to list secrets. No rotation flow.
   never by value)
 - `agentpaas secret remove <name>` — removes a credential
 - `agentpaas secret rotate <name>` — replaces a credential (add + remove atomic)
+- `agentpaas secret test <name>` — pre-deployment credential validation.
+  Makes a trivial authenticated call to the target service (LLM: "say OK";
+  third-party API: GET /health or equivalent) OUTSIDE the container, before
+  pack/run. Fail fast with a clear error if the key is wrong, the provider
+  is unreachable, or the egress policy doesn't allow the destination.
+  Required by 16-T01 Gap 2 (test-before-baking-in). Works for ALL brokered
+  credentials, not just LLM.
 - Keychain service name convention documented and enforced
 - Hermes plugin: secret onboarding skill (guide user through adding credentials)
 
 **Verification:** `agentpaas secret add openweather-api-key` stores a key.
+`agentpaas secret test openweather-api-key` validates it before deployment.
 `agentpaas run weather-agent` uses it via the gateway broker. Secret value
 never appears in container env, logs, or audit trail.
 
