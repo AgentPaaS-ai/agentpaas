@@ -487,7 +487,15 @@ def _run_cli(cmd_args):
     full.extend([a for a in cmd_args if a])
     timeout = _get_cli_timeout()
     proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+    return _parse_cli_result(proc)
 
+
+def _parse_cli_result(proc):
+    """Parse subprocess.CompletedProcess into sanitized result dict.
+
+    Shared by _run_cli and _run_cli_with_stdin so both use identical
+    truncation, JSON parsing, sanitizer, and error-envelope logic.
+    """
     stdout_truncated = False
     stderr_truncated = False
     stdout_size = len(proc.stdout) if proc.stdout else 0
@@ -538,6 +546,29 @@ def _run_cli(cmd_args):
             result["stderr_truncated"] = True
             result["stderr_size"] = stderr_size
     return result
+
+
+def _run_cli_with_stdin(cmd_args, stdin_input):
+    """Run agent CLI with stdin input (for secret add/rotate). Returns same dict as _run_cli."""
+    if _needs_daemon(cmd_args):
+        sock_available, sock_err = _check_daemon_socket()
+        if not sock_available:
+            return sock_err
+    binary = _resolve_agent_binary()
+    full = [binary, "--json"]
+    sock = _resolve_socket_path()
+    if sock:
+        full.extend(["--socket", sock])
+    home = os.environ.get("AGENTPAAS_HOME")
+    if home:
+        full.extend(["--home", home])
+    full.extend([a for a in cmd_args if a])
+    timeout = _get_cli_timeout()
+    proc = subprocess.run(
+        full, capture_output=True, text=True, timeout=timeout,
+        input=stdin_input,
+    )
+    return _parse_cli_result(proc)
 
 
 def run_agent_cli(args: list[str]) -> dict:
@@ -922,6 +953,78 @@ def agentpaas_next_action(args, **kwargs):
     run_id = args.get("run_id")
     try:
         result = _run_cli(["next-action", run_id] if run_id else ["next-action"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_secret_add(args, **kwargs):
+    """Store a credential in macOS Keychain. Value passed via 'value' arg."""
+    args = args or {}
+    name = args.get("name", "")
+    if not name:
+        return json.dumps({"error": "name is required", "error_category": "tool_invocation_failed"})
+    value = args.get("value", "")
+    if not value:
+        return json.dumps({"error": "value is required", "error_category": "tool_invocation_failed"})
+    try:
+        result = _run_cli_with_stdin(["secret", "add", name], value)
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_secret_list(args, **kwargs):
+    """List stored credentials by label (never by value)."""
+    args = args or {}
+    try:
+        result = _run_cli(["secret", "list"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_secret_remove(args, **kwargs):
+    """Remove a stored credential."""
+    args = args or {}
+    name = args.get("name", "")
+    if not name:
+        return json.dumps({"error": "name is required", "error_category": "tool_invocation_failed"})
+    try:
+        result = _run_cli(["secret", "remove", name])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_secret_rotate(args, **kwargs):
+    """Replace a credential with a new value (atomic). New value via 'value' arg."""
+    args = args or {}
+    name = args.get("name", "")
+    if not name:
+        return json.dumps({"error": "name is required", "error_category": "tool_invocation_failed"})
+    value = args.get("value", "")
+    if not value:
+        return json.dumps({"error": "value is required", "error_category": "tool_invocation_failed"})
+    try:
+        result = _run_cli_with_stdin(["secret", "rotate", name], value)
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_secret_test(args, **kwargs):
+    """Validate a credential by making a trivial authenticated call to the provider."""
+    args = args or {}
+    name = args.get("name", "")
+    if not name:
+        return json.dumps({"error": "name is required", "error_category": "tool_invocation_failed"})
+    provider = args.get("provider", "")
+    cmd_args = ["secret", "test", name]
+    if provider:
+        cmd_args.extend(["--provider", provider])
+    try:
+        result = _run_cli(cmd_args)
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
