@@ -18,18 +18,21 @@ STATE:
 
 B15 SCOPE (from execution plan — P1 items, must close before v0.1.0):
 
-Build order: 15-T05 → 15-T01 → 15-T04 → 15-T07 → 15-T02 → 15-T03 → 15-T06
+Build order: 15-T01 → 15-T02 → 15-T03 → 15-T04 → 15-T05 → 15-T06 → 15-T07 → 15-T08
 
-1. 15-T05: Credential onboarding (`secret add/list/remove/rotate` CLI commands)
-2. 15-T01: LLM provider integration (Hermes selects provider at agent design time,
-   installs API key in Keychain, gateway proxies LLM calls, budget + audit)
-3. 15-T04: Policy authoring via Hermes (`policy init`, default templates,
+1. 15-T01: Credential onboarding (`secret add/list/remove/rotate/test` CLI commands)
+2. 15-T02: LLM provider integration (unified gateway egress, interactive provider
+   selection, `secret test` pre-deployment validation, agent.llm = sugar over
+   http_with_credential, deprecate fake handleLLM RPC)
+3. 15-T03: Policy authoring via Hermes (`policy init`, default templates,
    validation at pack time, Hermes plugin skill for Q&A-based generation)
-4. 15-T07: Production hardening (init container for NET_ADMIN removal, tighten
+4. 15-T04: Trigger/cron/event surface (CLI + plugin tools for invoke, cron
+   add/list/remove, event publish/subscribe — exposes existing B9 backend)
+5. 15-T05: Production hardening (init container for NET_ADMIN removal, tighten
    RFC1918, Rekor retry, checkpoint key encryption, capset verification test)
-5. 15-T02: Release binary (v0.1.0 tag, goreleaser, brew install, cosign verify)
-6. 15-T03: Clean-machine prerequisites docs (agentpaas doctor, README quickstart)
-7. 15-T06: HTTP/HTTPS egress regression gate (already passing, just needs gate target)
+6. 15-T06: Release binary (v0.1.0 tag, goreleaser, brew install, cosign verify)
+7. 15-T07: Clean-machine prerequisites docs (agentpaas doctor, README quickstart)
+8. 15-T08: HTTP/HTTPS egress regression gate (already passing, just needs gate target)
 
 P2 ITEMS (tracked, not blocking):
 - 15-P2-01: Linux support (systemd, libsecret, deb/rpm)
@@ -56,5 +59,5 @@ PRE-B15 CHECKS (ALL PASSED):
 6. ✅ Python plugin tests — 167 tests pass
 7. ✅ GitHub CI — all 3 workflows green
 
-Start at: 15-T05 (credential onboarding CLI commands). This is the foundation
-that 15-T01 (LLM integration) depends on.
+Start at: 15-T01 (credential onboarding CLI commands). This is the foundation
+that 15-T02 (LLM integration) depends on.

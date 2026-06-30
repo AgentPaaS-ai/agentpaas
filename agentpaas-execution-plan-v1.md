@@ -2636,7 +2636,33 @@ onboarding, clean-machine prerequisites, and production hardening are missing.
 
 ### P1 Items (must close before v0.1.0 release)
 
-#### 15-T01: LLM Provider Integration via Unified Gateway Egress
+#### 15-T01: Credential Onboarding (P1)
+
+**Problem:** The Keychain broker works but setup is manual. No `agentpaas secret
+add` command. No way to list secrets. No rotation flow.
+
+**Scope:**
+- `agentpaas secret add <name>` — stores a credential in macOS Keychain
+- `agentpaas secret list` — lists which secrets the daemon can access (by label,
+  never by value)
+- `agentpaas secret remove <name>` — removes a credential
+- `agentpaas secret rotate <name>` — replaces a credential (add + remove atomic)
+- `agentpaas secret test <name>` — pre-deployment credential validation.
+  Makes a trivial authenticated call to the target service (LLM: "say OK";
+  third-party API: GET /health or equivalent) OUTSIDE the container, before
+  pack/run. Fail fast with a clear error if the key is wrong, the provider
+  is unreachable, or the egress policy doesn't allow the destination.
+  Required by 15-T02 Gap 2 (test-before-baking-in). Works for ALL brokered
+  credentials, not just LLM.
+- Keychain service name convention documented and enforced
+- Hermes plugin: secret onboarding skill (guide user through adding credentials)
+
+**Verification:** `agentpaas secret add openweather-api-key` stores a key.
+`agentpaas secret test openweather-api-key` validates it before deployment.
+`agentpaas run weather-agent` uses it via the gateway broker. Secret value
+never appears in container env, logs, or audit trail.
+
+#### 15-T02: LLM Provider Integration via Unified Gateway Egress
 
 **Problem:** `agent.llm()` returns "agentpaas fake llm response." No real LLM
 provider is wired. Agents can fetch data via HTTP but cannot reason.
@@ -2703,7 +2729,7 @@ pathways are baked into the egress gateway before deployment, none bypass it.
 - Audit events for LLM calls (provider, model, token count, cost,
   allowed/denied — already supported by the egress audit path)
 
-**Depends on:** 15-T05 (credential onboarding — `secret add` + `secret test`),
+**Depends on:** 15-T01 (credential onboarding — `secret add` + `secret test`),
 existing gateway + audit chain + secrets broker (all built in B7/B14).
 
 **Verification:**
@@ -2726,40 +2752,7 @@ existing gateway + audit chain + secrets broker (all built in B7/B14).
 - Does not skip pre-deployment validation. All credential paths must resolve
   before `agentpaas run`.
 
-#### 15-T02: Release Binary (macOS)
-
-**Problem:** No release binary exists. Users must build from source.
-
-**Scope:**
-- Cut v0.1.0 tag → triggers `release.yml` (goreleaser + cosign keyless via OIDC)
-- `brew install agentpaas` (Formula exists, SHA filled by goreleaser at release)
-- `agentpaas doctor` first-run check (Docker, daemon, keychain — already built)
-- First-run experience: daemon auto-start, local registry setup, policy scaffold
-- `cosign verify-blob` on real release artifacts
-- Offline bundle creation + verification
-
-**Note:** Linux release (deb/rpm) is P2 — see 15-P2-01.
-
-**Verification:** Fresh macOS machine: `brew install agentpaas`, `agentpaas
-doctor` passes, `agentpaas pack` + `agentpaas run` works end-to-end.
-
-#### 15-T03: Clean-Machine Prerequisites Documentation
-
-**Problem:** We know it works on this machine. We haven't proven a fresh macOS
-works. The 2-user <15 min test is Block 15 scope, but Block 15 must provide
-Hermes with the information on what software is needed on a clean machine.
-
-**Scope:**
-- Document prerequisites: macOS version, Docker Desktop or Colima, Homebrew
-- `agentpaas doctor` checks all prerequisites and reports what's missing with
-  install commands
-- README quickstart verified on a fresh macOS user account
-- Prerequisite checklist provided to Hermes so it can guide users
-
-**Verification:** A user following the README on a fresh macOS reaches a
-running governed agent in under 15 minutes.
-
-#### 15-T04: Policy Authoring via Hermes (No UX Needed)
+#### 15-T03: Policy Authoring via Hermes (No UX Needed)
 
 **Problem:** policy.yaml exists and compiles into gateway rules, but there's no
 tooling to help users write it. Users must read docs and hand-write YAML.
@@ -2784,54 +2777,47 @@ questions or through its skills. AgentPaaS provides:
 generates a correct policy.yaml from user Q&A. Invalid policies are rejected at
 pack time with a clear error.
 
-#### 15-T05: Credential Onboarding (P1)
+#### 15-T04: Trigger / Cron / Event Surface
 
-**Problem:** The Keychain broker works but setup is manual. No `agentpaas secret
-add` command. No way to list secrets. No rotation flow.
+**Problem:** The trigger server backend (REST `/v1/trigger/invoke`, SSE
+streaming, EventBus, CronScheduler) is fully built in `internal/trigger/`
+but has no user-facing surface. No CLI subcommand to create/manage triggers
+or cron schedules. No plugin tool. Schedules are only configurable
+programmatically via `CronConfig.Schedules`. This blocks the "set triggers
+to launch agent" use case (LC-03 in the e2e test plan).
+
+**Design:** Expose the existing trigger/cron/event backend through CLI
+commands and plugin tools. The backend already supports API-key auth (R18),
+idempotency, SSE streaming, and 5-field cron expressions — this task wires
+a user surface onto it, no new backend logic.
 
 **Scope:**
-- `agentpaas secret add <name>` — stores a credential in macOS Keychain
-- `agentpaas secret list` — lists which secrets the daemon can access (by label,
-  never by value)
-- `agentpaas secret remove <name>` — removes a credential
-- `agentpaas secret rotate <name>` — replaces a credential (add + remove atomic)
-- `agentpaas secret test <name>` — pre-deployment credential validation.
-  Makes a trivial authenticated call to the target service (LLM: "say OK";
-  third-party API: GET /health or equivalent) OUTSIDE the container, before
-  pack/run. Fail fast with a clear error if the key is wrong, the provider
-  is unreachable, or the egress policy doesn't allow the destination.
-  Required by 15-T01 Gap 2 (test-before-baking-in). Works for ALL brokered
-  credentials, not just LLM.
-- Keychain service name convention documented and enforced
-- Hermes plugin: secret onboarding skill (guide user through adding credentials)
+- `agentpaas trigger invoke <agent-name> [--payload <file>]` — invoke an agent
+  via the trigger REST API (API-key auth via AGENTPAAS_TRIGGER_API_KEY)
+- `agentpaas trigger cron add <agent-name> --expr "*/5 * * * *" [--payload <file>]` — register a cron schedule
+- `agentpaas trigger cron list` — list registered cron schedules
+- `agentpaas trigger cron remove <id>` — remove a cron schedule
+- `agentpaas trigger event publish <run-id> --type <event-type> [--data <file>]` — publish a test event (for LC-03b)
+- `agentpaas trigger event subscribe <run-id>` — SSE stream of run events
+- Hermes plugin tools: `agentpaas_trigger_invoke`, `agentpaas_trigger_cron_add`,
+  `agentpaas_trigger_cron_list`, `agentpaas_trigger_cron_remove`
+- Persist cron schedules in daemon state (survive restart — currently in-memory)
+- Audit events for trigger create/invoke/cron-fire
 
-**Verification:** `agentpaas secret add openweather-api-key` stores a key.
-`agentpaas secret test openweather-api-key` validates it before deployment.
-`agentpaas run weather-agent` uses it via the gateway broker. Secret value
-never appears in container env, logs, or audit trail.
+**Depends on:** Existing trigger server (B9), daemon (B14).
 
-#### 15-T06: HTTP/HTTPS Egress Enforcement (P1 Complete)
+**Verification:**
+1. `agentpaas trigger invoke weather-agent` — agent runs, audit records the
+   trigger invocation with API-key auth.
+2. `agentpaas trigger cron add weather-agent --expr "*/2 * * * *"` — schedule
+   registered, `cron list` shows it, agent auto-invokes every 2 min.
+3. `agentpaas trigger event publish <run-id> --type test` — event appears in
+   SSE stream and audit trail.
+4. Daemon restart: cron schedules survive (persisted to state).
+5. API-key auth: invoke without key → 401; with wrong key → 401; with correct
+   key → 200.
 
-**Problem:** HTTP/HTTPS egress goes through the gateway via HTTP_PROXY. Raw
-TCP, DNS tunneling, IPv6 are blocked by iptables but not inspected. This is
-acceptable for P1.
-
-**Scope (P1):**
-- HTTP/HTTPS egress via gateway proxy — already working (B14B)
-- iptables egress firewall for non-HTTP — already working (B14E R17)
-- IPv6 blocked via ip6tables — already working (B14E R17)
-
-**P2 scope (not blocking v0.1.0):**
-- Transparent proxy (iptables redirect instead of HTTP_PROXY env)
-- DNS-level inspection
-- Raw TCP/UDP deep inspection
-- DLP on outbound content (semantic, not fingerprint-based)
-
-**Verification (P1):** Agent's HTTP call to an allowed domain succeeds. HTTP
-call to a denied domain is blocked by the gateway. Raw TCP attempt is blocked
-by iptables. IPv6 attempt is blocked by ip6tables. All denials audited.
-
-#### 15-T07: Production Hardening (P1 — Don't Skip)
+#### 15-T05: Production Hardening (P1 — Don't Skip)
 
 **Problem:** Several P2 items from the B14E risk register should be closed
 before v0.1.0 ships, not deferred.
@@ -2855,6 +2841,60 @@ before v0.1.0 ships, not deferred.
 **Verification:** Agent container has no NET_ADMIN capability. Checkpoint key
 file is encrypted. Rekor retry works on transient failures. iptables rules
 cannot be flushed by the agent process.
+
+#### 15-T06: Release Binary (macOS)
+
+**Problem:** No release binary exists. Users must build from source.
+
+**Scope:**
+- Cut v0.1.0 tag → triggers `release.yml` (goreleaser + cosign keyless via OIDC)
+- `brew install agentpaas` (Formula exists, SHA filled by goreleaser at release)
+- `agentpaas doctor` first-run check (Docker, daemon, keychain — already built)
+- First-run experience: daemon auto-start, local registry setup, policy scaffold
+- `cosign verify-blob` on real release artifacts
+- Offline bundle creation + verification
+
+**Note:** Linux release (deb/rpm) is P2 — see 15-P2-01.
+
+**Verification:** Fresh macOS machine: `brew install agentpaas`, `agentpaas
+doctor` passes, `agentpaas pack` + `agentpaas run` works end-to-end.
+
+#### 15-T07: Clean-Machine Prerequisites Documentation
+
+**Problem:** We know it works on this machine. We haven't proven a fresh macOS
+works. The 2-user <15 min test is Block 15 scope, but Block 15 must provide
+Hermes with the information on what software is needed on a clean machine.
+
+**Scope:**
+- Document prerequisites: macOS version, Docker Desktop or Colima, Homebrew
+- `agentpaas doctor` checks all prerequisites and reports what's missing with
+  install commands
+- README quickstart verified on a fresh macOS user account
+- Prerequisite checklist provided to Hermes so it can guide users
+
+**Verification:** A user following the README on a fresh macOS reaches a
+running governed agent in under 15 minutes.
+
+#### 15-T08: HTTP/HTTPS Egress Enforcement (P1 Complete)
+
+**Problem:** HTTP/HTTPS egress goes through the gateway via HTTP_PROXY. Raw
+TCP, DNS tunneling, IPv6 are blocked by iptables but not inspected. This is
+acceptable for P1.
+
+**Scope (P1):**
+- HTTP/HTTPS egress via gateway proxy — already working (B14B)
+- iptables egress firewall for non-HTTP — already working (B14E R17)
+- IPv6 blocked via ip6tables — already working (B14E R17)
+
+**P2 scope (not blocking v0.1.0):**
+- Transparent proxy (iptables redirect instead of HTTP_PROXY env)
+- DNS-level inspection
+- Raw TCP/UDP deep inspection
+- DLP on outbound content (semantic, not fingerprint-based)
+
+**Verification (P1):** Agent's HTTP call to an allowed domain succeeds. HTTP
+call to a denied domain is blocked by the gateway. Raw TCP attempt is blocked
+by iptables. IPv6 attempt is blocked by ip6tables. All denials audited.
 
 ### P2 Items (tracked, not blocking v0.1.0)
 
@@ -2892,20 +2932,21 @@ HTTP/HTTPS is gateway-proxied (P1). P2:
 ### BLOCK 15 SUCCESS GATE
 
 `make block15-gate` runs all P1 sub-segment gates:
-- 15-T01: LLM provider integration test (real LLM call, audited)
-- 15-T02: Release binary exists and `brew install` works
-- 15-T03: Clean-machine prerequisites documented and verified
-- 15-T04: Policy authoring via Hermes (default templates, validation at pack time)
-- 15-T05: Credential onboarding (`secret add/list/remove/rotate`)
-- 15-T06: HTTP/HTTPS egress enforcement (already working, regression gate)
-- 15-T07: Production hardening (init container, encrypted key, Rekor retry)
+- 15-T01: Credential onboarding (`secret add/list/remove/rotate/test`)
+- 15-T02: LLM provider integration test (real LLM call, audited)
+- 15-T03: Policy authoring via Hermes (default templates, validation at pack time)
+- 15-T04: Trigger/cron/event surface (invoke, cron add/list/remove, event publish)
+- 15-T05: Production hardening (init container, encrypted key, Rekor retry)
+- 15-T06: Release binary exists and `brew install` works
+- 15-T07: Clean-machine prerequisites documented and verified
+- 15-T08: HTTP/HTTPS egress enforcement (already working, regression gate)
 
-All must pass. This is the final gate before Block 15 manual testing.
+All must pass. This is the final gate before Block 16 manual testing.
 
-**Build order:** 15-T05 (credential onboarding) → 15-T01 (LLM integration,
-depends on T05) → 15-T04 (policy authoring) → 15-T07 (production hardening) →
-15-T02 (release binary) → 15-T03 (clean-machine docs) → 15-T06 (regression
-gate, already passing). Then Block 16 manual testing.
+**Build order:** 15-T01 (credential onboarding) → 15-T02 (LLM integration,
+depends on T01) → 15-T03 (policy authoring) → 15-T04 (trigger surface) →
+15-T05 (production hardening) → 15-T06 (release binary) → 15-T07 (clean-machine
+docs) → 15-T08 (regression gate, already passing). Then Block 16 manual testing.
 
 ---
 
