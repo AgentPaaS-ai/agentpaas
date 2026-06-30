@@ -35,6 +35,24 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(sdk_agent.llm("hello world"), {"text": "fake", "tokens": 2})
         self.assertEqual(rpc.calls, [("llm", {"prompt": "hello world"})])
 
+    def test_llm_with_model_passes_model_to_rpc(self):
+        sdk_agent = Agent()
+        rpc = FakeRPC({"text": "response", "tokens": 5})
+        sdk_agent.set_rpc(rpc)
+        sdk_agent.llm("hello", model="gpt-4o")
+        _, params = rpc.calls[0]
+        self.assertEqual(params["prompt"], "hello")
+        self.assertEqual(params["model"], "gpt-4o")
+
+    def test_llm_without_model_omits_model_param(self):
+        sdk_agent = Agent()
+        rpc = FakeRPC({"text": "response", "tokens": 5})
+        sdk_agent.set_rpc(rpc)
+        sdk_agent.llm("hello")
+        _, params = rpc.calls[0]
+        self.assertEqual(params["prompt"], "hello")
+        self.assertNotIn("model", params)
+
     def test_http_with_credential_sends_only_id_to_rpc(self):
         sdk_agent = Agent()
         rpc = FakeRPC({"status": 200, "headers": {}, "body": "ok"})

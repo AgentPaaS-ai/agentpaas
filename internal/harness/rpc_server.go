@@ -11,11 +11,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/llm"
 	"github.com/parvezsyed/agentpaas/internal/mcpmanager"
 )
 
@@ -194,23 +196,122 @@ func (s *harnessRPCServer) SetRouter(router *mcpmanager.Router) {
 
 func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcResponse {
 	prompt := stringParam(req.Params, "prompt")
-	tokens := int64(len(strings.Fields(prompt)))
-	if tokens == 0 && prompt != "" {
-		tokens = 1
+
+	// Read optional model override from params.
+	modelOverride := stringParam(req.Params, "model")
+
+	// Read LLM config from payload (set by daemon at invoke time).
+	llmConfig, _ := state.payload["llm"].(map[string]any)
+
+	// Backward compat: no LLM config → fake response.
+	if llmConfig == nil {
+		tokens := int64(len(strings.Fields(prompt)))
+		if tokens == 0 && prompt != "" {
+			tokens = 1
+		}
+		if err := state.budget.RecordTokens(tokens); err != nil {
+			if errors.Is(err, ErrBudgetExceeded) && state.terminate != nil {
+				go state.terminate()
+				return rpcError(req.ID, err.Error(), StatusBudgetExceeded)
+			}
+			return rpcError(req.ID, err.Error(), "llm_failed")
+		}
+		return rpcResponse{
+			ID: req.ID,
+			OK: true,
+			Result: map[string]any{
+				"text":   "agentpaas fake llm response",
+				"tokens": tokens,
+			},
+		}
+	}
+
+	provider := firstString(llmConfig, "provider")
+	model := firstString(llmConfig, "model")
+	credentialID := firstString(llmConfig, "credential")
+
+	// Get the provider adapter.
+	adapter := llm.GetAdapter(provider)
+	if adapter == nil {
+		s.auditEgressDecision("harness", "", "POST", credentialID, "", "denied", "unknown llm provider: "+provider)
+		return rpcError(req.ID, "unknown llm provider: "+provider, "llm_failed")
+	}
+
+	// Get credential value from state.credentials.
+	cred, ok := state.credentials[credentialID]
+	if !ok {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "llm credential not declared")
+		return rpcError(req.ID, "llm credential not declared", "credential_denied")
+	}
+
+	// Use model override if provided.
+	if modelOverride != "" {
+		model = modelOverride
+	}
+
+	// Build the HTTP request.
+	ctx := context.Background()
+	httpReq, err := adapter.BuildRequest(ctx, model, prompt, cred.Value)
+	if err != nil {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "build request failed: "+err.Error())
+		return rpcError(req.ID, err.Error(), "llm_failed")
+	}
+
+	// Execute the HTTP request.
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "http request failed: "+err.Error())
+		return rpcError(req.ID, err.Error(), "llm_failed")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Read response body (1 MB limit, same as handleHTTP).
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	if err != nil {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", "response read failed: "+err.Error())
+		return rpcError(req.ID, err.Error(), "llm_failed")
+	}
+
+	// Parse the response.
+	result, err := adapter.ParseResponse(resp.StatusCode, respBody)
+	if err != nil {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", "parse response failed: "+err.Error())
+		return rpcError(req.ID, err.Error(), "llm_failed")
+	}
+
+	// Record tokens (use provider tokens, fall back to word-count estimate).
+	tokens := result.Tokens
+	if tokens == 0 {
+		tokens = int64(len(strings.Fields(result.Text)))
+		if tokens == 0 && result.Text != "" {
+			tokens = 1
+		}
 	}
 	if err := state.budget.RecordTokens(tokens); err != nil {
 		if errors.Is(err, ErrBudgetExceeded) && state.terminate != nil {
 			go state.terminate()
+			s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
 			return rpcError(req.ID, err.Error(), StatusBudgetExceeded)
 		}
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
+
+	// Audit allowed egress.
+	respModel := result.Model
+	if respModel == "" {
+		respModel = model
+	}
+	s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "allowed", "")
+
 	return rpcResponse{
 		ID: req.ID,
 		OK: true,
 		Result: map[string]any{
-			"text":   "agentpaas fake llm response",
+			"text":   result.Text,
 			"tokens": tokens,
+			"model":  respModel,
 		},
 	}
 }

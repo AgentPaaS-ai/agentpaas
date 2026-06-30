@@ -29,8 +29,11 @@ class Agent:
             return self._invoke_handler(payload)
         raise RuntimeError("agent must register an invoke handler with @agent.on_invoke")
 
-    def llm(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
-        params = {"prompt": prompt, **kwargs}
+    def llm(self, prompt: str, model: str | None = None, **kwargs: Any) -> dict[str, Any]:
+        params: dict[str, Any] = {"prompt": prompt}
+        if model is not None:
+            params["model"] = model
+        params.update(kwargs)
         return self._call("llm", params)
 
     def record_iteration(self) -> dict[str, Any]:
