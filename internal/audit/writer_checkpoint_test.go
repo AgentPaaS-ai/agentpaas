@@ -117,6 +117,7 @@ func TestAuditWriterWithCheckpointsTailTruncationDetected(t *testing.T) {
 }
 
 func TestLoadOrGenerateCheckpointKeyPersists(t *testing.T) {
+	t.Setenv("AGENTPAAS_AUDIT_KEY_PASSPHRASE", "test-passphrase-for-checkpoint-key")
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "audit-checkpoint-key.der")
 
@@ -145,6 +146,7 @@ func TestLoadOrGenerateCheckpointKeyPersists(t *testing.T) {
 }
 
 func TestLoadOrGenerateCheckpointKey_FilePermissions(t *testing.T) {
+	t.Setenv("AGENTPAAS_AUDIT_KEY_PASSPHRASE", "test-passphrase-for-checkpoint-key")
 	dir := t.TempDir()
 	keyPath := filepath.Join(dir, "audit-checkpoint-key.der")
 
@@ -159,6 +161,86 @@ func TestLoadOrGenerateCheckpointKey_FilePermissions(t *testing.T) {
 	}
 	if fi.Mode().Perm() != 0600 {
 		t.Errorf("checkpoint key file permissions = %#o, want 0600", fi.Mode().Perm())
+	}
+}
+
+func TestCheckpointKeyIsEncryptedAtRest(t *testing.T) {
+	t.Setenv("AGENTPAAS_AUDIT_KEY_PASSPHRASE", "test-passphrase-encryption")
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "audit-checkpoint-key.der")
+
+	der, _, err := LoadOrGenerateCheckpointKey(keyPath)
+	if err != nil {
+		t.Fatalf("LoadOrGenerateCheckpointKey: %v", err)
+	}
+
+	// Read the file — it must NOT be raw DER
+	data, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	// Raw DER starts with 0x30 (ASN.1 SEQUENCE). Encrypted format is JSON.
+	if len(data) > 0 && data[0] == 0x30 {
+		t.Fatal("checkpoint key file is raw DER (unencrypted); expected encrypted JSON envelope")
+	}
+	// Must contain JSON envelope fields
+	if !strings.Contains(string(data), `"version"`) {
+		t.Fatal("checkpoint key file is not a JSON envelope")
+	}
+
+	// The DER must still be valid and parseable
+	_, err = PublicKeyFromCheckpointKeyDER(der)
+	if err != nil {
+		t.Fatalf("PublicKeyFromCheckpointKeyDER: %v", err)
+	}
+}
+
+func TestCheckpointKeyWrongPassphraseFails(t *testing.T) {
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "audit-checkpoint-key.der")
+
+	// Generate with passphrase A
+	t.Setenv("AGENTPAAS_AUDIT_KEY_PASSPHRASE", "passphrase-A")
+	_, _, err := LoadOrGenerateCheckpointKey(keyPath)
+	if err != nil {
+		t.Fatalf("LoadOrGenerate (A): %v", err)
+	}
+
+	// Load with passphrase B — must fail
+	t.Setenv("AGENTPAAS_AUDIT_KEY_PASSPHRASE", "passphrase-B")
+	_, _, err = LoadOrGenerateCheckpointKey(keyPath)
+	if err == nil {
+		t.Fatal("expected error loading with wrong passphrase, got nil")
+	}
+}
+
+func TestCheckpointKeyLegacyDERMigration(t *testing.T) {
+	t.Setenv("AGENTPAAS_AUDIT_KEY_PASSPHRASE", "migration-test-pass")
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "audit-checkpoint-key.der")
+
+	// Write legacy raw DER
+	der, pubKey, err := GenerateCheckpointKey()
+	if err != nil {
+		t.Fatalf("GenerateCheckpointKey: %v", err)
+	}
+	if err := os.WriteFile(keyPath, der, 0600); err != nil {
+		t.Fatalf("WriteFile legacy DER: %v", err)
+	}
+
+	// Load — should succeed (legacy migration, logs warning)
+	loadedDER, loadedPub, err := LoadOrGenerateCheckpointKey(keyPath)
+	if err != nil {
+		t.Fatalf("LoadOrGenerate legacy: %v", err)
+	}
+	if string(loadedDER) != string(der) {
+		t.Fatal("legacy DER mismatch")
+	}
+	// Public key should match
+	pubDER1, _ := x509.MarshalPKIXPublicKey(pubKey)
+	pubDER2, _ := x509.MarshalPKIXPublicKey(loadedPub)
+	if string(pubDER1) != string(pubDER2) {
+		t.Fatal("public key mismatch on legacy load")
 	}
 }
 

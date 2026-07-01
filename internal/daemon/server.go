@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -245,6 +246,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		_ = d.cleanupFiles()
 		return fmt.Errorf("daemon: load checkpoint signing key: %w", err)
 	}
+	log.Printf("daemon: audit checkpoint key loaded (encrypted at rest)")
 	checkpointCadence := audit.DefaultCheckpointCadence
 	if raw := strings.TrimSpace(os.Getenv("AGENTPAAS_AUDIT_CHECKPOINT_CADENCE")); raw != "" {
 		if n, parseErr := strconv.ParseInt(raw, 10, 64); parseErr == nil && n > 0 {
