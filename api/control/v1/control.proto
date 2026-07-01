@@ -544,6 +544,54 @@ message NextActionResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Cron Schedules
+// ---------------------------------------------------------------------------
+
+// CronScheduleInfo represents a cron trigger schedule.
+message CronScheduleInfo {
+  string schedule_id = 1;
+  string expr = 2;
+  string agent_name = 3;
+  string agent_version = 4;
+  string timezone = 5;
+  string missed_run_policy = 6;
+  string concurrency_policy = 7;
+}
+
+// CronAddRequest creates a new cron schedule.
+message CronAddRequest {
+  string agent_name = 1;
+  string expr = 2;
+  string agent_version = 3;
+  string timezone = 4;
+  string missed_run_policy = 5;
+  string concurrency_policy = 6;
+}
+
+// CronAddResponse returns the created schedule.
+message CronAddResponse {
+  CronScheduleInfo schedule = 1;
+}
+
+// CronListRequest lists cron schedules.
+message CronListRequest {}
+
+// CronListResponse returns all schedules.
+message CronListResponse {
+  repeated CronScheduleInfo schedules = 1;
+}
+
+// CronRemoveRequest removes a cron schedule.
+message CronRemoveRequest {
+  string schedule_id = 1;
+}
+
+// CronRemoveResponse confirms removal.
+message CronRemoveResponse {
+  bool removed = 1;
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -692,6 +740,28 @@ service ControlService {
     option (google.api.http) = {
       post: "/v1/control/next-action"
       body: "*"
+    };
+  }
+
+  // CronAdd creates a new cron schedule that auto-invokes an agent.
+  rpc CronAdd(CronAddRequest) returns (CronAddResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/cron"
+      body: "*"
+    };
+  }
+
+  // CronList lists all cron schedules.
+  rpc CronList(CronListRequest) returns (CronListResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/cron"
+    };
+  }
+
+  // CronRemove removes a cron schedule.
+  rpc CronRemove(CronRemoveRequest) returns (CronRemoveResponse) {
+    option (google.api.http) = {
+      delete: "/v1/control/cron/{schedule_id}"
     };
   }
 }
