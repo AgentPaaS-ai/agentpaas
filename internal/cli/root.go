@@ -119,6 +119,8 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newRecommendPatchCmd())
 	rootCmd.AddCommand(newTimelineCmd())
 	rootCmd.AddCommand(newNextActionCmd())
+	rootCmd.AddCommand(newTriggerCmd())
+	rootCmd.AddCommand(newCronCmd())
 
 	return rootCmd
 }
