@@ -57,6 +57,9 @@ const (
 	ControlService_RecommendPolicyPatch_FullMethodName = "/agentpaas.control.v1.ControlService/RecommendPolicyPatch"
 	ControlService_GetRunTimeline_FullMethodName       = "/agentpaas.control.v1.ControlService/GetRunTimeline"
 	ControlService_NextAction_FullMethodName           = "/agentpaas.control.v1.ControlService/NextAction"
+	ControlService_CronAdd_FullMethodName              = "/agentpaas.control.v1.ControlService/CronAdd"
+	ControlService_CronList_FullMethodName             = "/agentpaas.control.v1.ControlService/CronList"
+	ControlService_CronRemove_FullMethodName           = "/agentpaas.control.v1.ControlService/CronRemove"
 )
 
 // ControlServiceClient is the client API for ControlService service.
@@ -106,6 +109,12 @@ type ControlServiceClient interface {
 	GetRunTimeline(ctx context.Context, in *GetRunTimelineRequest, opts ...grpc.CallOption) (*GetRunTimelineResponse, error)
 	// NextAction recommends the next action based on the current context.
 	NextAction(ctx context.Context, in *NextActionRequest, opts ...grpc.CallOption) (*NextActionResponse, error)
+	// CronAdd creates a new cron schedule that auto-invokes an agent.
+	CronAdd(ctx context.Context, in *CronAddRequest, opts ...grpc.CallOption) (*CronAddResponse, error)
+	// CronList lists all cron schedules.
+	CronList(ctx context.Context, in *CronListRequest, opts ...grpc.CallOption) (*CronListResponse, error)
+	// CronRemove removes a cron schedule.
+	CronRemove(ctx context.Context, in *CronRemoveRequest, opts ...grpc.CallOption) (*CronRemoveResponse, error)
 }
 
 type controlServiceClient struct {
@@ -305,6 +314,36 @@ func (c *controlServiceClient) NextAction(ctx context.Context, in *NextActionReq
 	return out, nil
 }
 
+func (c *controlServiceClient) CronAdd(ctx context.Context, in *CronAddRequest, opts ...grpc.CallOption) (*CronAddResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CronAddResponse)
+	err := c.cc.Invoke(ctx, ControlService_CronAdd_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) CronList(ctx context.Context, in *CronListRequest, opts ...grpc.CallOption) (*CronListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CronListResponse)
+	err := c.cc.Invoke(ctx, ControlService_CronList_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) CronRemove(ctx context.Context, in *CronRemoveRequest, opts ...grpc.CallOption) (*CronRemoveResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CronRemoveResponse)
+	err := c.cc.Invoke(ctx, ControlService_CronRemove_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControlServiceServer is the server API for ControlService service.
 // All implementations must embed UnimplementedControlServiceServer
 // for forward compatibility.
@@ -352,6 +391,12 @@ type ControlServiceServer interface {
 	GetRunTimeline(context.Context, *GetRunTimelineRequest) (*GetRunTimelineResponse, error)
 	// NextAction recommends the next action based on the current context.
 	NextAction(context.Context, *NextActionRequest) (*NextActionResponse, error)
+	// CronAdd creates a new cron schedule that auto-invokes an agent.
+	CronAdd(context.Context, *CronAddRequest) (*CronAddResponse, error)
+	// CronList lists all cron schedules.
+	CronList(context.Context, *CronListRequest) (*CronListResponse, error)
+	// CronRemove removes a cron schedule.
+	CronRemove(context.Context, *CronRemoveRequest) (*CronRemoveResponse, error)
 	mustEmbedUnimplementedControlServiceServer()
 }
 
@@ -415,6 +460,15 @@ func (UnimplementedControlServiceServer) GetRunTimeline(context.Context, *GetRun
 }
 func (UnimplementedControlServiceServer) NextAction(context.Context, *NextActionRequest) (*NextActionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method NextAction not implemented")
+}
+func (UnimplementedControlServiceServer) CronAdd(context.Context, *CronAddRequest) (*CronAddResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CronAdd not implemented")
+}
+func (UnimplementedControlServiceServer) CronList(context.Context, *CronListRequest) (*CronListResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CronList not implemented")
+}
+func (UnimplementedControlServiceServer) CronRemove(context.Context, *CronRemoveRequest) (*CronRemoveResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CronRemove not implemented")
 }
 func (UnimplementedControlServiceServer) mustEmbedUnimplementedControlServiceServer() {}
 func (UnimplementedControlServiceServer) testEmbeddedByValue()                        {}
@@ -754,6 +808,60 @@ func _ControlService_NextAction_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_CronAdd_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CronAddRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CronAdd(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CronAdd_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CronAdd(ctx, req.(*CronAddRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_CronList_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CronListRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CronList(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CronList_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CronList(ctx, req.(*CronListRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_CronRemove_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CronRemoveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CronRemove(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CronRemove_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CronRemove(ctx, req.(*CronRemoveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControlService_ServiceDesc is the grpc.ServiceDesc for ControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -828,6 +936,18 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "NextAction",
 			Handler:    _ControlService_NextAction_Handler,
+		},
+		{
+			MethodName: "CronAdd",
+			Handler:    _ControlService_CronAdd_Handler,
+		},
+		{
+			MethodName: "CronList",
+			Handler:    _ControlService_CronList_Handler,
+		},
+		{
+			MethodName: "CronRemove",
+			Handler:    _ControlService_CronRemove_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
