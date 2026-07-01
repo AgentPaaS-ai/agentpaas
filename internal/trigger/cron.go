@@ -17,6 +17,8 @@ import (
 type CronSchedule struct {
 	// Expr is the 5-field cron expression.
 	Expr string
+	// ScheduleID is the unique identifier for this schedule.
+	ScheduleID string
 	// AgentName is the target agent to invoke.
 	AgentName string
 	// AgentVersion is the target agent version (optional).
@@ -39,6 +41,8 @@ type CronSchedule struct {
 type CronConfig struct {
 	// Schedules is the list of cron schedules to manage.
 	Schedules []*CronSchedule
+	// StatePath is an optional path to a JSON file for schedule persistence.
+	StatePath string
 	// Audit is the audit appender for cron events.
 	Audit audit.AuditAppender
 	// TriggerService is the service to invoke when cron fires.
@@ -51,6 +55,7 @@ type cronInvokeFunc func(context.Context, *triggerv1.InvokeRequest) (*triggerv1.
 type CronScheduler struct {
 	mu         sync.Mutex
 	schedules  []*CronSchedule
+	statePath  string
 	audit      audit.AuditAppender
 	triggerSvc *TriggerService
 	invoke     cronInvokeFunc
@@ -82,8 +87,9 @@ func NewCronScheduler(cfg CronConfig) *CronScheduler {
 		invoke = cfg.TriggerService.Invoke
 	}
 
-	return &CronScheduler{
+	cs := &CronScheduler{
 		schedules:  cfg.Schedules,
+		statePath:  cfg.StatePath,
 		audit:      cfg.Audit,
 		triggerSvc: cfg.TriggerService,
 		invoke:     invoke,
@@ -91,6 +97,14 @@ func NewCronScheduler(cfg CronConfig) *CronScheduler {
 		lastFire:   make(map[string]time.Time),
 		stopCh:     make(chan struct{}),
 	}
+
+	if cfg.StatePath != "" {
+		if loaded, err := cs.loadSchedules(); err != nil || !loaded {
+			_ = cs.persistSchedules()
+		}
+	}
+
+	return cs
 }
 
 // Start begins the cron scheduler. It checks every minute on the minute.
@@ -445,6 +459,9 @@ func IsDSTRepeatedTime(t time.Time) bool {
 }
 
 func scheduleKey(schedule *CronSchedule) string {
+	if schedule.ScheduleID != "" {
+		return schedule.ScheduleID
+	}
 	return schedule.Expr + ":" + schedule.AgentName + ":" + schedule.AgentVersion
 }
 
