@@ -33,7 +33,7 @@ func TestEmbeddedFirewallScript_Content(t *testing.T) {
 		"iptables -P OUTPUT DROP",
 		"ip6tables -A OUTPUT -o lo -j ACCEPT",
 		"ip6tables -P OUTPUT DROP",
-		"172.16.0.0/12",
+		"AGENTPAAS_GATEWAY_SUBNET",
 		"|| true",
 	} {
 		if !strings.Contains(firewallInitScript, want) {
