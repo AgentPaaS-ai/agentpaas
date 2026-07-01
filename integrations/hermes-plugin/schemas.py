@@ -26,6 +26,10 @@ TOOL_NAMES = [
     "agentpaas_secret_test",
     "agentpaas_llm_configure",
     "agentpaas_policy_init",
+    "agentpaas_trigger_invoke",
+    "agentpaas_cron_add",
+    "agentpaas_cron_list",
+    "agentpaas_cron_remove",
 ]
 
 AGENTPAAS_INIT_PROJECT = {
@@ -468,6 +472,88 @@ AGENTPAAS_POLICY_INIT = {
             },
         },
         "required": ["project_dir"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_TRIGGER_INVOKE = {
+    "name": "agentpaas_trigger_invoke",
+    "description": "Invoke an agent via the trigger REST API.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "agent_name": {
+                "type": "string",
+                "description": "Name of the agent to invoke.",
+            },
+            "payload": {
+                "type": "string",
+                "description": "Optional path to a payload file to send with the invocation.",
+            },
+            "content_type": {
+                "type": "string",
+                "description": "Content type of the payload (default: application/json).",
+            },
+        },
+        "required": ["agent_name"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CRON_ADD = {
+    "name": "agentpaas_cron_add",
+    "description": "Add a cron schedule for automatic agent invocation.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "agent_name": {
+                "type": "string",
+                "description": "Name of the agent to schedule.",
+            },
+            "expr": {
+                "type": "string",
+                "description": "Cron expression (e.g. */5 * * * *).",
+            },
+            "version": {
+                "type": "string",
+                "description": "Optional agent version to invoke.",
+            },
+            "timezone": {
+                "type": "string",
+                "description": "Optional timezone for the cron schedule.",
+            },
+        },
+        "required": ["agent_name", "expr"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CRON_LIST = {
+    "name": "agentpaas_cron_list",
+    "description": "List all cron schedules.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CRON_REMOVE = {
+    "name": "agentpaas_cron_remove",
+    "description": "Remove a cron schedule by ID.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "schedule_id": {
+                "type": "string",
+                "description": "ID of the cron schedule to remove.",
+            },
+        },
+        "required": ["schedule_id"],
         "additionalProperties": False,
     },
 }

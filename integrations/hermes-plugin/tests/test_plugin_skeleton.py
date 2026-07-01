@@ -231,6 +231,10 @@ def _sample_args(tool_name):
         "agentpaas_secret_test": {"name": "openai-key", "provider": "openai"},
         "agentpaas_llm_configure": {"project_dir": ".", "provider": "openai", "model": "gpt-4o", "credential": "openai-key"},
         "agentpaas_policy_init": {"project_dir": ".", "template": "deny-all"},
+        "agentpaas_trigger_invoke": {"agent_name": "weather-agent"},
+        "agentpaas_cron_add": {"agent_name": "weather", "expr": "*/5 * * * *"},
+        "agentpaas_cron_list": {},
+        "agentpaas_cron_remove": {"schedule_id": "abc123"},
     }
     return samples.get(tool_name, {})
 
