@@ -13,6 +13,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -148,6 +149,12 @@ func GenerateSBOM(ctx context.Context, imageRef string) (sbom []byte, digest str
 	return output, hex.EncodeToString(sum[:]), nil
 }
 
+// signMaxRetries is the total number of sign attempts for production refs.
+const signMaxRetries = 3
+
+// signRetryBaseDelay is the initial backoff delay between retries.
+const signRetryBaseDelay = 2 * time.Second
+
 // SignImage signs the built image with cosign using the package identity key.
 // Returns the signature referrer path.
 func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer string, err error) {
@@ -161,6 +168,38 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 		return "", err
 	}
 
+	localRef := isLocalRegistryRef(imageRef)
+	maxAttempts := 1
+	if !localRef {
+		maxAttempts = signMaxRetries // production ref: retry on transient Rekor failures
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		referrer, err = signImageOnce(ctx, imageRef, keyPath)
+		if err == nil {
+			return referrer, nil
+		}
+		lastErr = err
+		if attempt == maxAttempts {
+			break
+		}
+		if !isRetryableSignError(err) {
+			break
+		}
+		backoff := signRetryBaseDelay * time.Duration(1<<(attempt-1)) // 2s, 4s
+		log.Printf("pack: sign attempt %d failed (transient), retrying in %v: %v", attempt, backoff, err)
+		select {
+		case <-time.After(backoff):
+		case <-ctx.Done():
+			return "", fmt.Errorf("sign image: %w", ctx.Err())
+		}
+	}
+	return "", lastErr
+}
+
+// signImageOnce performs a single cosign sign attempt.
+func signImageOnce(ctx context.Context, imageRef, keyPath string) (string, error) {
 	cmdCtx, cancel := context.WithTimeout(ctx, externalSignatureTimeout)
 	defer cancel()
 
@@ -180,8 +219,43 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 	if err != nil {
 		return "", fmt.Errorf("sign image: %w: %s", err, strings.TrimSpace(string(output)))
 	}
-
 	return "cosign://" + imageRef, nil
+}
+
+// isRetryableSignError returns true if the sign error is likely transient
+// (Rekor outage, network issue, temporary failure) and worth retrying.
+func isRetryableSignError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, pattern := range retryableSignErrorPatterns {
+		if strings.Contains(msg, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// retryableSignErrorPatterns are error substrings that indicate a transient
+// failure (Rekor/transparency-log outage, network issue) worth retrying.
+var retryableSignErrorPatterns = []string{
+	"rekor",
+	"tlog",
+	"transparency log",
+	"fulcio",
+	"503",
+	"502",
+	"500",
+	"connection refused",
+	"connection reset",
+	"timeout",
+	"timed out",
+	"temporary failure",
+	"eof",
+	"i/o timeout",
+	"no such host",
+	"server closed",
 }
 
 // CreateAgentLock creates the canonical, signed agent.lock manifest.
