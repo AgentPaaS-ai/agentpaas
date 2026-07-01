@@ -16,11 +16,17 @@ if [ -n "$GATEWAY_IP" ]; then
     iptables -A OUTPUT -d "$GATEWAY_IP" -j ACCEPT 2>/dev/null || true
 fi
 
-# Allow the internal Docker network subnet (for gateway + harness RPC on 127.0.0.1)
-# The internal network is typically 172.x.x.x/16 — we allow the Docker bridge range
-iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT 2>/dev/null || true
-iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT 2>/dev/null || true
-iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT 2>/dev/null || true
+# Allow only the specific internal Docker bridge subnet (gateway + harness RPC).
+# AGENTPAAS_GATEWAY_SUBNET is set by the daemon to the /16 derived from the gateway IP.
+# Falls back to broad RFC1918 if unset (backward compat for older daemon versions).
+GATEWAY_SUBNET="${AGENTPAAS_GATEWAY_SUBNET:-}"
+if [ -n "$GATEWAY_SUBNET" ]; then
+    iptables -A OUTPUT -d "$GATEWAY_SUBNET" -j ACCEPT 2>/dev/null || true
+else
+    iptables -A OUTPUT -d 172.16.0.0/12 -j ACCEPT 2>/dev/null || true
+    iptables -A OUTPUT -d 10.0.0.0/8 -j ACCEPT 2>/dev/null || true
+    iptables -A OUTPUT -d 192.168.0.0/16 -j ACCEPT 2>/dev/null || true
+fi
 
 # Drop all other outbound (direct internet access blocked)
 iptables -P OUTPUT DROP 2>/dev/null || true
