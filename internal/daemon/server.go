@@ -59,6 +59,7 @@ type Daemon struct {
 	eventBus      *trigger.EventBus
 	triggerServer *trigger.Server
 	triggerCancel context.CancelFunc
+	cronScheduler *trigger.CronScheduler
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -388,6 +389,26 @@ func (d *Daemon) Start(ctx context.Context) error {
 		}
 	}
 
+	// Start cron scheduler for scheduled agent invocations.
+	cronStatePath := filepath.Join(d.paths.State, "cron-schedules.json")
+	triggerSvc := trigger.NewTriggerService(auditWriter, trigger.DefaultMaxPayload, d.eventBus, nil)
+	triggerSvc.SetInvokeFunc(func(ctx context.Context, agentName string) (string, error) {
+		resp, err := controlServer.Run(ctx, &controlv1.RunRequest{AgentName: agentName})
+		if err != nil {
+			return "", err
+		}
+		return resp.GetRunId(), nil
+	})
+	cronCfg := trigger.CronConfig{
+		Audit:          auditWriter,
+		StatePath:      cronStatePath,
+		TriggerService: triggerSvc,
+	}
+	d.cronScheduler = trigger.NewCronScheduler(cronCfg)
+	controlServer.cronScheduler = d.cronScheduler
+	d.cronScheduler.Start()
+	fmt.Fprintf(os.Stderr, "daemon: cron scheduler started (state: %s)\n", cronStatePath)
+
 	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer reconcileCancel()
 	controlServer.reconcileOrphanedContainers(reconcileCtx)
@@ -497,6 +518,9 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	}
 	if d.triggerServer != nil {
 		d.triggerServer.Stop()
+	}
+	if d.cronScheduler != nil {
+		d.cronScheduler.Stop()
 	}
 
 	// Clean up files.

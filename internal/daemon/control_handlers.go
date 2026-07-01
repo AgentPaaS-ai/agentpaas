@@ -1588,3 +1588,70 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	cleanup = false
 	return nil
 }
+
+// CronAdd creates a new cron schedule that auto-invokes an agent.
+func (s *controlServer) CronAdd(ctx context.Context, req *controlv1.CronAddRequest) (*controlv1.CronAddResponse, error) {
+	if req.GetAgentName() == "" {
+		return nil, status.Error(codes.InvalidArgument, "agent_name is required")
+	}
+	if req.GetExpr() == "" {
+		return nil, status.Error(codes.InvalidArgument, "expr is required")
+	}
+	if s.cronScheduler == nil {
+		return nil, status.Error(codes.FailedPrecondition, "cron scheduler not available")
+	}
+	schedule := &trigger.CronSchedule{
+		Expr:              req.GetExpr(),
+		AgentName:         req.GetAgentName(),
+		AgentVersion:      req.GetAgentVersion(),
+		Timezone:          req.GetTimezone(),
+		MissedRunPolicy:   req.GetMissedRunPolicy(),
+		ConcurrencyPolicy: req.GetConcurrencyPolicy(),
+	}
+	scheduleID, err := s.cronScheduler.AddSchedule(ctx, schedule)
+	if err != nil {
+		return nil, err // AddSchedule returns proper gRPC status errors
+	}
+	return &controlv1.CronAddResponse{
+		Schedule: cronScheduleToProto(schedule, scheduleID),
+	}, nil
+}
+
+// CronList lists all cron schedules.
+func (s *controlServer) CronList(ctx context.Context, req *controlv1.CronListRequest) (*controlv1.CronListResponse, error) {
+	if s.cronScheduler == nil {
+		return nil, status.Error(codes.FailedPrecondition, "cron scheduler not available")
+	}
+	schedules := s.cronScheduler.ListSchedules()
+	result := make([]*controlv1.CronScheduleInfo, 0, len(schedules))
+	for _, sch := range schedules {
+		result = append(result, cronScheduleToProto(sch, sch.ScheduleID))
+	}
+	return &controlv1.CronListResponse{Schedules: result}, nil
+}
+
+// CronRemove removes a cron schedule.
+func (s *controlServer) CronRemove(ctx context.Context, req *controlv1.CronRemoveRequest) (*controlv1.CronRemoveResponse, error) {
+	if req.GetScheduleId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "schedule_id is required")
+	}
+	if s.cronScheduler == nil {
+		return nil, status.Error(codes.FailedPrecondition, "cron scheduler not available")
+	}
+	if err := s.cronScheduler.RemoveSchedule(ctx, req.GetScheduleId()); err != nil {
+		return nil, err
+	}
+	return &controlv1.CronRemoveResponse{Removed: true}, nil
+}
+
+func cronScheduleToProto(s *trigger.CronSchedule, scheduleID string) *controlv1.CronScheduleInfo {
+	return &controlv1.CronScheduleInfo{
+		ScheduleId:        scheduleID,
+		Expr:              s.Expr,
+		AgentName:         s.AgentName,
+		AgentVersion:      s.AgentVersion,
+		Timezone:          s.Timezone,
+		MissedRunPolicy:   s.MissedRunPolicy,
+		ConcurrencyPolicy: s.ConcurrencyPolicy,
+	}
+}
