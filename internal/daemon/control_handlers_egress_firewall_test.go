@@ -41,6 +41,9 @@ func TestRun_SetsEgressFirewallOnAgentSpec(t *testing.T) {
 	if !containsEnv(agentSpec.Env, "AGENTPAAS_GATEWAY_IP=172.20.0.2") {
 		t.Fatalf("agent env missing gateway IP: %v", agentSpec.Env)
 	}
+	if !containsEnv(agentSpec.Env, "AGENTPAAS_GATEWAY_SUBNET=172.20.0.0/16") {
+		t.Fatalf("agent env missing gateway subnet: %v", agentSpec.Env)
+	}
 }
 
 func TestRun_OmitsNetAdminWhenEgressFirewallDisabled(t *testing.T) {
