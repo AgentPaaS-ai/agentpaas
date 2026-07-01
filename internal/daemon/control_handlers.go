@@ -163,6 +163,21 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	}, nil
 }
 
+// gatewaySubnetFromIP derives the /16 subnet CIDR from a gateway IP address.
+// Docker bridge networks typically use /16 subnets (e.g., 172.18.0.0/16).
+// Returns empty string if the IP is invalid or not IPv4.
+func gatewaySubnetFromIP(ipStr string) string {
+	ip := net.ParseIP(ipStr)
+	if ip == nil || ip.To4() == nil {
+		return ""
+	}
+	ip4 := ip.To4()
+	// Zero out the last two octets to get the /16 network address
+	mask := net.IPv4Mask(0xFF, 0xFF, 0x00, 0x00)
+	network := ip4.Mask(mask)
+	return fmt.Sprintf("%s/16", network.String())
+}
+
 func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*controlv1.RunResponse, error) {
 	agentName := req.GetAgentName()
 	if agentName == "" {
@@ -306,8 +321,10 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		proxyEnv = append(proxyEnv, "AGENTPAAS_EGRESS_FIREWALL=0")
 	}
 	if gatewayIP != "" {
+		gatewaySubnet := gatewaySubnetFromIP(gatewayIP)
 		proxyEnv = append(proxyEnv,
 			fmt.Sprintf("AGENTPAAS_GATEWAY_IP=%s", gatewayIP),
+			fmt.Sprintf("AGENTPAAS_GATEWAY_SUBNET=%s", gatewaySubnet),
 			fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
 			fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
 			fmt.Sprintf("http_proxy=http://%s:7799", gatewayIP),
