@@ -12,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -648,6 +649,33 @@ func cosignArgsContainFlag(args []string, flag string) bool {
 		}
 	}
 	return false
+}
+
+func TestIsRetryableSignError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"rekor", errors.New("sign image: rekor upload failed: connection refused"), true},
+		{"tlog", errors.New("sign image: tlog: timeout"), true},
+		{"transparency", errors.New("sign image: transparency log unavailable"), true},
+		{"503", errors.New("sign image: 503 service unavailable"), true},
+		{"connection refused", errors.New("sign image: connection refused"), true},
+		{"timeout", errors.New("sign image: timeout"), true},
+		{"eof", errors.New("sign image: EOF"), true},
+		{"auth error", errors.New("sign image: unauthorized: invalid key"), false},
+		{"not found", errors.New("sign image: image not found in registry"), false},
+		{"digest mismatch", errors.New("sign image: digest mismatch"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isRetryableSignError(tt.err); got != tt.want {
+				t.Errorf("isRetryableSignError(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
 }
 
 func TestSignImage_LocalVsProdTlogArgs(t *testing.T) {
