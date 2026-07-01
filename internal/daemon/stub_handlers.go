@@ -60,6 +60,9 @@ type controlServer struct {
 	// This field is NOT accessed outside tests and is NEVER set in production.
 	secretStoreForTest secrets.SecretStore
 
+	// cronScheduler manages cron-triggered agent invocations.
+	cronScheduler *trigger.CronScheduler
+
 	runtimeOnce sync.Once
 	runtimeErr  error
 	dockerRT    *runtime.DockerRuntime
