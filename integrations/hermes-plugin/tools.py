@@ -1141,3 +1141,81 @@ def agentpaas_llm_configure(args, **kwargs):
             "error": str(e),
             "error_category": "tool_invocation_failed",
         })
+
+
+def agentpaas_trigger_invoke(args, **kwargs):
+    """Invoke an agent via the trigger REST API."""
+    args = args or {}
+    agent_name = args.get("agent_name", "")
+    if not agent_name:
+        return json.dumps({
+            "error": "agent_name is required",
+            "error_category": "tool_invocation_failed",
+        })
+    payload = args.get("payload", "")
+    content_type = args.get("content_type", "application/json")
+    cmd_args = ["trigger", "invoke", agent_name]
+    if payload:
+        cmd_args.extend(["--payload", payload])
+    if content_type and content_type != "application/json":
+        cmd_args.extend(["--content-type", content_type])
+    try:
+        result = _run_cli(cmd_args)
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_cron_add(args, **kwargs):
+    """Add a cron schedule for automatic agent invocation."""
+    args = args or {}
+    agent_name = args.get("agent_name", "")
+    if not agent_name:
+        return json.dumps({
+            "error": "agent_name is required",
+            "error_category": "tool_invocation_failed",
+        })
+    expr = args.get("expr", "")
+    if not expr:
+        return json.dumps({
+            "error": "expr is required",
+            "error_category": "tool_invocation_failed",
+        })
+    version = args.get("version", "")
+    timezone = args.get("timezone", "")
+    cmd_args = ["cron", "add", agent_name, "--expr", expr]
+    if version:
+        cmd_args.extend(["--version", version])
+    if timezone:
+        cmd_args.extend(["--timezone", timezone])
+    try:
+        result = _run_cli(cmd_args)
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_cron_list(args, **kwargs):
+    """List all cron schedules."""
+    args = args or {}
+    try:
+        result = _run_cli(["cron", "list"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_cron_remove(args, **kwargs):
+    """Remove a cron schedule by ID."""
+    args = args or {}
+    schedule_id = args.get("schedule_id", "")
+    if not schedule_id:
+        return json.dumps({
+            "error": "schedule_id is required",
+            "error_category": "tool_invocation_failed",
+        })
+    try:
+        result = _run_cli(["cron", "remove", schedule_id])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})

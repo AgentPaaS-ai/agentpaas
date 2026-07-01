@@ -29,5 +29,9 @@ provides_tools:
   - agentpaas_secret_test
   - agentpaas_llm_configure
   - agentpaas_policy_init
+  - agentpaas_trigger_invoke
+  - agentpaas_cron_add
+  - agentpaas_cron_list
+  - agentpaas_cron_remove
 requires_env:
   - AGENTPAAS_SOCKET_PATH
