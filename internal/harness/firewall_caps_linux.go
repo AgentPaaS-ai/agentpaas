@@ -4,6 +4,7 @@ package harness
 
 import (
 	"log"
+	"os"
 
 	"golang.org/x/sys/unix"
 )
@@ -27,7 +28,11 @@ func DropNetAdminCapability() {
 		data[i].Inheritable &^= mask
 	}
 	if err := unix.Capset(&hdr, &data[0]); err != nil {
-		log.Printf("harness: drop CAP_NET_ADMIN failed (capset: %v); agent child may retain NET_ADMIN — use init-container firewall pattern for P2", err)
+		if EgressFirewallEnabled() {
+			log.Printf("harness: FATAL: drop CAP_NET_ADMIN failed (capset: %v); egress firewall enabled — refusing to start with NET_ADMIN", err)
+			os.Exit(1)
+		}
+		log.Printf("harness: drop CAP_NET_ADMIN failed (capset: %v); egress firewall disabled — continuing", err)
 		return
 	}
 	log.Printf("harness: dropped CAP_NET_ADMIN from process capability sets")
