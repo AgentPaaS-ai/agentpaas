@@ -266,9 +266,11 @@ block15-gate: build lint
 	go test -race -count=1 ./internal/trigger/... ./internal/daemon/... ./internal/cli/...
 	@echo "  T05: production hardening (gateway subnet, Rekor retry, checkpoint key encryption, capset)"
 	go test -race -count=1 ./internal/daemon/... ./internal/pack/... ./internal/audit/... ./internal/harness/...
+	@echo "  T08: egress enforcement regression (firewall script content, egress enabled flag)"
+	go test -race -count=1 -run 'EgressFirewall\|EmbeddedFirewall\|InitEgressFirewall' ./internal/harness/...
 	@echo "  Plugin: secret onboarding + LLM configure + policy init + trigger/cron tools"
 	cd integrations/hermes-plugin && python3 -m unittest discover -s tests -t . 2>&1 | tail -5
-	@echo "==> Block 15 gate passed (T01+T02+T03+T04+T05 complete; T06-T08 to be added)"
+	@echo "==> Block 15 gate passed (T01+T02+T03+T04+T05+T08 complete; T06-T07 pending)"
 
 .PHONY: gates
 gates: ## List all available gate targets
