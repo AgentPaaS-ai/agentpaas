@@ -41,7 +41,7 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
@@ -68,21 +68,20 @@ signs:
       - "${artifact}"
     artifacts: checksum
 
-brews:
+homebrew_casks:
   - name: agentpaas
+    binaries:
+      - agent
+      - agentpaasd
     homepage: https://github.com/AgentPaaS-ai/agentpaas
     description: "Governed, local-first runtime for AI-generated agents"
     license: MIT
-    directory: Formula
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
       token: "{{ .Env.GITHUB_TOKEN }}"
-    install: |
-      bin.install "agent"
-      bin.install "agentpaasd"
-    test: |
-      system "#{bin}/agent", "version"
+    url:
+      verified: github.com/AgentPaaS-ai/agentpaas/releases/download
 
 changelog:
   sort: asc
