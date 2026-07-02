@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	docker "github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	docker "github.com/example/agentpaas/internal/runtime"
 )
 
 func readRedteamFixtureSource(t *testing.T, filename string) string {

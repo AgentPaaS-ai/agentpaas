@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
+	controlv1 "github.com/example/agentpaas/api/control/v1"
+	"github.com/example/agentpaas/internal/operator"
 	"google.golang.org/grpc/status"
 )
 

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/audit"
 )
 
 type fakeAuditAppender struct {

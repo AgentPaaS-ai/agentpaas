@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/service"
+	"github.com/example/agentpaas/internal/service"
 )
 
 func TestInstallWritesPlist(t *testing.T) {

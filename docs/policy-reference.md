@@ -138,7 +138,7 @@ ingress: []
 ```
 
 Any HTTP call from the agent receives `403` or a connection error at the
-gateway. This is the secure default scaffolded by `agentpaas $1 --noninteractive`.
+gateway. This is the secure default scaffolded by `agent init --noninteractive`.
 
 ### Credential injection
 
@@ -161,7 +161,7 @@ ingress: []
 Store the secret in the keychain before running:
 
 ```bash
-agentpaas secret add api-key
+agent secrets set api-key
 ```
 
 ## Validation rules

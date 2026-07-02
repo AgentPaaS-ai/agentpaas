@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/audit"
 )
 
 func readHarnessAuditJSONL(t *testing.T, path string) []audit.AuditRecord {

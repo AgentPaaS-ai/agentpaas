@@ -1,0 +1,44 @@
+I'll read the current implementation and tests first, then apply the five fixes.
+Implementing the five fixes: updating the struct and run-tracking methods, then Stop() and Run() logic.
+[2m2026-06-25T22:37:56.460616Z[0m [31mERROR[0m tool_error: tool_output_error [3msession_id[0m[2m=[0m019f00ed-d7ed-75d1-bb8e-038731c03a6e [3mtool_name[0m[2m=[0m"StrReplace" [3meffective_tool_name[0m[2m=[0m"StrReplace" [3mmodel_id[0m[2m=[0m"grok-composer-2.5-fast" [3merror_kind[0m[2m=[0m"tool_output_error"
+[2m2026-06-25T22:37:56.460932Z[0m [31mERROR[0m tool_error: tool_output_error [3msession_id[0m[2m=[0m019f00ed-d7ed-75d1-bb8e-038731c03a6e [3mtool_name[0m[2m=[0m"StrReplace" [3meffective_tool_name[0m[2m=[0m"StrReplace" [3mmodel_id[0m[2m=[0m"grok-composer-2.5-fast" [3merror_kind[0m[2m=[0m"tool_output_error"
+[2m2026-06-25T22:37:56.461062Z[0m [31mERROR[0m tool_error: tool_output_error [3msession_id[0m[2m=[0m019f00ed-d7ed-75d1-bb8e-038731c03a6e [3mtool_name[0m[2m=[0m"StrReplace" [3meffective_tool_name[0m[2m=[0m"StrReplace" [3mmodel_id[0m[2m=[0m"grok-composer-2.5-fast" [3merror_kind[0m[2m=[0m"tool_output_error"
+[2m2026-06-25T22:37:56.461184Z[0m [31mERROR[0m tool_error: tool_output_error [3msession_id[0m[2m=[0m019f00ed-d7ed-75d1-bb8e-038731c03a6e [3mtool_name[0m[2m=[0m"StrReplace" [3meffective_tool_name[0m[2m=[0m"StrReplace" [3mmodel_id[0m[2m=[0m"grok-composer-2.5-fast" [3merror_kind[0m[2m=[0m"tool_output_error"
+[2m2026-06-25T22:37:56.461309Z[0m [31mERROR[0m tool_error: tool_output_error [3msession_id[0m[2m=[0m019f00ed-d7ed-75d1-bb8e-038731c03a6e [3mtool_name[0m[2m=[0m"StrReplace" [3meffective_tool_name[0m[2m=[0m"StrReplace" [3mmodel_id[0m[2m=[0m"grok-composer-2.5-fast" [3merror_kind[0m[2m=[0m"tool_output_error"
+Files may have been partially updated. Re-reading their current state.
+[2m2026-06-25T22:38:00.599760Z[0m [31mERROR[0m tool_error: tool_output_error [3msession_id[0m[2m=[0m019f00ed-d7ed-75d1-bb8e-038731c03a6e [3mtool_name[0m[2m=[0m"Read" [3meffective_tool_name[0m[2m=[0m"Read" [3mmodel_id[0m[2m=[0m"grok-composer-2.5-fast" [3merror_kind[0m[2m=[0m"tool_output_error"
+[2m2026-06-25T22:38:00.599873Z[0m [31mERROR[0m tool_error: tool_output_error [3msession_id[0m[2m=[0m019f00ed-d7ed-75d1-bb8e-038731c03a6e [3mtool_name[0m[2m=[0m"Read" [3meffective_tool_name[0m[2m=[0m"Read" [3mmodel_id[0m[2m=[0m"grok-composer-2.5-fast" [3merror_kind[0m[2m=[0m"tool_output_error"
+Handlers live in `control_handlers.go`; types are in `stub_handlers.go`. Applying fixes across both files.
+Updating tests and adding the missing success-stop test.
+Fixing a data race: the invoke goroutine writes `InvokeErr` without holding the lock while tests read via `lookupRunWithStatus`.
+All five bugs are fixed. Summary of changes:
+
+### Bug 1: Double-Stop race
+- Changed `runs` to `map[string]*trackedRun`
+- Added `claimRun()` to atomically delete a run under lock
+- `Stop()` uses `claimRun()` instead of `lookupRunWithStatus` + `untrackRun`, so concurrent stops return `NotFound`
+
+### Bug 2: Missing invoke goroutine wait
+- Added `InvokeDone` and `InvokeErr` to `trackedRun`
+- Run handler creates the tracked run with `InvokeDone` before starting the goroutine
+- `Stop()` cancels invoke, then waits up to 3 seconds on `InvokeDone` before stopping the container
+
+### Bug 3: Force-stop audit inconsistency
+- Force stop sets `finalStatus = "cancelled"` (aligned with `EventRunCancelled`)
+- Updated `TestStop_Force_SetsCancelledStatus` and adversary tests accordingly
+
+### Bug 4: Dead `rt.Status()` code
+- Removed the `rt.Status()` block that only re-asserted `"failed"`
+
+### Bug 5: Missing normal success test
+- Added `TestStop_NormalSuccess_Succeeds` covering successful invoke → non-force stop → `EventRunSucceeded` + audit `"succeeded"`
+
+### Additional fixes
+- Added `setRunInvokeErr()` for lock-protected status/error updates (fixes race under `-race`)
+- `lookupRunWithStatus()` returns a partial copy (excludes `InvokeDone`/`InvokeErr`) for safe concurrent reads
+- Removed unused `setRunCancel()`
+
+All checks pass:
+- `go build ./...`
+- `go test -race -count=1 ./internal/daemon/...`
+- `make lint`

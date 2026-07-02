@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/example/agentpaas/internal/runtime"
 )
 
 // MCPSidecarInfo contains Docker artifact metadata for an MCP sidecar.

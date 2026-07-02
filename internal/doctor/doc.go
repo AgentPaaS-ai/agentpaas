@@ -1,6 +1,6 @@
 // Package doctor provides system diagnostic checks for agentpaas.
 //
-// The doctor package implements the "agentpaas doctor" command by running a
+// The doctor package implements the "agent doctor" command by running a
 // collection of independent checks against the local system and aggregating
 // the results into an overall health status.
 //

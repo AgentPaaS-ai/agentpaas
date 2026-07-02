@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	controlv1 "github.com/example/agentpaas/api/control/v1"
+	"github.com/example/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/home"
 )
 
 func TestAuditQuery_IncludesTailTruncationInChainVerification(t *testing.T) {

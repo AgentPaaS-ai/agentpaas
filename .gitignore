@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+# Landing page is a separate track, not part of the build
+landing-page/
+
 # Go build artifacts
 /bin/
 /dist/

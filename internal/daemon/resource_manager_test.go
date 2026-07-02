@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/docker/docker/client"
-	"github.com/AgentPaaS-ai/agentpaas/internal/dashboard"
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/example/agentpaas/internal/dashboard"
+	"github.com/example/agentpaas/internal/runtime"
 )
 
 func requireDocker(t *testing.T) {

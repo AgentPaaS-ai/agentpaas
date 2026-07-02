@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/example/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/policy"
 )
 
 const eventTypeMCPEgressDecision = "mcp_egress_decision"

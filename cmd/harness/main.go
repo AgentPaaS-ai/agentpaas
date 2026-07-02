@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/harness"
+	"github.com/example/agentpaas/internal/harness"
 )
 
 func main() {

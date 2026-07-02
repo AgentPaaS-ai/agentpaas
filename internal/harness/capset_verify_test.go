@@ -84,10 +84,7 @@ func TestE2E_CapNetAdminDropped_AgentCannotFlushIPTables(t *testing.T) {
 		t.Fatalf("iptables -F as UID 64000 succeeded (exit 0); want permission denied\nstdout: %s\nstderr: %s", stdout, stderr)
 	}
 	combined := stdout + stderr
-	if !strings.Contains(strings.ToLower(combined), "permission denied") &&
-		!strings.Contains(strings.ToLower(combined), "operation not permitted") {
-		t.Logf("iptables -F stderr/stdout (non-zero exit %d): %s", exitCode, combined)
-	}
+	t.Logf("iptables -F as UID 64000 (exit %d): %s", exitCode, combined)
 
 	stdout, _, exitCode = dockerExecAsUser(t, cli, ctx, containerID, "0", []string{"iptables", "-L", "OUTPUT"})
 	if exitCode != 0 {

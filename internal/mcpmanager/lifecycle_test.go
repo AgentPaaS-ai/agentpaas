@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/example/agentpaas/internal/policy"
+	"github.com/example/agentpaas/internal/runtime"
 )
 
 func TestLifecycleStartStdioMCPServer(t *testing.T) {

@@ -228,7 +228,7 @@ func TestCheckpointKeyLegacyDERMigration(t *testing.T) {
 		t.Fatalf("WriteFile legacy DER: %v", err)
 	}
 
-	// Load — should succeed (legacy migration, logs warning)
+	// Load — should succeed and migrate legacy DER to encrypted on disk
 	loadedDER, loadedPub, err := LoadOrGenerateCheckpointKey(keyPath)
 	if err != nil {
 		t.Fatalf("LoadOrGenerate legacy: %v", err)
@@ -241,6 +241,25 @@ func TestCheckpointKeyLegacyDERMigration(t *testing.T) {
 	pubDER2, _ := x509.MarshalPKIXPublicKey(loadedPub)
 	if string(pubDER1) != string(pubDER2) {
 		t.Fatal("public key mismatch on legacy load")
+	}
+	// File on disk must no longer be raw DER
+	onDisk, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("ReadFile after migration: %v", err)
+	}
+	if len(onDisk) > 0 && onDisk[0] == 0x30 {
+		t.Fatal("checkpoint key file still raw DER after legacy load; expected encrypted JSON envelope")
+	}
+	if !strings.Contains(string(onDisk), `"version"`) {
+		t.Fatal("checkpoint key file is not encrypted JSON envelope after migration")
+	}
+	// Second load must read encrypted format and return same key
+	loadedDER2, _, err := LoadOrGenerateCheckpointKey(keyPath)
+	if err != nil {
+		t.Fatalf("LoadOrGenerate after migration: %v", err)
+	}
+	if string(loadedDER2) != string(der) {
+		t.Fatal("DER mismatch after encrypted reload")
 	}
 }
 

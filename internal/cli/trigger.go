@@ -23,7 +23,7 @@ type triggerInvokeResponse struct {
 	} `json:"run"`
 }
 
-// newTriggerCmd creates the `agentpaas trigger` command.
+// newTriggerCmd creates the `agent trigger` command.
 func newTriggerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trigger",

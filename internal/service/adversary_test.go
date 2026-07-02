@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/service"
+	"github.com/example/agentpaas/internal/service"
 )
 
 // ============================================================================

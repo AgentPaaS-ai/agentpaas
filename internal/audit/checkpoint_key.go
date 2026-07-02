@@ -127,6 +127,46 @@ func isLegacyUnencryptedKey(data []byte) bool {
 	return len(data) > 0 && data[0] == 0x30
 }
 
+// writeCheckpointKeyEncrypted encrypts the DER and atomically writes it to path
+// (temp file in the same directory, chmod 0600, rename).
+func writeCheckpointKeyEncrypted(path string, privateKeyDER []byte, passphrase string) error {
+	encrypted, err := encryptCheckpointKeyDER(privateKeyDER, passphrase)
+	if err != nil {
+		return fmt.Errorf("encrypt checkpoint key: %w", err)
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("mkdir checkpoint key dir: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".checkpoint-key-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp checkpoint key: %w", err)
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(encrypted); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write checkpoint key: %w", err)
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod checkpoint key: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close checkpoint key: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename checkpoint key: %w", err)
+	}
+	cleanup = false
+	return nil
+}
+
 // resolveCheckpointKeyPassphrase gets the passphrase from env var, keychain,
 // or generates a new one. Returns the passphrase and an error.
 func resolveCheckpointKeyPassphrase(stateDir string) (string, error) {
@@ -145,8 +185,8 @@ func resolveCheckpointKeyPassphrase(stateDir string) (string, error) {
 // LoadOrGenerateCheckpointKey loads an encrypted ECDSA key from path, or
 // generates and persists a new encrypted key if the file does not exist.
 // The key is encrypted at rest with AES-256-GCM using a passphrase-derived key.
-// If the file exists in legacy unencrypted DER format, it is migrated to
-// encrypted format on next write.
+// If the file exists in legacy unencrypted DER format, it is encrypted and
+// rewritten atomically on load.
 func LoadOrGenerateCheckpointKey(path string) (privateKeyDER []byte, publicKey *ecdsa.PublicKey, err error) {
 	stateDir := filepath.Dir(path)
 	passphrase, err := resolveCheckpointKeyPassphrase(stateDir)
@@ -164,27 +204,23 @@ func LoadOrGenerateCheckpointKey(path string) (privateKeyDER []byte, publicKey *
 		if err != nil {
 			return nil, nil, err
 		}
-		encrypted, encErr := encryptCheckpointKeyDER(privateKeyDER, passphrase)
-		if encErr != nil {
-			return nil, nil, fmt.Errorf("encrypt checkpoint key: %w", encErr)
-		}
-		if writeErr := os.WriteFile(path, encrypted, 0600); writeErr != nil {
-			return nil, nil, fmt.Errorf("write checkpoint key: %w", writeErr)
+		if writeErr := writeCheckpointKeyEncrypted(path, privateKeyDER, passphrase); writeErr != nil {
+			return nil, nil, writeErr
 		}
 		return privateKeyDER, publicKey, nil
 	}
 
 	// Existing key — check if legacy unencrypted
 	if isLegacyUnencryptedKey(data) {
-		// Legacy raw DER format — migrate to encrypted on next write.
-		// For now, parse it and return the DER (it will be re-encrypted
-		// on the next key generation cycle). Log a warning.
-		log.Printf("audit: checkpoint key is in legacy unencrypted DER format; will migrate to encrypted on regeneration")
-		publicKey, err = PublicKeyFromCheckpointKeyDER(data)
+		privateKeyDER = data
+		publicKey, err = PublicKeyFromCheckpointKeyDER(privateKeyDER)
 		if err != nil {
 			return nil, nil, err
 		}
-		return data, publicKey, nil
+		if writeErr := writeCheckpointKeyEncrypted(path, privateKeyDER, passphrase); writeErr != nil {
+			log.Printf("audit: failed to migrate legacy unencrypted checkpoint key to encrypted format: %v", writeErr)
+		}
+		return privateKeyDER, publicKey, nil
 	}
 
 	// Encrypted JSON envelope

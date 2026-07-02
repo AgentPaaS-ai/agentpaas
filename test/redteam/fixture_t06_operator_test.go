@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
-	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
+	controlv1 "github.com/example/agentpaas/api/control/v1"
+	"github.com/example/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/home"
+	"github.com/example/agentpaas/internal/operator"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

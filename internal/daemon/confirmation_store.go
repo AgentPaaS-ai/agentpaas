@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
+	"github.com/example/agentpaas/internal/operator"
 )
 
 const confirmationTTL = 5 * time.Minute

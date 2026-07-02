@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/example/agentpaas/internal/policy"
 	"google.golang.org/grpc/metadata"
 )
 

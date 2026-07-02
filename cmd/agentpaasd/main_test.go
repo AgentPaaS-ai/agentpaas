@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/example/agentpaas/internal/home"
 )
 
 func TestDaemonMain_EnsureCreatesLockFile(t *testing.T) {

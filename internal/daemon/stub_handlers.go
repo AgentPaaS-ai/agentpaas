@@ -5,12 +5,12 @@ import (
 	"crypto/ecdsa"
 	"sync"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
-	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
-	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
+	controlv1 "github.com/example/agentpaas/api/control/v1"
+	"github.com/example/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/home"
+	"github.com/example/agentpaas/internal/runtime"
+	"github.com/example/agentpaas/internal/secrets"
+	"github.com/example/agentpaas/internal/trigger"
 )
 
 // controlServer implements the ControlServiceServer interface by embedding

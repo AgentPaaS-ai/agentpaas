@@ -1,0 +1,330 @@
+# AGENTPAAS — ADVISOR PRD v3.0 + STARTUP STRATEGY MEMO
+**Author role:** Startup advisor + enterprise solution architect
+**Date:** June 2026
+**Supersedes:** PRD v2.0 (agentpaas-prd-complete-llm.txt)
+
+---
+
+## PART A — CRITIQUE OF PRD v2.0 (READ THIS FIRST)
+
+### A1. The fatal contradiction: persona vs. product
+v2.0 names "RevOps, Marketing Ops, Finance Ops power users — non-developers"
+as the PRIMARY persona, then ships them a container packaging CLI, mTLS,
+egress policies, and Docker. Non-developers do not run `docker run`. They do
+not debug image builds. They do not reason about egress allow-lists.
+
+The people who actually feel the pain v2.0 describes — "agents make
+autonomous outbound calls, we have no security boundary" — are **platform
+engineers and security teams**, not ops power users. The product as specced
+serves the platform engineer; the PRD claims it serves the ops analyst.
+Pick one. (Recommendation in B2: pick the platform/security engineer first;
+the non-developer is a Phase 3 packaging of the same runtime.)
+
+### A2. "Establish the packaging standard" is not a startup strategy
+Standards are set by foundations and hyperscalers (MCP → Anthropic, A2A →
+Google/Linux Foundation, agentgateway → Linux Foundation as of Aug 2025,
+backed by Microsoft and T-Mobile). A seed-stage startup cannot win a
+standards war; it can only ride one. v2.0's GTM goal "establish the
+packaging standard" should be reframed: **adopt the standards, own the
+operational experience on top of them.**
+
+### A3. The gateway is no longer your moat
+v1 of your thinking (Grok session) correctly identified agentgateway as a
+component to build on. v2.0 quietly drifted back to "we build the gateway."
+Do not. agentgateway is Rust, open source, foundation-governed, and already
+handles HTTP/gRPC/MCP/A2A. Rebuilding it is 12+ months of undifferentiated
+work. **Embed it; your IP is the harness, policy UX, identity, audit, and
+the packaging pipeline around it.**
+
+### A4. Single-container packaging is architecturally fragile
+Agent + gateway in one image is fine as a Phase-0 developer convenience
+(docker-compose feel, single artifact). But it breaks the moment you need:
+- independent gateway upgrades (CVE in gateway forces rebuilding every agent image)
+- enterprises that already run a mesh/gateway tier and will refuse a second one
+- per-agent resource isolation vs. shared policy enforcement
+Keep the single-artifact UX, but make the internal topology a deployment
+detail: same container for laptop mode, sidecar/ambient mode for K8s. The
+PRD currently elevates an implementation choice ("two components in one
+container") to a product principle. Demote it.
+
+### A5. Missing entirely from v2.0
+1. Pricing and packaging (no price points, no unit of value)
+2. Competitive analysis with named competitors and your wedge vs. each
+3. Agent identity model (who is this agent, on whose behalf, what scopes)
+4. Secrets lifecycle (injection is mentioned; rotation, scoping, revocation are not)
+5. Evaluation/testing story (enterprises won't deploy agents they can't regression-test)
+6. Validation plan (design partners named in Phase 2 — too late; you need 5 before writing code)
+7. Open-source license choice and the rug-pull-protection narrative
+8. Compliance posture roadmap (SOC 2, audit-log immutability) — table stakes for the buyer you actually have
+9. Funding/resourcing assumptions (what does the 12-month roadmap cost; can 1–2 founders ship it)
+10. Why-now and why-you (founder-market fit narrative for investors)
+11. Failure criteria / kill conditions per phase
+12. Distribution mechanics beyond "GitHub + communities" (that is a channel list, not a strategy)
+
+### A6. Success metrics are vanity-weighted
+GitHub stars don't pay. "Paid conversion > 8%" has no denominator defined.
+Replace with the funnel in Section F.
+
+---
+
+## PART B — THE NICHE (THE ACTUAL ANSWER TO "FIND A NICHE PROBLEM")
+
+### B1. The wedge, stated in one sentence
+**"Coding agents (Claude Code, Codex, Hermes, Cursor) now generate working
+agents in minutes — but no security or platform team will let that code run
+unattended with credentials. AgentPaaS is the trusted runtime that turns
+AI-generated agent code into a governed, auditable, production workload in
+one command."**
+
+This is narrower and sharper than v2.0 in three ways:
+- The SOURCE of agents is specific: AI coding tools (an exploding, underserved supply of agents — this is also your site's tagline, "agents build agents")
+- The BLOCKER is specific: security/platform sign-off, not packaging mechanics
+- The BUYER is specific: the platform/security engineer who is currently saying "no"
+
+### B2. ICP (ideal customer profile), in priority order
+1. **Design-partner ICP (months 0–9):** Series B–D software companies,
+   200–2,000 employees, with (a) a platform engineering team of 2–10,
+   (b) active internal agent experiments from coding tools, (c) a security
+   function blocking production deployment. Champion: staff platform
+   engineer. Economic buyer: VP Eng / CISO.
+2. **Expansion ICP (months 9–24):** regulated mid-market (fintech,
+   healthtech, insurance) where audit trails are a purchase requirement,
+   not a nice-to-have.
+3. **Deferred:** the non-developer ops persona. Serve them later via a
+   "blessed runtime" their platform team already adopted — they become users
+   of your product, not buyers of it.
+
+### B3. The first 90-day product: do less than v2.0 says
+Ship exactly four things:
+1. `agent pack` — wraps agent code (start with: Python + Node, LangGraph/
+   CrewAI/plain-loop, and output of Claude Code/Codex/Hermes) into a signed
+   OCI image with the harness baked in.
+2. **Egress control + audit as the headline feature** — default-deny outbound,
+   allow-list per agent, every LLM/MCP/tool call logged with full request
+   metadata to a tamper-evident local log. This is the demo that makes a
+   security engineer sit up: "watch me block and log every call this
+   AI-written agent makes."
+3. `agent run` + local dashboard (single static-binary web UI, no cloud).
+4. Embedded agentgateway (consume, don't build) for MCP/A2A/LLM routing.
+Cut from MVP: A2A self-organization, registries, canary/blue-green,
+anomaly detection, private registries. All Phase 2+.
+
+---
+
+## PART C — PRODUCT REQUIREMENTS (REWRITTEN)
+
+### C1. Product principles
+1. The security engineer's "yes" is the product. Every feature must shorten
+   the path from "agent code exists" to "security approved it running."
+2. Consume standards (MCP, A2A, OCI, OTel, agentgateway); own the experience.
+3. Local-first is a trust posture, not just an architecture: zero telemetry
+   leaves the machine without explicit opt-in. Make this loud.
+4. One command, one artifact, one audit trail per agent.
+5. The packaging topology (single container vs sidecar) is a deploy-time
+   flag, never a user-facing concept.
+
+### C2. Core requirements — Phase 0/1 (OSS runtime)
+**Harness**
+- Lifecycle hooks (init/run/checkpoint/shutdown), health endpoints
+- Structured OTel traces for every model/tool call with token + cost capture
+- Crash/loop protection: max-iterations, wall-clock and spend budgets
+  (your landing page already promises Cost Budget Limits — this is where it lives)
+- Framework adapters: plain Python loop, LangGraph, CrewAI; "bring your own
+  Dockerfile" escape hatch
+
+**Identity & secrets**
+- Per-agent SPIFFE-style identity minted at pack time; short-lived runtime certs
+- Secrets injected at launch (env/file/keychain), never baked into images;
+  scoped per agent; revocable; access logged
+
+**Gateway (embedded agentgateway)**
+- Ingress: authenticated REST/gRPC trigger API (API key + JWT; mTLS optional)
+- Egress: default-deny; per-agent allow-list of domains/MCP servers/models;
+  human-readable policy file checked into git alongside the agent
+- All traffic logged: who/what/when/payload-hash/cost
+
+**Local dashboard**
+- Single binary, localhost web UI: agent list, status, live traces, audit
+  log search, spend per agent, policy view
+- Export: audit log as signed JSONL (for handing to a security reviewer)
+
+**Packaging CLI**
+- `agent init | pack | run | logs | policy | stop`
+- Signed images (cosign), SBOM emitted at pack time — security teams ask for
+  both in the first meeting
+
+### C3. Phase 2 (months 7–14) — team/SaaS control plane
+- Fleet view across machines/clusters; RBAC; SSO (SAML/OIDC)
+- Centralized policy distribution + drift detection
+- Extended retention, alerting (Slack/PagerDuty)
+- Private agent registry (signed, versioned agents with approval workflow:
+  the "app store with a security review gate" inside the company)
+- Deployment targets: K8s operator (sidecar mode), VM, the existing laptop mode
+- SOC 2 Type I underway by month 12; Type II by month 20
+
+### C4. Phase 3 (months 15+) — the platform your landing page promises
+- Non-developer packaging: ops user picks a blessed agent from the internal
+  registry, fills a form, runs it — never sees Docker
+- Eval gates: regression suites that run on every agent version before the
+  registry accepts it ("Cognitive Audit" from your site becomes real)
+- A2A multi-agent topologies, cross-org agent federation
+- Marketplace ambitions only after >50 paying logos. Not before.
+
+### C5. Explicit non-goals
+- Building an agent framework (LangGraph et al. are partners, not competitors)
+- Building a model gateway/LLM router business (LiteLLM, Portkey own that)
+- Competing with Daytona/E2B on ephemeral code-execution sandboxes — they
+  sell compute-for-agent-thinking; you sell governed runtime for
+  long-lived production agents. Adjacent, not identical. Say this in
+  every pitch because every investor will ask.
+
+---
+
+## PART D — COMPETITIVE LANDSCAPE & POSITIONING
+
+| Player | What they own | Your wedge against them |
+|---|---|---|
+| Solo.io / agentgateway (LF) | Gateway data plane | You consume it; you sell the runtime+audit+identity experience they don't package for end users |
+| Daytona ($24M A, 2/26), E2B, Modal | Ephemeral sandboxes for agent code execution | They are stateless compute for agent reasoning; you are stateful governed runtime for deployed agents |
+| Salesforce Agentforce | Harness inside their cloud | Lock-in; you are vendor-neutral and self-hosted |
+| Google (A2A, Gemini Enterprise) | Standards + their cloud | Same: neutrality + local-first |
+| SmythOS / OneReach | Full closed PaaS | Open core, no lock-in, dev-native |
+| LangSmith / Langfuse / Arize | Observability for agents | They observe; they don't enforce. You ship policy enforcement + audit, observability included |
+| Docker (agent tooling) | Container DX | Biggest strategic threat (see Risks). Move fast on the policy/audit layer they're unlikely to prioritize |
+
+Positioning line: **"The governed runtime for AI-built agents. Open source,
+local-first, security-approved by default."**
+
+---
+
+## PART E — GO-TO-MARKET & DISTRIBUTION (THE DETAILED ANSWER)
+
+### E1. Phase-by-phase motion
+**Phase 0 (months 0–3): Validation before code-complete**
+- Recruit 5 design partners from ICP-1 (your Workato network is the unfair
+  advantage here — integration/automation buyers are exactly adjacent).
+  Offer: free, white-glove, weekly feedback call, logo rights later.
+- Kill condition: if 15 qualified conversations don't yield 5 partners,
+  the wedge is wrong; revisit before building more.
+
+**Phase 1 (months 3–9): OSS launch, bottom-up**
+- Launch artifact: a 3-minute video — Claude Code writes an agent, `agent
+  pack`, `agent run`, dashboard shows it blocked from exfiltrating to an
+  unapproved domain, full audit log exported. That demo IS the marketing.
+- Channels, in order of expected yield:
+  1. **Coding-agent ecosystems**: a Claude Code skill/plugin, a Codex
+     instruction pack, a Hermes skill — "deploy what you just built" as a
+     verb inside the tools generating the agents. Nobody owns this
+     distribution channel yet; it is your highest-leverage move.
+  2. Framework docs: become the "deploy to production" page in LangGraph/
+     CrewAI community docs via PRs and integrations.
+  3. HN/launch week + 2 conference talks (KubeCon AI day, AI Engineer
+     Summit) targeted at platform engineers.
+  4. Content: "Letting AI-written agents into prod: a security checklist"
+     — written for the CISO who blocks your champion. Arms the champion.
+- Metric gate to Phase 2: 1,000 weekly-active runtimes (telemetry opt-in
+  ping) OR 25 self-reported production deployments.
+
+**Phase 2 (months 9–18): Monetize the team layer**
+- PLG: free single-machine forever; Team $99/agent-fleet/mo-ish starting
+  point (validate with partners); Enterprise (SSO, RBAC, registry, audit
+  retention, support) $30–60k ACV.
+- Sales motion: founder-led, converting OSS deployments where >3 people
+  view the dashboard (that's the team signal; instrument it).
+- The OSS-to-paid line: **individual = free, organization = paid.** Never
+  paywall security features in the single-machine runtime — that poisons
+  the trust story.
+
+**Phase 3 (months 18+): Land regulated mid-market**
+- Compliance pack (SOC 2 Type II, immutable audit export, retention
+  policies) + the non-developer registry experience. This is where ACVs
+  reach $100k+ and the "PaaS" name gets earned.
+
+### E2. License
+Apache-2.0 for the runtime (maximizes adoption + foundation compatibility).
+Control plane closed/source-available (BSL). State this publicly on day one;
+ambiguity here kills OSS trust.
+
+---
+
+## PART F — SUCCESS METRICS (REPLACEMENT SET)
+- Activation: code → running governed agent < 15 min (keep from v2.0; good)
+- Aha-metric: % of new users who view an audit log or blocked-egress event
+  in first session (this is the value moment) — target > 60%
+- Adoption: weekly-active runtimes; production deployments (self-reported + opt-in ping)
+- Team signal: installs with 3+ dashboard users → sales pipeline
+- Revenue: 5 design partners → 3 paying by month 12 → $250k ARR by month 18
+  (modest, honest seed-stage numbers)
+- NRR > 120% once >10 customers (agent fleets grow; pricing should ride that)
+
+---
+
+## PART G — RISKS (EXPANDED AND HONEST)
+
+1. **Platform absorption (HIGH).** Docker, GitHub, or Anthropic ships
+   "agent deploy" natively. Mitigation: speed, neutrality across all coding
+   tools, and going deeper on policy/audit than a platform vendor will.
+   This risk is the main reason to move NOW — the window is 12–24 months.
+2. **Category timing (MEDIUM-HIGH).** Most enterprises are still in agent
+   pilots; the "production governance" budget may be 12 months behind your
+   roadmap. Mitigation: design partners tell you the truth early; the OSS
+   runtime stays cheap to maintain while the market matures.
+3. **Standards churn (MEDIUM).** MCP/A2A still moving. Mitigation: consume,
+   don't fork; adapters isolated behind interfaces.
+4. **Single-founder execution (HIGH).** This roadmap is 2–3 strong infra
+   engineers for a year. You are a PM, currently employed, interviewing
+   elsewhere. Honest options: (a) find a technical cofounder before
+   building, (b) raise pre-seed on the demo + design partners, (c) scope
+   Phase 0 down to what AI-assisted nights-and-weekends can ship (the CLI +
+   egress audit demo is achievable; the full runtime is not).
+5. **OSS conversion (MEDIUM).** Base rates for OSS→paid are brutal (<1–5%
+   of orgs). Mitigation: the org/individual paywall line + audit-retention
+   and RBAC as the paid hooks, which enterprises genuinely cannot decline.
+6. **Security product burden (MEDIUM).** If you sell security, one CVE in
+   your gateway story is existential. Mitigation: embed the
+   foundation-maintained gateway, fund a pentest before GA, ship SBOMs.
+7. **Trademark/name (LOW).** "AgentPaaS" is descriptive — defensible brand
+   is hard, and "PaaS" may undersell (you're selling governance, not
+   hosting). Keep the domain; consider a product name within it.
+
+---
+
+## PART H — PROBABILITY OF SUCCESS (ADVISOR'S HONEST NUMBER)
+
+Definitions matter. Three outcomes:
+- **P(any startup → venture-scale outcome)** base rate: ~1–2%.
+- **P(this idea, executed by a funded 2–3 person team with a technical
+  founder, reaches $1M ARR within 24 months):** ~15–20%. The problem is
+  real, the timing is early-but-right, the wedge (AI-built agents need a
+  trusted runtime) is genuinely underserved, and incumbents are aimed
+  elsewhere. Main drags: platform absorption risk and enterprise budget lag.
+- **P(current configuration — solo non-eng founder, nights/weekends, no
+  design partners yet — reaches the same milestone):** ~3–5%. Not because
+  the idea is bad; because the configuration can't outrun the window.
+
+What moves the number most, in order:
+1. A technical cofounder or founding engineer (+2x)
+2. 5 committed design partners before serious build (+1.5x)
+3. The coding-agent-ecosystem distribution wedge actually landing
+   (a Claude Code / Hermes "deploy" integration with real usage) (+1.5x)
+4. Demo-quality egress-block-and-audit video that security people share (+1.3x)
+
+The cheapest next step is not code. It is 15 customer conversations with
+platform/security engineers at ICP-1 companies, using the demo narrative in
+E1. That costs three weeks and re-prices every probability above.
+
+---
+
+## PART I — WHAT TO DO IN THE NEXT 30 DAYS
+1. Write the one-page wedge memo (B1) and pressure-test it in 15
+   conversations (Workato network, LinkedIn platform-eng contacts).
+2. Build only the demo: `agent pack` + egress default-deny + audit log +
+   minimal dashboard, on top of agentgateway. AI-assisted build; 3–4 weekends.
+3. Record the 3-minute video (E1). It is simultaneously your landing page
+   hero, your design-partner pitch, and your pre-seed deck slide 3.
+4. Decide the cofounder question explicitly. Write down the answer.
+5. Re-cut the landing page to the wedge: today it promises "millions of
+   secure agents" (Phase-3 language); it should promise "ship the agent
+   your coding agent just built — safely."
+
+**END OF ADVISOR PRD v3.0**

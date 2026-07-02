@@ -6,31 +6,29 @@ For accepted P1 limitations, see [known-limitations.md](known-limitations.md).
 ## Prerequisites
 
 - macOS (Apple Silicon or Intel)
-- [Homebrew](https://brew.sh) 4+
+- [Homebrew](https://brew.sh)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
   [Colima](https://github.com/abiosoft/colima)
 
 ## Step 1: Install
 
 ```bash
-brew tap AgentPaaS-ai/tap https://github.com/AgentPaaS-ai/homebrew-tap
-brew trust AgentPaaS-ai/tap      # Homebrew 6.0+ requires trusting third-party taps
-brew install agentpaas
+brew install agentpaas/tap/agentpaas
 ```
 
 ## Step 2: Verify
 
 ```bash
-agentpaas doctor
+agent doctor
 ```
 
-`agentpaas doctor` checks Docker, daemon connectivity, keychain access, and
+`agent doctor` checks Docker, daemon connectivity, keychain access, and
 network isolation. All checks must pass before continuing.
 
 ## Step 3: Start the daemon
 
 ```bash
-agentpaas daemon start
+agent daemon start
 ```
 
 The daemon (`agentpaasd`) runs locally under `~/.agentpaas`. It manages
@@ -39,7 +37,7 @@ agent runs, policy compilation, and the audit chain.
 ## Step 4: Create your first agent
 
 ```bash
-agentpaas init weather-agent
+agent init weather-agent
 cd weather-agent
 ```
 
@@ -95,7 +93,7 @@ ingress: []
 Apply it:
 
 ```bash
-agentpaas policy apply --file policy.yaml
+agent policy apply --file policy.yaml
 ```
 
 The policy compiles into agentgateway `frontendPolicies.networkAuthorization`
@@ -105,16 +103,16 @@ CEL rules. See [how-enforcement-works.md](how-enforcement-works.md) and
 ## Step 7: Pack the agent
 
 ```bash
-agentpaas pack
+agent pack
 ```
 
-`agentpaas pack` builds a container image, runs secret scanning, generates an
+`agent pack` builds a container image, runs secret scanning, generates an
 SBOM, and signs the package with a per-agent identity key.
 
 ## Step 8: Run it
 
 ```bash
-agentpaas run weather-agent
+agent run weather-agent
 ```
 
 Each run creates two containers: an agent on an internal-only network and a
@@ -133,13 +131,13 @@ events in real time.
 ## Step 10: Check the audit trail
 
 ```bash
-agentpaas audit list
+agent audit list
 ```
 
 Filter by run ID:
 
 ```bash
-agentpaas audit list --run <run-id>
+agent audit list --run <run-id>
 ```
 
 Export and verify on another machine: [audit-export.md](audit-export.md).

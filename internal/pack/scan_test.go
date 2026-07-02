@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/audit"
 )
 
 const testAWSKey = "AKIAIOSFODNN7EXAMPLE"

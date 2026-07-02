@@ -1,0 +1,35 @@
+I'll implement T01 and T03 together. First I'm reading the relevant daemon and test files to see how runs are tracked and invoked today.
+Checking EventBus usage and how tests capture published events.
+Implementing the changes now.
+Adding tests and extending the mock driver to support `execFunc`.
+Implemented T01 (run status tracking) and T03 (invoke/stop synchronization) together.
+
+### Changes
+
+**`stub_handlers.go`**
+- Extended `trackedRun` with `Status` (`"running"` | `"succeeded"` | `"failed"`) and `CancelInvoke context.CancelFunc`.
+
+**`control_handlers.go`**
+- `trackRun()` sets `Status: "running"` by default.
+- Added `setRunStatus`, `setRunCancel`, and `lookupRunWithStatus`.
+- Auto-invoke goroutine uses a cancellable context tied to the run lifecycle; sets status to `"failed"` or `"succeeded"` when invoke completes.
+- `Stop()`:
+  - Uses `lookupRunWithStatus`
+  - Calls `CancelInvoke()` before stopping the container
+  - Computes `finalStatus` (force stop → `"failed"`, respects invoke status, defaults `"running"` → `"succeeded"`)
+  - Publishes `EventRunFailed` when status is `"failed"`, `EventRunCancelled` on force stop
+  - Adds `"status": finalStatus` to the `run_stop` audit payload
+
+### Tests (`control_handlers_test.go`)
+
+1. **`TestRun_FailedInvoke_SetsFailedStatus`** — mock Exec fails invoke → `EventRunFailed` + audit `"status": "failed"`
+2. **`TestStop_CancelsInvokeContext`** — mock Exec blocks on readyz → immediate Stop cancels cleanly, no errors
+3. **`TestStop_Force_SetsCancelledStatus`** — successful invoke + force stop → `EventRunCancelled` + audit `"status": "failed"`
+
+### Verification
+
+```bash
+go build ./...                    # pass
+go test -race -count=1 ./internal/daemon/...  # pass (3.9s)
+make lint                         # 0 issues
+```

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
+	"github.com/example/agentpaas/internal/llm"
 )
 
 const (

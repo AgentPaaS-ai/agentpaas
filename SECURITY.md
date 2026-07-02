@@ -2,12 +2,15 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in AgentPaaS, please report it via
-**GitHub Security Advisories** (the "Security" tab → "Report a vulnerability").
+If you discover a security vulnerability in AgentPaaS, please report it via email to **parvez.syed@example.com**.
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-You should receive an initial response within 48 hours.
+You should receive an initial response within 48 hours. If you do not hear back, please follow up to ensure your message was received.
+
+### PGP Key
+
+A PGP key is available for encrypted disclosure if needed. Contact the maintainer to obtain the key.
 
 ## Supported Versions
 
@@ -16,7 +19,7 @@ You should receive an initial response within 48 hours.
 | latest  | :white_check_mark: |
 | < latest| :x:                |
 
-Only the latest published version receives security updates.
+AgentPaaS is **pre-release / P1 (Prototype Phase 1) software**. Only the latest published version receives security updates.
 
 ## Response Timeline
 
@@ -27,8 +30,8 @@ Only the latest published version receives security updates.
 
 ## Scope
 
-- **In scope**: the AgentPaaS runtime, CLI, SDK, and official plugins.
-- **Out of scope**: third-party dependencies, the landing page, and example/test code.
+- **In scope**: the AgentPaaS runtime, CLI, SDK, and official plugins/skills.
+- **Out of scope**: third-party dependencies, the `landing-page/` directory (separate project track), and example/test code.
 
 ## Safe Harbor
 

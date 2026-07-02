@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
-	"github.com/AgentPaaS-ai/agentpaas/internal/harness"
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/example/agentpaas/internal/audit"
+	"github.com/example/agentpaas/internal/harness"
+	"github.com/example/agentpaas/internal/home"
 )
 
 func writeHarnessAuditChain(t *testing.T, path string, records []audit.AuditRecord) {
