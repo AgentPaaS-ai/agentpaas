@@ -70,18 +70,18 @@ signs:
 
 homebrew_casks:
   - name: agentpaas
+    homepage: https://github.com/AgentPaaS-ai/agentpaas
+    description: "Governed, local-first runtime for AI-generated agents"
     binaries:
       - agent
       - agentpaasd
-    homepage: https://github.com/AgentPaaS-ai/agentpaas
-    description: "Governed, local-first runtime for AI-generated agents"
-    license: MIT
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
-      token: "{{ .Env.GITHUB_TOKEN }}"
-    url:
-      verified: github.com/AgentPaaS-ai/agentpaas/releases/download
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
 
 changelog:
   sort: asc
