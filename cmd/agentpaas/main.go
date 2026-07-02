@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/cli"
+	"github.com/parvezsyed/agentpaas/internal/cli"
 )
 
 func main() {
