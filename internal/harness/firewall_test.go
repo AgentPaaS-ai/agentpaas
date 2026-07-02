@@ -40,6 +40,15 @@ func TestEmbeddedFirewallScript_Content(t *testing.T) {
 			t.Errorf("firewall script missing %q", want)
 		}
 	}
+	for _, mustNot := range []string{
+		"172.16.0.0/12",
+		"10.0.0.0/8",
+		"192.168.0.0/16",
+	} {
+		if strings.Contains(firewallInitScript, mustNot) {
+			t.Errorf("firewall script must not contain broad RFC1918 fallback %q", mustNot)
+		}
+	}
 }
 
 func TestInitEgressFirewall_SkipsWhenDisabled(t *testing.T) {
