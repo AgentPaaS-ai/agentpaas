@@ -92,11 +92,13 @@ in CapAdd, but the runtime process cannot use it. The full init-container
 pattern (separate firewall-init container, `--net=container:` namespace
 sharing) is P2. Verified by Docker integration test (B15-T05 MC5).
 
-### RFC1918 tightened to gateway /16
+### RFC1918 tightened to gateway /16 (fail-closed)
 
 The agent container firewall allows only the specific Docker bridge /16
-subnet (derived from gateway IP), not all of RFC1918. Falls back to broad
-RFC1918 if `AGENTPAAS_GATEWAY_SUBNET` is unset (backward compat).
+subnet (derived from gateway IP), not all of RFC1918. If
+`AGENTPAAS_GATEWAY_SUBNET` is unset (e.g. gateway IP discovery fails), no
+broad allow is added — the firewall fails closed, relying on the specific
+gateway IP allow + default OUTPUT DROP only.
 
 ### Rekor transparency log retry for production signing
 

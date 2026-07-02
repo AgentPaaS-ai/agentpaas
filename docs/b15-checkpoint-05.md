@@ -77,7 +77,7 @@
 
 ## Key Facts
 
-- Gateway subnet derivation: `gatewaySubnetFromIP(ip)` → /16 CIDR from gateway IP octets
+- Gateway subnet derivation: `gatewaySubnetFromIP(ip)` → /16 CIDR from gateway IP octets. Fail-closed if unset (no RFC1918 fallback).
 - Rekor retry: 3 attempts, 2s/4s backoff, production refs only
 - Checkpoint key: AES-256-GCM, PBKDF2-HMAC-SHA256 100K iterations, passphrase from Keychain
 - Capset drop: clears CAP_NET_ADMIN from effective+permitted+inheritable via `unix.Capset`
