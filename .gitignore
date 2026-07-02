@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+
+# Go build artifacts
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go coverage files
+*.cover
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AgentPaaS local state (created at runtime, never committed)
+.agentpaas/
+AGENTPAAS_HOME/
+
+# Local tool binaries (installed manually, not part of build)
+.tools/
+
+# Session management (not part of the codebase)
+NEXT-SESSION-PROMPT.md
+
+# Python
+__pycache__/
+*.pyc

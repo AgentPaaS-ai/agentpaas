@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lint
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make lint
+
+  test:
+    name: Test
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make test
+
+  race:
+    name: Race Detector
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run race detector
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make race
+
+  proto:
+    name: Proto Codegen Drift
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Regenerate proto code
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make proto
+      - name: Check for drift
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Generated code is out of date. Run 'make proto' and commit the changes."
+            exit 1
+          fi
+
+  osv:
+    name: OSV Scan
+    runs-on: self-hosted
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run OSV scan
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make osv

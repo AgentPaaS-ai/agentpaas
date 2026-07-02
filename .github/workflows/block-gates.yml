@@ -1,0 +1,177 @@
+name: Block Gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: block-gates-${{ github.ref }}
+  cancel-in-progress: true
+
+# Detect which paths changed, then only run the relevant block gates.
+# Shared files (go.mod, go.sum, .github/workflows/block-gates.yml) trigger
+# ALL gates. Makefile and api/** are NOT shared triggers (pitfall #44) —
+# Makefile changes are additive (new gate targets), and api/** changes only
+# affect blocks that import the changed proto package. Each block's own
+# code path triggers only its own gate.
+#
+# When adding a new block gate:
+# 1. Add its code path to the detect-changes step below
+# 2. Add a blockN-gate job gated on the corresponding output
+# 3. Update Makefile: blockN-gate: build test race lint osv
+# 4. For Docker blocks: set AGENTPAAS_DOCKER_TESTS and DOCKER_HOST in env
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: self-hosted
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      block1: ${{ steps.filter.outputs.block1 }}
+      block5: ${{ steps.filter.outputs.block5 }}
+      block6: ${{ steps.filter.outputs.block6 }}
+      block7: ${{ steps.filter.outputs.block7 }}
+      block8: ${{ steps.filter.outputs.block8 }}
+      block9: ${{ steps.filter.outputs.block9 }}
+      block10: ${{ steps.filter.outputs.block10 }}
+      block11: ${{ steps.filter.outputs.block11 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'go.mod'
+              - 'go.sum'
+              - '.github/workflows/block-gates.yml'
+            block1:
+              - 'api/**'
+              - 'cmd/**'
+            block5:
+              - 'internal/runtime/**'
+            block6:
+              - 'internal/harness/**'
+              - 'python/**'
+            block7:
+              - 'internal/secrets/**'
+            block8:
+              - 'internal/pack/**'
+            block9:
+              - 'internal/trigger/**'
+            block10:
+              - 'internal/dashboard/**'
+              - 'internal/otel/**'
+            block11:
+              - 'internal/operator/**'
+              - 'internal/daemon/**'
+              - 'internal/cli/**'
+              - 'api/control/v1/**'
+
+  block1-gate:
+    name: Block 1 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block1 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block1-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block1-gate
+
+  block5-gate:
+    name: Block 5 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 15
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block5 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block5-gate
+        env:
+          AGENTPAAS_DOCKER_TESTS: "1"
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block5-gate
+
+  block6-gate:
+    name: Block 6 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block6 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block6-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block6-gate
+
+  block7-gate:
+    name: Block 7 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block7 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block7-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block7-gate
+
+  block8-gate:
+    name: Block 8 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block8 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block8-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block8-gate
+
+  block9-gate:
+    name: Block 9 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block9 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block9-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block9-gate
+
+  block10-gate:
+    name: Block 10 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block10 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block10-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block10-gate
+
+  block11-gate:
+    name: Block 11 Gate
+    needs: detect-changes
+    runs-on: self-hosted
+    timeout-minutes: 5
+    if: github.event_name == 'pull_request' || needs.detect-changes.outputs.shared == 'true' || needs.detect-changes.outputs.block11 == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run block11-gate
+        run: |
+          export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
+          make block11-gate

@@ -1,0 +1,180 @@
+// AgentPaaS Trigger API
+//
+// The TriggerService handles agent invocation and run lifecycle management.
+// Agents are invoked via Invoke or InvokeStream, and runs can be queried,
+// listed, or cancelled.
+//
+// Idempotency Semantics:
+//
+// Invoke and InvokeStream are idempotent when an idempotency_key is provided:
+//
+//  1. Same idempotency_key + same payload hash → returns the original Run
+//     (safe retry; no duplicate execution).
+//  2. Same idempotency_key + different payload → returns ALREADY_EXISTS (409)
+//     (conflict; the caller must use a fresh key for a different payload).
+//  3. Different idempotency_key (or empty) → a new run is created every time.
+//
+// Error Conventions (via google.rpc.Status):
+//
+//  - NOT_FOUND (404):       The requested run_id does not exist.
+//  - ALREADY_EXISTS (409):  Idempotency key conflict with a different payload.
+//  - FAILED_PRECONDITION (412): Invalid state transition (e.g. cancelling a
+//                               completed run).
+//  - RESOURCE_EXHAUSTED (8): Budget exceeded for the agent/project.
+
+syntax = "proto3";
+
+package agentpaas.trigger.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "google/rpc/status.proto";
+
+option go_package = "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1;triggerv1";
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+// RunStatus represents the lifecycle state of an agent run.
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_PENDING = 1;
+  RUN_STATUS_RUNNING = 2;
+  RUN_STATUS_SUCCEEDED = 3;
+  RUN_STATUS_FAILED = 4;
+  RUN_STATUS_CANCELLED = 5;
+  RUN_STATUS_BUDGET_EXCEEDED = 6;
+}
+
+// ---------------------------------------------------------------------------
+// Messages
+// ---------------------------------------------------------------------------
+
+// BudgetSummary captures financial and resource usage for a run.
+message BudgetSummary {
+  int64 token_count = 1;
+  double cost_usd = 2;
+  int64 wall_clock_ms = 3;
+  int64 iterations = 4;
+}
+
+// Run represents a single agent execution.
+message Run {
+  string run_id = 1;
+  string agent_name = 2;
+  string agent_version = 3;
+  RunStatus status = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp finished_at = 7;
+  string error = 8;
+  BudgetSummary budget_summary = 9;
+  string policy_digest = 10;
+  string image_digest = 11;
+}
+
+// ---------------------------------------------------------------------------
+// Invoke
+// ---------------------------------------------------------------------------
+
+// InvokeRequest triggers an agent run.
+//
+// Idempotency: see file-level comment above.
+message InvokeRequest {
+  string agent_name = 1;
+  string agent_version = 2;
+  bytes payload = 3;
+  string content_type = 4;
+  // idempotency_key ensures exactly-once semantics when combined with payload
+  // hash. See file-level idempotency documentation for details.
+  string idempotency_key = 5;
+  map<string, string> metadata = 6;
+}
+
+message InvokeResponse {
+  Run run = 1;
+}
+
+// ---------------------------------------------------------------------------
+// GetRun
+// ---------------------------------------------------------------------------
+
+message GetRunRequest {
+  string run_id = 1;
+}
+
+// ---------------------------------------------------------------------------
+// CancelRun
+// ---------------------------------------------------------------------------
+
+message CancelRunRequest {
+  string run_id = 1;
+  string reason = 2;
+}
+
+// ---------------------------------------------------------------------------
+// ListRuns
+// ---------------------------------------------------------------------------
+
+message ListRunsRequest {
+  // Optional: filter by agent name.
+  string agent_name = 1;
+  // Optional: filter by run status.
+  RunStatus status = 2;
+  // Maximum number of runs to return. Server may cap this value.
+  int32 page_size = 3;
+  // Token from a previous ListRunsResponse to request the next page.
+  string page_token = 4;
+}
+
+message ListRunsResponse {
+  repeated Run runs = 1;
+  string next_page_token = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
+// TriggerService manages agent invocation and run lifecycle.
+service TriggerService {
+  // Invoke triggers a single agent run and returns the Run immediately.
+  rpc Invoke(InvokeRequest) returns (InvokeResponse) {
+    option (google.api.http) = {
+      post: "/v1/trigger/invoke"
+      body: "*"
+    };
+  }
+
+  // InvokeStream triggers an agent run and returns a stream of Run updates
+  // via server-sent events (SSE).
+  rpc InvokeStream(InvokeRequest) returns (stream InvokeResponse) {
+    option (google.api.http) = {
+      post: "/v1/trigger/invoke/stream"
+      body: "*"
+    };
+  }
+
+  // GetRun retrieves a run by its ID.
+  rpc GetRun(GetRunRequest) returns (Run) {
+    option (google.api.http) = {
+      get: "/v1/trigger/runs/{run_id}"
+    };
+  }
+
+  // CancelRun cancels a pending or running run.
+  rpc CancelRun(CancelRunRequest) returns (Run) {
+    option (google.api.http) = {
+      post: "/v1/trigger/runs/{run_id}:cancel"
+      body: "*"
+    };
+  }
+
+  // ListRuns lists runs with optional filters and pagination.
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option (google.api.http) = {
+      get: "/v1/trigger/runs"
+    };
+  }
+}
