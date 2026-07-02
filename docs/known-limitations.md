@@ -21,18 +21,22 @@ deferred to P2.
 
 ## Runtime and harness
 
-### No real LLM integration
+### LLM integration routes through gateway egress (no special-casing)
 
-The harness `agent.llm()` call returns a hardcoded stub response
-(`"agentpaas fake llm response"`). Budget tracking and audit plumbing work,
-but no real LLM provider API is called. Agents requiring live LLM access
-need direct integration work beyond P1.
+LLM calls (`agent.llm()`) route through the gateway as credentialed HTTP
+egress to the provider's chat-completions endpoint (B15-T02, Option B).
+There is no dedicated LLM code path — it is sugar over
+`agent.http_with_credential`. The provider, model, and credential binding
+are configured in `agent.yaml`. Pre-deployment validation via
+`agentpaas secret test <name>` verifies the credential works before baking
+into a container.
 
-### Trigger server has no authentication
+### Trigger server uses API-key auth for --expose
 
-The local trigger API is loopback-only in P1. There is no API key or mTLS
-on trigger endpoints. Any process on localhost can invoke an agent. P2 adds
-authentication when `--expose` is supported.
+The trigger API supports API-key authentication via
+`AGENTPAAS_TRIGGER_API_KEY` (B15-T04). In default (loopback) mode, no key
+is required — any process on localhost can invoke an agent. When
+`--expose` is used, API-key auth is mandatory. mTLS is deferred to P2.
 
 ## Supply chain and signing
 
@@ -45,12 +49,15 @@ required to exercise real signing.
 
 ## Audit integrity
 
-### Hash chain record deletion is undetectable
+### Hash chain record deletion detection
 
 Truncating the last N records from a JSONL audit file leaves a valid prefix
-chain. Without an external signed checkpoint anchor, post-export tampering
-(deletion) cannot be detected on a second machine. The daemon chain is
-authoritative during runtime; signed checkpoint export is P2.
+chain. Post-export tampering (deletion) cannot be detected on a second
+machine without an external anchor. The audit checkpoint signing key is now
+encrypted at rest (B15-T05 MC3, AES-256-GCM), and signed checkpoint export
+provides tamper evidence when anchored externally. Runtime daemon chain is
+authoritative during operation. Full external anchoring (transparency log
+for checkpoints) is P2.
 
 ## Daemon lifecycle
 
@@ -72,6 +79,36 @@ On memory- or CPU-constrained machines (small Colima VMs, Docker Desktop with
 low resource limits), avoid overlapping runs: start the next `agent run` only
 after the previous run finishes, or keep fewer than three runs active at once.
 Configurable concurrency limits are planned for P2.
+
+## Production hardening (B15-T05)
+
+### CAP_NET_ADMIN: capset drop, not init container (P2)
+
+The agent container's iptables egress firewall requires the harness binary
+(PID 1, root) to program rules. After programming, `DropNetAdminCapability()`
+removes CAP_NET_ADMIN from the process's effective, permitted, and inheritable
+sets before the Python worker starts. Docker `inspect` still shows NET_ADMIN
+in CapAdd, but the runtime process cannot use it. The full init-container
+pattern (separate firewall-init container, `--net=container:` namespace
+sharing) is P2. Verified by Docker integration test (B15-T05 MC5).
+
+### RFC1918 tightened to gateway /16
+
+The agent container firewall allows only the specific Docker bridge /16
+subnet (derived from gateway IP), not all of RFC1918. Falls back to broad
+RFC1918 if `AGENTPAAS_GATEWAY_SUBNET` is unset (backward compat).
+
+### Rekor transparency log retry for production signing
+
+Production image signing retries up to 3 times (2s/4s backoff) on transient
+Rekor/transparency-log errors. Local registry refs skip tlog entirely.
+
+### Checkpoint key encrypted at rest
+
+The ECDSA P-256 audit checkpoint signing key is stored encrypted
+(AES-256-GCM, passphrase via PBKDF2-HMAC-SHA256 100K iterations). Passphrase
+sourced from macOS Keychain (preferred) or a 0600 passphrase file. Legacy
+unencrypted DER keys are migrated on next regeneration.
 
 ## Observability
 
