@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/parvezsyed/agentpaas/internal/runtime"
 )
 
 func TestAdversary_B7M_T05_SpoofedContainerWithoutOwnershipLabels(t *testing.T) {

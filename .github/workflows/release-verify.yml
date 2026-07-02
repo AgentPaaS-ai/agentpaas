@@ -53,6 +53,7 @@ jobs:
     timeout-minutes: 10
     if: github.event_name == 'pull_request' || needs.detect-changes.outputs.cosign == 'true'
     env:
+      DOCKER_HOST: unix:///Users/pms88/.colima/default/docker.sock
       AGENTPAAS_PACK_REAL_TOOLS: "1"
     steps:
       - uses: actions/checkout@v4

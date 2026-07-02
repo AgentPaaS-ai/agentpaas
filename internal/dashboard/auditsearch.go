@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 // AuditSearchView is the sanitized API response for audit record search.

@@ -16,7 +16,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
 
 const (

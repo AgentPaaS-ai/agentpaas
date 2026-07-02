@@ -6,11 +6,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/spf13/cobra"
 )
 
-// newCronCmd creates the `agentpaas cron` command.
+// newCronCmd creates the `agent cron` command.
 func newCronCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cron",

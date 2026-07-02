@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/trigger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

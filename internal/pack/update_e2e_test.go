@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 func TestImmutablePromptUpdatePath_DigestChangesAndTamperRejected(t *testing.T) {

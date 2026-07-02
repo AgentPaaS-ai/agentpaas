@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/parvezsyed/agentpaas/internal/runtime"
 )
 
 func TestGenerateStatusReportManagerOnly(t *testing.T) {

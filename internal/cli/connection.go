@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -15,7 +15,7 @@ import (
 // client and the underlying gRPC connection.
 //
 // If the daemon is not running, the returned error is clear and actionable,
-// suggesting the user run 'agentpaas daemon start'.
+// suggesting the user run 'agent daemon start'.
 func ConnectToDaemon(socketPath string) (controlv1.ControlServiceClient, *grpc.ClientConn, error) {
 	if socketPath == "" {
 		return nil, nil, fmt.Errorf("socket path is empty")
@@ -39,7 +39,7 @@ func ConnectToDaemon(socketPath string) (controlv1.ControlServiceClient, *grpc.C
 			strings.Contains(errMsg, "no such file or directory") ||
 			strings.Contains(errMsg, "connect: no such file") {
 			return nil, nil, fmt.Errorf(
-				"daemon is not running (connection refused at %s)\nRun 'agentpaas daemon start' to start the daemon",
+				"daemon is not running (connection refused at %s)\nRun 'agent daemon start' to start the daemon",
 				socketPath,
 			)
 		}

@@ -1,4 +1,4 @@
-module github.com/AgentPaaS-ai/agentpaas
+module github.com/parvezsyed/agentpaas
 
 go 1.26.4
 
@@ -11,6 +11,7 @@ require (
 	go.opentelemetry.io/collector/pdata v1.60.0
 	golang.org/x/net v0.56.0
 	golang.org/x/sync v0.21.0
+	golang.org/x/sys v0.46.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20260618152121-87f3d3e198d3
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260618152121-87f3d3e198d3
 	google.golang.org/grpc v1.81.1
@@ -56,7 +57,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect

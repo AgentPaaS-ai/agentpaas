@@ -28,9 +28,6 @@ jobs:
       - name: Install syft (SBOM)
         uses: anchore/sbom-action@v0
 
-      # HOMEBREW_TAP_GITHUB_TOKEN: PAT (classic) with `repo` scope for
-      # AgentPaaS-ai/homebrew-tap, created under the AgentPaaS-ai org.
-      # Add via GitHub repo Settings → Secrets and variables → Actions.
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -39,4 +36,3 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

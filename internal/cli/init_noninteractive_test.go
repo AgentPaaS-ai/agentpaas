@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/parvezsyed/agentpaas/internal/pack"
 )
 
 func TestInitFromCodeNoninteractive_CreatesAgentYamlAndPolicy(t *testing.T) {

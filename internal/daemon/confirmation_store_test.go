@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
+	"github.com/parvezsyed/agentpaas/internal/operator"
 )
 
 func TestConfirmationStore_CreateAndGet(t *testing.T) {

@@ -7,9 +7,9 @@ before:
     - go mod tidy
 
 builds:
-  - id: agentpaas
-    main: ./cmd/agentpaas
-    binary: agentpaas
+  - id: agent
+    main: ./cmd/agent
+    binary: agent
     env:
       - CGO_ENABLED=0
     goos:
@@ -19,9 +19,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion={{.Version}}
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.CLIVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.DaemonVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.GitCommit={{.Commit}}
 
   - id: agentpaasd
     main: ./cmd/agentpaasd
@@ -35,51 +35,19 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion={{.Version}}
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
-
-  - id: harness-linux
-    main: ./cmd/harness
-    binary: agentpaas-harness-linux
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - arm64
-    ldflags:
-      - -s -w
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion={{.Version}}
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
-      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.CLIVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.DaemonVersion={{.Version}}
+      - -X github.com/parvezsyed/agentpaas/internal/daemon.GitCommit={{.Commit}}
 
 archives:
-  # Darwin archives ship agentpaas + agentpaasd plus the cross-compiled
-  # linux harness (needed for `agentpaas pack` on macOS where containers run linux/arm64).
-  - id: darwin
-    format: tar.gz
-    ids:
-      - agentpaas
-      - agentpaasd
+  - id: default
+    formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
     files:
       - LICENSE
       - README.md
       - demo/**/*
-      - src: dist/harness-linux_linux_arm64*/agentpaas-harness-linux
-        dst: .
-
-  - id: harness-linux
-    format: tar.gz
-    ids:
-      - harness-linux
-    name_template: >-
-      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
-    files:
-      - LICENSE
-      - README.md
 
 checksum:
   name_template: 'checksums.txt'
@@ -87,9 +55,6 @@ checksum:
 
 sboms:
   - id: default
-    ids:
-      - darwin
-      - harness-linux
     artifacts: archive
 
 signs:
@@ -103,22 +68,20 @@ signs:
       - "${artifact}"
     artifacts: checksum
 
-brews:
+homebrew_casks:
   - name: agentpaas
+    binaries:
+      - agent
+      - agentpaasd
     homepage: https://github.com/AgentPaaS-ai/agentpaas
     description: "Governed, local-first runtime for AI-generated agents"
     license: MIT
-    directory: Formula
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    install: |
-      bin.install "agentpaas"
-      bin.install "agentpaasd"
-      bin.install "agentpaas-harness-linux"
-    test: |
-      system "#{bin}/agentpaas", "version"
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    url:
+      verified: github.com/AgentPaaS-ai/agentpaas/releases/download
 
 changelog:
   sort: asc

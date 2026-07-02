@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	docker "github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	docker "github.com/parvezsyed/agentpaas/internal/runtime"
 )
 
 // egressFixture (B12-T02): agent attempts raw IP TCP dial and direct

@@ -1,6 +1,6 @@
 # How Enforcement Works
 
-AgentPaaS enforces policy at the network boundary. Every agentpaas $1 gets an
+AgentPaaS enforces policy at the network boundary. Every agent run gets an
 isolated agent container and a dual-homed gateway sidecar. This document
 explains the topology and how `policy.yaml` becomes runtime controls.
 
@@ -53,7 +53,7 @@ not deep inspection. See [known-limitations.md](known-limitations.md).
 
 ## Policy compilation
 
-When you run `agentpaas $1 apply`, AgentPaaS:
+When you run `agent policy apply`, AgentPaaS:
 
 1. Parses and validates `policy.yaml` (unknown fields are rejected).
 2. Computes a canonical `policy_digest`.
@@ -85,7 +85,7 @@ When the agent makes an outbound HTTP call:
    to the agent.
 5. Every allow/deny decision is written to the signed audit chain.
 
-Denied calls surface in the dashboard and via `agentpaas $1 list`.
+Denied calls surface in the dashboard and via `agent audit list`.
 
 ## Credential injection
 

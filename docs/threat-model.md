@@ -19,9 +19,9 @@ see [known-limitations.md](known-limitations.md).
 | Prompt-injected agent calls unauthorized tools | MCP/tool call to non-approved server | MCP allow-list by server id + per-tool policy (P2: per-tool args constraints) |
 | Container escape | kernel/runtime exploit | non-root, read-only rootfs, no shell, dropped capabilities (ALL), seccomp default profile, no privileged, pids-limit, memory/cpu caps |
 | Supply chain (our deps) | compromised base image / dep | distroless pinned digests, SBOM on every artifact, `go mod verify`, dependabot, pinned vendored agentgateway with checksum |
-| Supply chain (user deps) | typosquatted Python package | locked installs only (uv), SBOM surfaced in dashboard, osv-scanner advisory in `agentpaas $1` output |
+| Supply chain (user deps) | typosquatted Python package | locked installs only (uv), SBOM surfaced in dashboard, osv-scanner advisory in `agent pack` output |
 | Trigger API abuse | replay / brute force | idempotency keys, constant-time key compare, rate limit, lockout+audit on repeated 401 |
-| Audit tampering | attacker edits logs | canonical hash-chained JSONL, daemon-audit-key checkpoint signatures, local head anchor, signed export manifest, `agentpaas $1 verify` |
+| Audit tampering | attacker edits logs | canonical hash-chained JSONL, daemon-audit-key checkpoint signatures, local head anchor, signed export manifest, `agent audit verify` |
 | Daemon compromise | local privilege escalation | daemon runs as user (not root); socket 0600; no setuid; secrets only via OS keychain APIs |
 | Malicious webhook targets | hook exfiltration channel | hook destinations are themselves policy-checked egress |
 | Dashboard exposure | accidental 0.0.0.0 bind | loopback default; `--expose` refuses to start without API key + warns; CSRF tokens; strict CSP, no inline JS |
@@ -33,7 +33,7 @@ see [known-limitations.md](known-limitations.md).
    Docker exposes it, pids/memory/cpu caps). P2 adds certified Linux-native
    seccomp + AppArmor profiles.
 2. Fuzz the policy compiler and the Trigger API (go-fuzz / protobuf fuzz).
-3. `agentpaas $1` verifies: docker version, network isolation actually
+3. `agent doctor` verifies: docker version, network isolation actually
    holds (spins a canary container and proves no default route), keychain
    access, port collisions.
 4. P1 integration test suite includes a fast red-team smoke gate that runs

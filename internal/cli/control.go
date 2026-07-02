@@ -14,14 +14,14 @@ import (
 	"text/tabwriter"
 	"time"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
-	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/operator"
+	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// newPackCmd creates the `agentpaas pack` command.
+// newPackCmd creates the `agent pack` command.
 func newPackCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pack [project-dir]",
@@ -83,7 +83,7 @@ func newPackCmd() *cobra.Command {
 	return cmd
 }
 
-// newRunCmd creates the `agentpaas run` command.
+// newRunCmd creates the `agent run` command.
 func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [image-or-project]",
@@ -360,7 +360,7 @@ func newLogsCmd() *cobra.Command {
 	return cmd
 }
 
-// newPolicyCmd creates the `agentpaas policy` command.
+// newPolicyCmd creates the `agent policy` command.
 func newPolicyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "policy",
@@ -568,7 +568,7 @@ func newPolicyProposeCmd() *cobra.Command {
 
 var secretStoreFactory = newDefaultSecretStore
 
-// newSecretCmd creates the `agentpaas secret` command.
+// newSecretCmd creates the `agent secret` command.
 func newSecretCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secret",
@@ -822,7 +822,7 @@ func formatSecretTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-// newAuditCmd creates the `agentpaas audit` command.
+// newAuditCmd creates the `agent audit` command.
 func newAuditCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "audit",

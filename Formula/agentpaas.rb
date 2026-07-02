@@ -20,7 +20,6 @@ class Agentpaas < Formula
   def install
     bin.install "agent"
     bin.install "agentpaasd"
-    bin.install "agentpaas-harness-linux"
   end
 
   test do

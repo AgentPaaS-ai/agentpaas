@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPolicyInitCmd creates the `agentpaas policy init` subcommand.
+// newPolicyInitCmd creates the `agent policy init` subcommand.
 func newPolicyInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init [project-dir]",

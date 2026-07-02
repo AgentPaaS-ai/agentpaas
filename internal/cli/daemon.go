@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/home"
 	"github.com/spf13/cobra"
 )
 
-// newDaemonCmd creates the `agentpaas daemon` umbrella command.
+// newDaemonCmd creates the `agent daemon` umbrella command.
 func newDaemonCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "daemon",
@@ -38,7 +38,7 @@ in a future release.`,
 	return cmd
 }
 
-// newDaemonStatusCmd creates the `agentpaas daemon status` command.
+// newDaemonStatusCmd creates the `agent daemon status` command.
 func newDaemonStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
@@ -63,7 +63,7 @@ func runDaemonStatus(cmd *cobra.Command) error {
 
 	if client, conn, err := ConnectToDaemon(sock); err != nil {
 		// Daemon not reachable — format error according to --json flag.
-		hint := "Run 'agentpaas daemon start' to start the daemon"
+		hint := "Run 'agent daemon start' to start the daemon"
 		errMsg := fmt.Sprintf("daemon not reachable at %s", sock)
 		if jsonOutput(cmd) {
 			je := JSONError{
@@ -176,7 +176,7 @@ func resolveDaemonBinary() (string, error) {
 	return daemonBinary, nil
 }
 
-// newDaemonStartCmd creates the `agentpaas daemon start` command.
+// newDaemonStartCmd creates the `agent daemon start` command.
 func newDaemonStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
@@ -316,12 +316,12 @@ func runDaemonStart(cmd *cobra.Command) error {
 		// Daemon survived the grace period — consider it started.
 		// The Wait() goroutine above remains blocked until the daemon eventually
 		// exits; it will be reaped when this CLI process exits (benign leak).
-		fmt.Println("Daemon is running. Use 'agentpaas daemon status' to verify.")
+		fmt.Println("Daemon is running. Use 'agent daemon status' to verify.")
 		return nil
 	}
 }
 
-// newDaemonStopCmd creates the `agentpaas daemon stop` command.
+// newDaemonStopCmd creates the `agent daemon stop` command.
 func newDaemonStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop",
@@ -395,7 +395,7 @@ func runDaemonStop(cmd *cobra.Command) error {
 	return nil
 }
 
-// newDaemonRestartCmd creates the `agentpaas daemon restart` command.
+// newDaemonRestartCmd creates the `agent daemon restart` command.
 func newDaemonRestartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "restart",

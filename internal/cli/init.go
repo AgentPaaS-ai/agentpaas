@@ -9,12 +9,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/parvezsyed/agentpaas/internal/pack"
 	"github.com/spf13/cobra"
 )
 
-// newInitCmd creates the `agentpaas init` command.
-// Usage: agentpaas init [project-dir] [--runtime python|langgraph|crewai]
+// newInitCmd creates the `agent init` command.
+// Usage: agent init [project-dir] [--runtime python|langgraph|crewai]
 // If project-dir is omitted, uses current directory.
 // If --runtime is omitted, auto-detects from existing files or defaults to python.
 func newInitCmd() *cobra.Command {

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 const (

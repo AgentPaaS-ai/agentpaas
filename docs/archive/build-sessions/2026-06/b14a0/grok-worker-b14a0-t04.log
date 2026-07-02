@@ -1,0 +1,26 @@
+I'll explore existing daemon tests and control handlers to match patterns, then implement the e2e test file.
+Creating the e2e test file with helpers aligned to existing test patterns.
+E2e test passed. Committing the change.
+Created `internal/daemon/control_handlers_e2e_test.go` on branch `feat/b14a0-t04-e2e` and committed it.
+
+## Test: `TestE2E_PackRunInvokeStopAudit`
+
+In-process flow against real Docker (no CLI subprocesses):
+
+1. **Setup** — `AGENTPAAS_HOME` under `~/agentpaas-e2e-<nanos>` (colima-safe)
+2. **Harness** — builds `bin/agentpaas-harness-linux` (linux/arm64) if missing; adds `bin/` to `PATH`
+3. **Project** — copies `demo/governed-weather/` and bundles `python/agentpaas_sdk`
+4. **Pack → Run → Wait → Stop** — via `controlServer` methods with `runtime.NewDockerRuntime()`
+5. **Assert** — `egress_denied` events for `api.weather.gov` or `evil-exfil.example.com`; audit hash chain intact (seq, prev_hash, record_hash)
+
+Skips when `AGENTPAAS_DOCKER_TESTS != "1"`.
+
+## Verification
+
+| Check | Result |
+|-------|--------|
+| `go build ./...` | Pass |
+| `go test ./internal/daemon/... -count=1 -race -timeout 120s` | Pass (e2e skipped) |
+| `AGENTPAAS_DOCKER_TESTS=1 go test -run TestE2E_PackRunInvokeStopAudit ...` | Pass (7.8s) |
+
+Commit: `test(14a0-t04): e2e pack→run→invoke→stop→audit flow` (`240f8f6`)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 type fakeAudit struct {

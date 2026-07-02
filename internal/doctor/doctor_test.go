@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/parvezsyed/agentpaas/internal/daemon"
+	"github.com/parvezsyed/agentpaas/internal/home"
 )
 
 // ---------------------------------------------------------------------------

@@ -4331,8 +4331,8 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\aCronAdd\x12$.agentpaas.control.v1.CronAddRequest\x1a%.agentpaas.control.v1.CronAddResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/cron\x12s\n" +
 	"\bCronList\x12%.agentpaas.control.v1.CronListRequest\x1a&.agentpaas.control.v1.CronListResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/control/cron\x12\x87\x01\n" +
 	"\n" +
-	"CronRemove\x12'.agentpaas.control.v1.CronRemoveRequest\x1a(.agentpaas.control.v1.CronRemoveResponse\"&\x82\xd3\xe4\x93\x02 *\x1e/v1/control/cron/{schedule_id}B\xd6\x01\n" +
-	"\x18com.agentpaas.control.v1B\fControlProtoP\x01Z:github.com/AgentPaaS-ai/agentpaas/api/control/v1;controlv1\xa2\x02\x03ACX\xaa\x02\x14Agentpaas.Control.V1\xca\x02\x14Agentpaas\\Control\\V1\xe2\x02 Agentpaas\\Control\\V1\\GPBMetadata\xea\x02\x16Agentpaas::Control::V1b\x06proto3"
+	"CronRemove\x12'.agentpaas.control.v1.CronRemoveRequest\x1a(.agentpaas.control.v1.CronRemoveResponse\"&\x82\xd3\xe4\x93\x02 *\x1e/v1/control/cron/{schedule_id}B\xd4\x01\n" +
+	"\x18com.agentpaas.control.v1B\fControlProtoP\x01Z8github.com/parvezsyed/agentpaas/api/control/v1;controlv1\xa2\x02\x03ACX\xaa\x02\x14Agentpaas.Control.V1\xca\x02\x14Agentpaas\\Control\\V1\xe2\x02 Agentpaas\\Control\\V1\\GPBMetadata\xea\x02\x16Agentpaas::Control::V1b\x06proto3"
 
 var (
 	file_control_v1_control_proto_rawDescOnce sync.Once

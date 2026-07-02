@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
-	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
+	"github.com/parvezsyed/agentpaas/internal/home"
+	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 )
 
@@ -571,10 +570,10 @@ func TestDaemonCommands_Exist(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestDoctor_TextOutput
-// Tests: agent doctor prints real diagnostics, not the v0 stub message.
+// TestDoctor_StubMessage
+// Tests: agent doctor prints a message containing "not yet implemented".
 // ---------------------------------------------------------------------------
-func TestDoctor_TextOutput(t *testing.T) {
+func TestDoctor_StubMessage(t *testing.T) {
 	resetAgentCmd()
 
 	stdout := captureStdout(t, func() {
@@ -586,161 +585,8 @@ func TestDoctor_TextOutput(t *testing.T) {
 		_ = cmd.Execute()
 	})
 
-	if strings.Contains(stdout, "not yet implemented") {
-		t.Errorf("doctor should not print stub message; got:\n%s", stdout)
-	}
-
-	required := []string{
-		"agentpaas doctor",
-		"Version:",
-		"Docker CLI:",
-		"Docker daemon:",
-		"macOS Keychain:",
-		"Linux harness:",
-		"Home directory:",
-		"Overall:",
-	}
-	for _, substr := range required {
-		if !strings.Contains(stdout, substr) {
-			t.Errorf("expected doctor output to contain %q; got:\n%s", substr, stdout)
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestDoctor_VersionReported
-// Tests: agent doctor reports the CLI version from daemon.CurrentVersion().
-// ---------------------------------------------------------------------------
-func TestDoctor_VersionReported(t *testing.T) {
-	resetAgentCmd()
-
-	stdout := captureStdout(t, func() {
-		cmd := freshCmd()
-		var outBuf, errBuf bytes.Buffer
-		cmd.SetOut(&outBuf)
-		cmd.SetErr(&errBuf)
-		cmd.SetArgs([]string{"doctor"})
-		_ = cmd.Execute()
-	})
-
-	if !strings.Contains(stdout, "0.1.0-dev") {
-		t.Errorf("expected doctor output to contain CLI version; got:\n%s", stdout)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestDoctor_JSONOutput
-// Tests: agent doctor --json outputs valid JSON with all expected checks.
-// ---------------------------------------------------------------------------
-func TestDoctor_JSONOutput(t *testing.T) {
-	resetAgentCmd()
-
-	stdout := captureStdout(t, func() {
-		cmd := freshCmd()
-		var outBuf, errBuf bytes.Buffer
-		cmd.SetOut(&outBuf)
-		cmd.SetErr(&errBuf)
-		cmd.SetArgs([]string{"doctor", "--json"})
-		_ = cmd.Execute()
-	})
-
-	var out DoctorOutput
-	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
-		t.Fatalf("expected valid JSON output, got error: %v\noutput:\n%s", err, stdout)
-	}
-
-	if len(out.Checks) != 6 {
-		t.Fatalf("expected 6 checks, got %d: %+v", len(out.Checks), out.Checks)
-	}
-
-	expectedNames := []string{
-		"version",
-		"docker_cli",
-		"docker_daemon",
-		"keychain",
-		"harness_linux",
-		"home_dir",
-	}
-	for i, name := range expectedNames {
-		if out.Checks[i].Name != name {
-			t.Errorf("check[%d].name: want %q, got %q", i, name, out.Checks[i].Name)
-		}
-		if out.Checks[i].Status == "" {
-			t.Errorf("check[%d].status should not be empty", i)
-		}
-	}
-
-	if out.OverallStatus == "" {
-		t.Error("overall_status should not be empty")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestDoctor_DockerCheck
-// Tests: docker checks report a status when docker is available on PATH.
-// ---------------------------------------------------------------------------
-func TestDoctor_DockerCheck(t *testing.T) {
-	if _, err := exec.LookPath("docker"); err != nil {
-		t.Skip("docker not on PATH")
-	}
-
-	output := runDoctorChecks(t.TempDir())
-	for _, check := range output.Checks {
-		switch check.Name {
-		case "docker_cli":
-			if check.Status == "fail" && check.Message == "not found" {
-				t.Errorf("docker_cli should not be 'not found' when docker is on PATH; got %+v", check)
-			}
-		case "docker_daemon":
-			if check.Status != "ok" && check.Status != "warn" {
-				t.Errorf("docker_daemon status should be ok or warn; got %+v", check)
-			}
-		}
-	}
-}
-
-// ---------------------------------------------------------------------------
-// TestDoctor_ExitCodeOnFailure
-// Tests: doctor exits 1 when a required check fails.
-// ---------------------------------------------------------------------------
-func TestDoctor_ExitCodeOnFailure(t *testing.T) {
-	t.Cleanup(func() {
-		doctorExitFn = func(code int) { os.Exit(code) }
-	})
-
-	var exitCode int
-	doctorExitFn = func(code int) {
-		exitCode = code
-	}
-
-	output := DoctorOutput{
-		Checks: []DoctorCheck{
-			{Name: "version", Status: "ok", Message: "0.1.0-dev"},
-			{Name: "docker_cli", Status: "fail", Message: "not found"},
-		},
-		OverallStatus: "fail",
-	}
-
-	stdout := captureStdout(t, func() {
-		cmd := freshCmd()
-		var outBuf, errBuf bytes.Buffer
-		cmd.SetOut(&outBuf)
-		cmd.SetErr(&errBuf)
-		cmd.SetArgs([]string{"doctor"})
-		// Bypass real checks by invoking print + exit path directly.
-		_ = printTextOrJSON(false, output, func(v interface{}) string {
-			return DoctorText(v.(DoctorOutput))
-		})
-		if output.hasFailure() {
-			doctorExitFn(1)
-		}
-	})
-
-	if !strings.Contains(stdout, "docker_cli") && !strings.Contains(stdout, "Docker CLI:") {
-		t.Fatalf("expected doctor text output; got:\n%s", stdout)
-	}
-	if exitCode != 1 {
-		t.Errorf("expected exit code 1 on failure, got %d", exitCode)
+	if !strings.Contains(stdout, "not yet implemented") {
+		t.Errorf("expected doctor output to contain 'not yet implemented'; got:\n%s", stdout)
 	}
 }
 

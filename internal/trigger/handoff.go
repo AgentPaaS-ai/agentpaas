@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	triggerv1 "github.com/parvezsyed/agentpaas/api/trigger/v1"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 // PayloadMode determines how the handoff payload is constructed.

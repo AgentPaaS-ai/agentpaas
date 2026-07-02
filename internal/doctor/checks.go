@@ -18,8 +18,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/home"
 )
 
 // knownPorts are the ports that agentpaas uses for control and agent traffic.
@@ -486,7 +486,7 @@ func CheckHomeDirPerms(homeDir string) CheckResult {
 			Name:    name,
 			Status:  "error",
 			Message: fmt.Sprintf("Home directory %s does not exist", paths.Home),
-			FixHint: "Run 'agentpaasd init' or 'agentpaas daemon start' to create the home directory.",
+			FixHint: "Run 'agentpaasd init' or 'agent daemon start' to create the home directory.",
 		}
 	}
 
@@ -536,7 +536,7 @@ func CheckDaemonReady(socketPath string) CheckResult {
 			Name:    name,
 			Status:  "error",
 			Message: fmt.Sprintf("Cannot create gRPC client: %v", err),
-			FixHint: "Run 'agentpaas daemon start' to start the daemon.",
+			FixHint: "Run 'agent daemon start' to start the daemon.",
 		}
 	}
 	defer func() { _ = conn.Close() }()
@@ -558,7 +558,7 @@ func CheckDaemonReady(socketPath string) CheckResult {
 			Name:    name,
 			Status:  "error",
 			Message: fmt.Sprintf("Daemon did not respond to Doctor RPC: %v", err),
-			FixHint: "Run 'agentpaas daemon start' to start the daemon.",
+			FixHint: "Run 'agent daemon start' to start the daemon.",
 		}
 	}
 

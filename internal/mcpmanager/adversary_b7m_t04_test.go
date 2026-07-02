@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/parvezsyed/agentpaas/internal/policy"
 )
 
 func TestAdversary_B7M_T04_NilEgressPolicy(t *testing.T) {

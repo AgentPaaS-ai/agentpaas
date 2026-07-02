@@ -6,26 +6,18 @@
 #   local-gate.sh <package>     — test + lint a single package
 #   local-gate.sh block <N>     — run make blockN-gate
 #   local-gate.sh full           — build + test + race + lint + osv (no Docker)
-#   local-gate.sh e2e            — e2e-network tests (needs Docker)
-#
-# Docker: if you use Colima, export DOCKER_HOST before running, e.g.
-#   export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+#   local-gate.sh e2e            — e2e-network tests (needs Docker/colima)
 #
 # Exits 0 on pass, non-zero on fail.
 # Prints a compact summary at the end.
 
 set -euo pipefail
 
-# Resolve repo dir from script location (portable across machines).
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_DIR"
+# Ensure homebrew binaries are on PATH (subprocess.Popen may not inherit shell PATH)
+export PATH="/opt/homebrew/bin:$(go env GOPATH 2>/dev/null || echo /Users/pms88/go)/bin:$PATH"
 
-# Ensure homebrew binaries are on PATH if present (no-op on non-macOS).
-if [ -d /opt/homebrew/bin ]; then
-  export PATH="/opt/homebrew/bin:$PATH"
-fi
-export PATH="$(go env GOPATH 2>/dev/null || echo "$HOME/go")/bin:$PATH"
+REPO_DIR="$HOME/projects/agentpaas"
+cd "$REPO_DIR"
 
 TARGET="${1:?Usage: local-gate.sh <package|block N|full|e2e>}"
 GATE_EXIT=0
@@ -53,6 +45,7 @@ case "$TARGET" in
     BLOCK_NUM="${BLOCK_NUM# }"
     if [ "$BLOCK_NUM" = "5" ]; then
       # Block 5 gate needs Docker
+      export DOCKER_HOST="unix:///Users/pms88/.colima/default/docker.sock"
       export AGENTPAAS_DOCKER_TESTS=1
       run_check "build" make build || GATE_EXIT=1
       run_check "test" make test || GATE_EXIT=1
@@ -83,6 +76,7 @@ case "$TARGET" in
     run_check "osv" make osv || GATE_EXIT=1
     ;;
   e2e)
+    export DOCKER_HOST="unix:///Users/pms88/.colima/default/docker.sock"
     export AGENTPAAS_DOCKER_TESTS=1
     echo "  e2e-network tests (sequential, Docker required)..."
     for pattern in TestE2E_Network_PositivePath TestAdversaryB5T04a TestE2E_HostBridgeProbes TestAdversaryB5T04b TestE2E_ProtocolBypassProbes TestAdversaryB5T04c TestE2E_TopologyInspect TestE2E_PartialCreateCleanup TestAdversaryB5T04d TestE2E_CrashReconciliation TestE2E_SecretFreeDebugOutput; do

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/parvezsyed/agentpaas/internal/home"
 )
 
 // rootCmd is the root cobra command for the agent CLI.
@@ -64,12 +64,12 @@ func AgentCmd() *cobra.Command {
 	}
 
 	rootCmd = &cobra.Command{
-		Use:   "agentpaas",
+		Use:   "agent",
 		Short: "AgentPaaS CLI — control and manage AgentPaaS agents",
 		Long: `AgentPaaS CLI provides operational control over the AgentPaaS daemon,
 agent lifecycle, policy, secrets, audit, and diagnostics.
 
-Start the daemon first with 'agentpaas daemon start', then use subcommands
+Start the daemon first with 'agent daemon start', then use subcommands
 to pack, run, and manage agents.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Validate home path if --home was explicitly provided.

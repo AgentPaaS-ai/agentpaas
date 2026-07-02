@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
-	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
+	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/parvezsyed/agentpaas/internal/secrets"
 )
 
 // recordingSecretStore wraps a SecretStore and records store.Get calls so

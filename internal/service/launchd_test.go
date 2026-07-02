@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/service"
+	"github.com/parvezsyed/agentpaas/internal/service"
 )
 
 // goldenLaunchdPath returns the path to a launchd golden file by name.

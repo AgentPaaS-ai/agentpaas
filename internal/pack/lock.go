@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
+	"github.com/parvezsyed/agentpaas/internal/policy"
 )
 
 const noTlogSigningConfigJSON = `{"mediaType":"application/vnd.dev.sigstore.signingconfig.v0.2+json","rekorTlogConfig":{},"tsaConfig":{}}`
@@ -34,7 +34,7 @@ const LockSchemaVersion = 1
 const externalSignatureTimeout = 30 * time.Second
 
 // AgentLock is the canonical, signed manifest for a packed agent.
-// This is the exact review unit consumed by `agentpaas run` and promotion.
+// This is the exact review unit consumed by `agent run` and promotion.
 type AgentLock struct {
 	// SchemaVersion is the agent.lock schema version (currently 1).
 	SchemaVersion int `json:"schema_version"`
@@ -244,9 +244,15 @@ var retryableSignErrorPatterns = []string{
 	"tlog",
 	"transparency log",
 	"fulcio",
-	"503",
-	"502",
-	"500",
+	"http 500",
+	"http 502",
+	"http 503",
+	"status 500",
+	"status 502",
+	"status 503",
+	"500 ",
+	"502 ",
+	"503 ",
 	"connection refused",
 	"connection reset",
 	"timeout",

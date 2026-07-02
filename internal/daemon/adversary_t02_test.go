@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/runtime"
 )
 
 // ADVERSARY TEST SUITE for B14B-T02 HTTP_PROXY policy enforcement

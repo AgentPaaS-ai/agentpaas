@@ -1,0 +1,123 @@
+# AGENTPAAS COMPLETE PRD v2.0 — LLM CRITIQUE PROMPT
+
+You are a senior product leader and systems architect. Provide a rigorous, first-principles critique of this PRD.
+
+Structure your response exactly with these headings:
+
+1. Overall Assessment
+2. Business Case Strength
+3. Target User Clarity & Value Proposition
+4. Architectural Soundness
+5. Go-to-Market Realism
+6. Success Metrics Quality
+7. Completeness & Gaps
+8. Recommendations for Improvement
+9. Probability of Success Assessment (with reasoning)
+
+Be specific. Reference sections and quote text where relevant. Do not be polite — be direct and evidence-based.
+
+---
+
+# PRODUCT REQUIREMENTS DOCUMENT v2.0
+
+**Project:** AgentPaaS  
+**Version:** 2.0 (Complete)  
+**Date:** June 2026
+
+## 1. Executive Summary
+
+AgentPaaS solves the critical gap between agent creation and production deployment. While tools like Hermes, Codex, and LangGraph excel at generating agent logic, they leave users without a standardized way to package, secure, observe, and run those agents safely.
+
+We deliver a **local-first runtime** where an agent and its dedicated gateway are packaged together as one container. A lightweight local dashboard provides immediate observability. In Phase 2 we add an optional SaaS layer for teams that need centralized management at scale.
+
+## 2. Business Case & Why We Are Building This
+
+### The Problem
+- Agent frameworks produce code but provide no security boundary or egress control.
+- Non-developers cannot safely deploy and monitor agents without deep infrastructure knowledge.
+- Enterprise teams face high risk when agents make autonomous outbound calls.
+- Current options force a false choice: powerful but insecure open-source tools, or locked-in expensive SaaS platforms.
+
+### The Opportunity
+Production agent adoption is accelerating in 2026. The real bottleneck has shifted from "can we build agents?" to "can we run them safely and observably at scale?"
+
+Companies are willing to pay for governance, security, and reduced operational burden. A local-first open core with a clean optional SaaS layer captures both developer mindshare and enterprise budgets.
+
+## 3. Target Users & Personas
+
+**Primary:** RevOps, Marketing Ops, Finance Ops power users — non-developers who receive agent code or build simple automations. They need a safe, observable way to run agents without managing Kubernetes or security policies.
+
+**Secondary:** Mid-market automation teams running 5–30 agents that need centralized visibility, audit trails, and reduced operational overhead.
+
+**Tertiary:** Internal platform teams that want to offer governed agent runtimes as a service inside their organization.
+
+## 4. How We Help the User
+
+**For the Non-Developer:**
+- Receive agent code from engineering or build simple flows
+- Run one command to package it with security and observability built-in
+- See status, traces, and errors in a simple local dashboard
+- Trigger agents via API or schedule without writing infrastructure code
+
+**For the Automation Team:**
+- Standardized, auditable packaging for every agent
+- Consistent security model (mTLS, egress policy, secret injection)
+- Local-first deployment with optional centralized management
+- Clear path from prototype to production without re-architecture
+
+## 5. Solution Architecture
+
+**Core Packaging Model:**
+The system uses a single container that contains two distinct components:
+- Agent Runtime (the actual agent logic + harness)
+- Gateway (handles ingress, egress, policy, and observability)
+
+These two components are packaged together inside one container image and deployed as one atomic unit.
+
+**Local-First Runtime:**
+- Packaging CLI produces the container
+- Lightweight local dashboard runs on localhost
+- Zero cloud dependency for core functionality
+
+**Phase 2 Optional SaaS:**
+- Centralized observability, alerting, lifecycle management
+- Private registries
+- Team and enterprise features
+
+## 6. Data Flow
+
+**Inbound:** External systems call the Gateway's authenticated ingress. The Gateway routes to the Agent Runtime inside the same container.
+
+**Outbound:** All agent calls to LLMs, MCP servers, or other agents are forced through the Gateway component inside the same container for policy, logging, and observability.
+
+**Observability:** Telemetry from both the Agent Runtime and Gateway flows to the local dashboard. Optional sync to SaaS in Phase 2.
+
+## 7. Go-to-Market Strategy
+
+**Phase 0–1 (Local Runtime):** Open-source release. Distribution through GitHub, agent framework communities (LangGraph, CrewAI), and integrations with agentic tools (Hermes, Codex). Goal: establish the packaging standard.
+
+**Phase 2 (SaaS):** Target mid-market automation teams that have outgrown local management. Sell on operational relief, auditability, and centralized visibility. Use design partners from Phase 1.
+
+## 8. Success Metrics
+
+- OSS Adoption: GitHub stars, container downloads, reported production self-hosted deployments
+- User Success: Time from agent code to running packaged container with local dashboard < 15 minutes
+- Business Health: Paid conversion rate > 8%, Net Revenue Retention > 110%
+
+## 9. Roadmap
+
+**Phase 0–1 (Months 1–6):** Core packaging CLI, single-container runtime (Agent + Gateway as two components), lightweight local dashboard, MCP + A2A support, open-source release.
+
+**Phase 2 (Months 7–12):** Optional SaaS control plane, extended retention, team dashboards, alerting, one-click deployments, private registries, design partner program.
+
+## 10. Risks & Mitigations
+
+- Low SaaS conversion: Keep free tier generous but make paid lifecycle and observability features clearly superior in time savings.
+- Standards evolution: Strict adherence and active contribution to MCP and A2A working groups.
+- Local dashboard UX: Heavy user testing with non-developer persona in Phase 1.
+
+---
+
+**END OF COMPLETE PRD v2.0**
+
+Now provide your structured critique using the 9 headings listed at the top. Be direct and specific.

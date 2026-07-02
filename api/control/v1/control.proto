@@ -25,7 +25,7 @@ package agentpaas.control.v1;
 import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/AgentPaaS-ai/agentpaas/api/control/v1;controlv1";
+option go_package = "github.com/parvezsyed/agentpaas/api/control/v1;controlv1";
 
 // ---------------------------------------------------------------------------
 // Enums

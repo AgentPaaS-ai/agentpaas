@@ -1,0 +1,33 @@
+I'll wire the audit volume into the Run handler and add tests. Reading the relevant files first.
+Implementing the code changes and a test using a minimal runtime test helper with the `sync.Once` injection pattern.
+Adding a runtime test helper and the audit-volume test.
+Running build, tests, and lint.
+Step 3 is done: the Run handler mounts the harness audit volume and stores the host path for Step 4.
+
+### Changes
+
+**`stub_handlers.go`** — Added `AuditDir` to `trackedRun` for post-run ingestion.
+
+**`control_handlers.go`** — Run handler now:
+1. Creates `{State}/runs/{runID}/harness-audit/` with mode `0700` before container creation
+2. Mounts it via `Binds: []string{fmt.Sprintf("%s:/audit", hostAuditDir)}`
+3. Sets `AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl`
+4. Passes `hostAuditDir` to `trackRun`
+
+**`control_handlers_test.go`** — Added `TestRun_MountsAuditVolume`, which verifies:
+- Host audit directory is created
+- `ContainerSpec.Binds` includes `{hostAuditDir}:/audit`
+- `ContainerSpec.Env` includes `AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl`
+- `trackedRun.AuditDir` is stored
+
+**`internal/runtime/stub.go`** + delegation in `docker.go` — Minimal test helper (`NewDockerRuntimeWithDriver`) so the test can mock Docker without a live daemon.
+
+### Verification
+
+```
+go build ./...                              ✓
+go test ./internal/daemon/... -count=1      ✓
+golangci-lint run ./internal/daemon/...     ✓
+```
+
+Stop handler was not modified. Ready for Step 4 (ingest harness audit JSONL on stop).

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
+	triggerv1 "github.com/parvezsyed/agentpaas/api/trigger/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"

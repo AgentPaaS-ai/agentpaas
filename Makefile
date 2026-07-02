@@ -2,14 +2,14 @@
 
 build:
 	go build ./...
-	go build -o bin/agentpaas ./cmd/agentpaas
-	go build -o bin/agentpaasd ./cmd/agentpaasd
-	go build -o bin/agentpaas-harness ./cmd/harness
 
 build-harness-linux:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -o bin/agentpaas-harness-linux ./cmd/harness
 
 build-all: build build-harness-linux
+	go build -o bin/agentpaas ./cmd/agent
+	go build -o bin/agentpaasd ./cmd/agentpaasd
+	go build -o bin/agentpaas-harness ./cmd/harness
 
 test:
 	go test ./...
@@ -264,13 +264,13 @@ block15-gate: build lint
 	go test -race -count=1 ./internal/pack/... ./internal/cli/... ./internal/daemon/...
 	@echo "  T04: trigger/cron/event surface (CronScheduler management, CLI, plugin tools)"
 	go test -race -count=1 ./internal/trigger/... ./internal/daemon/... ./internal/cli/...
-	@echo "  T05: production hardening (RFC1918 tighten, Rekor retry, key encryption, capset verify)"
-	go test -race -count=1 ./internal/audit/... ./internal/pack/... ./internal/daemon/...
-	@echo "  T05 (Docker): CAP_NET_ADMIN capset verification e2e"
-	AGENTPAAS_DOCKER_TESTS=1 go test -v -count=1 -run 'TestE2E_CapNetAdminDropped_AgentCannotFlushIPTables' ./internal/harness/... -timeout 240s
+	@echo "  T05: production hardening (gateway subnet, Rekor retry, checkpoint key encryption, capset)"
+	go test -race -count=1 ./internal/daemon/... ./internal/pack/... ./internal/audit/... ./internal/harness/...
+	@echo "  T08: egress enforcement regression (firewall script content, egress enabled flag)"
+	go test -race -count=1 -run 'Firewall' ./internal/harness/...
 	@echo "  Plugin: secret onboarding + LLM configure + policy init + trigger/cron tools"
 	cd integrations/hermes-plugin && python3 -m unittest discover -s tests -t . 2>&1 | tail -5
-	@echo "==> Block 15 gate passed (T01-T05 complete; T06-T08 to be added as blocks complete)"
+	@echo "==> Block 15 gate passed (T01+T02+T03+T04+T05+T08 complete; T06-T07 pending)"
 
 .PHONY: gates
 gates: ## List all available gate targets

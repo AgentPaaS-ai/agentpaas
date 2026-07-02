@@ -728,8 +728,8 @@ const file_trigger_v1_trigger_proto_rawDesc = "" +
 	"\fInvokeStream\x12#.agentpaas.trigger.v1.InvokeRequest\x1a$.agentpaas.trigger.v1.InvokeResponse\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/trigger/invoke/stream0\x01\x12k\n" +
 	"\x06GetRun\x12#.agentpaas.trigger.v1.GetRunRequest\x1a\x19.agentpaas.trigger.v1.Run\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/trigger/runs/{run_id}\x12{\n" +
 	"\tCancelRun\x12&.agentpaas.trigger.v1.CancelRunRequest\x1a\x19.agentpaas.trigger.v1.Run\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/trigger/runs/{run_id}:cancel\x12s\n" +
-	"\bListRuns\x12%.agentpaas.trigger.v1.ListRunsRequest\x1a&.agentpaas.trigger.v1.ListRunsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/trigger/runsB\xd6\x01\n" +
-	"\x18com.agentpaas.trigger.v1B\fTriggerProtoP\x01Z:github.com/AgentPaaS-ai/agentpaas/api/trigger/v1;triggerv1\xa2\x02\x03ATX\xaa\x02\x14Agentpaas.Trigger.V1\xca\x02\x14Agentpaas\\Trigger\\V1\xe2\x02 Agentpaas\\Trigger\\V1\\GPBMetadata\xea\x02\x16Agentpaas::Trigger::V1b\x06proto3"
+	"\bListRuns\x12%.agentpaas.trigger.v1.ListRunsRequest\x1a&.agentpaas.trigger.v1.ListRunsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/trigger/runsB\xd4\x01\n" +
+	"\x18com.agentpaas.trigger.v1B\fTriggerProtoP\x01Z8github.com/parvezsyed/agentpaas/api/trigger/v1;triggerv1\xa2\x02\x03ATX\xaa\x02\x14Agentpaas.Trigger.V1\xca\x02\x14Agentpaas\\Trigger\\V1\xe2\x02 Agentpaas\\Trigger\\V1\\GPBMetadata\xea\x02\x16Agentpaas::Trigger::V1b\x06proto3"
 
 var (
 	file_trigger_v1_trigger_proto_rawDescOnce sync.Once

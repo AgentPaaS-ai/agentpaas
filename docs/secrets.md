@@ -19,7 +19,7 @@ agent's behalf.
 
 ## Policy Controls
 
-The policy file (`policy.yaml`) declares which credentials an agentpaas $1 may
+The policy file (`policy.yaml`) declares which credentials an agent run may
 access. The gateway enforces this: if a credential is not listed in the policy
 for that run, the gateway refuses to attach it to any outbound request. This
 gives you fine-grained control — a weather-agent gets the OpenWeather API key,
@@ -34,4 +34,4 @@ Every credential access is recorded in the signed audit chain:
 - Timestamp and run identifier
 
 This gives you a complete, verifiable log of how your secrets were used during
-each agentpaas $1.
+each agent run.

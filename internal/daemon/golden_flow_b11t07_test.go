@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
-	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/operator"
+	"github.com/parvezsyed/agentpaas/internal/pack"
 	"google.golang.org/protobuf/encoding/protojson"
 )
 

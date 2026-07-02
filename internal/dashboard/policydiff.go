@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/parvezsyed/agentpaas/internal/policy"
 )
 
 // PolicyDiffView is the sanitized API response for a policy diff.

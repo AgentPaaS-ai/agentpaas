@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	triggerv1 "github.com/parvezsyed/agentpaas/api/trigger/v1"
+	"github.com/parvezsyed/agentpaas/internal/audit"
 )
 
 type adversaryFakeAudit struct {

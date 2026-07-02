@@ -9,7 +9,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
-	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
+	"github.com/parvezsyed/agentpaas/internal/dockerclient"
 )
 
 func TestCleanupLocalRegistry_RemovesContainer(t *testing.T) {

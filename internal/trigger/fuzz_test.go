@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
+	triggerv1 "github.com/parvezsyed/agentpaas/api/trigger/v1"
 )
 
 // TestFuzzControlAPIRESTJSON fuzzes the REST JSON ingestion path.

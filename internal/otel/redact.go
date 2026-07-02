@@ -3,7 +3,7 @@ package otel
 import (
 	"encoding/json"
 
-	"github.com/AgentPaaS-ai/agentpaas/internal/logging"
+	"github.com/parvezsyed/agentpaas/internal/logging"
 )
 
 // redactString applies the platform redaction to a string value.
