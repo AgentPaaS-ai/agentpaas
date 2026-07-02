@@ -55,12 +55,12 @@ builds:
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
 
 archives:
-  # Darwin archives ship agent + agentpaasd plus the cross-compiled linux harness
-  # (needed for `agent pack` on macOS where containers run linux/arm64).
+  # Darwin archives ship agentpaas + agentpaasd plus the cross-compiled
+  # linux harness (needed for `agentpaas pack` on macOS where containers run linux/arm64).
   - id: darwin
     format: tar.gz
     ids:
-      - agent
+      - agentpaas
       - agentpaasd
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
