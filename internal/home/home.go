@@ -273,11 +273,14 @@ func Ensure(paths *HomePaths) error {
 	}
 
 	// Create runtime files (empty, with correct permissions).
+	// NOTE: Do NOT pre-create the socket file. The daemon creates it via
+	// net.Listen("unix", ...). A stale socket from a previous run causes
+	// os.OpenFile to fail with "operation not supported on socket".
+	// The daemon removes stale sockets before listening (server.go).
 	runtimeFiles := []struct {
 		path string
 		mode os.FileMode
 	}{
-		{paths.Socket, filePerm},
 		{paths.PID, filePerm},
 		{paths.Lock, filePerm},
 	}

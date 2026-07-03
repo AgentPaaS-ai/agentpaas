@@ -146,13 +146,14 @@ func TestEnsureCreatesFiles(t *testing.T) {
 		t.Fatalf("Ensure() failed: %v", err)
 	}
 
-	// Check files exist with correct perms
+	// Check files exist with correct perms.
+	// Note: socket is NOT created by Ensure — it's created by the daemon
+	// via net.Listen. Only PID and lock files are pre-created.
 	files := []struct {
 		name string
 		path string
 		mode os.FileMode
 	}{
-		{"socket", hp.Socket, 0600},
 		{"pid", hp.PID, 0600},
 		{"lock", hp.Lock, 0600},
 	}
@@ -209,6 +210,11 @@ func TestValidatePermissionsHomeBad(t *testing.T) {
 func TestValidatePermissionsSocketBad(t *testing.T) {
 	hp := testHomePaths(t)
 	if err := Ensure(hp); err != nil {
+		t.Fatal(err)
+	}
+	// Ensure() no longer creates the socket file (the daemon does via
+	// net.Listen). Create a plain file so we can test perm validation.
+	if err := os.WriteFile(hp.Socket, []byte{}, 0600); err != nil {
 		t.Fatal(err)
 	}
 	// Widen socket perms to 0644
@@ -359,7 +365,7 @@ func TestIsStaleSocketStale(t *testing.T) {
 	if err := Ensure(hp); err != nil {
 		t.Fatal(err)
 	}
-	// Remove socket created by Ensure and create a plain file (not a real socket)
+	// Create a plain file (not a real socket) to simulate a stale socket
 	_ = os.Remove(hp.Socket)
 	if err := os.WriteFile(hp.Socket, []byte("not a socket"), 0600); err != nil {
 		t.Fatal(err)
