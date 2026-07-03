@@ -1286,6 +1286,51 @@ func newTimelineCmd() *cobra.Command {
 	}
 }
 
+// newStatusCmd creates the `agentpaas status [run-id]` command.
+// With a run-id, shows that run's status. Without, shows daemon health.
+func newStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status [run-id]",
+		Short: "Show daemon status or a specific run's status",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				// No run-id: delegate to daemon status
+				return runDaemonStatus(cmd)
+			}
+			runID := args[0]
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.SummarizeRun(ctx, &controlv1.SummarizeRunRequest{RunId: runID})
+			if err != nil {
+				return fmt.Errorf("status failed: %w", err)
+			}
+
+			result := operator.SummarizeRunResponse{
+				SchemaVersion: resp.GetSchemaVersion(),
+				RunID:         runID,
+				Status:        resp.GetStatus(),
+				Summary:       resp.GetSummary(),
+			}
+			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+				r := v.(operator.SummarizeRunResponse)
+				return fmt.Sprintf("Run %s\n  Status:  %s\n  Summary: %s\n", r.RunID, r.Status, r.Summary)
+			})
+		},
+	}
+}
+
 // newNextActionCmd creates the `agent next-action` command.
 func newNextActionCmd() *cobra.Command {
 	cmd := &cobra.Command{
