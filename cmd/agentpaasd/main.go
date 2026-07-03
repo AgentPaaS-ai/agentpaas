@@ -74,8 +74,14 @@ func main() {
 	}
 
 	// Set up signal handling for graceful shutdown.
+	// Handle SIGTERM, SIGINT, and SIGHUP. SIGHUP is important because:
+	//   - If the daemon wasn't properly detached (e.g. started without Setsid),
+	//     terminal closure sends SIGHUP to the process group.
+	//   - Some process managers send SIGHUP for config reload or shutdown.
+	// Without handling SIGHUP, the default action is immediate termination
+	// with no graceful shutdown or audit flush.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 
 	go func() {
 		sig := <-sigCh
