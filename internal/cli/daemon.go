@@ -227,6 +227,14 @@ func buildDaemonStartCommand(cmd *cobra.Command, daemonBinary string, paths *hom
 	cmdDaemon.Stderr = logFile
 	cmdDaemon.Stdin = nil
 
+	// Detach the daemon into its own session and process group.
+	// Without this, the daemon stays in the CLI's process group/session.
+	// When the CLI exits or the controlling terminal closes, the daemon
+	// receives SIGHUP and dies immediately (default action: terminate).
+	// Setsid creates a new session, detaching from any controlling terminal
+	// so SIGHUP from terminal closure never reaches the daemon.
+	cmdDaemon.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
 		_ = logFile.Close()

@@ -546,7 +546,7 @@ func (d *Daemon) Stop(ctx context.Context) error {
 // it accepts a channel that the test or main goroutine feeds signals into.
 func (d *Daemon) HandleSignal(sig os.Signal, sigCh chan os.Signal) error {
 	switch sig {
-	case syscall.SIGTERM, syscall.SIGINT:
+	case syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP:
 	default:
 		return fmt.Errorf("daemon: unsupported signal %v", sig)
 	}
