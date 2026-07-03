@@ -1155,8 +1155,24 @@ def agentpaas_trigger_invoke(args, **kwargs):
     payload = args.get("payload", "")
     content_type = args.get("content_type", "application/json")
     cmd_args = ["trigger", "invoke", agent_name]
+    tmp_file = None
     if payload:
-        cmd_args.extend(["--payload", payload])
+        stripped = payload.strip()
+        if stripped and stripped[0] in "{[":
+            # Inline JSON — write to temp file and pass the path
+            try:
+                json.loads(stripped)  # validate
+                import tempfile
+                fd, tmp_file = tempfile.mkstemp(suffix=".json")
+                import os as _os
+                with _os.fdopen(fd, "w") as f:
+                    f.write(payload)
+                cmd_args.extend(["--payload", tmp_file])
+            except json.JSONDecodeError:
+                # Not valid JSON — treat as file path
+                cmd_args.extend(["--payload", payload])
+        else:
+            cmd_args.extend(["--payload", payload])
     if content_type and content_type != "application/json":
         cmd_args.extend(["--content-type", content_type])
     try:
@@ -1164,6 +1180,13 @@ def agentpaas_trigger_invoke(args, **kwargs):
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+    finally:
+        if tmp_file:
+            try:
+                import os as _os
+                _os.unlink(tmp_file)
+            except OSError:
+                pass
 
 
 def agentpaas_cron_add(args, **kwargs):
