@@ -87,8 +87,12 @@ install-plugin:
 	ln -s "$$src" "$$plugins_dir/agentpaas"; \
 	echo "Symlinked $$src -> $$plugins_dir/agentpaas"; \
 	hermes -p "$$profile" plugins enable agentpaas; \
-	echo "✓ AgentPaaS plugin installed and enabled for profile '$$profile'"; \
-	echo "  Verify: hermes -p $$profile tools list | grep agentpaas"
+	echo "Adding 'agentpaas' to platform_toolsets.cli..."; \
+	python3 "$(CURDIR)/scripts/ensure-toolset.py" "$$profile"; \
+	echo "✓ AgentPaaS plugin installed for profile '$$profile'"; \
+	echo ""; \
+	echo "  IMPORTANT: Run /quit and relaunch Hermes to load the plugin and tools."; \
+	echo "  Verify after restart: hermes -p $$profile tools list | grep agentpaas"
 
 .PHONY: block1-gate
 block1-gate: proto build test lint
