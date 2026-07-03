@@ -416,16 +416,31 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			// shared). After close(InvokeDone), Stop reads tr.Status —
 			// the channel establishes happens-before, so no lock needed
 			// on the read side.
+			failReason := invokeFailReason(err)
 			s.runMu.Lock()
 			tr.Status = "failed"
 			tr.InvokeErr = err
-			tr.FailReason = invokeFailReason(err)
+			tr.FailReason = failReason
 			s.runMu.Unlock()
+			// Record audit event so SummarizeRun and explain-failure
+			// can see the failure (they read from the audit store, not
+			// the in-memory map).
+			s.recordAudit("run_failed", "daemon", map[string]interface{}{
+				"run_id":       runID,
+				"agent_name":   agentName,
+				"container_id": string(containerID),
+				"fail_reason":  failReason,
+			})
 			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
 		} else {
 			s.runMu.Lock()
 			tr.Status = "succeeded"
 			s.runMu.Unlock()
+			s.recordAudit("run_complete", "daemon", map[string]interface{}{
+				"run_id":     runID,
+				"agent_name": agentName,
+				"exit_code":  0,
+			})
 		}
 	}(tracked)
 
