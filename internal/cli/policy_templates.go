@@ -14,7 +14,7 @@ func policyTemplateNames() []string {
 }
 
 var policyTemplates = map[string]string{
-	"deny-all": `version: "1.0"
+	"deny-all": `version: "1"
 agent:
   name: ""
   description: ""
@@ -24,7 +24,7 @@ mcp_servers: []
 hooks: []
 ingress: []
 `,
-	"allow-http": `version: "1.0"
+	"allow-http": `version: "1"
 agent:
   name: ""
   description: ""
@@ -38,7 +38,7 @@ mcp_servers: []
 hooks: []
 ingress: []
 `,
-	"allow-llm": `version: "1.0"
+	"allow-llm": `version: "1"
 agent:
   name: ""
   description: ""
@@ -61,7 +61,7 @@ mcp_servers: []
 hooks: []
 ingress: []
 `,
-	"allow-mcp": `version: "1.0"
+	"allow-mcp": `version: "1"
 agent:
   name: ""
   description: ""

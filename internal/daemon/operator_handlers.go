@@ -134,7 +134,7 @@ func (s *controlServer) ValidateAgentProject(ctx context.Context, req *controlv1
 			projectPath,
 			runtime,
 			operator.ErrPolicyValidationFailed,
-			err.Error(),
+			err.Error()+"; see docs/policy-reference.md for valid fields and examples",
 		), nil
 	}
 
@@ -149,7 +149,7 @@ func (s *controlServer) ValidateAgentProject(ctx context.Context, req *controlv1
 			projectPath,
 			runtime,
 			operator.ErrPolicyValidationFailed,
-			strings.Join(policyErrors, "; "),
+			strings.Join(policyErrors, "; ")+"; see docs/policy-reference.md for valid fields and examples",
 		), nil
 	}
 

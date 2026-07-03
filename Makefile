@@ -1,4 +1,4 @@
-.PHONY: build build-harness-linux build-all test proto lint race osv e2e-network redteam-smoke
+.PHONY: build build-harness-linux build-all test proto lint race osv e2e-network redteam-smoke install-plugin
 
 build:
 	go build ./...
@@ -60,6 +60,35 @@ e2e-network: build
 redteam-smoke:
 	@echo "==> Running P1 red-team smoke gate"
 	AGENTPAAS_DOCKER_TESTS=1 DOCKER_HOST="unix://$$HOME/.colima/default/docker.sock" go test ./test/redteam/... -v -timeout 15m
+
+# install-plugin: Symlink the Hermes plugin from this repo into the active
+# Hermes profile's plugins directory, then enable it. This is the documented
+# way to register the AgentPaaS plugin with Hermes for local development.
+#
+# Usage:
+#   make install-plugin                      # uses HERMES_PROFILE or 'agentpaas'
+#   make install-plugin HERMES_PROFILE=myprof
+#
+# Prerequisites:
+#   - Hermes installed (hermes on PATH)
+#   - Profile created (hermes profile create <name>)
+install-plugin:
+	@profile="$${HERMES_PROFILE:-agentpaas}"; \
+	plugins_dir="$$HOME/.hermes/profiles/$$profile/plugins"; \
+	src="$(CURDIR)/integrations/hermes-plugin"; \
+	if [ ! -f "$$src/plugin.yaml" ]; then \
+		echo "FAIL: plugin.yaml not found at $$src — run from repo root"; exit 1; \
+	fi; \
+	mkdir -p "$$plugins_dir"; \
+	if [ -L "$$plugins_dir/agentpaas" ] || [ -d "$$plugins_dir/agentpaas" ]; then \
+		echo "Plugin already linked at $$plugins_dir/agentpaas — replacing"; \
+		rm -rf "$$plugins_dir/agentpaas"; \
+	fi; \
+	ln -s "$$src" "$$plugins_dir/agentpaas"; \
+	echo "Symlinked $$src -> $$plugins_dir/agentpaas"; \
+	hermes -p "$$profile" plugins enable agentpaas; \
+	echo "✓ AgentPaaS plugin installed and enabled for profile '$$profile'"; \
+	echo "  Verify: hermes -p $$profile tools list | grep agentpaas"
 
 .PHONY: block1-gate
 block1-gate: proto build test lint

@@ -22,32 +22,32 @@ See [docs/known-limitations.md](docs/known-limitations.md) before installing.
 
 ```bash
 brew install agentpaas/tap/agentpaas
-agent doctor
+agentpaas doctor
 ```
 
-`agent doctor` checks Docker, daemon connectivity, and keychain access.
+`agentpaas doctor` checks Docker, daemon connectivity, and keychain access.
 
 ## 60-Second Quickstart
 
 ```bash
 # Start the daemon
-agent daemon start
+agentpaas daemon start
 
 # Create a governed agent
-agent init my-agent
+agentpaas init my-agent
 cd my-agent
 
 # Pack it (builds container image)
-agent pack
+agentpaas pack
 
 # Apply a policy
-agent policy apply --file policy.yaml
+agentpaas policy apply policy.yaml
 
 # Run it (governed execution)
-agent run my-agent
+agentpaas run my-agent
 
 # Check the audit trail
-agent audit list --run <run-id>
+agentpaas audit query --run-id <run-id>
 
 # View in dashboard
 open http://localhost:8090
@@ -118,6 +118,23 @@ P1 accepted limitations:
 - [Threat model](docs/threat-model.md)
 - [Audit verification](docs/audit-export.md)
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
+
+## Hermes Plugin (Developer Setup)
+
+To use AgentPaaS tools from inside a Hermes session, install the plugin into
+your Hermes profile:
+
+```bash
+make install-plugin                          # installs into 'agentpaas' profile
+make install-plugin HERMES_PROFILE=myprof    # custom profile
+```
+
+This symlinks `integrations/hermes-plugin/` into the profile's plugins
+directory and enables it. Verify with:
+
+```bash
+hermes -p agentpaas tools list | grep agentpaas
+```
 
 ## Repository Layout
 

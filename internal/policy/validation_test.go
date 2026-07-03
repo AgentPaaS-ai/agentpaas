@@ -99,7 +99,20 @@ egress:
     ports: [443]
 `)
 	errs := ValidatePolicy(p)
-	requireValidationError(t, errs, "error", "hostname")
+	requireValidationError(t, errs, "error", "allow_wildcard")
+}
+
+func TestValidateBareWildcardAcceptedWithFlag(t *testing.T) {
+	p := parseYAML(t, `version: "1.0"
+agent:
+  name: test-agent
+egress:
+  - domain: "*"
+    ports: [443]
+    allow_wildcard: true
+`)
+	errs := ValidatePolicy(p)
+	requireNoValidationErrors(t, errs, false)
 }
 
 // ---------------------------------------------------------------------------
