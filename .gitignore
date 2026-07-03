@@ -38,3 +38,4 @@ NEXT-SESSION-PROMPT.md
 # Python
 __pycache__/
 *.pyc
+t2-test-agent/
