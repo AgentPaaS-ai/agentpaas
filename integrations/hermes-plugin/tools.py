@@ -272,13 +272,45 @@ def _reset_confirmation_state():
     _state.reset()
 
 
+def _default_home_dir():
+    """Default AgentPaaS home directory: ~/.agentpaas.
+
+    Uses pwd to prevent $HOME env-var override attacks (consistent with
+    _validate_project_path). Falls back to os.path.expanduser("~") if pwd fails.
+    """
+    try:
+        import pwd
+        return os.path.join(pwd.getpwuid(os.getuid()).pw_dir, ".agentpaas")
+    except (KeyError, OSError, ImportError):
+        return os.path.join(os.path.expanduser("~"), ".agentpaas")
+
+
 def _resolve_socket_path():
-    """Daemon socket from env (Hermes plugin contract or CLI env)."""
-    return (
+    """Daemon socket path — must match the Go daemon's DiscoverSocketPath.
+
+    Resolution order (mirrors internal/home/home.go):
+    1. AGENTPAAS_SOCKET_PATH env var (Hermes plugin contract)
+    2. AGENTPAAS_SOCKET env var (CLI env, same as daemon)
+    3. <AGENTPAAS_HOME>/daemon.sock
+    4. <default_home>/daemon.sock  (~/.agentpaas/daemon.sock)
+    """
+    sock = (
         os.environ.get("AGENTPAAS_SOCKET_PATH")
         or os.environ.get("AGENTPAAS_SOCKET")
-        or ""
     )
+    if sock:
+        return sock
+
+    home = os.environ.get("AGENTPAAS_HOME") or _default_home_dir()
+    return os.path.join(home, "daemon.sock")
+
+
+def _resolve_home_dir():
+    """AgentPaaS home directory for --home CLI flag.
+
+    AGENTPAAS_HOME env var if set, otherwise the default ~/.agentpaas.
+    """
+    return os.environ.get("AGENTPAAS_HOME") or _default_home_dir()
 
 
 def _check_daemon_socket():
@@ -289,18 +321,6 @@ def _check_daemon_socket():
     - error_dict: None if available, else structured error
     """
     sock_path = _resolve_socket_path()
-    if not sock_path:
-        home = os.environ.get("AGENTPAAS_HOME", "")
-        if home:
-            sock_path = os.path.join(home, "run", "agentpaas.sock")
-
-    if not sock_path:
-        return False, {
-            "error": "daemon socket not configured (AGENTPAAS_SOCKET or AGENTPAAS_HOME)",
-            "error_category": "daemon_unavailable",
-            "next_action": "start_docker",
-            "hint": "Run: agentpaas daemon start",
-        }
 
     if not os.path.exists(sock_path):
         return False, {
@@ -479,11 +499,9 @@ def _run_cli(cmd_args):
     binary = _resolve_agent_binary()
     full = [binary, "--json"]
     sock = _resolve_socket_path()
-    if sock:
-        full.extend(["--socket", sock])
-    home = os.environ.get("AGENTPAAS_HOME")
-    if home:
-        full.extend(["--home", home])
+    full.extend(["--socket", sock])
+    home = _resolve_home_dir()
+    full.extend(["--home", home])
     full.extend([a for a in cmd_args if a])
     timeout = _get_cli_timeout()
     proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
@@ -557,11 +575,9 @@ def _run_cli_with_stdin(cmd_args, stdin_input):
     binary = _resolve_agent_binary()
     full = [binary, "--json"]
     sock = _resolve_socket_path()
-    if sock:
-        full.extend(["--socket", sock])
-    home = os.environ.get("AGENTPAAS_HOME")
-    if home:
-        full.extend(["--home", home])
+    full.extend(["--socket", sock])
+    home = _resolve_home_dir()
+    full.extend(["--home", home])
     full.extend([a for a in cmd_args if a])
     timeout = _get_cli_timeout()
     proc = subprocess.run(

@@ -391,6 +391,11 @@ func (d *DockerRuntime) Stats(ctx context.Context, id ContainerID) (ContainerSta
 }
 
 // Logs returns a reader for a Docker container's stdout/stderr output.
+//
+// Docker's ContainerLogs API returns a multiplexed stream when the container
+// was not allocated a TTY: each chunk has an 8-byte header (1 byte stream
+// type + 3 padding + 4 byte big-endian payload length). We demux this via
+// stdcopy.StdCopy so callers get clean text without binary framing prefixes.
 func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOptions) (io.ReadCloser, error) {
 	if string(id) == "" {
 		return nil, fmt.Errorf("%w: empty container ID", ErrContainerNotFound)
@@ -420,7 +425,17 @@ func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOption
 		}
 		return nil, fmt.Errorf("container logs: %w", err)
 	}
-	return reader, nil
+
+	// Demux the multiplexed stream into a single clean text reader.
+	// stdcopy.StdCopy writes stdout to w1 and stderr to w2, stripping the
+	// 8-byte Docker framing headers. We merge both into one pipe.
+	pr, pw := io.Pipe()
+	go func() {
+		_, err := stdcopy.StdCopy(pw, pw, reader)
+		_ = reader.Close()
+		_ = pw.CloseWithError(err)
+	}()
+	return pr, nil
 }
 
 // Exec runs a command inside a running container and returns stdout, stderr,
