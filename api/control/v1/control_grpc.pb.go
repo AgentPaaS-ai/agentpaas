@@ -60,6 +60,7 @@ const (
 	ControlService_CronAdd_FullMethodName              = "/agentpaas.control.v1.ControlService/CronAdd"
 	ControlService_CronList_FullMethodName             = "/agentpaas.control.v1.ControlService/CronList"
 	ControlService_CronRemove_FullMethodName           = "/agentpaas.control.v1.ControlService/CronRemove"
+	ControlService_ListRuns_FullMethodName             = "/agentpaas.control.v1.ControlService/ListRuns"
 )
 
 // ControlServiceClient is the client API for ControlService service.
@@ -115,6 +116,8 @@ type ControlServiceClient interface {
 	CronList(ctx context.Context, in *CronListRequest, opts ...grpc.CallOption) (*CronListResponse, error)
 	// CronRemove removes a cron schedule.
 	CronRemove(ctx context.Context, in *CronRemoveRequest, opts ...grpc.CallOption) (*CronRemoveResponse, error)
+	// ListRuns returns all currently tracked agent runs.
+	ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error)
 }
 
 type controlServiceClient struct {
@@ -344,6 +347,16 @@ func (c *controlServiceClient) CronRemove(ctx context.Context, in *CronRemoveReq
 	return out, nil
 }
 
+func (c *controlServiceClient) ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRunsResponse)
+	err := c.cc.Invoke(ctx, ControlService_ListRuns_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControlServiceServer is the server API for ControlService service.
 // All implementations must embed UnimplementedControlServiceServer
 // for forward compatibility.
@@ -397,6 +410,8 @@ type ControlServiceServer interface {
 	CronList(context.Context, *CronListRequest) (*CronListResponse, error)
 	// CronRemove removes a cron schedule.
 	CronRemove(context.Context, *CronRemoveRequest) (*CronRemoveResponse, error)
+	// ListRuns returns all currently tracked agent runs.
+	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
 	mustEmbedUnimplementedControlServiceServer()
 }
 
@@ -469,6 +484,9 @@ func (UnimplementedControlServiceServer) CronList(context.Context, *CronListRequ
 }
 func (UnimplementedControlServiceServer) CronRemove(context.Context, *CronRemoveRequest) (*CronRemoveResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CronRemove not implemented")
+}
+func (UnimplementedControlServiceServer) ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRuns not implemented")
 }
 func (UnimplementedControlServiceServer) mustEmbedUnimplementedControlServiceServer() {}
 func (UnimplementedControlServiceServer) testEmbeddedByValue()                        {}
@@ -862,6 +880,24 @@ func _ControlService_CronRemove_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_ListRuns_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRunsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).ListRuns(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_ListRuns_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).ListRuns(ctx, req.(*ListRunsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControlService_ServiceDesc is the grpc.ServiceDesc for ControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -948,6 +984,10 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "CronRemove",
 			Handler:    _ControlService_CronRemove_Handler,
+		},
+		{
+			MethodName: "ListRuns",
+			Handler:    _ControlService_ListRuns_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
