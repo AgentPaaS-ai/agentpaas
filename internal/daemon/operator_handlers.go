@@ -245,6 +245,7 @@ func (s *controlServer) SummarizeRun(ctx context.Context, req *controlv1.Summari
 	}
 
 	var startedAt, finishedAt time.Time
+	var failReason string
 	for _, record := range records {
 		switch record.EventType {
 		case "run_start":
@@ -264,6 +265,14 @@ func (s *controlServer) SummarizeRun(ctx context.Context, req *controlv1.Summari
 			resp.ExitCode = auditInt32(record.Payload, "exit_code")
 			category, _ := diagnosisForRecord(record)
 			resp.ErrorCategory = string(category)
+		case "run_stop":
+			if auditString(record.Payload, "status") == "failed" {
+				resp.Status = "failed"
+				finishedAt = parseAuditTime(record.Timestamp)
+				if r := auditString(record.Payload, "fail_reason"); r != "" {
+					failReason = r
+				}
+			}
 		}
 		if strings.Contains(record.EventType, "invoke") {
 			resp.Invocations++
@@ -280,14 +289,25 @@ func (s *controlServer) SummarizeRun(ctx context.Context, req *controlv1.Summari
 		resp.DurationMs = finishedAt.Sub(startedAt).Milliseconds()
 		duration = (time.Duration(resp.DurationMs) * time.Millisecond).String()
 	}
-	resp.Summary = fmt.Sprintf(
-		"Run %s %s after %s, %d invocations, %d policy denials",
-		runID,
-		resp.Status,
-		duration,
-		resp.Invocations,
-		resp.PolicyDenials,
-	)
+	if resp.Status == "failed" && failReason != "" {
+		resp.Summary = fmt.Sprintf(
+			"Run %s failed: %s after %s, %d invocations, %d policy denials",
+			runID,
+			failReason,
+			duration,
+			resp.Invocations,
+			resp.PolicyDenials,
+		)
+	} else {
+		resp.Summary = fmt.Sprintf(
+			"Run %s %s after %s, %d invocations, %d policy denials",
+			runID,
+			resp.Status,
+			duration,
+			resp.Invocations,
+			resp.PolicyDenials,
+		)
+	}
 	resp.EvidenceRefs = []*controlv1.EvidenceRef{auditEvidence(records[0], "")}
 	return resp, nil
 }
