@@ -980,17 +980,6 @@ func (s *controlServer) setRunStatus(runID, status string) {
 	}
 }
 
-func (s *controlServer) setRunFailed(runID, reason string) {
-	s.runMu.Lock()
-	defer s.runMu.Unlock()
-	if tracked, ok := s.runs[runID]; ok {
-		tracked.Status = "failed"
-		if reason != "" {
-			tracked.FailReason = reason
-		}
-	}
-}
-
 func invokeFailReason(err error) string {
 	if err == nil {
 		return ""
