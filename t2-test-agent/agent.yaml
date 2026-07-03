@@ -1,0 +1,8 @@
+name: agent
+version: 0.1.0
+runtime: python3.12
+entry: main:app
+# llm:
+#   provider: openai  # openai|anthropic|xai
+#   model: gpt-4o
+#   credential: openai-key  # Keychain secret name (agentpaas secret add openai-key)

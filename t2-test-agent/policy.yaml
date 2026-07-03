@@ -1,0 +1,9 @@
+version: "1"
+agent:
+  name: ""
+  description: ""
+egress: []
+credentials: []
+mcp_servers: []
+hooks: []
+ingress: []
