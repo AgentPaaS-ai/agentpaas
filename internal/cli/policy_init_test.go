@@ -22,7 +22,7 @@ func TestPolicyInit_DenyAll(t *testing.T) {
 
 	content := readCLITestFile(t, projectDir, "policy.yaml")
 	for _, want := range []string{
-		`version: "1.0"`,
+		`version: "1"`,
 		"agent:",
 		`name: ""`,
 		"egress: []",
@@ -50,7 +50,7 @@ func TestPolicyInit_AllowHTTP(t *testing.T) {
 
 	content := readCLITestFile(t, projectDir, "policy.yaml")
 	for _, want := range []string{
-		`version: "1.0"`,
+		`version: "1"`,
 		`domain: "*"`,
 		"ports:",
 		"443",
@@ -75,7 +75,7 @@ func TestPolicyInit_AllowLLM(t *testing.T) {
 
 	content := readCLITestFile(t, projectDir, "policy.yaml")
 	for _, want := range []string{
-		`version: "1.0"`,
+		`version: "1"`,
 		"api.openai.com",
 		"api.anthropic.com",
 		"api.x.ai",
@@ -102,7 +102,7 @@ func TestPolicyInit_AllowMCP(t *testing.T) {
 
 	content := readCLITestFile(t, projectDir, "policy.yaml")
 	for _, want := range []string{
-		`version: "1.0"`,
+		`version: "1"`,
 		"mcp_servers:",
 		"default-mcp",
 		"http://localhost:3000",
@@ -116,7 +116,7 @@ func TestPolicyInit_AllowMCP(t *testing.T) {
 
 func TestPolicyInit_RefusesExisting(t *testing.T) {
 	projectDir := t.TempDir()
-	const existingPolicy = "version: \"1.0\"\negress:\n  - domain: example.com\n"
+	const existingPolicy = "version: \"1\"\negress:\n  - domain: example.com\n"
 	writeCLITestFile(t, projectDir, "policy.yaml", existingPolicy)
 
 	cmd := freshCmd()
@@ -142,7 +142,7 @@ func TestPolicyInit_RefusesExisting(t *testing.T) {
 
 func TestPolicyInit_Force(t *testing.T) {
 	projectDir := t.TempDir()
-	const existingPolicy = "version: \"1.0\"\negress:\n  - domain: example.com\n"
+	const existingPolicy = "version: \"1\"\negress:\n  - domain: example.com\n"
 	writeCLITestFile(t, projectDir, "policy.yaml", existingPolicy)
 
 	cmd := freshCmd()
@@ -178,8 +178,8 @@ func TestPolicyInit_Noninteractive(t *testing.T) {
 	if !strings.Contains(content, "egress: []") {
 		t.Fatalf("noninteractive should produce deny-all; content:\n%s", content)
 	}
-	if !strings.Contains(content, `version: "1.0"`) {
-		t.Fatalf("noninteractive should produce version 1.0; content:\n%s", content)
+	if !strings.Contains(content, `version: "1"`) {
+		t.Fatalf("noninteractive should produce version 1; content:\n%s", content)
 	}
 }
 

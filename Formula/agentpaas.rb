@@ -18,11 +18,12 @@ class Agentpaas < Formula
   end
 
   def install
-    bin.install "agent"
+    bin.install "agentpaas"
     bin.install "agentpaasd"
+    bin.install "agentpaas-harness-linux"
   end
 
   test do
-    assert_match "0.1.0", shell_output("#{bin}/agent version")
+    assert_match "0.1.0", shell_output("#{bin}/agentpaas version")
   end
 end

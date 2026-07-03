@@ -76,7 +76,7 @@ Docker networks (internal-only + egress). At the default limit that is up to
 **6 containers** and **6 networks** while three runs are active.
 
 On memory- or CPU-constrained machines (small Colima VMs, Docker Desktop with
-low resource limits), avoid overlapping runs: start the next `agent run` only
+low resource limits), avoid overlapping runs: start the next `agentpaas run` only
 after the previous run finishes, or keep fewer than three runs active at once.
 Configurable concurrency limits are planned for P2.
 

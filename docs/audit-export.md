@@ -19,13 +19,14 @@ machine.
 List recent audit entries to find the run ID:
 
 ```bash
-agent audit list
+agentpaas audit query
 ```
 
 Export records for a specific run:
 
 ```bash
-agent audit export --run <run-id> --output audit.jsonl
+agentpaas audit query --run-id <run-id>
+agentpaas audit export --output audit.jsonl
 ```
 
 The export writes one JSON object per line (JSONL). Each record includes:
@@ -45,10 +46,10 @@ encrypted file share, etc.).
 
 ## Verify the hash chain
 
-On the second machine (with `agent` installed):
+On the second machine (with `agentpaas` installed):
 
 ```bash
-agent audit verify --file audit.jsonl
+agentpaas audit verify --file audit.jsonl
 ```
 
 A successful verification confirms:
@@ -101,7 +102,7 @@ Example chained record:
 ## Signed export bundles
 
 Full daemon exports may include a signed manifest and checkpoint signatures
-bound to the daemon audit key fingerprint shown by `agent doctor`. Bundle
+bound to the daemon audit key fingerprint shown by `agentpaas doctor`. Bundle
 verification checks checkpoint signatures in addition to the hash chain.
 
 ## P1 limitation: tail truncation
@@ -114,8 +115,8 @@ checkpoint anchors (P2). See
 ## Typical review workflow
 
 1. Operator completes a governed run and exports `audit.jsonl`.
-2. Operator shares the file plus the `agent doctor` key fingerprint.
-3. Reviewer runs `agent audit verify --file audit.jsonl` on a clean machine.
+2. Operator shares the file plus the `agentpaas doctor` key fingerprint.
+3. Reviewer runs `agentpaas audit verify --file audit.jsonl` on a clean machine.
 4. Reviewer inspects `egress_denied`, `egress_allowed`, and credential events
    in the payload fields to confirm policy compliance.
 

@@ -34,7 +34,9 @@ func validateHostname(hostname string) (hasWildcard bool, clean string, err erro
 	// Detect `*` anywhere in the hostname — not just the `*.` prefix.
 	if strings.Contains(hostname, "*") {
 		if hostname == "*" {
-			return false, "", fmt.Errorf("bare wildcard '*' not allowed")
+			// Bare wildcard "*" means match all domains.  This is only
+			// valid when allow_wildcard is true (checked by the caller).
+			return true, "*", nil
 		}
 		// Wildcard at the start: "*.example.com"
 		if strings.HasPrefix(hostname, "*.") {
@@ -368,11 +370,12 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		}
 
 		// Remote MCP server (http/https) must have a matching egress rule.
+		// Loopback addresses are exempt (local MCP servers are always reachable).
 		if m.URL != "" {
 			parsedURL, urlErr := url.Parse(m.URL)
 			if urlErr == nil && (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") {
 				host := stripPort(parsedURL.Host)
-				if !hasMatchingEgress(p.Egress, host) {
+				if !IsLoopbackAddress(host) && !hasMatchingEgress(p.Egress, host) {
 					redactedURL := redactURL(m.URL)
 					errs = append(errs, ValidationError{
 						Field:    prefix + ".url",

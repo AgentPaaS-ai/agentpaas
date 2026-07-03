@@ -19,16 +19,16 @@ brew install agentpaas/tap/agentpaas
 ## Step 2: Verify
 
 ```bash
-agent doctor
+agentpaas doctor
 ```
 
-`agent doctor` checks Docker, daemon connectivity, keychain access, and
+`agentpaas doctor` checks Docker, daemon connectivity, keychain access, and
 network isolation. All checks must pass before continuing.
 
 ## Step 3: Start the daemon
 
 ```bash
-agent daemon start
+agentpaas daemon start
 ```
 
 The daemon (`agentpaasd`) runs locally under `~/.agentpaas`. It manages
@@ -37,7 +37,7 @@ agent runs, policy compilation, and the audit chain.
 ## Step 4: Create your first agent
 
 ```bash
-agent init weather-agent
+agentpaas init weather-agent
 cd weather-agent
 ```
 
@@ -93,7 +93,7 @@ ingress: []
 Apply it:
 
 ```bash
-agent policy apply --file policy.yaml
+agentpaas policy apply policy.yaml
 ```
 
 The policy compiles into agentgateway `frontendPolicies.networkAuthorization`
@@ -103,16 +103,16 @@ CEL rules. See [how-enforcement-works.md](how-enforcement-works.md) and
 ## Step 7: Pack the agent
 
 ```bash
-agent pack
+agentpaas pack
 ```
 
-`agent pack` builds a container image, runs secret scanning, generates an
+`agentpaas pack` builds a container image, runs secret scanning, generates an
 SBOM, and signs the package with a per-agent identity key.
 
 ## Step 8: Run it
 
 ```bash
-agent run weather-agent
+agentpaas run weather-agent
 ```
 
 Each run creates two containers: an agent on an internal-only network and a
@@ -131,13 +131,13 @@ events in real time.
 ## Step 10: Check the audit trail
 
 ```bash
-agent audit list
+agentpaas audit query
 ```
 
 Filter by run ID:
 
 ```bash
-agent audit list --run <run-id>
+agentpaas audit query --run <run-id>
 ```
 
 Export and verify on another machine: [audit-export.md](audit-export.md).
