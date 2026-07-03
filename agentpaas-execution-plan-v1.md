@@ -3351,6 +3351,29 @@ loop.
   - Failed runs show a reason in timeline or status
   - `agentpaas_explain_failure` returns root cause for failed runs
 
+**T3e: No way to list running agents**
+- Problem: There is no CLI command or plugin tool to list currently
+  running agents. `agentpaas run` starts a run but there's no
+  `agentpaas list`, `agentpaas ps`, `agentpaas run list`, or any verb
+  to see what's currently deployed/running. The only way to check a
+  run is to already know its run_id.
+- Impact: A user who starts multiple agents has no way to see how many
+  are running, what their run_ids are, or what's consuming resources.
+  Orphaned runs are invisible. `agentpaas_status` without a run_id
+  returns daemon health, not a run inventory.
+- Fix: Add:
+  1. CLI: `agentpaas run list` (or `agentpaas ps`, `agentpaas list`)
+     — shows all active runs with run_id, agent_name, status, started_at
+  2. Plugin tool: `agentpaas_list_runs` (or rename `agentpaas_status`
+     to return a run inventory when called without run_id)
+  3. The daemon already tracks runs in state.db — this is a read query
+- Acceptance criteria:
+  - `agentpaas run list` shows all running/recent runs
+  - Output includes: run_id, agent_name, status, started_at, duration
+  - Plugin tool `agentpaas_list_runs` wraps it
+  - `agentpaas_status` with no run_id could optionally show a summary
+    (N agents running) in addition to daemon health
+
 ---
 
 
