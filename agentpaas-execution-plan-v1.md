@@ -3374,6 +3374,43 @@ loop.
   - `agentpaas_status` with no run_id could optionally show a summary
     (N agents running) in addition to daemon health
 
+**T3f (P0 BLOCKER): Agent invocation never works — harness never becomes ready**
+- Problem: EVERY run fails with "harness /readyz not ready after 30
+  attempts". The daemon retries for 30 seconds, gives up, and the run
+  fails. The agent code NEVER executes.
+- Root cause (confirmed via container inspection): The Python worker in
+  the harness tries `from agentpaas_sdk import run` (python_worker.go:468).
+  If the SDK is found, it calls `run()` which handles the agent lifecycle.
+  If the SDK is NOT found (ModuleNotFoundError), it falls through to a
+  raw importlib loader that looks for `invoke(payload)` — but the scaffolded
+  agent defines `app(input)`, not `invoke()`. So:
+    1. agentpaas_sdk is NOT bundled in the container image (the Dockerfile
+       at build.go:509-524 does not COPY the python/ directory into the image)
+    2. The fallback path requires `invoke()`, but the scaffold template
+       (init.go:208) generates `def app(input)`
+    3. Result: the worker sends `{"type":"import_failed"}` and the harness
+       stays in not_ready state forever (503 on /readyz)
+    4. Daemon times out after 30 attempts, run fails
+- Impact: Agents NEVER run. This is not a partial failure — it's a
+  complete block of the core product function. No agent can execute.
+- Fix (two parts, both needed):
+  1. Bundle the Python SDK in the container image. Add to the generated
+     Dockerfile: `COPY --chown=0:0 python/ /app/python/` so the worker's
+     `sys.path.insert(0, repo_python)` at python_worker.go:463 resolves.
+  2. The SDK's run() must bridge to `app(input)` (the documented entry
+     point in agent.yaml `entry: main:app`). OR the scaffold must
+     generate `invoke()` instead of `app()`. Either way, the entry point
+     must be consistent between scaffold, SDK, and worker.
+- Acceptance criteria:
+  - `agentpaas_run` produces a run that reaches "ready" state
+  - `agentpaas trigger invoke` actually executes the agent and returns
+    its output
+  - Audit trail shows egress events (not just run_start)
+  - The agent output is visible via logs or invoke response
+- Likely files: internal/pack/build.go (Dockerfile template),
+  internal/harness/python_worker.go (entry point bridging),
+  python/agentpaas_sdk/runner.py (app() vs invoke() dispatch)
+
 ---
 
 
