@@ -23,6 +23,54 @@ slash commands.
 - When the user asks about agent status, logs, audit, or policy.
 - When a run fails and the user needs diagnosis or repair guidance.
 
+## Plugin Installation (for new users)
+
+When a user asks to install the AgentPaaS plugin, guide them through these
+steps. All three are required — skipping step 2 means the agent can see slash
+commands but cannot call `agentpaas_*` tools.
+
+### Step 1: Install the plugin from GitHub
+
+```bash
+hermes -p <profile> plugins install https://github.com/AgentPaaS-ai/agentpaas --enable
+```
+
+The `--enable` flag enables the plugin automatically (skips a separate
+`hermes plugins enable` call). The repo root has a plugin shim that redirects
+to the real plugin in `integrations/hermes-plugin/`.
+
+### Step 2: Add the agentpaas toolset to platform_toolsets
+
+This is a separate config step from enabling the plugin. Without it, the agent
+cannot see or call any `agentpaas_*` tools — slash commands will work but
+natural-language tool calls will fail.
+
+```bash
+hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'
+```
+
+If the profile already has custom toolsets, append `"agentpaas"` to the existing
+list instead of replacing it.
+
+### Step 3: Restart Hermes
+
+```bash
+# In the Hermes session:
+/quit
+# Then relaunch:
+hermes -p <profile>
+```
+
+Plugins and toolsets load at process startup, not mid-session. A running session
+will NOT pick up the new plugin even after `/new` or `/reset`.
+
+### After restart, verify
+
+```bash
+hermes -p <profile> tools list | grep agentpaas    # should show ~30 tools
+hermes -p <profile> skills list | grep -i agentpaas
+```
+
 ## Onboarding Response
 
 When a user expresses interest in AgentPaaS (e.g. "I want to use agentpaas",
