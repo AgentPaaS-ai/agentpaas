@@ -38,6 +38,8 @@ type BuildConfig struct {
 	// HarnessPath is the path to the pre-built harness binary to embed as PID 1.
 	// If empty, uses the standard harness binary location.
 	HarnessPath string
+	// SDKDir is the path to the Python SDK directory to embed. If empty, uses the standard location.
+	SDKDir string
 	// SourceDateEpoch is the fixed timestamp for reproducible builds.
 	// Default: time.Unix(0, 0) (epoch).
 	SourceDateEpoch time.Time
@@ -275,6 +277,18 @@ func validateBuildConfig(cfg *BuildConfig) error {
 	if err := rejectSymlinkPath(cfg.HarnessPath, false); err != nil {
 		return err
 	}
+	if cfg.SDKDir == "" {
+		harnessDir := filepath.Dir(cfg.HarnessPath)
+		candidate := filepath.Join(filepath.Dir(harnessDir), "python")
+		if info, err := os.Stat(filepath.Join(candidate, "agentpaas_sdk")); err == nil && info.IsDir() {
+			cfg.SDKDir = candidate
+		}
+	}
+	if cfg.SDKDir != "" {
+		if err := rejectSymlinkPath(cfg.SDKDir, false); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -450,6 +464,47 @@ func collectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]buildFile, e
 	return files, nil
 }
 
+type sdkFile struct {
+	absPath string
+	relPath string
+	info    fs.FileInfo
+}
+
+func collectSDKFiles(sdkDir string) ([]sdkFile, error) {
+	var files []sdkFile
+	err := filepath.WalkDir(sdkDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "__pycache__" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(d.Name(), ".pyc") {
+			return nil
+		}
+		relPath, err := filepath.Rel(sdkDir, path)
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, sdkFile{absPath: path, relPath: relPath, info: info})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].relPath < files[j].relPath
+	})
+	return files, nil
+}
+
 func writeProjectFilesToTar(dst io.Writer, projectDir string, prefix string, ignore *IgnoreMatcher, timestamp time.Time) error {
 	files, err := collectBuildFiles(projectDir, ignore)
 	if err != nil {
@@ -490,6 +545,18 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 		return nil, err
 	}
 
+	if cfg.SDKDir != "" {
+		sdkFiles, err := collectSDKFiles(cfg.SDKDir)
+		if err != nil {
+			return nil, fmt.Errorf("collect SDK files: %w", err)
+		}
+		for _, file := range sdkFiles {
+			if err := addFileToTar(tw, file.absPath, filepath.ToSlash(filepath.Join("python", file.relPath)), file.info, cfg.SourceDateEpoch); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	files, err := collectBuildFiles(cfg.ProjectDir, ignore)
 	if err != nil {
 		return nil, err
@@ -514,6 +581,7 @@ func renderDockerfile(cfg BuildConfig, deps []string) string {
 	b.WriteString("COPY --chown=0:0 harness /agentpaas/harness\n")
 	b.WriteString("COPY --chown=0:0 agentpaas-locked.txt /agentpaas/requirements.lock\n")
 	b.WriteString("COPY --chown=64000:64000 project/ /app/\n")
+	b.WriteString("COPY --chown=64000:64000 python/ /app/python/\n")
 	if len(deps) > 0 {
 		b.WriteString("ENV AGENTPAAS_DEPS_LOCKED=/agentpaas/requirements.lock\n")
 	}

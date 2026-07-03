@@ -30,6 +30,10 @@ def run() -> None:
         legacy_invoke = getattr(module, "invoke", None)
         if agent._invoke_handler is None and callable(legacy_invoke):
             agent.on_invoke(legacy_invoke)
+        if agent._invoke_handler is None:
+            app_fn = getattr(module, "app", None)
+            if callable(app_fn):
+                agent.on_invoke(app_fn)
         rpc = RPCClient(rpc_addr)
         agent.set_rpc(rpc)
     except Exception:
