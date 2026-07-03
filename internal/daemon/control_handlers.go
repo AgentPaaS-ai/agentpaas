@@ -576,7 +576,7 @@ func (s *controlServer) Logs(req *controlv1.LogsRequest, stream controlv1.Contro
 			Timestamp: timestamppb.Now(),
 			RunId:     runID,
 			Level:     "info",
-			Message:   scanner.Text(),
+			Message:   strings.ToValidUTF8(scanner.Text(), "\ufffd"),
 		}
 		if err := stream.Send(entry); err != nil {
 			return err
