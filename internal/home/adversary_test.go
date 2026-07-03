@@ -528,7 +528,8 @@ func TestAdversaryConcurrentEnsure(t *testing.T) {
 				t.Errorf("dir %s perms = %#o, want 0700", d, fi.Mode().Perm())
 			}
 		}
-		checkFiles := []string{hp.Socket, hp.PID, hp.Lock}
+		// Socket is NOT created by Ensure (daemon creates it via net.Listen).
+		checkFiles := []string{hp.PID, hp.Lock}
 		for _, f := range checkFiles {
 			fi, err := os.Stat(f)
 			if err != nil {
@@ -587,6 +588,12 @@ func TestAdversaryEnsureValidateRace(t *testing.T) {
 func TestAdversarySocketPermsChangedAfterEnsure(t *testing.T) {
 	hp := testHomePaths(t)
 	if err := Ensure(hp); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ensure() no longer creates the socket file (the daemon does via
+	// net.Listen). Create a plain file so we can test perm validation.
+	if err := os.WriteFile(hp.Socket, []byte{}, 0600); err != nil {
 		t.Fatal(err)
 	}
 
