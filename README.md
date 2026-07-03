@@ -121,19 +121,41 @@ P1 accepted limitations:
 
 ## Hermes Plugin (Developer Setup)
 
-To use AgentPaaS tools from inside a Hermes session, install the plugin into
-your Hermes profile:
+### Option A: Install from GitHub (for users)
+
+If you're using AgentPaaS (not developing it), install the plugin directly
+from GitHub. The plugin lives in a **subdirectory** of the repo, so you must
+point at it explicitly:
+
+```bash
+hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable
+```
+
+Then add the plugin's toolset to your profile and restart Hermes:
+
+```bash
+python3 /path/to/agentpaas/scripts/ensure-toolset.py <profile-name>
+# OR if you have the repo cloned locally:
+make install-plugin HERMES_PROFILE=<profile-name>
+```
+
+**Restart Hermes** (run `/quit`, then relaunch) — plugins and toolsets load
+at startup, not mid-session. After relaunching:
+
+```bash
+hermes -p <profile-name> tools list | grep agentpaas
+hermes -p <profile-name> skills list | grep -i agentpaas
+```
+
+### Option B: Local symlink (for development)
+
+If you're developing AgentPaaS and have the repo cloned, use `make install-plugin`
+from the repo root. This symlinks the plugin, enables it, AND adds the `agentpaas`
+toolset to `platform_toolsets.cli` — all in one step:
 
 ```bash
 make install-plugin                          # installs into 'agentpaas' profile
 make install-plugin HERMES_PROFILE=myprof    # custom profile
-```
-
-This symlinks `integrations/hermes-plugin/` into the profile's plugins
-directory and enables it. Verify with:
-
-```bash
-hermes -p agentpaas tools list | grep agentpaas
 ```
 
 ## Repository Layout
