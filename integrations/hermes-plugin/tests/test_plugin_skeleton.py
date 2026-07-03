@@ -212,6 +212,7 @@ def _sample_args(tool_name):
         "agentpaas_stop": {"run_id": "run_test"},
         "agentpaas_logs": {"run_id": "run_test", "tail": 10},
         "agentpaas_status": {"run_id": "run_test"},
+        "agentpaas_list_runs": {},
         "agentpaas_get_run_timeline": {"run_id": "run_test"},
         "agentpaas_policy_show": {"project_dir": "."},
         "agentpaas_explain_policy_denial": {

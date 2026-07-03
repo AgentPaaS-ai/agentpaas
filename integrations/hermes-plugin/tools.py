@@ -1195,6 +1195,15 @@ def agentpaas_cron_add(args, **kwargs):
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
 
 
+def agentpaas_list_runs(args, **kwargs):
+    """List all active and recent agent runs."""
+    try:
+        result = _run_cli(["run", "list"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
 def agentpaas_cron_list(args, **kwargs):
     """List all cron schedules."""
     args = args or {}

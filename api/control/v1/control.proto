@@ -592,6 +592,23 @@ message CronRemoveResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Run listing
+// ---------------------------------------------------------------------------
+
+message RunInfo {
+  string run_id = 1;
+  string agent_name = 2;
+  string status = 3;
+  google.protobuf.Timestamp started_at = 4;
+}
+
+message ListRunsRequest {}
+
+message ListRunsResponse {
+  repeated RunInfo runs = 1;
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -762,6 +779,13 @@ service ControlService {
   rpc CronRemove(CronRemoveRequest) returns (CronRemoveResponse) {
     option (google.api.http) = {
       delete: "/v1/control/cron/{schedule_id}"
+    };
+  }
+
+  // ListRuns returns all currently tracked agent runs.
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/runs"
     };
   }
 }

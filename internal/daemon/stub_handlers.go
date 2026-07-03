@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"sync"
+	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
 	"github.com/parvezsyed/agentpaas/internal/audit"
@@ -27,6 +28,8 @@ type trackedRun struct {
 	Gateway       runtime.ContainerID // gateway container ID (empty if no gateway)
 	AuditDir          string // host path to harness-audit directory for post-run ingestion
 	GatewayConfigDir  string // per-run default-deny gateway config dir (empty when policy gateway.yaml is mounted)
+	AgentName     string
+	StartedAt     time.Time
 	Status        string              // "running" | "succeeded" | "failed" | "cancelled"
 	FailReason    string              // reason for failure (empty if not failed)
 	CancelInvoke  context.CancelFunc

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -369,6 +370,8 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		Gateway:          gatewayID,
 		AuditDir:         hostAuditDir,
 		GatewayConfigDir: gatewayConfigDir,
+		AgentName:        agentName,
+		StartedAt:        time.Now(),
 		Status:           "running",
 		InvokeDone:       make(chan struct{}),
 	}
@@ -1666,6 +1669,29 @@ func (s *controlServer) CronAdd(ctx context.Context, req *controlv1.CronAddReque
 	return &controlv1.CronAddResponse{
 		Schedule: cronScheduleToProto(schedule, scheduleID),
 	}, nil
+}
+
+// ListRuns returns all currently tracked agent runs.
+func (s *controlServer) ListRuns(ctx context.Context, req *controlv1.ListRunsRequest) (*controlv1.ListRunsResponse, error) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+
+	runs := make([]*controlv1.RunInfo, 0, len(s.runs))
+	for runID, tr := range s.runs {
+		info := &controlv1.RunInfo{
+			RunId:     runID,
+			AgentName: tr.AgentName,
+			Status:    tr.Status,
+		}
+		if !tr.StartedAt.IsZero() {
+			info.StartedAt = timestamppb.New(tr.StartedAt)
+		}
+		runs = append(runs, info)
+	}
+	sort.Slice(runs, func(i, j int) bool {
+		return runs[i].GetRunId() < runs[j].GetRunId()
+	})
+	return &controlv1.ListRunsResponse{Runs: runs}, nil
 }
 
 // CronList lists all cron schedules.
