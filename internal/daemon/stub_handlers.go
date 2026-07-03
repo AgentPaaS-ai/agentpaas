@@ -28,6 +28,7 @@ type trackedRun struct {
 	AuditDir          string // host path to harness-audit directory for post-run ingestion
 	GatewayConfigDir  string // per-run default-deny gateway config dir (empty when policy gateway.yaml is mounted)
 	Status        string              // "running" | "succeeded" | "failed" | "cancelled"
+	FailReason    string              // reason for failure (empty if not failed)
 	CancelInvoke  context.CancelFunc
 	InvokeDone    chan struct{} // closed when invoke goroutine exits
 	InvokeErr     error         // written before close(InvokeDone); safe to read after channel receive

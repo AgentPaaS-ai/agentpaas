@@ -416,6 +416,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			s.runMu.Lock()
 			tr.Status = "failed"
 			tr.InvokeErr = err
+			tr.FailReason = invokeFailReason(err)
 			s.runMu.Unlock()
 			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
 		} else {
@@ -456,6 +457,9 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 		case <-tracked.InvokeDone:
 		case <-time.After(3 * time.Second):
 			tracked.Status = "failed"
+			if tracked.FailReason == "" {
+				tracked.FailReason = "invoke did not complete within timeout"
+			}
 		}
 	}
 
@@ -518,12 +522,19 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 			"force":        req.GetForce(),
 		})
 	}
-	s.recordAudit("run_stop", "cli", map[string]interface{}{
+	if tracked.FailReason == "" && tracked.InvokeErr != nil {
+		tracked.FailReason = invokeFailReason(tracked.InvokeErr)
+	}
+	auditFields := map[string]interface{}{
 		"run_id":       runID,
 		"container_id": string(containerID),
 		"force":        req.GetForce(),
 		"status":       finalStatus,
-	})
+	}
+	if tracked.FailReason != "" && finalStatus == "failed" {
+		auditFields["fail_reason"] = tracked.FailReason
+	}
+	s.recordAudit("run_stop", "cli", auditFields)
 	return &controlv1.StopResponse{Acknowledged: true}, nil
 }
 
@@ -966,6 +977,28 @@ func (s *controlServer) setRunStatus(runID, status string) {
 	}
 }
 
+func (s *controlServer) setRunFailed(runID, reason string) {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if tracked, ok := s.runs[runID]; ok {
+		tracked.Status = "failed"
+		if reason != "" {
+			tracked.FailReason = reason
+		}
+	}
+}
+
+func invokeFailReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "harness /readyz not ready") {
+		return "harness not ready (possible import failure or startup crash)"
+	}
+	return msg
+}
+
 func (s *controlServer) lookupRunWithStatus(runID string) (trackedRun, bool) {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
@@ -981,6 +1014,7 @@ func (s *controlServer) lookupRunWithStatus(runID string) (trackedRun, bool) {
 		Network:      tracked.Network,
 		AuditDir:     tracked.AuditDir,
 		Status:       tracked.Status,
+		FailReason:   tracked.FailReason,
 		CancelInvoke: tracked.CancelInvoke,
 	}, true
 }
