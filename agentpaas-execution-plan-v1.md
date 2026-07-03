@@ -3127,6 +3127,20 @@ Source: Parvez's follow-up comment on B16-LC01 (2026-07-02 21:05).
     command, confirm it works
 - Likely files: `integrations/hermes-plugin/plugin.yaml`, any slash command
   handler files under `integrations/hermes-plugin/`
+- T1a-followup: After the skill and plugin are installed, Hermes should
+  clearly tell the user "Restart Hermes using /quit to load the plugin."
+  Currently the agent says "takes effect next session" but doesn't give
+  explicit restart instructions. The onboarding flow should include a
+  clear, actionable restart step. Fix before T2 and push to GitHub.
+- T1a-followup-2: The install flow enables the plugin (plugins.enabled)
+  but does NOT add the `agentpaas` toolset to platform_toolsets.cli.
+  These are separate config steps in Hermes — enabling the plugin
+  registers slash commands, but the agent can't see or call the
+  agentpaas_* tools unless the toolset is also in platform_toolsets.
+  The install instructions / make install-plugin should do both:
+  1. hermes plugins enable agentpaas
+  2. hermes config set platform_toolsets.cli (append agentpaas)
+  Fix before T2 and push to GitHub.
 
 **T1b: Add onboarding context when user says "I want to use agentpaas"**
 - Problem: When user mentions agentpaas, Hermes does not explain what
@@ -3158,6 +3172,29 @@ Source: Parvez's follow-up comment on B16-LC01 (2026-07-02 21:05).
   - Each step has a verification command and expected output
   - No undocumented steps required
 - Likely files: `README.md`, `docs/quickstart.md`
+
+**T1c-followup: Plugin lives in a subdirectory, not repo root**
+- Problem (found 2026-07-03 LC-01 test): A user giving the repo root URL
+  (`https://github.com/AgentPaaS-ai/agentpaas`) to `hermes plugins install`
+  gets the ENTIRE repo cloned into plugins/agentpaas/ — but plugin.yaml
+  lives at `integrations/hermes-plugin/plugin.yaml`, not at the repo root.
+  Hermes says "not recognized as a standard Hermes plugin." The agent that
+  ran the install knew nothing about the subdirectory layout and could not
+  discover it.
+- Root cause: No plugin.yaml at repo root. `hermes plugins install` expects
+  plugin.yaml at root unless given a `/tree/main/<subdir>` URL.
+- Fix: Either (a) document the exact subdirectory install URL in README,
+  OR (b) add a root-level plugin.yaml that delegates/re-exports from
+  integrations/hermes-plugin/, OR (c) move the plugin to the repo root.
+  Option (a) is minimum viable for v0.1.0; (b) is cleaner long-term.
+- Correct install command for users:
+  `hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable`
+- Acceptance criteria:
+  - README "Hermes Plugin" section shows the subdirectory install URL, not
+    just `make install-plugin` (which is dev-only, requires local repo)
+  - A user following the README install command succeeds on first try
+  - Optional: root-level plugin.yaml shim that redirects to the real plugin
+- Likely files: `README.md`, optionally `plugin.yaml` (new root-level shim)
 
 ---
 
