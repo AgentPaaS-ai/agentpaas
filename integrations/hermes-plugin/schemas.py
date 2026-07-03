@@ -10,6 +10,7 @@ TOOL_NAMES = [
     "agentpaas_stop",
     "agentpaas_logs",
     "agentpaas_status",
+    "agentpaas_list_runs",
     "agentpaas_get_run_timeline",
     "agentpaas_policy_show",
     "agentpaas_explain_policy_denial",
@@ -526,6 +527,17 @@ AGENTPAAS_CRON_ADD = {
             },
         },
         "required": ["agent_name", "expr"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_LIST_RUNS = {
+    "name": "agentpaas_list_runs",
+    "description": "List all active and recent agent runs.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
         "additionalProperties": False,
     },
 }

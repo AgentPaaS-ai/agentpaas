@@ -3969,6 +3969,154 @@ func (x *CronRemoveResponse) GetRemoved() bool {
 	return false
 }
 
+type RunInfo struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	AgentName     string                 `protobuf:"bytes,2,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunInfo) Reset() {
+	*x = RunInfo{}
+	mi := &file_control_v1_control_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunInfo) ProtoMessage() {}
+
+func (x *RunInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunInfo.ProtoReflect.Descriptor instead.
+func (*RunInfo) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *RunInfo) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *RunInfo) GetAgentName() string {
+	if x != nil {
+		return x.AgentName
+	}
+	return ""
+}
+
+func (x *RunInfo) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *RunInfo) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+type ListRunsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRunsRequest) Reset() {
+	*x = ListRunsRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRunsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRunsRequest) ProtoMessage() {}
+
+func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRunsRequest.ProtoReflect.Descriptor instead.
+func (*ListRunsRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{57}
+}
+
+type ListRunsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Runs          []*RunInfo             `protobuf:"bytes,1,rep,name=runs,proto3" json:"runs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRunsResponse) Reset() {
+	*x = ListRunsResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRunsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRunsResponse) ProtoMessage() {}
+
+func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRunsResponse.ProtoReflect.Descriptor instead.
+func (*ListRunsResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *ListRunsResponse) GetRuns() []*RunInfo {
+	if x != nil {
+		return x.Runs
+	}
+	return nil
+}
+
 var File_control_v1_control_proto protoreflect.FileDescriptor
 
 const file_control_v1_control_proto_rawDesc = "" +
@@ -4281,7 +4429,17 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\vschedule_id\x18\x01 \x01(\tR\n" +
 	"scheduleId\".\n" +
 	"\x12CronRemoveResponse\x12\x18\n" +
-	"\aremoved\x18\x01 \x01(\bR\aremoved*w\n" +
+	"\aremoved\x18\x01 \x01(\bR\aremoved\"\x92\x01\n" +
+	"\aRunInfo\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1d\n" +
+	"\n" +
+	"agent_name\x18\x02 \x01(\tR\tagentName\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x129\n" +
+	"\n" +
+	"started_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\x11\n" +
+	"\x0fListRunsRequest\"E\n" +
+	"\x10ListRunsResponse\x121\n" +
+	"\x04runs\x18\x01 \x03(\v2\x1d.agentpaas.control.v1.RunInfoR\x04runs*w\n" +
 	"\bLogLevel\x12\x19\n" +
 	"\x15LOG_LEVEL_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fLOG_LEVEL_DEBUG\x10\x01\x12\x12\n" +
@@ -4306,7 +4464,7 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x17SECRET_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fSECRET_TYPE_ENV\x10\x01\x12\x14\n" +
 	"\x10SECRET_TYPE_FILE\x10\x02\x12\x16\n" +
-	"\x12SECRET_TYPE_INLINE\x10\x032\xa5\x16\n" +
+	"\x12SECRET_TYPE_INLINE\x10\x032\x9a\x17\n" +
 	"\x0eControlService\x12j\n" +
 	"\x04Pack\x12!.agentpaas.control.v1.PackRequest\x1a\".agentpaas.control.v1.PackResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/pack\x12f\n" +
 	"\x03Run\x12 .agentpaas.control.v1.RunRequest\x1a!.agentpaas.control.v1.RunResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/control/run\x12j\n" +
@@ -4331,7 +4489,8 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\aCronAdd\x12$.agentpaas.control.v1.CronAddRequest\x1a%.agentpaas.control.v1.CronAddResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/cron\x12s\n" +
 	"\bCronList\x12%.agentpaas.control.v1.CronListRequest\x1a&.agentpaas.control.v1.CronListResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/control/cron\x12\x87\x01\n" +
 	"\n" +
-	"CronRemove\x12'.agentpaas.control.v1.CronRemoveRequest\x1a(.agentpaas.control.v1.CronRemoveResponse\"&\x82\xd3\xe4\x93\x02 *\x1e/v1/control/cron/{schedule_id}B\xd4\x01\n" +
+	"CronRemove\x12'.agentpaas.control.v1.CronRemoveRequest\x1a(.agentpaas.control.v1.CronRemoveResponse\"&\x82\xd3\xe4\x93\x02 *\x1e/v1/control/cron/{schedule_id}\x12s\n" +
+	"\bListRuns\x12%.agentpaas.control.v1.ListRunsRequest\x1a&.agentpaas.control.v1.ListRunsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/control/runsB\xd4\x01\n" +
 	"\x18com.agentpaas.control.v1B\fControlProtoP\x01Z8github.com/parvezsyed/agentpaas/api/control/v1;controlv1\xa2\x02\x03ACX\xaa\x02\x14Agentpaas.Control.V1\xca\x02\x14Agentpaas\\Control\\V1\xe2\x02 Agentpaas\\Control\\V1\\GPBMetadata\xea\x02\x16Agentpaas::Control::V1b\x06proto3"
 
 var (
@@ -4347,7 +4506,7 @@ func file_control_v1_control_proto_rawDescGZIP() []byte {
 }
 
 var file_control_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
+var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
 var file_control_v1_control_proto_goTypes = []any{
 	(LogLevel)(0),                        // 0: agentpaas.control.v1.LogLevel
 	(EventType)(0),                       // 1: agentpaas.control.v1.EventType
@@ -4408,22 +4567,25 @@ var file_control_v1_control_proto_goTypes = []any{
 	(*CronListResponse)(nil),             // 56: agentpaas.control.v1.CronListResponse
 	(*CronRemoveRequest)(nil),            // 57: agentpaas.control.v1.CronRemoveRequest
 	(*CronRemoveResponse)(nil),           // 58: agentpaas.control.v1.CronRemoveResponse
-	nil,                                  // 59: agentpaas.control.v1.LogEntry.FieldsEntry
-	nil,                                  // 60: agentpaas.control.v1.NextActionResponse.ParamsEntry
-	(*timestamppb.Timestamp)(nil),        // 61: google.protobuf.Timestamp
+	(*RunInfo)(nil),                      // 59: agentpaas.control.v1.RunInfo
+	(*ListRunsRequest)(nil),              // 60: agentpaas.control.v1.ListRunsRequest
+	(*ListRunsResponse)(nil),             // 61: agentpaas.control.v1.ListRunsResponse
+	nil,                                  // 62: agentpaas.control.v1.LogEntry.FieldsEntry
+	nil,                                  // 63: agentpaas.control.v1.NextActionResponse.ParamsEntry
+	(*timestamppb.Timestamp)(nil),        // 64: google.protobuf.Timestamp
 }
 var file_control_v1_control_proto_depIdxs = []int32{
 	6,  // 0: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
 	0,  // 1: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
-	61, // 2: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	59, // 3: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
+	64, // 2: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	62, // 3: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
 	2,  // 4: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
 	1,  // 5: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
 	21, // 6: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	61, // 7: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
-	61, // 8: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
+	64, // 7: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
+	64, // 8: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
 	1,  // 9: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
-	61, // 10: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
+	64, // 10: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
 	23, // 11: agentpaas.control.v1.AuditChainVerification.issues:type_name -> agentpaas.control.v1.AuditCheckpointIssue
 	22, // 12: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
 	24, // 13: agentpaas.control.v1.AuditQueryResponse.chain_verification:type_name -> agentpaas.control.v1.AuditChainVerification
@@ -4433,70 +4595,74 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	34, // 17: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
 	35, // 18: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	35, // 19: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	61, // 20: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
+	64, // 20: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
 	39, // 21: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
-	61, // 22: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
-	61, // 23: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
+	64, // 22: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
+	64, // 23: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
 	35, // 24: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	36, // 25: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
 	35, // 26: agentpaas.control.v1.ExplainFailureResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	35, // 27: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	35, // 28: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	37, // 29: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
-	61, // 30: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
+	64, // 30: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
 	48, // 31: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
-	60, // 32: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
+	63, // 32: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
 	35, // 33: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	37, // 34: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
 	52, // 35: agentpaas.control.v1.CronAddResponse.schedule:type_name -> agentpaas.control.v1.CronScheduleInfo
 	52, // 36: agentpaas.control.v1.CronListResponse.schedules:type_name -> agentpaas.control.v1.CronScheduleInfo
-	3,  // 37: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
-	5,  // 38: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
-	8,  // 39: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
-	10, // 40: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
-	12, // 41: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
-	14, // 42: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
-	16, // 43: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
-	18, // 44: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
-	20, // 45: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
-	26, // 46: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
-	28, // 47: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
-	31, // 48: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
-	38, // 49: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
-	41, // 50: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
-	43, // 51: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
-	45, // 52: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
-	47, // 53: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
-	50, // 54: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
-	53, // 55: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
-	55, // 56: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
-	57, // 57: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
-	4,  // 58: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
-	7,  // 59: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
-	9,  // 60: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
-	11, // 61: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
-	13, // 62: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
-	15, // 63: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
-	17, // 64: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
-	19, // 65: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
-	25, // 66: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
-	27, // 67: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
-	30, // 68: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
-	33, // 69: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
-	40, // 70: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
-	42, // 71: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
-	44, // 72: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
-	46, // 73: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
-	49, // 74: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
-	51, // 75: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
-	54, // 76: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
-	56, // 77: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
-	58, // 78: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
-	58, // [58:79] is the sub-list for method output_type
-	37, // [37:58] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	64, // 37: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
+	59, // 38: agentpaas.control.v1.ListRunsResponse.runs:type_name -> agentpaas.control.v1.RunInfo
+	3,  // 39: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
+	5,  // 40: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
+	8,  // 41: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
+	10, // 42: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
+	12, // 43: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
+	14, // 44: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
+	16, // 45: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
+	18, // 46: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
+	20, // 47: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
+	26, // 48: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
+	28, // 49: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
+	31, // 50: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
+	38, // 51: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
+	41, // 52: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
+	43, // 53: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
+	45, // 54: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
+	47, // 55: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
+	50, // 56: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
+	53, // 57: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
+	55, // 58: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
+	57, // 59: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
+	60, // 60: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
+	4,  // 61: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
+	7,  // 62: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
+	9,  // 63: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
+	11, // 64: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
+	13, // 65: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
+	15, // 66: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
+	17, // 67: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
+	19, // 68: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
+	25, // 69: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
+	27, // 70: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
+	30, // 71: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
+	33, // 72: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
+	40, // 73: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
+	42, // 74: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
+	44, // 75: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
+	46, // 76: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
+	49, // 77: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
+	51, // 78: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
+	54, // 79: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
+	56, // 80: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
+	58, // 81: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
+	61, // 82: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
+	61, // [61:83] is the sub-list for method output_type
+	39, // [39:61] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_control_v1_control_proto_init() }
@@ -4510,7 +4676,7 @@ func file_control_v1_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_v1_control_proto_rawDesc), len(file_control_v1_control_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   58,
+			NumMessages:   61,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -13,6 +13,7 @@ provides_tools:
   - agentpaas_stop
   - agentpaas_logs
   - agentpaas_status
+  - agentpaas_list_runs
   - agentpaas_get_run_timeline
   - agentpaas_policy_show
   - agentpaas_explain_policy_denial

@@ -125,7 +125,48 @@ func newRunCmd() *cobra.Command {
 			})
 		},
 	}
+	cmd.AddCommand(newListRunsCmd())
 	return cmd
+}
+
+// newListRunsCmd creates the `agent run list` command.
+func newListRunsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all active and recent agent runs",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			resp, err := client.ListRuns(ctx, &controlv1.ListRunsRequest{})
+			if err != nil {
+				return fmt.Errorf("list runs failed: %w", err)
+			}
+
+			return printTextOrJSON(jsonOutput(cmd), resp, func(v interface{}) string {
+				r := v.(*controlv1.ListRunsResponse)
+				if len(r.GetRuns()) == 0 {
+					return "No active runs.\n"
+				}
+				out := fmt.Sprintf("Active runs (%d):\n", len(r.GetRuns()))
+				for _, run := range r.GetRuns() {
+					out += fmt.Sprintf("  %s  [%s]\n", run.GetRunId(), run.GetStatus())
+				}
+				return out
+			})
+		},
+	}
 }
 
 // newStopCmd creates the `agent stop` command.
