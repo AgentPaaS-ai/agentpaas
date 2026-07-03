@@ -1,0 +1,52 @@
+# Root-level plugin shim.
+#
+# The real plugin lives at integrations/hermes-plugin/. This shim exists so that
+# `hermes plugins install https://github.com/AgentPaaS-ai/agentpaas --enable`
+# works out of the box — Hermes clones the repo root and looks for plugin.yaml
+# here. Without this shim, Hermes says "not recognized as a standard Hermes
+# plugin" because the real plugin.yaml is in a subdirectory.
+#
+# This file re-exports the real plugin's register() function. The real plugin
+# code (tools, schemas, slash commands, SKILL.md) all live in
+# integrations/hermes-plugin/ and are imported dynamically at registration time.
+
+name: agentpaas
+description: "Deploy and govern AI agents with AgentPaaS"
+version: 0.1.0
+toolset: agentpaas
+author: AgentPaaS
+# Same provides_tools as the real plugin — duplicated here so that Hermes
+# pre-registers the tool names before __init__.py runs.
+provides_tools:
+  - agentpaas_init_project
+  - agentpaas_reconcile_project
+  - agentpaas_validate_project
+  - agentpaas_doctor
+  - agentpaas_pack
+  - agentpaas_run
+  - agentpaas_stop
+  - agentpaas_logs
+  - agentpaas_status
+  - agentpaas_list_runs
+  - agentpaas_get_run_timeline
+  - agentpaas_policy_show
+  - agentpaas_explain_policy_denial
+  - agentpaas_recommend_policy_patch
+  - agentpaas_audit_query
+  - agentpaas_export_audit
+  - agentpaas_summarize_run
+  - agentpaas_explain_failure
+  - agentpaas_next_action
+  - agentpaas_secret_add
+  - agentpaas_secret_list
+  - agentpaas_secret_remove
+  - agentpaas_secret_rotate
+  - agentpaas_secret_test
+  - agentpaas_llm_configure
+  - agentpaas_policy_init
+  - agentpaas_trigger_invoke
+  - agentpaas_cron_add
+  - agentpaas_cron_list
+  - agentpaas_cron_remove
+requires_env:
+  - AGENTPAAS_SOCKET_PATH
