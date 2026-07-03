@@ -570,10 +570,10 @@ func TestDaemonCommands_Exist(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestDoctor_StubMessage
-// Tests: agent doctor prints a message containing "not yet implemented".
+// TestDoctor_RunsChecks
+// Tests: agent doctor runs and outputs system diagnostic checks.
 // ---------------------------------------------------------------------------
-func TestDoctor_StubMessage(t *testing.T) {
+func TestDoctor_RunsChecks(t *testing.T) {
 	resetAgentCmd()
 
 	stdout := captureStdout(t, func() {
@@ -585,8 +585,8 @@ func TestDoctor_StubMessage(t *testing.T) {
 		_ = cmd.Execute()
 	})
 
-	if !strings.Contains(stdout, "not yet implemented") {
-		t.Errorf("expected doctor output to contain 'not yet implemented'; got:\n%s", stdout)
+	if !strings.Contains(stdout, "agentpaas doctor") {
+		t.Errorf("expected doctor output to contain 'agentpaas doctor'; got:\n%s", stdout)
 	}
 }
 
