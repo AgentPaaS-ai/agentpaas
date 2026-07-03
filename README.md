@@ -131,16 +131,16 @@ point at it explicitly:
 hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable
 ```
 
-Then add the plugin's toolset to your profile and restart Hermes:
+Then add the plugin's toolset to your Hermes profile so the agent can call
+the `agentpaas_*` tools, and restart Hermes:
 
 ```bash
-python3 /path/to/agentpaas/scripts/ensure-toolset.py <profile-name>
-# OR if you have the repo cloned locally:
-make install-plugin HERMES_PROFILE=<profile-name>
+# Add the 'agentpaas' toolset to your profile's CLI toolsets
+hermes -p <profile-name> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'
 ```
 
-**Restart Hermes** (run `/quit`, then relaunch) — plugins and toolsets load
-at startup, not mid-session. After relaunching:
+**Restart Hermes** (run `/quit`, then relaunch `hermes -p <profile-name>`)
+— plugins and toolsets load at startup, not mid-session. After relaunching:
 
 ```bash
 hermes -p <profile-name> tools list | grep agentpaas

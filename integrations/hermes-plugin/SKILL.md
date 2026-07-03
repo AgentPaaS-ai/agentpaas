@@ -123,6 +123,8 @@ with your Hermes profile. See README.md → "Hermes Plugin (Developer Setup)".
 - Slash commands not resolving → **run `/quit` to restart Hermes** (plugins and
   toolsets load at startup; a running session will not pick them up). After
   relaunching, the slash commands and `agentpaas_*` tools will be available.
-- No `agentpaas_*` tools visible even after restart → `make install-plugin` adds
-  the plugin AND the `agentpaas` toolset to `platform_toolsets.cli`. Both are
-  required. Re-run it, then `/quit` and relaunch.
+- No `agentpaas_*` tools visible even after restart → the plugin is enabled
+  but the `agentpaas` toolset is missing from `platform_toolsets.cli`. Run:
+  `hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'`
+  then `/quit` and relaunch. (If you installed via `make install-plugin`, it
+  already did both steps.)
