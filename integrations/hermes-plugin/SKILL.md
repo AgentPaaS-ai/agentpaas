@@ -120,6 +120,9 @@ with your Hermes profile. See README.md → "Hermes Plugin (Developer Setup)".
 - Policy denial → `agentpaas_explain_policy_denial` for root cause, or
   `agentpaas_recommend_policy_patch` for a suggested fix
 - Agent not found → run `agentpaas_pack` first
-- No `agentpaas_*` tools visible → run `make install-plugin`, then verify
-  with `hermes tools list | grep agentpaas`
-- Slash commands not resolving → restart Hermes after `make install-plugin`
+- Slash commands not resolving → **run `/quit` to restart Hermes** (plugins and
+  toolsets load at startup; a running session will not pick them up). After
+  relaunching, the slash commands and `agentpaas_*` tools will be available.
+- No `agentpaas_*` tools visible even after restart → `make install-plugin` adds
+  the plugin AND the `agentpaas` toolset to `platform_toolsets.cli`. Both are
+  required. Re-run it, then `/quit` and relaunch.
