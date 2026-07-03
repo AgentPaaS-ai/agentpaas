@@ -3196,6 +3196,24 @@ Source: Parvez's follow-up comment on B16-LC01 (2026-07-02 21:05).
   - Optional: root-level plugin.yaml shim that redirects to the real plugin
 - Likely files: `README.md`, optionally `plugin.yaml` (new root-level shim)
 
+**T1c-note: Plugin skills not in Available Skills list (expected behavior)**
+- Observation (2026-07-03 LC-01): After successful plugin install + restart,
+  the agentpaas skill does NOT appear in the system prompt's Available
+  Skills section. This is BY DESIGN in Hermes — plugin-provided skills
+  (registered via `register_skill`) are opt-in, explicit-load only and are
+  deliberately excluded from the `<available_skills>` index.
+- The skills ARE available, just not auto-advertised:
+  - `agentpaas:agentpaas` — main plugin SKILL.md
+  - `agentpaas:llm-configuration`
+  - `agentpaas:secret-onboarding`
+  - `agentpaas:policy-generation`
+- The tools ARE visible and working (confirmed: agentpaas_audit_query etc.
+  show in Available Tools).
+- NOT A BUG — do not try to "fix" this. Document in onboarding so users
+  know skills are loadable via skill_view(plugin:skill), not browsed.
+- Acceptance: onboarding SKILL.md mentions that plugin skills are
+  explicit-load (skill_view with qualified name), not auto-listed.
+
 ---
 
 #### T2 — LC02/UC01: Invalid Scaffolded Policy (Kanban: t_e05f9789)
@@ -3257,6 +3275,81 @@ human-driven. "Done" means you have personally walked through every use case
 and signed off on the experience. **Block 16 gate cannot run until Block 15
 gate passes.** **Block 16 gate cannot pass until T1 and T2 fix tasks are
 resolved.**
+
+---
+
+#### T3 — LC02: Invocation + Log Streaming Bugs (found 2026-07-03)
+
+Source: Parvez's LC-02 test (weather agent deploy + invoke). Multiple
+blocking bugs found when actually exercising the deploy→invoke→observe
+loop.
+
+**T3a (BLOCKER): agentpaas logs crashes on invalid UTF-8 in log output**
+- Problem: `agentpaas logs <run-id>` fails with:
+  `rpc error: code = Internal desc = grpc: error while marshaling: string field contains invalid UTF-8`
+- The gRPC log stream handler cannot serialize log lines containing
+  non-UTF-8 bytes (common from Python tracebacks, Docker layer output,
+  binary data in stdout, etc.).
+- Impact: Agent log output is entirely inaccessible via the CLI/plugin
+  when ANY log line contains invalid UTF-8. The user cannot debug agent
+  failures.
+- Fix: Sanitize log lines to valid UTF-8 before marshaling (replace
+  invalid bytes with U+FFFD, or base64-encode the field, or use a bytes
+  field instead of string in the proto).
+- Acceptance criteria:
+  - `agentpaas logs <run-id>` works for runs with non-UTF-8 output
+  - Invalid bytes are replaced or escaped, not fatal
+  - Unit test with binary data in log stream
+- Likely files: log streaming RPC handler in internal/daemon or
+  internal/harness
+
+**T3b (BLOCKER): agentpaas_status tool/CLI naming mismatch**
+- Problem: The plugin tool is named `agentpaas_status` and takes a
+  run_id, but the underlying CLI command is `agentpaas timeline <run-id>`
+  (there is no `agentpaas status` subcommand — `status` is not a valid
+  CLI verb). The agent (and the user) naturally tries `agentpaas status`
+  which returns "unknown command".
+- The correct CLI command for run status appears to be
+  `agentpaas timeline <run-id>`, but the plugin tool is named
+  `agentpaas_status` creating a mismatch.
+- Fix: Either add a `status` CLI subcommand alias, or align the plugin
+  tool name with the actual CLI command. At minimum, the plugin's
+  SKILL.md must document the correct command.
+- Acceptance criteria:
+  - `agentpaas status <run-id>` works as a CLI command (alias for
+    timeline or a proper status verb), OR
+  - The plugin tool name matches the CLI command name
+- Likely files: cmd/ CLI dispatch, integrations/hermes-plugin/
+
+**T3c (BLOCKER): trigger invoke --payload expects file path, plugin passes inline JSON**
+- Problem: `agentpaas trigger invoke <agent> --payload <X>` expects X
+  to be a FILE PATH, not inline JSON. But the plugin tool
+  `agentpaas_trigger_invoke` parameter description says "Optional path
+  to a payload file" — yet the test agent passed raw JSON
+  (`{"lat":51.5074,"lon":-0.1278}`) as the payload arg, causing:
+  `read payload file: open {"lat":51.5074,"lon":-0.1278}: no such file`
+- The agent wrote a payload.json file and tried to pass its contents,
+  not the path. This is a tooling/UX gap.
+- Fix: The plugin tool should either (a) accept inline JSON and write
+  it to a temp file before calling the CLI, or (b) the CLI should
+  accept inline JSON with a flag like `--payload-json`.
+- Acceptance criteria:
+  - `agentpaas_trigger_invoke` plugin tool can accept inline JSON
+    payload and handle it correctly
+  - OR the tool description clearly states "path to file" and the
+    agent is guided to write then pass the path
+- Likely files: integrations/hermes-plugin/tools.py, CLI trigger invoke
+
+**T3d: Run failed with status=failed, but no failure detail surfaced**
+- Problem: The timeline shows `run_stop` with `"status":"failed"` for
+  run-3b459e8f6bb24ce4, but there's no indication of WHY it failed.
+  Combined with T3a (logs broken), the user has no way to debug.
+- Fix: Ensure failed runs include a failure reason/error message in the
+  timeline event or status output. `agentpaas explain-failure` should
+  work here, but needs to be reachable.
+- Acceptance criteria:
+  - Failed runs show a reason in timeline or status
+  - `agentpaas_explain_failure` returns root cause for failed runs
 
 ---
 
