@@ -118,6 +118,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newExplainDenialCmd())
 	rootCmd.AddCommand(newRecommendPatchCmd())
 	rootCmd.AddCommand(newTimelineCmd())
+	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newNextActionCmd())
 	rootCmd.AddCommand(newTriggerCmd())
 	rootCmd.AddCommand(newCronCmd())
