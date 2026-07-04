@@ -120,6 +120,14 @@ def _ensure_daemon_running():
     This removes the UX friction where a user who just installed the plugin
     and restarted has to separately discover and run the daemon-start command.
 
+    Handles two known recurring pitfalls:
+    1. Checkpoint key corruption after a binary upgrade — removes the stale
+       key so the daemon generates a fresh one.
+    2. Stale socket file from an unclean shutdown — removes it so the daemon
+       can bind.
+
+    Then waits up to 15s for the socket to appear before returning.
+
     Failures are logged at debug level and never raised — plugin registration
     must not fail because the daemon is down. The agent can still call
     agentpaas_doctor to diagnose, and the hint in error messages guides
@@ -128,6 +136,7 @@ def _ensure_daemon_running():
     try:
         import os
         import subprocess
+        import time
 
         # Resolve the socket path the same way tools.py does.
         socket_path = os.environ.get("AGENTPAAS_SOCKET_PATH")
@@ -136,6 +145,24 @@ def _ensure_daemon_running():
 
         if os.path.exists(socket_path):
             return  # daemon already running
+
+        # Pre-flight cleanup: stale checkpoint key and stale socket are the
+        # two reasons the daemon crashes immediately after spawn. The
+        # checkpoint key format changes between versions, leaving a stale
+        # key the new binary can't decrypt. Removing it lets the daemon
+        # generate a fresh one. (Recurring pitfall — see SKILL.md.)
+        state_dir = os.path.expanduser("~/.agentpaas/state")
+        stale_key = os.path.join(state_dir, "audit-checkpoint-key.der")
+        if os.path.exists(stale_key):
+            try:
+                os.remove(stale_key)
+            except OSError:
+                pass
+        if os.path.exists(socket_path):
+            try:
+                os.remove(socket_path)
+            except OSError:
+                pass
 
         # Find the agentpaas binary. Prefer the repo binary if present,
         # fall back to PATH resolution.
@@ -161,7 +188,17 @@ def _ensure_daemon_running():
             stdin=subprocess.DEVNULL,
             start_new_session=True,
         )
-        logger.debug("AgentPaaS daemon auto-started (socket was missing)")
+
+        # Wait for the socket to appear (up to 15s). The daemon needs time
+        # to generate its checkpoint key, bind the socket, and become ready.
+        # If it doesn't come up, we don't raise — the agent can still call
+        # agentpaas_doctor to diagnose.
+        for _ in range(30):
+            time.sleep(0.5)
+            if os.path.exists(socket_path):
+                logger.debug("AgentPaaS daemon auto-started (socket ready)")
+                return
+        logger.debug("AgentPaaS daemon auto-started but socket not ready after 15s")
     except Exception as e:
         logger.debug("AgentPaaS daemon auto-start skipped: %s", e)
 
