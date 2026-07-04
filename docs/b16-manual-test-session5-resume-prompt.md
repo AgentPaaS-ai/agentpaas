@@ -83,19 +83,49 @@ continue the manual test flow.
 - [ ] Exfil probe → 403 Forbidden
 - [ ] explain-denial → default_deny rule
 
-## BUGS FIXED THIS BLOCK (all in 99dee37)
+## BUGS FIXED THIS BLOCK
 
 | Bug | ID | Status | Commit |
 |-----|----|--------|--------|
 | trigger invoke --payload DROPPED | t3-payload-dropped | FIXED | 251e797 |
 | Docker resource leak (networks/containers) | t3-docker-leak | FIXED | 99dee37 |
-| Agent fabricates data on failure | t3-agent-fabricates | MITIGATED (prompt) | 99dee37 |
+| Agent fabricates data on failure | t3-agent-fabricates | MITIGATED→STRENGTHENED | 99dee37 → 96e7ece |
 | Daemon auto-start on session load | t2-daemon-autostart | FIXED | 251e797+edd164d |
+| Daemon auto-start false-positive on stale socket | t2-stale-socket-autostart | FIXED | 029505c |
+| trigger_invoke payload schema misleading | t3-schema-payload-path | FIXED | 96e7ece |
+| Anti-fabrication guardrail in SKILL only (not SOUL) | t3-fab-guardrail-weak | FIXED | 96e7ece |
 | SOUL.md injection wrong profile | BUG 8 regression | FIXED | d498d8d |
 | Skill pointer name collision | deploy/build | FIXED | bef0970 |
 | /agentpaas-list missing | — | ADDED | bef0970 |
 | Slash command hints missing | — | FIXED | c7adb0d |
 | /agentpaas-list format (running/recent) | t2-list-format | FIXED | 251e797 |
+
+### Session 5 bug details
+
+**t2-stale-socket-autostart (029505c):** `_ensure_daemon_running()` used
+`os.path.exists(socket_path)` as liveness check. A stale socket file left
+by `pkill -9` or unclean shutdown passed this check, so the function
+returned early and the daemon stayed down. Doctor reported 6/6 healthy
+while daemon was unreachable. Fix: now connects to the socket (0.5s
+timeout) to verify liveness. If connection fails, socket is stale —
+remove and restart.
+
+**t3-schema-payload-path (96e7ece):** The `agentpaas_trigger_invoke`
+schema said payload = "Optional path to a payload file". The agent
+interpreted this as requiring a file path and didn't pass inline JSON
+like `{"city": "Folsom"}`. The tool code already handles inline JSON
+(checks if payload starts with `{`, writes to temp file), but the schema
+didn't tell the agent. Fix: schema now says "inline JSON or file path"
+with explicit example `{"city": "Folsom"}`.
+
+**t3-fab-guardrail-weak (96e7ece):** The anti-fabrication rule was in
+SKILL.md Pitfalls (line 317-324). The agent loaded the skill during the
+build phase but didn't re-read it for the invoke step. After 10 failed
+invokes (empty payload due to schema bug), the agent fabricated
+realistic weather data (82°F, Sunny) instead of reporting the error.
+Fix: added "AgentPaaS Anti-Fabrication Rule" to the SOUL.md snippet
+injected by register(). SOUL.md is loaded fresh every turn, so the rule
+is always present. The rule also covers "always verify run status."
 
 ## STILL OPEN (non-blocking for T3)
 
