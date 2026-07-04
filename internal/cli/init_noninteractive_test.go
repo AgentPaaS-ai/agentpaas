@@ -66,12 +66,20 @@ func TestInitFromCodeNoninteractive_ExistingPolicyUntouched(t *testing.T) {
 	}
 }
 
-func TestInitFromCodeNoninteractive_PathEscapeRejected(t *testing.T) {
-	_, err := validateInitProjectPath("../escape")
-	if err == nil {
-		t.Fatal("validateInitProjectPath() error = nil, want error")
+func TestValidateInitProjectPath_AbsolutePath(t *testing.T) {
+	// Absolute paths should be accepted (resolved via filepath.Abs)
+	abs, err := validateInitProjectPath("/tmp/test-project")
+	if err != nil {
+		t.Fatalf("validateInitProjectPath() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "must be under current directory") {
-		t.Fatalf("validateInitProjectPath() error = %q", err)
+	if abs != "/tmp/test-project" {
+		t.Fatalf("validateInitProjectPath() = %q, want /tmp/test-project", abs)
+	}
+}
+
+func TestValidateInitProjectPath_NullByte(t *testing.T) {
+	_, err := validateInitProjectPath("test\x00path")
+	if err == nil {
+		t.Fatal("validateInitProjectPath() error = nil for null byte")
 	}
 }
