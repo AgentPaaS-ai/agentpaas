@@ -128,6 +128,39 @@ root cause.
         logger.warning("Could not create skill pointer: %s", e)
 
 
+def _ensure_toolset():
+    """Ensure 'agentpaas' is in platform_toolsets.cli for the active profile.
+
+    Called from register() at session load. If the toolset is missing,
+    runs ensure-toolset.py to add it to config.yaml. This is needed
+    because `hermes plugins install --enable` does NOT add the toolset
+    automatically — without it, the agent can see slash commands but
+    cannot call agentpaas_* tools. Doing it here (instead of relying
+    on the agent to run after-install.md) makes the first-session
+    experience work without the agent having to read after-install.md.
+    """
+    try:
+        import subprocess, os, sys
+        profile_dir = os.environ.get("HERMES_HOME", "")
+        if not profile_dir:
+            return
+        # Determine profile name from the path
+        profile_name = os.path.basename(profile_dir.rstrip("/"))
+        script = os.path.join(os.path.dirname(__file__), "scripts", "ensure-toolset.py")
+        if not os.path.exists(script):
+            # Fallback: look in repo root
+            script = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "ensure-toolset.py")
+            script = os.path.normpath(script)
+        if os.path.exists(script):
+            subprocess.run(
+                [sys.executable, script, profile_name],
+                capture_output=True, timeout=10, text=True,
+            )
+            logger.debug("ensure-toolset.py ran for profile %s", profile_name)
+    except Exception as e:
+        logger.warning("Could not ensure toolset: %s", e)
+
+
 def _ensure_daemon_running():
     """Best-effort: start the AgentPaaS daemon if its socket is missing.
 
@@ -684,6 +717,13 @@ def register(ctx):
     # will write plain Python instead of using the @agent.on_invoke SDK
     # pattern. This is deterministic — no reliance on after-install.md.
     _ensure_local_skill_pointer()
+
+    # Ensure 'agentpaas' is in platform_toolsets.cli. This is normally
+    # done by after-install.md, but if the agent didn't run it (or the
+    # plugin was installed via git clone), the toolset won't be present
+    # and the agent can't call agentpaas_* tools. Running it here makes
+    # the first session work regardless.
+    _ensure_toolset()
 
     # Best-effort: ensure the AgentPaaS daemon is running. A user who just
     # installed the plugin and restarted should not have to separately know
