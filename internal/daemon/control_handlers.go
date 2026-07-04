@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -246,19 +247,53 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}
 
 	// Create gateway container (dual-homed: internal + egress).
-	// The gateway reads the compiled policy config and enforces allow/deny rules.
-	gatewayConfigPath := filepath.Join(s.homePaths.Config, "gateway.yaml")
-
-	// Determine gateway config mount.
+	// The gateway config is compiled FROM THE AGENT'S OWN POLICY, not from a
+	// global file. This ensures each agent gets egress rules matching its
+	// policy.yaml.
 	var gatewayBinds []string
 	var gatewayConfigDir string
-	if _, err := os.Stat(gatewayConfigPath); err == nil {
-		// Policy exists — mount it read-only.
+
+	// Read the agent's policy.yaml from the deployed directory.
+	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	agentPolicyPath := filepath.Join(deployedDir, "policy.yaml")
+
+	policyData, err := os.ReadFile(agentPolicyPath)
+	if err == nil && len(policyData) > 0 {
+		// Parse and compile the policy into gateway config.
+		parsedPolicy, err := policy.ParsePolicy(bytes.NewReader(policyData))
+		if err != nil {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.Internal, "parse agent policy: %v", err)
+		}
+		if errs := policy.ValidatePolicy(parsedPolicy); policy.HasErrors(errs) {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.Internal, "validate agent policy: %v", errs)
+		}
+		compiled, err := policy.CompileGatewayConfig(parsedPolicy)
+		if err != nil {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.Internal, "compile gateway config: %v", err)
+		}
+		// Write compiled config to per-run directory.
+		perRunConfigDir := filepath.Join(s.homePaths.State, "runs", runID, "gateway-config")
+		if err := os.MkdirAll(perRunConfigDir, 0o700); err != nil {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.Internal, "create gateway config dir: %v", err)
+		}
+		gatewayConfigPath := filepath.Join(perRunConfigDir, "config.yaml")
+		if err := os.WriteFile(gatewayConfigPath, compiled, 0o600); err != nil {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.Internal, "write gateway config: %v", err)
+		}
 		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", gatewayConfigPath)}
+		gatewayConfigDir = perRunConfigDir
 	} else {
-		// No policy applied — write a minimal default-deny config to a per-run
-		// temp file and mount it. This ensures the gateway starts with a valid
-		// config and enforces deny-all (no egress allowed).
+		// No policy.yaml in deployed dir — deny-all fallback.
 		denyAllConfig := []byte("config:\n  dns:\n    lookupFamily: V4Only\nbinds: []\n")
 		perRunConfigDir := filepath.Join(s.homePaths.State, "runs", runID, "gateway-config")
 		if err := os.MkdirAll(perRunConfigDir, 0o700); err != nil {

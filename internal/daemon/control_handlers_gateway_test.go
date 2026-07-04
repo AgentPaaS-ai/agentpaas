@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/pack"
+	"github.com/parvezsyed/agentpaas/internal/policy"
 	"github.com/parvezsyed/agentpaas/internal/runtime"
 	"gopkg.in/yaml.v3"
 )
@@ -221,5 +223,100 @@ func TestRun_DefaultDenyGatewayWhenNoPolicy(t *testing.T) {
 	}
 	if _, err := os.Stat(wantConfigDir); !os.IsNotExist(err) {
 		t.Fatalf("gateway config dir %q still exists after Stop, err = %v", wantConfigDir, err)
+	}
+}
+
+func TestRun_CompilesGatewayConfigFromDeployedPolicy(t *testing.T) {
+	agentPolicyYAML := `version: "1.0"
+agent:
+  name: test-agent
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+  - domain: "cdn.example.com"
+    ports: [443]
+`
+
+	var containerSpecs []runtime.ContainerSpec
+
+	mock := defaultMockRuntimeDriver()
+	mock.createFunc = func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+		containerSpecs = append(containerSpecs, spec)
+		if spec.Image == runtime.GatewayImage {
+			return runtime.ContainerID("gateway-test"), nil
+		}
+		return runtime.ContainerID("container-test"), nil
+	}
+
+	server, hp := testServerWithMockRuntime(t, mock)
+
+	deployedDir := pack.DeployedAgentPath(hp.Home, "test-agent")
+	if err := os.WriteFile(filepath.Join(deployedDir, "policy.yaml"), []byte(agentPolicyYAML), 0o600); err != nil {
+		t.Fatalf("WriteFile(policy.yaml): %v", err)
+	}
+
+	globalGatewayPath := filepath.Join(hp.Config, "gateway.yaml")
+	globalConfig := []byte("config:\n  dns:\n    lookupFamily: V4Only\nbinds: []\n# GLOBAL_SHOULD_NOT_BE_USED\n")
+	if err := os.WriteFile(globalGatewayPath, globalConfig, 0o600); err != nil {
+		t.Fatalf("WriteFile(global gateway.yaml): %v", err)
+	}
+
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	runID := resp.GetRunId()
+
+	var gatewaySpec *runtime.ContainerSpec
+	for i := range containerSpecs {
+		if containerSpecs[i].Labels[runtime.LabelResourceType] == runtime.ResourceTypeGateway {
+			gatewaySpec = &containerSpecs[i]
+			break
+		}
+	}
+	if gatewaySpec == nil {
+		t.Fatal("gateway container not created")
+	}
+
+	wantConfigDir := filepath.Join(hp.State, "runs", runID, "gateway-config")
+	wantConfigPath := filepath.Join(wantConfigDir, "config.yaml")
+	gotHostPath := strings.TrimSuffix(gatewaySpec.Binds[0], ":/config.yaml:ro")
+	if gotHostPath != wantConfigPath {
+		t.Fatalf("gateway config host path = %q, want per-run %q (not global gateway.yaml)", gotHostPath, wantConfigPath)
+	}
+
+	data, err := os.ReadFile(wantConfigPath)
+	if err != nil {
+		t.Fatalf("read compiled gateway config: %v", err)
+	}
+	if strings.Contains(string(data), "GLOBAL_SHOULD_NOT_BE_USED") {
+		t.Fatalf("gateway config was read from global gateway.yaml:\n%s", string(data))
+	}
+	for _, domain := range []string{"api.example.com", "cdn.example.com"} {
+		if !strings.Contains(string(data), domain) {
+			t.Fatalf("compiled gateway config missing domain %q:\n%s", domain, string(data))
+		}
+	}
+
+	parsedPolicy, err := policy.ParsePolicy(strings.NewReader(agentPolicyYAML))
+	if err != nil {
+		t.Fatalf("ParsePolicy: %v", err)
+	}
+	wantCompiled, err := policy.CompileGatewayConfig(parsedPolicy)
+	if err != nil {
+		t.Fatalf("CompileGatewayConfig: %v", err)
+	}
+	if string(data) != string(wantCompiled) {
+		t.Fatalf("compiled gateway config mismatch:\ngot:\n%s\nwant:\n%s", string(data), string(wantCompiled))
+	}
+
+	server.runMu.Lock()
+	tracked, ok := server.runs[runID]
+	server.runMu.Unlock()
+	if !ok {
+		t.Fatalf("run %q not tracked", runID)
+	}
+	if tracked.GatewayConfigDir != wantConfigDir {
+		t.Fatalf("tracked GatewayConfigDir = %q, want %q", tracked.GatewayConfigDir, wantConfigDir)
 	}
 }

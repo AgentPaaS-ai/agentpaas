@@ -19,6 +19,39 @@ func (f *fakeAuditAppender) Append(record audit.AuditRecord) error {
 	return nil
 }
 
+func TestRecordDeployment_WritesPolicyYAMLSidecar(t *testing.T) {
+	homeDir := symlinkSafeTempDir(t)
+	lock, _ := signedTestLock(t)
+	lock.PolicyYAML = []byte("version: \"1.0\"\nagent:\n  name: test-agent\negress:\n  - domain: api.example.com\n    ports: [443]\n")
+
+	if err := RecordDeployment(homeDir, lock.AgentName, lock); err != nil {
+		t.Fatalf("RecordDeployment() error = %v", err)
+	}
+
+	policyPath := filepath.Join(DeployedAgentPath(homeDir, lock.AgentName), "policy.yaml")
+	data, err := os.ReadFile(policyPath)
+	if err != nil {
+		t.Fatalf("ReadFile(policy.yaml): %v", err)
+	}
+	if string(data) != string(lock.PolicyYAML) {
+		t.Fatalf("policy.yaml = %q, want %q", string(data), string(lock.PolicyYAML))
+	}
+}
+
+func TestRecordDeployment_SkipsPolicyYAMLWhenEmpty(t *testing.T) {
+	homeDir := symlinkSafeTempDir(t)
+	lock, _ := signedTestLock(t)
+
+	if err := RecordDeployment(homeDir, lock.AgentName, lock); err != nil {
+		t.Fatalf("RecordDeployment() error = %v", err)
+	}
+
+	policyPath := filepath.Join(DeployedAgentPath(homeDir, lock.AgentName), "policy.yaml")
+	if _, err := os.Lstat(policyPath); !os.IsNotExist(err) {
+		t.Fatalf("policy.yaml should not exist when PolicyYAML is empty, err = %v", err)
+	}
+}
+
 func TestRecordDeployment_CreatesFiles(t *testing.T) {
 	homeDir := symlinkSafeTempDir(t)
 	lock, _ := signedTestLock(t)

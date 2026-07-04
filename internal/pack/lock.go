@@ -59,6 +59,11 @@ type AgentLock struct {
 	// PolicyDigest is the SHA-256 digest of the policy.yaml.
 	// Computed at pack time from the project's policy.yaml.
 	PolicyDigest string `json:"policy_digest"`
+	// PolicyYAML is the raw policy.yaml content. Stored in the deployed directory
+	// as a separate file (NOT in the signed lockfile JSON — it would change the
+	// canonical signature map). Used at run time to compile the gateway config.
+	// NOT included in lockCanonicalMap — it is deployed as a sidecar file.
+	PolicyYAML []byte `json:"policy_yaml,omitempty"`
 	// PackageAID is the Agent Identity Document - the public key PEM.
 	PackageAID string `json:"package_aid"`
 	// PublicKeyFingerprint is the SHA-256 fingerprint of the public key.
@@ -318,6 +323,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		ImageDigest:          cfg.BuildResult.ImageDigest,
 		SBOMDigest:           sbomDigest,
 		PolicyDigest:         policyDigest,
+		PolicyYAML:           cfg.PolicyYAML,
 		PackageAID:           string(publicKeyPEM),
 		PublicKeyFingerprint: PublicKeyFingerprint(&privateKey.PublicKey),
 		SBOMReferrer:         "oci://" + cfg.BuildResult.ImageRef + "#sbom@sha256:" + sbomDigest,
