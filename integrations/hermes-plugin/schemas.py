@@ -527,7 +527,7 @@ AGENTPAAS_CRON_ADD = {
             },
             "payload": {
                 "type": "string",
-                "description": "Optional invocation payload as inline JSON (e.g. '{"city": "Folsom"}').",
+                "description": "Optional invocation payload as inline JSON (e.g. 'city': 'Folsom').",
             },
             "content_type": {
                 "type": "string",
