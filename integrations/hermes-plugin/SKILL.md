@@ -314,6 +314,13 @@ with your Hermes profile. See README.md → "Hermes Plugin (Developer Setup)".
 
 ## Pitfalls
 
+- **Daemon won't start (checkpoint key corrupted)** → After binary upgrades
+  or killing the daemon, it may fail with "decrypt checkpoint key: cipher:
+  message authentication failed". Fix by deleting the corrupted key:
+  `rm -f ~/.agentpaas/state/audit-checkpoint-key.der` then
+  `agentpaas daemon start`. The daemon will generate a fresh key.
+- **Daemon socket not found** → The daemon is not running. Start it:
+  `agentpaas daemon start`. If it fails, see the checkpoint key fix above.
 - Docker not running → `/agentpaas-doctor` for diagnostics
 - Policy denial → `agentpaas_explain_policy_denial` for root cause, or
   `agentpaas_recommend_policy_patch` for a suggested fix
@@ -326,3 +333,19 @@ with your Hermes profile. See README.md → "Hermes Plugin (Developer Setup)".
   `hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'`
   then `/quit` and relaunch. (If you installed via `make install-plugin`, it
   already did both steps.)
+- **Run by path fails with "not deployed"** → `agentpaas run` accepts a
+  project path, image digest, OR agent name. If you pass a path, it reads
+  agent.yaml to resolve the agent name. Make sure you `agentpaas pack` the
+  project first — the agent must be deployed before running.
+- **Agent code uses plain app() or main()** → The harness requires the
+  `@agent.on_invoke` SDK pattern. A plain function will fail with
+  "agent must register an invoke handler with @agent.on_invoke". Always
+  use:
+  ```python
+  from agentpaas_sdk import agent
+
+  @agent.on_invoke
+  def handle_invoke(payload):
+      ...
+      return {"status": "OK"}
+  ```
