@@ -25,6 +25,7 @@ var (
 	openAIEndpoint    = "https://api.openai.com/v1/chat/completions"
 	anthropicEndpoint = "https://api.anthropic.com/v1/messages"
 	xaiEndpoint       = "https://api.x.ai/v1/chat/completions"
+	nousEndpoint      = "https://inference-api.nousresearch.com/v1/chat/completions"
 )
 
 // SetTestEndpoints overrides provider endpoints for testing. Returns a restore function.
@@ -52,6 +53,8 @@ func TestProvider(ctx context.Context, provider string, secretValue []byte) Prov
 		return testAnthropic(ctx, secretValue)
 	case "xai", "xiai":
 		return testXAI(ctx, secretValue)
+	case "nous":
+		return testNous(ctx, secretValue)
 	default:
 		return ProviderTestResult{
 			Provider: provider,
@@ -122,7 +125,7 @@ func testXAI(parentCtx context.Context, secretValue []byte) ProviderTestResult {
 	defer cancel()
 
 	body := map[string]interface{}{
-		"model": "grok-beta",
+		"model": "grok-3-mini",
 		"messages": []map[string]string{
 			{"role": "user", "content": "say OK"},
 		},
@@ -142,6 +145,34 @@ func testXAI(parentCtx context.Context, secretValue []byte) ProviderTestResult {
 	req.Header.Set("Content-Type", "application/json")
 
 	return doProviderRequest(req, "xiai", xaiEndpoint)
+}
+
+func testNous(parentCtx context.Context, secretValue []byte) ProviderTestResult {
+	ctx, cancel := context.WithTimeout(parentCtx, 10*time.Second)
+	defer cancel()
+
+	body := map[string]interface{}{
+		"model": "deepseek/deepseek-v4-flash",
+		"messages": []map[string]string{
+			{"role": "user", "content": "say OK"},
+		},
+		"max_tokens": 5,
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, nousEndpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return ProviderTestResult{
+			Provider: "nous",
+			Endpoint: nousEndpoint,
+			Status:   "error",
+			Detail:   fmt.Sprintf("failed to build request: %v", err),
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+string(secretValue))
+	req.Header.Set("Content-Type", "application/json")
+
+	return doProviderRequest(req, "nous", nousEndpoint)
 }
 
 func doProviderRequest(req *http.Request, provider, endpoint string) ProviderTestResult {

@@ -30,10 +30,10 @@ func TestGetAdapter_Unknown(t *testing.T) {
 
 func TestSupportedProviders(t *testing.T) {
 	providers := SupportedProviders()
-	if len(providers) != 3 {
-		t.Fatalf("SupportedProviders() len = %d, want 3", len(providers))
+	if len(providers) != 4 {
+		t.Fatalf("SupportedProviders() len = %d, want 4", len(providers))
 	}
-	expected := map[string]bool{"openai": true, "anthropic": true, "xai": true}
+	expected := map[string]bool{"openai": true, "anthropic": true, "xai": true, "nous": true}
 	for _, p := range providers {
 		if !expected[p] {
 			t.Errorf("unexpected provider %q in SupportedProviders()", p)

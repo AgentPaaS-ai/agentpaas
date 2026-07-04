@@ -903,7 +903,7 @@ func newSecretCmd() *cobra.Command {
 			return nil
 		},
 	}
-	testCmd.Flags().String("provider", "", "credential provider: openai|anthropic|xai (auto-detected from name if omitted)")
+	testCmd.Flags().String("provider", "", "credential provider: openai|anthropic|xai|nous (auto-detected from name if omitted)")
 	cmd.AddCommand(testCmd)
 
 	return cmd
@@ -919,6 +919,9 @@ func detectProviderFromName(name string) string {
 	}
 	if strings.Contains(lower, "xai") || strings.Contains(lower, "grok") {
 		return "xai"
+	}
+	if strings.Contains(lower, "nous") || strings.Contains(lower, "deepseek") {
+		return "nous"
 	}
 	return "openai"
 }
