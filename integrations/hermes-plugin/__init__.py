@@ -8,8 +8,10 @@ from . import schemas, tools
 logger = logging.getLogger(__name__)
 
 
-_SKILL_POINTER_CONTENT = """---
-name: agentpaas-deploy
+_POINTER_NAME = "agentpaas-build"  # deliberately != "agentpaas-deploy" (slash cmd collision)
+
+_SKILL_POINTER_CONTENT = f"""---
+name: {_POINTER_NAME}
 description: >
   Build, deploy, package, run, and govern AI agents. Use when the user
   asks to build, create, deploy, pack, or run any agent. You MUST load
@@ -24,9 +26,7 @@ description: >
 When the user asks to build, create, deploy, pack, run, or govern any
 agent, you MUST load the real skill immediately:
 
-```
 skill_view(name="agentpaas:deploy")
-```
 
 This pointer exists because plugin skills do not appear in the
 available_skills index. The full instructions (agent code structure
@@ -167,6 +167,26 @@ def _cmd_status(args_str, ctx=None):
             lines.append(f"Run: {result.get('run_id')}: {result.get('agent_name','?')} — {result.get('status','?')}")
     if not lines:
         return json.dumps(result, indent=2)
+    return "\n".join(lines)
+
+
+def _cmd_list(args_str, ctx=None):
+    """`/agentpaas-list` — list all AgentPaaS runs (active and recent)."""
+    result = json.loads(tools.agentpaas_list_runs({}))
+    if isinstance(result, dict) and "error" in result:
+        return f"List failed: {result['error']}"
+    runs = result.get("runs", []) if isinstance(result, dict) else (result if isinstance(result, list) else [])
+    if not runs:
+        return "No AgentPaaS runs found."
+    lines = [f"AgentPaaS runs ({len(runs)} total):"]
+    for r in runs:
+        if isinstance(r, dict):
+            run_id = r.get("run_id", r.get("id", "?"))
+            agent = r.get("agent_name", "?")
+            status = r.get("status", "?")
+            lines.append(f"  {run_id}: {agent} — {status}")
+        else:
+            lines.append(f"  {r}")
     return "\n".join(lines)
 
 
@@ -421,6 +441,7 @@ def _cmd_trigger(args_str, ctx=None):
 _SLASH_COMMANDS = {
     "agentpaas deploy": (_cmd_deploy, "Pack and run an agent from a project directory", "<project_path>"),
     "agentpaas status": (_cmd_status, "Show daemon status and active runs", ""),
+    "agentpaas list": (_cmd_list, "List all AgentPaaS runs (active and recent)", ""),
     "agentpaas logs": (_cmd_logs, "Tail logs for a run", "<run_id>"),
     "agentpaas audit": (_cmd_audit, "Show audit events", "[run_id]"),
     "agentpaas doctor": (_cmd_doctor, "Run system diagnostics", ""),

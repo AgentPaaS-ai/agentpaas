@@ -30,7 +30,7 @@ SKILLS_DIR="$HOME/.hermes/profiles/<profile>/skills/agentpaas"
 mkdir -p "$SKILLS_DIR"
 cat > "$SKILLS_DIR/SKILL.md" << 'SKILL_EOF'
 ---
-name: agentpaas-deploy
+name: agentpaas-build
 description: >
   Build, deploy, package, run, and govern AI agents. Use when the user
   asks to build, create, deploy, pack, or run any agent. You MUST load
