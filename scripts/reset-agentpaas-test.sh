@@ -72,6 +72,15 @@ fi
 rm -f "$PROFILE_DIR/SOUL.md"
 log "Removed SOUL.md"
 
+# --- Step 3b: Remove agentpaas skill pointer ---
+# register() creates a local skill pointer at skills/agentpaas/SKILL.md so
+# the agent discovers the deploy workflow. This must be removed on reset
+# or the agent will see the skill before the plugin is installed.
+if [[ -d "$PROFILE_DIR/skills/agentpaas" ]]; then
+    rm -rf "$PROFILE_DIR/skills/agentpaas"
+    log "Removed agentpaas skill pointer"
+fi
+
 # --- Step 4: Clear memories, checkpoints, cron ---
 rm -f "$PROFILE_DIR/memories/"*.md "$PROFILE_DIR/memories/"*.lock 2>/dev/null || true
 rm -rf "$PROFILE_DIR/checkpoints/"* 2>/dev/null || true
@@ -131,6 +140,7 @@ echo "  platform_toolsets.cli: $(python3 -c "import yaml,pathlib; cfg=yaml.safe_
 echo "  memories/: $(ls "$PROFILE_DIR/memories/" 2>/dev/null | wc -l | tr -d ' ') files"
 echo "  plugins/ dir: $(ls "$PROFILE_DIR/plugins/" 2>/dev/null | wc -l | tr -d ' ') entries"
 echo "  SOUL.md: $([[ -f "$PROFILE_DIR/SOUL.md" ]] && echo 'EXISTS' || echo 'absent')"
+echo "  skills/agentpaas: $([[ -d "$PROFILE_DIR/skills/agentpaas" ]] && echo 'EXISTS' || echo 'absent')"
 
 echo ""
 log "✓ Profile '$PROFILE' is now a clean baseline."
