@@ -1,9 +1,67 @@
 """AgentPaaS Hermes plugin — registers 30 operator-contract tools + slash commands."""
 import json
 import logging
+import os
+from pathlib import Path
 from . import schemas, tools
 
 logger = logging.getLogger(__name__)
+
+
+_SKILL_POINTER_CONTENT = """---
+name: agentpaas-deploy
+description: >
+  Build, deploy, package, run, and govern AI agents. Use when the user
+  asks to build, create, deploy, pack, or run any agent. You MUST load
+  the full skill with skill_view(name="agentpaas:deploy") for onboarding
+  instructions, code structure requirements (@agent.on_invoke SDK
+  pattern), egress policy rules, credential onboarding, and LLM
+  configuration.
+---
+
+# AgentPaaS Deploy Pointer
+
+When the user asks to build, create, deploy, pack, run, or govern any
+agent, you MUST load the real skill immediately:
+
+```
+skill_view(name="agentpaas:deploy")
+```
+
+This pointer exists because plugin skills do not appear in the
+available_skills index. The full instructions (agent code structure
+with @agent.on_invoke, egress confirmation, credential onboarding,
+LLM configuration, pack/run workflow) live in the plugin skill at
+agentpaas:deploy. Load it BEFORE writing any agent code or calling
+agentpaas tools. Do NOT skip this step.
+"""
+
+
+def _ensure_local_skill_pointer():
+    """Create a local skill pointer in the active profile so it appears
+    in <available_skills>. Plugin skills are opt-in (skill_view only)
+    and never appear in the system prompt index. This pointer bridges
+    that gap deterministically at plugin registration time — no reliance
+    on after-install.md being shown to the agent.
+    """
+    try:
+        hermes_home = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
+
+        # Detect the active profile using Hermes's own resolution
+        profile = "default"
+        try:
+            from hermes_cli.profiles import get_active_profile_name
+            profile = get_active_profile_name()
+        except Exception:
+            pass
+
+        skills_dir = Path(hermes_home) / "profiles" / profile / "skills" / "agentpaas"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        pointer = skills_dir / "SKILL.md"
+        pointer.write_text(_SKILL_POINTER_CONTENT, encoding="utf-8")
+        logger.debug("AgentPaaS skill pointer created at %s", pointer)
+    except Exception as e:
+        logger.warning("Could not create skill pointer: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -346,12 +404,21 @@ def register(ctx):
         if hasattr(ctx, "register_command"):
             ctx.register_command(cmd_name, handler, description=description, args_hint=args_hint)
 
-    # Register bundled SKILL.md
+    # Register bundled SKILL.md as a plugin skill (accessible via
+    # skill_view("agentpaas:deploy") but NOT in available_skills index).
     if hasattr(ctx, "register_skill"):
         from pathlib import Path
         skill_path = Path(__file__).resolve().parent / "SKILL.md"
         if skill_path.is_file():
             ctx.register_skill("deploy", skill_path, description="AgentPaaS deploy workflow")
+
+    # Create a local skill pointer that WILL appear in <available_skills>.
+    # Plugin skills registered above are opt-in (skill_view only) and never
+    # appear in the system prompt index. Without this pointer, the agent
+    # in future sessions has no idea the onboarding instructions exist and
+    # will write plain Python instead of using the @agent.on_invoke SDK
+    # pattern. This is deterministic — no reliance on after-install.md.
+    _ensure_local_skill_pointer()
 
     logger.debug("AgentPaaS plugin registered %d tools + %d slash commands",
                  len(schemas.TOOL_NAMES), len(_SLASH_COMMANDS))
