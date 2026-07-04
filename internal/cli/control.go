@@ -483,23 +483,55 @@ func newPolicyShowCmd() *cobra.Command {
 		Short: "Show the active policy for a run or project",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID := ""
+			target := ""
 			if len(args) > 0 {
-				runID = args[0]
+				target = args[0]
 			}
+
+			// If target looks like a run_id (starts with "run-"), query daemon
+			if strings.HasPrefix(target, "run-") {
+				// Existing daemon query path (keep for future when policy store exists)
+				// For now, return not-yet-implemented for run-based queries
+				result := struct {
+					SchemaVersion string `json:"schema_version"`
+					RunID         string `json:"run_id,omitempty"`
+					Message       string `json:"message"`
+				}{
+					SchemaVersion: operator.SchemaVersion,
+					RunID:         target,
+					Message:       "policy show by run-id is not yet implemented; use a project directory instead",
+				}
+				return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+					return result.Message
+				})
+			}
+
+			// Treat target as a project directory — read policy.yaml
+			projectDir := target
+			if projectDir == "" {
+				projectDir = "."
+			}
+			policyPath := filepath.Join(projectDir, "policy.yaml")
+
+			data, err := os.ReadFile(policyPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("policy.yaml not found in %s; run 'agentpaas policy init %s' to create one", projectDir, projectDir)
+				}
+				return fmt.Errorf("read policy: %w", err)
+			}
+
 			result := struct {
 				SchemaVersion string `json:"schema_version"`
-				RunID         string `json:"run_id,omitempty"`
-				PolicyDigest  string `json:"policy_digest"`
-				Message       string `json:"message"`
+				ProjectDir    string `json:"project_dir"`
+				Policy        string `json:"policy"`
 			}{
 				SchemaVersion: operator.SchemaVersion,
-				RunID:         runID,
-				PolicyDigest:  "",
-				Message:       "policy show: no active policy store in P1 stub",
+				ProjectDir:    projectDir,
+				Policy:        string(data),
 			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
-				return result.Message
+				return string(data)
 			})
 		},
 	}
