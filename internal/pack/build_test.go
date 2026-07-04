@@ -137,6 +137,69 @@ func TestDefaultBaseImage(t *testing.T) {
 	}
 }
 
+func TestRenderDockerfileMultiStageWithDeps(t *testing.T) {
+	cfg := BuildConfig{
+		ProjectDir:      t.TempDir(),
+		BaseImage:       "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
+		ImageTag:        "test:tag",
+		SourceDateEpoch: time.Unix(0, 0),
+		NonRootUID:      64000,
+	}
+	if err := validateBuildConfig(&cfg); err != nil {
+		t.Fatalf("validateBuildConfig() error = %v", err)
+	}
+
+	dockerfile := renderDockerfile(cfg, []string{"requests==2.31.0"})
+
+	requireDockerfileContains(t, dockerfile,
+		"FROM python:3.11-slim AS builder",
+		"RUN pip install --no-cache-dir --target=/build/deps -r /tmp/requirements.lock",
+		"FROM gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
+		"COPY --chown=64000:64000 --from=builder /build/deps /app/deps",
+		"ENV AGENTPAAS_DEPS_LOCKED=/agentpaas/requirements.lock",
+		"ENV PYTHONPATH=/app/deps",
+	)
+}
+
+func TestRenderDockerfileSingleStageNoDeps(t *testing.T) {
+	cfg := BuildConfig{
+		ProjectDir:      t.TempDir(),
+		BaseImage:       "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
+		ImageTag:        "test:tag",
+		SourceDateEpoch: time.Unix(0, 0),
+		NonRootUID:      64000,
+	}
+
+	dockerfile := renderDockerfile(cfg, nil)
+
+	requireDockerfileNotContains(t, dockerfile,
+		"AS builder",
+		"pip install",
+		"--from=builder",
+		"PYTHONPATH",
+	)
+	requireDockerfileContains(t, dockerfile,
+		"FROM gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
+		"COPY --chown=64000:64000 project/ /app/",
+		`ENTRYPOINT ["/agentpaas/harness"]`,
+	)
+}
+
+func TestRenderDockerfileCustomBuilderImage(t *testing.T) {
+	cfg := BuildConfig{
+		ProjectDir:      t.TempDir(),
+		BaseImage:       "gcr.io/distroless/python3-debian12@sha256:deadbeef",
+		BuilderImage:    "python:3.12-slim",
+		ImageTag:        "test:tag",
+		SourceDateEpoch: time.Unix(0, 0),
+	}
+
+	dockerfile := renderDockerfile(cfg, []string{"idna==3.7"})
+	if !strings.Contains(dockerfile, "FROM python:3.12-slim AS builder") {
+		t.Fatalf("dockerfile missing custom builder image:\n%s", dockerfile)
+	}
+}
+
 func TestResolveDependenciesRequirementsTxt(t *testing.T) {
 	requireUV(t)
 	projectDir := t.TempDir()
@@ -391,6 +454,24 @@ func requireContains(t *testing.T, got []string, want string) {
 		}
 	}
 	t.Fatalf("deps = %v, want item %q", got, want)
+}
+
+func requireDockerfileContains(t *testing.T, dockerfile string, want ...string) {
+	t.Helper()
+	for _, item := range want {
+		if !strings.Contains(dockerfile, item) {
+			t.Fatalf("dockerfile missing %q:\n%s", item, dockerfile)
+		}
+	}
+}
+
+func requireDockerfileNotContains(t *testing.T, dockerfile string, notWant ...string) {
+	t.Helper()
+	for _, item := range notWant {
+		if strings.Contains(dockerfile, item) {
+			t.Fatalf("dockerfile unexpectedly contains %q:\n%s", item, dockerfile)
+		}
+	}
 }
 
 func requireUV(t *testing.T) {
