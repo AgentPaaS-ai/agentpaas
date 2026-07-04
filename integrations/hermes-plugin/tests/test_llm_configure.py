@@ -193,6 +193,8 @@ class LlmConfigureTests(unittest.TestCase):
             self.assertTrue(len(llm_lines) >= 1)
             self.assertIn("provider: anthropic", content)
             self.assertIn("credential: claude-key", content)
+            self.assertNotIn("# llm:", content)
+            self.assertNotIn("#   provider:", content)
             # The "other:" key should still be there
             self.assertIn("other:", content)
 

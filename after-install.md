@@ -29,4 +29,4 @@ Plugins and toolsets load at process startup — not mid-session.
 hermes tools list | grep agentpaas    # should show ~30 tools
 ```
 
-Then try: `/agentpaas-doctor` to verify your setup is healthy.
+Ask the agent: "Run agentpaas_doctor to check setup health"

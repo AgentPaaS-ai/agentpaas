@@ -157,9 +157,9 @@ func newListRunsCmd() *cobra.Command {
 			return printTextOrJSON(jsonOutput(cmd), resp, func(v interface{}) string {
 				r := v.(*controlv1.ListRunsResponse)
 				if len(r.GetRuns()) == 0 {
-					return "No active runs.\n"
+					return "No recent runs.\n"
 				}
-				out := fmt.Sprintf("Active runs (%d):\n", len(r.GetRuns()))
+				out := fmt.Sprintf("Recent runs (%d):\n", len(r.GetRuns()))
 				for _, run := range r.GetRuns() {
 					out += fmt.Sprintf("  %s  [%s]\n", run.GetRunId(), run.GetStatus())
 				}

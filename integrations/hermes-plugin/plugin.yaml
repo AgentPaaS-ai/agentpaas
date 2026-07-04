@@ -34,5 +34,3 @@ provides_tools:
   - agentpaas_cron_add
   - agentpaas_cron_list
   - agentpaas_cron_remove
-requires_env:
-  - AGENTPAAS_SOCKET_PATH
