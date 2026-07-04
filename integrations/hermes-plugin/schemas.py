@@ -490,7 +490,7 @@ AGENTPAAS_TRIGGER_INVOKE = {
             },
             "payload": {
                 "type": "string",
-                "description": "Optional path to a payload file to send with the invocation.",
+                "description": "Payload to send to the agent. Can be either inline JSON (e.g. '{\"city\": \"Folsom\"}') or a path to a payload file. For simple key-value inputs, pass inline JSON directly — no need to create a file.",
             },
             "content_type": {
                 "type": "string",
