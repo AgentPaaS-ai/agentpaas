@@ -30,14 +30,14 @@ type LLMResult struct {
 }
 
 // GetAdapter returns the adapter for the given provider name.
-// Supported: "openai", "anthropic", "xiai". Returns nil for unknown providers.
+// Supported: "openai", "anthropic", "xai"/"xiai". Returns nil for unknown providers.
 func GetAdapter(provider string) ProviderAdapter {
 	switch provider {
 	case "openai":
 		return &openAIAdapter{}
 	case "anthropic":
 		return &anthropicAdapter{}
-	case "xiai":
+	case "xai", "xiai":
 		return &xAIAdapter{}
 	default:
 		return nil
@@ -46,5 +46,5 @@ func GetAdapter(provider string) ProviderAdapter {
 
 // SupportedProviders returns the list of supported provider names.
 func SupportedProviders() []string {
-	return []string{"openai", "anthropic", "xiai"}
+	return []string{"openai", "anthropic", "xai"}
 }
