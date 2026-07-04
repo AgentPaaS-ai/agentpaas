@@ -438,6 +438,10 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			s.runMu.Lock()
 			tr.Status = "succeeded"
 			s.runMu.Unlock()
+			s.recordAudit("invoke", "daemon", map[string]interface{}{
+				"run_id":     runID,
+				"agent_name": agentName,
+			})
 			s.recordAudit("run_complete", "daemon", map[string]interface{}{
 				"run_id":     runID,
 				"agent_name": agentName,
