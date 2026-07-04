@@ -119,6 +119,22 @@ user for specific domains.
 # Handler signature: fn(raw_args: str) -> str | None
 # ---------------------------------------------------------------------------
 
+def _format_error(result, error_prefix="Command failed"):
+    """Format an error dict from a tool result into a human-readable string.
+
+    Surfaces the ``hint`` field (e.g. "Run: agentpaas daemon start") when
+    the tool provides one, so the user knows how to fix the problem instead
+    of seeing a bare error message.
+    """
+    if not isinstance(result, dict) or "error" not in result:
+        return None
+    msg = f"{error_prefix}: {result['error']}"
+    hint = result.get("hint")
+    if hint:
+        msg += f"\nHint: {hint}"
+    return msg
+
+
 def _parse_result(result_json, error_prefix="Command failed"):
     """Parse a tool result JSON string and return a human-readable summary."""
     try:
@@ -126,7 +142,7 @@ def _parse_result(result_json, error_prefix="Command failed"):
     except (json.JSONDecodeError, TypeError):
         return str(result_json)
     if isinstance(result, dict) and "error" in result:
-        return f"{error_prefix}: {result['error']}"
+        return _format_error(result, error_prefix)
     return result
 
 
@@ -136,14 +152,16 @@ def _cmd_deploy(args_str, ctx=None):
     if not path:
         return "Usage: /agentpaas-deploy <project_path>"
     pack_result = json.loads(tools.agentpaas_pack({"project_dir": path}))
-    if isinstance(pack_result, dict) and "error" in pack_result:
-        return f"Pack failed: {pack_result['error']}"
+    err = _format_error(pack_result, "Pack failed")
+    if err:
+        return err
     agent_name = pack_result.get("agent_name", "")
     image_digest = pack_result.get("image_digest", "")
     target = image_digest or agent_name or path
     run_result = json.loads(tools.agentpaas_run({"image_or_project": target}))
-    if isinstance(run_result, dict) and "error" in run_result:
-        return f"Run failed: {run_result['error']}"
+    err = _format_error(run_result, "Run failed")
+    if err:
+        return err
     run_id = run_result.get("run_id", "?")
     return f"Deployed {agent_name or path}: run_id={run_id}"
 
@@ -151,8 +169,9 @@ def _cmd_deploy(args_str, ctx=None):
 def _cmd_status(args_str, ctx=None):
     """`/agentpaas-status` — show daemon status and active runs."""
     result = json.loads(tools.agentpaas_status({}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Status failed: {result['error']}"
+    err = _format_error(result, "Status failed")
+    if err:
+        return err
     # daemon status returns a flat dict (no "runs" key)
     lines = []
     if isinstance(result, dict):
@@ -173,8 +192,9 @@ def _cmd_status(args_str, ctx=None):
 def _cmd_list(args_str, ctx=None):
     """`/agentpaas-list` — list all AgentPaaS runs (active and recent)."""
     result = json.loads(tools.agentpaas_list_runs({}))
-    if isinstance(result, dict) and "error" in result:
-        return f"List failed: {result['error']}"
+    err = _format_error(result, "List failed")
+    if err:
+        return err
     runs = result.get("runs", []) if isinstance(result, dict) else (result if isinstance(result, list) else [])
     if not runs:
         return "No AgentPaaS runs found."
@@ -196,8 +216,9 @@ def _cmd_logs(args_str, ctx=None):
     if not run_id:
         return "Usage: /agentpaas-logs <run_id>"
     result = json.loads(tools.agentpaas_logs({"run_id": run_id, "tail": 50}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Logs failed: {result['error']}"
+    err = _format_error(result, "Logs failed")
+    if err:
+        return err
     return result.get("logs", "(no output)") if isinstance(result, dict) else str(result)
 
 
@@ -205,8 +226,9 @@ def _cmd_audit(args_str, ctx=None):
     """`/agentpaas-audit [run_id]` — show audit events."""
     run_id = (args_str or "").strip()
     result = json.loads(tools.agentpaas_audit_query({"run_id": run_id} if run_id else {}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Audit query failed: {result['error']}"
+    err = _format_error(result, "Audit query failed")
+    if err:
+        return err
     entries = result.get("entries", []) if isinstance(result, dict) else (result if isinstance(result, list) else [])
     if not entries:
         return "No audit events."
@@ -222,8 +244,9 @@ def _cmd_audit(args_str, ctx=None):
 def _cmd_doctor(args_str, ctx=None):
     """`/agentpaas-doctor` — run system diagnostics."""
     result = json.loads(tools.agentpaas_doctor({}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Doctor failed: {result['error']}"
+    err = _format_error(result, "Doctor failed")
+    if err:
+        return err
     checks = result.get("checks", []) if isinstance(result, dict) else []
     if not checks:
         return json.dumps(result, indent=2)
@@ -252,8 +275,9 @@ def _cmd_stop(args_str, ctx=None):
     if isinstance(result, dict) and result.get("requires_confirmation"):
         return (f"Stopping run '{run_id}' requires confirmation (not created by "
                 f"this session).\nUse the CLI: agent confirm <id>")
-    if isinstance(result, dict) and "error" in result:
-        return f"Stop failed: {result['error']}"
+    err = _format_error(result, "Stop failed")
+    if err:
+        return err
     return f"Stopped run {run_id}."
 
 
@@ -263,8 +287,9 @@ def _cmd_timeline(args_str, ctx=None):
     if not run_id:
         return "Usage: /agentpaas-timeline <run_id>"
     result = json.loads(tools.agentpaas_get_run_timeline({"run_id": run_id}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Timeline failed: {result['error']}"
+    err = _format_error(result, "Timeline failed")
+    if err:
+        return err
     events = result.get("events", []) if isinstance(result, dict) else (result if isinstance(result, list) else [])
     if not events:
         return f"No timeline events for run {run_id}."
@@ -289,8 +314,9 @@ def _cmd_init(args_str, ctx=None):
     if not path:
         return "Usage: /agentpaas-init <project_path>"
     result = json.loads(tools.agentpaas_init_project({"project_dir": path}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Init failed: {result['error']}"
+    err = _format_error(result, "Init failed")
+    if err:
+        return err
     files = result.get("files_created", "scaffold created") if isinstance(result, dict) else "scaffold created"
     return f"Project initialized at {path}.\nFiles: {files}"
 
@@ -301,8 +327,9 @@ def _cmd_pack(args_str, ctx=None):
     if not path:
         return "Usage: /agentpaas-pack <project_path>"
     result = json.loads(tools.agentpaas_pack({"project_dir": path}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Pack failed: {result['error']}"
+    err = _format_error(result, "Pack failed")
+    if err:
+        return err
     agent_name = result.get("agent_name", "?") if isinstance(result, dict) else "?"
     digest = result.get("image_digest", "?") if isinstance(result, dict) else "?"
     return f"Packed {agent_name}.\n  Image digest: {digest}"
@@ -314,8 +341,9 @@ def _cmd_run(args_str, ctx=None):
     if not target:
         return "Usage: /agentpaas-run <image_digest_or_project_path>"
     result = json.loads(tools.agentpaas_run({"image_or_project": target}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Run failed: {result['error']}"
+    err = _format_error(result, "Run failed")
+    if err:
+        return err
     run_id = result.get("run_id", "?") if isinstance(result, dict) else "?"
     status = result.get("status", "?") if isinstance(result, dict) else "?"
     return f"Run started: run_id={run_id}, status={status}"
@@ -324,8 +352,9 @@ def _cmd_run(args_str, ctx=None):
 def _cmd_secret_list(args_str, ctx=None):
     """`/agentpaas-secret-list` — list stored credentials by label."""
     result = json.loads(tools.agentpaas_secret_list({}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Secret list failed: {result['error']}"
+    err = _format_error(result, "Secret list failed")
+    if err:
+        return err
     # CLI returns a bare list of credential labels
     secrets = result if isinstance(result, list) else result.get("secrets", [])
     if not secrets:
@@ -347,8 +376,9 @@ def _cmd_secret_list(args_str, ctx=None):
 def _cmd_cron_list(args_str, ctx=None):
     """`/agentpaas-cron-list` — list all cron schedules."""
     result = json.loads(tools.agentpaas_cron_list({}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Cron list failed: {result['error']}"
+    err = _format_error(result, "Cron list failed")
+    if err:
+        return err
     # CLI returns a bare list of schedules
     schedules = result if isinstance(result, list) else result.get("schedules", [])
     if not schedules:
@@ -376,8 +406,9 @@ def _cmd_policy_show(args_str, ctx=None):
         if isinstance(result, dict) and "error" in result:
             # Fall back to run_id
             result = json.loads(tools.agentpaas_policy_show({"run_id": target}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Policy show failed: {result['error']}"
+    err = _format_error(result, "Policy show failed")
+    if err:
+        return err
     return json.dumps(result, indent=2)
 
 
@@ -387,8 +418,9 @@ def _cmd_summarize(args_str, ctx=None):
     if not run_id:
         return "Usage: /agentpaas-summarize <run_id>"
     result = json.loads(tools.agentpaas_summarize_run({"run_id": run_id}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Summarize failed: {result['error']}"
+    err = _format_error(result, "Summarize failed")
+    if err:
+        return err
     return json.dumps(result, indent=2)
 
 
@@ -398,8 +430,9 @@ def _cmd_explain_failure(args_str, ctx=None):
     if not run_id:
         return "Usage: /agentpaas-explain-failure <run_id>"
     result = json.loads(tools.agentpaas_explain_failure({"run_id": run_id}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Explain failure failed: {result['error']}"
+    err = _format_error(result, "Explain failure failed")
+    if err:
+        return err
     root_cause = result.get("root_cause", "") if isinstance(result, dict) else ""
     evidence = result.get("evidence", []) if isinstance(result, dict) else []
     lines = [f"Failure analysis for {run_id}:"]
@@ -420,8 +453,9 @@ def _cmd_trigger(args_str, ctx=None):
     if not agent_name:
         return "Usage: /agentpaas-trigger <agent_name>"
     result = json.loads(tools.agentpaas_trigger_invoke({"agent_name": agent_name}))
-    if isinstance(result, dict) and "error" in result:
-        return f"Trigger failed: {result['error']}"
+    err = _format_error(result, "Trigger failed")
+    if err:
+        return err
     run_id = result.get("run_id", "?") if isinstance(result, dict) else "?"
     status = result.get("status", "?") if isinstance(result, dict) else "?"
     invoke_response = result.get("invoke_response", "") if isinstance(result, dict) else ""
