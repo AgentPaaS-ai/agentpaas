@@ -356,7 +356,11 @@ def _cmd_trigger(args_str, ctx=None):
         return f"Trigger failed: {result['error']}"
     run_id = result.get("run_id", "?") if isinstance(result, dict) else "?"
     status = result.get("status", "?") if isinstance(result, dict) else "?"
-    return f"Trigger invoked {agent_name}: run_id={run_id}, status={status}"
+    invoke_response = result.get("invoke_response", "") if isinstance(result, dict) else ""
+    msg = f"Trigger invoked {agent_name}: run_id={run_id}, status={status}"
+    if invoke_response:
+        msg += f"\nInvoke Response:\n{invoke_response}"
+    return msg
 
 
 # ---------------------------------------------------------------------------

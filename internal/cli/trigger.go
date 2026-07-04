@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -103,19 +104,44 @@ func newTriggerCmd() *cobra.Command {
 			runID := tir.Run.RunID
 			status := tir.Run.Status
 
+			// Wait for the run to complete, then read the invoke response (BUG 11 fix).
+			// Only wait if --wait flag is set (default: false, returns immediately).
+			waitForResponse, _ := cmd.Flags().GetBool("wait")
+			invokeResponse := ""
+			if waitForResponse {
+				homeDir, _ := homeDirPath(cmd)
+				if homeDir != "" && runID != "" {
+					respPath := filepath.Join(homeDir, "state", "runs", runID, "invoke-response.json")
+					for i := 0; i < 60; i++ { // wait up to 60 seconds
+						if data, err := os.ReadFile(respPath); err == nil {
+							invokeResponse = string(data)
+							break
+						}
+						time.Sleep(1 * time.Second)
+					}
+				}
+			}
+
 			result := struct {
-				RunID  string `json:"run_id"`
-				Status string `json:"status"`
+				RunID          string `json:"run_id"`
+				Status         string `json:"status"`
+				InvokeResponse string `json:"invoke_response,omitempty"`
 			}{
-				RunID:  runID,
-				Status: status,
+				RunID:          runID,
+				Status:         status,
+				InvokeResponse: invokeResponse,
 			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(struct {
-					RunID  string `json:"run_id"`
-					Status string `json:"status"`
+					RunID          string `json:"run_id"`
+					Status         string `json:"status"`
+					InvokeResponse string `json:"invoke_response,omitempty"`
 				})
-				return fmt.Sprintf("Triggered agent: run_id=%s status=%s", r.RunID, r.Status)
+				msg := fmt.Sprintf("Triggered agent: run_id=%s status=%s", r.RunID, r.Status)
+				if r.InvokeResponse != "" {
+					msg += "\nInvoke Response:\n" + r.InvokeResponse
+				}
+				return msg
 			})
 		},
 	})
@@ -123,6 +149,7 @@ func newTriggerCmd() *cobra.Command {
 	invokeCmd := cmd.Commands()[0]
 	invokeCmd.Flags().String("payload", "", "Path to a payload file (optional)")
 	invokeCmd.Flags().String("content-type", "application/json", "Payload content type")
+	invokeCmd.Flags().Bool("wait", false, "Wait for run to complete and show invoke response")
 
 	return cmd
 }

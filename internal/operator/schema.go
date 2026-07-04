@@ -144,6 +144,10 @@ type SummarizeRunResponse struct {
 
 	// EvidenceRefs point to the audit/timeline evidence for this summary.
 	EvidenceRefs []EvidenceRef `json:"evidence_refs,omitempty"`
+
+	// InvokeResponse is the raw agent output from the invoke call (BUG 11).
+	// Empty if the agent hasn't been invoked or the response was not captured.
+	InvokeResponse string `json:"invoke_response,omitempty"`
 }
 
 // ExplainFailureResponse is the operator response for root-cause diagnosis of
