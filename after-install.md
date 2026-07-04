@@ -1,32 +1,31 @@
-# AgentPaaS Plugin Installed ✓
+# AgentPaaS Plugin Installed — Complete Setup
 
-## Required next steps (don't skip these!)
+The plugin is now installed and enabled. Two more steps are REQUIRED
+before the agentpaas_* tools will work:
 
-### 1. Add the agentpaas toolset
+## Step 1: Add the agentpaas toolset (REQUIRED)
 
-The plugin is enabled, but its tools won't be visible to the agent until you add
-the `agentpaas` toolset to your profile's platform toolsets:
-
-```bash
-hermes config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'
-```
-
-If you already have custom toolsets, append `"agentpaas"` to your existing list.
-
-### 2. Restart Hermes
-
-Run `/quit` in your Hermes session, then relaunch:
+The `hermes plugins install --enable` command does not automatically
+add the plugin's toolset to the platform configuration. You MUST run
+this command to make the tools available:
 
 ```bash
-hermes -p <your-profile>
+hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'
 ```
 
-Plugins and toolsets load at process startup — not mid-session.
+If the profile already has custom toolsets, append "agentpaas" to the
+existing list instead of replacing it.
 
-### 3. Verify after restart
+## Step 2: Restart required
 
-```bash
-hermes tools list | grep agentpaas    # should show ~30 tools
+Plugin and toolset changes load at process startup, not mid-session.
+The user must restart Hermes for the changes to take effect:
+
+```
+Quit this session and run: hermes -p <profile>
 ```
 
-Then try: `/agentpaas-doctor` to verify your setup is healthy.
+## Step 3: Verify
+
+After restart, verify the tools are available by asking:
+"Run agentpaas_doctor to check if my AgentPaaS setup is healthy"
