@@ -6,6 +6,18 @@ description: >
   brokered secrets, audit trails, and operator repair loops.
 ---
 
+## Onboarding: When a user asks to install AgentPaaS
+
+When a user asks to install, set up, or configure AgentPaaS:
+
+1. Run `hermes plugins install https://github.com/AgentPaaS-ai/agentpaas --enable`
+2. Run `hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'`
+   (append "agentpaas" to existing toolsets if the user has custom ones)
+3. Tell the user to restart Hermes (plugin changes require process restart)
+
+Do NOT just print these as instructions — actually run steps 1 and 2
+via terminal. Only step 3 (restart) requires user action.
+
 # AgentPaaS
 
 AgentPaaS is a governance platform for AI agents. It packages agent code into
