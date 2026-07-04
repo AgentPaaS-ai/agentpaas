@@ -28,30 +28,43 @@ binary, and home directory writability.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			checks := runDoctorChecks()
 			allOK := true
+			passed := 0
+			for _, c := range checks {
+				if c["status"] == "ok" {
+					passed++
+				} else {
+					allOK = false
+				}
+			}
+
+			if jsonOutput(cmd) {
+				result := struct {
+					SchemaVersion string                   `json:"schema_version"`
+					Overall       bool                     `json:"overall"`
+					ChecksPassed  int                      `json:"checks_passed"`
+					ChecksTotal   int                      `json:"checks_total"`
+					Checks        []map[string]string      `json:"checks"`
+				}{
+					SchemaVersion: "1.0.0",
+					Overall:       allOK,
+					ChecksPassed:  passed,
+					ChecksTotal:   len(checks),
+					Checks:        checks,
+				}
+				return printTextOrJSON(true, result, nil)
+			}
+
 			fmt.Println("agentpaas doctor")
 			fmt.Println("===============")
 			for _, c := range checks {
 				status := c["status"]
-				if status != "ok" {
-					allOK = false
-				}
 				fmt.Printf("%-18s %s\n", c["name"]+":", status)
 				if msg, ok := c["message"]; ok && msg != "" {
 					fmt.Printf("                   %s\n", msg)
 				}
 			}
 			fmt.Println()
-			if allOK {
-				fmt.Printf("Overall: %d/%d checks passed\n", len(checks), len(checks))
-			} else {
-				passed := 0
-				for _, c := range checks {
-					if c["status"] == "ok" {
-						passed++
-					}
-				}
-				fmt.Printf("Overall: %d/%d checks passed\n", passed, len(checks))
-			}
+			fmt.Printf("Overall: %d/%d checks passed\n", passed, len(checks))
 			return nil
 		},
 	}
