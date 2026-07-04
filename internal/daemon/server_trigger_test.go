@@ -180,14 +180,21 @@ func TestTriggerServer_GracefulShutdown(t *testing.T) {
 
 func TestTriggerService_InvokeFuncWired(t *testing.T) {
 	service := trigger.NewTriggerService(nil, trigger.DefaultMaxPayload)
-	service.SetInvokeFunc(func(_ context.Context, agentName string) (string, error) {
+	service.SetInvokeFunc(func(_ context.Context, agentName string, payload []byte) (string, error) {
 		if agentName != "wired-agent" {
 			t.Fatalf("invokeFunc agent = %q, want %q", agentName, "wired-agent")
+		}
+		// Verify payload is threaded through (regression for payload-dropped bug).
+		if len(payload) == 0 {
+			t.Fatalf("invokeFunc payload is empty; expected the bytes from InvokeRequest.payload")
 		}
 		return "run-from-daemon", nil
 	})
 
-	resp, err := service.Invoke(context.Background(), &triggerv1.InvokeRequest{AgentName: "wired-agent"})
+	resp, err := service.Invoke(context.Background(), &triggerv1.InvokeRequest{
+		AgentName: "wired-agent",
+		Payload:   []byte(`{"hello":"world"}`),
+	})
 	if err != nil {
 		t.Fatalf("Invoke(): %v", err)
 	}

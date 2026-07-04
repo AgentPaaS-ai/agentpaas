@@ -48,7 +48,7 @@ func writeDeployedLock(t *testing.T, hp *home.HomePaths, agentName string, agent
 
 func TestBuildInvokePayload_NoDeployment(t *testing.T) {
 	server := testControlServerForPayload(t, nil)
-	payload, err := server.buildInvokePayload(context.Background(), "nonexistent-agent")
+	payload, err := server.buildInvokePayload(context.Background(), "nonexistent-agent", nil)
 	if err != nil {
 		t.Fatalf("buildInvokePayload() error = %v, want nil", err)
 	}
@@ -65,7 +65,7 @@ func TestBuildInvokePayload_NoLLMConfig(t *testing.T) {
 		// No LLM field
 	})
 
-	payload, err := server.buildInvokePayload(context.Background(), "no-llm-agent")
+	payload, err := server.buildInvokePayload(context.Background(), "no-llm-agent", nil)
 	if err != nil {
 		t.Fatalf("buildInvokePayload() error = %v, want nil", err)
 	}
@@ -91,7 +91,7 @@ func TestBuildInvokePayload_WithLLMConfig(t *testing.T) {
 		},
 	})
 
-	payload, err := server.buildInvokePayload(context.Background(), "llm-agent")
+	payload, err := server.buildInvokePayload(context.Background(), "llm-agent", nil)
 	if err != nil {
 		t.Fatalf("buildInvokePayload() error = %v, want nil", err)
 	}
@@ -141,7 +141,7 @@ func TestBuildInvokePayload_CredentialNotFound(t *testing.T) {
 		},
 	})
 
-	payload, err := server.buildInvokePayload(context.Background(), "missing-cred-agent")
+	payload, err := server.buildInvokePayload(context.Background(), "missing-cred-agent", nil)
 	if err != nil {
 		t.Fatalf("buildInvokePayload() error = %v, want nil (graceful fallback)", err)
 	}
@@ -167,7 +167,7 @@ func TestBuildInvokePayload_AnthropicHeader(t *testing.T) {
 		},
 	})
 
-	payload, err := server.buildInvokePayload(context.Background(), "anthropic-agent")
+	payload, err := server.buildInvokePayload(context.Background(), "anthropic-agent", nil)
 	if err != nil {
 		t.Fatalf("buildInvokePayload() error = %v, want nil", err)
 	}
@@ -196,7 +196,7 @@ func TestBuildInvokePayload_SecretNotInError(t *testing.T) {
 		},
 	})
 
-	payload, err := server.buildInvokePayload(context.Background(), "secret-agent")
+	payload, err := server.buildInvokePayload(context.Background(), "secret-agent", nil)
 	if err != nil {
 		errStr := err.Error()
 		if strings.Contains(errStr, "my-secret") {

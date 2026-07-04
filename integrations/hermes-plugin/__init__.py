@@ -112,6 +112,60 @@ user for specific domains.
         logger.warning("Could not create skill pointer: %s", e)
 
 
+def _ensure_daemon_running():
+    """Best-effort: start the AgentPaaS daemon if its socket is missing.
+
+    Called from register() at session load. If the daemon socket doesn't
+    exist, spawn `agentpaas daemon start` as a detached background process.
+    This removes the UX friction where a user who just installed the plugin
+    and restarted has to separately discover and run the daemon-start command.
+
+    Failures are logged at debug level and never raised — plugin registration
+    must not fail because the daemon is down. The agent can still call
+    agentpaas_doctor to diagnose, and the hint in error messages guides
+    manual start.
+    """
+    try:
+        import os
+        import subprocess
+
+        # Resolve the socket path the same way tools.py does.
+        socket_path = os.environ.get("AGENTPAAS_SOCKET_PATH")
+        if not socket_path:
+            socket_path = os.path.expanduser("~/.agentpaas/daemon.sock")
+
+        if os.path.exists(socket_path):
+            return  # daemon already running
+
+        # Find the agentpaas binary. Prefer the repo binary if present,
+        # fall back to PATH resolution.
+        binary = None
+        candidates = [
+            "/usr/local/bin/agentpaas",
+            os.path.expanduser("~/projects/agentpaas/bin/agentpaas"),
+        ]
+        for c in candidates:
+            if os.path.isfile(c) and os.access(c, os.X_OK):
+                binary = c
+                break
+        if not binary:
+            binary = "agentpaas"  # rely on PATH
+
+        # Spawn detached. start_new_session=True (POSIX) detaches into a
+        # new session so the daemon survives this process exiting. Output
+        # goes to the daemon's own log file, not our pipes.
+        subprocess.Popen(
+            [binary, "daemon", "start"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        logger.debug("AgentPaaS daemon auto-started (socket was missing)")
+    except Exception as e:
+        logger.debug("AgentPaaS daemon auto-start skipped: %s", e)
+
+
 # ---------------------------------------------------------------------------
 # Slash command handlers
 #
@@ -190,7 +244,12 @@ def _cmd_status(args_str, ctx=None):
 
 
 def _cmd_list(args_str, ctx=None):
-    """`/agentpaas-list` — list all AgentPaaS runs (active and recent)."""
+    """`/agentpaas-list` — list AgentPaaS runs, split by status.
+
+    Shows a "Running" section (active containers) and a "Recent" section
+    (completed/failed history, last 10), so the user can tell at a glance
+    what's active vs done.
+    """
     result = json.loads(tools.agentpaas_list_runs({}))
     err = _format_error(result, "List failed")
     if err:
@@ -198,15 +257,39 @@ def _cmd_list(args_str, ctx=None):
     runs = result.get("runs", []) if isinstance(result, dict) else (result if isinstance(result, list) else [])
     if not runs:
         return "No AgentPaaS runs found."
-    lines = [f"AgentPaaS runs ({len(runs)} total):"]
-    for r in runs:
+
+    def _status(r):
+        return str(r.get("status", "?")).lower() if isinstance(r, dict) else ""
+
+    def _fmt(r):
         if isinstance(r, dict):
             run_id = r.get("run_id", r.get("id", "?"))
             agent = r.get("agent_name", "?")
             status = r.get("status", "?")
-            lines.append(f"  {run_id}: {agent} — {status}")
-        else:
-            lines.append(f"  {r}")
+            ts = r.get("started_at", "")
+            if hasattr(ts, "get"):
+                ts = ""  # protobuf timestamp — skip for compact display
+            line = f"  {run_id}: {agent} — {status}"
+            if ts:
+                line += f"  ({ts})"
+            return line
+        return f"  {r}"
+
+    running = [r for r in runs if _status(r) in ("running", "pending", "RUN_STATUS_RUNNING", "RUN_STATUS_PENDING")]
+    recent = [r for r in runs if _status(r) not in ("running", "pending", "RUN_STATUS_RUNNING", "RUN_STATUS_PENDING")]
+    recent = recent[:10]  # cap history
+
+    lines = []
+    if running:
+        lines.append(f"=== Running ({len(running)}) ===")
+        lines.extend(_fmt(r) for r in running)
+    if recent:
+        if lines:
+            lines.append("")
+        lines.append(f"=== Recent ({len(recent)} shown, {len(runs) - len(running)} total completed) ===")
+        lines.extend(_fmt(r) for r in recent)
+    if not lines:
+        return "No AgentPaaS runs found."
     return "\n".join(lines)
 
 
@@ -526,6 +609,14 @@ def register(ctx):
     # will write plain Python instead of using the @agent.on_invoke SDK
     # pattern. This is deterministic — no reliance on after-install.md.
     _ensure_local_skill_pointer()
+
+    # Best-effort: ensure the AgentPaaS daemon is running. A user who just
+    # installed the plugin and restarted should not have to separately know
+    # about `agentpaas daemon start`. If the socket is missing, spawn the
+    # daemon as a detached background process. Failures are logged but never
+    # block plugin registration — the agent can still call agentpaas_doctor
+    # to diagnose, and the hint in the error messages guides manual start.
+    _ensure_daemon_running()
 
     logger.debug("AgentPaaS plugin registered %d tools + %d slash commands",
                  len(schemas.TOOL_NAMES), len(_SLASH_COMMANDS))

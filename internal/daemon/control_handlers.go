@@ -446,7 +446,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		defer close(tr.InvokeDone)
 		timeoutCtx, timeoutCancel := context.WithTimeout(invokeCtx, 2*time.Minute)
 		defer timeoutCancel()
-		if stdout, err := s.invokeAgent(timeoutCtx, containerID, agentName); err != nil {
+		if stdout, err := s.invokeAgent(timeoutCtx, containerID, agentName, req.GetTriggerPayload()); err != nil {
 			// Write directly to the pointer under the lock. This works
 			// whether the run is still in s.runs or has been claimed by
 			// Stop (claimRun deletes from the map but the pointer is
@@ -865,7 +865,7 @@ func (s *controlServer) recordAudit(eventType, actor string, payload map[string]
 	}
 }
 
-func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID, agentName string) (string, error) {
+func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID, agentName string, triggerPayload []byte) (string, error) {
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return "", fmt.Errorf("runtime: %w", err)
@@ -890,8 +890,9 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 		return "", fmt.Errorf("harness /readyz not ready after 30 attempts")
 	}
 
-	// Build the invoke payload with LLM config and resolved credentials.
-	payload, err := s.buildInvokePayload(ctx, agentName)
+	// Build the invoke payload with LLM config, resolved credentials, and
+	// the user's trigger payload (merged at top level).
+	payload, err := s.buildInvokePayload(ctx, agentName, triggerPayload)
 	if err != nil {
 		return "", fmt.Errorf("build invoke payload: %w", err)
 	}
@@ -924,19 +925,41 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 // buildInvokePayload builds the invoke payload with LLM config and resolved credentials.
 // If the agent has no llm config in agent.yaml, returns an empty payload (backward compat).
 // The credential value NEVER appears in logs or error messages.
-func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string) (map[string]any, error) {
+//
+// triggerPayload (optional) is the user's trigger payload from RunRequest.trigger_payload
+// or InvokeRequest.payload. When provided and valid JSON, its top-level keys are merged
+// into the payload so the agent's handle_invoke() receives the user's input data.
+// Reserved keys ("llm", "credentials", "mcp") are protected — user values for those
+// keys are silently dropped to prevent clobbering daemon-injected config.
+func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string, triggerPayload []byte) (map[string]any, error) {
 	payload := map[string]any{}
+
+	// Merge user trigger payload first, so daemon-injected reserved keys
+	// (llm, credentials, mcp) always win over user-supplied values.
+	if len(triggerPayload) > 0 {
+		var userPayload map[string]any
+		if err := json.Unmarshal(triggerPayload, &userPayload); err == nil {
+			reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true}
+			for k, v := range userPayload {
+				if reserved[k] {
+					continue
+				}
+				payload[k] = v
+			}
+		}
+		// Invalid JSON → silently ignore; base payload is still returned.
+	}
 
 	// Load the deployed agent lock to get AgentYAML with LLM config.
 	lockPath := filepath.Join(pack.DeployedAgentPath(s.homePaths.Home, agentName), "agent.lock")
 	lock, err := pack.ReadAgentLock(lockPath)
 	if err != nil {
-		// Not deployed or load failed — return empty payload (backward compat)
+		// Not deployed or load failed — return payload with user keys only.
 		return payload, nil
 	}
 
 	if lock.AgentYAML == nil || lock.AgentYAML.LLM.Provider == "" {
-		// No LLM config — return empty payload
+		// No LLM config — return payload with user keys only.
 		return payload, nil
 	}
 

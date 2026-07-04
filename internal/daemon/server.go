@@ -372,9 +372,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: trigger server init: %v\n", err)
 	} else {
-		triggerSrv.SetInvokeFunc(func(ctx context.Context, agentName string) (string, error) {
+		triggerSrv.SetInvokeFunc(func(ctx context.Context, agentName string, payload []byte) (string, error) {
 			resp, err := controlServer.Run(ctx, &controlv1.RunRequest{
-				AgentName: agentName,
+				AgentName:      agentName,
+				TriggerPayload: payload,
 			})
 			if err != nil {
 				return "", err
@@ -394,8 +395,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Start cron scheduler for scheduled agent invocations.
 	cronStatePath := filepath.Join(d.paths.State, "cron-schedules.json")
 	triggerSvc := trigger.NewTriggerService(auditWriter, trigger.DefaultMaxPayload, d.eventBus, nil)
-	triggerSvc.SetInvokeFunc(func(ctx context.Context, agentName string) (string, error) {
-		resp, err := controlServer.Run(ctx, &controlv1.RunRequest{AgentName: agentName})
+	triggerSvc.SetInvokeFunc(func(ctx context.Context, agentName string, payload []byte) (string, error) {
+		resp, err := controlServer.Run(ctx, &controlv1.RunRequest{AgentName: agentName, TriggerPayload: payload})
 		if err != nil {
 			return "", err
 		}

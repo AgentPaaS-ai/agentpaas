@@ -347,12 +347,15 @@ func lineColumnAtOffset(data []byte, offset int) (int, int) {
 }
 
 // SetInvokeFunc wires Invoke to call the daemon's Run handler.
-func (s *Server) SetInvokeFunc(fn func(ctx context.Context, agentName string) (string, error)) {
+// The fn receives the agent name and the user's trigger payload bytes
+// (from InvokeRequest.payload) so the payload reaches the agent's
+// handle_invoke() instead of being dropped.
+func (s *Server) SetInvokeFunc(fn func(ctx context.Context, agentName string, payload []byte) (string, error)) {
 	s.triggerService.SetInvokeFunc(fn)
 }
 
 // SetInvokeFunc wires Invoke to the given run handler.
-func (s *TriggerService) SetInvokeFunc(fn func(ctx context.Context, agentName string) (string, error)) {
+func (s *TriggerService) SetInvokeFunc(fn func(ctx context.Context, agentName string, payload []byte) (string, error)) {
 	s.invokeFunc = fn
 }
 
@@ -380,7 +383,7 @@ type TriggerService struct {
 
 	cancelGracePeriod time.Duration
 
-	invokeFunc func(ctx context.Context, agentName string) (string, error)
+	invokeFunc func(ctx context.Context, agentName string, payload []byte) (string, error)
 }
 
 // NewTriggerService creates the trigger service implementation.
@@ -445,7 +448,7 @@ func (s *TriggerService) Invoke(ctx context.Context, req *triggerv1.InvokeReques
 	}
 
 	if s.invokeFunc != nil {
-		actualRunID, err := s.invokeFunc(ctx, req.GetAgentName())
+		actualRunID, err := s.invokeFunc(ctx, req.GetAgentName(), req.GetPayload())
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "invoke agent: %v", err)
 		}
