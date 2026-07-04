@@ -51,6 +51,28 @@ func TestExplainFailure_BudgetExceededRun(t *testing.T) {
 	}
 }
 
+func TestExplainFailure_CompletedRun(t *testing.T) {
+	start := operatorTestRecord("run_start", "run-completed", nil)
+	invoke := operatorTestRecord("invoke", "run-completed", nil)
+	complete := operatorTestRecord("run_complete", "run-completed", nil)
+	server := newOperatorTestServer(t, start, invoke, complete)
+
+	resp, err := server.ExplainFailure(context.Background(), &controlv1.ExplainFailureRequest{RunId: "run-completed"})
+	if err != nil {
+		t.Fatalf("ExplainFailure: %v", err)
+	}
+	want := "run run-completed has status 'completed' — no failure to explain"
+	if resp.GetRootCause() != want {
+		t.Fatalf("RootCause = %q, want %q", resp.GetRootCause(), want)
+	}
+	if resp.GetErrorCategory() != "" {
+		t.Fatalf("ErrorCategory = %q, want empty", resp.GetErrorCategory())
+	}
+	if resp.GetNextAction() != "" {
+		t.Fatalf("NextAction = %q, want empty", resp.GetNextAction())
+	}
+}
+
 func TestExplainFailure_NoEvents(t *testing.T) {
 	server := newOperatorTestServer(t)
 
