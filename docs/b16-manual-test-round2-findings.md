@@ -237,6 +237,67 @@ has no clear alternative.
 
 ---
 
+### BUG-T4-12 (CRITICAL): requirements.txt deps locked but never installed in container
+
+**Symptom:** Agent with `import requests` in main.py fails at startup.
+readyz returns 503 forever. Timeline shows:
+`run_failed: harness not ready (possible import failure or startup crash)`
+The agent reported "deployed successfully" but the run actually FAILED.
+
+**Root cause:** The pack pipeline has three stages:
+1. `ResolveDependencies` (build.go:211) — runs `uv pip compile` to lock
+   deps into `agentpaas-locked.txt`. This WORKS.
+2. `renderDockerfile` (build.go:604) — COPYs the lock file into the image
+   as `/agentpaas/requirements.lock` and sets `ENV AGENTPAAS_DEPS_LOCKED`.
+   This WORKS.
+3. **Nothing installs the deps.** There is no `RUN pip install -r ...` in
+   the Dockerfile, and the harness binary does not read
+   `AGENTPAAS_DEPS_LOCKED` to install deps at runtime. The env var is
+   set but nothing consumes it.
+
+**Confirmed in-container:**
+```
+$ docker exec <c> python3 -c "import requests"
+ModuleNotFoundError: No module named 'requests'
+$ docker exec <c> python3 -c "print(open('/agentpaas/requirements.lock').read())"
+certifi@2026.6.17
+charset-normalizer@3.4.7
+idna@3.18
+requests@2.34.2
+urllib3@2.7.0
+$ docker exec <c> python3 -c "import os; print(os.environ.get('AGENTPAAS_DEPS_LOCKED'))"
+/agentpaas/requirements.lock
+```
+
+**Impact:** ANY agent that imports a third-party package (requests,
+httpx, openai, anthropic, etc.) will fail to start. Only stdlib-only
+agents work. This blocks virtually all real-world use cases.
+
+**Likely fix (two options):**
+1. **Build-time install (preferred):** Add a `RUN pip install --no-cache-dir
+   -r /agentpaas/requirements.lock` step to the Dockerfile in
+   `renderDockerfile`. This requires the base image to have pip. The
+   current base image (Debian slim) has Python 3.11 but may not have pip.
+   May need `python3 -m ensurepip` first, or switch to a base image with
+   pip pre-installed.
+2. **Runtime install:** The harness binary reads
+   `AGENTPAAS_DEPS_LOCKED`, runs `pip install -r <lockfile>` before
+   starting the agent worker. Slower (installs on every container start)
+   but works without Dockerfile changes.
+
+Option 1 is better (deps baked into image, no runtime overhead). But
+requires verifying the base image has pip + network access during build
+(or vendoring the wheels).
+
+**Secondary issue:** The agent (grok-4.3) reported "deployed successfully"
+and "agent is now live" when the run had actually FAILED. The agent did
+not check the run status after deployment — it assumed success from the
+"run started" response. This is a test-finding, not a code bug: the
+plugin tool `agentpaas_run` returns "Run started: run-<id>" which the
+agent interpreted as success without checking `agentpaas_status`.
+
+---
+
 ## Architecture Observations (not bugs)
 
 1. **`trigger invoke` creates a new run, not an invoke within an existing run.**
@@ -257,9 +318,10 @@ has no clear alternative.
 ## Recommendation
 
 Fix priority order:
-1. BUG-T4-10 (HIGH): Agent doesn't complete onboarding autonomously — biggest UX blocker for natural-language install path
-2. BUG-T4-01 (MED): policy show returns stub error
-3. BUG-T4-02 (LOW): logs returns NDJSON, plugin tool expects JSON array
-4. BUG-T4-09 (MED): status shows "0 invocations" after successful invoke
-5. BUG-T4-03 (LOW): explain-failure says "Run failed" for successful runs
-6. BUG-T4-04, T4-05, T4-06/T4-11, T4-07, T4-08: cosmetic/info-level
+1. **BUG-T4-12 (CRITICAL): Deps never installed in container** — blocks ALL real agents that use third-party packages
+2. BUG-T4-10 (HIGH): Agent doesn't complete onboarding autonomously
+3. BUG-T4-01 (MED): policy show returns stub error
+4. BUG-T4-02 (LOW): logs returns NDJSON, plugin tool expects JSON array
+5. BUG-T4-09 (MED): status shows "0 invocations" after successful invoke
+6. BUG-T4-03 (LOW): explain-failure says "Run failed" for successful runs
+7. BUG-T4-04, T4-05, T4-06/T4-11, T4-07, T4-08: cosmetic/info-level
