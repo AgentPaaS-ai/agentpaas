@@ -258,7 +258,11 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	}
 
 	// Execute the HTTP request.
-	client := &http.Client{Timeout: 5 * time.Second}
+	// LLM calls (especially reasoning models like grok-4.3, o3, etc.) can take
+	// 30+ seconds to respond. The previous 5s timeout killed requests before
+	// the provider returned, causing "context deadline exceeded" failures on
+	// anything requiring non-trivial reasoning.
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "http request failed: "+err.Error())
