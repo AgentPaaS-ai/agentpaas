@@ -37,6 +37,49 @@ func TestRecommendPolicyPatch_EgressDomain(t *testing.T) {
 	}
 }
 
+func TestRecommendPolicyPatch_ShortForm(t *testing.T) {
+	// "allow api.example.com" without "egress to"
+	server := newOperatorTestServer(t)
+
+	resp, err := server.RecommendPolicyPatch(context.Background(), &controlv1.RecommendPolicyPatchRequest{
+		DesiredBehavior: "allow api.example.com",
+	})
+	if err != nil {
+		t.Fatalf("RecommendPolicyPatch: %v", err)
+	}
+	if !strings.Contains(resp.GetProposedPatch(), "api.example.com") {
+		t.Fatalf("patch missing domain:\n%s", resp.GetProposedPatch())
+	}
+}
+
+func TestRecommendPolicyPatch_WithPort(t *testing.T) {
+	server := newOperatorTestServer(t)
+
+	resp, err := server.RecommendPolicyPatch(context.Background(), &controlv1.RecommendPolicyPatchRequest{
+		DesiredBehavior: "allow egress to api.example.com:443",
+	})
+	if err != nil {
+		t.Fatalf("RecommendPolicyPatch: %v", err)
+	}
+	if !strings.Contains(resp.GetProposedPatch(), "api.example.com") {
+		t.Fatalf("patch missing domain:\n%s", resp.GetProposedPatch())
+	}
+}
+
+func TestRecommendPolicyPatch_AddVerb(t *testing.T) {
+	server := newOperatorTestServer(t)
+
+	resp, err := server.RecommendPolicyPatch(context.Background(), &controlv1.RecommendPolicyPatchRequest{
+		DesiredBehavior: "add api.example.com to egress",
+	})
+	if err != nil {
+		t.Fatalf("RecommendPolicyPatch: %v", err)
+	}
+	if !strings.Contains(resp.GetProposedPatch(), "api.example.com") {
+		t.Fatalf("patch missing domain:\n%s", resp.GetProposedPatch())
+	}
+}
+
 func TestRecommendPolicyPatch_WellKnownDomain(t *testing.T) {
 	server := newOperatorTestServer(t)
 

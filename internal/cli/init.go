@@ -90,10 +90,6 @@ func validateInitProjectPath(projectDir string) (string, error) {
 	if strings.ContainsRune(projectDir, 0) {
 		return "", errors.New("project path contains null byte")
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("get current directory: %w", err)
-	}
 	absProjectDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		return "", fmt.Errorf("resolve project directory: %w", err)
@@ -101,17 +97,9 @@ func validateInitProjectPath(projectDir string) (string, error) {
 	if strings.ContainsRune(absProjectDir, 0) {
 		return "", errors.New("project path contains null byte")
 	}
-	rel, err := filepath.Rel(cwd, absProjectDir)
-	if err != nil {
-		return "", fmt.Errorf("resolve project path relative to current directory: %w", err)
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", errors.New("project path must be under current directory")
-	}
 	if err := rejectInitSymlinkPath(absProjectDir); err != nil {
 		return "", err
 	}
-
 	return absProjectDir, nil
 }
 

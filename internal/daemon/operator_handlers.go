@@ -473,6 +473,12 @@ func (s *controlServer) RecommendPolicyPatch(ctx context.Context, req *controlv1
 		strings.EqualFold(fields[1], "egress") &&
 		strings.EqualFold(fields[2], "to"):
 		domain := strings.ToLower(strings.TrimSuffix(fields[3], "."))
+		if idx := strings.LastIndex(domain, ":"); idx > 0 {
+			portPart := domain[idx+1:]
+			if _, err := strconv.Atoi(portPart); err == nil {
+				domain = domain[:idx]
+			}
+		}
 		if strings.Contains(domain, "*") {
 			proposal = PendingConfirmation{
 				ChangeType: "policy_patch",
@@ -546,11 +552,67 @@ func (s *controlServer) RecommendPolicyPatch(ctx context.Context, req *controlv1
 				service,
 			),
 		}
-	default:
-		return unableToParsePolicyPatch(), nil
+	}
+
+	// Fallback: try to extract a domain from anywhere in the input.
+	if proposal.ChangeType == "" {
+		domain := extractDomain(desired)
+		if domain != "" {
+			if strings.Contains(domain, "*") {
+				proposal = PendingConfirmation{
+					ChangeType: "policy_patch",
+					RiskLevel:  string(operator.RiskHigh),
+					Rationale:  "wildcard egress destinations are rejected; this proposal is retained for review only",
+				}
+				return s.policyPatchResponse(proposal)
+			}
+			risk := operator.RiskMedium
+			if domain == "github.com" || domain == "api.openai.com" {
+				risk = operator.RiskLow
+			}
+			proposal = PendingConfirmation{
+				ChangeType:    "policy_patch",
+				RiskLevel:     string(risk),
+				Rationale:     fmt.Sprintf("allow HTTPS egress to %s", domain),
+				AffectedDests: []string{domain},
+				ProposedPatch: fmt.Sprintf(
+					"egress:\n  - domain: %s\n    ports: [443]\n    methods: [GET, POST]\n",
+					domain,
+				),
+			}
+			evidence, err := s.policyDenialEvidence(domain)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "query policy denial evidence: %v", err)
+			}
+			proposal.EvidenceRefs = evidence
+		} else {
+			return unableToParsePolicyPatch(), nil
+		}
 	}
 
 	return s.policyPatchResponse(proposal)
+}
+
+// extractDomain finds the first domain-like token in the input string.
+// Strips port suffix if present. Returns empty string if none found.
+func extractDomain(input string) string {
+	for _, token := range strings.Fields(input) {
+		token = strings.TrimSuffix(strings.TrimSuffix(token, "."), ",")
+		if idx := strings.LastIndex(token, ":"); idx > 0 {
+			portPart := token[idx+1:]
+			if _, err := strconv.Atoi(portPart); err == nil {
+				token = token[:idx]
+			}
+		}
+		token = strings.ToLower(token)
+		if token == "allow" || token == "egress" || token == "to" || token == "add" || token == "enable" {
+			continue
+		}
+		if safeDomain.MatchString(token) {
+			return token
+		}
+	}
+	return ""
 }
 
 func isCredentialBinding(fields []string) bool {
