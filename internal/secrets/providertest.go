@@ -50,7 +50,7 @@ func TestProvider(ctx context.Context, provider string, secretValue []byte) Prov
 		return testOpenAI(ctx, secretValue)
 	case "anthropic":
 		return testAnthropic(ctx, secretValue)
-	case "xiai":
+	case "xai", "xiai":
 		return testXAI(ctx, secretValue)
 	default:
 		return ProviderTestResult{

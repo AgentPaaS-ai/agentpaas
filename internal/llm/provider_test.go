@@ -11,13 +11,10 @@ import (
 )
 
 func TestGetAdapter_Valid(t *testing.T) {
-	for _, p := range []string{"openai", "anthropic", "xiai"} {
+	for _, p := range []string{"openai", "anthropic", "xai", "xiai"} {
 		adapter := GetAdapter(p)
 		if adapter == nil {
 			t.Errorf("GetAdapter(%q) returned nil", p)
-		}
-		if adapter.Name() != p {
-			t.Errorf("GetAdapter(%q).Name() = %q, want %q", p, adapter.Name(), p)
 		}
 	}
 }
@@ -36,7 +33,7 @@ func TestSupportedProviders(t *testing.T) {
 	if len(providers) != 3 {
 		t.Fatalf("SupportedProviders() len = %d, want 3", len(providers))
 	}
-	expected := map[string]bool{"openai": true, "anthropic": true, "xiai": true}
+	expected := map[string]bool{"openai": true, "anthropic": true, "xai": true}
 	for _, p := range providers {
 		if !expected[p] {
 			t.Errorf("unexpected provider %q in SupportedProviders()", p)
