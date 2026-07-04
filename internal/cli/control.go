@@ -345,6 +345,7 @@ func newLogsCmd() *cobra.Command {
 			runID := args[0]
 			follow, _ := cmd.Flags().GetBool("follow")
 			tail, _ := cmd.Flags().GetInt32("tail")
+			logsJSON, _ := cmd.Flags().GetBool("json")
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -368,23 +369,31 @@ func newLogsCmd() *cobra.Command {
 				return fmt.Errorf("logs failed: %w", err)
 			}
 
-			jsonOut := jsonOutput(cmd)
+			jsonOut := jsonOutput(cmd) && !logsJSON
+			var entries []map[string]interface{}
 			for {
 				entry, err := stream.Recv()
 				if err == io.EOF {
-					return nil
+					break
 				}
 				if err != nil {
 					return fmt.Errorf("log stream error: %w", err)
 				}
-				if jsonOut {
-					data, _ := json.Marshal(map[string]interface{}{
-						"timestamp": entry.GetTimestamp().AsTime().Format(time.RFC3339Nano),
-						"run_id":    entry.GetRunId(),
-						"level":     entry.GetLevel(),
-						"message":   entry.GetMessage(),
-						"fields":    entry.GetFields(),
-					})
+				fields := entry.GetFields()
+				entryMap := map[string]interface{}{
+					"timestamp": entry.GetTimestamp().AsTime().Format(time.RFC3339Nano),
+					"level":     entry.GetLevel(),
+					"message":   entry.GetMessage(),
+				}
+				if logsJSON {
+					if fields != nil {
+						entryMap["fields"] = fields
+					}
+					entries = append(entries, entryMap)
+				} else if jsonOut {
+					entryMap["run_id"] = entry.GetRunId()
+					entryMap["fields"] = fields
+					data, _ := json.Marshal(entryMap)
 					fmt.Println(string(data))
 				} else {
 					ts := ""
@@ -394,10 +403,22 @@ func newLogsCmd() *cobra.Command {
 					fmt.Printf("[%s] %s %s\n", ts, entry.GetLevel(), entry.GetMessage())
 				}
 			}
+			if logsJSON {
+				data, err := json.Marshal(map[string]interface{}{
+					"run_id":  runID,
+					"entries": entries,
+				})
+				if err != nil {
+					return fmt.Errorf("json marshal error: %w", err)
+				}
+				fmt.Println(string(data))
+			}
+			return nil
 		},
 	}
 	cmd.Flags().BoolP("follow", "f", false, "Follow log output in real-time")
 	cmd.Flags().Int32("tail", 100, "Number of historical log entries to return")
+	cmd.Flags().Bool("json", false, "Output logs as a single JSON document with an entries array")
 	return cmd
 }
 

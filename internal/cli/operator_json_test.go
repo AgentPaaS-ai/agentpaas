@@ -123,6 +123,10 @@ func TestLogsCmdJSONShape(t *testing.T) {
 	if logsCmd == nil {
 		t.Fatal("logs command not found")
 	}
+	jsonFlag := logsCmd.Flags().Lookup("json")
+	if jsonFlag == nil {
+		t.Fatal("logs --json flag not found")
+	}
 }
 
 // TestPolicyCmdJSONShape verifies the `agent policy` command has subcommands.
