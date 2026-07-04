@@ -208,22 +208,50 @@ If the agent needs NO external credentials, skip this step silently.
 
 ### Step 3: Configure LLM Provider (T4-19)
 
-1. Detect if the agent needs an LLM by checking for:
-   - Imports: `openai`, `anthropic`, `xai`, `langchain`, `llm`
-   - LLM client instantiation: `OpenAI()`, `Anthropic()`, `ChatOpenAI()`
-   - agent.yaml `llm:` section
-   - Natural language processing logic (chat, completion, embedding)
-2. If an LLM is needed AND agent.yaml has no `llm:` section:
-   a. Ask the user: "Which LLM provider? (openai / anthropic / xai)"
-   b. Ask: "Which model? (e.g. gpt-4o, claude-sonnet-4, grok-beta)"
-   c. Ask for the API key if not already stored in Step 2.
-   d. Call `agentpaas_llm_configure` with project_dir, provider, model, credential.
+1. Detect if the agent needs an LLM. Check TWO sources:
+   a. **User intent** (BEFORE writing code): If the user's request involves
+      language processing — "answer a question", "summarize", "classify",
+      "generate text", "chat", "analyze", "translate", "describe an image",
+      "make a decision", "reason about" — the agent needs an LLM. Do NOT
+      wait until code is written to detect this. Ask the onboarding
+      questions (below) BEFORE writing main.py.
+   b. **Code scan** (for existing code): Check for imports (`openai`,
+      `anthropic`, `xai`, `langchain`, `llm`), client instantiation
+      (`OpenAI()`, `Anthropic()`, `ChatOpenAI()`), agent.yaml `llm:`
+      section, or natural language processing logic.
+2. If an LLM is needed AND agent.yaml has no `llm:` section, you MUST ask
+   these questions BEFORE writing code or packing. Do NOT skip. Do NOT
+   guess. Do NOT proceed without answers:
+   a. "Which LLM provider? (openai / anthropic / xai)"
+   b. "Which model? (e.g. gpt-4o-mini, claude-sonnet-4, grok-beta)"
+   c. "What is your API key for {provider}?" — then store it via
+      `agentpaas_secret_add(name="{provider}-api-key", value=...)`.
+      Call `agentpaas_secret_test` to validate the key works.
+   d. Call `agentpaas_llm_configure` with project_dir, provider, model,
+      and the credential name (e.g. "openai-api-key").
    e. Add egress for the chosen provider domain to policy.yaml:
       - openai → api.openai.com:443
       - anthropic → api.anthropic.com:443
       - xai → api.x.ai:443
+   f. The agent code should use the AgentPaaS SDK's `agent.llm()` helper
+      which routes through the harness — the credential is injected at
+      runtime by the daemon. The agent code should NOT read the API key
+      from environment variables or hardcode it.
 
 If the agent does NOT need an LLM, skip this step silently.
+
+### Pre-Pack Gate (MANDATORY)
+
+Before calling `agentpaas_pack`, verify ALL of the following:
+1. Egress policy lists every external domain the agent will access.
+2. Every credential the agent needs is stored in Keychain (check with
+   `agentpaas_secret_list`).
+3. If the agent uses an LLM, agent.yaml has an `llm:` section pointing
+   to the stored credential.
+4. The LLM provider's domain is in the egress policy.
+
+If ANY of these are missing, do NOT pack. Ask the user to resolve the
+gap first.
 
 ### Execution Order
 
@@ -251,6 +279,31 @@ You MUST:
    Call `agentpaas_llm_configure` with openai/gpt-4o-mini.
    Add api.openai.com to policy.yaml egress.
 4. Pack and run.
+
+### Example: LLM Agent
+
+User: "Build an agent that answers questions using an LLM"
+
+You MUST (BEFORE writing any code):
+1. Detect LLM need from user intent — "answers questions" means LLM.
+2. Ask: "Which LLM provider? (openai / anthropic / xai)"
+   Ask: "Which model? (e.g. gpt-4o-mini, claude-sonnet-4)"
+   Ask: "What is your API key?" → store via `agentpaas_secret_add`.
+   Call `agentpaas_llm_configure`.
+3. Write policy.yaml with egress for the provider domain (e.g. api.openai.com:443).
+4. Write agent code using the SDK pattern:
+
+```python
+from agentpaas_sdk import agent
+
+@agent.on_invoke
+def handle_invoke(payload):
+    question = payload.get("question", "")
+    result = agent.llm(prompt=f"Answer this question concisely: {question}")
+    return {"status": "OK", "answer": result.get("text", "")}
+```
+
+5. Pack and run.
 
 ## Available Slash Commands
 

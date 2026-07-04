@@ -89,12 +89,20 @@ or calling any agentpaas tools. This skill contains essential
 instructions for:
 - Agent code structure (@agent.on_invoke SDK pattern)
 - Egress policy confirmation (ask user, write specific domains)
-- Credential and LLM configuration
+- Credential and LLM configuration (ask BEFORE writing code)
 - Pack/run workflow and verification
 
 Do NOT skip this step. Do NOT write agent code without loading the
 skill first. Do NOT use wildcard egress policies without asking the
 user for specific domains.
+
+BEFORE packing any agent, you MUST verify:
+1. Egress policy lists every external domain.
+2. Every credential is stored in Keychain.
+3. If the agent uses an LLM: agent.yaml has llm: section, the API key
+   is stored via agentpaas_secret_add, and the LLM provider domain is
+   in the egress policy.
+If any are missing, do NOT pack — ask the user to resolve first.
 
 # AgentPaaS Anti-Fabrication Rule
 
