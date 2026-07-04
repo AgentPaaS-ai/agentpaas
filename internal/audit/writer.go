@@ -30,6 +30,11 @@ type AuditWriter struct {
 // NewAuditWriter opens or creates the JSONL file at path and reconstructs the
 // head anchor by replaying all existing records. If the file does not exist,
 // it is created. The writer is ready for Append calls immediately.
+//
+// If the chain is broken (e.g. from an unclean shutdown mid-write), the writer
+// attempts recovery: it truncates the file at the last valid record and
+// re-replays. This prevents the daemon from crash-looping forever on a
+// corrupted tail — the valid prefix is preserved, the broken tail is lost.
 func NewAuditWriter(path string) (*AuditWriter, error) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
@@ -45,8 +50,15 @@ func NewAuditWriter(path string) (*AuditWriter, error) {
 
 	// Reconstruct head by replaying all existing records.
 	if err := w.replay(); err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("replay audit file: %w", err)
+		// Chain is broken — attempt recovery by truncating at the last
+		// valid record. This is a best-effort recovery: the broken tail
+		// (usually a partial write from an unclean shutdown) is discarded,
+		// but the valid prefix is preserved and the daemon can start.
+		recoverErr := w.recoverFromCorruption(err)
+		if recoverErr != nil {
+			_ = f.Close()
+			return nil, fmt.Errorf("replay audit file: %w (recovery failed: %v)", err, recoverErr)
+		}
 	}
 
 	return w, nil
@@ -170,6 +182,136 @@ func (w *AuditWriter) replay() error {
 	if hasRecords {
 		w.seq = prev.Seq
 		w.hash = prev.RecordHash
+	}
+
+	return nil
+}
+
+// recoverFromCorruption attempts to repair a broken audit chain by
+// truncating the file at the last valid record and re-replaying.
+//
+// Strategy:
+// 1. Seek to the beginning of the file.
+// 2. Read line by line, tracking the byte offset of the START of each
+//    line and validating the chain as we go.
+// 3. When we hit the broken record (the one that caused the replay
+//    error), truncate the file at the byte offset of that record —
+//    effectively discarding the broken tail.
+// 4. Re-replay the truncated file to set the head anchor.
+//
+// If recovery succeeds, the writer is ready for new Append calls with
+// the head set to the last valid record. The corrupted tail is lost.
+func (w *AuditWriter) recoverFromCorruption(replayErr error) error {
+	if _, err := w.file.Seek(0, 0); err != nil {
+		return fmt.Errorf("seek for recovery: %w", err)
+	}
+
+	scanner := bufio.NewScanner(w.file)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+
+	var prev AuditRecord
+	var hasRecords bool
+	var validBytes int64  // byte offset of the end of the last valid line
+	var truncateAt int64  // byte offset where the broken line starts
+	var lineStart int64   // byte offset of the start of the current line
+	foundBreak := false
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineLen := int64(len(line)) + 1 // +1 for the \n
+		currentLineStart := lineStart
+		lineStart += lineLen
+
+		if line == "" {
+			validBytes = lineStart
+			continue
+		}
+
+		var rec AuditRecord
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			truncateAt = currentLineStart
+			foundBreak = true
+			break
+		}
+
+		// Validate seq monotonicity
+		if hasRecords {
+			if rec.Seq != prev.Seq+1 {
+				truncateAt = currentLineStart
+				foundBreak = true
+				break
+			}
+		}
+
+		// Genesis check
+		if !hasRecords {
+			if rec.Seq != 1 {
+				// Entire file is corrupt — truncate to empty
+				truncateAt = 0
+				foundBreak = true
+				break
+			}
+			if rec.PrevHash != "" {
+				truncateAt = currentLineStart
+				foundBreak = true
+				break
+			}
+		}
+
+		// Verify prev_hash chain
+		if hasRecords {
+			if rec.PrevHash != prev.RecordHash {
+				truncateAt = currentLineStart
+				foundBreak = true
+				break
+			}
+		}
+
+		// Recompute and verify record_hash
+		computedHash, err := rec.computeRecordHash()
+		if err != nil {
+			truncateAt = currentLineStart
+			foundBreak = true
+			break
+		}
+		if rec.RecordHash != computedHash {
+			truncateAt = currentLineStart
+			foundBreak = true
+			break
+		}
+
+		prev = rec
+		hasRecords = true
+		validBytes = lineStart
+	}
+
+	if err := scanner.Err(); err != nil {
+		// Scanner error (not a chain error) — try truncating at last valid
+		truncateAt = validBytes
+		foundBreak = true
+	}
+
+	if !foundBreak {
+		// We didn't find a break during rescan — the error was transient?
+		// Re-try the original replay (shouldn't happen, but be safe).
+		return w.replay()
+	}
+
+	// Truncate the file at the break point, discarding the corrupted tail.
+	if err := w.file.Truncate(truncateAt); err != nil {
+		return fmt.Errorf("truncate at %d: %w", truncateAt, err)
+	}
+
+	// Seek to end for appending
+	if _, err := w.file.Seek(0, 2); err != nil {
+		return fmt.Errorf("seek to end after truncate: %w", err)
+	}
+
+	// Reset head and re-replay the truncated file
+	w.seq = 0
+	w.hash = ""
+	if err := w.replay(); err != nil {
+		return fmt.Errorf("replay after truncate: %w", err)
 	}
 
 	return nil
