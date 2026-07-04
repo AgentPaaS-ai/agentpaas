@@ -810,10 +810,22 @@ def agentpaas_logs(args, **kwargs):
     run_id = args.get("run_id", "")
     tail = args.get("tail")
     try:
-        cmd = ["logs", run_id]
+        cmd = ["logs", run_id, "--json"]
         if tail is not None:
             cmd.extend(["--tail", str(tail)])
         result = _run_cli(cmd)
+        if isinstance(result, dict) and "error" not in result:
+            entries = result.get("entries", [])
+            lines = []
+            for entry in entries:
+                if isinstance(entry, dict):
+                    ts = entry.get("timestamp", "")
+                    level = entry.get("level", "")
+                    message = entry.get("message", "")
+                    lines.append(f"[{ts}] {level} {message}")
+                else:
+                    lines.append(str(entry))
+            result["logs"] = "\n".join(lines)
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
