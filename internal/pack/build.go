@@ -24,6 +24,7 @@ import (
 
 const (
 	defaultPythonBaseImage = "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f"
+	defaultBuilderImage    = "python:3.11-slim"
 	defaultNonRootUID      = 64000
 )
 
@@ -36,6 +37,9 @@ type BuildConfig struct {
 	// BaseImage is the distroless base image ref (digest-pinned).
 	// Default: "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f"
 	BaseImage string
+	// BuilderImage is the image used to install Python deps in a multi-stage build.
+	// Default: "python:3.11-slim"
+	BuilderImage string
 	// HarnessPath is the path to the pre-built harness binary to embed as PID 1.
 	// If empty, uses the standard harness binary location.
 	HarnessPath string
@@ -274,6 +278,9 @@ func validateBuildConfig(cfg *BuildConfig) error {
 	}
 	if cfg.BaseImage == "" {
 		cfg.BaseImage = defaultBaseImage(cfg.Runtime)
+	}
+	if cfg.BuilderImage == "" {
+		cfg.BuilderImage = defaultBuilderImage
 	}
 	if cfg.SourceDateEpoch.IsZero() {
 		cfg.SourceDateEpoch = time.Unix(0, 0)
@@ -603,15 +610,24 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 
 func renderDockerfile(cfg BuildConfig, deps []string) string {
 	var b strings.Builder
+	if len(deps) > 0 {
+		fmt.Fprintf(&b, "FROM %s AS builder\n", cfg.BuilderImage)
+		b.WriteString("WORKDIR /build\n")
+		b.WriteString("COPY agentpaas-locked.txt /tmp/requirements.lock\n")
+		b.WriteString("RUN pip install --no-cache-dir --target=/build/deps -r /tmp/requirements.lock\n")
+		b.WriteString("\n")
+	}
 	fmt.Fprintf(&b, "FROM %s\n", cfg.BaseImage)
 	fmt.Fprintf(&b, "ENV SOURCE_DATE_EPOCH=%d\n", cfg.SourceDateEpoch.Unix())
 	b.WriteString("WORKDIR /app\n")
 	b.WriteString("COPY --chown=0:0 harness /agentpaas/harness\n")
 	b.WriteString("COPY --chown=0:0 agentpaas-locked.txt /agentpaas/requirements.lock\n")
-	b.WriteString("COPY --chown=64000:64000 project/ /app/\n")
-	b.WriteString("COPY --chown=64000:64000 python/ /app/python/\n")
+	fmt.Fprintf(&b, "COPY --chown=%d:%d project/ /app/\n", cfg.NonRootUID, cfg.NonRootUID)
+	fmt.Fprintf(&b, "COPY --chown=%d:%d python/ /app/python/\n", cfg.NonRootUID, cfg.NonRootUID)
 	if len(deps) > 0 {
+		fmt.Fprintf(&b, "COPY --chown=%d:%d --from=builder /build/deps /app/deps\n", cfg.NonRootUID, cfg.NonRootUID)
 		b.WriteString("ENV AGENTPAAS_DEPS_LOCKED=/agentpaas/requirements.lock\n")
+		b.WriteString("ENV PYTHONPATH=/app/deps\n")
 	}
 	fmt.Fprintf(&b, "USER %d:%d\n", cfg.NonRootUID, cfg.NonRootUID)
 	b.WriteString("ENTRYPOINT [\"/agentpaas/harness\"]\n")
