@@ -276,7 +276,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// Parse the response.
 	result, err := adapter.ParseResponse(resp.StatusCode, respBody)
 	if err != nil {
-		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", "parse response failed: "+err.Error())
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
 

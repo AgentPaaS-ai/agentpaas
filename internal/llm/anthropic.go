@@ -43,7 +43,7 @@ func (a *anthropicAdapter) BuildRequest(ctx context.Context, model, prompt, cred
 
 func (a *anthropicAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("anthropic returned HTTP %d", statusCode)
+		return nil, formatHTTPError("anthropic", statusCode, body)
 	}
 	var resp struct {
 		Content []struct {
