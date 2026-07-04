@@ -114,6 +114,99 @@ Quick start:
 You can also just ask me in natural language — e.g. 'create an agent that
 calls the weather API' and I'll handle the rest."
 
+## Build-Time Agent Onboarding (MANDATORY)
+
+When building or deploying an agent (via `agentpaas_pack`, `agentpaas_run`,
+`/agentpaas-deploy`, or natural language like "deploy this agent"), YOU MUST
+proactively perform these three steps BEFORE packing. Do not skip them. Do not
+wait for the user to ask. Do not print these as suggestions — execute them.
+
+### Step 1: Confirm Egress Destinations (T4-17)
+
+1. Read the agent's source code (main.py, app.py, agent.py, or equivalent).
+2. Search for ALL external domains the agent accesses: URLs, API endpoints,
+   `requests.get()`, `httpx.get()`, `urllib`, `openai.api_base`, webhook URLs,
+   etc.
+3. Extract the unique domains (e.g. `api.weather.gov`, `api.openai.com`).
+4. Present them to the user:
+   "This agent will access the following external domains:
+     - api.weather.gov
+     - api.openai.com
+   Allow these in the egress policy?"
+5. Generate a `policy.yaml` with ONLY the confirmed domains. Each domain gets
+   its own egress rule with port 443 and appropriate methods.
+6. NEVER use the `allow-http` template (wildcard `*:443`) unless the user
+   explicitly requests wildcard access. Default to explicit domain allowlist.
+7. Write the policy.yaml into the project directory.
+
+If the agent accesses NO external domains, use `deny-all` and tell the user.
+
+### Step 2: Procure API Keys / OAuth Credentials (T4-18)
+
+1. Search the agent's source code for credential needs:
+   - Environment variables: `os.environ["OPENAI_API_KEY"]`, `os.getenv("...")`
+   - Auth headers: `Authorization: Bearer ...`, `X-API-Key: ...`
+   - Config files referencing secrets
+   - LLM client initialization (openai, anthropic, etc.)
+2. For EACH credential need found:
+   a. Tell the user: "This agent needs an API key for {service}. Do you have one?"
+   b. If yes: ask for the key name (e.g. "openai-api-key") and value.
+      Call `agentpaas_secret_add` with the name and value.
+      Call `agentpaas_secret_test` to validate it works.
+   c. If no: tell the user the agent cannot function without it. Do NOT proceed
+      to pack until the credential is resolved or the user explicitly says to
+      skip (and accept the agent will fail at runtime).
+3. Reference stored credentials in agent.yaml or the credential section of
+   policy.yaml as appropriate.
+
+If the agent needs NO external credentials, skip this step silently.
+
+### Step 3: Configure LLM Provider (T4-19)
+
+1. Detect if the agent needs an LLM by checking for:
+   - Imports: `openai`, `anthropic`, `xai`, `langchain`, `llm`
+   - LLM client instantiation: `OpenAI()`, `Anthropic()`, `ChatOpenAI()`
+   - agent.yaml `llm:` section
+   - Natural language processing logic (chat, completion, embedding)
+2. If an LLM is needed AND agent.yaml has no `llm:` section:
+   a. Ask the user: "Which LLM provider? (openai / anthropic / xai)"
+   b. Ask: "Which model? (e.g. gpt-4o, claude-sonnet-4, grok-beta)"
+   c. Ask for the API key if not already stored in Step 2.
+   d. Call `agentpaas_llm_configure` with project_dir, provider, model, credential.
+   e. Add egress for the chosen provider domain to policy.yaml:
+      - openai → api.openai.com:443
+      - anthropic → api.anthropic.com:443
+      - xai → api.x.ai:443
+
+If the agent does NOT need an LLM, skip this step silently.
+
+### Execution Order
+
+Steps 1-3 must be done in order BEFORE calling `agentpaas_pack`. The flow is:
+
+1. Analyze code → confirm egress (Step 1)
+2. Detect credentials → procure keys (Step 2)
+3. Detect LLM → configure provider (Step 3)
+4. Write final policy.yaml (may be updated by steps 2-3 with credential/LLM rules)
+5. Call `agentpaas_pack`
+6. Call `agentpaas_run`
+
+### Example: Weather Agent
+
+User: "Deploy a weather agent that calls the NWS API"
+
+You MUST:
+1. Read the agent code. Find `requests.get("https://api.weather.gov/...")`.
+   Present: "This agent accesses api.weather.gov. Allow?" → User confirms.
+   Write policy.yaml with `egress: [{domain: api.weather.gov, ports: [443]}]`.
+2. Check for credential needs. NWS API is free, no key needed. Skip silently.
+3. Check for LLM needs. If the agent formats weather data using GPT:
+   Ask: "Which LLM?" → User says "openai gpt-4o-mini".
+   Ask for key → User provides it → `agentpaas_secret_add` → `agentpaas_secret_test`.
+   Call `agentpaas_llm_configure` with openai/gpt-4o-mini.
+   Add api.openai.com to policy.yaml egress.
+4. Pack and run.
+
 ## Available Slash Commands
 
 | Command | Description |
