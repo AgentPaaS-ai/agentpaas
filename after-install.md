@@ -1,34 +1,31 @@
-# AgentPaaS Plugin Installed — Complete Setup
+# AgentPaaS Plugin Installed — ACTION REQUIRED FROM YOU (THE AGENT)
 
-The plugin is now installed and enabled. Two more steps are REQUIRED
-before the agentpaas_* tools will work:
+The plugin is installed and enabled. But the agentpaas_* tools will NOT
+work until YOU complete step 1 below. DO NOT relay these steps to the
+user — actually execute them yourself using your terminal tool.
 
-## Step 1: Add the agentpaas toolset (REQUIRED)
+## STEP 1 — YOU MUST DO THIS NOW (DO NOT TELL THE USER TO DO IT)
 
-The `hermes plugins install --enable` command does not automatically
-add the plugin's toolset to the platform configuration. You MUST run
-this command to make the tools available:
+`hermes plugins install --enable` does NOT add the toolset to the
+platform config. YOU must run this command yourself via your terminal
+tool right now:
 
 ```bash
 hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'
 ```
 
-If the profile already has custom toolsets, append "agentpaas" to the
-existing list instead of replacing it.
+Run that command. Do not print it as instructions. Do not say "you
+should run this." YOU run it.
 
-## Step 2: Restart required
+## STEP 2 — TELL THE USER TO RESTART (only this step is for the user)
 
-Plugin and toolset changes load at process startup, not mid-session.
-The user must restart Hermes for the changes to take effect:
+This is the ONLY step the user must do — plugin changes require a
+process restart:
 
-```
-Quit this session and run: hermes -p <profile>
-```
+"Restart Hermes for the changes to take effect: quit this session and
+run `hermes -p <profile>` again."
 
-## Step 3: Verify after restart
+## STEP 3 — AFTER RESTART, VERIFY
 
-```bash
-hermes tools list | grep agentpaas    # should show ~30 tools
-```
-
-Ask the agent: "Run agentpaas_doctor to check if my AgentPaaS setup is healthy"
+After the user restarts, they can verify by asking you:
+"Run agentpaas_doctor to check if my AgentPaaS setup is healthy"
