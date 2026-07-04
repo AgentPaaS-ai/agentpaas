@@ -15,7 +15,7 @@ func formatHTTPError(provider string, statusCode int, body []byte) error {
 	providerMsg := ""
 	var parsed map[string]any
 	if err := json.Unmarshal(body, &parsed); err == nil {
-		// OpenAI-compatible: {"error": {"message": "..."}}
+		// OpenAI/Anthropic/Google/Z.AI: {"error": {"message": "...", ...}}
 		if errObj, ok := parsed["error"].(map[string]any); ok {
 			if msg, ok := errObj["message"].(string); ok {
 				providerMsg = msg
@@ -24,13 +24,18 @@ func formatHTTPError(provider string, statusCode int, body []byte) error {
 			if etype, ok := errObj["type"].(string); ok && providerMsg == "" {
 				providerMsg = etype
 			}
-		}
-		// Google Gemini: {"error": {"code": ..., "message": "...", "status": "..."}}
-		// (same error.message pattern, already handled above)
-		// Z.AI: {"error": {"code": "...", "message": "..."}}
-		if code, ok := parsed["error"].(map[string]any); ok {
-			if c, ok := code["code"].(string); ok && providerMsg == "" {
+			// Z.AI: {"error": {"code": "...", "message": "..."}}
+			if c, ok := errObj["code"].(string); ok && providerMsg == "" {
 				providerMsg = c
+			}
+		} else if errStr, ok := parsed["error"].(string); ok {
+			// xAI: {"code": "unauthenticated:bad-credentials", "error": "..."}
+			providerMsg = errStr
+		}
+		// xAI also has a top-level "code" field alongside the string error.
+		if providerMsg == "" {
+			if code, ok := parsed["code"].(string); ok {
+				providerMsg = code
 			}
 		}
 	}
@@ -44,8 +49,11 @@ func formatHTTPError(provider string, statusCode int, body []byte) error {
 			statusCode, provider,
 		)
 	case statusCode == 403:
+		// 403 can mean either insufficient credits/permissions OR an expired/
+		// invalid credential (xAI returns 403 for bad OAuth tokens). The
+		// provider message (surfaced above) disambiguates.
 		guidance = fmt.Sprintf(
-			"HTTP %d: credential for %q lacks permission or has insufficient credits — check the provider dashboard for billing/quota, or verify the API key has access to the requested model",
+			"HTTP %d: credential for %q was rejected — if the provider message mentions authentication/credentials, the token is expired or invalid (refresh and re-store via 'agentpaas secret add <name>'); otherwise check the provider dashboard for billing/quota or model access permissions",
 			statusCode, provider,
 		)
 	case statusCode == 404:

@@ -187,14 +187,50 @@ func doProviderRequest(req *http.Request, provider, endpoint string) ProviderTes
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Drain body to allow connection reuse, but discard contents.
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// Read the response body so we can surface provider error details.
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 
 	status := "ok"
 	detail := ""
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		status = "error"
-		detail = fmt.Sprintf("%s returned HTTP %d", provider, resp.StatusCode)
+		// Try to extract a human-readable message from common JSON error
+		// formats. Providers use different shapes:
+		//   OpenAI/Anthropic: {"error": {"message": "..."}}
+		//   xAI:              {"code": "...", "error": "..."}
+		//   Google/Z.AI:      {"error": {"code": ..., "message": "..."}}
+		providerMsg := ""
+		var parsed map[string]any
+		if json.Unmarshal(respBody, &parsed) == nil {
+			if errObj, ok := parsed["error"].(map[string]any); ok {
+				if msg, ok := errObj["message"].(string); ok {
+					providerMsg = msg
+				}
+			} else if errStr, ok := parsed["error"].(string); ok {
+				// xAI format: error is a plain string
+				providerMsg = errStr
+			}
+			if providerMsg == "" {
+				if code, ok := parsed["code"].(string); ok {
+					providerMsg = code
+				}
+			}
+		}
+		// Add actionable guidance based on status code.
+		guidance := ""
+		switch resp.StatusCode {
+		case 401, 403:
+			guidance = " — credential may be expired or invalid; refresh the API key/OAuth token and re-store via 'agentpaas secret add'"
+		case 404:
+			guidance = " — model not found; check the model name in agent.yaml"
+		case 429:
+			guidance = " — rate limit exceeded; reduce request frequency"
+		}
+		if providerMsg != "" {
+			detail = fmt.Sprintf("%s returned HTTP %d: %s%s", provider, resp.StatusCode, providerMsg, guidance)
+		} else {
+			detail = fmt.Sprintf("%s returned HTTP %d%s", provider, resp.StatusCode, guidance)
+		}
 	}
 
 	return ProviderTestResult{
