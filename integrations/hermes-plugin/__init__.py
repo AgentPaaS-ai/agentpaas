@@ -120,11 +120,16 @@ def _ensure_daemon_running():
     This removes the UX friction where a user who just installed the plugin
     and restarted has to separately discover and run the daemon-start command.
 
-    Handles two known recurring pitfalls:
+    Handles three known recurring pitfalls:
     1. Checkpoint key corruption after a binary upgrade — removes the stale
        key so the daemon generates a fresh one.
-    2. Stale socket file from an unclean shutdown — removes it so the daemon
-       can bind.
+    2. Stale socket file from an unclean shutdown (e.g. pkill -9, kernel
+       OOM) — removes it so the daemon can bind.
+    3. Socket file exists but daemon is DEAD (the file was never cleaned up
+       by the killed process). A mere os.path.exists() check is NOT enough
+       — it returns True for a stale socket, so the function returns early
+       and the daemon stays down. We must verify liveness by actually
+       connecting to the socket.
 
     Then waits up to 15s for the socket to appear before returning.
 
@@ -135,6 +140,7 @@ def _ensure_daemon_running():
     """
     try:
         import os
+        import socket
         import subprocess
         import time
 
@@ -143,8 +149,22 @@ def _ensure_daemon_running():
         if not socket_path:
             socket_path = os.path.expanduser("~/.agentpaas/daemon.sock")
 
-        if os.path.exists(socket_path):
-            return  # daemon already running
+        def _socket_is_live(path):
+            """Return True iff a Unix socket at path accepts a connection."""
+            if not os.path.exists(path):
+                return False
+            try:
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.settimeout(0.5)
+                s.connect(path)
+                s.close()
+                return True
+            except OSError:
+                return False
+
+        # Fast path: socket exists AND is live → daemon is already running.
+        if _socket_is_live(socket_path):
+            return
 
         # Pre-flight cleanup: stale checkpoint key and stale socket are the
         # two reasons the daemon crashes immediately after spawn. The
@@ -189,16 +209,18 @@ def _ensure_daemon_running():
             start_new_session=True,
         )
 
-        # Wait for the socket to appear (up to 15s). The daemon needs time
+        # Wait for the socket to be live (up to 15s). The daemon needs time
         # to generate its checkpoint key, bind the socket, and become ready.
-        # If it doesn't come up, we don't raise — the agent can still call
-        # agentpaas_doctor to diagnose.
+        # We check liveness (connect), not just file existence — a crash-
+        # looping daemon can leave a stale socket file. If it doesn't come
+        # up, we don't raise; the agent can still call agentpaas_doctor
+        # to diagnose.
         for _ in range(30):
             time.sleep(0.5)
-            if os.path.exists(socket_path):
+            if _socket_is_live(socket_path):
                 logger.debug("AgentPaaS daemon auto-started (socket ready)")
                 return
-        logger.debug("AgentPaaS daemon auto-started but socket not ready after 15s")
+        logger.debug("AgentPaaS daemon auto-started but socket not live after 15s")
     except Exception as e:
         logger.debug("AgentPaaS daemon auto-start skipped: %s", e)
 
