@@ -13,16 +13,16 @@ All code fixes are done, binaries rebuilt, plugin updated. The user needs to
 restart their Hermes session to pick up the latest plugin (99dee37) and then
 continue the manual test flow.
 
-## STATE AT SESSION END (Session 5, continued)
+## STATE AT SESSION END (Session 5, final)
 
 ### Code (all committed + pushed)
-- HEAD: eff35f9
-- Binaries: /usr/local/bin/agentpaas{,d} match repo (md5 7423aa1c...)
+- HEAD: d22c6b9
+- Binaries: /usr/local/bin/agentpaas{,d} match repo (md5 42b09737...)
 - All commits on origin/main:
   - 029505c  B16-T2: Fix daemon auto-start false-positive on stale socket
   - 96e7ece  B16-T3: Fix trigger_invoke payload schema + strengthen anti-fab
   - eff35f9  B16-T2: Fix daemon crash-loop on broken audit chain
-  (plus docs commits c28408b, 9d2ab32)
+  - d22c6b9  B16-T4: Fix trigger_invoke empty-payload + slow gateway restart
 
 ### T1-T4 STATUS: ALL PASS
 
@@ -31,41 +31,55 @@ continue the manual test flow.
 - T3: Weather agent — PASS (build + invoke + exfil)
 - T4: Immutable redeploy — PASS (new image digest, new code live)
 
-### Bugs found but NOT yet fixed
-- **bug-echo-payload-empty**: Echo agent invoke-response shows
-  "Echo: " (empty message) instead of "Echo: hello world". The
-  payload's "message" field is not reaching the agent code. Same
-  class as t3-schema-payload-path but may be a different layer.
-  Also: agent misreported the response (said "hello world" when
-  actual was empty) — minor fabrication, anti-fab rule didn't catch
-  it because the response structure looks similar.
-  Status: PENDING — investigate after T4.
-- **task-gateway-restart**: Gateway restart during plugin install
-  takes forever. Need to investigate why and whether it's necessary.
-  Status: PENDING.
+### ALL BUGS FIXED THIS SESSION (5 total)
+
+1. t2-stale-socket-autostart (029505c): _ensure_daemon_running() used
+   os.path.exists() — stale socket fooled it. Fixed: connects to socket.
+2. t3-schema-payload-path (96e7ece): schema said "path to file" — agent
+   didn't pass inline JSON. Fixed: schema says "inline JSON or file path".
+3. t3-fab-guardrail-weak (96e7ece): anti-fab rule in SKILL.md only.
+   Fixed: rule now in SOUL.md snippet (always present).
+4. t2-audit-chain-recovery (eff35f9): daemon crash-loops on broken audit
+   chain. Fixed: recoverFromCorruption() truncates at break, re-replays.
+5. t4-empty-payload-warning (d22c6b9): trigger_invoke without payload
+   returned empty response, agent fabricated data. Fixed: warning field
+   added when no payload provided. Also: after-install.md now uses
+   ensure-toolset.py instead of hermes config set (avoids slow gateway
+   restart).
 
 ### Profile (agentpaas-test)
-- Plugin installed, echo-agent deployed
-- Daemon running with fresh audit chain
-- Ready for T5 (or bug investigation)
+- FULLY CLEAN — reset to baseline, ready for fresh T1 install
+- No plugin, no skill pointer, no SOUL.md, no sessions, no agents, no runs
+- No leftover project dirs
+- Daemon stopped, all state removed
+- Binaries updated with all fixes
 
 ## WHAT TO DO WHEN SESSION RESUMES
 
 1. Verify daemon is running: `agentpaas daemon status`
 
-2. Investigate bug-echo-payload-empty (P0 — blocks T5+ invoke tests):
-   - Echo agent returns "Echo: " (empty) instead of "Echo: hello world"
-   - Payload "message" field not reaching agent code
-   - Run: `agentpaas trigger invoke echo-agent --payload <file with {"message":"test"}>`
-   - Check: `cat ~/.agentpaas/state/runs/<run_id>/invoke-response.json`
-   - Trace payload through: CLI → REST → trigger server → invokeFunc →
-     RunRequest.TriggerPayload → invokeAgent → buildInvokePayload → harness
-   - The weather agent worked (Folsom data returned). Difference: weather
-     agent reads "city" key, echo agent reads "message" key. Both should
-     work the same way. Check if the issue is in how the harness delivers
-     the payload to the Python SDK.
+2. Have the user run T1 (plugin install) from their agentpaas-test
+   terminal:
+   ```
+   Install AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
+   ```
+   This verifies the full clean-install path. The agent should now use
+   ensure-toolset.py (no slow gateway restart) instead of hermes config set.
 
-3. After bug fix, continue with T5 (B16-LC03: Trigger/API/event/cron
+3. Then T2: `Run agentpaas_doctor to check if my AgentPaaS setup is healthy`
+   - Verify 6/6 checks pass
+   - Verify daemon auto-started (register() fires on session load)
+   - Verify daemon socket is genuinely live (not stale)
+
+4. Then T3: Build weather agent + invoke with Folsom + exfil probe.
+   All 3 T3 sub-steps should pass cleanly with the payload schema fix
+   and anti-fabrication guardrail.
+
+5. Then T4: Build echo agent, change prompt, repack, verify new digest.
+   The empty-payload warning should prevent fabrication if the agent
+   forgets to pass the payload.
+
+6. After T1-T4 pass, continue with T5 (B16-LC03: Trigger/API/event/cron
    launch surface).
 
 5. I verify from my side:
