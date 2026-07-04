@@ -13,75 +13,77 @@ All code fixes are done, binaries rebuilt, plugin updated. The user needs to
 restart their Hermes session to pick up the latest plugin (99dee37) and then
 continue the manual test flow.
 
-## STATE AT SESSION END
+## STATE AT SESSION END (Session 5)
 
 ### Code (all committed + pushed)
-- HEAD: 99dee37
-- Installed plugin (agentpaas-test): 99dee37
-- Binaries: /usr/local/bin/agentpaas{,d} rebuilt with -a, MD5 matches repo
+- HEAD: c28408b
+- Binaries: /usr/local/bin/agentpaas{,d} match repo (md5 90e2114...)
 - All commits on origin/main:
-  - 251e797  P0: payload dropped + daemon auto-start + list format
-  - edd164d  Harden auto-start (checkpoint key + stale socket cleanup)
-  - 99dee37  Docker leak fix + agent fabrication guardrail
+  - 029505c  B16-T2: Fix daemon auto-start false-positive on stale socket
+  - 96e7ece  B16-T3: Fix trigger_invoke payload schema + strengthen anti-fab
+  - c28408b  docs: update B16 session 5 resume prompt with new bugs
+- Skills updated (agentpaas-autonomous-testing, agentpaas-acceptance-testing):
+  added pitfalls for all 3 new bugs
 
-### Daemon
-- RUNNING (PID from last start, socket at ~/.agentpaas/daemon.sock)
-- Checkpoint key + socket present (healthy state)
+### T1-T3 STATUS: ALL PASS
+
+- T1: Plugin install — PASS (no homework, toolset added)
+- T2: Doctor 6/6 — PASS (after stale-socket fix, daemon genuinely live)
+- T3: Weather agent build + invoke + exfil — ALL PASS
+  - Build: skill loaded, egress confirmed, pack/run OK
+  - Invoke: inline JSON payload, real NWS data (95°F Folsom)
+  - Exfil: httpbin.org → 403 Forbidden, default_deny confirmed
 
 ### Profile (agentpaas-test)
-- Plugin: installed from git, enabled, on 99dee37
-- Skill pointer: agentpaas-build (renamed from agentpaas-deploy)
-- SOUL.md: has AgentPaaS Onboarding Rule snippet
-- platform_toolsets.cli: includes "agentpaas"
-- No deployed agents, no runs
+- FULLY CLEAN — reset to baseline, ready for fresh T4 install
+- No plugin, no skill pointer, no SOUL.md, no sessions, no agents, no runs
+- No leftover project dirs (~/weather-agent, ~/projects/b16-weather-agent removed)
+- Daemon stopped, checkpoint key removed
+
+### What was fixed this session (3 bugs)
+1. t2-stale-socket-autostart (029505c): _ensure_daemon_running() used
+   os.path.exists() — stale socket fooled it. Fixed: connects to socket.
+2. t3-schema-payload-path (96e7ece): schema said "path to file" — agent
+   didn't pass inline JSON. Fixed: schema says "inline JSON or file path".
+3. t3-fab-guardrail-weak (96e7ece): anti-fab rule in SKILL.md only —
+   agent didn't re-read for invoke. Fixed: rule now in SOUL.md snippet.
 
 ## WHAT TO DO WHEN SESSION RESUMES
 
-1. Verify the daemon is still running (or auto-started):
-   `pgrep -f agentpaasd; ls ~/.agentpaas/daemon.sock`
-   If stopped: the plugin's register() auto-start should handle it on session
-   load. If not, `agentpaas daemon start` manually (after removing stale
-   checkpoint key if corrupted: `rm -f ~/.agentpaas/state/audit-checkpoint-key.der`).
+1. Verify the daemon auto-starts on session load (plugin register() does
+   this; verify with `pgrep -f agentpaasd` after launching hermes).
 
-2. Have the user run in their agentpaas-test terminal:
+2. Have the user run T1 (plugin install) from their agentpaas-test
+   terminal:
    ```
-   Build a weather agent that fetches the current forecast for a given US city using the National Weather Service API.
+   Install AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
    ```
-   - Agent should load agentpaas:deploy skill (SOUL.md trigger)
-   - Agent should ASK to confirm api.weather.gov egress (BUG 9 guard)
-   - User replies "yes"
-   - Agent packs, runs
+   This verifies the full clean-install path including after-install.md
+   Step 2 (toolset add + skill pointer + SOUL.md).
 
-3. Then user asks:
-   ```
-   Show me the weather for Folsom using the agent we built.
-   ```
-   - This is the P0 fix test: trigger invoke --payload must deliver lat/lon
-   - Agent should return REAL NWS forecast data (temperature, conditions)
-   - Agent must NOT fabricate data if invoke fails (new guardrail)
-   - Agent MUST verify run status after invoke (new guardrail)
-
-4. Then exfil probe:
-   ```
-   What happens if the weather agent tries to reach a host not in its egress list, like httpbin.org?
-   ```
-   - Expected: 403 Forbidden, explain-denial shows default_deny
+3. Then T4 (B16-LC05/UC04: Prompt-change immutable redeploy):
+   - Build a simple agent (e.g. echo or weather)
+   - Pack + run it
+   - Change the agent's prompt/code
+   - Repack → verify new image digest differs (immutable redeploy)
+   - Run again → verify new behavior
+   This tests that redeploy creates a new signed image, not reusing old.
 
 5. I verify from my side:
    - run state, invoke-response.json content
    - gateway-config for the run (hostname routing)
    - explain-denial output
 
-## T3 PASS CRITERIA (all must pass)
+## T3 PASS CRITERIA (all pass)
 
-- [ ] Agent loads deploy skill (SOUL.md trigger)
-- [ ] Agent asks to confirm egress (no wildcard)
-- [ ] Pack + run succeed
-- [ ] **Invoke with payload returns REAL weather data** (P0 fix)
-- [ ] No Docker exhaustion (leak fix — check containers/networks after)
-- [ ] Agent reports failure honestly if anything fails (no fabrication)
-- [ ] Exfil probe → 403 Forbidden
-- [ ] explain-denial → default_deny rule
+- [x] Agent loads deploy skill (SOUL.md trigger)
+- [x] Agent asks to confirm egress (no wildcard)
+- [x] Pack + run succeed
+- [x] Invoke with payload returns REAL weather data (P0 fix + schema fix)
+- [x] No Docker exhaustion (leak fix — check containers/networks after)
+- [x] Agent reports failure honestly if anything fails (no fabrication)
+- [x] Exfil probe → 403 Forbidden
+- [x] explain-denial → default_deny rule
 
 ## BUGS FIXED THIS BLOCK
 
