@@ -1067,11 +1067,21 @@ func (s *controlServer) lookupRunWithStatus(runID string) (trackedRun, bool) {
 	}, true
 }
 
-// activeRunCount returns the number of currently tracked active runs.
+// activeRunCount returns the number of currently tracked ACTIVE runs.
+// Runs that have reached a terminal state (succeeded/failed/cancelled)
+// do not count against the concurrent limit — only "running" runs do.
+// This prevents completed-but-not-yet-stopped runs from blocking new
+// invocations (BUG 7).
 func (s *controlServer) activeRunCount() int {
 	s.runMu.Lock()
 	defer s.runMu.Unlock()
-	return len(s.runs)
+	count := 0
+	for _, tr := range s.runs {
+		if tr.Status == "running" {
+			count++
+		}
+	}
+	return count
 }
 
 func (s *controlServer) lookupRun(runID string) (runtime.ContainerID, string, string) {
