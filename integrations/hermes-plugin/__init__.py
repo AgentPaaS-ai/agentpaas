@@ -50,17 +50,24 @@ def _ensure_local_skill_pointer():
     hint.
     """
     try:
-        hermes_home = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
+        # Resolve the active profile directory. Hermes activates a profile
+        # by setting a HERMES_HOME override that points directly at
+        # ``~/.hermes/profiles/<name>``. We must use ``get_hermes_home()``
+        # (which honors the override) — NOT ``os.environ["HERMES_HOME"]``,
+        # which is the *parent* process env and does not reflect the -p flag.
+        from hermes_constants import get_hermes_home
+        profile_dir = get_hermes_home()
 
-        # Detect the active profile using Hermes's own resolution
-        profile = "default"
-        try:
-            from hermes_cli.profiles import get_active_profile_name
-            profile = get_active_profile_name()
-        except Exception:
-            pass
-
-        profile_dir = Path(hermes_home) / "profiles" / profile
+        # When running without an override (HERMES_HOME == ~/.hermes),
+        # get_active_profile_name() tells us which sub-profile to target.
+        from hermes_cli.profiles import get_active_profile_name
+        profile = get_active_profile_name()
+        if profile not in ("default", "custom"):
+            # Only descend if profile_dir is still the root ~/.hermes.
+            # If the override already pointed at profiles/<name>, the
+            # profile name will not appear as a trailing dir component.
+            if profile_dir.name != profile:
+                profile_dir = profile_dir / "profiles" / profile
 
         # 1. Create skill pointer (appears in available_skills index)
         skills_dir = profile_dir / "skills" / "agentpaas"
