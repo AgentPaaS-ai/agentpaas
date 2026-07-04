@@ -509,17 +509,15 @@ func (d *DockerRuntime) ExecWithStdin(ctx context.Context, id ContainerID, cmd [
 	}
 	defer hijacked.Close()
 
-	// Write stdin using Docker's multiplexed stream protocol.
-	// Frame header: 1 byte stream ID (0=stdin) + 4 bytes big-endian length.
+	// Write stdin as RAW bytes. In Docker's hijacked attach protocol, only
+	// the daemon→client direction is multiplexed (1-byte stream ID + 4-byte
+	// length header). The client→container direction is raw: Docker reads
+	// whatever we write and feeds it directly to the process's stdin.
+	// Sending a multiplexed frame header on stdin was prepending 5 binary
+	// bytes ("\x00\x00\x00\x00\x0N") to the payload, corrupting the JSON
+	// and causing the harness /invoke endpoint to return HTTP 400.
 	if len(stdinData) > 0 {
-		header := []byte{0} // stdin stream
-		header = append(header,
-			byte(len(stdinData)>>24),
-			byte(len(stdinData)>>16),
-			byte(len(stdinData)>>8),
-			byte(len(stdinData)),
-		)
-		if _, err := hijacked.Conn.Write(append(header, stdinData...)); err != nil {
+		if _, err := hijacked.Conn.Write(stdinData); err != nil {
 			return "", "", -1, fmt.Errorf("exec stdin write: %w", err)
 		}
 	}
