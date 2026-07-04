@@ -104,11 +104,13 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	}
 
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
+	harnessPath := resolveHarnessBinary()
 	cfg := pack.BuildConfig{
 		ProjectDir:  absProjectDir,
 		Runtime:     det.Runtime,
 		ImageTag:    imageTag,
-		HarnessPath: resolveHarnessBinary(),
+		HarnessPath: harnessPath,
+		SDKDir:      resolveSDKDir(harnessPath),
 	}
 	if req.GetBaseImage() != "" {
 		cfg.BaseImage = req.GetBaseImage()
@@ -1611,6 +1613,41 @@ func harnessCandidate(path string) string {
 	if err == nil && !info.IsDir() {
 		return path
 	}
+	return ""
+}
+
+// resolveSDKDir finds the Python SDK directory (containing agentpaas_sdk)
+// relative to the harness binary. The SDK lives in a "python/" subdirectory
+// alongside the harness binary (e.g. /usr/local/bin → /usr/local/python).
+// If not found there, it checks common repo locations.
+func resolveSDKDir(harnessPath string) string {
+	if harnessPath == "" {
+		return ""
+	}
+
+	// Check sibling "python" directory: <harnessDir>/../python
+	harnessDir := filepath.Dir(harnessPath)
+	candidates := []string{
+		filepath.Join(filepath.Dir(harnessDir), "python"),
+		filepath.Join(harnessDir, "python"),
+	}
+
+	for _, c := range candidates {
+		if info, err := os.Stat(filepath.Join(c, "agentpaas_sdk")); err == nil && info.IsDir() {
+			return c
+		}
+	}
+
+	// Check if the daemon binary is running from a repo build (bin/ directory)
+	if exePath, err := resolveExecutable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		// If exeDir is bin/, check ../python
+		repoPython := filepath.Join(exeDir, "..", "python")
+		if info, err := os.Stat(filepath.Join(repoPython, "agentpaas_sdk")); err == nil && info.IsDir() {
+			return repoPython
+		}
+	}
+
 	return ""
 }
 
