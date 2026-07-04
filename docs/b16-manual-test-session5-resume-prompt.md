@@ -13,61 +13,60 @@ All code fixes are done, binaries rebuilt, plugin updated. The user needs to
 restart their Hermes session to pick up the latest plugin (99dee37) and then
 continue the manual test flow.
 
-## STATE AT SESSION END (Session 5)
+## STATE AT SESSION END (Session 5, continued)
 
 ### Code (all committed + pushed)
-- HEAD: c28408b
-- Binaries: /usr/local/bin/agentpaas{,d} match repo (md5 90e2114...)
+- HEAD: eff35f9
+- Binaries: /usr/local/bin/agentpaas{,d} match repo (md5 7423aa1c...)
 - All commits on origin/main:
   - 029505c  B16-T2: Fix daemon auto-start false-positive on stale socket
   - 96e7ece  B16-T3: Fix trigger_invoke payload schema + strengthen anti-fab
-  - c28408b  docs: update B16 session 5 resume prompt with new bugs
-- Skills updated (agentpaas-autonomous-testing, agentpaas-acceptance-testing):
-  added pitfalls for all 3 new bugs
+  - eff35f9  B16-T2: Fix daemon crash-loop on broken audit chain
+  (plus docs commits c28408b, 9d2ab32)
 
-### T1-T3 STATUS: ALL PASS
+### T1-T4 STATUS: ALL PASS
 
-- T1: Plugin install — PASS (no homework, toolset added)
-- T2: Doctor 6/6 — PASS (after stale-socket fix, daemon genuinely live)
-- T3: Weather agent build + invoke + exfil — ALL PASS
-  - Build: skill loaded, egress confirmed, pack/run OK
-  - Invoke: inline JSON payload, real NWS data (95°F Folsom)
-  - Exfil: httpbin.org → 403 Forbidden, default_deny confirmed
+- T1: Plugin install — PASS (clean install, no homework)
+- T2: Doctor 6/6 — PASS (daemon genuinely live)
+- T3: Weather agent — PASS (build + invoke + exfil)
+- T4: Immutable redeploy — PASS (new image digest, new code live)
+
+### Bugs found but NOT yet fixed
+- **bug-echo-payload-empty**: Echo agent invoke-response shows
+  "Echo: " (empty message) instead of "Echo: hello world". The
+  payload's "message" field is not reaching the agent code. Same
+  class as t3-schema-payload-path but may be a different layer.
+  Also: agent misreported the response (said "hello world" when
+  actual was empty) — minor fabrication, anti-fab rule didn't catch
+  it because the response structure looks similar.
+  Status: PENDING — investigate after T4.
+- **task-gateway-restart**: Gateway restart during plugin install
+  takes forever. Need to investigate why and whether it's necessary.
+  Status: PENDING.
 
 ### Profile (agentpaas-test)
-- FULLY CLEAN — reset to baseline, ready for fresh T4 install
-- No plugin, no skill pointer, no SOUL.md, no sessions, no agents, no runs
-- No leftover project dirs (~/weather-agent, ~/projects/b16-weather-agent removed)
-- Daemon stopped, checkpoint key removed
-
-### What was fixed this session (3 bugs)
-1. t2-stale-socket-autostart (029505c): _ensure_daemon_running() used
-   os.path.exists() — stale socket fooled it. Fixed: connects to socket.
-2. t3-schema-payload-path (96e7ece): schema said "path to file" — agent
-   didn't pass inline JSON. Fixed: schema says "inline JSON or file path".
-3. t3-fab-guardrail-weak (96e7ece): anti-fab rule in SKILL.md only —
-   agent didn't re-read for invoke. Fixed: rule now in SOUL.md snippet.
+- Plugin installed, echo-agent deployed
+- Daemon running with fresh audit chain
+- Ready for T5 (or bug investigation)
 
 ## WHAT TO DO WHEN SESSION RESUMES
 
-1. Verify the daemon auto-starts on session load (plugin register() does
-   this; verify with `pgrep -f agentpaasd` after launching hermes).
+1. Verify daemon is running: `agentpaas daemon status`
 
-2. Have the user run T1 (plugin install) from their agentpaas-test
-   terminal:
-   ```
-   Install AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
-   ```
-   This verifies the full clean-install path including after-install.md
-   Step 2 (toolset add + skill pointer + SOUL.md).
+2. Investigate bug-echo-payload-empty (P0 — blocks T5+ invoke tests):
+   - Echo agent returns "Echo: " (empty) instead of "Echo: hello world"
+   - Payload "message" field not reaching agent code
+   - Run: `agentpaas trigger invoke echo-agent --payload <file with {"message":"test"}>`
+   - Check: `cat ~/.agentpaas/state/runs/<run_id>/invoke-response.json`
+   - Trace payload through: CLI → REST → trigger server → invokeFunc →
+     RunRequest.TriggerPayload → invokeAgent → buildInvokePayload → harness
+   - The weather agent worked (Folsom data returned). Difference: weather
+     agent reads "city" key, echo agent reads "message" key. Both should
+     work the same way. Check if the issue is in how the harness delivers
+     the payload to the Python SDK.
 
-3. Then T4 (B16-LC05/UC04: Prompt-change immutable redeploy):
-   - Build a simple agent (e.g. echo or weather)
-   - Pack + run it
-   - Change the agent's prompt/code
-   - Repack → verify new image digest differs (immutable redeploy)
-   - Run again → verify new behavior
-   This tests that redeploy creates a new signed image, not reusing old.
+3. After bug fix, continue with T5 (B16-LC03: Trigger/API/event/cron
+   launch surface).
 
 5. I verify from my side:
    - run state, invoke-response.json content
