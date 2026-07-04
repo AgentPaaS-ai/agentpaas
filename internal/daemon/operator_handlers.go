@@ -319,10 +319,19 @@ func (s *controlServer) ExplainFailure(ctx context.Context, req *controlv1.Expla
 		return nil, status.Error(codes.InvalidArgument, "run_id is required")
 	}
 
+	if tracked, ok := s.lookupRunWithStatus(runID); ok && tracked.Status != "failed" {
+		return noFailureToExplainResponse(runID, trackedRunStatusLabel(tracked.Status)), nil
+	}
+
 	records, err := s.auditRecordsForRun(runID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "query audit records: %v", err)
 	}
+	runStatus := deriveRunStatus(records)
+	if runStatus != "failed" && runStatus != "unknown" {
+		return noFailureToExplainResponse(runID, runStatus), nil
+	}
+
 	failure, found := latestFailureRecord(records)
 	if !found {
 		return &controlv1.ExplainFailureResponse{
@@ -868,6 +877,41 @@ func (s *controlServer) auditRecordsForRun(runID string) ([]audit.AuditRecord, e
 		}
 	}
 	return filtered, nil
+}
+
+func noFailureToExplainResponse(runID, runStatus string) *controlv1.ExplainFailureResponse {
+	return &controlv1.ExplainFailureResponse{
+		RootCause:     fmt.Sprintf("run %s has status '%s' — no failure to explain", runID, runStatus),
+		SchemaVersion: operator.SchemaVersion,
+	}
+}
+
+func trackedRunStatusLabel(status string) string {
+	if status == "succeeded" {
+		return "completed"
+	}
+	return status
+}
+
+func deriveRunStatus(records []audit.AuditRecord) string {
+	status := "unknown"
+	for _, record := range records {
+		switch record.EventType {
+		case "run_start":
+			if status == "unknown" {
+				status = "running"
+			}
+		case "run_complete":
+			status = "completed"
+		case "run_failed":
+			status = "failed"
+		case "run_stop":
+			if auditString(record.Payload, "status") == "failed" {
+				status = "failed"
+			}
+		}
+	}
+	return status
 }
 
 func latestFailureRecord(records []audit.AuditRecord) (audit.AuditRecord, bool) {

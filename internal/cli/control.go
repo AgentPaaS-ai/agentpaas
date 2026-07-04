@@ -1216,6 +1216,9 @@ func newExplainFailureCmd() *cobra.Command {
 			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(operator.ExplainFailureResponse)
+				if r.ErrorCategory == "" {
+					return r.RootCause
+				}
 				return fmt.Sprintf("Run %s failed [%s]: %s → %s",
 					r.RunID, r.ErrorCategory, r.RootCause, r.NextAction)
 			})
