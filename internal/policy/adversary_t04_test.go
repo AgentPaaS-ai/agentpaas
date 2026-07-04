@@ -282,12 +282,12 @@ func TestAdversary_EmptyPolicyDenyAll(t *testing.T) {
 
 		output := string(got)
 
-		// Must NOT contain any backends, rules, or routes
+		// Must NOT contain any backends or routes
 		if strings.Contains(output, "backends:") {
 			t.Errorf("empty policy gateway config must not contain any backends:\n%s", output)
 		}
-		if strings.Contains(output, "rules:") {
-			t.Errorf("empty policy gateway config must not contain any network rules:\n%s", output)
+		if strings.Contains(output, "networkAuthorization") {
+			t.Errorf("empty policy gateway config must not contain networkAuthorization:\n%s", output)
 		}
 		if strings.Contains(output, "mcp:") {
 			t.Errorf("empty policy gateway config must not contain MCP backends:\n%s", output)

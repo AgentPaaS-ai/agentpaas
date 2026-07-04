@@ -36,14 +36,30 @@ type gatewayListener struct {
 }
 
 type gatewayRoute struct {
-	Name     string           `yaml:"name,omitempty"`
-	Backends []gatewayBackend `yaml:"backends,omitempty"`
+	Name      string                `yaml:"name,omitempty"`
+	Hostnames []string              `yaml:"hostnames,omitempty"`
+	Matches   []gatewayRouteMatch   `yaml:"matches,omitempty"`
+	Policies  *gatewayRoutePolicies `yaml:"policies,omitempty"`
+	Backends  []gatewayBackend      `yaml:"backends,omitempty"`
+}
+
+type gatewayRouteMatch struct {
+	Method string `yaml:"method,omitempty"`
+}
+
+type gatewayRoutePolicies struct {
+	DirectResponse *gatewayDirectResponse `yaml:"directResponse,omitempty"`
+}
+
+type gatewayDirectResponse struct {
+	Status int    `yaml:"status"`
+	Body   string `yaml:"body,omitempty"`
 }
 
 type gatewayBackend struct {
-	Host *string                `yaml:"host,omitempty"`
-	DFP  *struct{}              `yaml:"dfp,omitempty"`
-	MCP  *gatewayMCPBackend     `yaml:"mcp,omitempty"`
+	Host    *string            `yaml:"host,omitempty"`
+	Dynamic *struct{}          `yaml:"dynamic,omitempty"`
+	MCP     *gatewayMCPBackend `yaml:"mcp,omitempty"`
 }
 
 type gatewayMCPBackend struct {
@@ -66,16 +82,11 @@ type gatewayMCPHost struct {
 }
 
 type gatewayFrontendPolicies struct {
-	NetworkAuthorization *networkAuthz `yaml:"networkAuthorization,omitempty"`
+	Connect *connectConfig `yaml:"connect,omitempty"`
 }
 
-type networkAuthz struct {
-	Rules []networkAuthzRule `yaml:"rules,omitempty"`
-}
-
-type networkAuthzRule struct {
-	Allow string `yaml:"allow,omitempty"`
-	Deny  string `yaml:"deny,omitempty"`
+type connectConfig struct {
+	Mode string `yaml:"mode"`
 }
 
 // ----- credential injection rules -----
@@ -101,11 +112,9 @@ func CompileGatewayConfig(p *Policy) ([]byte, error) {
 			},
 		},
 		Binds: buildBinds(p),
-	}
-
-	// Build frontend policies if there are egress rules.
-	if len(p.Egress) > 0 {
-		cfg.FrontendPolicies = buildFrontendPolicies(p)
+		FrontendPolicies: &gatewayFrontendPolicies{
+			Connect: &connectConfig{Mode: "route"},
+		},
 	}
 
 	return yaml.Marshal(cfg)
@@ -216,20 +225,15 @@ func buildBinds(p *Policy) []gatewayBind {
 		})
 	}
 
-	// Egress bind: DFP-based forward proxy (one per allowed domain).
-	domainBackends := buildEgressBackends(p)
-	if len(domainBackends) > 0 {
+	// Egress bind: hostname-based routing with dynamic (DFP) backends.
+	egressRoutes := buildEgressRoutes(p)
+	if len(egressRoutes) > 1 { // >1 because denied route is always added
 		binds = append(binds, gatewayBind{
 			Port: 7799, // egress proxy port
 			Listeners: []gatewayListener{
 				{
 					Protocol: "HTTP",
-					Routes: []gatewayRoute{
-						{
-							Name:     "egress",
-							Backends: domainBackends,
-						},
-					},
+					Routes:   egressRoutes,
 				},
 			},
 		})
@@ -252,8 +256,8 @@ func isWildcardDomainBlocked(e EgressRule) bool {
 	return e.AllowWildcard == nil || !*e.AllowWildcard
 }
 
-func buildEgressBackends(p *Policy) []gatewayBackend {
-	var backends []gatewayBackend
+func buildEgressRoutes(p *Policy) []gatewayRoute {
+	var routes []gatewayRoute
 	seen := make(map[string]bool)
 
 	for _, e := range p.Egress {
@@ -270,12 +274,36 @@ func buildEgressBackends(p *Policy) []gatewayBackend {
 		}
 		seen[key] = true
 
-		// Use DFP backend for each allowed domain.
-		backends = append(backends, gatewayBackend{
-			Host: ptr(e.Domain + ":443"),
+		routeName := "egress-" + sanitizeRouteName(key)
+		routes = append(routes, gatewayRoute{
+			Name:      routeName,
+			Hostnames: []string{e.Domain},
+			Backends: []gatewayBackend{
+				{Dynamic: &struct{}{}},
+			},
 		})
 	}
-	return backends
+
+	// Catch-all denied route (must be last).
+	routes = append(routes, gatewayRoute{
+		Name: "denied",
+		Policies: &gatewayRoutePolicies{
+			DirectResponse: &gatewayDirectResponse{
+				Status: 403,
+				Body:   "egress denied: domain not in allowlist",
+			},
+		},
+	})
+
+	return routes
+}
+
+func sanitizeRouteName(domain string) string {
+	result := strings.NewReplacer(".", "-", "*", "wildcard", "/", "-", ":", "-").Replace(domain)
+	for strings.Contains(result, "--") {
+		result = strings.ReplaceAll(result, "--", "-")
+	}
+	return strings.Trim(result, "-")
 }
 
 func buildMCPBinds(p *Policy) []gatewayBind {
@@ -332,33 +360,6 @@ func buildMCPTarget(m MCPServer) gatewayMCPTarget {
 		}
 	}
 	return target
-}
-
-func buildFrontendPolicies(p *Policy) *gatewayFrontendPolicies {
-	var rules []networkAuthzRule
-
-	// Network authorization: deny all by default on the egress bind.
-	// Allow only known agent container IPs (simplified: allow from agent
-	// container subnet, deny everything else).
-	for _, e := range p.Egress {
-		if e.Domain == "" {
-			continue
-		}
-		// Skip wildcard domains without explicit AllowWildcard (defense-in-depth).
-		if isWildcardDomainBlocked(e) {
-			continue
-		}
-		// Allow DNS resolution for this domain.
-		rules = append(rules, networkAuthzRule{
-			Allow: fmt.Sprintf("dns.domain == %q", e.Domain),
-		})
-	}
-
-	return &gatewayFrontendPolicies{
-		NetworkAuthorization: &networkAuthz{
-			Rules: rules,
-		},
-	}
 }
 
 // ptr returns a pointer to the given string value.
