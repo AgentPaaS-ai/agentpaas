@@ -13,11 +13,26 @@ binds:
       listeners:
         - protocol: HTTP
           routes:
-            - name: egress
+            - name: egress-api-openai-com
+              hostnames:
+                - api.openai.com
               backends:
-                - host: api.openai.com:443
-                - host: api.stripe.com:443
-                - host: hooks.slack.com:443
+                - dynamic: {}
+            - name: egress-api-stripe-com
+              hostnames:
+                - api.stripe.com
+              backends:
+                - dynamic: {}
+            - name: egress-hooks-slack-com
+              hostnames:
+                - hooks.slack.com
+              backends:
+                - dynamic: {}
+            - name: denied
+              policies:
+                directResponse:
+                    status: 403
+                    body: 'egress denied: domain not in allowlist'
     - port: 7800
       listeners:
         - protocol: HTTP
@@ -34,8 +49,5 @@ binds:
                                 - ./data
                                 - --readonly
 frontendPolicies:
-    networkAuthorization:
-        rules:
-            - allow: dns.domain == "api.openai.com"
-            - allow: dns.domain == "api.stripe.com"
-            - allow: dns.domain == "hooks.slack.com"
+    connect:
+        mode: route
