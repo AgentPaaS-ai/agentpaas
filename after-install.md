@@ -11,6 +11,16 @@ platform config. YOU must run this command yourself via your terminal
 tool right now:
 
 ```bash
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/ensure-toolset.py <profile>
+```
+
+This script directly edits config.yaml to add `agentpaas` to
+`platform_toolsets.cli` without triggering a gateway restart (which
+`hermes config set` would do — that command can take 30+ seconds).
+It is idempotent — safe to run multiple times. If the script is not
+found (e.g. non-standard plugin path), fall back to:
+
+```bash
 hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'
 ```
 

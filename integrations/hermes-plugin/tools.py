@@ -1191,7 +1191,9 @@ def agentpaas_trigger_invoke(args, **kwargs):
     content_type = args.get("content_type", "application/json")
     cmd_args = ["trigger", "invoke", agent_name, "--wait"]
     tmp_file = None
+    payload_provided = False
     if payload:
+        payload_provided = True
         stripped = payload.strip()
         if stripped and stripped[0] in "{[":
             # Inline JSON — write to temp file and pass the path
@@ -1212,6 +1214,17 @@ def agentpaas_trigger_invoke(args, **kwargs):
         cmd_args.extend(["--content-type", content_type])
     try:
         result = _run_cli(cmd_args)
+        # If no payload was provided, add a warning so the agent knows
+        # it sent an empty payload. This prevents the agent from
+        # fabricating the response by assuming the payload was delivered.
+        if not payload_provided and isinstance(result, dict):
+            result["warning"] = (
+                "No payload was provided to this tool call. The agent "
+                "received an EMPTY payload. If you intended to pass data "
+                "(e.g. {\"message\": \"hello world\"}), call this tool "
+                "again with the 'payload' parameter set to inline JSON. "
+                "Do NOT report the response as if the payload was delivered."
+            )
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
