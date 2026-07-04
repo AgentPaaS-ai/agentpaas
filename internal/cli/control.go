@@ -38,6 +38,28 @@ func newPackCmd() *cobra.Command {
 				return err
 			}
 			projectDir = absPath
+
+			// BUG 9 fix: warn about wildcard egress policies before packing.
+			{
+				policyPath := filepath.Join(projectDir, "policy.yaml")
+				if data, err := os.ReadFile(policyPath); err == nil {
+					if hasWildcardEgress(data) {
+						allowWildcard, _ := cmd.Flags().GetBool("allow-wildcard")
+						if !allowWildcard {
+							fmt.Fprintf(os.Stderr,
+								"WARNING: policy.yaml contains wildcard egress (domain: '*'). "+
+									"This allows the agent to access ANY HTTPS domain. "+
+									"Specify exact domains for production agents. "+
+									"Use --allow-wildcard to suppress this warning.\n")
+							return fmt.Errorf("refusing to pack with wildcard egress policy (use --allow-wildcard to override)")
+						}
+						fmt.Fprintf(os.Stderr,
+							"WARNING: policy.yaml contains wildcard egress (domain: '*'). "+
+								"This allows the agent to access ANY HTTPS domain.\n")
+					}
+				}
+			}
+
 			agentName, _ := cmd.Flags().GetString("name")
 			agentVersion, _ := cmd.Flags().GetString("version")
 
@@ -81,6 +103,7 @@ func newPackCmd() *cobra.Command {
 	}
 	cmd.Flags().String("name", "", "Agent name (overrides agent.yaml)")
 	cmd.Flags().String("version", "", "Agent version (overrides agent.yaml)")
+	cmd.Flags().Bool("allow-wildcard", false, "Allow packing with wildcard egress policy (suppresses warning)")
 	return cmd
 }
 
@@ -1598,6 +1621,43 @@ func resolveCLIProjectPath(projectPath string) (string, error) {
 		return "", fmt.Errorf("cannot resolve project path %q: %w", projectPath, err)
 	}
 	return absPath, nil
+}
+
+// hasWildcardEgress checks if policy.yaml content contains a wildcard domain
+// entry (domain: "*" with allow_wildcard: true). This is a simple text scan
+// rather than full YAML parsing to keep the CLI fast and avoid importing the
+// policy package.
+func hasWildcardEgress(data []byte) bool {
+	// Look for domain: "*" pattern in the egress section
+	lines := string(data)
+	for _, line := range splitLines(lines) {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "domain:") && strings.Contains(trimmed, "\"*\"") {
+			return true
+		}
+		if strings.HasPrefix(trimmed, "domain:") && strings.Contains(trimmed, "'*'") {
+			return true
+		}
+		if strings.HasPrefix(trimmed, "domain:") && strings.TrimSpace(strings.TrimPrefix(trimmed, "domain:")) == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func splitLines(s string) []string {
+	var lines []string
+	start := 0
+	for i, c := range s {
+		if c == '\n' {
+			lines = append(lines, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		lines = append(lines, s[start:])
+	}
+	return lines
 }
 
 // contextWithTimeout is a helper that creates a context with the given timeout.

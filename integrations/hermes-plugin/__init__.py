@@ -43,6 +43,11 @@ def _ensure_local_skill_pointer():
     and never appear in the system prompt index. This pointer bridges
     that gap deterministically at plugin registration time — no reliance
     on after-install.md being shown to the agent.
+
+    Also writes a SOUL.md snippet (BUG 8 fix) that is always injected
+    into the system prompt, ensuring the agent loads the deploy skill
+    before building any agent — even if it ignores the available_skills
+    hint.
     """
     try:
         hermes_home = os.environ.get("HERMES_HOME") or os.path.expanduser("~/.hermes")
@@ -55,11 +60,47 @@ def _ensure_local_skill_pointer():
         except Exception:
             pass
 
-        skills_dir = Path(hermes_home) / "profiles" / profile / "skills" / "agentpaas"
+        profile_dir = Path(hermes_home) / "profiles" / profile
+
+        # 1. Create skill pointer (appears in available_skills index)
+        skills_dir = profile_dir / "skills" / "agentpaas"
         skills_dir.mkdir(parents=True, exist_ok=True)
         pointer = skills_dir / "SKILL.md"
         pointer.write_text(_SKILL_POINTER_CONTENT, encoding="utf-8")
-        logger.debug("AgentPaaS skill pointer created at %s", pointer)
+
+        # 2. Write SOUL.md snippet (always injected into system prompt)
+        # This ensures the agent loads the deploy skill even if it ignores
+        # the available_skills hint. SOUL.md is loaded fresh every turn.
+        soul_path = profile_dir / "SOUL.md"
+        soul_snippet = """
+# AgentPaaS Onboarding Rule
+
+CRITICAL: When the user asks to build, create, deploy, pack, run, or
+govern any agent, you MUST load the agentpaas:deploy skill FIRST by
+calling skill_view(name="agentpaas:deploy") BEFORE writing any code
+or calling any agentpaas tools. This skill contains essential
+instructions for:
+- Agent code structure (@agent.on_invoke SDK pattern)
+- Egress policy confirmation (ask user, write specific domains)
+- Credential and LLM configuration
+- Pack/run workflow and verification
+
+Do NOT skip this step. Do NOT write agent code without loading the
+skill first. Do NOT use wildcard egress policies without asking the
+user for specific domains.
+"""
+
+        existing_soul = ""
+        if soul_path.exists():
+            existing_soul = soul_path.read_text(encoding="utf-8")
+
+        # Only append if the snippet isn't already there (idempotent)
+        if "AgentPaaS Onboarding Rule" not in existing_soul:
+            if existing_soul and not existing_soul.endswith("\n"):
+                existing_soul += "\n"
+            soul_path.write_text(existing_soul + soul_snippet, encoding="utf-8")
+
+        logger.debug("AgentPaaS skill pointer + SOUL.md created in profile %s", profile)
     except Exception as e:
         logger.warning("Could not create skill pointer: %s", e)
 
