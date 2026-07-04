@@ -8,17 +8,17 @@ import (
 	"net/http"
 )
 
-const defaultXAIModel = "grok-3-mini"
+const defaultNousModel = "deepseek/deepseek-v4-flash"
 
-type xAIAdapter struct{}
+type nousAdapter struct{}
 
-func (a *xAIAdapter) Name() string       { return "xiai" }
-func (a *xAIAdapter) Endpoint() string   { return xaiEndpoint }
-func (a *xAIAdapter) AuthHeader() string { return "Authorization" }
+func (a *nousAdapter) Name() string       { return "nous" }
+func (a *nousAdapter) Endpoint() string   { return nousEndpoint }
+func (a *nousAdapter) AuthHeader() string { return "Authorization" }
 
-func (a *xAIAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string) (*http.Request, error) {
+func (a *nousAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string) (*http.Request, error) {
 	if model == "" {
-		model = defaultXAIModel
+		model = defaultNousModel
 	}
 	body := map[string]interface{}{
 		"model": model,
@@ -28,20 +28,20 @@ func (a *xAIAdapter) BuildRequest(ctx context.Context, model, prompt, credential
 	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("marshal xai request: %w", err)
+		return nil, fmt.Errorf("marshal nous request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, xaiEndpoint, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, nousEndpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return nil, fmt.Errorf("build xai request: %w", err)
+		return nil, fmt.Errorf("build nous request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+credentialValue)
 	req.Header.Set("Content-Type", "application/json")
 	return req, nil
 }
 
-func (a *xAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
+func (a *nousAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("xai returned HTTP %d", statusCode)
+		return nil, fmt.Errorf("nous returned HTTP %d", statusCode)
 	}
 	var resp struct {
 		Choices []struct {
@@ -55,7 +55,7 @@ func (a *xAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, err
 		Model string `json:"model"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("parse xai response: %w", err)
+		return nil, fmt.Errorf("parse nous response: %w", err)
 	}
 	text := ""
 	if len(resp.Choices) > 0 {

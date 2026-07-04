@@ -222,7 +222,7 @@ If the agent needs NO external credentials, skip this step silently.
 2. If an LLM is needed AND agent.yaml has no `llm:` section, you MUST ask
    these questions BEFORE writing code or packing. Do NOT skip. Do NOT
    guess. Do NOT proceed without answers:
-   a. "Which LLM provider? (openai / anthropic / xai)"
+   a. "Which LLM provider? (openai / anthropic / xai / nous)"
    b. "Which model? (e.g. gpt-4o-mini, claude-sonnet-4, grok-beta)"
    c. "What is your API key for {provider}?" — then store it via
       `agentpaas_secret_add(name="{provider}-api-key", value=...)`.
@@ -233,6 +233,7 @@ If the agent needs NO external credentials, skip this step silently.
       - openai → api.openai.com:443
       - anthropic → api.anthropic.com:443
       - xai → api.x.ai:443
+      - nous → inference-api.nousresearch.com:443
    f. The agent code should use the AgentPaaS SDK's `agent.llm()` helper
       which routes through the harness — the credential is injected at
       runtime by the daemon. The agent code should NOT read the API key
@@ -286,7 +287,7 @@ User: "Build an agent that answers questions using an LLM"
 
 You MUST (BEFORE writing any code):
 1. Detect LLM need from user intent — "answers questions" means LLM.
-2. Ask: "Which LLM provider? (openai / anthropic / xai)"
+2. Ask: "Which LLM provider? (openai / anthropic / xai / nous)"
    Ask: "Which model? (e.g. gpt-4o-mini, claude-sonnet-4)"
    Ask: "What is your API key?" → store via `agentpaas_secret_add`.
    Call `agentpaas_llm_configure`.
