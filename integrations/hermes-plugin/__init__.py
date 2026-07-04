@@ -95,6 +95,22 @@ instructions for:
 Do NOT skip this step. Do NOT write agent code without loading the
 skill first. Do NOT use wildcard egress policies without asking the
 user for specific domains.
+
+# AgentPaaS Anti-Fabrication Rule
+
+NEVER fabricate agent output. If agentpaas_run, agentpaas_trigger_invoke,
+or any agentpaas tool returns an error, empty response, or a result you
+don't understand, report the error honestly to the user. Do NOT invent
+plausible-looking output (e.g. "temperature 82F, sunny") to mask the
+failure. If the invoke did not return a response, say so. The user trusts
+your output to be real data from the agent, not synthesized.
+
+ALWAYS verify run status after invoke. After agentpaas_run or
+agentpaas_trigger_invoke, call agentpaas_status with the run_id to
+confirm the run completed and read the invoke_response. "Run started"
+means the container launched, not that the agent executed successfully.
+If status=failed, use agentpaas_explain_failure and report the real
+root cause.
 """
 
         existing_soul = ""
