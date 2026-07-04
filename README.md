@@ -99,11 +99,12 @@ Six attack fixtures through the real pack → run → gateway → audit pipeline
 
 - **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** — every
   AgentPaaS experience runs through Hermes. Install it first.
+- **[Docker Desktop](https://www.docker.com/products/docker-desktop/) or
+  [Colima](https://github.com/abiosoft/colima)** — agents run in containers.
+  Start Colima after installing: `colima start`
 - **An LLM API key** — e.g. from [OpenRouter](https://openrouter.ai),
   OpenAI, xAI, or Anthropic. You'll provide this when building an agent.
 - macOS (Apple Silicon or Intel)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
-  [Colima](https://github.com/abiosoft/colima)
 
 ## Install
 
@@ -115,14 +116,22 @@ If you don't have Hermes yet:
 brew install nousresearch/tap/hermes-agent
 ```
 
-### 2. Install AgentPaaS
+### 2. Install Docker (if you don't have it)
 
 ```bash
-brew install agentpaas/tap/agentpaas
+brew install colima
+colima start
+```
+
+### 3. Install AgentPaaS
+
+```bash
+brew install agentpaas-ai/tap/agentpaas
 agentpaas doctor
 ```
 
-`agentpaas doctor` checks Docker, daemon connectivity, and keychain access.
+`agentpaas doctor` verifies Docker, the daemon, keychain, and the harness
+binary are all ready.
 
 ## Quickstart: Build and Run a Governed Agent
 
