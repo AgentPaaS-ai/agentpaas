@@ -32,26 +32,29 @@ cat > "$SKILLS_DIR/SKILL.md" << 'SKILL_EOF'
 ---
 name: agentpaas-deploy
 description: >
-  Deploy and govern AI agents with AgentPaaS. When building, deploying,
-  or packaging agents, you MUST load the full skill with
-  skill_view(name="agentpaas:deploy") for onboarding instructions,
-  code structure requirements, and egress policy rules.
+  Build, deploy, package, run, and govern AI agents. Use when the user
+  asks to build, create, deploy, pack, or run any agent. You MUST load
+  the full skill with skill_view(name="agentpaas:deploy") for onboarding
+  instructions, code structure requirements (@agent.on_invoke SDK
+  pattern), egress policy rules, credential onboarding, and LLM
+  configuration.
 ---
 
 # AgentPaaS Deploy Pointer
 
-When the user asks to build, deploy, pack, run, or govern AI agents with
-AgentPaaS, you MUST load the real skill immediately:
+When the user asks to build, create, deploy, pack, run, or govern any
+agent, you MUST load the real skill immediately:
 
 ```
 skill_view(name="agentpaas:deploy")
 ```
 
 This pointer exists because plugin skills do not appear in the
-available_skills index. The full instructions (agent code structure,
-egress confirmation, credential onboarding, LLM configuration) live in
-the plugin skill at agentpaas:deploy. Load it before doing ANY agent
-build/deploy work.
+available_skills index. The full instructions (agent code structure
+with @agent.on_invoke, egress confirmation, credential onboarding,
+LLM configuration, pack/run workflow) live in the plugin skill at
+agentpaas:deploy. Load it BEFORE writing any agent code or calling
+agentpaas tools. Do NOT skip this step.
 SKILL_EOF
 ```
 
