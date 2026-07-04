@@ -565,7 +565,14 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 	if err := addBytesToTar(tw, "Dockerfile", []byte(renderDockerfile(cfg, deps)), 0o644, cfg.SourceDateEpoch); err != nil {
 		return nil, err
 	}
-	if err := addBytesToTar(tw, "agentpaas-locked.txt", []byte(strings.Join(deps, "\n")+"\n"), 0o644, cfg.SourceDateEpoch); err != nil {
+	// Write the lock file in pip-compatible format (package==version).
+	// The deps slice uses package@version internally, but pip install -r
+	// requires == format (or >=). Convert back.
+	var pipDeps []string
+	for _, d := range deps {
+		pipDeps = append(pipDeps, strings.Replace(d, "@", "==", 1))
+	}
+	if err := addBytesToTar(tw, "agentpaas-locked.txt", []byte(strings.Join(pipDeps, "\n")+"\n"), 0o644, cfg.SourceDateEpoch); err != nil {
 		return nil, err
 	}
 
