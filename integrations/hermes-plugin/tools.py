@@ -1254,11 +1254,17 @@ def agentpaas_cron_add(args, **kwargs):
         })
     version = args.get("version", "")
     timezone = args.get("timezone", "")
+    payload = args.get("payload", "")
+    content_type = args.get("content_type", "")
     cmd_args = ["cron", "add", agent_name, "--expr", expr]
     if version:
         cmd_args.extend(["--version", version])
     if timezone:
         cmd_args.extend(["--timezone", timezone])
+    if payload:
+        cmd_args.extend(["--payload", payload])
+    if content_type:
+        cmd_args.extend(["--content-type", content_type])
     try:
         result = _run_cli(cmd_args)
         return json.dumps(result)

@@ -4,6 +4,13 @@ The plugin is installed and enabled. But the agentpaas_* tools will NOT
 work until YOU complete steps 1 and 2 below. DO NOT relay these steps to
 the user — actually execute them yourself using your terminal tool.
 
+**CRITICAL: Do NOT run `hermes gateway restart`.** The Hermes CLI prints
+"Restart the gateway for the plugin to take effect: hermes gateway restart"
+after this message — IGNORE THAT. The gateway restart takes 30+ seconds
+and is NOT needed. The plugin will take effect after the user restarts
+their Hermes session in Step 3. Do not run gateway restart. Do not run
+any command containing the word "restart".
+
 ## STEP 1 — YOU MUST DO THIS NOW (DO NOT TELL THE USER TO DO IT)
 
 `hermes plugins install --enable` does NOT add the toolset to the

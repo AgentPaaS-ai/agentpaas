@@ -23,6 +23,7 @@ type cronScheduleState struct {
 	Timezone          string `json:"timezone"`
 	MissedRunPolicy   string `json:"missed_run_policy"`
 	ConcurrencyPolicy string `json:"concurrency_policy"`
+	Payload           []byte `json:"payload,omitempty"`
 	IdempotencyKey    string `json:"idempotency_key"`
 }
 
@@ -36,6 +37,7 @@ func toState(s *CronSchedule) cronScheduleState {
 		Timezone:          s.Timezone,
 		MissedRunPolicy:   s.MissedRunPolicy,
 		ConcurrencyPolicy: s.ConcurrencyPolicy,
+		Payload:           s.Payload,
 		IdempotencyKey:    s.IdempotencyKey,
 	}
 }
@@ -50,6 +52,7 @@ func fromState(st cronScheduleState) *CronSchedule {
 		Timezone:          st.Timezone,
 		MissedRunPolicy:   st.MissedRunPolicy,
 		ConcurrencyPolicy: st.ConcurrencyPolicy,
+		Payload:           st.Payload,
 		IdempotencyKey:    st.IdempotencyKey,
 	}
 }
