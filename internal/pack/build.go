@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -117,8 +118,35 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		return nil, fmt.Errorf("build image: %w", err)
 	}
 	defer func() { _ = buildResp.Body.Close() }()
-	if _, err := io.Copy(io.Discard, buildResp.Body); err != nil {
-		return nil, fmt.Errorf("drain build output: %w", err)
+
+	// Read and check the build output stream. Docker ImageBuild returns a
+	// streaming JSON response where each line is either {"stream":"..."} for
+	// progress or {"errorDetail":{"message":"..."}} for build failures.
+	// Discarding it (io.Copy to io.Discard) silently swallows build errors,
+	// causing ImageInspect to fail with "no such image" or, worse, return
+	// a stale image's digest if one exists with the same tag.
+	dec := json.NewDecoder(buildResp.Body)
+	for {
+		var msg struct {
+			Stream      string          `json:"stream,omitempty"`
+			ErrorDetail json.RawMessage `json:"errorDetail,omitempty"`
+			Error       string          `json:"error,omitempty"`
+		}
+		if err := dec.Decode(&msg); err != nil {
+			if err == io.EOF {
+				break
+			}
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, fmt.Errorf("build cancelled (context deadline): %w", err)
+			}
+			return nil, fmt.Errorf("read build output: %w", err)
+		}
+		if msg.Error != "" {
+			return nil, fmt.Errorf("docker build failed: %s", msg.Error)
+		}
+		if len(msg.ErrorDetail) > 0 && string(msg.ErrorDetail) != "null" {
+			return nil, fmt.Errorf("docker build failed: %s", string(msg.ErrorDetail))
+		}
 	}
 
 	inspect, err := cli.ImageInspect(ctx, cfg.ImageTag)
