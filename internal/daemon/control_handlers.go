@@ -469,6 +469,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 				"fail_reason":  failReason,
 			})
 			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
+			// Self-cleanup on failure too — failed runs leak the same
+			// resources as succeeded ones.
+			s.cleanupRun(context.Background(), tr)
 		} else {
 			s.runMu.Lock()
 			tr.Status = "succeeded"
@@ -490,11 +493,52 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 				"agent_name": agentName,
 				"exit_code":  0,
 			})
+			// Self-cleanup: remove the container and networks now that
+			// the run has completed. Without this, every run leaks 1
+			// agent container, 1 gateway container, and 2 networks,
+			// eventually exhausting Docker's network pool. Stop() also
+			// cleans up, but no one calls Stop() on a succeeded run.
+			s.cleanupRun(context.Background(), tr)
 		}
 	}(tracked)
 
 	_ = deployed
 	return &controlv1.RunResponse{RunId: runID}, nil
+}
+
+// cleanupRun removes the run's Docker resources (agent container, gateway
+// container, internal network, egress network, gateway config dir, audit
+// tailer). Called from the auto-invoke goroutine on success (so completed
+// runs don't leak resources) and from Stop() on explicit termination.
+// Safe to call multiple times — Remove/RemoveNetwork are idempotent on
+// already-removed resources.
+func (s *controlServer) cleanupRun(ctx context.Context, tr *trackedRun) {
+	rt, err := s.getOrCreateRuntime()
+	if err != nil {
+		return
+	}
+	if tr.Tailer != nil {
+		tr.Tailer.stop()
+	}
+	if tr.Gateway != "" {
+		timeout := 10 * time.Second
+		_ = rt.Stop(ctx, tr.Gateway, &timeout)
+		_ = rt.Remove(ctx, tr.Gateway, true)
+	}
+	if tr.Container != "" {
+		timeout := 10 * time.Second
+		_ = rt.Stop(ctx, tr.Container, &timeout)
+		_ = rt.Remove(ctx, tr.Container, true)
+	}
+	if tr.Network != "" {
+		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(tr.Network))
+	}
+	if tr.EgressNetwork != "" {
+		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(tr.EgressNetwork))
+	}
+	if tr.GatewayConfigDir != "" {
+		_ = os.RemoveAll(tr.GatewayConfigDir)
+	}
 }
 
 func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*controlv1.StopResponse, error) {

@@ -314,6 +314,20 @@ with your Hermes profile. See README.md → "Hermes Plugin (Developer Setup)".
 
 ## Pitfalls
 
+- **NEVER fabricate output when a tool fails.** If `agentpaas_run`,
+  `agentpaas_trigger_invoke`, or any agentpaas tool returns an error,
+  report the error honestly to the user. Do NOT invent plausible-looking
+  output (e.g. "expected temperature ~88°F based on typical patterns") to
+  mask the failure. If the invoke did not return a response, say so. The
+  user trusts your output to be real data from the agent, not synthesized.
+  This is the single most important behavioral rule — fabricating data
+  destroys trust in the entire platform.
+- **Always verify run status after invoke.** After `agentpaas_run` or
+  `agentpaas_trigger_invoke`, call `agentpaas_status` with the run_id to
+  confirm the run actually completed (status=completed/succeeded) and read
+  the invoke_response. "Run started" means the container launched, not
+  that the agent executed successfully. If status=failed, use
+  `agentpaas_explain_failure` and report the real root cause.
 - **Daemon won't start (checkpoint key corrupted)** → After binary upgrades
   or killing the daemon, it may fail with "decrypt checkpoint key: cipher:
   message authentication failed". Fix by deleting the corrupted key:

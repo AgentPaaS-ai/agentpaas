@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/parvezsyed/agentpaas/internal/audit"
@@ -16,13 +17,14 @@ import (
 // dashboard visibility. Post-run audit chain ingestion remains the
 // responsibility of ingestHarnessAudit.
 type auditTailer struct {
-	path       string // path to harness-audit.jsonl
-	runID      string
-	writer     *audit.AuditWriter
-	index      *audit.SQLiteIndexer
-	eventBus   *trigger.EventBus
-	stopCh     chan struct{}
-	done       chan struct{}
+	path     string // path to harness-audit.jsonl
+	runID    string
+	writer   *audit.AuditWriter
+	index    *audit.SQLiteIndexer
+	eventBus *trigger.EventBus
+	stopCh   chan struct{}
+	done     chan struct{}
+	stopOnce sync.Once
 	lastOffset int64
 }
 
@@ -47,8 +49,12 @@ func (t *auditTailer) start() {
 }
 
 // stop signals the tailer to stop and waits for it to finish.
+// Safe to call multiple times — the cleanup path (cleanupRun) and Stop()
+// can both call this on the same run.
 func (t *auditTailer) stop() {
-	close(t.stopCh)
+	t.stopOnce.Do(func() {
+		close(t.stopCh)
+	})
 	<-t.done
 }
 
