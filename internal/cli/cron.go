@@ -27,6 +27,8 @@ func newCronCmd() *cobra.Command {
 				return fmt.Errorf("required flag --expr is missing")
 			}
 			version, _ := cmd.Flags().GetString("version")
+		payload, _ := cmd.Flags().GetString("payload")
+		contentType, _ := cmd.Flags().GetString("content-type")
 			timezone, _ := cmd.Flags().GetString("timezone")
 
 			sock, err := socketPath(cmd)
@@ -47,6 +49,8 @@ func newCronCmd() *cobra.Command {
 				Expr:         expr,
 				AgentVersion: version,
 				Timezone:     timezone,
+				Payload:       []byte(payload),
+				ContentType:   contentType,
 			})
 			if err != nil {
 				return fmt.Errorf("cron add failed: %w", err)
@@ -84,6 +88,8 @@ func newCronCmd() *cobra.Command {
 	addCmd.Flags().String("expr", "", "Cron expression (e.g. \"*/5 * * * *\")")
 	addCmd.Flags().String("version", "", "Agent version (optional)")
 	addCmd.Flags().String("timezone", "", "Timezone (optional)")
+	addCmd.Flags().String("payload", "", "Invocation payload (inline JSON or file path)")
+	addCmd.Flags().String("content-type", "", "Payload content type (default: application/json)")
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",

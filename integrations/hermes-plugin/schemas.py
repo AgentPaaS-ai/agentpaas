@@ -525,6 +525,14 @@ AGENTPAAS_CRON_ADD = {
                 "type": "string",
                 "description": "Optional timezone for the cron schedule.",
             },
+            "payload": {
+                "type": "string",
+                "description": "Optional invocation payload as inline JSON (e.g. '{"city": "Folsom"}').",
+            },
+            "content_type": {
+                "type": "string",
+                "description": "Payload content type (default: application/json).",
+            },
         },
         "required": ["agent_name", "expr"],
         "additionalProperties": False,

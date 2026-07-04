@@ -3584,6 +3584,8 @@ type CronScheduleInfo struct {
 	Timezone          string                 `protobuf:"bytes,5,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	MissedRunPolicy   string                 `protobuf:"bytes,6,opt,name=missed_run_policy,json=missedRunPolicy,proto3" json:"missed_run_policy,omitempty"`
 	ConcurrencyPolicy string                 `protobuf:"bytes,7,opt,name=concurrency_policy,json=concurrencyPolicy,proto3" json:"concurrency_policy,omitempty"`
+	Payload           []byte                 `protobuf:"bytes,8,opt,name=payload,proto3" json:"payload,omitempty"`
+	ContentType       string                 `protobuf:"bytes,9,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -3667,6 +3669,20 @@ func (x *CronScheduleInfo) GetConcurrencyPolicy() string {
 	return ""
 }
 
+func (x *CronScheduleInfo) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *CronScheduleInfo) GetContentType() string {
+	if x != nil {
+		return x.ContentType
+	}
+	return ""
+}
+
 // CronAddRequest creates a new cron schedule.
 type CronAddRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
@@ -3676,6 +3692,8 @@ type CronAddRequest struct {
 	Timezone          string                 `protobuf:"bytes,4,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	MissedRunPolicy   string                 `protobuf:"bytes,5,opt,name=missed_run_policy,json=missedRunPolicy,proto3" json:"missed_run_policy,omitempty"`
 	ConcurrencyPolicy string                 `protobuf:"bytes,6,opt,name=concurrency_policy,json=concurrencyPolicy,proto3" json:"concurrency_policy,omitempty"`
+	Payload           []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`
+	ContentType       string                 `protobuf:"bytes,8,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -3748,6 +3766,20 @@ func (x *CronAddRequest) GetMissedRunPolicy() string {
 func (x *CronAddRequest) GetConcurrencyPolicy() string {
 	if x != nil {
 		return x.ConcurrencyPolicy
+	}
+	return ""
+}
+
+func (x *CronAddRequest) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *CronAddRequest) GetContentType() string {
+	if x != nil {
+		return x.ContentType
 	}
 	return ""
 }
@@ -4401,7 +4433,7 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\fconfirmation\x18\x0f \x01(\v2-.agentpaas.control.v1.ConfirmationRequirementR\fconfirmation\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x82\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbf\x02\n" +
 	"\x10CronScheduleInfo\x12\x1f\n" +
 	"\vschedule_id\x18\x01 \x01(\tR\n" +
 	"scheduleId\x12\x12\n" +
@@ -4411,7 +4443,9 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\ragent_version\x18\x04 \x01(\tR\fagentVersion\x12\x1a\n" +
 	"\btimezone\x18\x05 \x01(\tR\btimezone\x12*\n" +
 	"\x11missed_run_policy\x18\x06 \x01(\tR\x0fmissedRunPolicy\x12-\n" +
-	"\x12concurrency_policy\x18\a \x01(\tR\x11concurrencyPolicy\"\xdf\x01\n" +
+	"\x12concurrency_policy\x18\a \x01(\tR\x11concurrencyPolicy\x12\x18\n" +
+	"\apayload\x18\b \x01(\fR\apayload\x12!\n" +
+	"\fcontent_type\x18\t \x01(\tR\vcontentType\"\x9c\x02\n" +
 	"\x0eCronAddRequest\x12\x1d\n" +
 	"\n" +
 	"agent_name\x18\x01 \x01(\tR\tagentName\x12\x12\n" +
@@ -4419,7 +4453,9 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\ragent_version\x18\x03 \x01(\tR\fagentVersion\x12\x1a\n" +
 	"\btimezone\x18\x04 \x01(\tR\btimezone\x12*\n" +
 	"\x11missed_run_policy\x18\x05 \x01(\tR\x0fmissedRunPolicy\x12-\n" +
-	"\x12concurrency_policy\x18\x06 \x01(\tR\x11concurrencyPolicy\"U\n" +
+	"\x12concurrency_policy\x18\x06 \x01(\tR\x11concurrencyPolicy\x12\x18\n" +
+	"\apayload\x18\a \x01(\fR\apayload\x12!\n" +
+	"\fcontent_type\x18\b \x01(\tR\vcontentType\"U\n" +
 	"\x0fCronAddResponse\x12B\n" +
 	"\bschedule\x18\x01 \x01(\v2&.agentpaas.control.v1.CronScheduleInfoR\bschedule\"\x11\n" +
 	"\x0fCronListRequest\"X\n" +

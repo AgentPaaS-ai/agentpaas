@@ -556,6 +556,8 @@ message CronScheduleInfo {
   string timezone = 5;
   string missed_run_policy = 6;
   string concurrency_policy = 7;
+  bytes payload = 8;
+  string content_type = 9;
 }
 
 // CronAddRequest creates a new cron schedule.
@@ -566,6 +568,8 @@ message CronAddRequest {
   string timezone = 4;
   string missed_run_policy = 5;
   string concurrency_policy = 6;
+  bytes payload = 7;
+  string content_type = 8;
 }
 
 // CronAddResponse returns the created schedule.

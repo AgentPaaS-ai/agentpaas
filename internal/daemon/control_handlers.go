@@ -1826,6 +1826,8 @@ func (s *controlServer) CronAdd(ctx context.Context, req *controlv1.CronAddReque
 		Timezone:          req.GetTimezone(),
 		MissedRunPolicy:   req.GetMissedRunPolicy(),
 		ConcurrencyPolicy: req.GetConcurrencyPolicy(),
+		Payload:           req.GetPayload(),
+		ContentType:       req.GetContentType(),
 	}
 	scheduleID, err := s.cronScheduler.AddSchedule(ctx, schedule)
 	if err != nil {
@@ -1895,5 +1897,7 @@ func cronScheduleToProto(s *trigger.CronSchedule, scheduleID string) *controlv1.
 		Timezone:          s.Timezone,
 		MissedRunPolicy:   s.MissedRunPolicy,
 		ConcurrencyPolicy: s.ConcurrencyPolicy,
+		Payload:           s.Payload,
+		ContentType:       s.ContentType,
 	}
 }
