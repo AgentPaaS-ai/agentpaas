@@ -113,11 +113,16 @@ for d in "${LEFTOVER_DIRS[@]}"; do
     fi
 done
 
-# Clean deployed agent state from AgentPaaS home
+# Clean deployed agent state and run artifacts from AgentPaaS home
 if [[ -d "$HOME/.agentpaas/state/agents" ]]; then
     rm -rf "$HOME/.agentpaas/state/agents"/*
     log "Cleared deployed agent state"
 fi
+if [[ -d "$HOME/.agentpaas/state/runs" ]]; then
+    rm -rf "$HOME/.agentpaas/state/runs"/*
+    log "Cleared run state"
+fi
+rm -f "$HOME/.agentpaas/state/audit-checkpoint-key.der" 2>/dev/null || true
 
 # --- Step 8: Verify ---
 log "Verification:"
