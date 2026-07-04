@@ -1135,12 +1135,11 @@ def agentpaas_llm_configure(args, **kwargs):
             f"  credential: {credential}  # Keychain secret name\n"
         )
 
-        # Regex to match an existing llm: block (regular or commented).
-        # Matches from the llm: or # llm: header through all indented lines
-        # and adjacent comments, up to the next top-level key or EOF.
+        # Regex to match an existing llm: block (active or commented template).
         llm_pattern = _re.compile(
-            r'(?:#\s*)?llm:\n'
-            r'(?:[\t ]+(?:#\s*)?[^\n]*\n)*'
+            r'(?:^[\t ]*)?(?:#\s*)?llm:\s*\n'
+            r'(?:^[\t ]*(?:#\s*)?(?:provider|model|credential):[^\n]*\n)*',
+            _re.MULTILINE,
         )
         match = llm_pattern.search(content)
         if match:
@@ -1153,6 +1152,14 @@ def agentpaas_llm_configure(args, **kwargs):
             if content and content.strip() and not content.endswith("\n\n"):
                 content += "\n"
             content += new_section
+
+        # Remove any leftover commented template lines from the default scaffold.
+        content = _re.sub(
+            r'^[\t ]*# llm:.*\n|^[\t ]*#   (?:provider|model|credential):.*\n',
+            '',
+            content,
+            flags=_re.MULTILINE,
+        )
 
         # Write back
         with open(agent_yaml_path, "w", encoding="utf-8") as f:

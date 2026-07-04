@@ -25,7 +25,10 @@ The user must restart Hermes for the changes to take effect:
 Quit this session and run: hermes -p <profile>
 ```
 
-## Step 3: Verify
+## Step 3: Verify after restart
 
-After restart, verify the tools are available by asking:
-"Run agentpaas_doctor to check if my AgentPaaS setup is healthy"
+```bash
+hermes tools list | grep agentpaas    # should show ~30 tools
+```
+
+Ask the agent: "Run agentpaas_doctor to check if my AgentPaaS setup is healthy"
