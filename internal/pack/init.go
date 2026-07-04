@@ -14,9 +14,10 @@ import (
 // If the directory does not exist, it is created.
 // If agent.yaml already exists, return an error (don't overwrite).
 // Files created:
-//   - agent.yaml (minimal template with name, version, runtime, entry)
-//   - main.py (entry point stub: def app(input): return {"status":"ok"})
+//   - agent.yaml (minimal template with name, version, runtime)
+//   - main.py (entry point stub using @agent.on_invoke SDK pattern)
 //   - requirements.txt (empty, with a comment)
+//   - policy.yaml (default-deny egress — no domains allowed by default)
 //   - .agentpaasignore (default excludes)
 func InitScaffold(projectDir string, runtime RuntimeType) error {
 	if err := validateProjectDir(projectDir); err != nil {
@@ -52,6 +53,7 @@ func InitScaffold(projectDir string, runtime RuntimeType) error {
 		"agent.yaml":       DefaultAgentYAML(runtime),
 		"main.py":          DefaultMainPy(),
 		"requirements.txt": "# Add Python dependencies here.\n",
+		"policy.yaml":      DefaultPolicyYAML(),
 		".agentpaasignore": DefaultAgentPaasIgnore(),
 	}
 	for name, content := range files {
@@ -184,7 +186,7 @@ func DefaultAgentYAML(runtime RuntimeType) string {
 	fmt.Fprintf(&b, "name: agent\n")
 	fmt.Fprintf(&b, "version: 0.1.0\n")
 	fmt.Fprintf(&b, "runtime: %s\n", runtimeValue)
-	fmt.Fprintf(&b, "entry: main:app\n")
+	fmt.Fprintf(&b, "description: \"\"\n")
 	fmt.Fprintf(&b, "# llm:\n")
 	fmt.Fprintf(&b, "#   provider: openai  # openai|anthropic|xai\n")
 	fmt.Fprintf(&b, "#   model: gpt-4o\n")
@@ -204,8 +206,32 @@ func DefaultAgentPaasIgnore() string {
 }
 
 // DefaultMainPy returns the default main.py entry point stub.
+// Uses the AgentPaaS SDK @agent.on_invoke pattern — plain app()/main()
+// functions will NOT work with the harness.
 func DefaultMainPy() string {
-	return "def app(input):\n    return {\"status\": \"ok\"}\n"
+	return `from agentpaas_sdk import agent
+
+
+@agent.on_invoke
+def handle_invoke(payload):
+    """Called when the agent is invoked. payload is a dict from the trigger."""
+    return {"status": "OK"}
+`
+}
+
+// DefaultPolicyYAML returns a default-deny policy.yaml — no egress allowed
+// until the agent onboarding flow adds explicit domain rules.
+func DefaultPolicyYAML() string {
+	return `version: "1"
+agent:
+  name: ""
+  description: ""
+egress: []
+credentials: []
+mcp_servers: []
+hooks: []
+ingress: []
+`
 }
 
 func writeNewProjectFile(path string, content string) error {

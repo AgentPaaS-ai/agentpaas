@@ -14,7 +14,7 @@ func TestInitScaffoldNewDir(t *testing.T) {
 		t.Fatalf("InitScaffold() error = %v", err)
 	}
 
-	for _, name := range []string{"agent.yaml", "main.py", "requirements.txt", ".agentpaasignore"} {
+	for _, name := range []string{"agent.yaml", "main.py", "requirements.txt", "policy.yaml", ".agentpaasignore"} {
 		if _, err := os.Lstat(filepath.Join(projectDir, name)); err != nil {
 			t.Fatalf("expected %s to exist: %v", name, err)
 		}
@@ -72,7 +72,7 @@ func TestInitScaffoldLangGraph(t *testing.T) {
 func TestDefaultAgentYAML(t *testing.T) {
 	content := DefaultAgentYAML(RuntimeCrewAI)
 
-	for _, want := range []string{"name:", "version:", "runtime: crewai", "entry:"} {
+	for _, want := range []string{"name:", "version:", "runtime: crewai"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("DefaultAgentYAML() = %q, want %q", content, want)
 		}
@@ -91,8 +91,8 @@ func TestDefaultAgentPaasIgnore(t *testing.T) {
 
 func TestDefaultMainPy(t *testing.T) {
 	content := DefaultMainPy()
-	if !strings.Contains(content, "def app") {
-		t.Fatalf("DefaultMainPy() = %q, want def app", content)
+	if !strings.Contains(content, "@agent.on_invoke") {
+		t.Fatalf("DefaultMainPy() = %q, want @agent.on_invoke", content)
 	}
 }
 
