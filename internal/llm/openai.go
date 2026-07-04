@@ -41,7 +41,7 @@ func (a *openAIAdapter) BuildRequest(ctx context.Context, model, prompt, credent
 
 func (a *openAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("openai returned HTTP %d", statusCode)
+		return nil, formatHTTPError("openai", statusCode, body)
 	}
 	var resp struct {
 		Choices []struct {

@@ -41,7 +41,7 @@ func (a *nousAdapter) BuildRequest(ctx context.Context, model, prompt, credentia
 
 func (a *nousAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("nous returned HTTP %d", statusCode)
+		return nil, formatHTTPError("nous", statusCode, body)
 	}
 	var resp struct {
 		Choices []struct {

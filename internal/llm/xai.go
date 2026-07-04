@@ -41,7 +41,7 @@ func (a *xAIAdapter) BuildRequest(ctx context.Context, model, prompt, credential
 
 func (a *xAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("xai returned HTTP %d", statusCode)
+		return nil, formatHTTPError("xai", statusCode, body)
 	}
 	var resp struct {
 		Choices []struct {
