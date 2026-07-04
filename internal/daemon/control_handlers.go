@@ -446,7 +446,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		defer close(tr.InvokeDone)
 		timeoutCtx, timeoutCancel := context.WithTimeout(invokeCtx, 2*time.Minute)
 		defer timeoutCancel()
-		if err := s.invokeAgent(timeoutCtx, containerID, agentName); err != nil {
+		if stdout, err := s.invokeAgent(timeoutCtx, containerID, agentName); err != nil {
 			// Write directly to the pointer under the lock. This works
 			// whether the run is still in s.runs or has been claimed by
 			// Stop (claimRun deletes from the map but the pointer is
@@ -472,7 +472,15 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		} else {
 			s.runMu.Lock()
 			tr.Status = "succeeded"
+			tr.InvokeResponse = stdout
 			s.runMu.Unlock()
+			// Persist the invoke response to the run directory so it
+			// survives after the run is stopped and can be retrieved
+			// by summarize/timeline (BUG 11 fix).
+			if s.homePaths != nil {
+				respPath := filepath.Join(s.homePaths.State, "runs", runID, "invoke-response.json")
+				_ = os.WriteFile(respPath, []byte(stdout), 0o644)
+			}
 			s.recordAudit("invoke", "daemon", map[string]interface{}{
 				"run_id":     runID,
 				"agent_name": agentName,
@@ -857,10 +865,10 @@ func (s *controlServer) recordAudit(eventType, actor string, payload map[string]
 	}
 }
 
-func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID, agentName string) error {
+func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID, agentName string) (string, error) {
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
-		return fmt.Errorf("runtime: %w", err)
+		return "", fmt.Errorf("runtime: %w", err)
 	}
 
 	// Wait for harness to be ready (agent import phase).
@@ -874,23 +882,23 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 		}
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return "", ctx.Err()
 		case <-time.After(time.Second):
 		}
 	}
 	if !ready {
-		return fmt.Errorf("harness /readyz not ready after 30 attempts")
+		return "", fmt.Errorf("harness /readyz not ready after 30 attempts")
 	}
 
 	// Build the invoke payload with LLM config and resolved credentials.
 	payload, err := s.buildInvokePayload(ctx, agentName)
 	if err != nil {
-		return fmt.Errorf("build invoke payload: %w", err)
+		return "", fmt.Errorf("build invoke payload: %w", err)
 	}
 
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshal invoke payload: %w", err)
+		return "", fmt.Errorf("marshal invoke payload: %w", err)
 	}
 
 	// Invoke the agent. The payload is passed via stdin to keep the credential
@@ -904,13 +912,13 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 			"print(urllib.request.urlopen(req,timeout=60).read().decode())"}
 	stdout, stderr, exitCode, err := rt.ExecWithStdin(ctx, containerID, invokeCmd, payloadJSON)
 	if err != nil {
-		return fmt.Errorf("exec invoke: %w", err)
+		return "", fmt.Errorf("exec invoke: %w", err)
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("invoke failed (exit %d): %s", exitCode, stderr)
+		return "", fmt.Errorf("invoke failed (exit %d): %s", exitCode, stderr)
 	}
-	_ = stdout
-	return nil
+
+	return stdout, nil
 }
 
 // buildInvokePayload builds the invoke payload with LLM config and resolved credentials.

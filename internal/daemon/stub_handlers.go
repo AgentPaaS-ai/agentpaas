@@ -35,6 +35,7 @@ type trackedRun struct {
 	CancelInvoke  context.CancelFunc
 	InvokeDone    chan struct{} // closed when invoke goroutine exits
 	InvokeErr     error         // written before close(InvokeDone); safe to read after channel receive
+	InvokeResponse string       // raw stdout from the invoke command (agent's response payload)
 	Tailer        *auditTailer    // real-time audit tailer (nil if not running)
 }
 

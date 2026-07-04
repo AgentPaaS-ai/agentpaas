@@ -1253,9 +1253,22 @@ func newSummarizeCmd() *cobra.Command {
 				result.FinishedAt = resp.GetFinishedAt().AsTime()
 			}
 			result.DurationMS = resp.GetDurationMs()
+
+			// Read the persisted invoke response (BUG 11 fix).
+			if homeDir, err := homeDirPath(cmd); err == nil {
+				respPath := filepath.Join(homeDir, "state", "runs", runID, "invoke-response.json")
+				if data, err := os.ReadFile(respPath); err == nil {
+					result.InvokeResponse = string(data)
+				}
+			}
+
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(operator.SummarizeRunResponse)
-				return fmt.Sprintf("Run %s: %s (status: %s)", r.RunID, r.Summary, r.Status)
+				msg := fmt.Sprintf("Run %s: %s (status: %s)", r.RunID, r.Summary, r.Status)
+				if r.InvokeResponse != "" {
+					msg += "\nInvoke Response:\n" + r.InvokeResponse
+				}
+				return msg
 			})
 		},
 	}

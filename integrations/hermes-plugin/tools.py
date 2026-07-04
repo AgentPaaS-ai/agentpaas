@@ -1189,7 +1189,7 @@ def agentpaas_trigger_invoke(args, **kwargs):
         })
     payload = args.get("payload", "")
     content_type = args.get("content_type", "application/json")
-    cmd_args = ["trigger", "invoke", agent_name]
+    cmd_args = ["trigger", "invoke", agent_name, "--wait"]
     tmp_file = None
     if payload:
         stripped = payload.strip()
