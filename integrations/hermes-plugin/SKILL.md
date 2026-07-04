@@ -83,6 +83,51 @@ hermes -p <profile> tools list | grep agentpaas    # should show ~30 tools
 hermes -p <profile> skills list | grep -i agentpaas
 ```
 
+## Agent Code Structure (REQUIRED for deployment)
+
+AgentPaaS agents MUST use the AgentPaaS SDK pattern. A plain `main()` function
+will NOT work — the harness invokes the agent via the SDK's `@agent.on_invoke`
+handler. If the agent code does not register an invoke handler, the run fails
+with: "agent must register an invoke handler with @agent.on_invoke"
+
+### Correct Agent Structure (Python)
+
+```python
+from agentpaas_sdk import agent
+
+@agent.on_invoke
+def handle_invoke(payload):
+    """Called when the agent is invoked. payload is a dict from the trigger."""
+    # Your agent logic here
+    result = do_something(payload)
+    # Return a dict — this is serialized as the invoke response
+    return {"status": "OK", "result": result}
+```
+
+### agent.yaml
+
+```yaml
+name: my-agent
+version: "1.0"
+runtime: python
+description: What this agent does
+```
+
+### policy.yaml
+
+Generated during the Build-Time Onboarding flow (see below). Each external
+domain the agent accesses must be listed as an egress rule.
+
+### requirements.txt
+
+List any pip dependencies (besides agentpaas_sdk, which is bundled in the
+image). If the agent uses requests, httpx, etc., list them here.
+
+### File naming
+
+The agent entrypoint must be `main.py` in the project root. The harness loads
+`/app/main.py` inside the container.
+
 ## Onboarding Response
 
 When a user expresses interest in AgentPaaS (e.g. "I want to use agentpaas",
