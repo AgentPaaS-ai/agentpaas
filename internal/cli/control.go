@@ -50,7 +50,7 @@ func newPackCmd() *cobra.Command {
 			}
 			defer func() { _ = conn.Close() }()
 
-			ctx, cancel := contextWithTimeout(30 * time.Second)
+			ctx, cancel := contextWithTimeout(5 * time.Minute)
 			defer cancel()
 
 			resp, err := client.Pack(ctx, &controlv1.PackRequest{
