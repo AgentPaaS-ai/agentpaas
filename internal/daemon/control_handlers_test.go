@@ -1069,6 +1069,31 @@ func TestRun_RejectsWhenConcurrentLimitReached(t *testing.T) {
 	}
 }
 
+// TestRun_CompletedRunsDoNotCountAgainstLimit verifies that runs in terminal
+// states (succeeded/failed) do NOT count against the concurrent run limit.
+// This is the BUG 7 fix — completed runs that haven't been Stop()ped yet
+// should not block new runs from starting.
+func TestRun_CompletedRunsDoNotCountAgainstLimit(t *testing.T) {
+	dir := t.TempDir()
+	hp := home.NewHomePaths(dir)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatalf("home.Ensure: %v", err)
+	}
+	server := &controlServer{homePaths: hp}
+
+	// Track 3 runs, but mark them all as succeeded (terminal state).
+	for i := 0; i < maxConcurrentRuns; i++ {
+		runID := fmt.Sprintf("run-done-%d", i)
+		server.trackRun(runID, runtime.ContainerID(fmt.Sprintf("c-%d", i)), fmt.Sprintf("n-%d", i), "")
+		server.setRunStatus(runID, "succeeded")
+	}
+
+	// activeRunCount should be 0, not 3.
+	if got := server.activeRunCount(); got != 0 {
+		t.Fatalf("activeRunCount() = %d, want 0 (completed runs should not count)", got)
+	}
+}
+
 // --- Adversarial break tests (14A0-T01+T03) ---
 
 func TestAdv_ConcurrentSetStatusAndStop(t *testing.T) {
