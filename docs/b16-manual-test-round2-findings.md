@@ -184,6 +184,59 @@ status, or document that `trigger invoke` creates a new run.
 
 ---
 
+### BUG-T4-10 (HIGH): Agent does not autonomously complete plugin install onboarding
+
+**Prompt:** "Install AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas"
+**Expected:** Agent installs the plugin AND adds the toolset to platform_toolsets.cli
+AND tells the user to restart (3 steps, all done autonomously).
+**Actual:** Agent only did step 1 (plugin install + enable). It printed steps 2-3
+as instructions for the user to run manually:
+```
+Recommended next steps (from the installer):
+1. Add the agentpaas toolset:
+   hermes config set platform_toolsets.cli '["terminal", ..., "agentpaas"]'
+2. Restart Hermes
+3. Verify: hermes tools list | grep agentpaas
+```
+**Verified state after agent finished:**
+- Plugin enabled in config: YES
+- Plugin cloned to disk: YES
+- `agentpaas` in platform_toolsets.cli: NO (agent did not run the config command)
+**Root cause:** The agent had access to `terminal` (it could have run
+`hermes config set` itself) but chose to present the after-install.md steps as
+user instructions rather than executing them. The `after-install.md` is written
+as instructions TO the user, not as a script FOR the agent.
+**Impact:** A real user following natural-language onboarding thinks they're done
+after the agent says "installed successfully." They restart, try to use
+agentpaas tools, and nothing works — because the toolset was never added.
+**Likely fix (two options):**
+1. Rewrite `after-install.md` as agent-actionable steps (imperative commands
+   the agent should run, not instructions to show the user).
+2. Better: make `hermes plugins install --enable` also call
+   `_toggle_plugin_toolset()` in the Hermes framework so the toolset is
+   added automatically (fixes the root cause, BUG-T4-07).
+3. Add onboarding instructions to the plugin SKILL.md telling the agent to
+   always run `hermes config set platform_toolsets.cli` after install.
+
+---
+
+### BUG-T4-11 (MEDIUM): `after-install.md` references non-existent `/agentpaas-doctor` slash command
+
+**File:** `after-install.md` (shown after `hermes plugins install`)
+**Issue:** The post-install message tells users: "Then run /agentpaas-doctor
+inside a Hermes session to check setup health." But there is no
+`/agentpaas-doctor` slash command — the plugin only provides the
+`agentpaas_doctor` tool. Users must ask the agent "run agentpaas_doctor"
+instead.
+**Note:** This is the same issue as BUG-T4-06 but now confirmed to cause
+real confusion during natural-language onboarding testing.
+**Impact:** User types `/agentpaas-doctor`, gets "unknown command," and
+has no clear alternative.
+**Likely fix:** Update after-install.md to say: 'Then ask the agent:
+"Run agentpaas_doctor to check setup health"'
+
+---
+
 ## Architecture Observations (not bugs)
 
 1. **`trigger invoke` creates a new run, not an invoke within an existing run.**
@@ -203,6 +256,10 @@ status, or document that `trigger invoke` creates a new run.
 
 ## Recommendation
 
-Fix BUG-T4-01 (policy show) and BUG-T4-02 (logs non-JSON) first — these are
-the most user-facing. BUG-T4-03 (explain-failure on success) and BUG-T4-09
-(invocation count) are next. The rest are cosmetic/info-level.
+Fix priority order:
+1. BUG-T4-10 (HIGH): Agent doesn't complete onboarding autonomously — biggest UX blocker for natural-language install path
+2. BUG-T4-01 (MED): policy show returns stub error
+3. BUG-T4-02 (LOW): logs returns NDJSON, plugin tool expects JSON array
+4. BUG-T4-09 (MED): status shows "0 invocations" after successful invoke
+5. BUG-T4-03 (LOW): explain-failure says "Run failed" for successful runs
+6. BUG-T4-04, T4-05, T4-06/T4-11, T4-07, T4-08: cosmetic/info-level
