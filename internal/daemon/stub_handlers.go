@@ -27,7 +27,7 @@ type trackedRun struct {
 	EgressNetwork string // egress network ID
 	Gateway       runtime.ContainerID // gateway container ID (empty if no gateway)
 	AuditDir          string // host path to harness-audit directory for post-run ingestion
-	GatewayConfigDir  string // per-run default-deny gateway config dir (empty when policy gateway.yaml is mounted)
+	GatewayConfigDir  string // per-run gateway config dir (compiled from agent policy or default-deny)
 	AgentName     string
 	StartedAt     time.Time
 	Status        string              // "running" | "succeeded" | "failed" | "cancelled"
