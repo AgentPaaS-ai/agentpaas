@@ -15,6 +15,7 @@ import (
 	"time"
 
 	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	"github.com/parvezsyed/agentpaas/internal/pack"
 	"github.com/parvezsyed/agentpaas/internal/operator"
 	"github.com/parvezsyed/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
@@ -83,6 +84,89 @@ func newPackCmd() *cobra.Command {
 	return cmd
 }
 
+// resolveRunTarget resolves a user-provided target (project path, image
+// digest, or agent name) to a deployed agent name that the daemon's Run
+// handler can accept.
+//
+// - If target contains a path separator or starts with "." or "/", treat
+//   it as a project directory — read agent.yaml to get the agent name.
+// - If target starts with "sha256:", scan deployed agents for a matching
+//   image digest.
+// - Otherwise, treat it as the deployed agent name directly.
+func resolveRunTarget(cmd *cobra.Command, client controlv1.ControlServiceClient, target string) (string, error) {
+	if target == "" {
+		return "", fmt.Errorf("agent name or project path is required")
+	}
+
+	// Case 1: project path (contains / or starts with . or /)
+	if strings.Contains(target, "/") || strings.HasPrefix(target, ".") || strings.HasPrefix(target, "~") {
+		absPath, err := filepath.Abs(target)
+		if err != nil {
+			return "", fmt.Errorf("resolve path %q: %w", target, err)
+		}
+		agentYAML, err := pack.LoadAgentYAML(absPath)
+		if err != nil {
+			return "", fmt.Errorf("read agent.yaml from %s: %w", absPath, err)
+		}
+		if agentYAML == nil {
+			return "", fmt.Errorf("no agent.yaml found in %s — run 'agentpaas init' first", absPath)
+		}
+		if agentYAML.Name == "" {
+			return "", fmt.Errorf("agent.yaml in %s has no 'name' field", absPath)
+		}
+		return agentYAML.Name, nil
+	}
+
+	// Case 2: image digest (starts with sha256:)
+	if strings.HasPrefix(target, "sha256:") {
+		// Scan deployed agents for a matching image digest
+		homeDir, err := getAgentpaasHome(cmd)
+		if err != nil {
+			return "", fmt.Errorf("resolve agentpaas home: %w", err)
+		}
+		agentsDir := filepath.Join(homeDir, "state", "agents")
+		entries, err := os.ReadDir(agentsDir)
+		if err != nil {
+			return "", fmt.Errorf("no deployed agents found — run 'agentpaas pack' first")
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			agentName := entry.Name()
+			deployed, err := pack.LoadDeployedAgent(homeDir, agentName)
+			if err != nil {
+				continue // skip unreadable entries
+			}
+			if deployed.ImageDigest == target {
+				return agentName, nil
+			}
+		}
+		return "", fmt.Errorf("no deployed agent with image digest %s — run 'agentpaas pack' first", target)
+	}
+
+	// Case 3: treat as agent name directly
+	return target, nil
+}
+
+// getAgentpaasHome resolves the AgentPaaS home directory from the --home flag
+// or AGENTPAAS_HOME env var, falling back to ~/.agentpaas.
+func getAgentpaasHome(cmd *cobra.Command) (string, error) {
+	homeFlag, _ := cmd.Flags().GetString("home")
+	if homeFlag != "" {
+		return homeFlag, nil
+	}
+	envHome := os.Getenv("AGENTPAAS_HOME")
+	if envHome != "" {
+		return envHome, nil
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".agentpaas"), nil
+}
+
 // newRunCmd creates the `agent run` command.
 func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -104,11 +188,17 @@ func newRunCmd() *cobra.Command {
 			}
 			defer func() { _ = conn.Close() }()
 
+			// Resolve the target to a deployed agent name.
+			agentName, err := resolveRunTarget(cmd, client, target)
+			if err != nil {
+				return err
+			}
+
 			ctx, cancel := contextWithTimeout(30 * time.Second)
 			defer cancel()
 
 			resp, err := client.Run(ctx, &controlv1.RunRequest{
-				AgentName: target,
+				AgentName: agentName,
 			})
 			if err != nil {
 				return fmt.Errorf("run failed: %w", err)
