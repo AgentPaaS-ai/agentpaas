@@ -1,96 +1,94 @@
----
-name: agentpaas
-description: >
-  Deploy and govern AI agents with AgentPaaS — package agents as signed
-  images, run them in sandboxed containers with network policy enforcement,
-  brokered secrets, audit trails, and operator repair loops.
----
+# AgentPaaS — Hermes Plugin
 
-## Onboarding: When a user asks to install AgentPaaS
+This plugin lets you build, deploy, and govern AI agents entirely through
+Hermes. Every agent runs inside a locked-down container with default-deny
+network policy, brokered credentials, and a tamper-evident audit trail.
 
-When a user asks to install, set up, or configure AgentPaaS:
+## How It's Secure by Default
 
-1. Run `hermes plugins install https://github.com/AgentPaaS-ai/agentpaas --enable`
-2. Run `hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'`
-   (append "agentpaas" to existing toolsets if the user has custom ones)
-3. Tell the user to restart Hermes (plugin changes require process restart)
+Every agent gets two containers on an isolated Docker network:
 
-Do NOT just print these as instructions — actually run steps 1 and 2
-via terminal. Only step 3 (restart) requires user action.
+1. **Agent container** — no route to the internet. Non-root (UID 64000),
+   read-only rootfs, no shell, all capabilities dropped, seccomp profile.
+   The agent code cannot reach any network directly.
 
-# AgentPaaS
+2. **Gateway sidecar** — the ONLY network path out. It enforces your
+   egress policy (default-deny), brokers credentials (secrets never reach
+   agent code), and logs every allowed/denied call to the audit chain.
 
-AgentPaaS is a governance platform for AI agents. It packages agent code into
-signed, immutable images and runs them inside sandboxed containers with
-network egress policy enforcement, brokered secrets, and a tamper-evident
-audit trail. You interact with it through Hermes tools (natural language) or
-slash commands.
+Even if the agent is prompt-injected or the agent code is malicious, it
+can only call the exact endpoints you approved. Credentials are injected
+by the gateway at request time — the agent never sees raw API keys.
 
-## When to Use
+## Installation
 
-- When the user says "I want to use agentpaas" or mentions deploying, running,
-  packaging, or governing AI agents.
-- When you generate agent code and need to deploy it as a governed, sandboxed,
-  audited workload.
-- When the user asks about agent status, logs, audit, or policy.
-- When a run fails and the user needs diagnosis or repair guidance.
+### From inside Hermes (recommended for users)
 
-## Plugin Installation (for new users)
+Tell Hermes:
 
-When a user asks to install the AgentPaaS plugin, guide them through these
-steps. All three are required — skipping step 2 means the agent can see slash
-commands but cannot call `agentpaas_*` tools.
+> Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
 
-### Step 1: Install the plugin from GitHub
+Hermes installs the plugin, registers the toolset, and creates the skill
+pointer automatically. Restart Hermes when prompted:
 
-```bash
-hermes -p <profile> plugins install https://github.com/AgentPaaS-ai/agentpaas --enable
 ```
-
-The `--enable` flag enables the plugin automatically (skips a separate
-`hermes plugins enable` call). The repo root has a plugin shim that redirects
-to the real plugin in `integrations/hermes-plugin/`.
-
-### Step 2: Add the agentpaas toolset to platform_toolsets
-
-This is a separate config step from enabling the plugin. Without it, the agent
-cannot see or call any `agentpaas_*` tools — slash commands will work but
-natural-language tool calls will fail.
-
-```bash
-hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'
-```
-
-If the profile already has custom toolsets, append `"agentpaas"` to the existing
-list instead of replacing it.
-
-### Step 3: Restart Hermes
-
-```bash
-# In the Hermes session:
 /quit
-# Then relaunch:
-hermes -p <profile>
+hermes
 ```
 
-Plugins and toolsets load at process startup, not mid-session. A running session
-will NOT pick up the new plugin even after `/new` or `/reset`.
+### Prerequisites
 
-### After restart, verify
+The AgentPaaS Go binary (daemon, CLI, harness) must be installed
+separately from the plugin:
 
 ```bash
-hermes -p <profile> tools list | grep agentpaas    # should show ~30 tools
-hermes -p <profile> skills list | grep -i agentpaas
+brew install agentpaas-ai/tap/agentpaas
+agentpaas doctor
 ```
 
-## Agent Code Structure (REQUIRED for deployment)
+See the [main README](https://github.com/AgentPaaS-ai/agentpaas#install)
+for full install instructions including Hermes and Docker.
 
-AgentPaaS agents MUST use the AgentPaaS SDK pattern. A plain `main()` function
-will NOT work — the harness invokes the agent via the SDK's `@agent.on_invoke`
-handler. If the agent code does not register an invoke handler, the run fails
-with: "agent must register an invoke handler with @agent.on_invoke"
+## Slash Commands
 
-### Correct Agent Structure (Python)
+All commands are also available as natural language — just ask Hermes.
+
+### Building & Running
+
+| Command | Description |
+|---------|-------------|
+| `/agentpaas-init <path>` | Create a new agent project scaffold |
+| `/agentpaas-pack <path>` | Build a signed agent image |
+| `/agentpaas-run <name>` | Start a governed agent run |
+| `/agentpaas-deploy <path>` | Pack + run in one step |
+| `/agentpaas-trigger <agent_name>` | Invoke an agent via trigger API |
+
+### Monitoring & Debugging
+
+| Command | Description |
+|---------|-------------|
+| `/agentpaas-status` | Show daemon status and active runs |
+| `/agentpaas-list` | List runs, split by running/recent |
+| `/agentpaas-logs <run_id>` | Tail logs for a run |
+| `/agentpaas-timeline <run_id>` | Show chronological events for a run |
+| `/agentpaas-summarize <run_id>` | Summarize a completed or failed run |
+| `/agentpaas-explain-failure <run_id>` | Diagnose a failed run |
+| `/agentpaas-stop <run_id>` | Stop a running agent |
+
+### Policy & Audit
+
+| Command | Description |
+|---------|-------------|
+| `/agentpaas-doctor` | Run system diagnostics (6 checks) |
+| `/agentpaas-policy-show [dir\|run_id]` | Show active policy |
+| `/agentpaas-audit [run_id]` | Show audit events |
+| `/agentpaas-secret-list` | List stored credentials (by label, never value) |
+| `/agentpaas-cron-list` | List scheduled agent invocations |
+
+## Agent Code Structure (Required)
+
+AgentPaaS agents MUST use the SDK pattern. The harness loads
+`/app/main.py` and calls the registered `@agent.on_invoke` handler.
 
 ```python
 from agentpaas_sdk import agent
@@ -98,322 +96,143 @@ from agentpaas_sdk import agent
 @agent.on_invoke
 def handle_invoke(payload):
     """Called when the agent is invoked. payload is a dict from the trigger."""
-    # Your agent logic here
-    result = do_something(payload)
-    # Return a dict — this is serialized as the invoke response
-    return {"status": "OK", "result": result}
-```
-
-### agent.yaml
-
-```yaml
-name: my-agent
-version: "1.0"
-runtime: python
-description: What this agent does
-```
-
-### policy.yaml
-
-Generated during the Build-Time Onboarding flow (see below). Each external
-domain the agent accesses must be listed as an egress rule.
-
-### requirements.txt
-
-List any pip dependencies (besides agentpaas_sdk, which is bundled in the
-image). If the agent uses requests, httpx, etc., list them here.
-
-### File naming
-
-The agent entrypoint must be `main.py` in the project root. The harness loads
-`/app/main.py` inside the container.
-
-## Onboarding Response
-
-When a user expresses interest in AgentPaaS (e.g. "I want to use agentpaas",
-"what is agentpaas", "how do I use agentpaas"), respond with:
-
-1. A concise description of what AgentPaaS is and does.
-2. Current daemon status (call `agentpaas_status` or `/agentpaas-status`).
-3. Suggested first actions based on state:
-   - If daemon is not ready: "Run `/agentpaas-doctor` to diagnose, or start
-     the daemon with `agentpaas daemon start`."
-   - If daemon is ready: "You're all set. Try these:"
-     - `/agentpaas-init <path>` — create a new agent project
-     - `/agentpaas-deploy <path>` — pack and run an agent end-to-end
-     - `/agentpaas-status` — check active runs
-     - `/agentpaas-doctor` — verify your setup is healthy
-
-Example response:
-"AgentPaaS packages AI agents into signed, sandboxed containers with network
-policy enforcement, brokered secrets, and audit trails.
-
-Daemon status: [ready/not ready]
-
-Quick start:
-  /agentpaas-init ./my-agent     — scaffold a new agent project
-  /agentpaas-deploy ./my-agent   — pack and run it
-  /agentpaas-status              — check active runs
-  /agentpaas-doctor              — verify setup health
-
-You can also just ask me in natural language — e.g. 'create an agent that
-calls the weather API' and I'll handle the rest."
-
-## Build-Time Agent Onboarding (MANDATORY)
-
-When building or deploying an agent (via `agentpaas_pack`, `agentpaas_run`,
-`/agentpaas-deploy`, or natural language like "deploy this agent"), YOU MUST
-proactively perform these three steps BEFORE packing. Do not skip them. Do not
-wait for the user to ask. Do not print these as suggestions — execute them.
-
-### Step 1: Confirm Egress Destinations (T4-17)
-
-1. Read the agent's source code (main.py, app.py, agent.py, or equivalent).
-2. Search for ALL external domains the agent accesses: URLs, API endpoints,
-   `requests.get()`, `httpx.get()`, `urllib`, `openai.api_base`, webhook URLs,
-   etc.
-3. Extract the unique domains (e.g. `api.weather.gov`, `api.openai.com`).
-4. Present them to the user:
-   "This agent will access the following external domains:
-     - api.weather.gov
-     - api.openai.com
-   Allow these in the egress policy?"
-5. Generate a `policy.yaml` with ONLY the confirmed domains. Each domain gets
-   its own egress rule with port 443 and appropriate methods.
-6. NEVER use the `allow-http` template (wildcard `*:443`) unless the user
-   explicitly requests wildcard access. Default to explicit domain allowlist.
-7. Write the policy.yaml into the project directory.
-
-If the agent accesses NO external domains, use `deny-all` and tell the user.
-
-### Step 2: Procure API Keys / OAuth Credentials (T4-18)
-
-1. Search the agent's source code for credential needs:
-   - Environment variables: `os.environ["OPENAI_API_KEY"]`, `os.getenv("...")`
-   - Auth headers: `Authorization: Bearer ...`, `X-API-Key: ...`
-   - Config files referencing secrets
-   - LLM client initialization (openai, anthropic, etc.)
-2. For EACH credential need found:
-   a. Tell the user: "This agent needs an API key for {service}. Do you have one?"
-   b. If yes: ask for the key name (e.g. "openai-api-key") and value.
-      Call `agentpaas_secret_add` with the name and value.
-      Call `agentpaas_secret_test` to validate it works.
-   c. If no: tell the user the agent cannot function without it. Do NOT proceed
-      to pack until the credential is resolved or the user explicitly says to
-      skip (and accept the agent will fail at runtime).
-3. Reference stored credentials in agent.yaml or the credential section of
-   policy.yaml as appropriate.
-
-If the agent needs NO external credentials, skip this step silently.
-
-### Step 3: Configure LLM Provider (T4-19)
-
-1. Detect if the agent needs an LLM. Check TWO sources:
-   a. **User intent** (BEFORE writing code): If the user's request involves
-      language processing — "answer a question", "summarize", "classify",
-      "generate text", "chat", "analyze", "translate", "describe an image",
-      "make a decision", "reason about" — the agent needs an LLM. Do NOT
-      wait until code is written to detect this. Ask the onboarding
-      questions (below) BEFORE writing main.py.
-   b. **Code scan** (for existing code): Check for imports (`openai`,
-      `anthropic`, `xai`, `langchain`, `llm`), client instantiation
-      (`OpenAI()`, `Anthropic()`, `ChatOpenAI()`), agent.yaml `llm:`
-      section, or natural language processing logic.
-2. If an LLM is needed AND agent.yaml has no `llm:` section, you MUST ask
-   these questions BEFORE writing code or packing. Do NOT skip. Do NOT
-   guess. Do NOT proceed without answers:
-   a. "Which LLM provider? (openai / anthropic / xai / nous)"
-   b. "Which model? (e.g. gpt-4o-mini, claude-sonnet-4, grok-beta)"
-   c. "What is your API key for {provider}?" — then store it via
-      `agentpaas_secret_add(name="{provider}-api-key", value=...)`.
-      Call `agentpaas_secret_test` to validate the key works.
-   d. Call `agentpaas_llm_configure` with project_dir, provider, model,
-      and the credential name (e.g. "openai-api-key").
-   e. Add egress for the chosen provider domain to policy.yaml:
-      - openai → api.openai.com:443
-      - anthropic → api.anthropic.com:443
-      - xai → api.x.ai:443
-      - nous → inference-api.nousresearch.com:443
-   f. The agent code should use the AgentPaaS SDK's `agent.llm()` helper
-      which routes through the harness — the credential is injected at
-      runtime by the daemon. The agent code should NOT read the API key
-      from environment variables or hardcode it.
-
-If the agent does NOT need an LLM, skip this step silently.
-
-### Pre-Pack Gate (MANDATORY)
-
-Before calling `agentpaas_pack`, verify ALL of the following:
-1. Egress policy lists every external domain the agent will access.
-2. Every credential the agent needs is stored in Keychain (check with
-   `agentpaas_secret_list`).
-3. If the agent uses an LLM, agent.yaml has an `llm:` section pointing
-   to the stored credential.
-4. The LLM provider's domain is in the egress policy.
-
-If ANY of these are missing, do NOT pack. Ask the user to resolve the
-gap first.
-
-### Execution Order
-
-Steps 1-3 must be done in order BEFORE calling `agentpaas_pack`. The flow is:
-
-1. Analyze code → confirm egress (Step 1)
-2. Detect credentials → procure keys (Step 2)
-3. Detect LLM → configure provider (Step 3)
-4. Write final policy.yaml (may be updated by steps 2-3 with credential/LLM rules)
-5. Call `agentpaas_pack`
-6. Call `agentpaas_run`
-
-### Example: Weather Agent
-
-User: "Deploy a weather agent that calls the NWS API"
-
-You MUST:
-1. Read the agent code. Find `requests.get("https://api.weather.gov/...")`.
-   Present: "This agent accesses api.weather.gov. Allow?" → User confirms.
-   Write policy.yaml with `egress: [{domain: api.weather.gov, ports: [443]}]`.
-2. Check for credential needs. NWS API is free, no key needed. Skip silently.
-3. Check for LLM needs. If the agent formats weather data using GPT:
-   Ask: "Which LLM?" → User says "openai gpt-4o-mini".
-   Ask for key → User provides it → `agentpaas_secret_add` → `agentpaas_secret_test`.
-   Call `agentpaas_llm_configure` with openai/gpt-4o-mini.
-   Add api.openai.com to policy.yaml egress.
-4. Pack and run.
-
-### Example: LLM Agent
-
-User: "Build an agent that answers questions using an LLM"
-
-You MUST (BEFORE writing any code):
-1. Detect LLM need from user intent — "answers questions" means LLM.
-2. Ask: "Which LLM provider? (openai / anthropic / xai / nous)"
-   Ask: "Which model? (e.g. gpt-4o-mini, claude-sonnet-4)"
-   Ask: "What is your API key?" → store via `agentpaas_secret_add`.
-   Call `agentpaas_llm_configure`.
-3. Write policy.yaml with egress for the provider domain (e.g. api.openai.com:443).
-4. Write agent code using the SDK pattern:
-
-```python
-from agentpaas_sdk import agent
-
-@agent.on_invoke
-def handle_invoke(payload):
     question = payload.get("question", "")
-    result = agent.llm(prompt=f"Answer this question concisely: {question}")
+    if not question:
+        return {"status": "ERROR", "error": "No question provided"}
+
+    # agent.llm() routes through the gateway — credential injected at runtime
+    result = agent.llm(prompt=f"Answer concisely: {question}")
     return {"status": "OK", "answer": result.get("text", "")}
 ```
 
-5. Pack and run.
+The SDK also provides:
+- `agent.http(url, ...)` — non-credentialed HTTP through the gateway
+- `agent.http_with_credential(credential_id, url, ...)` — brokered credentialed HTTP
+- `agent.llm(prompt=...)` — LLM call (provider/model/credential from agent.yaml)
+- `agent.mcp(server, tool, args)` — MCP tool call
 
-## Available Slash Commands
+A plain `main()` function will fail with: "agent must register an invoke
+handler with @agent.on_invoke".
 
-| Command | Description |
-|---------|-------------|
-| `/agentpaas-init <path>` | Create a new agent project scaffold |
-| `/agentpaas-pack <path>` | Build a signed agent image |
-| `/agentpaas-run <image\|project>` | Start a governed agent run |
-| `/agentpaas-deploy <path>` | Pack + run in one step |
-| `/agentpaas-status` | Show daemon status and active runs |
-| `/agentpaas-stop <run_id>` | Stop a running agent |
-| `/agentpaas-logs <run_id>` | Tail logs for a run |
-| `/agentpaas-timeline <run_id>` | Show timeline events for a run |
-| `/agentpaas-summarize <run_id>` | Summarize a completed or failed run |
-| `/agentpaas-explain-failure <run_id>` | Diagnose a failed run |
-| `/agentpaas-audit [run_id]` | Show audit events |
-| `/agentpaas-doctor` | Run system diagnostics |
-| `/agentpaas-policy-show [dir\|run_id]` | Show active policy |
-| `/agentpaas-secret-list` | List stored credentials |
-| `/agentpaas-cron-list` | List cron schedules |
-| `/agentpaas-trigger <agent_name>` | Invoke an agent via trigger API |
+## Build-Time Onboarding (Mandatory)
 
-All commands are also available as natural language requests — just ask.
+When building an agent, you MUST complete these steps BEFORE packing. Do
+not wait for the user to ask — do them proactively.
 
-## Available Tools (for programmatic use)
+### Step 1: Confirm Egress
 
-- `agentpaas_init_project` — scaffold a new agent project
-- `agentpaas_reconcile_project` — generate agent.yaml from existing code
-- `agentpaas_validate_project` — validate a project before packing
-- `agentpaas_pack` — build a signed agent image
-- `agentpaas_run` — start a governed agent run
-- `agentpaas_stop` — stop a running agent
-- `agentpaas_status` — daemon or run status
-- `agentpaas_logs` — tail logs
-- `agentpaas_get_run_timeline` — chronological timeline
-- `agentpaas_summarize_run` — structured run summary
-- `agentpaas_explain_failure` — root cause analysis for failed runs
-- `agentpaas_next_action` — recommended next operator action
-- `agentpaas_doctor` — system diagnostics
-- `agentpaas_policy_show` — show active policy
-- `agentpaas_policy_init` — scaffold policy.yaml from a template
-- `agentpaas_explain_policy_denial` — explain why a destination was denied
-- `agentpaas_recommend_policy_patch` — suggest a policy fix
-- `agentpaas_audit_query` — query audit log
-- `agentpaas_export_audit` — export audit bundle
-- `agentpaas_secret_add` — store a credential in Keychain
-- `agentpaas_secret_list` — list stored credentials
-- `agentpaas_secret_remove` — remove a credential
-- `agentpaas_secret_rotate` — replace a credential (atomic)
-- `agentpaas_secret_test` — validate a credential against its provider
-- `agentpaas_llm_configure` — write LLM provider config into agent.yaml
-- `agentpaas_trigger_invoke` — invoke an agent via trigger REST API
-- `agentpaas_cron_add` — schedule automatic agent invocation
-- `agentpaas_cron_list` — list cron schedules
-- `agentpaas_cron_remove` — remove a cron schedule
+1. Read the agent's source code.
+2. Find ALL external domains (URLs, API endpoints, requests.get, etc.).
+3. Present them to the user: "This agent will access: api.weather.gov,
+   api.x.ai. Allow these?"
+4. Generate `policy.yaml` with ONLY the confirmed domains — never use
+   wildcard `*:443` unless the user explicitly requests it.
 
-## Installation
+### Step 2: Procure Credentials
 
-Run `make install-plugin` from the AgentPaaS repo root to register this plugin
-with your Hermes profile. See README.md → "Hermes Plugin (Developer Setup)".
+1. Search the code for credential needs (env vars, auth headers, API keys).
+2. For each credential needed:
+   - Ask the user for the key
+   - Store it: `agentpaas_secret_add`
+   - Validate it: `agentpaas_secret_test`
+3. If using an LLM, configure the provider (see Step 3).
+
+### Step 3: Configure LLM Provider
+
+If the agent needs an LLM (detected from user intent: "answer", "summarize",
+"classify", "generate", "chat", "analyze", "translate", etc.):
+
+1. Ask: "Which LLM provider?" (openai / anthropic / xai / nous)
+2. Ask: "Which model?"
+3. Ask for the API key → store via `agentpaas_secret_add` → test via
+   `agentpaas_secret_test`
+4. Call `agentpaas_llm_configure` with provider, model, credential name
+5. Add the provider domain to egress policy:
+   - openai → `api.openai.com:443`
+   - anthropic → `api.anthropic.com:443`
+   - xai → `api.x.ai:443`
+   - nous → `inference-api.nousresearch.com:443`
+6. The agent code uses `agent.llm()` — never reads the key from env.
+
+### Pre-Pack Gate
+
+Before calling `agentpaas_pack`, verify:
+1. Egress policy lists every external domain the agent will access.
+2. Every credential is stored in Keychain (check `agentpaas_secret_list`).
+3. If LLM: agent.yaml has `llm:` section pointing to the credential.
+4. The LLM provider's domain is in the egress policy.
+
+If ANY are missing, do NOT pack. Ask the user to resolve the gap.
+
+## LLM Provider Guide
+
+### Recommended: OpenRouter
+
+OpenRouter is the recommended provider because it uses standard API keys
+that don't expire. Get a key at [openrouter.ai](https://openrouter.ai).
+
+**To add your OpenRouter key, tell Hermes:**
+
+> I have an OpenRouter API key in the file /tmp/openrouter-key.txt.
+> Pipe it into AgentPaaS: cat /tmp/openrouter-key.txt | agentpaas secret add openrouter-key
+
+Or if you need to create the file first:
+
+> Write my OpenRouter key to a temp file, then pipe it into agentpaas
+> secret add. The key is: sk-or-v1-xxxxx
+
+**Important:** API keys that match JWT/Bearer patterns get redacted by
+Hermes when displayed in terminal output. Always pipe keys directly into
+`agentpaas secret add` via stdin — never use command substitution
+(`$(cat file)`) which shows the agent a redacted preview that gets stored
+instead of the real key.
+
+### Known Limitations: xAI and Nous OAuth tokens
+
+xAI and Nous Research use OAuth tokens that expire:
+- **xAI OAuth tokens** expire after ~6 hours. If multiple Hermes profiles
+  share the same OAuth client, refreshing in one profile revokes the
+  token in another.
+- **Nous agent_key** expires after ~15 minutes — too short for reliable
+  production use.
+
+For these reasons, **OpenRouter is strongly recommended**. If you must
+use xAI or Nous, extract a fresh token immediately before storing it.
+
+## Contributing
+
+### Request a Feature
+
+Open an issue on
+[GitHub](https://github.com/AgentPaaS-ai/agentpaas/issues) describing
+what you want and why. See [docs/roadmap.md](docs/roadmap.md) for
+planned features.
+
+### Build Your Own and Merge
+
+1. Fork the repo
+2. Build your feature following the existing patterns
+3. Test: `make test && make redteam-smoke`
+4. Open a PR describing what changed and why
+
+For LLM provider additions specifically, see the 9-file checklist in
+[docs/roadmap.md](docs/roadmap.md) under "Generic provider registry."
 
 ## Pitfalls
 
-- **NEVER fabricate output when a tool fails.** If `agentpaas_run`,
-  `agentpaas_trigger_invoke`, or any agentpaas tool returns an error,
-  report the error honestly to the user. Do NOT invent plausible-looking
-  output (e.g. "expected temperature ~88°F based on typical patterns") to
-  mask the failure. If the invoke did not return a response, say so. The
-  user trusts your output to be real data from the agent, not synthesized.
-  This is the single most important behavioral rule — fabricating data
-  destroys trust in the entire platform.
-- **Always verify run status after invoke.** After `agentpaas_run` or
-  `agentpaas_trigger_invoke`, call `agentpaas_status` with the run_id to
-  confirm the run actually completed (status=completed/succeeded) and read
-  the invoke_response. "Run started" means the container launched, not
-  that the agent executed successfully. If status=failed, use
-  `agentpaas_explain_failure` and report the real root cause.
-- **Daemon won't start (checkpoint key corrupted)** → After binary upgrades
-  or killing the daemon, it may fail with "decrypt checkpoint key: cipher:
-  message authentication failed". Fix by deleting the corrupted key:
-  `rm -f ~/.agentpaas/state/audit-checkpoint-key.der` then
-  `agentpaas daemon start`. The daemon will generate a fresh key.
-- **Daemon socket not found** → The daemon is not running. Start it:
-  `agentpaas daemon start`. If it fails, see the checkpoint key fix above.
-- Docker not running → `/agentpaas-doctor` for diagnostics
-- Policy denial → `agentpaas_explain_policy_denial` for root cause, or
-  `agentpaas_recommend_policy_patch` for a suggested fix
-- Agent not found → run `agentpaas_pack` first
-- Slash commands not resolving → **run `/quit` to restart Hermes** (plugins and
-  toolsets load at startup; a running session will not pick them up). After
-  relaunching, the slash commands and `agentpaas_*` tools will be available.
-- No `agentpaas_*` tools visible even after restart → the plugin is enabled
-  but the `agentpaas` toolset is missing from `platform_toolsets.cli`. Run:
-  `hermes -p <profile> config set platform_toolsets.cli '["terminal", "file", "web", "skills", "todo", "code_execution", "agentpaas"]'`
-  then `/quit` and relaunch. (If you installed via `make install-plugin`, it
-  already did both steps.)
-- **Run by path fails with "not deployed"** → `agentpaas run` accepts a
-  project path, image digest, OR agent name. If you pass a path, it reads
-  agent.yaml to resolve the agent name. Make sure you `agentpaas pack` the
-  project first — the agent must be deployed before running.
-- **Agent code uses plain app() or main()** → The harness requires the
-  `@agent.on_invoke` SDK pattern. A plain function will fail with
-  "agent must register an invoke handler with @agent.on_invoke". Always
-  use:
-  ```python
-  from agentpaas_sdk import agent
-
-  @agent.on_invoke
-  def handle_invoke(payload):
-      ...
-      return {"status": "OK"}
-  ```
+- **NEVER fabricate output.** If a tool fails, report the error honestly.
+  Do not invent plausible-looking output to mask failures.
+- **Always verify run status.** After `agentpaas_run` or
+  `agentpaas_trigger_invoke`, check `agentpaas_status`. "Run started"
+  means the container launched, not that it succeeded.
+- **Daemon won't start (checkpoint key corrupted)** → After binary
+  upgrades: `rm -f ~/.agentpaas/state/audit-checkpoint-key.der` then
+  `agentpaas daemon start`.
+- **No `agentpaas_*` tools visible after restart** → The `agentpaas`
+  toolset is missing from `platform_toolsets.cli`. The plugin's
+  `register()` runs `ensure-toolset.py` automatically on session load.
+  If it didn't, run it manually or reinstall the plugin.
+- **Slash commands not resolving** → Run `/quit` and relaunch Hermes.
+  Plugins load at startup, not mid-session.
+- **Agent code uses plain app() or main()** → The harness requires
+  `@agent.on_invoke`. See "Agent Code Structure" above.
