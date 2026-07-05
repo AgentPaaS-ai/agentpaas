@@ -60,6 +60,15 @@ archives:
       - LICENSE
       - README.md
       - demo/**/*
+    builds:
+      - agentpaas
+      - agentpaasd
+  - id: harness
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_harness_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    builds:
+      - agentpaas-harness-linux
 
 checksum:
   name_template: 'checksums.txt'
@@ -87,7 +96,6 @@ homebrew_casks:
     binaries:
       - agentpaas
       - agentpaasd
-      - agentpaas-harness-linux
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
