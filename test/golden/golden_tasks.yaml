@@ -1,0 +1,586 @@
+# AgentPaaS Golden Dataset
+#
+# This file defines the golden dataset for AgentPaaS build regression testing.
+# Each task is a user-facing operation that must work correctly and consistently.
+# Tasks are sourced from real failure modes encountered during builds.
+#
+# The runner executes each task k times and measures:
+#   - pass@1: did at least 1 of k runs succeed? (capability)
+#   - pass^k: did ALL k runs succeed? (consistency/reliability)
+#
+# Tiering:
+#   fast  — deterministic checks, <5s each, run on every commit
+#   slow  — integration tests, 5-60s each, run on PRs
+#   docker — full Docker e2e, 30s-5min each, run on main merge
+#
+# Grading:
+#   code  — deterministic assertions (string match, regex, exit code, file exists)
+#   judge — LLM-as-judge semantic scoring (optional, for complex outputs)
+#
+# Regression gate: block merge if pass^k drops below threshold on any task.
+
+version: "1"
+suite: agentpaas-golden
+description: >
+  Golden dataset for AgentPaaS build regression testing. Tasks cover the
+  full user-facing surface: project init, pack, run, policy enforcement,
+  secret brokering, trigger API, cron, audit, and dashboard.
+
+# Default thresholds for regression gating
+thresholds:
+  pass_k_min: 0.85        # All k runs must succeed 85% of the time
+  pass_at_1_min: 0.95     # At least 1 run must succeed 95% of the time
+  regression_delta: 0.05  # Block if pass^k drops by more than 5% from baseline
+
+# Default repetition count for pass^k measurement
+default_k: 3
+
+tasks:
+  # ============================================================
+  # TIER: fast (deterministic, <5s, every commit)
+  # ============================================================
+
+  - id: G01
+    name: "Project init from Python source"
+    tier: fast
+    grader: code
+    category: init
+    source_failure: "B11-T07 golden flow: init from code must detect runtime and scaffold agent.yaml + policy.yaml"
+    inputs:
+      runtime: python
+      source_files:
+        main.py: "def app(input):\n    return {\"status\": \"ok\"}\n"
+    success_criteria:
+      agent_yaml_exists: true
+      agent_yaml_runtime: "python3.12"
+      policy_yaml_exists: true
+      policy_is_default_deny: true
+      exit_code: 0
+
+  - id: G02
+    name: "Project init from LangGraph source"
+    tier: fast
+    grader: code
+    category: init
+    source_failure: "Runtime detection must handle langgraph projects, not just python"
+    inputs:
+      runtime: langgraph
+      source_files:
+        main.py: "from langgraph.graph import StateGraph\n\ndef app(input):\n    return {\"status\": \"ok\"}\n"
+    success_criteria:
+      agent_yaml_exists: true
+      agent_yaml_runtime: "python3.12"
+      policy_yaml_exists: true
+      policy_is_default_deny: true
+      exit_code: 0
+
+  - id: G03
+    name: "Project init from CrewAI source"
+    tier: fast
+    grader: code
+    category: init
+    source_failure: "Runtime detection must handle crewai projects"
+    inputs:
+      runtime: crewai
+      source_files:
+        main.py: "from crewai import Agent\n\ndef app(input):\n    return {\"status\": \"ok\"}\n"
+    success_criteria:
+      agent_yaml_exists: true
+      agent_yaml_runtime: "python3.12"
+      policy_yaml_exists: true
+      policy_is_default_deny: true
+      exit_code: 0
+
+  - id: G04
+    name: "Policy init deny-all template"
+    tier: fast
+    grader: code
+    category: policy
+    source_failure: "policy init with deny-all must produce empty egress list"
+    inputs:
+      template: deny-all
+    success_criteria:
+      policy_yaml_exists: true
+      policy_contains: "egress: []"
+      exit_code: 0
+
+  - id: G05
+    name: "Policy init allow-http template"
+    tier: fast
+    grader: code
+    category: policy
+    source_failure: "allow-http template must include standard HTTP egress rules"
+    inputs:
+      template: allow-http
+    success_criteria:
+      policy_yaml_exists: true
+      policy_contains: "domain:"
+      exit_code: 0
+
+  - id: G06
+    name: "Policy init allow-llm template"
+    tier: fast
+    grader: code
+    category: policy
+    source_failure: "allow-llm template must include LLM provider domains"
+    inputs:
+      template: allow-llm
+    success_criteria:
+      policy_yaml_exists: true
+      exit_code: 0
+
+  - id: G07
+    name: "Policy init allow-mcp template"
+    tier: fast
+    grader: code
+    category: policy
+    source_failure: "allow-mcp template must include MCP server egress"
+    inputs:
+      template: allow-mcp
+    success_criteria:
+      policy_yaml_exists: true
+      exit_code: 0
+
+  - id: G08
+    name: "Policy validation rejects unknown fields"
+    tier: fast
+    grader: code
+    category: policy
+    source_failure: "Unknown fields in policy.yaml must be rejected at pack time, not silently ignored"
+    inputs:
+      policy_yaml: "version: \"1\"\nagent:\n  name: test\nunknown_field: bad\n"
+    success_criteria:
+      exit_code: 1
+      stderr_contains: "unknown"
+
+  - id: G09
+    name: "Policy validation rejects empty policy"
+    tier: fast
+    grader: code
+    category: policy
+    source_failure: "Empty policy.yaml must be rejected"
+    inputs:
+      policy_yaml: ""
+    success_criteria:
+      exit_code: 1
+
+  - id: G10
+    name: "Policy validation rejects scalar port"
+    tier: fast
+    grader: code
+    category: policy
+    source_failure: "Ports must be a list, not a scalar — scalar_port.yaml fixture"
+    inputs:
+      policy_yaml: "version: \"1\"\nagent:\n  name: test\negress:\n  - domain: example.com\n    ports: 443\n"
+    success_criteria:
+      exit_code: 1
+
+  - id: G11
+    name: "Secret add and list"
+    tier: fast
+    grader: code
+    category: secrets
+    source_failure: "Secret add must store in Keychain; list must show label not value"
+    inputs:
+      credential_name: "golden-test-key"
+      credential_value: "test-secret-value"
+    success_criteria:
+      exit_code: 0
+      stdout_contains: "golden-test-key"
+      stdout_not_contains: "test-secret-value"
+
+  - id: G12
+    name: "Secret remove"
+    tier: fast
+    grader: code
+    category: secrets
+    source_failure: "Secret remove must delete from Keychain"
+    inputs:
+      credential_name: "golden-test-key-remove"
+      credential_value: "temp-value"
+    success_criteria:
+      exit_code: 0
+
+  - id: G13
+    name: "Secret rotate"
+    tier: fast
+    grader: code
+    category: secrets
+    source_failure: "Secret rotate must replace value atomically"
+    inputs:
+      credential_name: "golden-test-rotate"
+      credential_value: "new-rotated-value"
+    success_criteria:
+      exit_code: 0
+
+  - id: G14
+    name: "Validate project for pack readiness"
+    tier: fast
+    grader: code
+    category: pack
+    source_failure: "validate must catch missing agent.yaml before pack"
+    inputs:
+      project_dir: "demo/governed-weather"
+    success_criteria:
+      exit_code: 0
+
+  - id: G15
+    name: "Validate project rejects missing agent.yaml"
+    tier: fast
+    grader: code
+    category: pack
+    source_failure: "validate must fail when agent.yaml is missing"
+    inputs:
+      empty_dir: true
+    success_criteria:
+      exit_code: 1
+
+  - id: G16
+    name: "Doctor check returns status"
+    tier: fast
+    grader: code
+    category: diagnostics
+    source_failure: "doctor must return daemon/docker/config status without crashing"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+      stdout_contains_any: ["daemon", "docker", "config", "ok", "running", "stopped"]
+
+  # ============================================================
+  # TIER: slow (integration, 5-60s, run on PRs)
+  # ============================================================
+
+  - id: G17
+    name: "Pack governed-weather demo"
+    tier: slow
+    grader: code
+    category: pack
+    source_failure: "Pack must produce a signed image digest from demo project"
+    inputs:
+      project_dir: "demo/governed-weather"
+    success_criteria:
+      exit_code: 0
+      stdout_contains: "sha256:"
+      image_digest_format: "sha256:[0-9a-f]{64}"
+
+  - id: G18
+    name: "Pack secret-saas demo"
+    tier: slow
+    grader: code
+    category: pack
+    source_failure: "Pack must handle projects with credential declarations"
+    inputs:
+      project_dir: "demo/secret-saas"
+    success_criteria:
+      exit_code: 0
+      stdout_contains: "sha256:"
+
+  - id: G19
+    name: "Pack repair-loop demo"
+    tier: slow
+    grader: code
+    category: pack
+    source_failure: "Pack must handle projects with LLM + iteration patterns"
+    inputs:
+      project_dir: "demo/repair-loop"
+    success_criteria:
+      exit_code: 0
+      stdout_contains: "sha256:"
+
+  - id: G20
+    name: "Pack rejects tampered policy (advisory)"
+    tier: slow
+    grader: code
+    category: pack
+    source_failure: "Pack must detect policy tampering after lock signing (advisory scan)"
+    inputs:
+      project_dir: "demo/governed-weather"
+      tamper_policy: true
+    success_criteria:
+      exit_code: 1
+      stderr_contains_any: ["tamper", "advisory", "mismatch", "digest"]
+
+  - id: G21
+    name: "Pack produces distinct digests on prompt change"
+    tier: slow
+    grader: code
+    category: pack
+    source_failure: "Immutable redeploy: prompt change must produce different digest (B14A0)"
+    inputs:
+      project_dir: "demo/governed-weather"
+      modify_prompt: true
+    success_criteria:
+      distinct_digests: true
+      exit_code: 0
+
+  - id: G22
+    name: "Cron schedule add and list"
+    tier: slow
+    grader: code
+    category: trigger
+    source_failure: "Cron add must persist schedule; list must show it"
+    inputs:
+      agent_name: "golden-test-agent"
+      expr: "*/5 * * * *"
+    success_criteria:
+      exit_code: 0
+      stdout_contains: "golden-test-agent"
+
+  - id: G23
+    name: "Cron schedule remove"
+    tier: slow
+    grader: code
+    category: trigger
+    source_failure: "Cron remove must delete schedule by ID"
+    inputs:
+      agent_name: "golden-test-agent-remove"
+      expr: "*/10 * * * *"
+    success_criteria:
+      exit_code: 0
+
+  - id: G24
+    name: "Audit query returns entries"
+    tier: slow
+    grader: code
+    category: audit
+    source_failure: "Audit query must return structured entries from the audit log"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+
+  - id: G25
+    name: "Audit export to file"
+    tier: slow
+    grader: code
+    category: audit
+    source_failure: "Audit export must write valid JSON to filesystem"
+    inputs:
+      output_path: "/tmp/golden-audit-export.json"
+    success_criteria:
+      exit_code: 0
+      file_exists: "/tmp/golden-audit-export.json"
+
+  # ============================================================
+  # TIER: docker (full e2e, 30s-5min, run on main merge)
+  # ============================================================
+
+  - id: G26
+    name: "Full pack→run→stop lifecycle (governed-weather)"
+    tier: docker
+    grader: code
+    category: runtime
+    source_failure: "B14A0 e2e: pack, run, wait for ready, stop, verify clean exit"
+    inputs:
+      project_dir: "demo/governed-weather"
+    success_criteria:
+      exit_code: 0
+      run_started: true
+      run_stopped: true
+      no_orphan_containers: true
+    requires_docker: true
+
+  - id: G27
+    name: "Default-deny egress blocks non-allowed domain"
+    tier: docker
+    grader: code
+    category: egress
+    source_failure: "B14B: default-deny must block all egress not explicitly allowed"
+    inputs:
+      project_dir: "demo/governed-weather"
+      probe_command: "wget -q -O /dev/null https://evil.example.com 2>/dev/null && echo SUCCESS || echo BLOCKED"
+    success_criteria:
+      probe_output_contains: "BLOCKED"
+      audit_contains: "egress_denied"
+    requires_docker: true
+
+  - id: G28
+    name: "Allowed egress reaches permitted domain"
+    tier: docker
+    grader: code
+    category: egress
+    source_failure: "B14B: gateway must allow egress to explicitly permitted domains"
+    inputs:
+      project_dir: "demo/governed-weather"
+      probe_command: "wget -q -O /dev/null https://api.weather.gov 2>/dev/null && echo SUCCESS || echo BLOCKED"
+    success_criteria:
+      probe_output_contains: "SUCCESS"
+    requires_docker: true
+
+  - id: G29
+    name: "Policy denial explanation for blocked destination"
+    tier: docker
+    grader: code
+    category: policy
+    source_failure: "explain_policy_denial must return rule_id, destination, and reason"
+    inputs:
+      project_dir: "demo/governed-weather"
+      destination: "evil.example.com"
+    success_criteria:
+      exit_code: 0
+      stdout_contains_any: ["denied", "default_deny", "rule_id"]
+    requires_docker: true
+
+  - id: G30
+    name: "Trigger invoke via REST API"
+    tier: docker
+    grader: code
+    category: trigger
+    source_failure: "Trigger API must accept POST and invoke agent with payload"
+    inputs:
+      agent_name: "governed-weather"
+      payload: '{"city": "Folsom"}'
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  - id: G31
+    name: "Run timeline shows chronological events"
+    tier: docker
+    grader: code
+    category: audit
+    source_failure: "get_run_timeline must show ordered events for a run"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  - id: G32
+    name: "Explain failure returns root cause for failed run"
+    tier: docker
+    grader: code
+    category: audit
+    source_failure: "explain_failure must analyze failed run and return redacted evidence"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  - id: G33
+    name: "Summarize run produces structured summary"
+    tier: docker
+    grader: code
+    category: audit
+    source_failure: "summarize_run must produce structured summary for completed run"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  - id: G34
+    name: "Next action recommendation"
+    tier: docker
+    grader: code
+    category: audit
+    source_failure: "next_action must recommend operator action based on run context"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  - id: G35
+    name: "Crash reconciliation: agent without gateway killed"
+    tier: docker
+    grader: code
+    category: runtime
+    source_failure: "B5-T05: agent without gateway must be killed on crash reconciliation"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+      no_orphan_containers: true
+    requires_docker: true
+
+  - id: G36
+    name: "Crash reconciliation: agent with gateway kept"
+    tier: docker
+    grader: code
+    category: runtime
+    source_failure: "B5-T05: agent with gateway must survive crash reconciliation"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  - id: G37
+    name: "Secret-free debug output (no raw secrets in inspect)"
+    tier: docker
+    grader: code
+    category: secrets
+    source_failure: "B5-T05: inspect/logs/config dumps must not contain raw secret values"
+    inputs: {}
+    success_criteria:
+      no_secret_values_in_output: true
+    requires_docker: true
+
+  - id: G38
+    name: "Hash chain integrity verification"
+    tier: docker
+    grader: code
+    category: audit
+    source_failure: "Audit hash chain must verify — no tampering or gaps"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+      chain_valid: true
+    requires_docker: true
+
+  - id: G39
+    name: "Policy recommends patch for denied destination"
+    tier: docker
+    grader: code
+    category: policy
+    source_failure: "recommend_policy_patch must suggest allow rule for denied destination"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  - id: G40
+    name: "Status shows daemon state"
+    tier: docker
+    grader: code
+    category: diagnostics
+    source_failure: "status command must show daemon running/stopped state"
+    inputs: {}
+    success_criteria:
+      exit_code: 0
+    requires_docker: true
+
+  # ============================================================
+  # SEMANTIC QUALITY (LLM-as-judge, optional, run on main merge)
+  # ============================================================
+
+  - id: G41
+    name: "Audit log entries are well-structured JSON"
+    tier: docker
+    grader: judge
+    category: audit
+    source_failure: "Audit entries must be valid JSON with required fields (timestamp, run_id, category, event)"
+    inputs: {}
+    success_criteria:
+      judge_rubric: "Validate that audit log entries are valid JSON with fields: timestamp, run_id, category, event. Score 0-3."
+      judge_threshold: 2
+    requires_docker: true
+
+  - id: G42
+    name: "Failure explanation is actionable"
+    tier: docker
+    grader: judge
+    category: audit
+    source_failure: "explain_failure must return actionable root cause, not just error dump"
+    inputs: {}
+    success_criteria:
+      judge_rubric: "Score the failure explanation for: (1) identifies root cause, (2) provides actionable next step, (3) redacts secrets. Score 0-3 each, average must meet threshold."
+      judge_threshold: 2.0
+    requires_docker: true
+
+  - id: G43
+    name: "Policy denial explanation is clear to operator"
+    tier: docker
+    grader: judge
+    category: policy
+    source_failure: "explain_policy_denial must be understandable by a human operator"
+    inputs: {}
+    success_criteria:
+      judge_rubric: "Score the policy denial explanation for: (1) states which rule denied, (2) states the destination, (3) explains why. Score 0-3 each."
+      judge_threshold: 2.0
+    requires_docker: true
