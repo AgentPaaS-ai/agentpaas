@@ -647,3 +647,44 @@ func TestRoundTrip_XAI(t *testing.T) {
 		t.Errorf("Tokens = %d", result.Tokens)
 	}
 }
+
+func TestProviderDomain(t *testing.T) {
+	tests := []struct {
+		provider string
+		expected string
+	}{
+		{"openrouter", "openrouter.ai"},
+		{"openai", "api.openai.com"},
+		{"anthropic", "api.anthropic.com"},
+		{"xai", "api.x.ai"},
+		{"xiai", "api.x.ai"},
+		{"nous", "inference-api.nousresearch.com"},
+		{"unknown", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := ProviderDomain(tt.provider)
+		if got != tt.expected {
+			t.Errorf("ProviderDomain(%q) = %q, want %q", tt.provider, got, tt.expected)
+		}
+	}
+}
+
+func TestProviderDomains(t *testing.T) {
+	domains := ProviderDomains()
+	if len(domains) != 5 {
+		t.Fatalf("ProviderDomains() len = %d, want 5", len(domains))
+	}
+	expected := map[string]string{
+		"openrouter": "openrouter.ai",
+		"openai":     "api.openai.com",
+		"anthropic":  "api.anthropic.com",
+		"xai":        "api.x.ai",
+		"nous":       "inference-api.nousresearch.com",
+	}
+	for provider, domain := range expected {
+		if domains[provider] != domain {
+			t.Errorf("ProviderDomains()[%q] = %q, want %q", provider, domains[provider], domain)
+		}
+	}
+}

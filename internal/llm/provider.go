@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"net/http"
+	"strings"
 )
 
 // ProviderAdapter maps an LLM provider to its API endpoint, auth header,
@@ -51,4 +52,34 @@ func GetAdapter(provider string) ProviderAdapter {
 // SupportedProviders returns the list of supported provider names.
 func SupportedProviders() []string {
 	return []string{"openrouter", "openai", "anthropic", "xai", "nous"}
+}
+
+// ProviderDomain returns the egress domain (hostname) for a given provider.
+// Returns empty string for unknown providers.
+func ProviderDomain(provider string) string {
+	switch strings.ToLower(provider) {
+	case "openrouter":
+		return "openrouter.ai"
+	case "openai":
+		return "api.openai.com"
+	case "anthropic":
+		return "api.anthropic.com"
+	case "xai", "xiai":
+		return "api.x.ai"
+	case "nous":
+		return "inference-api.nousresearch.com"
+	default:
+		return ""
+	}
+}
+
+// ProviderDomains returns a map of all provider → domain mappings.
+func ProviderDomains() map[string]string {
+	return map[string]string{
+		"openrouter": "openrouter.ai",
+		"openai":     "api.openai.com",
+		"anthropic":  "api.anthropic.com",
+		"xai":        "api.x.ai",
+		"nous":       "inference-api.nousresearch.com",
+	}
 }
