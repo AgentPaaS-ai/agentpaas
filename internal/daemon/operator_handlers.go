@@ -18,6 +18,7 @@ import (
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/logging"
 	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
@@ -153,6 +154,32 @@ func (s *controlServer) ValidateAgentProject(ctx context.Context, req *controlv1
 		), nil
 	}
 
+	// Build success response with advisory issues.
+	issues := []*controlv1.OperatorIssue{}
+
+	// LLM egress validation: check if the configured provider's domain
+	// is in the egress policy. This is advisory only — it does not
+	// affect readiness. An agent may use a custom endpoint or wildcard.
+	if agentConfig.LLM.Provider != "" {
+		expectedDomain := llm.ProviderDomain(agentConfig.LLM.Provider)
+		if expectedDomain != "" {
+			found := false
+			for _, rule := range parsedPolicy.Egress {
+				if strings.EqualFold(rule.Domain, expectedDomain) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				issues = append(issues, &controlv1.OperatorIssue{
+					Category:   string(operator.ErrPolicyValidationFailed),
+					Message:    fmt.Sprintf("LLM provider '%s' requires egress to '%s' but it is not in the egress policy", agentConfig.LLM.Provider, expectedDomain),
+					NextAction: string(operator.ActionReviewPolicyPatch),
+				})
+			}
+		}
+	}
+
 	return &controlv1.ValidateAgentProjectResponse{
 		Validations: []*controlv1.ProjectValidation{{
 			Check:   "project_validation",
@@ -165,7 +192,7 @@ func (s *controlServer) ValidateAgentProject(ctx context.Context, req *controlv1
 		Ready:         true,
 		ProjectDir:    projectPath,
 		Runtime:       runtime,
-		Issues:        []*controlv1.OperatorIssue{},
+		Issues:        issues,
 	}, nil
 }
 

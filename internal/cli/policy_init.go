@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +27,7 @@ func newPolicyInitCmd() *cobra.Command {
 			}
 
 			templateName, _ := cmd.Flags().GetString("template")
+			providerName, _ := cmd.Flags().GetString("provider")
 			noninteractive, _ := cmd.Flags().GetBool("noninteractive")
 			force, _ := cmd.Flags().GetBool("force")
 
@@ -35,6 +37,11 @@ func newPolicyInitCmd() *cobra.Command {
 				return fmt.Errorf("resolve project directory: %w", err)
 			}
 			projectDir = resolvedDir
+
+			// Validate --provider is only used with allow-llm.
+			if providerName != "" && templateName != "" && templateName != "allow-llm" {
+				return fmt.Errorf("--provider can only be used with --template allow-llm")
+			}
 
 			// Determine the template.
 			if templateName != "" {
@@ -52,7 +59,18 @@ func newPolicyInitCmd() *cobra.Command {
 				}
 			}
 
-			content, _ := policyTemplate(templateName)
+			// If provider is specified with allow-llm, generate the template dynamically.
+			var content string
+			if providerName != "" && templateName == "allow-llm" {
+				domain := llm.ProviderDomain(providerName)
+				if domain == "" {
+					return fmt.Errorf("unknown provider %q (valid: %s)",
+						providerName, strings.Join(llm.SupportedProviders(), ", "))
+				}
+				content = buildAllowLLMTemplate(domain)
+			} else {
+				content, _ = policyTemplate(templateName)
+			}
 
 			// Write the policy file.
 			policyPath := filepath.Join(projectDir, "policy.yaml")
@@ -82,9 +100,28 @@ func newPolicyInitCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("template", "", "Policy template name: deny-all, allow-http, allow-llm, allow-mcp")
+	cmd.Flags().String("provider", "", "LLM provider for allow-llm template: openrouter, openai, anthropic, xai, nous")
 	cmd.Flags().Bool("noninteractive", false, "Skip prompt and use deny-all template (default-deny)")
 	cmd.Flags().Bool("force", false, "Overwrite existing policy.yaml")
 	return cmd
+}
+
+// buildAllowLLMTemplate generates an allow-llm policy template YAML
+// with the specified provider domain as the egress destination.
+func buildAllowLLMTemplate(domain string) string {
+	return fmt.Sprintf(`version: "1"
+agent:
+  name: ""
+  description: ""
+egress:
+  - domain: %s
+    ports:
+      - 443
+credentials: []
+mcp_servers: []
+hooks: []
+ingress: []
+`, domain)
 }
 
 // promptPolicyTemplate shows a numbered list of templates on stdout and reads

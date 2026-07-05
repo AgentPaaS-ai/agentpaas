@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
@@ -124,5 +125,35 @@ func writeOperatorTestFile(t *testing.T, dir string, name string, content string
 
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
 		t.Fatalf("write test file %s: %v", name, err)
+	}
+}
+
+func TestValidateAgentProject_LLMProviderNotInEgress(t *testing.T) {
+	projectDir := t.TempDir()
+	writeOperatorTestFile(t, projectDir, "agent.yaml", "version: \"1\"\nruntime: python\nname: test\nllm:\n  provider: xai\n  model: grok-beta\n  credential: xai-key\n")
+	writeOperatorTestFile(t, projectDir, "policy.yaml", validDefaultDenyPolicy)
+
+	resp, err := (&controlServer{}).ValidateAgentProject(
+		context.Background(),
+		&controlv1.ValidateAgentProjectRequest{ProjectPath: projectDir},
+	)
+	if err != nil {
+		t.Fatalf("ValidateAgentProject() error = %v", err)
+	}
+	if !resp.GetReady() {
+		t.Fatalf("Ready = false, want true (warning only, not an error)")
+	}
+	if len(resp.GetIssues()) != 1 {
+		t.Fatalf("Issues count = %d, want 1", len(resp.GetIssues()))
+	}
+	issue := resp.GetIssues()[0]
+	if issue.GetCategory() != string(operator.ErrPolicyValidationFailed) {
+		t.Fatalf("Category = %q, want %q", issue.GetCategory(), operator.ErrPolicyValidationFailed)
+	}
+	if issue.GetNextAction() != string(operator.ActionReviewPolicyPatch) {
+		t.Fatalf("NextAction = %q, want %q", issue.GetNextAction(), operator.ActionReviewPolicyPatch)
+	}
+	if !strings.Contains(issue.GetMessage(), "xai") || !strings.Contains(issue.GetMessage(), "api.x.ai") {
+		t.Fatalf("Message = %q, want message containing xai and api.x.ai", issue.GetMessage())
 	}
 }

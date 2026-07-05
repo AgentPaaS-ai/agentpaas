@@ -259,3 +259,89 @@ func TestPolicyInit_ProjectDirDefault(t *testing.T) {
 		t.Fatalf("default project dir policy.yaml; content:\n%s", content)
 	}
 }
+
+func TestPolicyInit_AllowLLM_ProviderXAI(t *testing.T) {
+	projectDir := t.TempDir()
+	cmd := freshCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"policy", "init", projectDir, "--template", "allow-llm", "--provider", "xai"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	content := readCLITestFile(t, projectDir, "policy.yaml")
+	for _, want := range []string{
+		`version: "1"`,
+		"api.x.ai",
+		"443",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("policy.yaml missing %q; content:\n%s", want, content)
+		}
+	}
+	// Verify no other provider domains leaked in.
+	if strings.Contains(content, "openrouter.ai") {
+		t.Fatalf("policy.yaml should not contain openrouter.ai; content:\n%s", content)
+	}
+}
+
+func TestPolicyInit_AllowLLM_ProviderOpenAI(t *testing.T) {
+	projectDir := t.TempDir()
+	cmd := freshCmd()
+	cmd.SetOut(new(bytes.Buffer))
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"policy", "init", projectDir, "--template", "allow-llm", "--provider", "openai"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	content := readCLITestFile(t, projectDir, "policy.yaml")
+	if !strings.Contains(content, "api.openai.com") {
+		t.Fatalf("policy.yaml missing api.openai.com; content:\n%s", content)
+	}
+	if !strings.Contains(content, "443") {
+		t.Fatalf("policy.yaml missing 443; content:\n%s", content)
+	}
+}
+
+func TestPolicyInit_AllowLLM_ProviderInvalid(t *testing.T) {
+	projectDir := t.TempDir()
+	cmd := freshCmd()
+	var outBuf, errBuf bytes.Buffer
+	cmd.SetOut(&outBuf)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"policy", "init", projectDir, "--template", "allow-llm", "--provider", "invalid"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want error for unknown provider")
+	}
+	if !strings.Contains(err.Error(), "unknown provider") {
+		t.Fatalf("error = %q, want 'unknown provider'", err.Error())
+	}
+
+	// Verify no policy.yaml was created.
+	if _, statErr := os.Lstat(filepath.Join(projectDir, "policy.yaml")); statErr == nil {
+		t.Fatal("policy.yaml should not have been created for invalid provider")
+	}
+}
+
+func TestPolicyInit_ProviderWithNonAllowLLM(t *testing.T) {
+	projectDir := t.TempDir()
+	cmd := freshCmd()
+	var outBuf, errBuf bytes.Buffer
+	cmd.SetOut(&outBuf)
+	cmd.SetErr(&errBuf)
+	cmd.SetArgs([]string{"policy", "init", projectDir, "--template", "deny-all", "--provider", "openai"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("Execute() error = nil, want error for --provider with non-allow-llm template")
+	}
+	if !strings.Contains(err.Error(), "--provider can only be used with --template allow-llm") {
+		t.Fatalf("error = %q, want '--provider can only be used with --template allow-llm'", err.Error())
+	}
+}
