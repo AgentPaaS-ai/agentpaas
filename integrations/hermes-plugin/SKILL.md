@@ -105,6 +105,31 @@ def handle_invoke(payload):
     return {"status": "OK", "answer": result.get("text", "")}
 ```
 
+### When to Fetch Real Data vs Ask the LLM
+
+If the agent needs real-time, factual, or external data (weather, stock
+prices, news, API responses), it MUST use `agent.http()` to fetch the
+data first, then optionally use `agent.llm()` to summarize or reason
+about it. Never ask the LLM to "look up" or "provide" real-time data —
+LLMs fabricate plausible-looking but false values.
+
+Correct pattern (weather agent):
+```python
+# 1. Fetch REAL data via HTTP
+resp = agent.http("GET", f"https://wttr.in/{city}?format=j1")
+weather_data = resp.get("body", "")
+
+# 2. Use LLM to SUMMARIZE the real data
+result = agent.llm(prompt=f"Summarize this weather data: {weather_data}")
+return {"status": "OK", "answer": result.get("text", "")}
+```
+
+Incorrect pattern (fabricated data):
+```python
+# WRONG — LLM will make up weather values
+result = agent.llm(prompt=f"What's the weather in {city}?")
+```
+
 The SDK also provides:
 - `agent.http(url, ...)` — non-credentialed HTTP through the gateway
 - `agent.http_with_credential(credential_id, url, ...)` — brokered credentialed HTTP
