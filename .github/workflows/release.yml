@@ -28,6 +28,12 @@ jobs:
         run: |
           echo "/opt/homebrew/bin:$(go env GOPATH)/bin" >> $GITHUB_PATH
 
+      - name: Build binaries
+        run: |
+          go build -o $(go env GOPATH)/bin/agent ./cmd/agent
+          go build -o $(go env GOPATH)/bin/agentpaasd ./cmd/agentpaasd
+          go build -o $(go env GOPATH)/bin/agentpaas-harness ./cmd/harness
+
       - name: Lint
         run: make lint
 

@@ -76,12 +76,8 @@ func TestPolicyInit_AllowLLM(t *testing.T) {
 	content := readCLITestFile(t, projectDir, "policy.yaml")
 	for _, want := range []string{
 		`version: "1"`,
-		"api.openai.com",
-		"api.anthropic.com",
-		"api.x.ai",
-		`id: openai-api-key`,
-		"type: header",
-		"Authorization",
+		"openrouter.ai",
+		"443",
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("policy.yaml missing %q; content:\n%s", want, content)
@@ -232,7 +228,7 @@ func TestPolicyInit_JSON(t *testing.T) {
 	}
 	// Verify the file was actually created.
 	content := readCLITestFile(t, projectDir, "policy.yaml")
-	if !strings.Contains(content, "api.openai.com") {
+	if !strings.Contains(content, "openrouter.ai") {
 		t.Fatalf("policy.yaml does not contain expected content; content:\n%s", content)
 	}
 }

@@ -31,11 +31,40 @@ type AuditWriter struct {
 // head anchor by replaying all existing records. If the file does not exist,
 // it is created. The writer is ready for Append calls immediately.
 //
-// If the chain is broken (e.g. from an unclean shutdown mid-write), the writer
-// attempts recovery: it truncates the file at the last valid record and
-// re-replays. This prevents the daemon from crash-looping forever on a
-// corrupted tail — the valid prefix is preserved, the broken tail is lost.
+// If the chain is broken (e.g. tampered or corrupted), this function returns
+// an error. Use NewAuditWriterRecoverable if you want automatic recovery
+// (truncate at the last valid record) instead of failing.
 func NewAuditWriter(path string) (*AuditWriter, error) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("open audit file: %w", err)
+	}
+
+	w := &AuditWriter{
+		file: f,
+		path: path,
+		seq:  0,
+		hash: "",
+	}
+
+	// Reconstruct head by replaying all existing records.
+	if err := w.replay(); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("replay audit file: %w", err)
+	}
+
+	return w, nil
+}
+
+// NewAuditWriterRecoverable opens the audit file with automatic corruption
+// recovery. If the chain is broken (e.g. from an unclean shutdown mid-write),
+// the writer truncates the file at the last valid record and re-replays.
+// This prevents the daemon from crash-looping forever on a corrupted tail —
+// the valid prefix is preserved, the broken tail is lost.
+//
+// Use this for daemon startup. Use NewAuditWriter for tests and strict
+// integrity checking (where tampering should be detected, not repaired).
+func NewAuditWriterRecoverable(path string) (*AuditWriter, error) {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("open audit file: %w", err)
@@ -68,7 +97,7 @@ func NewAuditWriter(path string) (*AuditWriter, error) {
 // manager at checkpointPath. cadence is the record interval for automatic checkpoints
 // (values <= 0 use DefaultCheckpointCadence). keyDER is the PKCS#8 ECDSA signing key.
 func NewAuditWriterWithCheckpoints(path string, checkpointPath string, cadence int64, keyDER []byte) (*AuditWriter, error) {
-	w, err := NewAuditWriter(path)
+	w, err := NewAuditWriterRecoverable(path)
 	if err != nil {
 		return nil, err
 	}
