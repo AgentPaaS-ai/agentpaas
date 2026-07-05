@@ -39,3 +39,18 @@ NEXT-SESSION-PROMPT.md
 __pycache__/
 *.pyc
 t2-test-agent/
+
+# Never commit compiled binaries
+/integrations/bin/
+/bin/
+
+# Never commit internal build artifacts
+docs/archive/
+docs/owa-records/
+docs/plans/
+docs/b*-*.md
+docs/*-resume-prompt*.md
+docs/*-checkpoint*.md
+docs/*-risk-analysis.md
+docs/*-block-end.md
+docs/*-start-prompt.md

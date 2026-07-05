@@ -1,150 +1,133 @@
-# Quickstart — 15-Minute Path to a Governed Agent
+# Quickstart
 
-This guide walks from zero to a running, policy-enforced agent on macOS.
-For accepted P1 limitations, see [known-limitations.md](known-limitations.md).
+Build and run a governed AI agent entirely through Hermes. This guide
+takes you from zero to a running, policy-enforced agent.
 
-## Prerequisites
+See the [main README](../README.md) for install instructions
+(Hermes, Docker, AgentPaaS binary).
 
-- macOS (Apple Silicon or Intel)
-- [Homebrew](https://brew.sh)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
-  [Colima](https://github.com/abiosoft/colima)
-
-## Step 1: Install
+## Step 1: Launch Hermes
 
 ```bash
-brew install agentpaas/tap/agentpaas
+hermes
 ```
 
-## Step 2: Verify
+## Step 2: Install the AgentPaaS Plugin
 
-```bash
-agentpaas doctor
+Tell Hermes:
+
+> Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
+
+Hermes installs the plugin, registers the toolset, and creates the skill
+pointer. When it tells you to restart:
+
+```
+/quit
+hermes
 ```
 
-`agentpaas doctor` checks Docker, daemon connectivity, keychain access, and
-network isolation. All checks must pass before continuing.
+## Step 3: Verify Your Setup
 
-## Step 3: Start the daemon
+Tell Hermes:
 
-```bash
-agentpaas daemon start
-```
+> Run agentpaas_doctor to check my setup
 
-The daemon (`agentpaasd`) runs locally under `~/.agentpaas`. It manages
-agent runs, policy compilation, and the audit chain.
+All 6 checks should pass (version, Docker CLI, Docker daemon, Keychain,
+harness binary, home directory).
 
-## Step 4: Create your first agent
+## Step 4: Build an Agent
 
-```bash
-agentpaas init weather-agent
-cd weather-agent
-```
+Tell Hermes:
 
-This scaffolds `agent.yaml`, `main.py`, `requirements.txt`, and
-`.agentpaasignore`.
+> Build an agent that takes a question as input and uses an LLM to answer it.
 
-## Step 5: Write the agent
+Hermes will ask you:
+- Which LLM provider? (we recommend OpenRouter — see below)
+- Which model?
+- Your API key
 
-Replace `main.py` with a simple weather agent using the Python SDK:
+Then it writes the agent code, creates an egress policy allowing only the
+LLM provider's domain, packs a signed container image, and runs it under
+governance.
 
-```python
-from agentpaas_sdk import agent
+## Step 5: Invoke the Agent
 
+Tell Hermes:
 
-@agent.on_invoke
-def invoke(payload):
-    city = payload.get("city", "New York")
-    try:
-        resp = agent.http(
-            "GET",
-            f"https://api.weather.gov/locations/{city}",
-        )
-        return {"city": city, "status": "ok", "data": resp.get("body", "")[:200]}
-    except Exception as e:
-        return {"city": city, "status": "denied", "error": str(e)}
-```
+> Ask the agent: "What is the capital of France?"
 
-Update `agent.yaml` so the entry point matches:
+The agent calls the LLM through the gateway (credential brokered, egress
+enforced) and returns the answer.
 
-```yaml
-name: weather-agent
-version: 0.1.0
-runtime: python3.12
-entry: main:invoke
-```
+## Step 6: Check the Audit Trail
 
-## Step 6: Apply a policy
+Tell Hermes:
 
-Create `policy.yaml` allowing the weather API:
+> Show me the audit trail for the last run
 
-```yaml
-version: "1"
-agent:
-  name: weather-agent
-  description: Fetches weather data through the governed gateway
-egress:
-  - domain: api.weather.gov
-    ports: [443]
-credentials: []
-ingress: []
-```
+Every allowed and denied network call is logged: timestamp, agent
+identity, destination, credential used, policy decision.
 
-Apply it:
+## Adding Your LLM API Key
 
-```bash
-agentpaas policy apply policy.yaml
-```
+### Recommended: OpenRouter
 
-The policy compiles into agentgateway `frontendPolicies.networkAuthorization`
-CEL rules. See [how-enforcement-works.md](how-enforcement-works.md) and
-[policy-reference.md](policy-reference.md) for details.
+OpenRouter keys are standard API keys that don't expire. Get one at
+[openrouter.ai](https://openrouter.ai).
 
-## Step 7: Pack the agent
+**Option A — Let Hermes handle it (easiest):**
 
-```bash
-agentpaas pack
-```
+Tell Hermes:
 
-`agentpaas pack` builds a container image, runs secret scanning, generates an
-SBOM, and signs the package with a per-agent identity key.
+> I have an OpenRouter API key. Store it in AgentPaaS as "openrouter-key".
 
-## Step 8: Run it
+Hermes will ask for the key value and store it.
 
-```bash
-agentpaas run weather-agent
-```
+**Option B — Pipe from a file (if you have the key saved):**
 
-Each run creates two containers: an agent on an internal-only network and a
-dual-homed gateway sidecar. Outbound HTTP is routed through the gateway via
-`HTTP_PROXY`.
+Tell Hermes:
 
-## Step 9: View the dashboard
+> Pipe my OpenRouter key from /tmp/openrouter-key.txt into agentpaas:
+> cat /tmp/openrouter-key.txt | agentpaas secret add openrouter-key
 
-```bash
-open http://localhost:8090
-```
+Then delete the temp file:
 
-The dashboard shows run status, egress decisions, policy denials, and audit
-events in real time.
+> Delete /tmp/openrouter-key.txt
 
-## Step 10: Check the audit trail
+**Why the pipe?** Hermes redacts anything that looks like an API key or
+JWT in terminal output. If you use command substitution like
+`agentpaas secret add "$(cat key.txt)"`, the agent sees a redacted
+preview (e.g. `sk-or-v1-...xxxx`) and stores THAT instead of the real
+key. Piping directly via stdin avoids this.
 
-```bash
-agentpaas audit query
-```
+### xAI and Nous: Not Recommended
 
-Filter by run ID:
+xAI OAuth tokens expire after ~6 hours. Nous agent_keys expire after
+~15 minutes. If multiple Hermes profiles share the same OAuth client,
+refreshing in one revokes the other's token. Use OpenRouter instead.
 
-```bash
-agentpaas audit query --run <run-id>
-```
+## Available Slash Commands
 
-Export and verify on another machine: [audit-export.md](audit-export.md).
+| Command | Description |
+|---------|-------------|
+| `/agentpaas-init <path>` | Create a new agent project |
+| `/agentpaas-deploy <path>` | Pack + run in one step |
+| `/agentpaas-status` | Show daemon status and active runs |
+| `/agentpaas-list` | List runs by status |
+| `/agentpaas-logs <run_id>` | Tail logs for a run |
+| `/agentpaas-timeline <run_id>` | Show events for a run |
+| `/agentpaas-summarize <run_id>` | Summarize a run |
+| `/agentpaas-explain-failure <run_id>` | Diagnose a failed run |
+| `/agentpaas-doctor` | Run system diagnostics |
+| `/agentpaas-audit [run_id]` | Show audit events |
+| `/agentpaas-policy-show [dir\|run_id]` | Show active policy |
+| `/agentpaas-trigger <agent_name>` | Invoke an agent |
 
-## Next steps
+All commands also work as natural language requests.
 
-- [How enforcement works](how-enforcement-works.md) — gateway topology deep dive
-- [Policy reference](policy-reference.md) — full `policy.yaml` format
-- [Threat model](threat-model.md) — STRIDE-condensed security model
-- [Known limitations](known-limitations.md) — P1 accepted trade-offs
+## Requesting Features or Contributing
+
+- **Request a feature:** Open an issue on
+  [GitHub](https://github.com/AgentPaaS-ai/agentpaas/issues)
+- **Build your own:** Fork the repo, build, test (`make test`), open a PR
+- See [roadmap.md](roadmap.md) for planned features

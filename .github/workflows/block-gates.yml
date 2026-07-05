@@ -94,7 +94,7 @@ jobs:
       - name: Run block5-gate
         env:
           AGENTPAAS_DOCKER_TESTS: "1"
-          DOCKER_HOST: "unix:///Users/pms88/.colima/default/docker.sock"
+          DOCKER_HOST: "unix:///var/run/docker.sock"
         run: |
           export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
           make block5-gate
