@@ -22,6 +22,7 @@ import (
 	"time"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
@@ -106,12 +107,23 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
 	harnessPath := resolveHarnessBinary()
+	sdkDir := resolveSDKDir(harnessPath)
+	// If the SDK is not on disk (brew-only install, release tarball without
+	// python/), fall back to the SDK embedded in the binary.
+	if sdkDir == "" {
+		embeddedSDKDir, cleanup, err := agentpaas.ExtractEmbeddedSDKToTemp()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "SDK not found on disk and embedded SDK extraction failed: %v", err)
+		}
+		defer cleanup()
+		sdkDir = embeddedSDKDir
+	}
 	cfg := pack.BuildConfig{
 		ProjectDir:  absProjectDir,
 		Runtime:     det.Runtime,
 		ImageTag:    imageTag,
 		HarnessPath: harnessPath,
-		SDKDir:      resolveSDKDir(harnessPath),
+		SDKDir:      sdkDir,
 	}
 	if req.GetBaseImage() != "" {
 		cfg.BaseImage = req.GetBaseImage()
