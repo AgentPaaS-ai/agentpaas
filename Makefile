@@ -1,4 +1,4 @@
-.PHONY: build build-harness-linux build-all test proto lint race osv e2e-network redteam-smoke install-plugin
+.PHONY: build build-harness-linux build-all test proto lint race osv e2e-network redteam-smoke install-plugin golden-eval golden-fast golden-slow golden-docker
 
 build:
 	go build ./...
@@ -287,6 +287,45 @@ block14-gate: block14a0-gate block14a-gate block14b-gate block14c-gate
 block16-gate:
 	@echo "Error: block16-gate (manual use-case assessment) runs after block15-gate passes. See execution plan §16." && exit 1
 
+# ── Golden Dataset Regression Suite ─────────────────────────────────────────
+#
+# The golden dataset is a regression suite that measures pass^k (all k runs
+# succeed) for user-facing operations. Tasks are sourced from real failure
+# modes encountered during builds.
+#
+# Tiers:
+#   fast    — deterministic checks, <5s each, run on every commit
+#   slow    — integration tests, 5-60s each, run on PRs
+#   docker  — full Docker e2e, 30s-5min each, run on main merge
+#
+# Usage:
+#   make golden-fast        # fast tier only (every commit)
+#   make golden-slow        # slow tier only (PRs)
+#   make golden-docker      # docker tier only (main merge)
+#   make golden-eval         # all tiers
+#
+# Environment:
+#   GOLDEN_K=N    — override repetition count (default: 3)
+#   AGENTPAAS_DOCKER_TESTS=1 — enables docker-tier tasks
+
+golden-fast: build
+	@echo "==> Running golden dataset: fast tier (pass^k=3)"
+	GOLDEN_TIER=fast GOLDEN_K=3 go test -v -run TestGoldenSuite -count=1 ./test/golden/ -timeout 120s
+	@echo "✓ Golden fast tier: PASS"
+
+golden-slow: build
+	@echo "==> Running golden dataset: slow tier (pass^k=3)"
+	GOLDEN_TIER=slow GOLDEN_K=3 go test -v -run TestGoldenSuite -count=1 ./test/golden/ -timeout 600s
+	@echo "✓ Golden slow tier: PASS"
+
+golden-docker: build
+	@echo "==> Running golden dataset: docker tier (pass^k=3)"
+	AGENTPAAS_DOCKER_TESTS=1 GOLDEN_TIER=docker GOLDEN_K=3 go test -v -run TestGoldenSuite -count=1 ./test/golden/ -timeout 1800s
+	@echo "✓ Golden docker tier: PASS"
+
+golden-eval: golden-fast golden-slow golden-docker
+	@echo "✓ Golden dataset: ALL TIERS PASS"
+
 block15-gate: build lint
 	@echo "==> Running Block 15 gate: P1 completion items"
 	@echo "  T01: credential onboarding (secret add/list/remove/rotate/test)"
@@ -328,3 +367,9 @@ gates: ## List all available gate targets
 	@echo "  block14c-gate - Install path, docs, demo, v0.1.0 release"
 	@echo "  block15-gate - P1 completion: LLM, credentials, policy, hardening, release"
 	@echo "  block16-gate - Manual use-case assessment (runs AFTER B15)"
+	@echo ""
+	@echo "Golden dataset (pass^k regression suite):"
+	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
+	@echo "  golden-slow  - Slow tier: integration tests, PRs"
+	@echo "  golden-docker - Docker tier: full e2e, main merge"
+	@echo "  golden-eval  - All tiers"
