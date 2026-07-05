@@ -1,4 +1,0 @@
-name: governed-weather
-version: 0.1.0
-runtime: python3.12
-entry: main.py
