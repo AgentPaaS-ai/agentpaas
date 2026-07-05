@@ -29,6 +29,14 @@ coverage.txt
 .agentpaas/
 AGENTPAAS_HOME/
 
+# Secrets and credentials — never commit
+.env
+.env.*
+*.pem
+*.key
+secrets.json
+credentials.json
+
 # Local tool binaries (installed manually, not part of build)
 .tools/
 

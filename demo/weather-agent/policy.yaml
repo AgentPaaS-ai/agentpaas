@@ -1,0 +1,13 @@
+version: "1"
+agent:
+  name: weather-agent
+  description: LLM-powered weather assistant — extracts city from natural language, fetches weather, summarizes with LLM
+egress:
+  - domain: wttr.in
+    ports: [443]
+    methods: [GET]
+  - domain: openrouter.ai
+    ports: [443]
+    methods: [POST]
+credentials: []
+ingress: []
