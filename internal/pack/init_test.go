@@ -14,9 +14,23 @@ func TestInitScaffoldNewDir(t *testing.T) {
 		t.Fatalf("InitScaffold() error = %v", err)
 	}
 
-	for _, name := range []string{"agent.yaml", "main.py", "requirements.txt", "policy.yaml", ".agentpaasignore"} {
+	for _, name := range []string{"agent.yaml", "main.py", "requirements.txt", ".agentpaasignore"} {
 		if _, err := os.Lstat(filepath.Join(projectDir, name)); err != nil {
 			t.Fatalf("expected %s to exist: %v", name, err)
+		}
+	}
+
+	if _, err := os.Lstat(filepath.Join(projectDir, "policy.yaml")); err == nil {
+		t.Fatal("policy.yaml should not be created by InitScaffold")
+	}
+
+	reqContent := readTestFile(t, projectDir, "requirements.txt")
+	for _, want := range []string{
+		"# Python dependencies (pip-installed at pack time).",
+		"# Do NOT list agentpaas-sdk here — it is bundled automatically.",
+	} {
+		if !strings.Contains(reqContent, want) {
+			t.Fatalf("requirements.txt missing %q; content:\n%s", want, reqContent)
 		}
 	}
 }
