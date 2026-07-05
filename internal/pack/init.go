@@ -17,8 +17,9 @@ import (
 //   - agent.yaml (minimal template with name, version, runtime)
 //   - main.py (entry point stub using @agent.on_invoke SDK pattern)
 //   - requirements.txt (empty, with a comment)
-//   - policy.yaml (default-deny egress — no domains allowed by default)
 //   - .agentpaasignore (default excludes)
+//
+// Policy is created separately by InitPolicy or `policy init`.
 func InitScaffold(projectDir string, runtime RuntimeType) error {
 	if err := validateProjectDir(projectDir); err != nil {
 		return err
@@ -58,8 +59,7 @@ func InitScaffold(projectDir string, runtime RuntimeType) error {
 	files := map[string]string{
 		"agent.yaml":       DefaultAgentYAML(runtime, projectName),
 		"main.py":          DefaultMainPy(),
-		"requirements.txt": "# Add Python dependencies here.\n",
-		"policy.yaml":      DefaultPolicyYAML(),
+		"requirements.txt": "# Python dependencies (pip-installed at pack time).\n# Do NOT list agentpaas-sdk here — it is bundled automatically.\n",
 		".agentpaasignore": DefaultAgentPaasIgnore(),
 	}
 	for name, content := range files {

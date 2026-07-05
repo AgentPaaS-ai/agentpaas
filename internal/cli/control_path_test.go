@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 )
 
@@ -42,6 +44,43 @@ func startCapturePackDaemon(t *testing.T) (string, *capturePackServer) {
 		_ = lis.Close()
 	})
 	return sock, server
+}
+
+func TestResolveRunTarget_BareDirectoryName(t *testing.T) {
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	base := t.TempDir()
+	projectDir := filepath.Join(base, "weather-agent")
+	if err := pack.InitScaffold(projectDir, pack.RuntimePython); err != nil {
+		t.Fatalf("InitScaffold: %v", err)
+	}
+	if err := os.Chdir(base); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := &cobra.Command{}
+	got, err := resolveRunTarget(cmd, nil, "weather-agent")
+	if err != nil {
+		t.Fatalf("resolveRunTarget() error = %v", err)
+	}
+	if got != "weather-agent" {
+		t.Fatalf("resolveRunTarget() = %q, want %q", got, "weather-agent")
+	}
+}
+
+func TestResolveRunTarget_AgentNameWhenNotDirectory(t *testing.T) {
+	cmd := &cobra.Command{}
+	got, err := resolveRunTarget(cmd, nil, "my-deployed-agent")
+	if err != nil {
+		t.Fatalf("resolveRunTarget() error = %v", err)
+	}
+	if got != "my-deployed-agent" {
+		t.Fatalf("resolveRunTarget() = %q, want %q", got, "my-deployed-agent")
+	}
 }
 
 func TestResolveCLIProjectPath_AbsoluteUnchanged(t *testing.T) {

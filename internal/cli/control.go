@@ -169,6 +169,25 @@ func resolveRunTarget(cmd *cobra.Command, client controlv1.ControlServiceClient,
 		return "", fmt.Errorf("no deployed agent with image digest %s — run 'agentpaas pack' first", target)
 	}
 
+	// Case 1b: bare directory name (no /, ., or ~) that exists on disk
+	if info, err := os.Stat(target); err == nil && info.IsDir() {
+		absPath, err := filepath.Abs(target)
+		if err != nil {
+			return "", fmt.Errorf("resolve path %q: %w", target, err)
+		}
+		agentYAML, err := pack.LoadAgentYAML(absPath)
+		if err != nil {
+			return "", fmt.Errorf("read agent.yaml from %s: %w", absPath, err)
+		}
+		if agentYAML == nil {
+			return "", fmt.Errorf("no agent.yaml found in %s — run 'agentpaas init' first", absPath)
+		}
+		if agentYAML.Name == "" {
+			return "", fmt.Errorf("agent.yaml in %s has no 'name' field", absPath)
+		}
+		return agentYAML.Name, nil
+	}
+
 	// Case 3: treat as agent name directly
 	return target, nil
 }
