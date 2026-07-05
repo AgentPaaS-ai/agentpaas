@@ -103,7 +103,8 @@ Six attack fixtures through the real pack → run → gateway → audit pipeline
   [Colima](https://github.com/abiosoft/colima)** — agents run in containers.
   Start Colima after installing: `colima start`
 - **An LLM API key** — e.g. from [OpenRouter](https://openrouter.ai),
-  OpenAI, xAI, or Anthropic. You'll provide this when building an agent.
+  OpenAI, xAI, or Anthropic. You'll store this in macOS Keychain via
+  `agentpaas secret add` — it never enters the Hermes conversation.
 - macOS (Apple Silicon or Intel)
 
 ## Install
@@ -155,19 +156,35 @@ pointer. Restart Hermes when it tells you to:
 hermes
 ```
 
-### Step 2: Build an agent
+### Step 2: Store your API key
+
+API keys are never passed through the Hermes conversation — they go
+directly into macOS Keychain via the terminal. Run this in a separate
+terminal:
+
+```bash
+agentpaas secret add openrouter-key
+# paste your API key when prompted
+```
+
+Then tell Hermes you're done. Hermes verifies the key exists (by label,
+never by value) and proceeds.
+
+### Step 3: Build an agent
 
 Tell Hermes:
 
 > Build an agent that takes a question as input and uses an LLM to answer it.
+> Use OpenRouter with the deepseek/deepseek-v4-flash model.
+> My OpenRouter key is stored as "openrouter-key".
 
-Hermes will ask which LLM provider and model you want to use, then ask
-for your API key (stored in macOS Keychain — never baked into the image).
-It then writes the agent code, creates an egress policy allowing only the
+Hermes writes the agent code, creates an egress policy allowing only the
 LLM provider's domain, packs it into a signed container image, and runs
-it under governance.
+it under governance. The pack step enforces that the configured provider's
+domain is in the egress policy — if it's missing, the build fails before
+the agent can ship with a broken runtime.
 
-### Step 3: Invoke the agent
+### Step 4: Invoke the agent
 
 Tell Hermes:
 
@@ -177,7 +194,7 @@ Hermes invokes the agent through the trigger API. The agent calls the
 LLM through the gateway (credential brokered, egress enforced), and
 returns the answer.
 
-### Step 4: Check the audit trail
+### Step 5: Check the audit trail
 
 Tell Hermes:
 
