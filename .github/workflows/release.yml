@@ -11,8 +11,49 @@ permissions:
   id-token: write
 
 jobs:
+  # Pre-release gate: run all tests on self-hosted runner before building.
+  # If any check fails, the release is blocked — no binaries shipped.
+  pre-release-gate:
+    name: Pre-Release Gate
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PATH
+        run: |
+          echo "/opt/homebrew/bin:$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      - name: Race detector
+        run: make race
+
+      - name: Golden fast tier
+        run: make golden-fast
+
+      - name: OSV scan
+        run: make osv
+
+      - name: Verify build
+        run: go build ./...
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
   release:
+    name: Release
     runs-on: macos-latest
+    needs: pre-release-gate
     steps:
       - uses: actions/checkout@v4
         with:

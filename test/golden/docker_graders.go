@@ -18,13 +18,13 @@ import (
 // ─── Pack tasks (slow tier) ──────────────────────────────────────────────────
 
 func g17_packGovernedWeather(spec TaskSpec) (bool, string, error) {
-	return packDemo("demo/governed-weather")
+	return packDemo("demo/weather-agent")
 }
 func g18_packSecretSaaS(spec TaskSpec) (bool, string, error) {
-	return packDemo("demo/secret-saas")
+	return false, "", fmt.Errorf("demo/secret-saas removed — only weather-agent demo remains")
 }
 func g19_packRepairLoop(spec TaskSpec) (bool, string, error) {
-	return packDemo("demo/repair-loop")
+	return false, "", fmt.Errorf("demo/repair-loop removed — only weather-agent demo remains")
 }
 
 func packDemo(projectDir string) (bool, string, error) {
@@ -40,13 +40,13 @@ func packDemo(projectDir string) (bool, string, error) {
 }
 
 func g20_packRejectsTamperedPolicy(spec TaskSpec) (bool, string, error) {
-	projectDir := filepath.Join(repoRoot(), "demo/governed-weather")
+	projectDir := filepath.Join(repoRoot(), "demo/weather-agent")
 
 	tmpDir, err := os.MkdirTemp("", "golden-tamper-*")
 	if err != nil {
 		return false, "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if err := copyDir(projectDir, tmpDir); err != nil {
 		return false, "", err
@@ -54,8 +54,10 @@ func g20_packRejectsTamperedPolicy(spec TaskSpec) (bool, string, error) {
 
 	policyPath := filepath.Join(tmpDir, "policy.yaml")
 	content, _ := os.ReadFile(policyPath)
-	tampered := strings.Replace(string(content), "api.weather.gov", "evil.example.com", 1)
-	os.WriteFile(policyPath, []byte(tampered), 0o644)
+	tampered := strings.Replace(string(content), "wttr.in", "evil.example.com", 1)
+	if err := os.WriteFile(policyPath, []byte(tampered), 0o644); err != nil {
+		return false, "", fmt.Errorf("write tampered policy: %w", err)
+	}
 
 	output, _, exitCode, _ := runBinary("pack", tmpDir)
 	if exitCode != 0 || strings.Contains(strings.ToLower(output), "tamper") ||
@@ -67,20 +69,26 @@ func g20_packRejectsTamperedPolicy(spec TaskSpec) (bool, string, error) {
 }
 
 func g21_packDistinctDigests(spec TaskSpec) (bool, string, error) {
-	projectDir := filepath.Join(repoRoot(), "demo/governed-weather")
+	projectDir := filepath.Join(repoRoot(), "demo/weather-agent")
 
 	tmpDir1, _ := os.MkdirTemp("", "golden-digest1-*")
 	tmpDir2, _ := os.MkdirTemp("", "golden-digest2-*")
-	defer os.RemoveAll(tmpDir1)
-	defer os.RemoveAll(tmpDir2)
+	defer func() { _ = os.RemoveAll(tmpDir1) }()
+	defer func() { _ = os.RemoveAll(tmpDir2) }()
 
-	copyDir(projectDir, tmpDir1)
-	copyDir(projectDir, tmpDir2)
+	if err := copyDir(projectDir, tmpDir1); err != nil {
+		return false, "", fmt.Errorf("copy project to tmpDir1: %w", err)
+	}
+	if err := copyDir(projectDir, tmpDir2); err != nil {
+		return false, "", fmt.Errorf("copy project to tmpDir2: %w", err)
+	}
 
 	agentPath := filepath.Join(tmpDir2, "agent.yaml")
 	content, _ := os.ReadFile(agentPath)
-	modified := strings.Replace(string(content), "governed-weather", "governed-weather-v2", 1)
-	os.WriteFile(agentPath, []byte(modified), 0o644)
+	modified := strings.Replace(string(content), "weather-agent", "weather-agent-v2", 1)
+	if err := os.WriteFile(agentPath, []byte(modified), 0o644); err != nil {
+		return false, "", fmt.Errorf("write modified agent.yaml: %w", err)
+	}
 
 	out1, _, code1, _ := runBinary("pack", tmpDir1)
 	out2, _, code2, _ := runBinary("pack", tmpDir2)
@@ -131,7 +139,7 @@ func g23_cronRemove(spec TaskSpec) (bool, string, error) {
 	agentName, _ := spec.Inputs["agent_name"].(string)
 	expr, _ := spec.Inputs["expr"].(string)
 
-	runBinary("cron", "add", "--agent", agentName, "--expr", expr)
+	_, _, _, _ = runBinary("cron", "add", "--agent", agentName, "--expr", expr)
 
 	listOut, _, _, _ := runBinary("cron", "list")
 	scheduleID := extractScheduleID(listOut, agentName)
@@ -184,7 +192,7 @@ func g25_auditExport(spec TaskSpec) (bool, string, error) {
 // ─── Docker e2e tasks ───────────────────────────────────────────────────────
 
 func g26_packRunStopLifecycle(spec TaskSpec) (bool, string, error) {
-	projectDir := filepath.Join(repoRoot(), "demo/governed-weather")
+	projectDir := filepath.Join(repoRoot(), "demo/weather-agent")
 
 	packOut, _, packCode, _ := runBinary("pack", projectDir)
 	if packCode != 0 {
@@ -218,7 +226,7 @@ func g26_packRunStopLifecycle(spec TaskSpec) (bool, string, error) {
 }
 
 func g27_defaultDenyBlocksEgress(spec TaskSpec) (bool, string, error) {
-	projectDir := filepath.Join(repoRoot(), "demo/governed-weather")
+	projectDir := filepath.Join(repoRoot(), "demo/weather-agent")
 
 	packOut, _, packCode, _ := runBinary("pack", projectDir)
 	if packCode != 0 {
@@ -236,7 +244,7 @@ func g27_defaultDenyBlocksEgress(spec TaskSpec) (bool, string, error) {
 	defer func() {
 		runID := extractRunID(runOut)
 		if runID != "" {
-			runBinary("stop", runID)
+			_, _, _, _ = runBinary("stop", runID)
 		}
 	}()
 
@@ -250,7 +258,7 @@ func g27_defaultDenyBlocksEgress(spec TaskSpec) (bool, string, error) {
 }
 
 func g28_allowedEgressReaches(spec TaskSpec) (bool, string, error) {
-	projectDir := filepath.Join(repoRoot(), "demo/governed-weather")
+	projectDir := filepath.Join(repoRoot(), "demo/weather-agent")
 
 	packOut, _, packCode, _ := runBinary("pack", projectDir)
 	if packCode != 0 {
@@ -268,7 +276,7 @@ func g28_allowedEgressReaches(spec TaskSpec) (bool, string, error) {
 	defer func() {
 		runID := extractRunID(runOut)
 		if runID != "" {
-			runBinary("stop", runID)
+			_, _, _, _ = runBinary("stop", runID)
 		}
 	}()
 

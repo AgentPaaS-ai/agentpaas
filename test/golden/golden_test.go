@@ -78,7 +78,9 @@ func TestGoldenSuite(t *testing.T) {
 	// Write machine-readable report
 	jsonData, _ := report.JSON()
 	reportPath := os.TempDir() + "/agentpaas-golden-report.json"
-	os.WriteFile(reportPath, jsonData, 0o644)
+	if err := os.WriteFile(reportPath, jsonData, 0o644); err != nil {
+		t.Logf("warning: failed to write golden report: %v", err)
+	}
 	t.Logf("Machine-readable report: %s", reportPath)
 
 	// Gate: fail if any task didn't pass all k trials

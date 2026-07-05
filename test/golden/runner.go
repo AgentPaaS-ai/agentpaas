@@ -249,7 +249,7 @@ func (r *Runner) runTask(spec TaskSpec) TaskResult {
 		var fails []string
 		for _, t := range result.Trials {
 			if !t.Pass {
-				fails = append(fails, fmt.Sprintf("trial %d: %s", t.TrialNum, t.Error))
+				fails = append(fails, fmt.Sprintf("trial %d: %s [output: %s]", t.TrialNum, t.Error, t.Output))
 			}
 		}
 		result.Detail = strings.Join(fails, "; ")
