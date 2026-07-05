@@ -6,39 +6,76 @@ Post-P1 tasks identified during Block 16 manual testing. Ordered by priority.
 
 ### Task: Egress policy must match configured LLM provider, not blanket-allow all
 
-**Problem:** When an agent has `llm.provider: xai` in `agent.yaml`, the
-`allow-llm` policy template grants egress to `api.openai.com`,
-`api.anthropic.com`, AND `api.x.ai`. An agent configured for xAI should
-only have egress to `api.x.ai`. Granting egress to providers the agent
-doesn't use violates least-privilege and expands the attack surface.
+**Status:** IN PROGRESS — Block 17 (2026-07-05)
 
-Additionally, the `allow-llm` template hardcodes a stale
-`openai-api-key` credential reference in the `credentials:` section,
-which is noise for agents using a different provider.
+**Problem:** When an agent has `llm.provider: xai` in `agent.yaml`, the
+`allow-llm` policy template grants egress to `openrouter.ai` only (after
+B16 fix). But there is no pack-time validation that the configured LLM
+provider's domain is present in the egress policy. An agent with
+`llm.provider: xai` could pack successfully without `api.x.ai` in its
+egress policy, then fail at runtime when the gateway blocks the LLM call.
 
 **Found during:** B16-T6 Session 8 (2026-07-04)
 
 **Root cause:**
-- `internal/cli/policy_templates.go` — the `allow-llm` template lists
-  all three providers unconditionally
-- The onboarding flow (deploy skill) uses `allow-llm` without pruning
-  to the configured provider
+- `internal/cli/policy_templates.go` — the `allow-llm` template is static
+- No pack-time or validate-time cross-check between `llm.provider` and
+  egress policy domains
+- The onboarding flow (deploy skill) uses `allow-llm` without ensuring
+  the configured provider's domain is present
 
-**Proposed fix (two layers):**
-1. Make `allow-llm` template take a provider argument (or generate
-   provider-specific templates: `allow-llm-xai`, `allow-llm-openai`,
-   `allow-llm-anthropic`, `allow-llm-nous`)
-2. Better: auto-derive egress from `agent.yaml`'s `llm:` section at pack
-   time. If `llm.provider: xai` is set, the pack step should
-   automatically add `api.x.ai:443` to egress (and warn if it's missing).
-   The template should be a starting point, not the final word.
+**Fix (Block 17):**
+1. Add `llm.ProviderDomain(provider)` to map provider → egress domain
+2. Add pack-time enforcement: if `llm.provider` is set, its domain MUST
+   be in egress policy or pack fails with an actionable error
+3. Add validate-time advisory warning (not error) for the same check
+4. Add `--provider` flag to `policy init --template allow-llm` for
+   provider-specific template generation
 
 **Acceptance criteria:**
 - An agent with `llm.provider: xai` has egress ONLY to `api.x.ai`
 - An agent with `llm.provider: openai` has egress ONLY to `api.openai.com`
-- Pack warns (or errors) if the configured LLM provider's domain is not
-  in the egress policy
+- Pack FAILS if the configured LLM provider's domain is not in egress policy
+- `policy init --template allow-llm --provider xai` generates policy with
+  only `api.x.ai:443`
 - No stale credential references in generated policy.yaml
+
+---
+
+### Task: Secure secret ingestion flow (terminal-based, not through LLM context)
+
+**Status:** IN PROGRESS — Block 17 (2026-07-05)
+
+**Problem:** The `agentpaas_secret_add` Hermes tool accepts the API key
+value as a tool parameter (`value` arg). When the Hermes agent calls this
+tool, the key value enters the conversation context and is sent to the LLM
+provider as part of the tool-call arguments. This violates the security
+principle that API keys should never be exposed to the LLM.
+
+**Found during:** Block 17 analysis (2026-07-05)
+
+**Root cause:**
+- `integrations/hermes-plugin/tools.py` `agentpaas_secret_add()` accepts
+  `value` as a tool parameter
+- The SKILL.md onboarding flow instructs the agent to call the tool with
+  the value, rather than telling the user to run the CLI command directly
+
+**Fix (Block 17):**
+1. Update SKILL.md onboarding flow: instruct the USER to run
+   `agentpaas secret add <name>` in their terminal, NOT have Hermes call
+   the tool with the value
+2. Hermes verifies the secret exists via `agentpaas_secret_list` (labels
+   only, never values)
+3. Update SOUL.md snippet to mention terminal-based secret ingestion
+4. Keep the `value` parameter in the tool for backward compatibility but
+   deprecate it for the standard onboarding flow
+
+**Acceptance criteria:**
+- SKILL.md onboarding flow instructs user to run terminal command
+- Hermes only verifies secret existence via `agentpaas_secret_list`
+- API key value never enters the Hermes conversation context during
+  the standard onboarding flow
+- Backward compatibility: existing `agentpaas_secret_add` tool still works
 
 ---
 
@@ -118,3 +155,28 @@ intercepts 401s and retries with a refreshed token.
 **Acceptance criteria:**
 - An agent with an expired OAuth token doesn't fail permanently
 - Token refresh happens transparently — no manual re-store needed
+
+---
+
+### Task: OAuth token exchange support (Codex, xOAuth, PKCE flows)
+
+**Problem:** Some auth flows require token exchange — an authorization
+code or refresh token is exchanged for an access token via a token
+endpoint. Examples: Codex CLI integration, xOAuth, PKCE-based OAuth
+flows. These are more complex than a static API key and cannot be
+ingested via the simple `agentpaas secret add` stdin flow.
+
+**Found during:** Block 17 analysis (2026-07-05)
+
+**Proposed fix:** Support a credential type that performs token
+exchange at credential-broker time. The agent.yaml specifies a token
+endpoint, client ID, and refresh token (stored in keychain). The
+gateway broker exchanges the refresh token for an access token before
+injecting it into the agent container.
+
+**Acceptance criteria:**
+- `agentpaas secret add` supports a `--type oauth` mode that stores
+  a refresh token + token endpoint metadata
+- The gateway broker performs token exchange before container start
+- Token exchange errors are surfaced with actionable guidance
+- Works with PKCE-based OAuth flows (Codex, xOAuth)
