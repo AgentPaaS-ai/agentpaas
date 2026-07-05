@@ -14,10 +14,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
-	"github.com/parvezsyed/agentpaas/internal/pack"
-	"github.com/parvezsyed/agentpaas/internal/operator"
-	"github.com/parvezsyed/agentpaas/internal/secrets"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
+	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

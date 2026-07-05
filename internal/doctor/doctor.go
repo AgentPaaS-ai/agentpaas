@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/parvezsyed/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
 
 // Doctor runs all diagnostic checks and aggregates the results.

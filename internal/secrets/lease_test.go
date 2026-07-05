@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
-	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 const leaseSecretValue = "direct-lease-secret-value"

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/parvezsyed/agentpaas/internal/home"
-	"github.com/parvezsyed/agentpaas/internal/pack"
-	"github.com/parvezsyed/agentpaas/internal/secrets"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 )
 
 // testControlServerForPayload creates a controlServer with a temp home dir

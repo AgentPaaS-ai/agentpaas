@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/otel"
+	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
 )
 
 func TestComputeCost_KnownModel(t *testing.T) {

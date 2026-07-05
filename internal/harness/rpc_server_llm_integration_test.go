@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/parvezsyed/agentpaas/internal/llm"
+	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 )
 
 func TestHandleLLM_Integration_FullFlow_OpenAI(t *testing.T) {

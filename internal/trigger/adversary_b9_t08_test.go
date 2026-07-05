@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	triggerv1 "github.com/parvezsyed/agentpaas/api/trigger/v1"
-	"github.com/parvezsyed/agentpaas/internal/audit"
+	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

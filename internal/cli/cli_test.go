@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/home"
-	"github.com/parvezsyed/agentpaas/internal/secrets"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 )
 

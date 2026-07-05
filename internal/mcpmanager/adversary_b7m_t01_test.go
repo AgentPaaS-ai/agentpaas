@@ -1,10 +1,10 @@
 package mcpmanager
 
 import (
-	_ "github.com/parvezsyed/agentpaas/internal/audit"
+	_ "github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"testing"
 
-	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 func TestAdversary_B7M_T01_UndeclaredServerBypass(t *testing.T) {

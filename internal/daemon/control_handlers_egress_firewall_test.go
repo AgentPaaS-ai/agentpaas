@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
-	"github.com/parvezsyed/agentpaas/internal/runtime"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 func TestRun_SetsEgressFirewallOnAgentSpec(t *testing.T) {

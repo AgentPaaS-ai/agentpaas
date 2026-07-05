@@ -3,7 +3,7 @@ package mcpmanager
 import (
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 // AuditToolCall records an MCP tool call audit event.

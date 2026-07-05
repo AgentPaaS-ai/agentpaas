@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	triggerv1 "github.com/parvezsyed/agentpaas/api/trigger/v1"
+	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
 )
 
 func TestAdversaryB9T06_ParseCronLargeStep(t *testing.T) {

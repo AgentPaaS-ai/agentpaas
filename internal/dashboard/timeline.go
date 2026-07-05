@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/logging"
-	"github.com/parvezsyed/agentpaas/internal/otel"
-	"github.com/parvezsyed/agentpaas/internal/trigger"
+	"github.com/AgentPaaS-ai/agentpaas/internal/logging"
+	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 )
 
 const (

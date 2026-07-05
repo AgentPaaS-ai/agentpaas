@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/dockerclient"
-	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 const noTlogSigningConfigJSON = `{"mediaType":"application/vnd.dev.sigstore.signingconfig.v0.2+json","rekorTlogConfig":{},"tsaConfig":{}}`

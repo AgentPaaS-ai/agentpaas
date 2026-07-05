@@ -30,7 +30,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/timestamp.proto";
 import "google/rpc/status.proto";
 
-option go_package = "github.com/parvezsyed/agentpaas/api/trigger/v1;triggerv1";
+option go_package = "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1;triggerv1";
 
 // ---------------------------------------------------------------------------
 // Enums

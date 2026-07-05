@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 const adversarySecretValue = "adversary-lease-secret-VALUE-0123456789"

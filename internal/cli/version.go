@@ -3,7 +3,7 @@ package cli
 import (
 	"runtime"
 
-	"github.com/parvezsyed/agentpaas/internal/daemon"
+	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
 	"github.com/spf13/cobra"
 )
 

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/parvezsyed/agentpaas/internal/service"
+	"github.com/AgentPaaS-ai/agentpaas/internal/service"
 )
 
 // goldenSystemdPath returns the path to a systemd golden file by name.

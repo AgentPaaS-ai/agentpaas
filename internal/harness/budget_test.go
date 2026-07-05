@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 func TestWallClockBudgetKillsFromInvokeStartAndAuditsOverage(t *testing.T) {

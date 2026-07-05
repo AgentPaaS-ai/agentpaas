@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 func TestAdversary_B7M_T03_UnboundedHTTPResponseBody(t *testing.T) {

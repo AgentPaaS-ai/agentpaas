@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
-	"github.com/parvezsyed/agentpaas/internal/otel"
-	"github.com/parvezsyed/agentpaas/internal/trigger"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 )
 
 //go:embed dist/*

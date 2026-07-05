@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

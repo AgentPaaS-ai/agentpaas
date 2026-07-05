@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/parvezsyed/agentpaas/internal/secrets"
+	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 )
 
 func TestSecretAdd_AliasesSet(t *testing.T) {

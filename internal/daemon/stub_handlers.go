@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
-	"github.com/parvezsyed/agentpaas/internal/audit"
-	"github.com/parvezsyed/agentpaas/internal/home"
-	"github.com/parvezsyed/agentpaas/internal/runtime"
-	"github.com/parvezsyed/agentpaas/internal/secrets"
-	"github.com/parvezsyed/agentpaas/internal/trigger"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 )
 
 // controlServer implements the ControlServiceServer interface by embedding

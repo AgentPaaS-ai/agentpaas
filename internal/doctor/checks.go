@@ -18,8 +18,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
-	"github.com/parvezsyed/agentpaas/internal/home"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
 
 // knownPorts are the ports that agentpaas uses for control and agent traffic.

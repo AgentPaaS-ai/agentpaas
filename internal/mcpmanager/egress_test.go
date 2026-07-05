@@ -6,8 +6,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
-	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 type egressRecordingAudit struct {

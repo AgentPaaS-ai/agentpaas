@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	controlv1 "github.com/parvezsyed/agentpaas/api/control/v1"
-	"github.com/parvezsyed/agentpaas/internal/operator"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
 )
 
 // ADVERSARY BREAK: ExplainPolicyDenial must reject attacker-supplied rule IDs

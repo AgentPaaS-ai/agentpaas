@@ -19,9 +19,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/parvezsyed/agentpaas/internal/daemon.CLIVersion={{.Version}}
-      - -X github.com/parvezsyed/agentpaas/internal/daemon.DaemonVersion={{.Version}}
-      - -X github.com/parvezsyed/agentpaas/internal/daemon.GitCommit={{.Commit}}
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion={{.Version}}
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
 
   - id: agentpaasd
     main: ./cmd/agentpaasd
@@ -35,9 +35,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/parvezsyed/agentpaas/internal/daemon.CLIVersion={{.Version}}
-      - -X github.com/parvezsyed/agentpaas/internal/daemon.DaemonVersion={{.Version}}
-      - -X github.com/parvezsyed/agentpaas/internal/daemon.GitCommit={{.Commit}}
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion={{.Version}}
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
 
 archives:
   - id: default

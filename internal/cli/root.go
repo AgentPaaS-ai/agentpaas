@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/parvezsyed/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
 
 // rootCmd is the root cobra command for the agent CLI.

@@ -18,7 +18,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/parvezsyed/agentpaas/internal/dockerclient"
+	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 )
 
 // defaultImage is the default container image used for agent and gateway

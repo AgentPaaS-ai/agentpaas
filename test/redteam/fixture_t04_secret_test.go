@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
-	"github.com/parvezsyed/agentpaas/internal/policy"
-	"github.com/parvezsyed/agentpaas/internal/secrets"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 )
 
 // sentinelLeakScan returns true when haystack contains the sentinel verbatim

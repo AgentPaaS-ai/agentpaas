@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 func newAdversaryBroker(t *testing.T, store SecretStore, p *policy.Policy, activeRuns []string, ruleMethods map[string][]string) *Broker {

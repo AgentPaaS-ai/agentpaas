@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/dashboard"
-	"github.com/parvezsyed/agentpaas/internal/runtime"
+	"github.com/AgentPaaS-ai/agentpaas/internal/dashboard"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 // dockerResourceManager implements dashboard.ResourceManager by querying

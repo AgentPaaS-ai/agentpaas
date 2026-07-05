@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 const secretAllowPatternEventType = "secret_scan_allow_pattern"

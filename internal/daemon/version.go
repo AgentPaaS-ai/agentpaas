@@ -14,14 +14,14 @@ const (
 )
 
 // CLIVersion is the current version of the agentpaas CLI.
-// Set at build time via -ldflags "-X github.com/parvezsyed/agentpaas/internal/daemon.CLIVersion=<version>".
+// Set at build time via -ldflags "-X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion=<version>".
 var CLIVersion = "0.1.0-dev"
 
 // DaemonVersion is the current version of the agentpaas daemon.
-// Set at build time via -ldflags "-X github.com/parvezsyed/agentpaas/internal/daemon.DaemonVersion=<version>".
+// Set at build time via -ldflags "-X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion=<version>".
 var DaemonVersion = "0.1.0-dev"
 
-// GitCommit is set at build time via -ldflags "-X github.com/parvezsyed/agentpaas/internal/daemon.GitCommit=<commit>".
+// GitCommit is set at build time via -ldflags "-X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit=<commit>".
 // If not injected, it defaults to "unknown".
 var GitCommit = "unknown"
 

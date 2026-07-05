@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/parvezsyed/agentpaas/internal/audit"
-	"github.com/parvezsyed/agentpaas/internal/llm"
-	"github.com/parvezsyed/agentpaas/internal/mcpmanager"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 )
 
 type harnessRPCServer struct {
