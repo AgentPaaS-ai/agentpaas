@@ -78,6 +78,22 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		return nil, err
 	}
 
+	// Enforce LLM egress policy at pack time.
+	// If the agent has an LLM provider configured, the provider's domain
+	// MUST be present in the egress policy. Otherwise, the agent will fail
+	// at runtime when it tries to call the LLM API through the gateway.
+	agentConfig, err := LoadAgentYAML(cfg.ProjectDir)
+	if err != nil {
+		return nil, err
+	}
+	policyFile, err := LoadPolicy(cfg.ProjectDir)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateLLMEgress(agentConfig, policyFile); err != nil {
+		return nil, err
+	}
+
 	ignore, err := LoadIgnore(cfg.ProjectDir)
 	if err != nil {
 		return nil, err

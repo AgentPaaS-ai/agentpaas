@@ -132,8 +132,10 @@ not wait for the user to ask — do them proactively.
 
 1. Search the code for credential needs (env vars, auth headers, API keys).
 2. For each credential needed:
-   - Ask the user for the key
-   - Store it: `agentpaas_secret_add`
+   - Tell the user to run this command in their terminal:
+     `agentpaas secret add <suggested-name>`
+   - The user pastes the key when prompted (stdin) — the key value never enters the Hermes conversation
+   - After the user confirms, verify via `agentpaas_secret_list` that the label exists (never read the value)
    - Validate it: `agentpaas_secret_test`
 3. If using an LLM, configure the provider (see Step 3).
 
@@ -144,8 +146,10 @@ If the agent needs an LLM (detected from user intent: "answer", "summarize",
 
 1. Ask: "Which LLM provider?" (openrouter / openai / anthropic / xai / nous)
 2. Ask: "Which model?"
-3. Ask for the API key → store via `agentpaas_secret_add` → test via
-   `agentpaas_secret_test`
+3. Tell the user to run this command in their terminal to store the API key:
+   `agentpaas secret add <suggested-name>`
+   (The user pastes the key via stdin — it never enters the Hermes conversation)
+   Then verify the secret exists via `agentpaas_secret_list` and test via `agentpaas_secret_test`
 4. Call `agentpaas_llm_configure` with provider, model, credential name
 5. Add the provider domain to egress policy:
    - openrouter → `openrouter.ai:443`
@@ -159,11 +163,30 @@ If the agent needs an LLM (detected from user intent: "answer", "summarize",
 
 Before calling `agentpaas_pack`, verify:
 1. Egress policy lists every external domain the agent will access.
-2. Every credential is stored in Keychain (check `agentpaas_secret_list`).
+2. Every credential is stored in Keychain (verify via `agentpaas_secret_list` — never call `agentpaas_secret_add` with the key value as a tool parameter; the user runs the CLI command directly in their terminal).
 3. If LLM: agent.yaml has `llm:` section pointing to the credential.
 4. The LLM provider's domain is in the egress policy.
 
 If ANY are missing, do NOT pack. Ask the user to resolve the gap.
+
+### Security: Secret Ingestion (Critical)
+
+API keys MUST NEVER enter the Hermes conversation context. The Hermes agent
+MUST NOT call `agentpaas_secret_add` with the key value as a tool parameter.
+
+The correct flow:
+1. Hermes tells the user: "Please run this command in your terminal:
+   `agentpaas secret add <name>`
+   Then paste your API key when prompted."
+2. The user runs the command in a SEPARATE terminal — the key goes directly
+   into macOS Keychain via stdin.
+3. The user tells Hermes they're done.
+4. Hermes verifies via `agentpaas_secret_list` (returns labels only, never values).
+
+Why: If Hermes calls `agentpaas_secret_add` with the value as a tool parameter,
+the key value is part of the tool-call arguments sent to the LLM provider as
+part of the conversation. This leaks the key to the LLM provider. The terminal
+flow keeps the key out of the conversation entirely.
 
 ## LLM Provider Guide
 

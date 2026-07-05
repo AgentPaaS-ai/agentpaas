@@ -100,9 +100,16 @@ BEFORE packing any agent, you MUST verify:
 1. Egress policy lists every external domain.
 2. Every credential is stored in Keychain.
 3. If the agent uses an LLM: agent.yaml has llm: section, the API key
-   is stored via agentpaas_secret_add, and the LLM provider domain is
-   in the egress policy.
+   is stored in Keychain (user runs 'agentpaas secret add <name>' in
+   their terminal — NEVER call agentpaas_secret_add with the key value
+   as a tool parameter, as it leaks the key to the LLM), and the LLM
+   provider domain is in the egress policy.
 If any are missing, do NOT pack — ask the user to resolve first.
+
+NEVER call agentpaas_secret_add with the key value as a tool parameter.
+The user MUST run 'agentpaas secret add <name>' in their terminal and
+paste the key via stdin. Hermes only verifies the secret exists via
+agentpaas_secret_list (labels only, never values).
 
 # AgentPaaS Anti-Fabrication Rule
 
