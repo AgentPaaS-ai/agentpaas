@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -144,73 +143,6 @@ func runBinary(args ...string) (stdout, stderr string, exitCode int, err error) 
 	return stdout, "", exitCode, err
 }
 
-// matchCriteria checks the output against the success criteria from the task spec.
-func matchCriteria(output string, exitCode int, spec TaskSpec) (bool, string) {
-	criteria := spec.SuccessCriteria
-	details := []string{}
-
-	for key, expected := range criteria {
-		switch key {
-		case "exit_code":
-			if exitCode != int(expected.(int)) {
-				details = append(details, fmt.Sprintf("exit_code: got %d, want %v", exitCode, expected))
-			}
-		case "stdout_contains":
-			s := expected.(string)
-			if !strings.Contains(output, s) {
-				details = append(details, fmt.Sprintf("stdout missing %q", s))
-			}
-		case "stdout_contains_any":
-			items := expected.([]interface{})
-			found := false
-			for _, item := range items {
-				if strings.Contains(output, item.(string)) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				details = append(details, fmt.Sprintf("stdout missing any of %v", items))
-			}
-		case "stdout_not_contains":
-			s := expected.(string)
-			if strings.Contains(output, s) {
-				details = append(details, fmt.Sprintf("stdout should not contain %q", s))
-			}
-		case "stderr_contains":
-			s := expected.(string)
-			if !strings.Contains(output, s) {
-				details = append(details, fmt.Sprintf("stderr missing %q", s))
-			}
-		case "stderr_contains_any":
-			items := expected.([]interface{})
-			found := false
-			for _, item := range items {
-				if strings.Contains(output, item.(string)) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				details = append(details, fmt.Sprintf("stderr missing any of %v", items))
-			}
-		case "image_digest_format":
-			pattern := expected.(string)
-			re := regexp.MustCompile(pattern)
-			if !re.MatchString(output) {
-				details = append(details, fmt.Sprintf("output does not match %q", pattern))
-			}
-		default:
-			// Criteria handled by the task function itself (e.g., file_exists, policy_contains)
-		}
-	}
-
-	if len(details) > 0 {
-		return false, strings.Join(details, "; ")
-	}
-	return true, ""
-}
-
 // ─── defaultPendingGrader ────────────────────────────────────────────────────
 
 func defaultPendingGrader(spec TaskSpec) (bool, string, error) {
@@ -224,7 +156,7 @@ func g01_initPython(spec TaskSpec) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Write source file
 	sourceFiles, ok := spec.Inputs["source_files"].(map[string]interface{})
@@ -266,7 +198,7 @@ func g01_initPython(spec TaskSpec) (bool, string, error) {
 	// Check policy is default-deny
 	if policyExists {
 		content, _ := os.ReadFile(policyYAML)
-		if !strings.Contains(string(content), "egress: []") && !strings.Contains(string(content), "egress: []") {
+		if !strings.Contains(string(content), "egress: []") {
 			details = append(details, "policy.yaml not default-deny")
 		}
 	}
@@ -314,11 +246,13 @@ func policyInitTest(template string, spec TaskSpec) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// First create a minimal agent.yaml so policy init has a target
 	agentContent := "name: golden-test\nversion: 0.1.0\nruntime: python3.12\nentry: main.py\n"
-	os.WriteFile(filepath.Join(tmpDir, "agent.yaml"), []byte(agentContent), 0o644)
+	if err := os.WriteFile(filepath.Join(tmpDir, "agent.yaml"), []byte(agentContent), 0o644); err != nil {
+		return false, "", fmt.Errorf("write agent.yaml: %w", err)
+	}
 
 	output, _, exitCode, _ := runBinary("policy", "init", "--template", template, "--force", tmpDir)
 
@@ -364,22 +298,26 @@ func policyValidationReject(spec TaskSpec) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Write the bad policy YAML
 	policyContent, ok := spec.Inputs["policy_yaml"].(string)
 	if !ok {
 		return false, "", fmt.Errorf("missing policy_yaml in inputs")
 	}
-	os.WriteFile(filepath.Join(tmpDir, "policy.yaml"), []byte(policyContent), 0o644)
+	if err := os.WriteFile(filepath.Join(tmpDir, "policy.yaml"), []byte(policyContent), 0o644); err != nil {
+		return false, "", fmt.Errorf("write policy.yaml: %w", err)
+	}
 
 	// Also need agent.yaml for validation context
 	agentContent := "name: golden-test\nversion: 0.1.0\nruntime: python3.12\nentry: main.py\n"
-	os.WriteFile(filepath.Join(tmpDir, "agent.yaml"), []byte(agentContent), 0o644)
+	if err := os.WriteFile(filepath.Join(tmpDir, "agent.yaml"), []byte(agentContent), 0o644); err != nil {
+		return false, "", fmt.Errorf("write agent.yaml: %w", err)
+	}
 
 	// For empty policy, don't write policy.yaml at all
 	if strings.TrimSpace(policyContent) == "" {
-		os.Remove(filepath.Join(tmpDir, "policy.yaml"))
+		_ = os.Remove(filepath.Join(tmpDir, "policy.yaml"))
 	}
 
 	output, _, exitCode, _ := runBinary("validate", tmpDir)
@@ -443,7 +381,7 @@ func g12_secretRemove(spec TaskSpec) (bool, string, error) {
 	// Add first
 	addCmd := exec.Command("agentpaas", "secret", "add", credName)
 	addCmd.Stdin = strings.NewReader(credValue)
-	addCmd.CombinedOutput()
+	_, _ = addCmd.CombinedOutput()
 
 	// Remove
 	output, _, exitCode, _ := runBinary("secret", "remove", credName)
@@ -466,7 +404,7 @@ func g13_secretRotate(spec TaskSpec) (bool, string, error) {
 	// Add a value first
 	addCmd := exec.Command("agentpaas", "secret", "add", credName)
 	addCmd.Stdin = strings.NewReader("old-value")
-	addCmd.CombinedOutput()
+	_, _ = addCmd.CombinedOutput()
 
 	// Rotate
 	rotateCmd := exec.Command("agentpaas", "secret", "rotate", credName)
@@ -500,7 +438,7 @@ func g15_validateRejectsMissing(spec TaskSpec) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	output, _, exitCode, _ := runBinary("validate", tmpDir)
 
@@ -564,7 +502,7 @@ func g44_pluginInstalledState(spec TaskSpec) (bool, string, error) {
 func g45_pluginPackMarker(spec TaskSpec) (bool, string, error) {
 	projectDir, _ := spec.Inputs["project_dir"].(string)
 	if projectDir == "" {
-		projectDir = "demo/governed-weather"
+		projectDir = "demo/weather-agent"
 	}
 	fullDir := filepath.Join(repoRoot(), projectDir)
 
@@ -573,7 +511,7 @@ func g45_pluginPackMarker(spec TaskSpec) (bool, string, error) {
 	if err != nil {
 		return false, "", err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	if err := copyDir(fullDir, tmpDir); err != nil {
 		return false, "", err

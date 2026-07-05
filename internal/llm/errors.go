@@ -3,7 +3,6 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 )
 
 // formatHTTPError produces an actionable error message for non-2xx LLM API responses.
@@ -81,13 +80,3 @@ func formatHTTPError(provider string, statusCode int, body []byte) error {
 	return fmt.Errorf("%s — %s", guidance, "no error message in response body")
 }
 
-// sanitizeForLog removes any potential credential values from error strings.
-// Currently a passthrough — provider error messages don't contain credentials,
-// but this is a safety net for future provider responses.
-func sanitizeForLog(s string) string {
-	// Redact anything that looks like a Bearer token or API key
-	if strings.Contains(s, "Bearer ") {
-		s = strings.ReplaceAll(s, "Bearer ", "Bearer «redacted»")
-	}
-	return s
-}

@@ -220,7 +220,7 @@ tasks:
     category: pack
     source_failure: "validate must catch missing agent.yaml before pack"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
     success_criteria:
       exit_code: 0
 
@@ -251,13 +251,13 @@ tasks:
   # ============================================================
 
   - id: G17
-    name: "Pack governed-weather demo"
+    name: "Pack weather-agent demo"
     tier: slow
     grader: code
     category: pack
     source_failure: "Pack must produce a signed image digest from demo project"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
     success_criteria:
       exit_code: 0
       stdout_contains: "sha256:"
@@ -294,7 +294,7 @@ tasks:
     category: pack
     source_failure: "Pack must detect policy tampering after lock signing (advisory scan)"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
       tamper_policy: true
     success_criteria:
       exit_code: 1
@@ -307,7 +307,7 @@ tasks:
     category: pack
     source_failure: "Immutable redeploy: prompt change must produce different digest (B14A0)"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
       modify_prompt: true
     success_criteria:
       distinct_digests: true
@@ -365,13 +365,13 @@ tasks:
   # ============================================================
 
   - id: G26
-    name: "Full pack→run→stop lifecycle (governed-weather)"
+    name: "Full pack→run→stop lifecycle (weather-agent)"
     tier: docker
     grader: code
     category: runtime
     source_failure: "B14A0 e2e: pack, run, wait for ready, stop, verify clean exit"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
     success_criteria:
       exit_code: 0
       run_started: true
@@ -386,7 +386,7 @@ tasks:
     category: egress
     source_failure: "B14B: default-deny must block all egress not explicitly allowed"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
       probe_command: "wget -q -O /dev/null https://evil.example.com 2>/dev/null && echo SUCCESS || echo BLOCKED"
     success_criteria:
       probe_output_contains: "BLOCKED"
@@ -400,7 +400,7 @@ tasks:
     category: egress
     source_failure: "B14B: gateway must allow egress to explicitly permitted domains"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
       probe_command: "wget -q -O /dev/null https://api.weather.gov 2>/dev/null && echo SUCCESS || echo BLOCKED"
     success_criteria:
       probe_output_contains: "SUCCESS"
@@ -413,7 +413,7 @@ tasks:
     category: policy
     source_failure: "explain_policy_denial must return rule_id, destination, and reason"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
       destination: "evil.example.com"
     success_criteria:
       exit_code: 0
@@ -427,7 +427,7 @@ tasks:
     category: trigger
     source_failure: "Trigger API must accept POST and invoke agent with payload"
     inputs:
-      agent_name: "governed-weather"
+      agent_name: "weather-agent"
       payload: '{"city": "Folsom"}'
     success_criteria:
       exit_code: 0
@@ -611,7 +611,7 @@ tasks:
     category: plugin
     source_failure: "Packing through the plugin must write a marker file proving it was built via the plugin, not the CLI directly"
     inputs:
-      project_dir: "demo/governed-weather"
+      project_dir: "demo/weather-agent"
     success_criteria:
       marker_file_exists: true
       marker_contains: "hermes-plugin"
