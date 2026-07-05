@@ -45,6 +45,10 @@ func DefaultRegistry() map[string]TaskFunc {
 		// G16: doctor (fast)
 		"G16": g16_doctor,
 
+		// ── fast tier: plugin layer ──
+		"G44": g44_pluginInstalledState,
+		"G45": g45_pluginPackMarker,
+
 		// ── slow tier: pack ──
 		"G17": g17_packGovernedWeather,
 		"G18": g18_packSecretSaaS,
@@ -520,6 +524,104 @@ func g16_doctor(spec TaskSpec) (bool, string, error) {
 		return false, output, fmt.Errorf("doctor failed: exit %d", exitCode)
 	}
 	return true, output, nil
+}
+
+// ─── G44: Plugin installed-state reference check ─────────────────────────────
+
+func g44_pluginInstalledState(spec TaskSpec) (bool, string, error) {
+	profileName, _ := spec.Inputs["profile_name"].(string)
+	if profileName == "" {
+		profileName = "agentpaas"
+	}
+
+	// Run the verify-installed-state.py script
+	scriptPath := filepath.Join(repoRoot(), "scripts", "verify-installed-state.py")
+	if !fileExists(scriptPath) {
+		return false, "", fmt.Errorf("verify-installed-state.py not found at %s", scriptPath)
+	}
+
+	cmd := exec.Command("python3", scriptPath, profileName)
+	output, err := cmd.CombinedOutput()
+	outStr := string(output)
+
+	if err != nil {
+		return false, outStr, fmt.Errorf("installed-state check failed: %v", err)
+	}
+
+	// Verify expected output
+	if !strings.Contains(outStr, "Reference state met") {
+		return false, outStr, fmt.Errorf("output missing 'Reference state met'")
+	}
+	if strings.Contains(outStr, "FAILED:") {
+		return false, outStr, fmt.Errorf("output contains FAILED section")
+	}
+
+	return true, outStr, nil
+}
+
+// ─── G45: Plugin pack writes .agentpaas-built-via marker ───────────────────
+
+func g45_pluginPackMarker(spec TaskSpec) (bool, string, error) {
+	projectDir, _ := spec.Inputs["project_dir"].(string)
+	if projectDir == "" {
+		projectDir = "demo/governed-weather"
+	}
+	fullDir := filepath.Join(repoRoot(), projectDir)
+
+	// Copy the demo to a temp dir so we don't pollute the repo
+	tmpDir, err := os.MkdirTemp("", "golden-marker-*")
+	if err != nil {
+		return false, "", err
+	}
+	defer os.RemoveAll(tmpDir)
+
+	if err := copyDir(fullDir, tmpDir); err != nil {
+		return false, "", err
+	}
+
+	// Import the plugin's tools module and call _write_build_marker directly
+	// This simulates what agentpaas_pack does before calling the CLI
+	pluginDir := filepath.Join(repoRoot(), "integrations", "hermes-plugin")
+	cmd := exec.Command("python3", "-c", fmt.Sprintf(`
+import sys, json, os
+sys.path.insert(0, %q)
+import tools
+tools._write_build_marker(%q)
+# Read back and verify
+marker_path = os.path.join(%q, ".agentpaas-built-via")
+if os.path.exists(marker_path):
+    with open(marker_path) as f:
+        data = json.load(f)
+    print(json.dumps(data))
+else:
+    print(json.dumps({"error": "marker not created"}))
+`, pluginDir, tmpDir, tmpDir))
+
+	output, err := cmd.CombinedOutput()
+	outStr := string(output)
+
+	if err != nil {
+		return false, outStr, fmt.Errorf("python marker write failed: %v", err)
+	}
+
+	// Verify the marker content
+	if !strings.Contains(outStr, "hermes-plugin") {
+		return false, outStr, fmt.Errorf("marker does not contain 'hermes-plugin'")
+	}
+	if !strings.Contains(outStr, "via") {
+		return false, outStr, fmt.Errorf("marker does not contain 'via' field")
+	}
+	if !strings.Contains(outStr, "timestamp") {
+		return false, outStr, fmt.Errorf("marker does not contain 'timestamp' field")
+	}
+
+	// Verify the marker file exists on disk
+	markerPath := filepath.Join(tmpDir, ".agentpaas-built-via")
+	if !fileExists(markerPath) {
+		return false, outStr, fmt.Errorf("marker file not found at %s", markerPath)
+	}
+
+	return true, outStr, nil
 }
 
 // ─── File helpers ───────────────────────────────────────────────────────────
