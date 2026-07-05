@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in AgentPaaS, please report it via email to **parvez.syed@example.com**.
+If you discover a security vulnerability in AgentPaaS, please report it via email to **contact@agentpaas.ai**.
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 

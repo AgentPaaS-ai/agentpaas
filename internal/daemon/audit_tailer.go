@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example/agentpaas/internal/audit"
-	"github.com/example/agentpaas/internal/trigger"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 )
 
 // auditTailer tails the harness audit JSONL file during a run and

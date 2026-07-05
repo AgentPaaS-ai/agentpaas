@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/example/agentpaas/internal/pack"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/spf13/cobra"
 )
 

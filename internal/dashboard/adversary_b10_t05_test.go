@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 func TestAdversaryB10T05_PolicyDiff_PathTraversal(t *testing.T) {

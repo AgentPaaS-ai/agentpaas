@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	controlv1 "github.com/example/agentpaas/api/control/v1"
-	"github.com/example/agentpaas/internal/audit"
-	"github.com/example/agentpaas/internal/home"
-	"github.com/example/agentpaas/internal/runtime"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 const weatherPolicyYAML = `version: "1"

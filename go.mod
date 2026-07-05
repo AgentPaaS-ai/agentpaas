@@ -1,4 +1,4 @@
-module github.com/example/agentpaas
+module github.com/AgentPaaS-ai/agentpaas
 
 go 1.26.4
 

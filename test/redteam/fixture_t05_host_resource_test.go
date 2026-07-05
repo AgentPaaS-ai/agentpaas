@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	docker "github.com/example/agentpaas/internal/runtime"
+	docker "github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 // hostAccessFixture (B12-T05 part 1): agent probes host.docker.internal,

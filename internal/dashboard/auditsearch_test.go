@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 func TestAuditSearch_WithEventType(t *testing.T) {

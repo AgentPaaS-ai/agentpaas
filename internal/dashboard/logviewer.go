@@ -9,8 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/example/agentpaas/internal/logging"
-	"github.com/example/agentpaas/internal/otel"
+	"github.com/AgentPaaS-ai/agentpaas/internal/logging"
+	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
 )
 
 // maxLogBodyLen is the maximum length of a log body before truncation (10KB).

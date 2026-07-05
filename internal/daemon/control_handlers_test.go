@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	controlv1 "github.com/example/agentpaas/api/control/v1"
-	"github.com/example/agentpaas/internal/audit"
-	"github.com/example/agentpaas/internal/home"
-	"github.com/example/agentpaas/internal/pack"
-	"github.com/example/agentpaas/internal/runtime"
-	"github.com/example/agentpaas/internal/trigger"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

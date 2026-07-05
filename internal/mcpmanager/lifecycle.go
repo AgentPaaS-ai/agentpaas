@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/example/agentpaas/internal/policy"
-	"github.com/example/agentpaas/internal/runtime"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 const minimalPATH = "PATH=/usr/local/bin:/usr/bin:/bin"

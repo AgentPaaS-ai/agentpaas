@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentpaas/internal/audit"
-	docker "github.com/example/agentpaas/internal/runtime"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	docker "github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 // requireDocker skips the test if AGENTPAAS_DOCKER_TESTS is not set.

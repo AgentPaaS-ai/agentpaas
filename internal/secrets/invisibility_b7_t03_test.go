@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentpaas/internal/audit"
-	"github.com/example/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 func b7T03Sentinel() string {

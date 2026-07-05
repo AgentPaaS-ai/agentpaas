@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentpaas/internal/otel"
-	"github.com/example/agentpaas/internal/trigger"
+	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )

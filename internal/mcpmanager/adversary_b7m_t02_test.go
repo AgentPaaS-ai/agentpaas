@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentpaas/internal/policy"
-	"github.com/example/agentpaas/internal/runtime"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 func TestAdversary_B7M_T02_StdioEnvOnlyMinimalAndDeclared(t *testing.T) {

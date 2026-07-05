@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/example/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 const (

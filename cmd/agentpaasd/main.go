@@ -19,9 +19,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/example/agentpaas/internal/daemon"
-	"github.com/example/agentpaas/internal/dockerclient"
-	"github.com/example/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
+	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
 
 func main() {

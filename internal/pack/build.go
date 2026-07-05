@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/build"
-	"github.com/example/agentpaas/internal/dockerclient"
+	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 )
 
 const (
