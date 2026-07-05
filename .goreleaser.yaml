@@ -39,18 +39,6 @@ builds:
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
 
-  - id: agentpaas-harness-linux
-    main: ./cmd/harness
-    binary: agentpaas-harness-linux
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-    goarch:
-      - arm64
-    ldflags:
-      - -s -w
-
 archives:
   - id: default
     formats: [tar.gz]
@@ -60,11 +48,6 @@ archives:
       - LICENSE
       - README.md
       - demo/**/*
-    builds:
-      - agentpaas
-      - agentpaasd
-      - agentpaas-harness-linux
-    allow_different_binary_count: true
 
 checksum:
   name_template: 'checksums.txt'
@@ -92,7 +75,6 @@ homebrew_casks:
     binaries:
       - agentpaas
       - agentpaasd
-      - agentpaas-harness-linux
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
