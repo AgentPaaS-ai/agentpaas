@@ -7,9 +7,9 @@ before:
     - go mod tidy
 
 builds:
-  - id: agent
-    main: ./cmd/agent
-    binary: agent
+  - id: agentpaas
+    main: ./cmd/agentpaas
+    binary: agentpaas
     env:
       - CGO_ENABLED=0
     goos:
@@ -38,6 +38,18 @@ builds:
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion={{.Version}}
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
+
+  - id: agentpaas-harness-linux
+    main: ./cmd/harness
+    binary: agentpaas-harness-linux
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w
 
 archives:
   - id: default
@@ -73,8 +85,9 @@ homebrew_casks:
     homepage: https://github.com/AgentPaaS-ai/agentpaas
     description: "Governed, local-first runtime for AI-generated agents"
     binaries:
-      - agent
+      - agentpaas
       - agentpaasd
+      - agentpaas-harness-linux
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
