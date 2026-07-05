@@ -584,3 +584,34 @@ tasks:
       judge_rubric: "Score the policy denial explanation for: (1) states which rule denied, (2) states the destination, (3) explains why. Score 0-3 each."
       judge_threshold: 2.0
     requires_docker: true
+
+  # ============================================================
+  # FRESH-INSTALL VERIFICATION (plugin layer, not CLI)
+  # These tasks verify the Hermes plugin layer — simulating what a
+  # new user experiences after installing AgentPaaS for the first time.
+  # ============================================================
+
+  - id: G44
+    name: "Plugin installed-state reference check"
+    tier: fast
+    grader: code
+    category: plugin
+    source_failure: "After a clean plugin install + restart, the profile must be in the correct state: plugin dir, SOUL.md onboarding snippet, skill pointer, toolset in config.yaml"
+    inputs:
+      profile_name: "agentpaas"
+    success_criteria:
+      exit_code: 0
+      stdout_contains: "Reference state met"
+      stdout_not_contains: "FAILED"
+
+  - id: G45
+    name: "Plugin pack writes .agentpaas-built-via marker"
+    tier: fast
+    grader: code
+    category: plugin
+    source_failure: "Packing through the plugin must write a marker file proving it was built via the plugin, not the CLI directly"
+    inputs:
+      project_dir: "demo/governed-weather"
+    success_criteria:
+      marker_file_exists: true
+      marker_contains: "hermes-plugin"

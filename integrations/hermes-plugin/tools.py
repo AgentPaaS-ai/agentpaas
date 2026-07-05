@@ -734,6 +734,43 @@ def agentpaas_doctor(args, **kwargs):
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
 
 
+def _write_build_marker(project_dir):
+    """Write .agentpaas-built-via marker into the project directory.
+    
+    This marker proves the project was packed through the Hermes plugin
+    (not the CLI directly). It gets included in the Docker image build
+    context and can be verified inside the container.
+    
+    The marker is a JSON file with:
+    - via: "hermes-plugin"
+    - timestamp: ISO 8601 UTC
+    - plugin_version: from __init__.py __version__ if available
+    """
+    import datetime
+    marker = {
+        "via": "hermes-plugin",
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    }
+    try:
+        version = getattr(__import__("__main__"), "__version__", None)
+        if not version:
+            try:
+                from . import __version__ as v
+                version = v
+            except (ImportError, AttributeError):
+                pass
+        if version:
+            marker["plugin_version"] = str(version)
+    except Exception:
+        pass
+    marker_path = os.path.join(project_dir, ".agentpaas-built-via")
+    try:
+        with open(marker_path, "w") as f:
+            json.dump(marker, f, indent=2)
+    except OSError:
+        pass  # non-fatal — the marker is best-effort
+
+
 def agentpaas_pack(args, **kwargs):
     """Build an agent image from a project directory."""
     args = args or {}
@@ -742,6 +779,7 @@ def agentpaas_pack(args, **kwargs):
     if not is_valid:
         return json.dumps(err)
     try:
+        _write_build_marker(resolved)
         result = _run_cli(["pack", resolved])
         return json.dumps(result)
     except Exception as e:
