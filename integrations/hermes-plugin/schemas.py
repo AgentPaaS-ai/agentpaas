@@ -416,7 +416,7 @@ AGENTPAAS_SECRET_TEST = {
             },
             "provider": {
                 "type": "string",
-                "description": "Provider to validate against (openai, anthropic, xai, nous).",
+                "description": "Provider to validate against (openrouter, openai, anthropic, xai, nous).",
             },
         },
         "required": ["name"],
@@ -436,7 +436,7 @@ AGENTPAAS_LLM_CONFIGURE = {
             },
             "provider": {
                 "type": "string",
-                "description": "LLM provider: openai, anthropic, xai, or nous.",
+                "description": "LLM provider: openrouter, openai, anthropic, xai, or nous.",
             },
             "model": {
                 "type": "string",

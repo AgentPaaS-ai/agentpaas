@@ -49,8 +49,14 @@ func InitScaffold(projectDir string, runtime RuntimeType) error {
 		return fmt.Errorf("inspect agent.yaml: %w", err)
 	}
 
+	// Derive agent name from the project directory basename.
+	projectName := filepath.Base(projectDir)
+	if projectName == "." || projectName == "/" || projectName == "" {
+		projectName = "agent"
+	}
+
 	files := map[string]string{
-		"agent.yaml":       DefaultAgentYAML(runtime),
+		"agent.yaml":       DefaultAgentYAML(runtime, projectName),
 		"main.py":          DefaultMainPy(),
 		"requirements.txt": "# Add Python dependencies here.\n",
 		"policy.yaml":      DefaultPolicyYAML(),
@@ -173,7 +179,8 @@ func sanitizeAgentName(name string) string {
 }
 
 // DefaultAgentYAML returns the minimal agent.yaml content for scaffolding.
-func DefaultAgentYAML(runtime RuntimeType) string {
+// The agent name is derived from the project directory basename.
+func DefaultAgentYAML(runtime RuntimeType, projectName string) string {
 	runtimeValue := "python3.12"
 	switch runtime {
 	case RuntimeLangGraph:
@@ -182,15 +189,19 @@ func DefaultAgentYAML(runtime RuntimeType) string {
 		runtimeValue = "crewai"
 	}
 
+	if projectName == "" {
+		projectName = "agent"
+	}
+
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "name: agent\n")
+	fmt.Fprintf(&b, "name: %s\n", projectName)
 	fmt.Fprintf(&b, "version: 0.1.0\n")
 	fmt.Fprintf(&b, "runtime: %s\n", runtimeValue)
 	fmt.Fprintf(&b, "description: \"\"\n")
 	fmt.Fprintf(&b, "# llm:\n")
-	fmt.Fprintf(&b, "#   provider: openai  # openai|anthropic|xai\n")
-	fmt.Fprintf(&b, "#   model: gpt-4o\n")
-	fmt.Fprintf(&b, "#   credential: openai-key  # Keychain secret name (agentpaas secret add openai-key)\n")
+	fmt.Fprintf(&b, "#   provider: openrouter  # openrouter|openai|anthropic|xai|nous\n")
+	fmt.Fprintf(&b, "#   model: deepseek/deepseek-v4-flash\n")
+	fmt.Fprintf(&b, "#   credential: openrouter-key  # Keychain secret name (agentpaas secret add openrouter-key)\n")
 
 	return b.String()
 }

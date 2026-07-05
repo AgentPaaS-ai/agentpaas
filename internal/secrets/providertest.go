@@ -22,10 +22,11 @@ type ProviderTestResult struct {
 
 // Package-level endpoint URLs so tests can override them.
 var (
-	openAIEndpoint    = "https://api.openai.com/v1/chat/completions"
-	anthropicEndpoint = "https://api.anthropic.com/v1/messages"
-	xaiEndpoint       = "https://api.x.ai/v1/chat/completions"
-	nousEndpoint      = "https://inference-api.nousresearch.com/v1/chat/completions"
+	openAIEndpoint     = "https://api.openai.com/v1/chat/completions"
+	anthropicEndpoint  = "https://api.anthropic.com/v1/messages"
+	xaiEndpoint        = "https://api.x.ai/v1/chat/completions"
+	nousEndpoint       = "https://inference-api.nousresearch.com/v1/chat/completions"
+	openRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions"
 )
 
 // SetTestEndpoints overrides provider endpoints for testing. Returns a restore function.
@@ -47,6 +48,8 @@ func SetTestEndpoints(openAI, anthropic, xai string) func() {
 // It NEVER includes the secretValue in the result.
 func TestProvider(ctx context.Context, provider string, secretValue []byte) ProviderTestResult {
 	switch strings.ToLower(provider) {
+	case "openrouter":
+		return testOpenRouter(ctx, secretValue)
 	case "openai":
 		return testOpenAI(ctx, secretValue)
 	case "anthropic":
@@ -62,6 +65,34 @@ func TestProvider(ctx context.Context, provider string, secretValue []byte) Prov
 			Detail:   fmt.Sprintf("unknown provider %q", provider),
 		}
 	}
+}
+
+func testOpenRouter(parentCtx context.Context, secretValue []byte) ProviderTestResult {
+	ctx, cancel := context.WithTimeout(parentCtx, 10*time.Second)
+	defer cancel()
+
+	body := map[string]interface{}{
+		"model": "deepseek/deepseek-v4-flash",
+		"messages": []map[string]string{
+			{"role": "user", "content": "say OK"},
+		},
+		"max_tokens": 5,
+	}
+	bodyBytes, _ := json.Marshal(body)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterEndpoint, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return ProviderTestResult{
+			Provider: "openrouter",
+			Endpoint: openRouterEndpoint,
+			Status:   "error",
+			Detail:   fmt.Sprintf("failed to build request: %v", err),
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+string(secretValue))
+	req.Header.Set("Content-Type", "application/json")
+
+	return doProviderRequest(req, "openrouter", openRouterEndpoint)
 }
 
 func testOpenAI(parentCtx context.Context, secretValue []byte) ProviderTestResult {

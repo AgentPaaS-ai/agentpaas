@@ -43,20 +43,10 @@ agent:
   name: ""
   description: ""
 egress:
-  - domain: api.openai.com
+  - domain: openrouter.ai
     ports:
       - 443
-  - domain: api.anthropic.com
-    ports:
-      - 443
-  - domain: api.x.ai
-    ports:
-      - 443
-credentials:
-  - id: openai-api-key
-    type: header
-    header: Authorization
-    value: "${cred:openai-api-key}"
+credentials: []
 mcp_servers: []
 hooks: []
 ingress: []

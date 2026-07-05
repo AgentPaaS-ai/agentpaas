@@ -260,15 +260,18 @@ func TestLoadAgentYAML_WithoutLLM(t *testing.T) {
 }
 
 func TestDefaultAgentYAML_HasLLMComment(t *testing.T) {
-	content := DefaultAgentYAML(RuntimePython)
+	content := DefaultAgentYAML(RuntimePython, "test-agent")
 	if !strings.Contains(content, "# llm:") {
 		t.Fatalf("DefaultAgentYAML() missing llm comment:\n%s", content)
 	}
-	if !strings.Contains(content, "#   provider: openai") {
+	if !strings.Contains(content, "#   provider: openrouter") {
 		t.Fatal("DefaultAgentYAML() missing provider comment")
 	}
-	if !strings.Contains(content, "#   credential: openai-key") {
+	if !strings.Contains(content, "#   credential: openrouter-key") {
 		t.Fatal("DefaultAgentYAML() missing credential comment")
+	}
+	if !strings.Contains(content, "name: test-agent") {
+		t.Fatal("DefaultAgentYAML() missing agent name from project dir")
 	}
 }
 
