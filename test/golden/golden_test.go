@@ -54,7 +54,10 @@ func TestGoldenSuite(t *testing.T) {
 	// Determine tier
 	tier := os.Getenv("GOLDEN_TIER")
 	if tier == "" {
-		tier = "all"
+		// When no tier is explicitly set (e.g. during `go test ./...`),
+		// skip the suite entirely — it requires the golden-fast/slow/docker
+		// Makefile targets that set GOLDEN_TIER and build the CLI binary.
+		t.Skip("golden suite: set GOLDEN_TIER=fast|slow|docker|all to run (use make golden-fast etc.)")
 	}
 
 	// Determine k

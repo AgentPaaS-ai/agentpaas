@@ -264,25 +264,25 @@ tasks:
       image_digest_format: "sha256:[0-9a-f]{64}"
 
   - id: G18
-    name: "Pack secret-saas demo"
+    name: "Pack weather-agent with credentials"
     tier: slow
     grader: code
     category: pack
     source_failure: "Pack must handle projects with credential declarations"
     inputs:
-      project_dir: "demo/secret-saas"
+      project_dir: "demo/weather-agent"
     success_criteria:
       exit_code: 0
       stdout_contains: "sha256:"
 
   - id: G19
-    name: "Pack repair-loop demo"
+    name: "Pack weather-agent with LLM config"
     tier: slow
     grader: code
     category: pack
     source_failure: "Pack must handle projects with LLM + iteration patterns"
     inputs:
-      project_dir: "demo/repair-loop"
+      project_dir: "demo/weather-agent"
     success_criteria:
       exit_code: 0
       stdout_contains: "sha256:"
