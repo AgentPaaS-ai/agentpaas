@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -911,6 +912,9 @@ func newSecretCmd() *cobra.Command {
 
 func detectProviderFromName(name string) string {
 	lower := strings.ToLower(name)
+	if strings.Contains(lower, "openrouter") {
+		return "openrouter"
+	}
 	if strings.Contains(lower, "openai") || strings.Contains(lower, "gpt") {
 		return "openai"
 	}
@@ -923,7 +927,7 @@ func detectProviderFromName(name string) string {
 	if strings.Contains(lower, "nous") || strings.Contains(lower, "deepseek") {
 		return "nous"
 	}
-	return "openai"
+	return "openrouter"
 }
 
 func newDefaultSecretStore(cmd *cobra.Command) (secrets.SecretStore, error) {
@@ -969,6 +973,8 @@ func readSecretValue(cmd *cobra.Command) ([]byte, error) {
 	if len(value) > secrets.MaxSecretValueSize {
 		return nil, fmt.Errorf("%w: exceeds %d byte limit", secrets.ErrSecretTooLarge, secrets.MaxSecretValueSize)
 	}
+	// Trim trailing newlines/whitespace (piped input often includes a trailing \n)
+	value = bytes.TrimRight(value, "\r\n	 ")
 	return value, nil
 }
 

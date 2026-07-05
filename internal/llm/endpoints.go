@@ -1,10 +1,11 @@
 package llm
 
 var (
-	openAIEndpoint    = "https://api.openai.com/v1/chat/completions"
-	anthropicEndpoint = "https://api.anthropic.com/v1/messages"
-	xaiEndpoint       = "https://api.x.ai/v1/chat/completions"
-	nousEndpoint      = "https://inference-api.nousresearch.com/v1/chat/completions"
+	openAIEndpoint     = "https://api.openai.com/v1/chat/completions"
+	anthropicEndpoint  = "https://api.anthropic.com/v1/messages"
+	xaiEndpoint        = "https://api.x.ai/v1/chat/completions"
+	nousEndpoint       = "https://inference-api.nousresearch.com/v1/chat/completions"
+	openRouterEndpoint = "https://openrouter.ai/api/v1/chat/completions"
 )
 
 // SetTestEndpoints overrides provider endpoints for testing. Returns a restore function.

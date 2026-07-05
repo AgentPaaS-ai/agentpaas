@@ -1096,9 +1096,9 @@ def agentpaas_llm_configure(args, **kwargs):
             "error": "provider is required",
             "error_category": "tool_invocation_failed",
         })
-    if provider not in {"openai", "anthropic", "xai", "nous"}:
+    if provider not in {"openrouter", "openai", "anthropic", "xai", "nous"}:
         return json.dumps({
-            "error": f"invalid provider '{provider}': must be openai, anthropic, xai, or nous",
+            "error": f"invalid provider '{provider}': must be openrouter, openai, anthropic, xai, or nous",
             "error_category": "tool_invocation_failed",
         })
     if not model:
@@ -1130,7 +1130,7 @@ def agentpaas_llm_configure(args, **kwargs):
         # Build the new llm: section
         new_section = (
             f"llm:\n"
-            f"  provider: {provider}  # openai|anthropic|xai|nous\n"
+            f"  provider: {provider}  # openrouter|openai|anthropic|xai|nous\n"
             f"  model: {model}\n"
             f"  credential: {credential}  # Keychain secret name\n"
         )

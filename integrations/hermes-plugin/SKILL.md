@@ -142,12 +142,13 @@ not wait for the user to ask — do them proactively.
 If the agent needs an LLM (detected from user intent: "answer", "summarize",
 "classify", "generate", "chat", "analyze", "translate", etc.):
 
-1. Ask: "Which LLM provider?" (openai / anthropic / xai / nous)
+1. Ask: "Which LLM provider?" (openrouter / openai / anthropic / xai / nous)
 2. Ask: "Which model?"
 3. Ask for the API key → store via `agentpaas_secret_add` → test via
    `agentpaas_secret_test`
 4. Call `agentpaas_llm_configure` with provider, model, credential name
 5. Add the provider domain to egress policy:
+   - openrouter → `openrouter.ai:443`
    - openai → `api.openai.com:443`
    - anthropic → `api.anthropic.com:443`
    - xai → `api.x.ai:443`

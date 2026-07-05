@@ -70,9 +70,9 @@ func TestInitScaffoldLangGraph(t *testing.T) {
 }
 
 func TestDefaultAgentYAML(t *testing.T) {
-	content := DefaultAgentYAML(RuntimeCrewAI)
+	content := DefaultAgentYAML(RuntimeCrewAI, "test-agent")
 
-	for _, want := range []string{"name:", "version:", "runtime: crewai"} {
+	for _, want := range []string{"name: test-agent", "version:", "runtime: crewai"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("DefaultAgentYAML() = %q, want %q", content, want)
 		}
