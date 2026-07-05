@@ -64,6 +64,7 @@ archives:
       - agentpaas
       - agentpaasd
       - agentpaas-harness-linux
+    allow_different_binary_count: true
 
 checksum:
   name_template: 'checksums.txt'
