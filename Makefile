@@ -308,7 +308,7 @@ block16-gate:
 #   GOLDEN_K=N    — override repetition count (default: 3)
 #   AGENTPAAS_DOCKER_TESTS=1 — enables docker-tier tasks
 
-golden-fast: build
+golden-fast: build-all
 	@echo "==> Running golden dataset: fast tier (pass^k=3)"
 	GOLDEN_TIER=fast GOLDEN_K=3 go test -v -run TestGoldenSuite -count=1 ./test/golden/ -timeout 120s
 	@echo "✓ Golden fast tier: PASS"

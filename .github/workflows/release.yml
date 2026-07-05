@@ -30,9 +30,10 @@ jobs:
 
       - name: Build binaries
         run: |
-          go build -o $(go env GOPATH)/bin/agent ./cmd/agent
-          go build -o $(go env GOPATH)/bin/agentpaasd ./cmd/agentpaasd
-          go build -o $(go env GOPATH)/bin/agentpaas-harness ./cmd/harness
+          go build -o bin/agentpaas ./cmd/agent
+          go build -o bin/agentpaasd ./cmd/agentpaasd
+          go build -o bin/agentpaas-harness ./cmd/harness
+          echo "$PWD/bin" >> $GITHUB_PATH
 
       - name: Lint
         run: make lint
