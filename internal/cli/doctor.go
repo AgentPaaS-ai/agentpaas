@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
 	"github.com/spf13/cobra"
 )
 
@@ -78,7 +79,7 @@ func runDoctorChecks() []map[string]string {
 	checks = append(checks, map[string]string{
 		"name":    "Version",
 		"status":  "ok",
-		"message": fmt.Sprintf("v0.1.0 (%s)", strings.Join(versionParts, " ")),
+		"message": fmt.Sprintf("%s (%s)", daemon.CLIVersion, strings.Join(versionParts, " ")),
 	})
 
 	// 2. Docker CLI
