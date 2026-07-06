@@ -270,6 +270,43 @@ func ValidatePolicy(p *Policy) []ValidationError {
 					Severity: "error",
 				})
 			}
+		case "oauth":
+			if c.TokenEndpoint == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".token_endpoint",
+					Message:  "oauth credential requires token_endpoint",
+					Severity: "error",
+				})
+			} else {
+				parsed, urlErr := url.Parse(c.TokenEndpoint)
+				if urlErr != nil || (parsed.Scheme != "https") {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".token_endpoint",
+						Message:  fmt.Sprintf("token_endpoint must be a valid https URL, got %q", c.TokenEndpoint),
+						Severity: "error",
+					})
+				}
+			}
+			if c.ClientID == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".client_id",
+					Message:  "oauth credential requires client_id",
+					Severity: "error",
+				})
+			}
+			if c.RefreshTokenCredential == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".refresh_token_credential",
+					Message:  "oauth credential requires refresh_token_credential",
+					Severity: "error",
+				})
+			} else if !credIDs[c.RefreshTokenCredential] {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".refresh_token_credential",
+					Message:  fmt.Sprintf("refresh_token_credential %q is not a declared credential ID", c.RefreshTokenCredential),
+					Severity: "error",
+				})
+			}
 		case "direct_lease":
 			if c.Mode == "" {
 				errs = append(errs, ValidationError{
@@ -512,6 +549,139 @@ func ValidatePolicy(p *Policy) []ValidationError {
 				Message:  "at least one of requests_per_minute or tokens_per_minute must be > 0",
 				Severity: "error",
 			})
+		}
+	}
+
+	// ----- Ingress auth validation -----
+	if p.IngressAuth != nil {
+		prefix := "ingress_auth"
+
+		// Type must be "jwt" or "api_key".
+		switch p.IngressAuth.Type {
+		case "jwt":
+			if p.IngressAuth.JWT == nil {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".jwt",
+					Message:  "jwt config is required when ingress_auth type is 'jwt'",
+					Severity: "error",
+				})
+			} else {
+				if p.IngressAuth.JWT.Issuer == "" {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".jwt.issuer",
+						Message:  "issuer is required for JWT ingress auth",
+						Severity: "error",
+					})
+				}
+				if p.IngressAuth.JWT.Audience == "" {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".jwt.audience",
+						Message:  "audience is required for JWT ingress auth",
+						Severity: "error",
+					})
+				}
+				if p.IngressAuth.JWT.JWKSURL == "" {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".jwt.jwks_url",
+						Message:  "jwks_url is required for JWT ingress auth",
+						Severity: "error",
+					})
+				} else {
+					parsedJWKS, err := url.Parse(p.IngressAuth.JWT.JWKSURL)
+					if err != nil || parsedJWKS.Scheme != "https" {
+						errs = append(errs, ValidationError{
+							Field:    prefix + ".jwt.jwks_url",
+							Message:  "jwks_url must be a valid https URL",
+							Severity: "error",
+						})
+					}
+				}
+			}
+		case "api_key":
+			if p.IngressAuth.APIKey == nil {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".api_key",
+					Message:  "api_key config is required when ingress_auth type is 'api_key'",
+					Severity: "error",
+				})
+			} else {
+				if p.IngressAuth.APIKey.Header == "" {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".api_key.header",
+						Message:  "header is required for API key ingress auth",
+						Severity: "error",
+					})
+				}
+				if p.IngressAuth.APIKey.Credential == "" {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".api_key.credential",
+						Message:  "credential is required for API key ingress auth",
+						Severity: "error",
+					})
+				} else if !credIDs[p.IngressAuth.APIKey.Credential] {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".api_key.credential",
+						Message:  fmt.Sprintf("references undeclared credential %q", p.IngressAuth.APIKey.Credential),
+						Severity: "error",
+					})
+				}
+			}
+		case "":
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".type",
+				Message:  "type is required when ingress_auth is configured (must be 'jwt' or 'api_key')",
+				Severity: "error",
+			})
+		default:
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".type",
+				Message:  fmt.Sprintf("invalid ingress auth type %q; must be 'jwt' or 'api_key'", p.IngressAuth.Type),
+				Severity: "error",
+			})
+		}
+	}
+
+	// ----- LLM provider lock validation -----
+	if p.LLMProviderLock != nil {
+		if len(p.LLMProviderLock.AllowedEndpoints) == 0 {
+			errs = append(errs, ValidationError{
+				Field:    "llm_provider_lock.allowed_endpoints",
+				Message:  "at least one endpoint is required when llm_provider_lock is configured",
+				Severity: "error",
+			})
+		}
+		for i, endpoint := range p.LLMProviderLock.AllowedEndpoints {
+			prefix := fmt.Sprintf("llm_provider_lock.allowed_endpoints[%d]", i)
+			u, parseErr := url.Parse(endpoint)
+			if parseErr != nil {
+				errs = append(errs, ValidationError{
+					Field:    prefix,
+					Message:  fmt.Sprintf("invalid URL: %v", parseErr),
+					Severity: "error",
+				})
+				continue
+			}
+			if u.Scheme != "https" {
+				errs = append(errs, ValidationError{
+					Field:    prefix,
+					Message:  fmt.Sprintf("endpoint must use https scheme, got %q", u.Scheme),
+					Severity: "error",
+				})
+			}
+			if u.Host == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix,
+					Message:  "endpoint URL must include a hostname",
+					Severity: "error",
+				})
+			}
+			if u.Path == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix,
+					Message:  "endpoint URL must include a path",
+					Severity: "error",
+				})
+			}
 		}
 	}
 
