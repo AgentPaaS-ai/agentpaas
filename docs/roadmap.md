@@ -2,6 +2,46 @@
 
 Post-P1 tasks identified during Block 16 manual testing. Ordered by priority.
 
+## v0.1.2 — AgentGateway Policy Integration (Block 19)
+
+Wire up agentgateway v1.3.0's native policy features. Move credential
+injection, token limits, rate limiting, OAuth, and guardrails from the
+harness to the gateway. Spec: `docs/execution/blocks/b19-summary.md`
+
+### P0 — Gateway-Level Enforcement
+
+- **Gateway credential injection:** `CompileCredentialRules()` wired into
+  `CompileGatewayConfig()`. Gateway injects auth headers — harness no
+  longer sees credential values.
+- **LLM token budgets:** policy.yaml `llm_budget` section (max_tokens,
+  max_tokens_per_request). Gateway enforces.
+- **LLM rate limiting:** policy.yaml `llm_rate_limit` section
+  (requests_per_minute, tokens_per_minute). Gateway enforces.
+- **B19 manual testing:** Re-run B18 T1-T10 with gateway-level policies.
+
+### P1 — Auth & Provider Locking
+
+- **Ingress auth (JWT & API key):** policy.yaml `ingress_auth` section.
+  Gateway validates trigger requests before forwarding to agent.
+- **Egress OAuth (backend token refresh):** Gateway obtains and refreshes
+  OAuth tokens for upstream LLM providers. Solves xAI 6h token expiry.
+- **LLM provider locking:** Gateway enforces that LLM calls only go to
+  the configured provider's endpoint (defense-in-depth beyond egress).
+
+### P2 — Guardrails, Transformations, Observability
+
+- **Guardrails:** policy.yaml `guardrails` section — regex blocking,
+  OpenAI moderation, custom webhooks on LLM prompts/responses.
+- **Request/response transformations:** Inject system prompts, remove
+  headers, modify bodies before LLM calls.
+- **Per-route timeouts & retry:** policy.yaml egress rules with timeout
+  and retry config per domain.
+- **Cost tracking & observability:** OTel metrics, per-run token/cost
+  reports via `agctl costs`.
+- **MCP tool access control:** Per-tool allow/deny lists for MCP servers.
+- **Traffic splitting:** Canary/A-B testing for agent versions via
+  gateway route splitting.
+
 ## P0 — Security & Correctness
 
 ### Task: Egress policy must match configured LLM provider, not blanket-allow all
