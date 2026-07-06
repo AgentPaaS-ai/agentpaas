@@ -37,6 +37,7 @@ type trackedRun struct {
 	InvokeErr     error         // written before close(InvokeDone); safe to read after channel receive
 	InvokeResponse string       // raw stdout from the invoke command (agent's response payload)
 	Tailer        *auditTailer    // real-time audit tailer (nil if not running)
+	finalizeOnce  sync.Once       // ensures finalizeRun runs exactly once per run
 }
 
 // maxConcurrentRuns is the hard limit on simultaneously active agent runs.

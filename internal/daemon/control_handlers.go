@@ -553,9 +553,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 				"fail_reason":  failReason,
 			})
 			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
-			// Self-cleanup on failure too — failed runs leak the same
-			// resources as succeeded ones.
-			s.cleanupRun(context.Background(), tr)
+			// Self-cleanup: finalizeRun ensures harness audit ingestion
+			// and resource cleanup happen exactly once.
+			s.finalizeRun(context.Background(), runID, tr)
 		} else {
 			s.runMu.Lock()
 			tr.Status = "succeeded"
@@ -577,12 +577,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 				"agent_name": agentName,
 				"exit_code":  0,
 			})
-			// Self-cleanup: remove the container and networks now that
-			// the run has completed. Without this, every run leaks 1
-			// agent container, 1 gateway container, and 2 networks,
-			// eventually exhausting Docker's network pool. Stop() also
-			// cleans up, but no one calls Stop() on a succeeded run.
-			s.cleanupRun(context.Background(), tr)
+			// Self-cleanup: finalizeRun ensures harness audit ingestion
+			// and resource cleanup happen exactly once.
+			s.finalizeRun(context.Background(), runID, tr)
 		}
 	}(tracked)
 
@@ -625,6 +622,36 @@ func (s *controlServer) cleanupRun(ctx context.Context, tr *trackedRun) {
 	}
 }
 
+// finalizeRun ensures harness audit ingestion and resource cleanup happen
+// exactly once per run, regardless of the terminal path (auto-invoke success,
+// auto-invoke failure, Stop, or Cancel). It is idempotent via sync.Once:
+// if called twice (e.g. auto-invoke completes and then Stop is called),
+// the second call is a no-op.
+func (s *controlServer) finalizeRun(ctx context.Context, runID string, tr *trackedRun) {
+	tr.finalizeOnce.Do(func() {
+		// 1. Stop audit tailer (if running) — must happen before ingestion
+		//    to ensure the tailer has finished reading all harness records.
+		if tr.Tailer != nil {
+			tr.Tailer.stop()
+		}
+		// 2. Ingest harness audit records into the daemon audit chain.
+		//    This reads harness-audit.jsonl, verifies the hash chain,
+		//    appends valid records to s.auditWriter, and rebuilds the
+		//    SQLite index. Corrupted chains produce a
+		//    harness_audit_chain_broken event and skip ingestion.
+		s.ingestHarnessAudit(runID, tr.AuditDir)
+		// 3. Record terminal run status in the daemon audit chain.
+		s.recordAudit("run_finalized", "daemon", map[string]interface{}{
+			"run_id": runID,
+			"status": tr.Status,
+		})
+		// 4. Clean up Docker resources (containers, networks, config dirs).
+		//    Safe to call even if resources are already removed — Docker
+		//    Remove/RemoveNetwork are idempotent on already-removed resources.
+		s.cleanupRun(ctx, tr)
+	})
+}
+
 func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*controlv1.StopResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
@@ -636,8 +663,6 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 		return nil, status.Errorf(codes.NotFound, "run %q not found", runID)
 	}
 	containerID := tracked.Container
-	netID := tracked.Network
-	auditDir := tracked.AuditDir
 
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
@@ -686,24 +711,11 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 		}
 	}
 
-	_ = rt.Remove(ctx, containerID, req.GetForce())
-	if netID != "" {
-		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(netID))
-	}
-	if tracked.EgressNetwork != "" {
-		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(tracked.EgressNetwork))
-	}
-
-	// Stop the real-time audit tailer (does a final read).
-	if tracked.Tailer != nil {
-		tracked.Tailer.stop()
-	}
-
-	// Ingest harness audit records after invoke goroutine has finished.
-	s.ingestHarnessAudit(runID, auditDir)
-	if tracked.GatewayConfigDir != "" {
-		_ = os.RemoveAll(tracked.GatewayConfigDir)
-	}
+	// finalizeRun stops the audit tailer, ingests harness audit records,
+	// records terminal status, and cleans up Docker resources.
+	// Safe to call even if the auto-invoke goroutine already finalized
+	// this run (sync.Once guarantees idempotency).
+	s.finalizeRun(ctx, runID, tracked)
 	if s.eventBus != nil {
 		eventType := trigger.EventRunSucceeded
 		switch {
@@ -1428,6 +1440,18 @@ func (s *controlServer) ingestHarnessAudit(runID, auditDir string) {
 	records, err := readAuditJSONL(auditPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon: ingest harness audit (%s): %v\n", runID, err)
+		// Corrupted / truncated file — emit chain_broken event.
+		tamperRecord := audit.AuditRecord{
+			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+			EventType: "harness_audit_chain_broken",
+			Actor:     "daemon",
+			Payload: map[string]interface{}{
+				"run_id": runID,
+				"error":  err.Error(),
+				"action": "audit_ingestion_refused",
+			},
+		}
+		_ = s.auditWriter.Append(tamperRecord)
 		return
 	}
 	if len(records) == 0 {
