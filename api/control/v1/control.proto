@@ -85,6 +85,40 @@ message PackResponse {
   string build_log = 2;
 }
 
+message ExportPreviewRequest {
+  string agent_project_path = 1;
+  repeated string include_globs = 2;
+}
+
+message ExportFileEntry {
+  string path = 1;
+  string digest = 2;
+  int64 bytes = 3;
+  bool extra = 4;
+}
+
+message ExportPreviewResponse {
+  string agent_name = 1;
+  string agent_version = 2;
+  repeated ExportFileEntry files = 3;
+}
+
+message ExportRequest {
+  string agent_project_path = 1;
+  string output_path = 2;
+  bool with_image = 3;
+  repeated string include_globs = 4;
+  bool confirmed = 5;
+}
+
+message ExportResponse {
+  string bundle_digest = 1;
+  string publisher_fingerprint = 2;
+  int32 file_count = 3;
+  int64 total_bytes = 4;
+  string output_path = 5;
+}
+
 message RunRequest {
   // Name of the agent to run.
   string agent_name = 1;
@@ -623,6 +657,22 @@ service ControlService {
   rpc Pack(PackRequest) returns (PackResponse) {
     option (google.api.http) = {
       post: "/v1/control/pack"
+      body: "*"
+    };
+  }
+
+  // ExportPreview returns the export file manifest after preconditions pass.
+  rpc ExportPreview(ExportPreviewRequest) returns (ExportPreviewResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/export:preview"
+      body: "*"
+    };
+  }
+
+  // Export writes a signed .agentpaas bundle after the secret gate passes.
+  rpc Export(ExportRequest) returns (ExportResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/export"
       body: "*"
     };
   }

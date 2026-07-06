@@ -83,7 +83,7 @@ func Write(cfg BundleConfig, out io.Writer) (*BundleResult, error) {
 	// Collect source files.
 	var sourceFiles []pack.BuildFile
 	if cfg.ProjectDir != "" {
-		sourceFiles, err = pack.CollectBuildFiles(cfg.ProjectDir, nil)
+		sourceFiles, err = pack.CollectBuildFiles(cfg.ProjectDir, cfg.Ignore)
 		if err != nil {
 			return nil, fmt.Errorf("collect source files: %w", err)
 		}
@@ -101,7 +101,7 @@ func Write(cfg BundleConfig, out io.Writer) (*BundleResult, error) {
 	// Build tar in-memory, count entries.
 	var buf bytes.Buffer
 	fileCount, err := writeBundleTar(&buf, manifestJSON, lockJSON, cfg.PolicyYAML, cfg.SBOM,
-		sourceFiles, imageFiles, cfg.SourceDateEpoch)
+		sourceFiles, cfg.ExtraFiles, imageFiles, cfg.SourceDateEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func validateBundleConfig(cfg *BundleConfig) error {
 // writeBundleTar writes the bundle entries into a tar writer, sorted lexicographically.
 // Returns the entry count and any error.
 func writeBundleTar(w io.Writer, manifestJSON, lockJSON, policyYAML, sbomJSON []byte,
-	sourceFiles []pack.BuildFile, imageFiles []imageFileEntry, mtime time.Time) (int, error) {
+	sourceFiles, extraFiles []pack.BuildFile, imageFiles []imageFileEntry, mtime time.Time) (int, error) {
 
 	// Build entries in a list so we can sort before writing.
 	type entry struct {
@@ -257,6 +257,19 @@ func writeBundleTar(w io.Writer, manifestJSON, lockJSON, policyYAML, sbomJSON []
 	for _, f := range sourceFiles {
 		entries = append(entries, entry{
 			Name:     filepath.ToSlash(filepath.Join("source", f.RelPath)),
+			DiskPath: f.AbsPath,
+			Info:     f.Info,
+			Mode:     int64(f.Info.Mode().Perm()),
+		})
+	}
+
+	// extra/ files (--include).
+	if len(extraFiles) > 0 {
+		entries = append(entries, entry{Name: "extra/", Mode: 0o755})
+	}
+	for _, f := range extraFiles {
+		entries = append(entries, entry{
+			Name:     filepath.ToSlash(filepath.Join("extra", f.RelPath)),
 			DiskPath: f.AbsPath,
 			Info:     f.Info,
 			Mode:     int64(f.Info.Mode().Perm()),
@@ -407,6 +420,17 @@ func manifestCanonicalJSON(m *Manifest, includeSignature bool) ([]byte, error) {
 		},
 		"contents":  contents,
 		"created_at": m.CreatedAt,
+	}
+	if len(m.ExtraFiles) > 0 {
+		extra := make([]map[string]interface{}, 0, len(m.ExtraFiles))
+		for _, ef := range m.ExtraFiles {
+			extra = append(extra, map[string]interface{}{
+				"path":   ef.Path,
+				"digest": ef.Digest,
+				"bytes":  ef.Bytes,
+			})
+		}
+		out["extra_files"] = extra
 	}
 	if includeSignature {
 		out["manifest_signature"] = m.ManifestSignature
