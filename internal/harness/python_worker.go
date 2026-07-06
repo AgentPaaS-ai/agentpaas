@@ -71,6 +71,18 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 
+	// Load pre-resolved credentials from the sidecar file before starting
+	// the Python worker, so credential values are in memory before agent
+	// code begins executing.
+	if cfg.CredentialsPath != "" {
+		if err := rpcServer.LoadCredentials(cfg.CredentialsPath); err != nil {
+			_ = rpcServer.Close()
+			_ = stderrCapture.Close()
+			errResp := &ErrorResponse{Status: "FAILED", Reason: "credential_load_failed", Detail: err.Error()}
+			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+		}
+	}
+
 	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
 	cmd.Env = workerEnv(os.Environ(), rpcServer.Addr())
@@ -204,10 +216,15 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budge
 		defer w.rpc.ClearInvoke()
 	}
 
+	// Sanitize payload before writing to Python worker stdin.
+	// Strips reserved platform keys (credentials, llm, mcp, mcp_servers,
+	// __agentpaas_*) so agent code never sees raw credentials or platform config.
+	sanitizedPayload := sanitizeAgentPayload(payload)
+
 	done := make(chan workerMessage, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		if err := json.NewEncoder(w.stdin).Encode(payload); err != nil {
+		if err := json.NewEncoder(w.stdin).Encode(sanitizedPayload); err != nil {
 			errCh <- err
 			return
 		}
@@ -485,10 +502,13 @@ except Exception:
 
 send({"type": "ready"})
 
+_RESERVED = frozenset({"credentials", "llm", "mcp", "mcp_servers"})
+
 for line in sys.stdin:
     try:
         payload = json.loads(line)
-        result = invoke(payload)
+        sanitized = {k: v for k, v in payload.items() if k not in _RESERVED and not k.startswith("__agentpaas_")}
+        result = invoke(sanitized)
         send({"type": "ok", "result": result})
     except Exception:
         send({"type": "failed", "reason": "invoke_failed", "detail": traceback.format_exc()})
@@ -532,4 +552,33 @@ func pythonPackagePath() string {
 		}
 		wd = parent
 	}
+}
+
+// sanitizeAgentPayload strips reserved platform keys from the invoke payload
+// before it reaches the Python agent handler. This is defense-in-depth: the
+// daemon's buildInvokePayload already excludes credential values, but the
+// harness also strips all reserved keys so agent code never sees credentials,
+// llm config, or mcp config even if they somehow leak through transport.
+func sanitizeAgentPayload(payload map[string]any) map[string]any {
+	if payload == nil {
+		return nil
+	}
+	sanitized := make(map[string]any, len(payload))
+	for k, v := range payload {
+		if isReservedAgentKey(k) {
+			continue
+		}
+		sanitized[k] = v
+	}
+	return sanitized
+}
+
+// isReservedAgentKey returns true if the key is a platform-internal key that
+// must never reach agent code.
+func isReservedAgentKey(key string) bool {
+	switch key {
+	case "credentials", "llm", "mcp", "mcp_servers":
+		return true
+	}
+	return strings.HasPrefix(key, "__agentpaas_")
 }
