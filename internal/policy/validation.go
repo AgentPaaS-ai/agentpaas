@@ -146,6 +146,16 @@ func ValidatePolicy(p *Policy) []ValidationError {
 			})
 			continue
 		}
+		// Domain+CIDR combos: CIDR is silently ignored by the compiler.
+		// Reject explicitly so users know CIDR has no effect in P1.
+		if e.CIDR != "" && e.Domain != "" {
+			errs = append(errs, ValidationError{
+				Field:    prefix,
+				Message:  "CIDR is not enforced when domain is present in P1; remove cidr or use domain-only egress",
+				Severity: "error",
+			})
+			continue
+		}
 
 		// Hostname validation and wildcard check.
 		if e.Domain != "" {

@@ -29,8 +29,7 @@ const privateCIDRPolicy = `version: "1.0"
 agent:
   name: test-agent
 egress:
-  - domain: "example.com"
-    cidr: "10.0.0.0/8"
+  - cidr: "10.0.0.0/8"
     ports: [5432]
 `
 
@@ -83,8 +82,8 @@ func TestComputePolicyDigest_ValidationErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "validation failed") {
 		t.Fatalf("error does not mention validation: %v", err)
 	}
-	if !strings.Contains(err.Error(), "allow_private") {
-		t.Fatalf("error does not mention allow_private: %v", err)
+	if !strings.Contains(err.Error(), "CIDR egress rules are not yet supported") {
+		t.Fatalf("error does not mention CIDR rejection: %v", err)
 	}
 }
 
