@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -53,17 +54,18 @@ func TestBuildInvokePayload_NoUserPayload(t *testing.T) {
 	}
 }
 
-// TestBuildInvokePayload_InvalidUserPayloadGraceful verifies that invalid
-// JSON in the user payload does not crash; the base payload is returned.
-func TestBuildInvokePayload_InvalidUserPayloadGraceful(t *testing.T) {
+// TestBuildInvokePayload_InvalidUserPayloadFailClosed verifies that invalid
+// JSON in the user payload returns an error (fail-closed) instead of silently
+// ignoring. The error must contain guidance about the JSON being invalid.
+func TestBuildInvokePayload_InvalidUserPayloadFailClosed(t *testing.T) {
 	server := testControlServer(t)
 
-	result, err := server.buildInvokePayload(context.Background(), "test-agent", []byte("not json"))
-	if err != nil {
-		t.Fatalf("buildInvokePayload should not error on invalid JSON: %v", err)
+	_, err := server.buildInvokePayload(context.Background(), "test-agent", []byte("not json"))
+	if err == nil {
+		t.Fatal("buildInvokePayload should return error on invalid JSON, got nil")
 	}
-	if result == nil {
-		t.Fatal("buildInvokePayload returned nil map")
+	if !strings.Contains(err.Error(), "invalid trigger payload JSON") {
+		t.Errorf("error = %q, want 'invalid trigger payload JSON'", err.Error())
 	}
 }
 

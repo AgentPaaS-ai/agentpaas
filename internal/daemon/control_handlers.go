@@ -247,6 +247,66 @@ func verifyDeployedAgent(homeDir, agentName string, auditAppender audit.AuditApp
 	return nil
 }
 
+// validateCredentialsExist checks that all credentials declared in agent.yaml
+// (LLM credential) and policy.yaml actually exist in the Keychain. This check
+// runs BEFORE any Docker resources are created so missing credentials fail-closed
+// with actionable guidance for the operator.
+//
+// In test mode, uses s.secretStoreForTest. In production, uses KeychainStore.
+func validateCredentialsExist(s *controlServer, agentName string) error {
+	// Resolve the secret store.
+	var store secrets.SecretStore
+	if s.secretStoreForTest != nil {
+		store = s.secretStoreForTest
+	} else {
+		var err error
+		store, err = secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
+		if err != nil {
+			// Keychain unavailable — skip validation (graceful as before).
+			return nil
+		}
+	}
+
+	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)
+
+	// Collect all credential IDs.
+	credIDs := make(map[string]bool)
+
+	// 1. LLM credential from agent.lock.
+	lockPath := filepath.Join(deployedDir, "agent.lock")
+	lock, err := pack.ReadAgentLock(lockPath)
+	if err == nil && lock != nil && lock.AgentYAML != nil && lock.AgentYAML.LLM.Provider != "" {
+		credName := lock.AgentYAML.LLM.Credential
+		if credName != "" {
+			credIDs[credName] = true
+		}
+	}
+
+	// 2. Policy credentials from policy.yaml.
+	policyPath := filepath.Join(deployedDir, "policy.yaml")
+	policyData, perr := os.ReadFile(policyPath)
+	if perr == nil && len(policyData) > 0 {
+		parsed, perr := policy.ParsePolicy(bytes.NewReader(policyData))
+		if perr == nil {
+			for _, c := range parsed.Credentials {
+				if c.ID != "" {
+					credIDs[c.ID] = true
+				}
+			}
+		}
+	}
+
+	// Verify each credential exists in the secret store.
+	for id := range credIDs {
+		_, err := store.Get(context.Background(), id)
+		if err != nil {
+			return fmt.Errorf("credential %q not found in keychain; run: agentpaas secret add %s", id, id)
+		}
+	}
+
+	return nil
+}
+
 func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*controlv1.RunResponse, error) {
 	agentName := req.GetAgentName()
 	if agentName == "" {
@@ -272,6 +332,22 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// BEFORE creating any Docker resources.
 	if err := verifyDeployedAgent(s.homePaths.Home, agentName, s.auditWriter); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "deployed agent verification failed: %v", err)
+	}
+
+	// Validate trigger payload JSON early (before CreateNetwork).
+	// Invalid JSON must fail-closed as InvalidArgument without touching
+	// any Docker resources.
+	if triggerPayload := req.GetTriggerPayload(); len(triggerPayload) > 0 {
+		var dummy map[string]any
+		if err := json.Unmarshal(triggerPayload, &dummy); err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid trigger payload JSON: %v", err)
+		}
+	}
+
+	// Validate that all declared credentials exist in Keychain BEFORE creating
+	// any Docker resources. Missing credentials fail-closed with actionable guidance.
+	if err := validateCredentialsExist(s, agentName); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "%v", err)
 	}
 
 	rt, err := s.getOrCreateRuntime()
@@ -1085,16 +1161,16 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 	// (llm, credentials, mcp) always win over user-supplied values.
 	if len(triggerPayload) > 0 {
 		var userPayload map[string]any
-		if err := json.Unmarshal(triggerPayload, &userPayload); err == nil {
-			reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true}
-			for k, v := range userPayload {
-				if reserved[k] {
-					continue
-				}
-				payload[k] = v
-			}
+		if err := json.Unmarshal(triggerPayload, &userPayload); err != nil {
+			return nil, fmt.Errorf("invalid trigger payload JSON: %w", err)
 		}
-		// Invalid JSON → silently ignore; base payload is still returned.
+		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true}
+		for k, v := range userPayload {
+			if reserved[k] {
+				continue
+			}
+			payload[k] = v
+		}
 	}
 
 	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)

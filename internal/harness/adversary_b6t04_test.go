@@ -78,6 +78,7 @@ def handle(payload):
 
 // TestAdversary_B6T04_BudgetEvasion_CountZeroOrNegative
 func TestAdversary_B6T04_BudgetEvasion_CountZeroOrNegative(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_LLM", "1")
 	agent := `from agentpaas_sdk import agent
 
 @agent.on_invoke
@@ -184,6 +185,7 @@ def handle(payload):
 
 // TestAdversary_B6T04_ConcurrentInvokes_RaceBudget
 func TestAdversary_B6T04_ConcurrentInvokes_RaceBudget(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_LLM", "1")
 	agent := `from agentpaas_sdk import agent
 import threading, time
 @agent.on_invoke
