@@ -103,6 +103,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newDaemonCmd())
 	rootCmd.AddCommand(newDoctorCmd())
 	rootCmd.AddCommand(newPackCmd())
+	rootCmd.AddCommand(newExportCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newRunCmd())
 	rootCmd.AddCommand(newStopCmd())
