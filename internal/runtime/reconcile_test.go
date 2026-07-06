@@ -18,14 +18,17 @@ func TestReconcileAfterCrash_NoOwnedContainers(t *testing.T) {
 		listContainersFunc: func(_ context.Context, _ ...string) ([]ContainerInfo, error) {
 			return []ContainerInfo{}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err != nil {
 		t.Fatalf("ReconcileAfterCrash failed: %v", err)
 	}
-	if len(removed) != 0 {
-		t.Errorf("Expected 0 removals, got %d", len(removed))
+	if len(result.RemovedContainers) != 0 {
+		t.Errorf("Expected 0 removals, got %d", len(result.RemovedContainers))
 	}
 }
 
@@ -33,6 +36,9 @@ func TestReconcileAfterCrash_ListError(t *testing.T) {
 	mock := &mockRuntimeDriver{
 		listContainersFunc: func(_ context.Context, _ ...string) ([]ContainerInfo, error) {
 			return nil, errors.New("docker error")
+		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
 		},
 	}
 
@@ -63,18 +69,21 @@ func TestReconcileAfterCrash_GatewayRunning_AgentKept(t *testing.T) {
 				},
 			}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 		removeFunc: func(_ context.Context, _ ContainerID, _ bool) error {
 			removeCalled = true
 			return nil
 		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err != nil {
 		t.Fatalf("ReconcileAfterCrash failed: %v", err)
 	}
-	if len(removed) != 0 {
-		t.Errorf("Expected 0 removals (gateway is running), got %d", len(removed))
+	if len(result.RemovedContainers) != 0 {
+		t.Errorf("Expected 0 removals (gateway is running), got %d", len(result.RemovedContainers))
 	}
 	if removeCalled {
 		t.Error("Remove should not be called when gateway is running")
@@ -95,18 +104,21 @@ func TestReconcileAfterCrash_GatewayAbsent_AgentRemoved(t *testing.T) {
 				},
 			}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 		removeFunc: func(_ context.Context, id ContainerID, force bool) error {
 			capturedCID = id
 			return nil
 		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err != nil {
 		t.Fatalf("ReconcileAfterCrash failed: %v", err)
 	}
-	if len(removed) != 1 {
-		t.Fatalf("Expected 1 removal, got %d", len(removed))
+	if len(result.RemovedContainers) != 1 {
+		t.Fatalf("Expected 1 removal, got %d", len(result.RemovedContainers))
 	}
 	if string(capturedCID) != "agent-abc" {
 		t.Errorf("Expected remove to be called with 'agent-abc', got %q", capturedCID)
@@ -158,18 +170,21 @@ func TestReconcileAfterCrash_MultipleRuns_SelectiveRemoval(t *testing.T) {
 				},
 			}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 		removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
 			removedIDs = append(removedIDs, id)
 			return nil
 		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err != nil {
 		t.Fatalf("ReconcileAfterCrash failed: %v", err)
 	}
-	if len(removed) != 2 {
-		t.Errorf("Expected 2 removals (agent-run2, agent-run3), got %d: %v", len(removed), removed)
+	if len(result.RemovedContainers) != 3 {
+		t.Errorf("Expected 3 removals (agent-run2, agent-run3, gw-run3), got %d: %v", len(result.RemovedContainers), result.RemovedContainers)
 	}
 }
 
@@ -190,18 +205,21 @@ func TestReconcileAfterCrash_UnrelatedContainersUntouched(t *testing.T) {
 				},
 			}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 		removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
 			removedIDs = append(removedIDs, id)
 			return nil
 		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err != nil {
 		t.Fatalf("ReconcileAfterCrash failed: %v", err)
 	}
-	if len(removed) != 1 {
-		t.Errorf("Expected 1 removal (only AgentPaaS-owned), got %d", len(removed))
+	if len(result.RemovedContainers) != 1 {
+		t.Errorf("Expected 1 removal (only AgentPaaS-owned), got %d", len(result.RemovedContainers))
 	}
 }
 
@@ -226,6 +244,9 @@ func TestReconcileAfterCrash_RemoveError_ReturnsPartial(t *testing.T) {
 				},
 			}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 		removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
 			removeCount++
 			if removeCount == 1 {
@@ -235,12 +256,12 @@ func TestReconcileAfterCrash_RemoveError_ReturnsPartial(t *testing.T) {
 		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err == nil {
 		t.Error("ReconcileAfterCrash should propagate remove error")
 	}
-	if len(removed) != 0 {
-		t.Errorf("Expected 0 removals before first failure, got %d: %v", len(removed), removed)
+	if len(result.RemovedContainers) != 0 {
+		t.Errorf("Expected 0 removals before first failure, got %d: %v", len(result.RemovedContainers), result.RemovedContainers)
 	}
 }
 
@@ -258,18 +279,21 @@ func TestReconcileAfterCrash_ContainerWithoutRunID_Skipped(t *testing.T) {
 				},
 			}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 		removeFunc: func(_ context.Context, _ ContainerID, _ bool) error {
 			removeCalled = true
 			return nil
 		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err != nil {
 		t.Fatalf("ReconcileAfterCrash failed: %v", err)
 	}
-	if len(removed) != 0 {
-		t.Errorf("Expected 0 removals (container has no run ID), got %d", len(removed))
+	if len(result.RemovedContainers) != 0 {
+		t.Errorf("Expected 0 removals (container has no run ID), got %d", len(result.RemovedContainers))
 	}
 	if removeCalled {
 		t.Error("Remove should not be called for containers without run ID")
@@ -321,20 +345,23 @@ func TestReconcileAfterCrash_OrphanedMCPRemoved(t *testing.T) {
 				},
 			}, nil
 		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
+		},
 		removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
 			removedIDs = append(removedIDs, id)
 			return nil
 		},
 	}
 
-	removed, err := ReconcileAfterCrash(context.Background(), mock)
+	result, err := ReconcileAfterCrash(context.Background(), mock)
 	if err != nil {
 		t.Fatalf("ReconcileAfterCrash failed: %v", err)
 	}
-	if len(removed) != 1 || removed[0] != "mcp-run2" {
-		t.Fatalf("removed = %v, want [mcp-run2]", removed)
+	if len(result.RemovedContainers) != 1 || result.RemovedContainers[0] != "mcp-run2" {
+		t.Fatalf("removed = %v, want [mcp-run2]", result.RemovedContainers)
 	}
-	if len(removedIDs) != 1 || removedIDs[0] != "mcp-run2" {
+	if len(result.RemovedContainers) != 1 || result.RemovedContainers[0] != "mcp-run2" {
 		t.Fatalf("Remove called with %v, want [mcp-run2]", removedIDs)
 	}
 }
@@ -373,6 +400,9 @@ func TestReconcileMCPServersDiscoversLabeledContainers(t *testing.T) {
 					Labels:       Labels(ResourceTypeAgent, "run-1"),
 				},
 			}, nil
+		},
+		listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+			return []NetworkInfo{}, nil
 		},
 	}
 
