@@ -128,11 +128,20 @@ colima start
 
 ```bash
 brew install agentpaas-ai/tap/agentpaas
+xattr -cr /opt/homebrew/bin/agentpaas
 agentpaas doctor
 ```
 
+**Important:** The brew cask is not notarized. The `xattr -cr` command
+clears the macOS quarantine attribute so the binary can run. You only
+need to do this once after install.
+
 `agentpaas doctor` verifies Docker, the daemon, keychain, and the harness
-binary are all ready.
+binary are all ready. If the daemon isn't running, it will tell you to
+start it:
+```bash
+agentpaas daemon start
+```
 
 ## Quickstart: Build and Run a Governed Agent
 
@@ -230,6 +239,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the full task list.
 
 ## Documentation
 
+- [Manual testing guide](docs/manual-testing.md) — Step-by-step lifecycle tests (T1-T10)
 - [Quickstart](docs/quickstart.md)
 - [Policy reference](docs/policy-reference.md)
 - [Secrets guide](docs/secrets.md)
@@ -239,6 +249,54 @@ See [docs/roadmap.md](docs/roadmap.md) for the full task list.
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
 - [Known limitations](docs/known-limitations.md)
 - [Roadmap](docs/roadmap.md)
+
+## Troubleshooting
+
+### `agentpaas` binary won't run after brew install
+
+The brew cask is not notarized. Clear the quarantine attribute:
+```bash
+xattr -cr /opt/homebrew/bin/agentpaas
+```
+
+### Daemon won't start (checkpoint key error)
+
+After binary upgrades or clean state resets:
+```bash
+rm -f ~/.agentpaas/state/audit-checkpoint-key.der
+agentpaas daemon start
+```
+
+### No `agentpaas_*` tools visible in Hermes
+
+The toolset isn't registered. Run the ensure-toolset script:
+```bash
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/ensure-toolset.py <profile>
+```
+Then restart Hermes: `/quit` then `hermes -p <profile>`
+
+### Pack fails: "agentpaas-sdk was not found"
+
+The SDK is bundled automatically — do NOT list `agentpaas-sdk` in
+requirements.txt. Only list your agent's own dependencies.
+
+### Agent returns "agentpaas fake llm response"
+
+The LLM is not configured. Either set the `llm:` section in agent.yaml
+or tell Hermes to configure it.
+
+### Agent fails: "credential is not declared"
+
+Credentials must be declared in policy.yaml, not just stored in
+Keychain:
+```yaml
+credentials:
+  - id: my-api-key
+    type: header
+    header: Authorization
+```
+
+See the [manual testing guide](docs/manual-testing.md) for more.
 
 ## Repository Layout
 
