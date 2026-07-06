@@ -66,13 +66,20 @@ const (
 	// contains an x509 certificate and associated private key, used for
 	// mTLS between gateway/harness and the daemon.
 	KeyTypeWorkload KeyType = "workload"
+
+	// KeyTypePublisher is the publisher identity signing key. It is an
+	// ECDSA P-256 key used to sign shared agent bundles for distribution.
+	// Unlike package identity keys (per-agent AIDs), the publisher key is
+	// a single long-lived identity that spans all agents published by the
+	// same operator.
+	KeyTypePublisher KeyType = "publisher"
 )
 
 // signingKeyTypes returns true if kt is a key type that supports Sign/Verify
 // operations (all ECDSA signing key types).
 func signingKeyTypes(kt KeyType) bool {
 	switch kt {
-	case KeyTypeCA, KeyTypeAuditSigning, KeyTypePackageIdentity:
+	case KeyTypeCA, KeyTypeAuditSigning, KeyTypePackageIdentity, KeyTypePublisher:
 		return true
 	default:
 		return false
