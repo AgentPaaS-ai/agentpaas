@@ -133,12 +133,12 @@ func TestAdversaryB8T02_SecretLeakage(t *testing.T) {
 		t.Fatal(err)
 	}
 	ignore, _ := LoadIgnore(projectDir)
-	files, err := collectBuildFiles(projectDir, ignore)
+	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range files {
-		if strings.Contains(f.relPath, ".env") {
+		if strings.Contains(f.RelPath, ".env") {
 			t.Fatal("secret .env leaked into build context")
 		}
 	}

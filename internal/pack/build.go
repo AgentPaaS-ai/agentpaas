@@ -66,10 +66,11 @@ type BuildResult struct {
 	DepsLocked []string `json:"deps_locked"`
 }
 
-type buildFile struct {
-	relPath string
-	absPath string
-	info    fs.FileInfo
+// BuildFile represents a collected file from the build context.
+type BuildFile struct {
+	RelPath string
+	AbsPath string
+	Info    fs.FileInfo
 }
 
 // BuildImage builds a deterministic OCI image for the agent project.
@@ -188,32 +189,38 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 // each file's content. Respects .agentpaasignore exclusions.
 // Symlink-safe: uses os.Lstat, rejects symlinks.
 func ComputeBuildInputDigest(projectDir string, ignore *IgnoreMatcher) (string, error) {
-	files, err := collectBuildFiles(projectDir, ignore)
+	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
 		return "", err
 	}
+	return ComputeBuildInputDigestFromFiles(files)
+}
 
+// ComputeBuildInputDigestFromFiles computes SHA-256 over the canonical build
+// context represented by sorted BuildFile entries (path, size, content).
+// Shared by pack and bundle verification — do not duplicate this logic.
+func ComputeBuildInputDigestFromFiles(files []BuildFile) (string, error) {
 	h := sha256.New()
 	for _, file := range files {
-		if _, err := io.WriteString(h, file.relPath); err != nil {
-			return "", fmt.Errorf("hash path %s: %w", file.relPath, err)
+		if _, err := io.WriteString(h, file.RelPath); err != nil {
+			return "", fmt.Errorf("hash path %s: %w", file.RelPath, err)
 		}
 		if _, err := h.Write([]byte{0}); err != nil {
 			return "", fmt.Errorf("hash separator: %w", err)
 		}
-		if _, err := io.WriteString(h, fmt.Sprint(file.info.Size())); err != nil {
-			return "", fmt.Errorf("hash size %s: %w", file.relPath, err)
+		if _, err := io.WriteString(h, fmt.Sprint(file.Info.Size())); err != nil {
+			return "", fmt.Errorf("hash size %s: %w", file.RelPath, err)
 		}
 		if _, err := h.Write([]byte{0}); err != nil {
 			return "", fmt.Errorf("hash separator: %w", err)
 		}
 
-		data, err := readProjectFile(file.absPath)
+		data, err := readProjectFile(file.AbsPath)
 		if err != nil {
 			return "", err
 		}
 		if _, err := h.Write(data); err != nil {
-			return "", fmt.Errorf("hash content %s: %w", file.relPath, err)
+			return "", fmt.Errorf("hash content %s: %w", file.RelPath, err)
 		}
 		if _, err := h.Write([]byte{0}); err != nil {
 			return "", fmt.Errorf("hash separator: %w", err)
@@ -449,7 +456,10 @@ func trimTOMLString(value string) string {
 	return value
 }
 
-func collectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]buildFile, error) {
+// CollectBuildFiles walks projectDir and returns all regular files that are
+// not excluded by the ignore matcher. Files are returned sorted by relative path.
+// Symlinks are rejected. If ignore is nil, it falls back to LoadIgnore(projectDir).
+func CollectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]BuildFile, error) {
 	if err := validateProjectDir(projectDir); err != nil {
 		return nil, err
 	}
@@ -467,7 +477,7 @@ func collectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]buildFile, e
 		}
 	}
 
-	var files []buildFile
+	var files []BuildFile
 	err := filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -497,10 +507,10 @@ func collectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]buildFile, e
 			return nil
 		}
 
-		files = append(files, buildFile{
-			relPath: rel,
-			absPath: path,
-			info:    info,
+		files = append(files, BuildFile{
+			RelPath: rel,
+			AbsPath: path,
+			Info:    info,
 		})
 
 		return nil
@@ -509,7 +519,7 @@ func collectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]buildFile, e
 		return nil, err
 	}
 	sort.Slice(files, func(i, j int) bool {
-		return files[i].relPath < files[j].relPath
+		return files[i].RelPath < files[j].RelPath
 	})
 
 	return files, nil
@@ -557,7 +567,7 @@ func collectSDKFiles(sdkDir string) ([]sdkFile, error) {
 }
 
 func writeProjectFilesToTar(dst io.Writer, projectDir string, prefix string, ignore *IgnoreMatcher, timestamp time.Time) error {
-	files, err := collectBuildFiles(projectDir, ignore)
+	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
 		return err
 	}
@@ -565,7 +575,7 @@ func writeProjectFilesToTar(dst io.Writer, projectDir string, prefix string, ign
 	tw := tar.NewWriter(dst)
 	defer func() { _ = tw.Close() }()
 	for _, file := range files {
-		if err := addFileToTar(tw, file.absPath, filepath.ToSlash(filepath.Join(prefix, file.relPath)), file.info, timestamp); err != nil {
+		if err := addFileToTar(tw, file.AbsPath, filepath.ToSlash(filepath.Join(prefix, file.RelPath)), file.Info, timestamp); err != nil {
 			return err
 		}
 	}
@@ -615,12 +625,12 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 		}
 	}
 
-	files, err := collectBuildFiles(cfg.ProjectDir, ignore)
+	files, err := CollectBuildFiles(cfg.ProjectDir, ignore)
 	if err != nil {
 		return nil, err
 	}
 	for _, file := range files {
-		if err := addFileToTar(tw, file.absPath, filepath.ToSlash(filepath.Join("project", file.relPath)), file.info, cfg.SourceDateEpoch); err != nil {
+		if err := addFileToTar(tw, file.AbsPath, filepath.ToSlash(filepath.Join("project", file.RelPath)), file.Info, cfg.SourceDateEpoch); err != nil {
 			return nil, err
 		}
 	}

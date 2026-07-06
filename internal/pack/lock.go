@@ -253,6 +253,30 @@ func NewSignedTestLock(agentName string, policyYAML []byte) (*AgentLock, error) 
 	return lock, nil
 }
 
+// SignLockfileWithKey sets lockfile_signature on lock using the package AID
+// private key. The lock must have LockfileSignature cleared before calling.
+// Intended for tests and bundle fixtures that mutate lock fields after creation.
+func SignLockfileWithKey(lock *AgentLock, key *ecdsa.PrivateKey) error {
+	if lock == nil {
+		return errors.New("lock must not be nil")
+	}
+	if key == nil {
+		return errors.New("private key must not be nil")
+	}
+	lock.LockfileSignature = ""
+	canonical, err := canonicalJSON(lock)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(canonical)
+	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+	if err != nil {
+		return fmt.Errorf("sign lockfile: %w", err)
+	}
+	lock.LockfileSignature = base64.StdEncoding.EncodeToString(sig)
+	return nil
+}
+
 // LockConfig controls the agent.lock generation process.
 type LockConfig struct {
 	// BuildResult is the result from BuildImage (T02).
@@ -593,6 +617,11 @@ func canonicalJSONFull(lock *AgentLock) ([]byte, error) {
 		return nil, errors.New("lock must not be nil")
 	}
 	return json.Marshal(lockCanonicalMap(lock, true))
+}
+
+// LockfileCanonicalJSON returns canonical JSON bytes for agent.lock as stored in bundles.
+func LockfileCanonicalJSON(lock *AgentLock) ([]byte, error) {
+	return canonicalJSONFull(lock)
 }
 
 // VerifyAgentLock verifies an agent.lock manifest.
