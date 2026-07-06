@@ -12,6 +12,12 @@ const EventTypePublisherTrusted    = "publisher_trusted"
 const EventTypePublisherRemoved    = "publisher_removed"
 const EventTypePublisherKeyConflict = "publisher_key_conflict"
 
+// Publisher identity event type constants.
+const EventTypePublisherIdentityCreated = "publisher_identity_created"
+const EventTypePublisherIdentityExported = "publisher_identity_exported"
+const EventTypePublisherIdentityImported = "publisher_identity_imported"
+const EventTypePublisherIdentityRotated = "publisher_identity_rotated"
+
 // AuditAppender is implemented by audit sinks that accept audit records.
 type AuditAppender interface {
 	Append(record AuditRecord) error

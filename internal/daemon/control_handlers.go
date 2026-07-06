@@ -156,6 +156,7 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		KeyStore:        &packKeyStoreAdapter{store: keyStore},
 		KeyID:           string(keyID),
 		PolicyYAML:      policyYAML,
+		PublisherKeyStore: keyStore,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "create agent lock: %v", err)
