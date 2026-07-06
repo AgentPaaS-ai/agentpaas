@@ -35,6 +35,14 @@ Each run creates two Docker containers on separate networks:
 The agent cannot reach the internet directly. All outbound HTTP/HTTPS traffic
 must pass through the gateway.
 
+The PRIMARY egress control is network topology isolation: the agent
+container's Docker network has no default route to the internet. An
+additional iptables egress firewall runs inside the agent container as
+**defense-in-depth** — it applies `OUTPUT DROP` rules to the container's own
+network stack. This firewall may be unavailable in some container
+environments; the harness continues without it. Topology isolation remains
+the hard boundary.
+
 ## HTTP_PROXY routing
 
 The run handler sets standard proxy environment variables on the agent

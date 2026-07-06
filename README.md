@@ -64,6 +64,15 @@ The agent container has no direct internet route. All traffic goes
 through the gateway sidecar, which enforces your policy. The gateway is
 the only path out.
 
+**The PRIMARY egress control is network topology isolation:** the agent
+container is on a Docker internal-only network with no default route to
+the internet. An additional iptables egress firewall runs inside the agent
+container as **defense-in-depth** — it applies `OUTPUT DROP` rules to the
+container's own network stack. This firewall may be unavailable in some
+container environments (e.g., when `iptables` is not installed or
+`CAP_NET_ADMIN` is absent), and the harness continues without it. Topology
+isolation remains the hard boundary regardless.
+
 ## Security Features
 
 | Feature | What it stops |
@@ -88,8 +97,8 @@ Six attack fixtures through the real pack → run → gateway → audit pipeline
 
 | Attack | Result |
 |---|---|
-| Network exfiltration | Blocked — gateway policy enforcement |
-| DNS exfiltration | Blocked — internal network isolation |
+| Network exfiltration | Blocked — gateway policy enforcement (primary: topology isolation) |
+| DNS exfiltration | Blocked — internal network isolation (primary: topology isolation) |
 | File system access | Restricted — container UID 64000, bind mounts |
 | Privilege escalation | Blocked — non-root container |
 | Process escape | Mitigated — Docker isolation, no new privs |

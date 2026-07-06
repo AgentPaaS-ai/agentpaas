@@ -84,21 +84,27 @@ Configurable concurrency limits are planned for P2.
 
 ### CAP_NET_ADMIN: capset drop, not init container (P2)
 
-The agent container's iptables egress firewall requires the harness binary
-(PID 1, root) to program rules. After programming, `DropNetAdminCapability()`
-removes CAP_NET_ADMIN from the process's effective, permitted, and inheritable
-sets before the Python worker starts. Docker `inspect` still shows NET_ADMIN
-in CapAdd, but the runtime process cannot use it. The full init-container
-pattern (separate firewall-init container, `--net=container:` namespace
-sharing) is P2. Verified by Docker integration test (B15-T05 MC5).
+The agent container's iptables egress firewall is **defense-in-depth** — the
+**primary** egress control is Docker network topology isolation (internal-only
+network, no default route to the internet). The firewall applies additional
+`OUTPUT DROP` rules to the container's own network stack and requires the
+harness binary (PID 1, root) to program rules. After programming,
+`DropNetAdminCapability()` removes CAP_NET_ADMIN from the process's effective,
+permitted, and inheritable sets before the Python worker starts. Docker
+`inspect` still shows NET_ADMIN in CapAdd, but the runtime process cannot use
+it. If iptables is unavailable or any rule fails, the harness logs a warning
+and continues — topology isolation remains the hard boundary. The full
+init-container pattern (separate firewall-init container, `--net=container:`
+namespace sharing) is P2. Verified by Docker integration test (B15-T05 MC5).
 
-### RFC1918 tightened to gateway /16 (fail-closed)
+### RFC1918 tightened to gateway /16 (fail-closed, defense-in-depth)
 
 The agent container firewall allows only the specific Docker bridge /16
 subnet (derived from gateway IP), not all of RFC1918. If
 `AGENTPAAS_GATEWAY_SUBNET` is unset (e.g. gateway IP discovery fails), no
 broad allow is added — the firewall fails closed, relying on the specific
-gateway IP allow + default OUTPUT DROP only.
+gateway IP allow + default OUTPUT DROP only. This is defense-in-depth; the
+primary isolation is network topology.
 
 ### Rekor transparency log retry for production signing
 
