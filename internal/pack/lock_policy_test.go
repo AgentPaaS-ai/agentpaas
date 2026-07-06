@@ -29,7 +29,8 @@ const privateCIDRPolicy = `version: "1.0"
 agent:
   name: test-agent
 egress:
-  - cidr: "10.0.0.0/8"
+  - domain: "example.com"
+    cidr: "10.0.0.0/8"
     ports: [5432]
 `
 

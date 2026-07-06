@@ -134,6 +134,19 @@ func ValidatePolicy(p *Policy) []ValidationError {
 			continue
 		}
 
+		// CIDR-only rules (no Domain) are not yet supported in P1.
+		// The gateway enforces egress by hostname routing; CIDR-based
+		// enforcement requires IP-level routing which is not available.
+		// Reject explicitly instead of silently ignoring.
+		if e.CIDR != "" && e.Domain == "" {
+			errs = append(errs, ValidationError{
+				Field:    prefix,
+				Message:  "CIDR egress rules are not yet supported in P1; use domain-based egress instead",
+				Severity: "error",
+			})
+			continue
+		}
+
 		// Hostname validation and wildcard check.
 		if e.Domain != "" {
 			hasWild, _, hostErr := validateHostname(e.Domain)
