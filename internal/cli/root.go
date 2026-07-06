@@ -123,6 +123,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newTriggerCmd())
 	rootCmd.AddCommand(newCronCmd())
 	rootCmd.AddCommand(newTrustCmd())
+	rootCmd.AddCommand(newIdentityCmd())
 
 	return rootCmd
 }

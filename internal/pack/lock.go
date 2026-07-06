@@ -24,13 +24,14 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
+	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
 const noTlogSigningConfigJSON = `{"mediaType":"application/vnd.dev.sigstore.signingconfig.v0.2+json","rekorTlogConfig":{},"tsaConfig":{}}`
 
 // LockSchemaVersion is the current agent.lock schema version.
-const LockSchemaVersion = 1
+const LockSchemaVersion = 2
 
 const externalSignatureTimeout = 30 * time.Second
 
@@ -84,6 +85,19 @@ type AgentLock struct {
 	// AgentYAML is the parsed agent.yaml (including LLM config). Stored as part
 	// of the lockfile for runtime LLM credential resolution. nil when absent.
 	AgentYAML *AgentYAML `json:"agent_yaml,omitempty"`
+	// Publisher holds the publisher identity block (schema v2+). nil when
+	// the pack was performed without a publisher identity (local-only pack).
+	Publisher *PublisherInfo `json:"publisher,omitempty"`
+	// PublisherSignature is the ECDSA signature over the canonical JSON
+	// of the lock (excluding both lockfile_signature and publisher_signature),
+	// signed by the publisher identity key. Base64-encoded. Empty when no
+	// publisher identity is configured.
+	PublisherSignature string `json:"publisher_signature,omitempty"`
+	// Provenance is the ordered list of provenance entries recording the
+	// full lifecycle of this lockfile (created, updated, etc.). Empty for
+	// local-only packs or pre-v2 schema. Each entry carries its own
+	// signature from the publisher that created it.
+	Provenance []ProvenanceEntry `json:"provenance,omitempty"`
 }
 
 // ReproducibilityMeta holds metadata for verifying build reproducibility.
@@ -96,6 +110,75 @@ type ReproducibilityMeta struct {
 	DepsLocked bool `json:"deps_locked"`
 	// TarOrder is "sorted" for deterministic tar order.
 	TarOrder string `json:"tar_order"`
+}
+
+// PublisherInfo holds the public-facing identity information for the
+// publisher who signed this lockfile. It is embedded in the lockfile's
+// publisher block (schema v2+).
+type PublisherInfo struct {
+	// Name is the display label (GitHub-style slug).
+	Name string `json:"name"`
+	// Fingerprint is the hex-encoded SHA-256 of the DER-encoded SPKI of
+	// the publisher's ECDSA P-256 public key.
+	Fingerprint string `json:"fingerprint"`
+	// PublicKeyPEM is the PEM-encoded SPKI public key.
+	PublicKeyPEM string `json:"public_key_pem"`
+	// SignedAt is the wall-clock time the publisher signature was created.
+	SignedAt time.Time `json:"signed_at"`
+}
+
+// ProvenanceEntry records a single lifecycle event for an agent lockfile
+// (created, updated, etc.). Each entry is independently signed by the
+// publisher that performed the action.
+type ProvenanceEntry struct {
+	// Action is the lifecycle action (e.g. "created", "updated").
+	Action string `json:"action"`
+	// PublisherFingerprint is the fingerprint of the publisher that
+	// performed the action.
+	PublisherFingerprint string `json:"publisher_fingerprint"`
+	// PublisherName is the display name of the publisher.
+	PublisherName string `json:"publisher_name"`
+	// PublisherPublicKeyPEM is the public key PEM of the publisher.
+	PublisherPublicKeyPEM string `json:"publisher_public_key_pem"`
+	// AgentName is the agent name at the time of the action.
+	AgentName string `json:"agent_name"`
+	// AgentVersion is the agent version at the time of the action.
+	AgentVersion string `json:"agent_version"`
+	// ParentLockDigest is the LockDigest of the parent lock this entry
+	// was built on top of. Empty for the initial "created" action.
+	ParentLockDigest string `json:"parent_lock_digest"`
+	// ParentBundleDigest is the SHA-256 of the parent shared bundle.
+	// Empty for the initial "created" action.
+	ParentBundleDigest string `json:"parent_bundle_digest"`
+	// ParentPolicyDigest is the policy digest of the parent lock.
+	// Empty for the initial "created" action.
+	ParentPolicyDigest string `json:"parent_policy_digest"`
+	// PolicyDelta records changes to policy between parent and child.
+	// nil when there is no change or for the initial "created" action.
+	PolicyDelta *PolicyDelta `json:"policy_delta,omitempty"`
+	// Timestamp is the wall-clock time the action was performed.
+	Timestamp time.Time `json:"timestamp"`
+	// EntrySignature is the ECDSA signature over the canonical
+	// representation of this entry (excluding entry_signature), signed by
+	// the publisher that performed the action. Base64-encoded.
+	EntrySignature string `json:"entry_signature"`
+}
+
+// PolicyDelta records additions and removals to policy between a parent
+// lock and its child (update).
+type PolicyDelta struct {
+	// EgressAdded is the list of egress destinations added.
+	EgressAdded []string `json:"egress_added,omitempty"`
+	// EgressRemoved is the list of egress destinations removed.
+	EgressRemoved []string `json:"egress_removed,omitempty"`
+	// CredentialsAdded is the list of credential names added.
+	CredentialsAdded []string `json:"credentials_added,omitempty"`
+	// CredentialsRemoved is the list of credential names removed.
+	CredentialsRemoved []string `json:"credentials_removed,omitempty"`
+	// MCPToolsAdded is the list of MCP tools added.
+	MCPToolsAdded []string `json:"mcp_tools_added,omitempty"`
+	// MCPToolsRemoved is the list of MCP tools removed.
+	MCPToolsRemoved []string `json:"mcp_tools_removed,omitempty"`
 }
 
 // NewSignedTestLock generates an ECDSA P-256 key pair and creates a signed
@@ -195,6 +278,12 @@ type LockConfig struct {
 	// PolicyYAML is the raw policy.yaml file contents. If nil/empty (no policy.yaml
 	// in the project), the lockfile's PolicyDigest is left empty for backward compat.
 	PolicyYAML []byte
+	// PublisherKeyStore is the identity keystore for publisher identity
+	// operations (signing the publisher block and provenance entries). If nil,
+	// the lock is produced without a publisher block (local-only pack).
+	// This may be the same underlying store as KeyStore since the identity
+	// keystore holds all key types.
+	PublisherKeyStore identity.KeyStore
 }
 
 // identityKeyStore is a minimal interface for signing (subset of identity.KeyStore).
@@ -411,6 +500,53 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		AgentYAML: cfg.AgentYAML,
 	}
 
+	// Attempt publisher identity population (v2 feature).
+	if cfg.PublisherKeyStore != nil {
+		pubIdentity, pubErr := identity.LoadPublisherIdentity(cfg.PublisherKeyStore)
+		if pubErr != nil && !errors.Is(pubErr, identity.ErrNoPublisherIdentity) {
+			// Any identity error other than "no identity" fails closed.
+			return nil, fmt.Errorf("load publisher identity: %w", pubErr)
+		}
+		if pubIdentity != nil {
+			now := time.Now().UTC()
+			lock.Publisher = &PublisherInfo{
+				Name:          pubIdentity.Name,
+				Fingerprint:   pubIdentity.Fingerprint,
+				PublicKeyPEM:  pubIdentity.PublicKeyPEM,
+				SignedAt:      now,
+			}
+
+			// Build provenance entry for "created" action.
+			entry := ProvenanceEntry{
+				Action:                  "created",
+				PublisherFingerprint:     pubIdentity.Fingerprint,
+				PublisherName:            pubIdentity.Name,
+				PublisherPublicKeyPEM:    pubIdentity.PublicKeyPEM,
+				AgentName:                lock.AgentName,
+				AgentVersion:             lock.AgentVersion,
+				ParentLockDigest:         "",
+				ParentBundleDigest:       "",
+				ParentPolicyDigest:       "",
+				PolicyDelta:              nil,
+				Timestamp:                now,
+			}
+
+			// Sign the provenance entry independently.
+			entryCanonical, err := provenanceEntryCanonical(&entry)
+			if err != nil {
+				return nil, fmt.Errorf("provenance entry canonical: %w", err)
+			}
+			entryDigest := sha256.Sum256(entryCanonical)
+			entrySig, err := identity.SignAsPublisher(cfg.PublisherKeyStore, entryDigest[:])
+			if err != nil {
+				return nil, fmt.Errorf("sign provenance entry: %w", err)
+			}
+			entry.EntrySignature = base64.StdEncoding.EncodeToString(entrySig)
+			lock.Provenance = []ProvenanceEntry{entry}
+		}
+	}
+
+	// Sign the lock with the package AID key.
 	canonical, err := canonicalJSON(lock)
 	if err != nil {
 		return nil, err
@@ -422,11 +558,27 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	}
 	lock.LockfileSignature = base64.StdEncoding.EncodeToString(signature)
 
+	// Sign with publisher key (after AID signature, since publisher_signature
+	// is excluded from the canonical map — order doesn't matter for the digest).
+	if lock.Publisher != nil && cfg.PublisherKeyStore != nil {
+		pubCanonical, err := canonicalJSON(lock)
+		if err != nil {
+			return nil, err
+		}
+		pubDigest := sha256.Sum256(pubCanonical)
+		pubSig, err := identity.SignAsPublisher(cfg.PublisherKeyStore, pubDigest[:])
+		if err != nil {
+			return nil, fmt.Errorf("sign publisher: %w", err)
+		}
+		lock.PublisherSignature = base64.StdEncoding.EncodeToString(pubSig)
+	}
+
 	return lock, nil
 }
 
 // canonicalJSON returns the canonical JSON encoding of the lockfile
-// (sorted keys, no LockfileSignature field, no whitespace).
+// (sorted keys, no signature fields, no whitespace). Both lockfile_signature
+// and publisher_signature are excluded.
 func canonicalJSON(lock *AgentLock) ([]byte, error) {
 	if lock == nil {
 		return nil, errors.New("lock must not be nil")
@@ -434,16 +586,45 @@ func canonicalJSON(lock *AgentLock) ([]byte, error) {
 	return json.Marshal(lockCanonicalMap(lock, false))
 }
 
+// canonicalJSONFull returns the canonical JSON encoding of the lockfile
+// WITH both signatures included. Used by LockDigest.
+func canonicalJSONFull(lock *AgentLock) ([]byte, error) {
+	if lock == nil {
+		return nil, errors.New("lock must not be nil")
+	}
+	return json.Marshal(lockCanonicalMap(lock, true))
+}
+
 // VerifyAgentLock verifies an agent.lock manifest.
 func VerifyAgentLock(lock *AgentLock, imageRef string) error {
 	if lock == nil {
 		return errors.New("lock must not be nil")
 	}
-	if lock.SchemaVersion != LockSchemaVersion {
+	if lock.SchemaVersion != LockSchemaVersion && lock.SchemaVersion != 1 {
 		return fmt.Errorf("unsupported lock schema version %d", lock.SchemaVersion)
 	}
+	// v1 lock: verify AID signature only.
+	// v2 lock: verify both AID signature and (if present) publisher signature.
 	if err := VerifyLockfileSignature(lock); err != nil {
 		return err
+	}
+	if lock.SchemaVersion >= 2 && lock.Publisher != nil {
+		if err := VerifyPublisherSignature(lock); err != nil {
+			return fmt.Errorf("publisher signature: %w", err)
+		}
+		if err := VerifyProvenanceSignatures(lock); err != nil {
+			return fmt.Errorf("provenance signatures: %w", err)
+		}
+		// Verify publisher fingerprint consistency.
+		pub, err := PublicKeyFromPEM([]byte(lock.Publisher.PublicKeyPEM))
+		if err != nil {
+			return fmt.Errorf("publisher public key: %w", err)
+		}
+		recomputed := PublicKeyFingerprint(pub)
+		if recomputed != lock.Publisher.Fingerprint {
+			return fmt.Errorf("publisher fingerprint mismatch: got %s, computed %s",
+				lock.Publisher.Fingerprint, recomputed)
+		}
 	}
 	if err := verifyRequiredDigest("sbom_digest", lock.SBOMDigest); err != nil {
 		return err
@@ -485,6 +666,107 @@ func VerifyLockfileSignature(lock *AgentLock) error {
 		return errors.New("lockfile signature verification failed")
 	}
 	return nil
+}
+
+// VerifyPublisherSignature verifies the publisher signature in a v2+ lockfile.
+// It verifies the ECDSA signature over the canonical JSON (excluding both
+// lockfile_signature and publisher_signature) using the publisher's public key.
+func VerifyPublisherSignature(lock *AgentLock) error {
+	if lock == nil {
+		return errors.New("lock must not be nil")
+	}
+	if lock.Publisher == nil {
+		return nil // no publisher block, nothing to verify
+	}
+	if lock.PublisherSignature == "" {
+		return errors.New("publisher_signature is empty but publisher block is present")
+	}
+	pub, err := PublicKeyFromPEM([]byte(lock.Publisher.PublicKeyPEM))
+	if err != nil {
+		return fmt.Errorf("parse publisher public key: %w", err)
+	}
+	signature, err := base64.StdEncoding.DecodeString(lock.PublisherSignature)
+	if err != nil {
+		return fmt.Errorf("decode publisher signature: %w", err)
+	}
+	// Both lockfile_signature and publisher_signature are excluded from
+	// canonicalJSON (lockCanonicalMap with includeSignatures=false).
+	canonical, err := canonicalJSON(lock)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(canonical)
+	if !ecdsa.VerifyASN1(pub, digest[:], signature) {
+		return errors.New("publisher signature verification failed")
+	}
+	return nil
+}
+
+// VerifyProvenanceSignatures verifies that each provenance entry's
+// entry_signature is valid against its publisher's public key. This checks
+// the integrity of each provenance entry independently.
+func VerifyProvenanceSignatures(lock *AgentLock) error {
+	if lock == nil {
+		return errors.New("lock must not be nil")
+	}
+	for i, e := range lock.Provenance {
+		if e.EntrySignature == "" {
+			return fmt.Errorf("provenance entry %d: entry_signature is empty", i)
+		}
+		pub, err := PublicKeyFromPEM([]byte(e.PublisherPublicKeyPEM))
+		if err != nil {
+			return fmt.Errorf("provenance entry %d: parse publisher public key: %w", i, err)
+		}
+		signature, err := base64.StdEncoding.DecodeString(e.EntrySignature)
+		if err != nil {
+			return fmt.Errorf("provenance entry %d: decode entry signature: %w", i, err)
+		}
+		canonical, err := provenanceEntryCanonical(&e)
+		if err != nil {
+			return fmt.Errorf("provenance entry %d: canonical: %w", i, err)
+		}
+		digest := sha256.Sum256(canonical)
+		if !ecdsa.VerifyASN1(pub, digest[:], signature) {
+			return fmt.Errorf("provenance entry %d: signature verification failed", i)
+		}
+	}
+	return nil
+}
+
+// provenanceEntryCanonical returns the canonical JSON of a provenance entry
+// excluding its entry_signature field.
+func provenanceEntryCanonical(e *ProvenanceEntry) ([]byte, error) {
+	m := map[string]interface{}{
+		"action":                   e.Action,
+		"publisher_fingerprint":    e.PublisherFingerprint,
+		"publisher_name":           e.PublisherName,
+		"publisher_public_key_pem": e.PublisherPublicKeyPEM,
+		"agent_name":               e.AgentName,
+		"agent_version":            e.AgentVersion,
+		"parent_lock_digest":       e.ParentLockDigest,
+		"parent_bundle_digest":     e.ParentBundleDigest,
+		"parent_policy_digest":     e.ParentPolicyDigest,
+		"timestamp":                e.Timestamp,
+	}
+	if e.PolicyDelta != nil {
+		m["policy_delta"] = e.PolicyDelta
+	}
+	return json.Marshal(m)
+}
+
+// LockDigest returns the SHA-256 digest of the full canonical lockfile JSON
+// including both signatures. This is the value that fork entries reference
+// as parent_lock_digest.
+func LockDigest(lock *AgentLock) string {
+	if lock == nil {
+		return ""
+	}
+	canonical, err := canonicalJSONFull(lock)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(canonical)
+	return hex.EncodeToString(sum[:])
 }
 
 // PublicKeyFromPEM parses a PEM-encoded ECDSA P-256 public key.
@@ -570,7 +852,7 @@ func validateLockConfig(cfg LockConfig) error {
 	return nil
 }
 
-func lockCanonicalMap(lock *AgentLock, includeSignature bool) map[string]interface{} {
+func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interface{} {
 	if lock == nil {
 		return nil
 	}
@@ -603,8 +885,44 @@ func lockCanonicalMap(lock *AgentLock, includeSignature bool) map[string]interfa
 	if lock.SignatureReferrer != "" {
 		m["signature_referrer"] = lock.SignatureReferrer
 	}
-	if includeSignature {
+	if includeSignatures {
 		m["lockfile_signature"] = lock.LockfileSignature
+		m["publisher_signature"] = lock.PublisherSignature
+	}
+	// Publisher block: include when present.
+	if lock.Publisher != nil {
+		m["publisher"] = map[string]interface{}{
+			"name":           lock.Publisher.Name,
+			"fingerprint":    lock.Publisher.Fingerprint,
+			"public_key_pem": lock.Publisher.PublicKeyPEM,
+			"signed_at":      lock.Publisher.SignedAt,
+		}
+	}
+	// Provenance array: include when present. Each entry's entry_signature
+	// is INCLUDED in the canonical map because entries are signed independently
+	// before the lock is signed.
+	if len(lock.Provenance) > 0 {
+		entries := make([]map[string]interface{}, 0, len(lock.Provenance))
+		for _, e := range lock.Provenance {
+			entryMap := map[string]interface{}{
+				"action":                    e.Action,
+				"publisher_fingerprint":     e.PublisherFingerprint,
+				"publisher_name":            e.PublisherName,
+				"publisher_public_key_pem":  e.PublisherPublicKeyPEM,
+				"agent_name":                e.AgentName,
+				"agent_version":             e.AgentVersion,
+				"parent_lock_digest":        e.ParentLockDigest,
+				"parent_bundle_digest":      e.ParentBundleDigest,
+				"parent_policy_digest":      e.ParentPolicyDigest,
+				"timestamp":                 e.Timestamp,
+				"entry_signature":           e.EntrySignature,
+			}
+			if e.PolicyDelta != nil {
+				entryMap["policy_delta"] = e.PolicyDelta
+			}
+			entries = append(entries, entryMap)
+		}
+		m["provenance"] = entries
 	}
 	if lock.AgentYAML != nil {
 		m["agent_yaml"] = lock.AgentYAML
