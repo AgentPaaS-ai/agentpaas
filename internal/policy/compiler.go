@@ -36,11 +36,13 @@ type gatewayListener struct {
 }
 
 type gatewayRoute struct {
-	Name      string                `yaml:"name,omitempty"`
-	Hostnames []string              `yaml:"hostnames,omitempty"`
-	Matches   []gatewayRouteMatch   `yaml:"matches,omitempty"`
-	Policies  *gatewayRoutePolicies `yaml:"policies,omitempty"`
-	Backends  []gatewayBackend      `yaml:"backends,omitempty"`
+	Name       string                `yaml:"name,omitempty"`
+	Hostnames  []string              `yaml:"hostnames,omitempty"`
+	Ports      []int                 `yaml:"ports,omitempty"`
+	Matches    []gatewayRouteMatch   `yaml:"matches,omitempty"`
+	Credential string                `yaml:"credential,omitempty"`
+	Policies   *gatewayRoutePolicies `yaml:"policies,omitempty"`
+	Backends   []gatewayBackend      `yaml:"backends,omitempty"`
 }
 
 type gatewayRouteMatch struct {
@@ -275,9 +277,19 @@ func buildEgressRoutes(p *Policy) []gatewayRoute {
 		seen[key] = true
 
 		routeName := "egress-" + sanitizeRouteName(key)
+
+		// Build method matches: one per declared method.
+		var matches []gatewayRouteMatch
+		for _, method := range e.Methods {
+			matches = append(matches, gatewayRouteMatch{Method: method})
+		}
+
 		routes = append(routes, gatewayRoute{
-			Name:      routeName,
-			Hostnames: []string{e.Domain},
+			Name:       routeName,
+			Hostnames:  []string{e.Domain},
+			Ports:      e.Ports,
+			Matches:    matches,
+			Credential: e.Credential,
 			Backends: []gatewayBackend{
 				{Dynamic: &struct{}{}},
 			},
