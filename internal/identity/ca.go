@@ -20,9 +20,11 @@ import (
 
 // Default key IDs stored in the KeyStore.
 const (
-	caKeyID             KeyID = "local_ca"
-	auditSigningKeyID   KeyID = "daemon_audit_signing"
-	packageIdentityBase KeyID = "package_identity"
+	caKeyID                    KeyID = "local_ca"
+	auditSigningKeyID          KeyID = "daemon_audit_signing"
+	packageIdentityBase        KeyID = "package_identity"
+	publisherIdentityKeyID     KeyID = "publisher_identity"
+	publisherIdentityNameKeyID KeyID = "publisher_identity_name"
 )
 
 // LocalCA manages a local certificate authority and related cryptographic
