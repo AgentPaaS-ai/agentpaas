@@ -19,7 +19,12 @@ type gatewayConfig struct {
 }
 
 type rawConfig struct {
-	DNS *dnsConfig `yaml:"dns,omitempty"`
+	DNS     *dnsConfig      `yaml:"dns,omitempty"`
+	Tracing *gatewayTracing `yaml:"tracing,omitempty"`
+}
+
+type gatewayTracing struct {
+	OTLPEndpoint string `yaml:"otlpEndpoint,omitempty"`
 }
 
 type dnsConfig struct {
@@ -179,9 +184,11 @@ type gatewayMCPBackend struct {
 }
 
 type gatewayMCPTarget struct {
-	Name  string          `yaml:"name"`
-	Stdio *gatewayStdio   `yaml:"stdio,omitempty"`
-	MCP   *gatewayMCPHost `yaml:"mcp,omitempty"`
+	Name         string             `yaml:"name"`
+	Stdio        *gatewayStdio      `yaml:"stdio,omitempty"`
+	MCP          *gatewayMCPHost    `yaml:"mcp,omitempty"`
+	AllowedTools []string           `yaml:"allowedTools,omitempty"`
+	DeniedTools  []string           `yaml:"deniedTools,omitempty"`
 }
 
 type gatewayStdio struct {
@@ -235,6 +242,13 @@ func CompileGatewayConfig(p *Policy) ([]byte, error) {
 		FrontendPolicies: &gatewayFrontendPolicies{
 			Connect: &connectConfig{Mode: "route"},
 		},
+	}
+
+	// Add tracing config when observability is configured.
+	if p.Observability != nil && p.Observability.OTelEndpoint != "" {
+		cfg.Config.Tracing = &gatewayTracing{
+			OTLPEndpoint: p.Observability.OTelEndpoint,
+		}
 	}
 
 	return yaml.Marshal(cfg)
@@ -761,7 +775,9 @@ func buildMCPBinds(p *Policy) []gatewayBind {
 
 func buildMCPTarget(m MCPServer) gatewayMCPTarget {
 	target := gatewayMCPTarget{
-		Name: m.Name,
+		Name:         m.Name,
+		AllowedTools: m.AllowedTools,
+		DeniedTools:  m.DeniedTools,
 	}
 
 	switch m.Transport {
