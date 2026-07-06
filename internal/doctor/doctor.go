@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
 
@@ -58,14 +59,14 @@ func WithCLIProtoVersion(version string) Option {
 // Defaults:
 //   - homeDir:   home.DiscoverHome() or ~/.agentpaas
 //   - socketPath: home.DiscoverSocketPath(homeDir)
-//   - cliVersion: "0.1.0-dev"
+//   - cliVersion: daemon.CLIVersion (settable via ldflags at build time)
 //   - cliProtoVersion: "v1"
 //
 // Use With* options to override any default.
 func New(opts ...Option) (*Doctor, error) {
 	d := &Doctor{
-		cliVersion:       "0.1.0-dev",
-		cliProtoVersion:  "v1",
+		cliVersion:      daemon.CLIVersion,
+		cliProtoVersion: "v1",
 	}
 
 	// Resolve home directory default.
