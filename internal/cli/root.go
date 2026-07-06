@@ -104,6 +104,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newDoctorCmd())
 	rootCmd.AddCommand(newPackCmd())
 	rootCmd.AddCommand(newExportCmd())
+	rootCmd.AddCommand(newBundleCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newRunCmd())
 	rootCmd.AddCommand(newStopCmd())
