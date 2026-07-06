@@ -359,8 +359,11 @@ func validateEntryPath(name string) error {
 	if strings.HasPrefix(name, ImagePrefix) {
 		return nil
 	}
+	if strings.HasPrefix(name, ExtraPrefix) {
+		return nil
+	}
 
-	return &ErrPathRejected{Path: name, Reason: "entry not in allowed set (manifest.json, agent.lock, policy.yaml, sbom.spdx.json, source/**, image/**)"}
+	return &ErrPathRejected{Path: name, Reason: "entry not in allowed set (manifest.json, agent.lock, policy.yaml, sbom.spdx.json, source/**, image/**, extra/**)"}
 }
 
 func isMetadataFile(name string) bool {

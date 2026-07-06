@@ -32,6 +32,7 @@ const (
 	SBOMPath      = "sbom.spdx.json"
 	SourcePrefix  = "source/"
 	ImagePrefix   = "image/"
+	ExtraPrefix   = "extra/"
 )
 
 // --- Verification check IDs ---
@@ -59,6 +60,15 @@ type Manifest struct {
 	// ManifestSignature is the ECDSA signature over the canonical JSON,
 	// excluding this field. Base64-encoded.
 	ManifestSignature string `json:"manifest_signature,omitempty"`
+	// ExtraFiles lists --include paths digest-pinned but excluded from source digest.
+	ExtraFiles []ManifestExtraFile `json:"extra_files,omitempty"`
+}
+
+// ManifestExtraFile is an explicitly included file outside the locked source digest.
+type ManifestExtraFile struct {
+	Path   string `json:"path"`
+	Digest string `json:"digest"`
+	Bytes  int64  `json:"bytes"`
 }
 
 // ManifestPublisherInfo identifies the publisher of the bundle.
@@ -104,6 +114,10 @@ type BundleConfig struct {
 	SBOM []byte
 	// ImageDir is an optional OCI image layout directory to include as image/.
 	ImageDir string
+	// Ignore filters source/ collection (export uses export-specific matcher).
+	Ignore *pack.IgnoreMatcher
+	// ExtraFiles are written under extra/ and listed in manifest.extra_files.
+	ExtraFiles []pack.BuildFile
 	// PublisherKey is the ECDSA private key used to sign the manifest.
 	PublisherKey interface{} // *ecdsa.PrivateKey — use interface to avoid import
 	// SourceDateEpoch is the fixed timestamp for deterministic tar entries.
