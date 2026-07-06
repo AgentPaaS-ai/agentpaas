@@ -224,25 +224,25 @@ egress:
 // ---------------------------------------------------------------------------
 
 func TestAdversaryT02_PrivateCIDRBoundary(t *testing.T) {
-	// 10.0.0.0/9 is also private (within 10.0.0.0/8)
+	// In P1, all CIDR egress rules are rejected (not yet supported).
+	// This test verifies that a private CIDR is rejected with the CIDR
+	// not-supported error, not silently accepted.
 	p := parseYAML(t, `version: "1.0"
 agent:
   name: x
 egress:
-  - domain: "example.com"
-    cidr: "10.128.0.0/9"
+  - cidr: "10.128.0.0/9"
     ports: [443]
 `)
 	errs := ValidatePolicy(p)
-	// 10.128.0.0/9 is within 10.0.0.0/8, so it should require allow_private.
 	found := false
 	for _, e := range errs {
-		if strings.Contains(e.Message, "allow_private") {
+		if strings.Contains(e.Message, "CIDR egress rules are not yet supported") {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("ADVERSARY BREAK [MEDIUM]: 10.128.0.0/9 not detected as private (inside 10.0.0.0/8)")
+		t.Error("ADVERSARY BREAK [MEDIUM]: CIDR rule should be rejected as not yet supported in P1")
 	}
 }
 
@@ -320,16 +320,16 @@ egress:
 // ---------------------------------------------------------------------------
 
 func TestAdversaryT02_AllowPrivateNilPointer(t *testing.T) {
+	// In P1, all CIDR egress rules are rejected regardless of allow_private.
 	p := parseYAML(t, `version: "1.0"
 agent:
   name: x
 egress:
-  - domain: "example.com"
-    cidr: "192.168.0.0/16"
+  - cidr: "192.168.0.0/16"
     ports: [443]
 `)
 	errs := ValidatePolicy(p)
-	requireValidationError(t, errs, "error", "allow_private")
+	requireValidationError(t, errs, "error", "CIDR egress rules are not yet supported")
 }
 
 // ---------------------------------------------------------------------------
