@@ -34,9 +34,9 @@ egress:
 `
 
 func TestComputePolicyDigest_Valid(t *testing.T) {
-	digest, err := computePolicyDigest([]byte(validPolicyYAML))
+	digest, err := ComputePolicyDigest([]byte(validPolicyYAML))
 	if err != nil {
-		t.Fatalf("computePolicyDigest: %v", err)
+		t.Fatalf("ComputePolicyDigest: %v", err)
 	}
 	if len(digest) != 64 {
 		t.Fatalf("digest length = %d, want 64", len(digest))
@@ -50,17 +50,17 @@ func TestComputePolicyDigest_Valid(t *testing.T) {
 }
 
 func TestComputePolicyDigest_Empty(t *testing.T) {
-	digest, err := computePolicyDigest(nil)
+	digest, err := ComputePolicyDigest(nil)
 	if err != nil {
-		t.Fatalf("computePolicyDigest(nil): %v", err)
+		t.Fatalf("ComputePolicyDigest(nil): %v", err)
 	}
 	if digest != "" {
 		t.Fatalf("digest = %q, want empty", digest)
 	}
 
-	digest, err = computePolicyDigest([]byte{})
+	digest, err = ComputePolicyDigest([]byte{})
 	if err != nil {
-		t.Fatalf("computePolicyDigest([]): %v", err)
+		t.Fatalf("ComputePolicyDigest([]): %v", err)
 	}
 	if digest != "" {
 		t.Fatalf("digest = %q, want empty", digest)
@@ -68,14 +68,14 @@ func TestComputePolicyDigest_Empty(t *testing.T) {
 }
 
 func TestComputePolicyDigest_InvalidYAML(t *testing.T) {
-	_, err := computePolicyDigest([]byte("not: valid: yaml: [["))
+	_, err := ComputePolicyDigest([]byte("not: valid: yaml: [["))
 	if err == nil {
 		t.Fatal("expected error for invalid YAML")
 	}
 }
 
 func TestComputePolicyDigest_ValidationErrors(t *testing.T) {
-	_, err := computePolicyDigest([]byte(privateCIDRPolicy))
+	_, err := ComputePolicyDigest([]byte(privateCIDRPolicy))
 	if err == nil {
 		t.Fatal("expected validation error for private CIDR without allow_private")
 	}
@@ -88,13 +88,13 @@ func TestComputePolicyDigest_ValidationErrors(t *testing.T) {
 }
 
 func TestComputePolicyDigest_Stable(t *testing.T) {
-	d1, err := computePolicyDigest([]byte(validPolicyYAML))
+	d1, err := ComputePolicyDigest([]byte(validPolicyYAML))
 	if err != nil {
-		t.Fatalf("computePolicyDigest 1: %v", err)
+		t.Fatalf("ComputePolicyDigest 1: %v", err)
 	}
-	d2, err := computePolicyDigest([]byte(validPolicyYAML))
+	d2, err := ComputePolicyDigest([]byte(validPolicyYAML))
 	if err != nil {
-		t.Fatalf("computePolicyDigest 2: %v", err)
+		t.Fatalf("ComputePolicyDigest 2: %v", err)
 	}
 	if d1 != d2 {
 		t.Fatalf("digests differ: %s != %s", d1, d2)
@@ -140,9 +140,9 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 		t.Fatalf("PolicyDigest length = %d, want 64", len(lock.PolicyDigest))
 	}
 
-	wantDigest, err := computePolicyDigest(policyBytes)
+	wantDigest, err := ComputePolicyDigest(policyBytes)
 	if err != nil {
-		t.Fatalf("computePolicyDigest: %v", err)
+		t.Fatalf("ComputePolicyDigest: %v", err)
 	}
 	if lock.PolicyDigest != wantDigest {
 		t.Fatalf("PolicyDigest = %s, want %s", lock.PolicyDigest, wantDigest)
@@ -222,9 +222,9 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 }
 
 func TestComputePolicyDigest_FullPolicyFile(t *testing.T) {
-	digest, err := computePolicyDigest([]byte(validPolicyYAML))
+	digest, err := ComputePolicyDigest([]byte(validPolicyYAML))
 	if err != nil {
-		t.Fatalf("computePolicyDigest(validPolicyYAML): %v", err)
+		t.Fatalf("ComputePolicyDigest(validPolicyYAML): %v", err)
 	}
 	if len(digest) != 64 {
 		t.Fatalf("digest length = %d, want 64", len(digest))

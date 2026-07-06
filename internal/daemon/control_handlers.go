@@ -194,6 +194,59 @@ func gatewaySubnetFromIP(ipStr string) string {
 	return fmt.Sprintf("%s/16", network.String())
 }
 
+// verifyDeployedAgent performs all verification steps on deployed agent
+// artifacts BEFORE any Docker resources are created:
+//  1. Immutability check (agent.lock.sha256, image.digest, source_digest)
+//  2. Lockfile signature verification
+//  3. Policy digest validation against deployed policy.yaml
+//  4. Legacy lock detection (must fail unless AGENTPAAS_ALLOW_LEGACY_LOCK=1)
+func verifyDeployedAgent(homeDir, agentName string, auditAppender audit.AuditAppender) error {
+	// Step 1: Verify deployed immutability (lock hash, signature, image.digest, source_digest).
+	if err := pack.VerifyDeployedIntegrity(homeDir, agentName, auditAppender); err != nil {
+		return fmt.Errorf("deployed integrity check failed: %w", err)
+	}
+
+	// Step 2: Load the lock to check PolicyDigest.
+	lockPath := filepath.Join(pack.DeployedAgentPath(homeDir, agentName), "agent.lock")
+	lock, err := pack.ReadAgentLock(lockPath)
+	if err != nil {
+		return fmt.Errorf("read agent.lock for verification: %w", err)
+	}
+
+	// Step 3: Verify lockfile signature (redundant with VerifyDeployedIntegrity
+	// but included for defense-in-depth per spec).
+	if err := pack.VerifyLockfileSignature(lock); err != nil {
+		return fmt.Errorf("lockfile signature verification failed: %w", err)
+	}
+
+	// Step 4: Policy digest verification.
+	if lock.PolicyDigest != "" {
+		deployedDir := pack.DeployedAgentPath(homeDir, agentName)
+		policyPath := filepath.Join(deployedDir, "policy.yaml")
+		policyData, err := os.ReadFile(policyPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("policy.yaml missing but lock has policy_digest; repack required")
+			}
+			return fmt.Errorf("read deployed policy.yaml: %w", err)
+		}
+		computedDigest, err := pack.ComputePolicyDigest(policyData)
+		if err != nil {
+			return fmt.Errorf("compute policy digest: %w", err)
+		}
+		if computedDigest != lock.PolicyDigest {
+			return fmt.Errorf("policy.yaml has been modified since pack; repack required")
+		}
+	} else {
+		// Legacy lock without policy digest.
+		if os.Getenv("AGENTPAAS_ALLOW_LEGACY_LOCK") != "1" {
+			return fmt.Errorf("agent.lock has no policy_digest; repack required for v0.1.2")
+		}
+	}
+
+	return nil
+}
+
 func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*controlv1.RunResponse, error) {
 	agentName := req.GetAgentName()
 	if agentName == "" {
@@ -213,6 +266,12 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Errorf(codes.ResourceExhausted,
 			"concurrent run limit reached (%d/%d active); stop an existing run before starting a new one",
 			s.activeRunCount(), maxConcurrentRuns)
+	}
+
+	// Verify deployed agent integrity, lockfile signature, and policy digest
+	// BEFORE creating any Docker resources.
+	if err := verifyDeployedAgent(s.homePaths.Home, agentName, s.auditWriter); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "deployed agent verification failed: %v", err)
 	}
 
 	rt, err := s.getOrCreateRuntime()

@@ -374,22 +374,15 @@ func TestActiveRunCount(t *testing.T) {
 
 func deployTestAgent(t *testing.T, hp *home.HomePaths, agentName string) {
 	t.Helper()
-	deployedDir := pack.DeployedAgentPath(hp.Home, agentName)
-	if err := os.MkdirAll(deployedDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
+	// Allow legacy locks (no PolicyDigest) for backward-compatible test agents.
+	t.Setenv("AGENTPAAS_ALLOW_LEGACY_LOCK", "1")
+
+	lock, err := pack.NewSignedTestLock(agentName, nil)
+	if err != nil {
+		t.Fatalf("NewSignedTestLock: %v", err)
 	}
-	lockJSON := fmt.Sprintf(`{"version":"v1","agent":{"name":%q},"image":{"digest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}`, agentName)
-	if err := os.WriteFile(filepath.Join(deployedDir, "agent.lock"), []byte(lockJSON), 0o644); err != nil {
-		t.Fatalf("WriteFile agent.lock: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(deployedDir, "image.digest"), []byte("sha256:0000000000000000000000000000000000000000000000000000000000000000"), 0o644); err != nil {
-		t.Fatalf("WriteFile image.digest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(deployedDir, "source_digest"), []byte("sha256:abc"), 0o644); err != nil {
-		t.Fatalf("WriteFile source_digest: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(deployedDir, "deployed_at"), []byte(time.Now().UTC().Format(time.RFC3339Nano)), 0o644); err != nil {
-		t.Fatalf("WriteFile deployed_at: %v", err)
+	if err := pack.RecordDeployment(hp.Home, agentName, lock); err != nil {
+		t.Fatalf("RecordDeployment: %v", err)
 	}
 }
 
