@@ -270,8 +270,10 @@ func (d *Daemon) Start(ctx context.Context) error {
 	if dashboardAddr == "" {
 		dashboardAddr = os.Getenv("AGENTPAAS_DASHBOARD_ADDR")
 	}
+	// Dashboard is disabled by default. It is not yet ready for users.
+	// Enable with AGENTPAAS_DASHBOARD_ADDR=127.0.0.1:8090 or WithDashboard().
 	if dashboardAddr == "" {
-		dashboardAddr = "127.0.0.1:8090"
+		dashboardAddr = "off"
 	}
 	if dashboardAddr != "off" && dashboardAddr != "disabled" {
 		// Create otel store for timeline/logs/cost data.
