@@ -277,6 +277,56 @@ func SignLockfileWithKey(lock *AgentLock, key *ecdsa.PrivateKey) error {
 	return nil
 }
 
+// SignProvenanceEntryWithKey sets entry_signature on e using the publisher
+// private key. Intended for tests and bundle fixtures.
+func SignProvenanceEntryWithKey(e *ProvenanceEntry, key *ecdsa.PrivateKey) error {
+	if e == nil {
+		return errors.New("provenance entry must not be nil")
+	}
+	if key == nil {
+		return errors.New("private key must not be nil")
+	}
+	e.EntrySignature = ""
+	canonical, err := provenanceEntryCanonical(e)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(canonical)
+	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+	if err != nil {
+		return fmt.Errorf("sign provenance entry: %w", err)
+	}
+	e.EntrySignature = base64.StdEncoding.EncodeToString(sig)
+	return nil
+}
+
+// SignPublisherWithKey sets publisher_signature on lock using the publisher
+// private key. The lock must have a publisher block. Intended for tests and
+// bundle fixtures.
+func SignPublisherWithKey(lock *AgentLock, key *ecdsa.PrivateKey) error {
+	if lock == nil {
+		return errors.New("lock must not be nil")
+	}
+	if key == nil {
+		return errors.New("private key must not be nil")
+	}
+	if lock.Publisher == nil {
+		return errors.New("lock has no publisher block")
+	}
+	lock.PublisherSignature = ""
+	canonical, err := canonicalJSON(lock)
+	if err != nil {
+		return err
+	}
+	digest := sha256.Sum256(canonical)
+	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+	if err != nil {
+		return fmt.Errorf("sign publisher: %w", err)
+	}
+	lock.PublisherSignature = base64.StdEncoding.EncodeToString(sig)
+	return nil
+}
+
 // LockConfig controls the agent.lock generation process.
 type LockConfig struct {
 	// BuildResult is the result from BuildImage (T02).
