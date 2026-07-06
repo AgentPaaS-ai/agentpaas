@@ -106,9 +106,12 @@ container only when explicitly declared in policy.
 
 ## Ingress
 
-Ingress rules in `policy.yaml` configure the gateway to accept inbound
-trigger API requests on a declared path and port. Ingress traffic is also
-policy-scoped and audited.
+In P1, untrusted callers cannot reach the harness directly — the agent container
+is on an internal-only Docker network. The trusted local daemon may use Docker
+exec and container loopback for agent lifecycle control (invoke, status, stop).
+Gateway-native ingress (trigger API requests routed through the gateway sidecar
+per `policy.yaml` ingress rules) is deferred to B19/B21. When implemented,
+ingress traffic will be policy-scoped and audited.
 
 ## Audit trail
 

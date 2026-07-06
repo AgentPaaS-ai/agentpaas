@@ -9,6 +9,17 @@ For workarounds and authoring guidance, see
 [policy-reference.md](policy-reference.md) and
 [how-enforcement-works.md](how-enforcement-works.md).
 
+## Current Development Status
+
+Blocks are numbered per the internal execution plan. Tracked status:
+
+| Block | Description | Status |
+|---|---|---|
+| B17 | Network topology isolation, egress gateway, basic audit | ✅ Complete |
+| B18 | Manual testing suite (T1-T10 lifecycle), red-team smoke | ✅ Complete |
+| B20 | Security claim closure — docs truth-sync, audit integrity, credential zero-visibility | 🔄 In progress |
+| B19 | AgentGateway policy integration (token budgets, rate limiting, gateway-native ingress) | ⏭️ Deferred after B20 |
+
 ## Network enforcement
 
 ### HTTP_PROXY only (no transparent proxy for non-HTTP)
