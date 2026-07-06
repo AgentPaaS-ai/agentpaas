@@ -16,6 +16,7 @@ const (
 )
 
 func TestHandleLLM_FakeFallback_NoLLMConfig(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_LLM", "1")
 	recorder := &recordingAuditAppender{}
 	s := &harnessRPCServer{audit: recorder}
 	state := &rpcInvokeState{
@@ -516,6 +517,7 @@ func TestHandleLLM_BudgetExceededWithoutTerminateReturnsLLMFailed(t *testing.T) 
 
 func TestHandleLLM_EmptyPromptStillWorks(t *testing.T) {
 	// Empty prompt with no LLM config should still work (word count = 0).
+	t.Setenv("AGENTPAAS_TEST_FAKE_LLM", "1")
 	recorder := &recordingAuditAppender{}
 	s := &harnessRPCServer{audit: recorder}
 	state := &rpcInvokeState{
@@ -627,5 +629,39 @@ func TestHandleLLM_NilAuditDoesNotPanic(t *testing.T) {
 
 	if !resp.OK {
 		t.Fatalf("expected OK with nil audit, got error: %s", resp.Error)
+	}
+}
+
+// TestHandleLLM_NoConfigProductionFailsClosed verifies that in production mode
+// (without AGENTPAAS_TEST_FAKE_LLM=1), calling agent.llm() without a configured
+// llm provider returns a structured error — not fake text.
+func TestHandleLLM_NoConfigProductionFailsClosed(t *testing.T) {
+	// No AGENTPAAS_TEST_FAKE_LLM set → production mode.
+	recorder := &recordingAuditAppender{}
+	s := &harnessRPCServer{audit: recorder}
+	state := &rpcInvokeState{
+		payload:   map[string]any{},
+		budget:    NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+		terminate: nil,
+	}
+
+	req := rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hello world"}}
+	resp := s.handleLLM(req, state)
+
+	if resp.OK {
+		t.Fatalf("expected error in production without LLM config, got OK: %#v", resp.Result)
+	}
+	if resp.Code != "llm_failed" {
+		t.Fatalf("code = %q, want llm_failed", resp.Code)
+	}
+	if !strings.Contains(resp.Error, "llm not configured") {
+		t.Fatalf("error = %q, want 'llm not configured'", resp.Error)
+	}
+	if !strings.Contains(resp.Error, "AGENTPAAS_TEST_FAKE_LLM=1") {
+		t.Fatalf("error = %q, want mention of AGENTPAAS_TEST_FAKE_LLM=1", resp.Error)
+	}
+	// Must NOT contain fake text.
+	if strings.Contains(resp.Error, "agentpaas fake") {
+		t.Fatalf("error = %q, must not contain fake llm response text", resp.Error)
 	}
 }

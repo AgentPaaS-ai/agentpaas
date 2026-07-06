@@ -23,6 +23,7 @@ def handle(payload):
 }
 
 func TestSDKLLMRecordsTokensAndEnforcesBudget(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_LLM", "1")
 	srv := newReadyServer(t, `from agentpaas_sdk import agent
 
 @agent.on_invoke
