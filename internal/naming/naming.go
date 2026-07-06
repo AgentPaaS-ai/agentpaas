@@ -55,7 +55,7 @@ func ValidatePub8(pub8 string) error {
 		return fmt.Errorf("%w: got %d characters", ErrInvalidPub8, len(pub8))
 	}
 	for _, c := range pub8 {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return fmt.Errorf("%w: contains non-hex character %q", ErrInvalidPub8, c)
 		}
 	}

@@ -251,9 +251,6 @@ func TestV2Lock_TamperedFingerprint(t *testing.T) {
 	if err := VerifyAgentLock(lock, ""); err == nil {
 		t.Fatal("VerifyAgentLock should fail for tampered fingerprint")
 	}
-	if !strings.Contains(lock.Publisher.Fingerprint, "deadbeef") {
-		// Just a sanity check that the field is what we set.
-	}
 }
 
 // TestV2Lock_TamperedProvenanceField verifies that mutating a provenance
