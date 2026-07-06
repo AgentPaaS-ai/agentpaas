@@ -119,57 +119,53 @@ egress:
 // CIDR validation — private ranges require opt-in
 // ---------------------------------------------------------------------------
 
-func TestValidatePublicCIDRAccepted(t *testing.T) {
+func TestValidatePublicCIDRRejectedInP1(t *testing.T) {
 	p := parseYAML(t, `version: "1.0"
 agent:
   name: test-agent
 egress:
-  - domain: "example.com"
-    cidr: "8.8.8.0/24"
+  - cidr: "8.8.8.0/24"
     ports: [53]
 `)
 	errs := ValidatePolicy(p)
-	requireNoValidationErrors(t, errs, false)
+	requireValidationError(t, errs, "error", "CIDR egress rules are not yet supported")
 }
 
-func TestValidatePrivateCIDRRequiresOptIn(t *testing.T) {
+func TestValidatePrivateCIDRRejectedInP1(t *testing.T) {
 	p := parseYAML(t, `version: "1.0"
 agent:
   name: test-agent
 egress:
-  - domain: "example.com"
-    cidr: "10.0.0.0/8"
+  - cidr: "10.0.0.0/8"
     ports: [5432]
 `)
 	errs := ValidatePolicy(p)
-	requireValidationError(t, errs, "error", "allow_private")
+	requireValidationError(t, errs, "error", "CIDR egress rules are not yet supported")
 }
 
-func TestValidatePrivateCIDRWithOptIn(t *testing.T) {
+func TestValidatePrivateCIDRWithOptInRejectedInP1(t *testing.T) {
 	p := parseYAML(t, `version: "1.0"
 agent:
   name: test-agent
 egress:
-  - domain: "example.com"
-    cidr: "192.168.1.0/24"
+  - cidr: "192.168.1.0/24"
     ports: [5432]
     allow_private: true
 `)
 	errs := ValidatePolicy(p)
-	requireNoValidationErrors(t, errs, false)
+	requireValidationError(t, errs, "error", "CIDR egress rules are not yet supported")
 }
 
-func TestValidateRFC6598CIDRRequiresOptIn(t *testing.T) {
+func TestValidateRFC6598CIDRRejectedInP1(t *testing.T) {
 	p := parseYAML(t, `version: "1.0"
 agent:
   name: test-agent
 egress:
-  - domain: "example.com"
-    cidr: "100.64.0.0/10"
+  - cidr: "100.64.0.0/10"
     ports: [8080]
 `)
 	errs := ValidatePolicy(p)
-	requireValidationError(t, errs, "error", "allow_private")
+	requireValidationError(t, errs, "error", "CIDR egress rules are not yet supported")
 }
 
 func TestValidateInvalidCIDRRejected(t *testing.T) {
@@ -177,12 +173,11 @@ func TestValidateInvalidCIDRRejected(t *testing.T) {
 agent:
   name: test-agent
 egress:
-  - domain: "example.com"
-    cidr: "not-a-cidr"
+  - cidr: "not-a-cidr"
     ports: [443]
 `)
 	errs := ValidatePolicy(p)
-	requireValidationError(t, errs, "error", "invalid CIDR")
+	requireValidationError(t, errs, "error", "CIDR egress rules are not yet supported")
 }
 
 // ---------------------------------------------------------------------------
@@ -648,10 +643,6 @@ egress:
   - domain: "*.example.com"
     ports: [443, 80]
     allow_wildcard: true
-  - domain: "db.internal"
-    cidr: "10.0.0.0/8"
-    ports: [5432]
-    allow_private: true
   - domain: "api.anthropic.com"
     ports: [443]
   - domain: "hooks.example.com"
