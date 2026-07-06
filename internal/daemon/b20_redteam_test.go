@@ -351,7 +351,9 @@ func TestB20RedTeam_Claim3_LegacyLockRejected(t *testing.T) {
 	}
 
 	// Ensure AGENTPAAS_ALLOW_LEGACY_LOCK is not set.
-	os.Unsetenv("AGENTPAAS_ALLOW_LEGACY_LOCK")
+	if err := os.Unsetenv("AGENTPAAS_ALLOW_LEGACY_LOCK"); err != nil {
+		t.Fatalf("Unsetenv: %v", err)
+	}
 
 	server, networkCalls := newVerificationTestServer(t, hp)
 	_, err = server.Run(context.Background(), nil)
