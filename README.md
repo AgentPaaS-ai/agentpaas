@@ -81,7 +81,7 @@ isolation remains the hard boundary regardless.
 | **Container isolation** | Non-root (UID 64000), read-only rootfs, no shell, all capabilities dropped, seccomp profile |
 | **Credential brokering** | Secrets never reach agent code — injected by gateway at request time |
 | **Internal-only network** | No route to internet except through gateway; DNS stub only resolves approved domains |
-| **Tamper-evident audit** | Hash-chained JSONL + signed checkpoints — deletions detected on verification |
+| **Tamper-evident audit** | Hash-chained JSONL + signed checkpoints — in-chain tampering (modification, reordering, insertion) detected on verification. Tail truncation (removing last N records) leaves a valid prefix chain and requires external checkpoint anchoring (P2). |
 | **Signed audit export** | Portable signed bundle, verifiable on a second machine |
 | **Signed images** | Every agent image cosign-signed with per-agent identity key |
 | **SBOM on every artifact** | Software bill of materials surfaced at pack time |
@@ -244,7 +244,7 @@ agentpaas run my-agent         # run it under the same governance
 They get the same security guarantees: default-deny egress, brokered
 credentials, tamper-evident audit — no matter who built the agent.
 
-See [docs/roadmap.md](docs/roadmap.md) for the full task list.
+See [docs/known-limitations.md](docs/known-limitations.md) for current development status and [open issues](https://github.com/AgentPaaS-ai/agentpaas/issues) for upcoming work.
 
 ## Documentation
 
@@ -252,12 +252,11 @@ See [docs/roadmap.md](docs/roadmap.md) for the full task list.
 - [Quickstart](docs/quickstart.md)
 - [Policy reference](docs/policy-reference.md)
 - [Secrets guide](docs/secrets.md)
-- [Enforcement topology](how-enforcement-works.md)
-- [Threat model](threat-model.md)
-- [Audit export](audit-export.md)
+- [Enforcement topology](docs/how-enforcement-works.md)
+- [Threat model](docs/threat-model.md)
+- [Audit export](docs/audit-export.md)
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
 - [Known limitations](docs/known-limitations.md)
-- [Roadmap](docs/roadmap.md)
 
 ## Troubleshooting
 

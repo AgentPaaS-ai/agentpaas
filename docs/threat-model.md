@@ -1,7 +1,7 @@
 # Threat Model
 
-This document is copied verbatim from PRD §3 (Security Deep-Dive) in
-[agentpaas-prd-v4-master.md](../agentpaas-prd-v4-master.md).
+This document captures the security posture and threat controls for
+AgentPaaS P1. It is derived from the internal PRD security deep-dive.
 
 For how controls map to runtime enforcement, see
 [how-enforcement-works.md](how-enforcement-works.md). For accepted P1 gaps,
