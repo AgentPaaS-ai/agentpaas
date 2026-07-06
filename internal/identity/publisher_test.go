@@ -74,7 +74,7 @@ func TestPublisherFingerprint_MatchesPackDefinition(t *testing.T) {
 		t.Errorf("fingerprint length = %d, want 64", len(fp))
 	}
 	for _, c := range fp {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("fingerprint contains non-lowercase-hex character: %c", c)
 		}
 	}

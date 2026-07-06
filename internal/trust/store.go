@@ -103,7 +103,7 @@ type storeFile struct {
 // a new empty store. Use Save to persist changes.
 type Store struct {
 	path    string // path to publishers.json
-	lockFd  int    // file descriptor for the flock file
+	// lockFd removed — was unused
 	records map[string]*Publisher
 	removed map[string]bool // fingerprints explicitly removed since last load
 	dirty   bool
@@ -338,7 +338,7 @@ func (s *Store) Save() error {
 	if err != nil {
 		return fmt.Errorf("trust: open dir for fsync: %w", err)
 	}
-	defer dirFd.Close()
+	defer func() { _ = dirFd.Close() }()
 	if err := dirFd.Sync(); err != nil {
 		return fmt.Errorf("trust: fsync dir: %w", err)
 	}

@@ -152,10 +152,10 @@ func runIdentityForceRotate(cmd *cobra.Command, ks identity.KeyStore, name strin
 	}
 
 	// Loud warning about key change.
-	fmt.Fprintf(cmd.ErrOrStderr(), "\n⚠ WARNING: Publisher identity has been rotated.\n")
-	fmt.Fprintf(cmd.ErrOrStderr(), "Receivers who pinned the old key will hard-fail and must re-verify.\n")
-	fmt.Fprintf(cmd.ErrOrStderr(), "Old fingerprint: %s\n", identity.FormatFingerprintDisplay(oldFP))
-	fmt.Fprintf(cmd.ErrOrStderr(), "New fingerprint: %s\n\n", identity.FormatFingerprintDisplay(pi.Fingerprint))
+	fmt.Fprintf(cmd.ErrOrStderr(), "\n⚠ WARNING: Publisher identity has been rotated.\n") //nolint:errcheck
+	fmt.Fprintf(cmd.ErrOrStderr(), "Receivers who pinned the old key will hard-fail and must re-verify.\n") //nolint:errcheck
+	fmt.Fprintf(cmd.ErrOrStderr(), "Old fingerprint: %s\n", identity.FormatFingerprintDisplay(oldFP)) //nolint:errcheck
+	fmt.Fprintf(cmd.ErrOrStderr(), "New fingerprint: %s\n\n", identity.FormatFingerprintDisplay(pi.Fingerprint)) //nolint:errcheck
 
 	emitAudit(cmd, audit.EventTypePublisherIdentityRotated, map[string]string{
 		"old_fingerprint": oldFP,
@@ -167,26 +167,26 @@ func runIdentityForceRotate(cmd *cobra.Command, ks identity.KeyStore, name strin
 	return nil
 }
 
-func printIdentityInitResult(cmd *cobra.Command, pi *identity.PublisherIdentity) error {
+func printIdentityInitResult(cmd *cobra.Command, pi *identity.PublisherIdentity) {
 	jsonOut := jsonOutput(cmd)
 	if jsonOut {
-		return printTextOrJSON(true, identityShowResult{
+		_ = printTextOrJSON(true, identityShowResult{
 			Name:          pi.Name,
 			Fingerprint:   pi.Fingerprint,
 			FingerprintDisplay: identity.FormatFingerprintDisplay(pi.Fingerprint),
 			PublicKeyPEM:  pi.PublicKeyPEM,
 			CreatedAt:     pi.CreatedAt.Format(time.RFC3339),
 		}, nil)
+		return
 	}
 
 	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "Publisher identity created.\n")
-	fmt.Fprintf(out, "Name:        %s\n", pi.Name)
-	fmt.Fprintf(out, "Fingerprint: %s\n", identity.FormatFingerprintDisplay(pi.Fingerprint))
-	fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339))
-	fmt.Fprintf(out, "\nShare this fingerprint with people who will receive your agents.\n")
-	fmt.Fprintf(out, "They verify it out-of-band to ensure authenticity.\n")
-	return nil
+	fmt.Fprintf(out, "Publisher identity created.\n")          //nolint:errcheck
+	fmt.Fprintf(out, "Name:        %s\n", pi.Name)               //nolint:errcheck
+	fmt.Fprintf(out, "Fingerprint: %s\n", identity.FormatFingerprintDisplay(pi.Fingerprint)) //nolint:errcheck
+	fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339)) //nolint:errcheck
+	fmt.Fprintf(out, "\nShare this fingerprint with people who will receive your agents.\n") //nolint:errcheck
+	fmt.Fprintf(out, "They verify it out-of-band to ensure authenticity.\n")               //nolint:errcheck
 }
 
 // ---------------------------------------------------------------------------
@@ -233,9 +233,9 @@ func newIdentityShowCmd() *cobra.Command {
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Name:        %s\n", pi.Name)
-			fmt.Fprintf(out, "Fingerprint: %s\n", identity.FormatFingerprintDisplay(pi.Fingerprint))
-			fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339))
+			fmt.Fprintf(out, "Name:        %s\n", pi.Name)                               //nolint:errcheck
+			fmt.Fprintf(out, "Fingerprint: %s\n", identity.FormatFingerprintDisplay(pi.Fingerprint)) //nolint:errcheck
+			fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339))      //nolint:errcheck
 			return nil
 		},
 	}
@@ -338,7 +338,7 @@ func newIdentityExportCmd() *cobra.Command {
 				"name":        name,
 			})
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Identity exported to %s\n", outPath)
+			fmt.Fprintf(cmd.OutOrStdout(), "Identity exported to %s\n", outPath) //nolint:errcheck
 			return nil
 		},
 	}
@@ -352,7 +352,7 @@ func newIdentityExportCmd() *cobra.Command {
 // readExportPassphrase reads and confirms the passphrase interactively.
 // Minimum 12 characters. Never via argv.
 func readExportPassphrase(cmd *cobra.Command) (string, error) {
-	fmt.Fprint(cmd.ErrOrStderr(), "Enter export passphrase (min 12 chars): ")
+	fmt.Fprint(cmd.ErrOrStderr(), "Enter export passphrase (min 12 chars): ") //nolint:errcheck
 	pass1, err := readPassword(cmd)
 	if err != nil {
 		return "", fmt.Errorf("read passphrase: %w", err)
@@ -361,12 +361,12 @@ func readExportPassphrase(cmd *cobra.Command) (string, error) {
 		return "", fmt.Errorf("passphrase must be at least 12 characters (got %d)", len(pass1))
 	}
 
-	fmt.Fprint(cmd.ErrOrStderr(), "\nConfirm passphrase: ")
+	fmt.Fprint(cmd.ErrOrStderr(), "\nConfirm passphrase: ") //nolint:errcheck
 	pass2, err := readPassword(cmd)
 	if err != nil {
 		return "", fmt.Errorf("read confirmation passphrase: %w", err)
 	}
-	fmt.Fprintln(cmd.ErrOrStderr(), "")
+	fmt.Fprintln(cmd.ErrOrStderr(), "") //nolint:errcheck
 
 	if pass1 != pass2 {
 		return "", fmt.Errorf("passphrases do not match")
@@ -584,12 +584,12 @@ func newIdentityImportCmd() *cobra.Command {
 			if existing != nil {
 				if existing.Fingerprint == importedFP {
 					// Idempotent success — same identity already exists.
-					fmt.Fprintf(cmd.OutOrStdout(), "Identity already present (fingerprint %s) — nothing to do.\n",
+					fmt.Fprintf(cmd.OutOrStdout(), "Identity already present (fingerprint %s) — nothing to do.\n", //nolint:errcheck
 						identity.FormatFingerprintDisplay(importedFP))
 					return nil
 				}
-				return fmt.Errorf("a different publisher identity already exists (fingerprint %s). "+
-					"Remove it first or import to a different home directory.",
+				return fmt.Errorf("a different publisher identity already exists (fingerprint %s); "+
+					"remove it first or import to a different home directory",
 					identity.FormatFingerprintDisplay(existing.Fingerprint))
 			}
 
@@ -625,9 +625,9 @@ func newIdentityImportCmd() *cobra.Command {
 				"name":        name,
 			})
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Identity imported.\n")
-			fmt.Fprintf(cmd.OutOrStdout(), "Name:        %s\n", name)
-			fmt.Fprintf(cmd.OutOrStdout(), "Fingerprint: %s\n", identity.FormatFingerprintDisplay(importedFP))
+			fmt.Fprintf(cmd.OutOrStdout(), "Identity imported.\n")                               //nolint:errcheck
+			fmt.Fprintf(cmd.OutOrStdout(), "Name:        %s\n", name)                        //nolint:errcheck
+			fmt.Fprintf(cmd.OutOrStdout(), "Fingerprint: %s\n", identity.FormatFingerprintDisplay(importedFP)) //nolint:errcheck
 			return nil
 		},
 	}
@@ -635,12 +635,12 @@ func newIdentityImportCmd() *cobra.Command {
 
 // readImportPassphrase reads the import passphrase from terminal.
 func readImportPassphrase(cmd *cobra.Command) (string, error) {
-	fmt.Fprint(cmd.ErrOrStderr(), "Enter import passphrase: ")
+	fmt.Fprint(cmd.ErrOrStderr(), "Enter import passphrase: ") //nolint:errcheck
 	pw, err := readPassword(cmd)
 	if err != nil {
 		return "", fmt.Errorf("read passphrase: %w", err)
 	}
-	fmt.Fprintln(cmd.ErrOrStderr(), "")
+	fmt.Fprintln(cmd.ErrOrStderr(), "") //nolint:errcheck
 	return pw, nil
 }
 
@@ -699,7 +699,7 @@ func logAuditLocal(cmd *cobra.Command, eventType string, payload map[string]stri
 		Payload:   payload,
 	}
 	eventJSON, _ := json.Marshal(event)
-	fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s\n", string(eventJSON))
+	fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s\n", string(eventJSON)) //nolint:errcheck
 }
 
 // ---------------------------------------------------------------------------
