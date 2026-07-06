@@ -4,85 +4,103 @@ A single demo that showcases AgentPaaS governing an LLM-powered agent.
 
 ## What It Does
 
-1. User asks a natural-language question: "What's the weather in Folsom?"
-2. LLM (via OpenRouter) extracts the city name from the question
-3. Agent fetches weather data from wttr.in (policy-controlled egress)
-4. LLM analyzes the raw weather data and produces a friendly summary
+1. User provides a city name as input
+2. Agent fetches real weather data from wttr.in (HTTP, policy-controlled)
+3. LLM summarizes the raw weather data into a friendly response
 
-Two LLM calls = real reasoning, not just a web API call wrapped in an agent.
+Real data first, LLM for presentation — never ask an LLM to "look up"
+weather (they fabricate values).
 
 ## What It Demonstrates
 
-- **LLM governance**: Both LLM calls are budget-tracked and audited
-- **Egress policy**: Only wttr.in is allowed — all other domains are denied
+- **Egress policy**: Only wttr.in:443 and openrouter.ai:443 are allowed
+- **Credential brokering**: LLM API key stored in Keychain, injected at runtime
 - **Signed audit chain**: Every action (LLM call, HTTP egress, invoke) is
   recorded in the tamper-evident audit log
-- **Policy-controlled**: The agent cannot exfiltrate data — only wttr.in egress
+- **Real data**: Weather values match wttr.in — not LLM-fabricated
 
 ## Prerequisites
 
-1. AgentPaaS installed (brew install agentpaas-ai/tap/agentpaas)
-2. Docker (Colima or Docker Desktop) running
-3. An OpenRouter API key (free tier works): https://openrouter.ai/keys
+1. **Hermes Agent**: `brew install nousresearch/tap/hermes-agent`
+2. **Docker**: `brew install colima && colima start`
+3. **AgentPaaS**: `brew install agentpaas-ai/tap/agentpaas`
+4. **Clear quarantine** (brew cask not notarized):
+   ```bash
+   xattr -cr /opt/homebrew/bin/agentpaas
+   ```
+5. **OpenRouter API key** (free tier): https://openrouter.ai/keys
 
 ## Quick Start (through Hermes)
 
-The easiest way to run this demo is through Hermes Agent, which handles
-the full lifecycle: build, pack, run, invoke.
+### 1. Install the AgentPaaS plugin
 
-1. Install the AgentPaaS Hermes plugin:
-   ```sh
-   hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable
-   /quit  # restart Hermes to load the plugin
-   ```
+In Hermes, tell it:
 
-2. Store your OpenRouter API key:
-   ```sh
-   agentpaas secret add openrouter-key
-   # paste your OpenRouter key when prompted
-   ```
+> Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
 
-3. In Hermes, ask it to build and run the weather agent:
-   ```
-   Build and run the weather agent demo from demo/weather-agent/.
-   Use OpenRouter with the deepseek/deepseek-v4-flash model.
-   My OpenRouter key is stored as "openrouter-key".
-   Then invoke it with the question "What's the weather in Folsom?"
-   ```
+Hermes installs the plugin and registers the toolset. Restart when prompted:
+```
+/quit
+hermes
+```
 
-4. Hermes will:
-   - Initialize the agent project (agentpaas_init_project)
-   - Configure the LLM provider (agentpaas_llm_configure)
-   - Validate the project (agentpaas_validate_project)
-   - Pack the agent into a Docker image (agentpaas_pack)
-   - Run the agent (agentpaas_run)
-   - Invoke it with your question (agentpaas_trigger_invoke)
-   - Show you the timeline and audit trail (agentpaas_get_run_timeline)
+### 2. Store your OpenRouter API key
+
+In a separate terminal (NOT in Hermes — the key never enters the
+conversation):
+
+```bash
+agentpaas secret add openrouter-key
+# paste your OpenRouter key when prompted
+```
+
+### 3. Build and run the weather agent
+
+In Hermes:
+
+> Build a weather agent that takes a city name as input, uses an LLM
+> to look up the weather, and returns the current conditions.
+
+When Hermes asks about the LLM:
+
+> Yes, use openrouter deepseek flash, key is in openrouter-key
+
+### 4. Invoke the agent
+
+> Invoke the weather agent with city=Folsom
+
+### 5. Check the audit trail
+
+> Show me the audit trail for the last run
+
+You'll see:
+- `egress_allowed` for wttr.in (weather data fetch)
+- `egress_allowed` for openrouter.ai (LLM call, with credential_id)
+- 0 policy denials
 
 ## Quick Start (CLI only)
 
 If you prefer the CLI directly:
 
-```sh
-# 1. Store your OpenRouter key (pipe it in — never on the command line)
-echo -n "sk-or-v1-YOUR_KEY_HERE" | agentpaas secret add openrouter-key
+```bash
+# 1. Start the daemon
+agentpaas daemon start
 
-# 2. Configure LLM in the agent project
+# 2. Store your OpenRouter key
+agentpaas secret add openrouter-key
+
+# 3. Build the agent from this demo directory
 cd demo/weather-agent
 agentpaas llm configure --provider openrouter --model deepseek/deepseek-v4-flash --credential openrouter-key
-
-# 3. Validate, pack, and run
 agentpaas validate-project .
 agentpaas pack .
 agentpaas run weather-agent
 
-# 4. Invoke the agent (payload must be a file path)
-echo '{"query": "What is the weather in Folsom?"}' > /tmp/payload.json
-agentpaas trigger invoke weather-agent --payload /tmp/payload.json --wait
+# 4. Invoke the agent
+agentpaas trigger invoke weather-agent --payload '{"city": "Folsom"}' --wait
 
-# 5. Check the timeline and audit trail
-agentpaas status <run-id>
-agentpaas audit query --run-id <run-id>
+# 5. Check the audit trail
+agentpaas audit query
 ```
 
 ## Expected Output
@@ -91,41 +109,41 @@ The agent returns something like:
 
 ```json
 {
-  "scenario": "weather-agent",
-  "results": {
-    "city": "Folsom",
-    "weather_fetched": true,
-    "llm_summary": true
-  },
-  "answer": "It's currently 72°F and sunny in Folsom. The weather is pleasant with clear skies. It's a great day to be outside!"
+  "status": "OK",
+  "city": "Folsom",
+  "conditions": "Currently in Folsom it's 90°F (32°C) and sunny.
+  Humidity is 21% with a light SW breeze at 8 mph."
 }
 ```
 
 The exact answer varies — the LLM generates it from the live weather data.
 
-## Audit Trail
+## Verify Real Data
 
-After running, check the audit trail to see the governance in action:
+Cross-check the agent's output against wttr.in directly:
 
-```sh
-agentpaas audit query --run-id <run-id>
+```bash
+curl -s "https://wttr.in/Folsom?format=j1" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+cur = d['current_condition'][0]
+print(f'{cur[\"temp_F\"]}F, {cur[\"weatherDesc\"][0][\"value\"]}, {cur[\"humidity\"]}% humidity')
+"
 ```
 
-You'll see:
-- `llm_call` events (2x — city extraction + weather summary)
-- `egress_allowed` for wttr.in
-- `egress_denied` for any other domain the agent tries to reach
-- Budget tracking (tokens used, time elapsed)
-- Signed hash chain linking all events
+The agent's response should match these real values.
 
 ## Try Variations
 
-```sh
+```bash
 # Different city
-echo '{"query": "How is the weather in Tokyo?"}' > /tmp/payload.json
-agentpaas trigger invoke weather-agent --payload /tmp/payload.json --wait
+agentpaas trigger invoke weather-agent --payload '{"city": "Tokyo"}' --wait
 
-# Vague question — LLM has to reason about what city to use
-echo '{"query": "Is it raining where Apple is headquartered?"}' > /tmp/payload.json
-agentpaas trigger invoke weather-agent --payload /tmp/payload.json --wait
+# Different question style
+agentpaas trigger invoke weather-agent --payload '{"city": "Paris"}' --wait
 ```
+
+## Troubleshooting
+
+See the [main README troubleshooting section](../README.md#troubleshooting)
+and the [manual testing guide](../docs/manual-testing.md).
