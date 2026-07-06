@@ -122,8 +122,9 @@ func TestBuildInvokePayload_WithLLMConfig(t *testing.T) {
 	if creds[0]["header"] != "Authorization" {
 		t.Errorf("credentials[0].header = %q, want Authorization", creds[0]["header"])
 	}
-	if creds[0]["value"] != "sk-test-api-key-12345" {
-		t.Errorf("credentials[0].value = %q, want sk-test-api-key-12345", creds[0]["value"])
+	// Credential values are NOT in the payload — they come from a sidecar file.
+	if _, hasValue := creds[0]["value"]; hasValue {
+		t.Errorf("credentials[0].value should not be present in payload (values come from sidecar)")
 	}
 }
 
@@ -145,8 +146,22 @@ func TestBuildInvokePayload_CredentialNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildInvokePayload() error = %v, want nil (graceful fallback)", err)
 	}
-	if len(payload) != 0 {
-		t.Fatalf("buildInvokePayload() = %v, want empty map (credential not found)", payload)
+	// Credential metadata (id+header) is always included even when Keychain
+	// resolution fails. Values come from the sidecar file, not the payload.
+	creds, ok := payload["credentials"].([]map[string]any)
+	if !ok || len(creds) != 1 {
+		t.Fatalf("payload[%q] missing or wrong count: %v", "credentials", payload)
+	}
+	if creds[0]["id"] != "nonexistent-key" {
+		t.Errorf("credentials[0].id = %q, want nonexistent-key", creds[0]["id"])
+	}
+	// llm section should also be present with metadata (no value).
+	llm, ok := payload["llm"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload[%q] missing: %v", "llm", payload)
+	}
+	if llm["credential"] != "nonexistent-key" {
+		t.Errorf("llm.credential = %q, want nonexistent-key", llm["credential"])
 	}
 }
 
@@ -203,8 +218,16 @@ func TestBuildInvokePayload_SecretNotInError(t *testing.T) {
 			t.Errorf("error message contains credential name: %s", errStr)
 		}
 	}
-	// The payload should be empty (graceful fallback).
-	if len(payload) != 0 {
-		t.Fatalf("buildInvokePayload() = %v, want empty map (graceful fallback)", payload)
+	// Credential metadata (id+header) is always included; values come from sidecar.
+	// Check that the payload has metadata, not a value.
+	if _, hasLLM := payload["llm"]; !hasLLM {
+		t.Fatalf("payload should have llm metadata: %v", payload)
+	}
+	creds, ok := payload["credentials"].([]map[string]any)
+	if !ok || len(creds) != 1 {
+		t.Fatalf("payload[%q] missing or wrong count: %v", "credentials", payload)
+	}
+	if _, hasValue := creds[0]["value"]; hasValue {
+		t.Errorf("credentials[0].value should not be present (values come from sidecar)")
 	}
 }

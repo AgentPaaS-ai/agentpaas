@@ -81,6 +81,12 @@ func TestSDKHTTPWithCredentialDoesNotExposeSecret(t *testing.T) {
 def handle(payload):
     return agent.http_with_credential("api-key", "GET", payload["url"])
 `)
+	defer func() { _ = srv.Close() }()
+
+	// Inject credentials via the side-channel (new T01/T02 flow).
+	srv.worker.rpc.SetCredentialsForTest(map[string]rpcCredential{
+		"api-key": {Header: "Authorization", Value: secret},
+	})
 
 	payload := `{"url":` + quoteJSON(upstream.URL) + `,"credentials":[{"id":"api-key","header":"Authorization","value":` + quoteJSON(secret) + `}]}`
 	got := invokeSDKAgent(t, srv, payload)

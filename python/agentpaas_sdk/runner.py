@@ -12,6 +12,24 @@ from typing import Any
 from ._rpc import RPCClient
 from .agent import agent
 
+# Reserved keys that must never reach agent code.
+_RESERVED_AGENT_KEYS = frozenset({"credentials", "llm", "mcp", "mcp_servers"})
+
+
+def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Strip reserved platform keys before passing to the agent handler.
+
+    Defense-in-depth: the Go harness already strips these, but the Python
+    runner also strips them so agent code never sees credentials, llm config,
+    or mcp config even if they somehow leak through.
+    """
+    return {
+        k: v
+        for k, v in payload.items()
+        if k not in _RESERVED_AGENT_KEYS
+        and not k.startswith("__agentpaas_")
+    }
+
 
 def run() -> None:
     agent_path = os.environ["AGENTPAAS_AGENT_PATH"]
@@ -50,7 +68,8 @@ def run() -> None:
     for line in sys.stdin:
         try:
             payload = json.loads(line)
-            result = agent.invoke(payload)
+            sanitized = _sanitize_payload(payload)
+            result = agent.invoke(sanitized)
             send({"type": "ok", "result": result})
         except Exception:
             send(

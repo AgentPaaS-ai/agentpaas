@@ -33,6 +33,12 @@ def handle(payload):
 	srv := newReadyServer(t, agent)
 	defer func() { _ = srv.Close() }()
 
+	// Inject credentials via the side-channel (new T01/T02 flow).
+	// Credential values are no longer passed through the invoke payload.
+	srv.worker.rpc.SetCredentialsForTest(map[string]rpcCredential{
+		"mycred": {Header: "Authorization", Value: sentinel},
+	})
+
 	payload := `{"url":` + quoteJSON(upstream.URL) + `,"credentials":[{"id":"mycred","value":"` + sentinel + `"}]}`
 	got := invokeSDKAgent(t, srv, payload)
 	encoded := ""
