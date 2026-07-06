@@ -7,6 +7,11 @@ const EventTypeMCPToolCall = "mcp_tool_call"
 const EventTypeMCPToolDenied = "mcp_tool_denied"
 const EventTypeImmutableViolation = "immutable_violation"
 
+// Trust store event type constants.
+const EventTypePublisherTrusted    = "publisher_trusted"
+const EventTypePublisherRemoved    = "publisher_removed"
+const EventTypePublisherKeyConflict = "publisher_key_conflict"
+
 // AuditAppender is implemented by audit sinks that accept audit records.
 type AuditAppender interface {
 	Append(record AuditRecord) error
