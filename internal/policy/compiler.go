@@ -50,12 +50,22 @@ type gatewayRouteMatch struct {
 }
 
 type gatewayRoutePolicies struct {
-	DirectResponse *gatewayDirectResponse `yaml:"directResponse,omitempty"`
+	DirectResponse *gatewayDirectResponse   `yaml:"directResponse,omitempty"`
+	LocalRateLimit []gatewayLocalRateLimit  `yaml:"localRateLimit,omitempty"`
 }
 
 type gatewayDirectResponse struct {
 	Status int    `yaml:"status"`
 	Body   string `yaml:"body,omitempty"`
+}
+
+// gatewayLocalRateLimit represents an agentgateway localRateLimit policy.
+// Used for request-based and token-based rate limiting on routes.
+type gatewayLocalRateLimit struct {
+	MaxTokens      int    `yaml:"maxTokens"`
+	TokensPerFill  int    `yaml:"tokensPerFill"`
+	FillInterval   string `yaml:"fillInterval"`
+	Type           string `yaml:"type,omitempty"` // "requests" or "tokens"
 }
 
 type gatewayBackend struct {
@@ -290,6 +300,7 @@ func buildEgressRoutes(p *Policy) []gatewayRoute {
 			Ports:      e.Ports,
 			Matches:    matches,
 			Credential: e.Credential,
+			Policies:   buildLLMRoutePolicies(p, key),
 			Backends: []gatewayBackend{
 				{Dynamic: &struct{}{}},
 			},
@@ -316,6 +327,69 @@ func sanitizeRouteName(domain string) string {
 		result = strings.ReplaceAll(result, "--", "-")
 	}
 	return strings.Trim(result, "-")
+}
+
+// llmProviderDomains is the set of egress domains that are LLM provider
+// endpoints. Rate limit and budget policies are applied to routes matching
+// these domains.
+var llmProviderDomains = map[string]bool{
+	"openrouter.ai":                  true,
+	"api.openai.com":                 true,
+	"api.anthropic.com":              true,
+	"api.x.ai":                       true,
+	"inference-api.nousresearch.com": true,
+}
+
+// buildLLMRoutePolicies returns gateway route policies (localRateLimit) for
+// an egress route if it matches a known LLM provider domain and the policy
+// defines LLM budget or rate limit settings. Returns nil if the route is not
+// an LLM route or no LLM governance fields are set.
+func buildLLMRoutePolicies(p *Policy, domain string) *gatewayRoutePolicies {
+	if p == nil {
+		return nil
+	}
+	if !llmProviderDomains[domain] {
+		return nil
+	}
+
+	var limits []gatewayLocalRateLimit
+
+	// Token rate limit (tokens per minute).
+	if p.LLMRateLimit != nil && p.LLMRateLimit.TokensPerMinute > 0 {
+		limits = append(limits, gatewayLocalRateLimit{
+			MaxTokens:     p.LLMRateLimit.TokensPerMinute,
+			TokensPerFill: p.LLMRateLimit.TokensPerMinute,
+			FillInterval:  "1m",
+			Type:          "tokens",
+		})
+	}
+
+	// Request rate limit (requests per minute).
+	if p.LLMRateLimit != nil && p.LLMRateLimit.RequestsPerMinute > 0 {
+		limits = append(limits, gatewayLocalRateLimit{
+			MaxTokens:     p.LLMRateLimit.RequestsPerMinute,
+			TokensPerFill: p.LLMRateLimit.RequestsPerMinute,
+			FillInterval:  "1m",
+			Type:          "requests",
+		})
+	}
+
+	// Per-request token budget.
+	if p.LLMBudget != nil && p.LLMBudget.MaxTokensPerRequest > 0 {
+		limits = append(limits, gatewayLocalRateLimit{
+			MaxTokens:     p.LLMBudget.MaxTokensPerRequest,
+			TokensPerFill: p.LLMBudget.MaxTokensPerRequest,
+			FillInterval:  "1m",
+			Type:          "tokens",
+		})
+	}
+
+	if len(limits) == 0 {
+		return nil
+	}
+	return &gatewayRoutePolicies{
+		LocalRateLimit: limits,
+	}
 }
 
 func buildMCPBinds(p *Policy) []gatewayBind {
