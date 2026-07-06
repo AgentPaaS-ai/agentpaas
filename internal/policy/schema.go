@@ -14,6 +14,27 @@ type Policy struct {
 	LLMRateLimit    *LLMRateLimit    `yaml:"llm_rate_limit,omitempty"`
 	LLMProviderLock *LLMProviderLock `yaml:"llm_provider_lock,omitempty"`
 	IngressAuth     *IngressAuth     `yaml:"ingress_auth,omitempty"`
+	Guardrails      []Guardrail      `yaml:"guardrails,omitempty"`
+	Transformations *Transformation  `yaml:"transformations,omitempty"`
+}
+
+// Transformation defines request/response transformations applied by the gateway.
+// Request transforms inject headers or system prompts before the LLM sees the request.
+// Response transforms strip headers from LLM responses before they reach the agent.
+type Transformation struct {
+	Request  *RequestTransform  `yaml:"request,omitempty"`
+	Response *ResponseTransform `yaml:"response,omitempty"`
+}
+
+// RequestTransform defines request-level transformations.
+type RequestTransform struct {
+	InjectHeaders      map[string]string `yaml:"inject_headers,omitempty"`
+	InjectSystemPrompt string            `yaml:"inject_system_prompt,omitempty"`
+}
+
+// ResponseTransform defines response-level transformations.
+type ResponseTransform struct {
+	RemoveHeaders []string `yaml:"remove_headers,omitempty"`
 }
 
 // LLMBudget defines per-invoke and per-request token budget limits.
@@ -66,14 +87,23 @@ type AgentConfig struct {
 
 // EgressRule defines an outbound network access rule.
 type EgressRule struct {
-	Domain        string   `yaml:"domain"`
-	CIDR          string   `yaml:"cidr"`
-	Ports         []int    `yaml:"ports"`
-	Methods       []string `yaml:"methods"`
-	AllowWildcard *bool    `yaml:"allow_wildcard"`
-	AllowPrivate  *bool    `yaml:"allow_private"`
-	Credential    string   `yaml:"credential"`
-	MCPServerID   string   `yaml:"mcp_server_id"` // if set, this rule applies to MCP server egress
+	Domain        string      `yaml:"domain"`
+	CIDR          string      `yaml:"cidr"`
+	Ports         []int       `yaml:"ports"`
+	Methods       []string    `yaml:"methods"`
+	AllowWildcard *bool       `yaml:"allow_wildcard"`
+	AllowPrivate  *bool       `yaml:"allow_private"`
+	Credential    string      `yaml:"credential"`
+	MCPServerID   string      `yaml:"mcp_server_id"` // if set, this rule applies to MCP server egress
+	Timeout       string      `yaml:"timeout,omitempty"`
+	Retry         *RetryConfig `yaml:"retry,omitempty"`
+}
+
+// RetryConfig defines retry behavior for failed upstream requests.
+type RetryConfig struct {
+	MaxAttempts int    `yaml:"max_attempts"`
+	Backoff     string `yaml:"backoff"`     // "exponential", "linear", or "fixed"
+	MaxBackoff  string `yaml:"max_backoff"` // max backoff duration
 }
 
 // Credential defines a credential source for the agent.
@@ -121,4 +151,14 @@ type Hook struct {
 type IngressRule struct {
 	Path string `yaml:"path"`
 	Port int    `yaml:"port"`
+}
+
+// Guardrail defines a content filtering rule for LLM prompts and responses.
+type Guardrail struct {
+	Type       string `yaml:"type"`
+	Pattern    string `yaml:"pattern,omitempty"`
+	Action     string `yaml:"action,omitempty"`
+	Provider   string `yaml:"provider,omitempty"`
+	Credential string `yaml:"credential,omitempty"`
+	URL        string `yaml:"url,omitempty"`
 }

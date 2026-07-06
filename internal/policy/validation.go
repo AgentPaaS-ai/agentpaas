@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // ValidationError represents a policy semantic validation finding.
@@ -220,6 +221,48 @@ func ValidatePolicy(p *Policy) []ValidationError {
 					Message:  fmt.Sprintf("references undeclared credential %q", e.Credential),
 					Severity: "error",
 				})
+			}
+		}
+
+		// Timeout validation.
+		if e.Timeout != "" {
+			if _, err := time.ParseDuration(e.Timeout); err != nil {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".timeout",
+					Message:  fmt.Sprintf("invalid duration %q: %v", e.Timeout, err),
+					Severity: "error",
+				})
+			}
+		}
+
+		// Retry validation.
+		if e.Retry != nil {
+			retryPrefix := prefix + ".retry"
+			if e.Retry.MaxAttempts < 1 {
+				errs = append(errs, ValidationError{
+					Field:    retryPrefix + ".max_attempts",
+					Message:  "max_attempts must be >= 1",
+					Severity: "error",
+				})
+			}
+			switch e.Retry.Backoff {
+			case "exponential", "linear", "fixed", "":
+				// valid
+			default:
+				errs = append(errs, ValidationError{
+					Field:    retryPrefix + ".backoff",
+					Message:  fmt.Sprintf("invalid backoff strategy %q; must be 'exponential', 'linear', or 'fixed'", e.Retry.Backoff),
+					Severity: "error",
+				})
+			}
+			if e.Retry.MaxBackoff != "" {
+				if _, err := time.ParseDuration(e.Retry.MaxBackoff); err != nil {
+					errs = append(errs, ValidationError{
+						Field:    retryPrefix + ".max_backoff",
+						Message:  fmt.Sprintf("invalid duration %q: %v", e.Retry.MaxBackoff, err),
+						Severity: "error",
+					})
+				}
 			}
 		}
 	}
@@ -685,7 +728,176 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		}
 	}
 
+	// ----- Guardrails validation -----
+	for i, g := range p.Guardrails {
+		prefix := fmt.Sprintf("guardrails[%d]", i)
+
+		// type is required.
+		if g.Type == "" {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".type",
+				Message:  "guardrail type is required",
+				Severity: "error",
+			})
+			continue
+		}
+
+		switch g.Type {
+		case "regex":
+			if g.Pattern == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".pattern",
+					Message:  "pattern is required for regex guardrail",
+					Severity: "error",
+				})
+			}
+			if g.Action != "block" && g.Action != "mask" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".action",
+					Message:  fmt.Sprintf("action must be 'block' or 'mask', got %q", g.Action),
+					Severity: "error",
+				})
+			}
+		case "moderation":
+			if g.Provider == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".provider",
+					Message:  "provider is required for moderation guardrail",
+					Severity: "error",
+				})
+			}
+			if g.Credential == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".credential",
+					Message:  "credential is required for moderation guardrail",
+					Severity: "error",
+				})
+			} else if !credIDs[g.Credential] {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".credential",
+					Message:  fmt.Sprintf("references undeclared credential %q", g.Credential),
+					Severity: "error",
+				})
+			}
+		case "webhook":
+			if g.URL == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".url",
+					Message:  "url is required for webhook guardrail",
+					Severity: "error",
+				})
+			} else {
+				parsedURL, urlErr := url.Parse(g.URL)
+				if urlErr != nil || parsedURL.Scheme != "https" {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".url",
+						Message:  fmt.Sprintf("url must be a valid https URL, got %q", g.URL),
+						Severity: "error",
+					})
+				} else if !hasMatchingEgress(p.Egress, parsedURL.Hostname()) {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".url",
+						Message:  fmt.Sprintf("webhook guardrail %q has no matching egress allow rule", redactURL(g.URL)),
+						Severity: "error",
+					})
+				}
+			}
+		default:
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".type",
+				Message:  fmt.Sprintf("invalid guardrail type %q; must be 'regex', 'moderation', or 'webhook'", g.Type),
+				Severity: "error",
+			})
+		}
+	}
+
+	// ----- Transformations validation -----
+	if p.Transformations != nil {
+		if p.Transformations.Request == nil && p.Transformations.Response == nil {
+			errs = append(errs, ValidationError{
+				Field:    "transformations",
+				Message:  "transformations is set but neither request nor response is configured",
+				Severity: "error",
+			})
+		}
+		if p.Transformations.Request != nil {
+			if len(p.Transformations.Request.InjectSystemPrompt) > 4096 {
+				errs = append(errs, ValidationError{
+					Field:    "transformations.request.inject_system_prompt",
+					Message:  "inject_system_prompt must not exceed 4096 characters",
+					Severity: "error",
+				})
+			}
+		}
+		if p.Transformations.Response != nil {
+			for i, h := range p.Transformations.Response.RemoveHeaders {
+				if !isValidHeaderName(h) {
+					errs = append(errs, ValidationError{
+						Field:    fmt.Sprintf("transformations.response.remove_headers[%d]", i),
+						Message:  fmt.Sprintf("invalid HTTP header name %q: contains control characters or is empty", h),
+						Severity: "error",
+					})
+				}
+			}
+		}
+	}
+
+	// ----- Egress timeout & retry validation -----
+	for i, e := range p.Egress {
+		prefix := fmt.Sprintf("egress[%d]", i)
+		if e.Timeout != "" {
+			if _, derr := time.ParseDuration(e.Timeout); derr != nil {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".timeout",
+					Message:  fmt.Sprintf("invalid duration %q: %v", e.Timeout, derr),
+					Severity: "error",
+				})
+			}
+		}
+		if e.Retry != nil {
+			if e.Retry.MaxAttempts < 1 {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".retry.max_attempts",
+					Message:  "max_attempts must be >= 1",
+					Severity: "error",
+				})
+			}
+			switch e.Retry.Backoff {
+			case "", "exponential", "linear", "fixed":
+			default:
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".retry.backoff",
+					Message:  fmt.Sprintf("backoff must be 'exponential', 'linear', or 'fixed', got %q", e.Retry.Backoff),
+					Severity: "error",
+				})
+			}
+			if e.Retry.MaxBackoff != "" {
+				if _, derr := time.ParseDuration(e.Retry.MaxBackoff); derr != nil {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".retry.max_backoff",
+						Message:  fmt.Sprintf("invalid duration %q: %v", e.Retry.MaxBackoff, derr),
+						Severity: "error",
+					})
+				}
+			}
+		}
+	}
+
 	return errs
+}
+
+// isValidHeaderName checks whether a string is a valid HTTP header name
+// (no control characters, not empty).
+func isValidHeaderName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // redactURL removes userinfo (credentials/tokens) from a URL string
