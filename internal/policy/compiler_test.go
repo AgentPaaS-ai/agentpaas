@@ -212,3 +212,397 @@ func samplePolicy() *Policy {
 		},
 	}
 }
+
+// ---------------------------------------------------------------------------
+// B20-T04: Method enforcement in gateway config
+// ---------------------------------------------------------------------------
+
+func TestCompileGatewayConfig_MethodEnforcement_GET(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443}, Methods: []string{"GET"}},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	// Must contain method match for GET.
+	if !strings.Contains(string(out), "method: GET") {
+		t.Errorf("expected method: GET in compiled config, got:\n%s", string(out))
+	}
+	// Must NOT contain POST (only GET is allowed).
+	if strings.Contains(string(out), "method: POST") {
+		t.Errorf("unexpected method: POST in compiled config:\n%s", string(out))
+	}
+}
+
+func TestCompileGatewayConfig_MethodEnforcement_POST(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443}, Methods: []string{"POST"}},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if !strings.Contains(string(out), "method: POST") {
+		t.Errorf("expected method: POST in compiled config, got:\n%s", string(out))
+	}
+}
+
+func TestCompileGatewayConfig_MethodEnforcement_MultipleMethods(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443}, Methods: []string{"GET", "POST", "PUT"}},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	// All three methods must be present
+	for _, m := range []string{"GET", "POST", "PUT"} {
+		if !strings.Contains(string(out), "method: "+m) {
+			t.Errorf("expected method: %s in compiled config:\n%s", m, string(out))
+		}
+	}
+}
+
+func TestCompileGatewayConfig_NoMethods_NoMatches(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443}}, // No Methods
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	// When no methods are declared, no "method:" should appear (all methods allowed).
+	if strings.Contains(string(out), "method:") {
+		t.Errorf("expected no method matches when Methods is empty, got:\n%s", string(out))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// B20-T04: Port enforcement in gateway config
+// ---------------------------------------------------------------------------
+
+func TestCompileGatewayConfig_PortEnforcement_Port443(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443}},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	// Port 443 should appear in the compiled config.
+	if !strings.Contains(string(out), "ports:") || !strings.Contains(string(out), "443") {
+		t.Errorf("expected port 443 in compiled config, got:\n%s", string(out))
+	}
+}
+
+func TestCompileGatewayConfig_PortEnforcement_Non443(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{8080}},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	// Port 8080 must appear — port enforcement is present in the config.
+	if !strings.Contains(string(out), "8080") {
+		t.Errorf("expected port 8080 enforcement in compiled config, got:\n%s", string(out))
+	}
+}
+
+func TestCompileGatewayConfig_PortEnforcement_MultiplePorts(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443, 80}},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if !strings.Contains(string(out), "443") || !strings.Contains(string(out), "80") {
+		t.Errorf("expected both ports 443 and 80 in compiled config, got:\n%s", string(out))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// B20-T04: Credential binding (route-scoped)
+// ---------------------------------------------------------------------------
+
+func TestCompileGatewayConfig_CredentialBinding(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443}, Credential: "my-key"},
+		},
+		Credentials: []Credential{
+			{ID: "my-key", Type: "header", Header: "Authorization", Value: "Bearer test"},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	// The credential must appear on the route.
+	if !strings.Contains(string(out), "credential: my-key") {
+		t.Errorf("expected credential binding 'my-key' on route, got:\n%s", string(out))
+	}
+}
+
+func TestCompileGatewayConfig_CredentialScopedToRoute(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "route-a.example.com", Ports: []int{443}, Credential: "key-a"},
+			{Domain: "route-b.example.com", Ports: []int{443}, Credential: "key-b"},
+		},
+		Credentials: []Credential{
+			{ID: "key-a", Type: "header", Header: "X-Key-A", Value: "val-a"},
+			{ID: "key-b", Type: "header", Header: "X-Key-B", Value: "val-b"},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	// Route A should have key-a, not key-b.
+	routeAIdx := strings.Index(string(out), "route-a.example.com")
+	routeBIdx := strings.Index(string(out), "route-b.example.com")
+	if routeAIdx < 0 || routeBIdx < 0 {
+		t.Fatalf("expected both routes in output:\n%s", string(out))
+	}
+
+	routeASection := string(out)[routeAIdx:min(routeAIdx+200, len(out))]
+	routeBSection := string(out)[routeBIdx:min(routeBIdx+200, len(out))]
+
+	if !strings.Contains(routeASection, "credential: key-a") {
+		t.Errorf("route A should have credential: key-a\nroute A section:\n%s", routeASection)
+	}
+	if strings.Contains(routeASection, "credential: key-b") {
+		t.Errorf("route A must NOT have credential: key-b\nroute A section:\n%s", routeASection)
+	}
+	if !strings.Contains(routeBSection, "credential: key-b") {
+		t.Errorf("route B should have credential: key-b\nroute B section:\n%s", routeBSection)
+	}
+	if strings.Contains(routeBSection, "credential: key-a") {
+		t.Errorf("route B must NOT have credential: key-a\nroute B section:\n%s", routeBSection)
+	}
+}
+
+func TestCompileGatewayConfig_NoCredential_NoCredentialField(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "api.example.com", Ports: []int{443}}, // No credential
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	if strings.Contains(string(out), "credential:") {
+		t.Errorf("expected no credential field when credential is empty, got:\n%s", string(out))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// B20-T04: CIDR-only rule rejection at validation time
+// ---------------------------------------------------------------------------
+
+func TestValidateCIDROnlyRuleRejected(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{CIDR: "10.0.0.0/8", Ports: []int{443}}, // No Domain
+		},
+	}
+	errs := ValidatePolicy(p)
+	found := false
+	for _, e := range errs {
+		if e.Severity == "error" && strings.Contains(e.Message, "CIDR egress rules are not yet supported") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected CIDR-only rejection error, got %d findings: %v", len(errs), errs)
+	}
+}
+
+func TestValidateCIDRWithDomainAccepted(t *testing.T) {
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{Domain: "example.com", CIDR: "10.0.0.0/8", Ports: []int{443}}, // Has domain
+		},
+	}
+	errs := ValidatePolicy(p)
+	for _, e := range errs {
+		if e.Severity == "error" && strings.Contains(e.Message, "CIDR egress rules are not yet supported") {
+			t.Errorf("CIDR with domain should NOT be rejected, got: %v", e)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// B20-T04: Golden — full policy semantics test
+// ---------------------------------------------------------------------------
+
+func TestCompileGatewayConfig_FullSemantics(t *testing.T) {
+	allowWildcard := true
+	allowPrivate := true
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "full-semantics-agent"},
+		Egress: []EgressRule{
+			{
+				Domain:        "api.example.com",
+				Ports:         []int{443},
+				Methods:       []string{"GET", "POST"},
+				Credential:    "prod-key",
+			},
+			{
+				Domain:        "db.internal",
+				Ports:         []int{5432},
+				AllowPrivate:  &allowPrivate,
+			},
+			{
+				Domain:         "*.cdn.example.com",
+				Ports:          []int{443, 80},
+				AllowWildcard:  &allowWildcard,
+			},
+		},
+		Credentials: []Credential{
+			{ID: "prod-key", Type: "header", Header: "X-API-Key", Value: "secret"},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	outStr := string(out)
+
+	// Method enforcement.
+	if !strings.Contains(outStr, "method: GET") {
+		t.Error("expected method: GET in compiled config")
+	}
+	if !strings.Contains(outStr, "method: POST") {
+		t.Error("expected method: POST in compiled config")
+	}
+
+	// Port enforcement.
+	if !strings.Contains(outStr, "ports:") {
+		t.Error("expected ports field in compiled config")
+	}
+	if !strings.Contains(outStr, "443") {
+		t.Error("expected port 443 in compiled config")
+	}
+	if !strings.Contains(outStr, "5432") {
+		t.Error("expected port 5432 in compiled config")
+	}
+	if !strings.Contains(outStr, "80") {
+		t.Error("expected port 80 in compiled config")
+	}
+
+	// Credential binding.
+	if !strings.Contains(outStr, "credential: prod-key") {
+		t.Error("expected credential binding prod-key on route")
+	}
+
+	// Hostname enforcement.
+	if !strings.Contains(outStr, "api.example.com") {
+		t.Error("expected api.example.com hostname in config")
+	}
+	if !strings.Contains(outStr, "db.internal") {
+		t.Error("expected db.internal hostname in config")
+	}
+	if !strings.Contains(outStr, "*.cdn.example.com") {
+		t.Error("expected *.cdn.example.com hostname in config")
+	}
+
+	// Denied route must still be present.
+	if !strings.Contains(outStr, "denied") || !strings.Contains(outStr, "403") {
+		t.Error("expected denied route with 403 in compiled config")
+	}
+
+	// Must be valid YAML.
+	var decoded any
+	if err := yaml.Unmarshal(out, &decoded); err != nil {
+		t.Fatalf("output is not valid YAML: %v\n%s", err, outStr)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// B20-T04: Enforcement fields must not disappear — regression test
+// ---------------------------------------------------------------------------
+
+func TestCompileGatewayConfig_EnforcementFieldsNotLost(t *testing.T) {
+	// This test verifies that all enforcement fields (methods, ports, credential)
+	// survive compilation when present.
+	p := &Policy{
+		Version: "1",
+		Agent:   AgentConfig{Name: "test"},
+		Egress: []EgressRule{
+			{
+				Domain:     "secure.example.com",
+				Ports:      []int{443},
+				Methods:    []string{"GET"},
+				Credential: "secure-key",
+			},
+		},
+		Credentials: []Credential{
+			{ID: "secure-key", Type: "header", Header: "Authorization", Value: "Bearer test"},
+		},
+	}
+	out, err := CompileGatewayConfig(p)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	outStr := string(out)
+
+	// Every enforcement field must be present.
+	checks := map[string]string{
+		"hostname":   "secure.example.com",
+		"port":       "443",
+		"method":     "method: GET",
+		"credential": "credential: secure-key",
+	}
+	for field, expected := range checks {
+		if !strings.Contains(outStr, expected) {
+			t.Errorf("enforcement field %q missing; expected %q in output:\n%s", field, expected, outStr)
+		}
+	}
+}
