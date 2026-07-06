@@ -16,6 +16,7 @@ type Policy struct {
 	IngressAuth     *IngressAuth     `yaml:"ingress_auth,omitempty"`
 	Guardrails      []Guardrail      `yaml:"guardrails,omitempty"`
 	Transformations *Transformation  `yaml:"transformations,omitempty"`
+	Observability   *Observability   `yaml:"observability,omitempty"`
 }
 
 // Transformation defines request/response transformations applied by the gateway.
@@ -135,6 +136,7 @@ type MCPServer struct {
 	Args          []string          `yaml:"args"`
 	Endpoint      string            `yaml:"endpoint"`
 	AllowedTools  []string          `yaml:"allowed_tools"`
+	DeniedTools   []string          `yaml:"denied_tools,omitempty"`
 	Env           map[string]string `yaml:"env"`
 	AuthMode      string            `yaml:"auth_mode"`
 	EgressBinding string            `yaml:"egress_binding"`
@@ -161,4 +163,12 @@ type Guardrail struct {
 	Provider   string `yaml:"provider,omitempty"`
 	Credential string `yaml:"credential,omitempty"`
 	URL        string `yaml:"url,omitempty"`
+}
+
+// Observability defines cost tracking and OTel tracing configuration
+// for the gateway. When set, the compiler emits tracing config in the
+// gateway YAML so the gateway sends OTel data to the specified endpoint.
+type Observability struct {
+	CostTracking bool   `yaml:"cost_tracking"`
+	OTelEndpoint string `yaml:"otel_endpoint,omitempty"`
 }

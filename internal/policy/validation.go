@@ -883,6 +883,39 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		}
 	}
 
+	// ----- Observability validation -----
+	if p.Observability != nil {
+		if p.Observability.OTelEndpoint != "" {
+			u, err := url.Parse(p.Observability.OTelEndpoint)
+			if err != nil || u.Scheme == "" || u.Host == "" {
+				errs = append(errs, ValidationError{
+					Field:    "observability.otel_endpoint",
+					Message:  fmt.Sprintf("otel_endpoint must be a valid URL, got %q", p.Observability.OTelEndpoint),
+					Severity: "error",
+				})
+			}
+		}
+	}
+
+	// ----- MCP tool access validation -----
+	for i, m := range p.MCPServers {
+		prefix := fmt.Sprintf("mcp_servers[%d]", i)
+		// Check that a tool is not in both allowed and denied lists.
+		allowed := make(map[string]bool)
+		for _, t := range m.AllowedTools {
+			allowed[t] = true
+		}
+		for _, t := range m.DeniedTools {
+			if allowed[t] {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".denied_tools",
+					Message:  fmt.Sprintf("tool %q is in both allowed_tools and denied_tools", t),
+					Severity: "error",
+				})
+			}
+		}
+	}
+
 	return errs
 }
 
