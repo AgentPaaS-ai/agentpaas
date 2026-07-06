@@ -465,6 +465,56 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		}
 	}
 
+	// ----- LLM budget validation -----
+	if p.LLMBudget != nil {
+		if p.LLMBudget.MaxTokens < 0 {
+			errs = append(errs, ValidationError{
+				Field:    "llm_budget.max_tokens",
+				Message:  "max_tokens must be non-negative",
+				Severity: "error",
+			})
+		}
+		if p.LLMBudget.MaxTokensPerRequest < 0 {
+			errs = append(errs, ValidationError{
+				Field:    "llm_budget.max_tokens_per_request",
+				Message:  "max_tokens_per_request must be non-negative",
+				Severity: "error",
+			})
+		}
+		if p.LLMBudget.MaxTokens > 0 && p.LLMBudget.MaxTokensPerRequest > 0 && p.LLMBudget.MaxTokensPerRequest > p.LLMBudget.MaxTokens {
+			errs = append(errs, ValidationError{
+				Field:    "llm_budget.max_tokens_per_request",
+				Message:  "max_tokens_per_request cannot exceed max_tokens",
+				Severity: "error",
+			})
+		}
+	}
+
+	// ----- LLM rate limit validation -----
+	if p.LLMRateLimit != nil {
+		if p.LLMRateLimit.RequestsPerMinute < 0 {
+			errs = append(errs, ValidationError{
+				Field:    "llm_rate_limit.requests_per_minute",
+				Message:  "requests_per_minute must be non-negative",
+				Severity: "error",
+			})
+		}
+		if p.LLMRateLimit.TokensPerMinute < 0 {
+			errs = append(errs, ValidationError{
+				Field:    "llm_rate_limit.tokens_per_minute",
+				Message:  "tokens_per_minute must be non-negative",
+				Severity: "error",
+			})
+		}
+		if p.LLMRateLimit.RequestsPerMinute == 0 && p.LLMRateLimit.TokensPerMinute == 0 {
+			errs = append(errs, ValidationError{
+				Field:    "llm_rate_limit",
+				Message:  "at least one of requests_per_minute or tokens_per_minute must be > 0",
+				Severity: "error",
+			})
+		}
+	}
+
 	return errs
 }
 
