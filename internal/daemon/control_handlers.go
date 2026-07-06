@@ -979,8 +979,14 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 }
 
 // buildInvokePayload builds the invoke payload with LLM config and resolved credentials.
-// If the agent has no llm config in agent.yaml, returns an empty payload (backward compat).
 // The credential value NEVER appears in logs or error messages.
+//
+// Credentials are resolved from TWO sources:
+//  1. agent.yaml's llm.credential field (LLM credential, resolved with provider auth header)
+//  2. policy.yaml's credentials section (all declared credentials, resolved from Keychain)
+//
+// This ensures http_with_credential("my-cred-id", ...) works for any credential
+// declared in policy.yaml — not just the LLM credential.
 //
 // triggerPayload (optional) is the user's trigger payload from RunRequest.trigger_payload
 // or InvokeRequest.payload. When provided and valid JSON, its top-level keys are merged
@@ -1006,58 +1012,96 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		// Invalid JSON → silently ignore; base payload is still returned.
 	}
 
+	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)
+
 	// Load the deployed agent lock to get AgentYAML with LLM config.
-	lockPath := filepath.Join(pack.DeployedAgentPath(s.homePaths.Home, agentName), "agent.lock")
+	lockPath := filepath.Join(deployedDir, "agent.lock")
 	lock, err := pack.ReadAgentLock(lockPath)
 	if err != nil {
 		// Not deployed or load failed — return payload with user keys only.
 		return payload, nil
 	}
 
-	if lock.AgentYAML == nil || lock.AgentYAML.LLM.Provider == "" {
-		// No LLM config — return payload with user keys only.
-		return payload, nil
-	}
-
-	credentialName := lock.AgentYAML.LLM.Credential
-	if credentialName == "" {
-		return payload, nil
-	}
-
-	// Resolve credential from Keychain.
+	// Resolve the secret store once (used for both LLM and policy credentials).
 	var store secrets.SecretStore
 	if s.secretStoreForTest != nil {
 		store = s.secretStoreForTest
 	} else {
-		var err error
 		store, err = secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
 		if err != nil {
-			return payload, nil // graceful: no keychain, no LLM
+			return payload, nil // graceful: no keychain
 		}
 	}
-	credValue, err := store.Get(ctx, credentialName)
-	if err != nil {
-		return payload, nil // graceful: credential not found, harness will error at call time
+
+	// --- Collect credentials into a map keyed by ID to avoid duplicates ---
+	credMap := make(map[string]map[string]any) // id → {id, header, value}
+
+	// --- 1. Resolve LLM credential from agent.yaml ---
+	if lock.AgentYAML != nil && lock.AgentYAML.LLM.Provider != "" {
+		credentialName := lock.AgentYAML.LLM.Credential
+		if credentialName != "" {
+			credValue, credErr := store.Get(ctx, credentialName)
+			if credErr == nil {
+				// Get the auth header for this provider.
+				adapter := llm.GetAdapter(lock.AgentYAML.LLM.Provider)
+				headerName := "Authorization"
+				if adapter != nil {
+					headerName = adapter.AuthHeader()
+				}
+
+				payload["llm"] = map[string]any{
+					"provider":   lock.AgentYAML.LLM.Provider,
+					"model":      lock.AgentYAML.LLM.Model,
+					"credential": credentialName,
+				}
+				credMap[credentialName] = map[string]any{
+					"id":     credentialName,
+					"header": headerName,
+					"value":  string(credValue),
+				}
+			}
+			// graceful: credential not found, harness will error at call time
+		}
 	}
 
-	// Get the auth header for this provider.
-	adapter := llm.GetAdapter(lock.AgentYAML.LLM.Provider)
-	headerName := "Authorization"
-	if adapter != nil {
-		headerName = adapter.AuthHeader()
+	// --- 2. Resolve policy-declared credentials from policy.yaml ---
+	policyPath := filepath.Join(deployedDir, "policy.yaml")
+	policyData, perr := os.ReadFile(policyPath)
+	if perr == nil && len(policyData) > 0 {
+		parsedPolicy, perr := policy.ParsePolicy(bytes.NewReader(policyData))
+		if perr == nil {
+			for _, c := range parsedPolicy.Credentials {
+				if c.ID == "" {
+					continue
+				}
+				// Skip if already resolved (e.g., LLM credential already added above).
+				if _, exists := credMap[c.ID]; exists {
+					continue
+				}
+				credValue, credErr := store.Get(ctx, c.ID)
+				if credErr != nil {
+					continue // graceful: skip unresolved credential
+				}
+				headerName := c.Header
+				if headerName == "" {
+					headerName = "Authorization"
+				}
+				credMap[c.ID] = map[string]any{
+					"id":     c.ID,
+					"header": headerName,
+					"value":  string(credValue),
+				}
+			}
+		}
 	}
 
-	payload["llm"] = map[string]any{
-		"provider":   lock.AgentYAML.LLM.Provider,
-		"model":      lock.AgentYAML.LLM.Model,
-		"credential": credentialName,
-	}
-	payload["credentials"] = []map[string]any{
-		{
-			"id":     credentialName,
-			"header": headerName,
-			"value":  string(credValue),
-		},
+	// --- Convert credMap to slice for the payload ---
+	if len(credMap) > 0 {
+		creds := make([]map[string]any, 0, len(credMap))
+		for _, c := range credMap {
+			creds = append(creds, c)
+		}
+		payload["credentials"] = creds
 	}
 
 	return payload, nil
