@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -719,31 +718,3 @@ func TestFinalizeRun_TruncatedJSONL(t *testing.T) {
 	}
 }
 
-// internal helpers for tests
-
-// harnessAuditRecord is a minimal record used for writing test harness audit chains.
-type harnessAuditRecord struct {
-	Seq        int64  `json:"seq"`
-	PrevHash   string `json:"prev_hash"`
-	RecordHash string `json:"record_hash"`
-	Timestamp  string `json:"timestamp"`
-	EventType  string `json:"event_type"`
-	Actor      string `json:"actor"`
-	Payload    map[string]interface{} `json:"payload"`
-}
-
-// writeRawHarnessRecords writes raw audit records to a JSONL file.
-// Used for malformed/truncated test data.
-func writeRawHarnessRecords(t *testing.T, path string, records []json.RawMessage) {
-	t.Helper()
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	defer func() { _ = f.Close() }()
-	for _, rec := range records {
-		if _, err := f.Write(append(rec, '\n')); err != nil {
-			t.Fatalf("Write: %v", err)
-		}
-	}
-}

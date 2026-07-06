@@ -638,25 +638,6 @@ func rpcError(id, message, code string) rpcResponse {
 	return rpcResponse{ID: id, OK: false, Error: message, Code: code}
 }
 
-func credentialsFromPayload(payload map[string]any) map[string]rpcCredential {
-	out := make(map[string]rpcCredential)
-	for _, item := range listParam(payload, "credentials") {
-		obj, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		id := firstString(obj, "id", "credential_id")
-		if id == "" {
-			continue
-		}
-		out[id] = rpcCredential{
-			Header: defaultString(firstString(obj, "header"), "Authorization"),
-			Value:  firstString(obj, "value", "secret"),
-		}
-	}
-	return out
-}
-
 func mcpAllowlistFromPayload(payload map[string]any) map[string]map[string]bool {
 	out := make(map[string]map[string]bool)
 	for _, item := range listParam(payload, "mcp_servers") {

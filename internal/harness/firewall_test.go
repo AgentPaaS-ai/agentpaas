@@ -103,7 +103,9 @@ func TestInitEgressFirewall_DefenseInDepthMessage(t *testing.T) {
 
 	InitEgressFirewall()
 
-	w.Close()
+	if err := w.Close(); err != nil {
+		t.Errorf("Close writer: %v", err)
+	}
 	os.Stderr = origStderr
 	output := <-logCh
 
