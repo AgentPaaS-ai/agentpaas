@@ -57,6 +57,28 @@ type gatewayRoutePolicies struct {
 	JWT            *gatewayJWTAuth          `yaml:"jwt,omitempty"`
 	APIKey         *gatewayAPIKeyAuth       `yaml:"apiKey,omitempty"`
 	BackendOAuth   *backendOAuthConfig      `yaml:"backendOAuth,omitempty"`
+	Guardrails     *gatewayGuardrails       `yaml:"guardrails,omitempty"`
+	Timeout        *gatewayTimeout          `yaml:"timeout,omitempty"`
+	Retry          *gatewayRetry            `yaml:"retry,omitempty"`
+	Transformation *gatewayTransformation   `yaml:"transformation,omitempty"`
+}
+
+// gatewayTransformation represents a request/response transformation policy
+// applied on a gateway route.
+type gatewayTransformation struct {
+	Request  *gatewayRequestTransform  `yaml:"request,omitempty"`
+	Response *gatewayResponseTransform `yaml:"response,omitempty"`
+}
+
+// gatewayRequestTransform defines request-level transformations for the gateway.
+type gatewayRequestTransform struct {
+	InjectHeaders      map[string]string `yaml:"injectHeaders,omitempty"`
+	InjectSystemPrompt string            `yaml:"injectSystemPrompt,omitempty"`
+}
+
+// gatewayResponseTransform defines response-level transformations for the gateway.
+type gatewayResponseTransform struct {
+	RemoveHeaders []string `yaml:"removeHeaders,omitempty"`
 }
 
 type gatewayDirectResponse struct {
@@ -85,6 +107,59 @@ type gatewayAPIKeyAuth struct {
 	Header     string `yaml:"header"`
 	Credential string `yaml:"credential"`
 }
+
+// gatewayTimeout represents a timeout policy on a gateway route.
+type gatewayTimeout struct {
+	RequestTimeout string `yaml:"requestTimeout"`
+}
+
+// gatewayRetry represents a retry policy on a gateway route.
+type gatewayRetry struct {
+	Attempts int    `yaml:"attempts"`
+	Backoff  string `yaml:"backoff"`
+	Codes    []int  `yaml:"codes,omitempty"`
+}
+
+// gatewayGuardrails represents guardrails policy on a gateway route.
+type gatewayGuardrails struct {
+	Request  []gatewayGuardrail `yaml:"request,omitempty"`
+	Response []gatewayGuardrail `yaml:"response,omitempty"`
+}
+
+// gatewayGuardrail is a union type for a single guardrail entry.
+type gatewayGuardrail struct {
+	Regex            *gatewayRegexGuardrail     `yaml:"regex,omitempty"`
+	OpenAIModeration *gatewayOpenAIModeration   `yaml:"openAIModeration,omitempty"`
+	Webhook          *gatewayWebhookGuardrail   `yaml:"webhook,omitempty"`
+}
+
+// gatewayRegexGuardrail represents a regex-based guardrail.
+type gatewayRegexGuardrail struct {
+	Action string             `yaml:"action"`
+	Rules  []gatewayRegexRule `yaml:"rules"`
+}
+
+// gatewayRegexRule represents a single regex rule.
+type gatewayRegexRule struct {
+	Pattern string `yaml:"pattern,omitempty"`
+	Builtin string `yaml:"builtin,omitempty"`
+}
+
+// gatewayOpenAIModeration represents an OpenAI moderation guardrail.
+type gatewayOpenAIModeration struct {
+	Model string `yaml:"model"`
+}
+
+// gatewayWebhookGuardrail represents a webhook-based guardrail.
+type gatewayWebhookGuardrail struct {
+	Target gatewayWebhookTarget `yaml:"target"`
+}
+
+// gatewayWebhookTarget defines the webhook target host.
+type gatewayWebhookTarget struct {
+	Host string `yaml:"host"`
+}
+
 // backendOAuthConfig carries OAuth token refresh configuration for a route's backend.
 type backendOAuthConfig struct {
 	TokenEndpoint          string `yaml:"tokenEndpoint"`
@@ -339,13 +414,31 @@ func buildEgressRoutes(p *Policy) []gatewayRoute {
 		// LLM provider locking: add path restrictions for LLM provider domains.
 		matches = applyLLMProviderLock(p, key, matches)
 
+		policies := buildRoutePolicies(p, key, e.Credential)
+		// Add per-route timeout and retry policies.
+		if e.Timeout != "" {
+			if policies == nil {
+				policies = &gatewayRoutePolicies{}
+			}
+			policies.Timeout = &gatewayTimeout{RequestTimeout: e.Timeout}
+		}
+		if e.Retry != nil {
+			if policies == nil {
+				policies = &gatewayRoutePolicies{}
+			}
+			policies.Retry = &gatewayRetry{
+				Attempts: e.Retry.MaxAttempts,
+				Backoff:  e.Retry.Backoff,
+			}
+		}
+
 		routes = append(routes, gatewayRoute{
 			Name:       routeName,
 			Hostnames:  []string{e.Domain},
 			Ports:      e.Ports,
 			Matches:    matches,
 			Credential: e.Credential,
-			Policies:   buildRoutePolicies(p, key, e.Credential),
+			Policies:   policies,
 			Backends: []gatewayBackend{
 				{Dynamic: &struct{}{}},
 			},
@@ -469,12 +562,77 @@ func buildLLMRoutePolicies(p *Policy, domain string) *gatewayRoutePolicies {
 		})
 	}
 
-	if len(limits) == 0 {
+	if len(limits) == 0 && len(p.Guardrails) == 0 && p.Transformations == nil {
 		return nil
 	}
-	return &gatewayRoutePolicies{
+	policies := &gatewayRoutePolicies{
 		LocalRateLimit: limits,
 	}
+	if len(p.Guardrails) > 0 {
+		policies.Guardrails = buildGatewayGuardrails(p)
+	}
+	if p.Transformations != nil {
+		policies.Transformation = buildGatewayTransformation(p)
+	}
+	return policies
+}
+
+// buildGatewayGuardrails converts policy Guardrails into the gateway guardrails
+// policy struct. Guardrails are applied to both request and response directions.
+func buildGatewayGuardrails(p *Policy) *gatewayGuardrails {
+	var req, resp []gatewayGuardrail
+	for _, g := range p.Guardrails {
+		gr := gatewayGuardrail{}
+		switch g.Type {
+		case "regex":
+			gr.Regex = &gatewayRegexGuardrail{
+				Action: g.Action,
+				Rules: []gatewayRegexRule{
+					{Pattern: g.Pattern},
+				},
+			}
+		case "moderation":
+			gr.OpenAIModeration = &gatewayOpenAIModeration{
+				Model: "omni-moderation-latest",
+			}
+		case "webhook":
+			u, err := url.Parse(g.URL)
+			host := g.URL
+			if err == nil {
+				host = u.Host
+			}
+			gr.Webhook = &gatewayWebhookGuardrail{
+				Target: gatewayWebhookTarget{Host: host},
+			}
+		}
+		req = append(req, gr)
+		resp = append(resp, gr)
+	}
+	return &gatewayGuardrails{
+		Request:  req,
+		Response: resp,
+	}
+}
+
+// buildGatewayTransformation converts a policy Transformation into the gateway
+// transformation policy struct.
+func buildGatewayTransformation(p *Policy) *gatewayTransformation {
+	if p.Transformations == nil {
+		return nil
+	}
+	gt := &gatewayTransformation{}
+	if p.Transformations.Request != nil {
+		gt.Request = &gatewayRequestTransform{
+			InjectHeaders:      p.Transformations.Request.InjectHeaders,
+			InjectSystemPrompt: p.Transformations.Request.InjectSystemPrompt,
+		}
+	}
+	if p.Transformations.Response != nil {
+		gt.Response = &gatewayResponseTransform{
+			RemoveHeaders: p.Transformations.Response.RemoveHeaders,
+		}
+	}
+	return gt
 }
 
 // applyLLMProviderLock adds path-based route matches for LLM provider domains
