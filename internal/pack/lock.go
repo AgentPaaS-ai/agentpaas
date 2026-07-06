@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -95,6 +96,78 @@ type ReproducibilityMeta struct {
 	DepsLocked bool `json:"deps_locked"`
 	// TarOrder is "sorted" for deterministic tar order.
 	TarOrder string `json:"tar_order"`
+}
+
+// NewSignedTestLock generates an ECDSA P-256 key pair and creates a signed
+// AgentLock with the given agent name and optional policy YAML bytes.
+// If policyYAML is non-empty, it is parsed, validated, and its canonical
+// digest is stored in lock.PolicyDigest. The PolicyYAML sidecar is NOT set
+// on the lock — callers must write it separately via RecordDeployment.
+//
+// This is exported for use by external test packages (e.g., internal/daemon).
+func NewSignedTestLock(agentName string, policyYAML []byte) (*AgentLock, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate key: %w", err)
+	}
+	pubPEM, err := publicKeyPEM(&key.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("encode public key: %w", err)
+	}
+
+	seedDigest := func(seed string) string {
+		sum := sha256.Sum256([]byte(seed))
+		return hex.EncodeToString(sum[:])
+	}
+
+	var policyDigest string
+	if len(policyYAML) > 0 {
+		policyDigest, err = ComputePolicyDigest(policyYAML)
+		if err != nil {
+			return nil, fmt.Errorf("compute policy digest: %w", err)
+		}
+	}
+
+	lock := &AgentLock{
+		SchemaVersion:        LockSchemaVersion,
+		AgentName:            agentName,
+		AgentVersion:         "0.1.0",
+		Runtime:              "python",
+		Platform:             "linux/arm64",
+		BaseImageDigest:      "gcr.io/distroless/python3-debian12@sha256:" + seedDigest("base"),
+		HarnessVersion:       "test",
+		BuildInputDigest:     seedDigest("input"),
+		ImageDigest:          seedDigest("image"),
+		SBOMDigest:           seedDigest("sbom"),
+		PolicyDigest:         policyDigest,
+		PolicyYAML:           policyYAML,
+		PackageAID:           string(pubPEM),
+		PublicKeyFingerprint: PublicKeyFingerprint(&key.PublicKey),
+		SBOMReferrer:         "oci://agentpaas-test:latest#sbom",
+		SignatureReferrer:    "cosign://agentpaas-test:latest",
+		Reproducibility: ReproducibilityMeta{
+			SourceDateEpoch: time.Unix(1_700_000_000, 0).UTC(),
+			BaseImagePinned: true,
+			DepsLocked:      true,
+			TarOrder:        "sorted",
+		},
+		CreatedAt: time.Unix(1_700_000_000, 0).UTC(),
+	}
+
+	// Sign the lockfile.
+	lock.LockfileSignature = ""
+	canonical, err := canonicalJSON(lock)
+	if err != nil {
+		return nil, fmt.Errorf("canonical JSON: %w", err)
+	}
+	digest := sha256.Sum256(canonical)
+	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+	if err != nil {
+		return nil, fmt.Errorf("sign lock: %w", err)
+	}
+	lock.LockfileSignature = base64.StdEncoding.EncodeToString(sig)
+
+	return lock, nil
 }
 
 // LockConfig controls the agent.lock generation process.
@@ -306,7 +379,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, err
 	}
 
-	policyDigest, err := computePolicyDigest(cfg.PolicyYAML)
+	policyDigest, err := ComputePolicyDigest(cfg.PolicyYAML)
 	if err != nil {
 		return nil, fmt.Errorf("policy validation: %w", err)
 	}
@@ -920,11 +993,11 @@ func agentYAMLString(agentYAML *AgentYAML, names ...string) string {
 	return ""
 }
 
-// computePolicyDigest parses, validates, and computes the SHA-256 digest of
+// ComputePolicyDigest parses, validates, and computes the SHA-256 digest of
 // the policy YAML. Returns empty string if yamlBytes is nil/empty (no policy
 // in project — backward compat). Returns error if parsing fails or
 // validation finds errors.
-func computePolicyDigest(yamlBytes []byte) (string, error) {
+func ComputePolicyDigest(yamlBytes []byte) (string, error) {
 	if len(yamlBytes) == 0 {
 		return "", nil
 	}
