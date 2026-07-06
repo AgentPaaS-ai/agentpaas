@@ -124,7 +124,8 @@ func TestValidatePublicCIDRAccepted(t *testing.T) {
 agent:
   name: test-agent
 egress:
-  - cidr: "8.8.8.0/24"
+  - domain: "example.com"
+    cidr: "8.8.8.0/24"
     ports: [53]
 `)
 	errs := ValidatePolicy(p)
@@ -136,7 +137,8 @@ func TestValidatePrivateCIDRRequiresOptIn(t *testing.T) {
 agent:
   name: test-agent
 egress:
-  - cidr: "10.0.0.0/8"
+  - domain: "example.com"
+    cidr: "10.0.0.0/8"
     ports: [5432]
 `)
 	errs := ValidatePolicy(p)
@@ -148,7 +150,8 @@ func TestValidatePrivateCIDRWithOptIn(t *testing.T) {
 agent:
   name: test-agent
 egress:
-  - cidr: "192.168.1.0/24"
+  - domain: "example.com"
+    cidr: "192.168.1.0/24"
     ports: [5432]
     allow_private: true
 `)
@@ -161,7 +164,8 @@ func TestValidateRFC6598CIDRRequiresOptIn(t *testing.T) {
 agent:
   name: test-agent
 egress:
-  - cidr: "100.64.0.0/10"
+  - domain: "example.com"
+    cidr: "100.64.0.0/10"
     ports: [8080]
 `)
 	errs := ValidatePolicy(p)
@@ -173,7 +177,8 @@ func TestValidateInvalidCIDRRejected(t *testing.T) {
 agent:
   name: test-agent
 egress:
-  - cidr: "not-a-cidr"
+  - domain: "example.com"
+    cidr: "not-a-cidr"
     ports: [443]
 `)
 	errs := ValidatePolicy(p)
@@ -643,7 +648,8 @@ egress:
   - domain: "*.example.com"
     ports: [443, 80]
     allow_wildcard: true
-  - cidr: "10.0.0.0/8"
+  - domain: "db.internal"
+    cidr: "10.0.0.0/8"
     ports: [5432]
     allow_private: true
   - domain: "api.anthropic.com"

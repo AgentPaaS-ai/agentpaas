@@ -229,7 +229,8 @@ func TestAdversaryT02_PrivateCIDRBoundary(t *testing.T) {
 agent:
   name: x
 egress:
-  - cidr: "10.128.0.0/9"
+  - domain: "example.com"
+    cidr: "10.128.0.0/9"
     ports: [443]
 `)
 	errs := ValidatePolicy(p)
@@ -323,7 +324,8 @@ func TestAdversaryT02_AllowPrivateNilPointer(t *testing.T) {
 agent:
   name: x
 egress:
-  - cidr: "192.168.0.0/16"
+  - domain: "example.com"
+    cidr: "192.168.0.0/16"
     ports: [443]
 `)
 	errs := ValidatePolicy(p)
