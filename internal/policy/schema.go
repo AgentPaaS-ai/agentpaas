@@ -3,13 +3,29 @@ package policy
 // Policy represents the canonical agent policy configuration.
 // Unknown fields in the YAML are rejected via strict decoding.
 type Policy struct {
-	Version     string        `yaml:"version"`
-	Agent       AgentConfig   `yaml:"agent"`
-	Egress      []EgressRule  `yaml:"egress"`
-	Credentials []Credential  `yaml:"credentials"`
-	MCPServers  []MCPServer   `yaml:"mcp_servers"`
-	Hooks       []Hook        `yaml:"hooks"`
-	Ingress     []IngressRule `yaml:"ingress"`
+	Version       string         `yaml:"version"`
+	Agent         AgentConfig    `yaml:"agent"`
+	Egress        []EgressRule   `yaml:"egress"`
+	Credentials   []Credential   `yaml:"credentials"`
+	MCPServers    []MCPServer    `yaml:"mcp_servers"`
+	Hooks         []Hook         `yaml:"hooks"`
+	Ingress       []IngressRule  `yaml:"ingress"`
+	LLMBudget     *LLMBudget     `yaml:"llm_budget,omitempty"`
+	LLMRateLimit  *LLMRateLimit  `yaml:"llm_rate_limit,omitempty"`
+}
+
+// LLMBudget defines per-invoke and per-request token budget limits.
+// The gateway enforces these via budget limit policies on the LLM route.
+type LLMBudget struct {
+	MaxTokens           int `yaml:"max_tokens"`              // total tokens per invoke
+	MaxTokensPerRequest int `yaml:"max_tokens_per_request"` // per-LLM-call limit
+}
+
+// LLMRateLimit defines rate limiting for LLM calls.
+// The gateway enforces these via localRateLimit policies on the LLM route.
+type LLMRateLimit struct {
+	RequestsPerMinute int `yaml:"requests_per_minute"`
+	TokensPerMinute   int `yaml:"tokens_per_minute"`
 }
 
 // AgentConfig describes the agent identity.
