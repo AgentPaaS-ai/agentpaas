@@ -134,6 +134,16 @@ func ScanSecrets(ctx context.Context, cfg ScanConfig) (*ScanResult, error) {
 	}, nil
 }
 
+// ScanDirectorySecrets runs gitleaks on the exact directory tree (export fileset).
+func ScanDirectorySecrets(ctx context.Context, dir string) ([]SecretFinding, error) {
+	return runGitleaks(ctx, dir)
+}
+
+// ContainsExportSentinel reports whether data contains the red-team sentinel string.
+func ContainsExportSentinel(data []byte) bool {
+	return strings.Contains(string(data), "SENTINEL_EXPORT_SECRET")
+}
+
 // runGitleaks executes gitleaks on a directory and returns findings.
 // Uses exec.Command("gitleaks", "detect", "--source", dir, "--report-format", "json", "--report-path", "-").
 // Parses JSON output from stdout.

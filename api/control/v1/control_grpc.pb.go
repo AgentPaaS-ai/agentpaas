@@ -40,6 +40,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	ControlService_Pack_FullMethodName                 = "/agentpaas.control.v1.ControlService/Pack"
+	ControlService_ExportPreview_FullMethodName        = "/agentpaas.control.v1.ControlService/ExportPreview"
+	ControlService_Export_FullMethodName               = "/agentpaas.control.v1.ControlService/Export"
 	ControlService_Run_FullMethodName                  = "/agentpaas.control.v1.ControlService/Run"
 	ControlService_Stop_FullMethodName                 = "/agentpaas.control.v1.ControlService/Stop"
 	ControlService_Logs_FullMethodName                 = "/agentpaas.control.v1.ControlService/Logs"
@@ -72,6 +74,10 @@ const (
 type ControlServiceClient interface {
 	// Pack builds an agent image from a project directory.
 	Pack(ctx context.Context, in *PackRequest, opts ...grpc.CallOption) (*PackResponse, error)
+	// ExportPreview returns the export file manifest after preconditions pass.
+	ExportPreview(ctx context.Context, in *ExportPreviewRequest, opts ...grpc.CallOption) (*ExportPreviewResponse, error)
+	// Export writes a signed .agentpaas bundle after the secret gate passes.
+	Export(ctx context.Context, in *ExportRequest, opts ...grpc.CallOption) (*ExportResponse, error)
 	// Run starts a new agent run with the given budget and payload.
 	Run(ctx context.Context, in *RunRequest, opts ...grpc.CallOption) (*RunResponse, error)
 	// Stop terminates a running agent run.
@@ -132,6 +138,26 @@ func (c *controlServiceClient) Pack(ctx context.Context, in *PackRequest, opts .
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PackResponse)
 	err := c.cc.Invoke(ctx, ControlService_Pack_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) ExportPreview(ctx context.Context, in *ExportPreviewRequest, opts ...grpc.CallOption) (*ExportPreviewResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportPreviewResponse)
+	err := c.cc.Invoke(ctx, ControlService_ExportPreview_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) Export(ctx context.Context, in *ExportRequest, opts ...grpc.CallOption) (*ExportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportResponse)
+	err := c.cc.Invoke(ctx, ControlService_Export_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -366,6 +392,10 @@ func (c *controlServiceClient) ListRuns(ctx context.Context, in *ListRunsRequest
 type ControlServiceServer interface {
 	// Pack builds an agent image from a project directory.
 	Pack(context.Context, *PackRequest) (*PackResponse, error)
+	// ExportPreview returns the export file manifest after preconditions pass.
+	ExportPreview(context.Context, *ExportPreviewRequest) (*ExportPreviewResponse, error)
+	// Export writes a signed .agentpaas bundle after the secret gate passes.
+	Export(context.Context, *ExportRequest) (*ExportResponse, error)
 	// Run starts a new agent run with the given budget and payload.
 	Run(context.Context, *RunRequest) (*RunResponse, error)
 	// Stop terminates a running agent run.
@@ -424,6 +454,12 @@ type UnimplementedControlServiceServer struct{}
 
 func (UnimplementedControlServiceServer) Pack(context.Context, *PackRequest) (*PackResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Pack not implemented")
+}
+func (UnimplementedControlServiceServer) ExportPreview(context.Context, *ExportPreviewRequest) (*ExportPreviewResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ExportPreview not implemented")
+}
+func (UnimplementedControlServiceServer) Export(context.Context, *ExportRequest) (*ExportResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Export not implemented")
 }
 func (UnimplementedControlServiceServer) Run(context.Context, *RunRequest) (*RunResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Run not implemented")
@@ -523,6 +559,42 @@ func _ControlService_Pack_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ControlServiceServer).Pack(ctx, req.(*PackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_ExportPreview_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExportPreviewRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).ExportPreview(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_ExportPreview_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).ExportPreview(ctx, req.(*ExportPreviewRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_Export_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).Export(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_Export_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).Export(ctx, req.(*ExportRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -908,6 +980,14 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Pack",
 			Handler:    _ControlService_Pack_Handler,
+		},
+		{
+			MethodName: "ExportPreview",
+			Handler:    _ControlService_ExportPreview_Handler,
+		},
+		{
+			MethodName: "Export",
+			Handler:    _ControlService_Export_Handler,
 		},
 		{
 			MethodName: "Run",

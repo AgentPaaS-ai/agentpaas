@@ -254,3 +254,25 @@ func SignAsPublisher(ks KeyStore, digest []byte) ([]byte, error) {
 	}
 	return sig, nil
 }
+
+// PublisherSigningKeyID returns the keystore key ID for the publisher identity.
+func PublisherSigningKeyID() KeyID {
+	return publisherIdentityKeyID
+}
+
+// LoadPublisherSigningKey loads the publisher ECDSA private key for bundle manifest signing.
+// Callers must not log or persist the returned key.
+func LoadPublisherSigningKey(ks KeyStore) (*ecdsa.PrivateKey, error) {
+	km, err := ks.Load(publisherIdentityKeyID)
+	if err != nil {
+		if errors.Is(err, ErrKeyNotFound) {
+			return nil, ErrNoPublisherIdentity
+		}
+		return nil, fmt.Errorf("load publisher key: %w", err)
+	}
+	key, err := parseECDSAPrivateKey(km.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse publisher key: %w", err)
+	}
+	return key, nil
+}

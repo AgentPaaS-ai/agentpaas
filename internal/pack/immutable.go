@@ -40,6 +40,18 @@ type DeployedAgent struct {
 // agent artifact is attempted.
 var ErrImmutableViolation = errors.New("immutable violation: deployed agent artifacts cannot be modified in place")
 
+// LoadDeployedLock reads the deployed agent.lock from disk.
+func LoadDeployedLock(homeDir, agentName string) (*AgentLock, error) {
+	if err := validateDeployedAgentInput(homeDir, agentName); err != nil {
+		return nil, err
+	}
+	deployedDir := DeployedAgentPath(homeDir, agentName)
+	if err := rejectSymlinkPath(deployedDir, false); err != nil {
+		return nil, err
+	}
+	return readDeployedLock(deployedDir)
+}
+
 // LoadDeployedAgent reads the deployed agent metadata from disk.
 // Returns os.ErrNotExist if the agent was never deployed.
 func LoadDeployedAgent(homeDir, agentName string) (*DeployedAgent, error) {

@@ -352,6 +352,338 @@ func (x *PackResponse) GetBuildLog() string {
 	return ""
 }
 
+type ExportPreviewRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	AgentProjectPath string                 `protobuf:"bytes,1,opt,name=agent_project_path,json=agentProjectPath,proto3" json:"agent_project_path,omitempty"`
+	IncludeGlobs     []string               `protobuf:"bytes,2,rep,name=include_globs,json=includeGlobs,proto3" json:"include_globs,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ExportPreviewRequest) Reset() {
+	*x = ExportPreviewRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportPreviewRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportPreviewRequest) ProtoMessage() {}
+
+func (x *ExportPreviewRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportPreviewRequest.ProtoReflect.Descriptor instead.
+func (*ExportPreviewRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ExportPreviewRequest) GetAgentProjectPath() string {
+	if x != nil {
+		return x.AgentProjectPath
+	}
+	return ""
+}
+
+func (x *ExportPreviewRequest) GetIncludeGlobs() []string {
+	if x != nil {
+		return x.IncludeGlobs
+	}
+	return nil
+}
+
+type ExportFileEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Digest        string                 `protobuf:"bytes,2,opt,name=digest,proto3" json:"digest,omitempty"`
+	Bytes         int64                  `protobuf:"varint,3,opt,name=bytes,proto3" json:"bytes,omitempty"`
+	Extra         bool                   `protobuf:"varint,4,opt,name=extra,proto3" json:"extra,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportFileEntry) Reset() {
+	*x = ExportFileEntry{}
+	mi := &file_control_v1_control_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportFileEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportFileEntry) ProtoMessage() {}
+
+func (x *ExportFileEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportFileEntry.ProtoReflect.Descriptor instead.
+func (*ExportFileEntry) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ExportFileEntry) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *ExportFileEntry) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *ExportFileEntry) GetBytes() int64 {
+	if x != nil {
+		return x.Bytes
+	}
+	return 0
+}
+
+func (x *ExportFileEntry) GetExtra() bool {
+	if x != nil {
+		return x.Extra
+	}
+	return false
+}
+
+type ExportPreviewResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AgentName     string                 `protobuf:"bytes,1,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
+	AgentVersion  string                 `protobuf:"bytes,2,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
+	Files         []*ExportFileEntry     `protobuf:"bytes,3,rep,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ExportPreviewResponse) Reset() {
+	*x = ExportPreviewResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportPreviewResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportPreviewResponse) ProtoMessage() {}
+
+func (x *ExportPreviewResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportPreviewResponse.ProtoReflect.Descriptor instead.
+func (*ExportPreviewResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ExportPreviewResponse) GetAgentName() string {
+	if x != nil {
+		return x.AgentName
+	}
+	return ""
+}
+
+func (x *ExportPreviewResponse) GetAgentVersion() string {
+	if x != nil {
+		return x.AgentVersion
+	}
+	return ""
+}
+
+func (x *ExportPreviewResponse) GetFiles() []*ExportFileEntry {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+type ExportRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	AgentProjectPath string                 `protobuf:"bytes,1,opt,name=agent_project_path,json=agentProjectPath,proto3" json:"agent_project_path,omitempty"`
+	OutputPath       string                 `protobuf:"bytes,2,opt,name=output_path,json=outputPath,proto3" json:"output_path,omitempty"`
+	WithImage        bool                   `protobuf:"varint,3,opt,name=with_image,json=withImage,proto3" json:"with_image,omitempty"`
+	IncludeGlobs     []string               `protobuf:"bytes,4,rep,name=include_globs,json=includeGlobs,proto3" json:"include_globs,omitempty"`
+	Confirmed        bool                   `protobuf:"varint,5,opt,name=confirmed,proto3" json:"confirmed,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ExportRequest) Reset() {
+	*x = ExportRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportRequest) ProtoMessage() {}
+
+func (x *ExportRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportRequest.ProtoReflect.Descriptor instead.
+func (*ExportRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ExportRequest) GetAgentProjectPath() string {
+	if x != nil {
+		return x.AgentProjectPath
+	}
+	return ""
+}
+
+func (x *ExportRequest) GetOutputPath() string {
+	if x != nil {
+		return x.OutputPath
+	}
+	return ""
+}
+
+func (x *ExportRequest) GetWithImage() bool {
+	if x != nil {
+		return x.WithImage
+	}
+	return false
+}
+
+func (x *ExportRequest) GetIncludeGlobs() []string {
+	if x != nil {
+		return x.IncludeGlobs
+	}
+	return nil
+}
+
+func (x *ExportRequest) GetConfirmed() bool {
+	if x != nil {
+		return x.Confirmed
+	}
+	return false
+}
+
+type ExportResponse struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	BundleDigest         string                 `protobuf:"bytes,1,opt,name=bundle_digest,json=bundleDigest,proto3" json:"bundle_digest,omitempty"`
+	PublisherFingerprint string                 `protobuf:"bytes,2,opt,name=publisher_fingerprint,json=publisherFingerprint,proto3" json:"publisher_fingerprint,omitempty"`
+	FileCount            int32                  `protobuf:"varint,3,opt,name=file_count,json=fileCount,proto3" json:"file_count,omitempty"`
+	TotalBytes           int64                  `protobuf:"varint,4,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
+	OutputPath           string                 `protobuf:"bytes,5,opt,name=output_path,json=outputPath,proto3" json:"output_path,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ExportResponse) Reset() {
+	*x = ExportResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ExportResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ExportResponse) ProtoMessage() {}
+
+func (x *ExportResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ExportResponse.ProtoReflect.Descriptor instead.
+func (*ExportResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ExportResponse) GetBundleDigest() string {
+	if x != nil {
+		return x.BundleDigest
+	}
+	return ""
+}
+
+func (x *ExportResponse) GetPublisherFingerprint() string {
+	if x != nil {
+		return x.PublisherFingerprint
+	}
+	return ""
+}
+
+func (x *ExportResponse) GetFileCount() int32 {
+	if x != nil {
+		return x.FileCount
+	}
+	return 0
+}
+
+func (x *ExportResponse) GetTotalBytes() int64 {
+	if x != nil {
+		return x.TotalBytes
+	}
+	return 0
+}
+
+func (x *ExportResponse) GetOutputPath() string {
+	if x != nil {
+		return x.OutputPath
+	}
+	return ""
+}
+
 type RunRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Name of the agent to run.
@@ -368,7 +700,7 @@ type RunRequest struct {
 
 func (x *RunRequest) Reset() {
 	*x = RunRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[2]
+	mi := &file_control_v1_control_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -380,7 +712,7 @@ func (x *RunRequest) String() string {
 func (*RunRequest) ProtoMessage() {}
 
 func (x *RunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[2]
+	mi := &file_control_v1_control_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -393,7 +725,7 @@ func (x *RunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunRequest.ProtoReflect.Descriptor instead.
 func (*RunRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{2}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RunRequest) GetAgentName() string {
@@ -440,7 +772,7 @@ type BudgetConfig struct {
 
 func (x *BudgetConfig) Reset() {
 	*x = BudgetConfig{}
-	mi := &file_control_v1_control_proto_msgTypes[3]
+	mi := &file_control_v1_control_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -452,7 +784,7 @@ func (x *BudgetConfig) String() string {
 func (*BudgetConfig) ProtoMessage() {}
 
 func (x *BudgetConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[3]
+	mi := &file_control_v1_control_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -465,7 +797,7 @@ func (x *BudgetConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BudgetConfig.ProtoReflect.Descriptor instead.
 func (*BudgetConfig) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{3}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *BudgetConfig) GetMaxTokens() int64 {
@@ -506,7 +838,7 @@ type RunResponse struct {
 
 func (x *RunResponse) Reset() {
 	*x = RunResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[4]
+	mi := &file_control_v1_control_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -518,7 +850,7 @@ func (x *RunResponse) String() string {
 func (*RunResponse) ProtoMessage() {}
 
 func (x *RunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[4]
+	mi := &file_control_v1_control_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -531,7 +863,7 @@ func (x *RunResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunResponse.ProtoReflect.Descriptor instead.
 func (*RunResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{4}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RunResponse) GetRunId() string {
@@ -555,7 +887,7 @@ type StopRequest struct {
 
 func (x *StopRequest) Reset() {
 	*x = StopRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[5]
+	mi := &file_control_v1_control_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -567,7 +899,7 @@ func (x *StopRequest) String() string {
 func (*StopRequest) ProtoMessage() {}
 
 func (x *StopRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[5]
+	mi := &file_control_v1_control_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -580,7 +912,7 @@ func (x *StopRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopRequest.ProtoReflect.Descriptor instead.
 func (*StopRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{5}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *StopRequest) GetRunId() string {
@@ -614,7 +946,7 @@ type StopResponse struct {
 
 func (x *StopResponse) Reset() {
 	*x = StopResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[6]
+	mi := &file_control_v1_control_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -626,7 +958,7 @@ func (x *StopResponse) String() string {
 func (*StopResponse) ProtoMessage() {}
 
 func (x *StopResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[6]
+	mi := &file_control_v1_control_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -639,7 +971,7 @@ func (x *StopResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopResponse.ProtoReflect.Descriptor instead.
 func (*StopResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{6}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *StopResponse) GetAcknowledged() bool {
@@ -665,7 +997,7 @@ type LogsRequest struct {
 
 func (x *LogsRequest) Reset() {
 	*x = LogsRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[7]
+	mi := &file_control_v1_control_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -677,7 +1009,7 @@ func (x *LogsRequest) String() string {
 func (*LogsRequest) ProtoMessage() {}
 
 func (x *LogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[7]
+	mi := &file_control_v1_control_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -690,7 +1022,7 @@ func (x *LogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogsRequest.ProtoReflect.Descriptor instead.
 func (*LogsRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{7}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *LogsRequest) GetRunId() string {
@@ -739,7 +1071,7 @@ type LogEntry struct {
 
 func (x *LogEntry) Reset() {
 	*x = LogEntry{}
-	mi := &file_control_v1_control_proto_msgTypes[8]
+	mi := &file_control_v1_control_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -751,7 +1083,7 @@ func (x *LogEntry) String() string {
 func (*LogEntry) ProtoMessage() {}
 
 func (x *LogEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[8]
+	mi := &file_control_v1_control_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -764,7 +1096,7 @@ func (x *LogEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LogEntry.ProtoReflect.Descriptor instead.
 func (*LogEntry) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{8}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *LogEntry) GetTimestamp() *timestamppb.Timestamp {
@@ -814,7 +1146,7 @@ type PolicyApplyRequest struct {
 
 func (x *PolicyApplyRequest) Reset() {
 	*x = PolicyApplyRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[9]
+	mi := &file_control_v1_control_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -826,7 +1158,7 @@ func (x *PolicyApplyRequest) String() string {
 func (*PolicyApplyRequest) ProtoMessage() {}
 
 func (x *PolicyApplyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[9]
+	mi := &file_control_v1_control_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -839,7 +1171,7 @@ func (x *PolicyApplyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyApplyRequest.ProtoReflect.Descriptor instead.
 func (*PolicyApplyRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{9}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *PolicyApplyRequest) GetPolicyYaml() string {
@@ -870,7 +1202,7 @@ type PolicyApplyResponse struct {
 
 func (x *PolicyApplyResponse) Reset() {
 	*x = PolicyApplyResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[10]
+	mi := &file_control_v1_control_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -882,7 +1214,7 @@ func (x *PolicyApplyResponse) String() string {
 func (*PolicyApplyResponse) ProtoMessage() {}
 
 func (x *PolicyApplyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[10]
+	mi := &file_control_v1_control_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -895,7 +1227,7 @@ func (x *PolicyApplyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PolicyApplyResponse.ProtoReflect.Descriptor instead.
 func (*PolicyApplyResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{10}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PolicyApplyResponse) GetPolicyDigest() string {
@@ -933,7 +1265,7 @@ type SecretSetRequest struct {
 
 func (x *SecretSetRequest) Reset() {
 	*x = SecretSetRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[11]
+	mi := &file_control_v1_control_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -945,7 +1277,7 @@ func (x *SecretSetRequest) String() string {
 func (*SecretSetRequest) ProtoMessage() {}
 
 func (x *SecretSetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[11]
+	mi := &file_control_v1_control_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -958,7 +1290,7 @@ func (x *SecretSetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretSetRequest.ProtoReflect.Descriptor instead.
 func (*SecretSetRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{11}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *SecretSetRequest) GetName() string {
@@ -992,7 +1324,7 @@ type SecretSetResponse struct {
 
 func (x *SecretSetResponse) Reset() {
 	*x = SecretSetResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[12]
+	mi := &file_control_v1_control_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1004,7 +1336,7 @@ func (x *SecretSetResponse) String() string {
 func (*SecretSetResponse) ProtoMessage() {}
 
 func (x *SecretSetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[12]
+	mi := &file_control_v1_control_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1017,7 +1349,7 @@ func (x *SecretSetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretSetResponse.ProtoReflect.Descriptor instead.
 func (*SecretSetResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{12}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *SecretSetResponse) GetCreated() bool {
@@ -1039,7 +1371,7 @@ type SecretGrantRequest struct {
 
 func (x *SecretGrantRequest) Reset() {
 	*x = SecretGrantRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[13]
+	mi := &file_control_v1_control_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1051,7 +1383,7 @@ func (x *SecretGrantRequest) String() string {
 func (*SecretGrantRequest) ProtoMessage() {}
 
 func (x *SecretGrantRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[13]
+	mi := &file_control_v1_control_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1064,7 +1396,7 @@ func (x *SecretGrantRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretGrantRequest.ProtoReflect.Descriptor instead.
 func (*SecretGrantRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{13}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SecretGrantRequest) GetRunId() string {
@@ -1091,7 +1423,7 @@ type SecretGrantResponse struct {
 
 func (x *SecretGrantResponse) Reset() {
 	*x = SecretGrantResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[14]
+	mi := &file_control_v1_control_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1103,7 +1435,7 @@ func (x *SecretGrantResponse) String() string {
 func (*SecretGrantResponse) ProtoMessage() {}
 
 func (x *SecretGrantResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[14]
+	mi := &file_control_v1_control_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1116,7 +1448,7 @@ func (x *SecretGrantResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretGrantResponse.ProtoReflect.Descriptor instead.
 func (*SecretGrantResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{14}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SecretGrantResponse) GetAcknowledged() bool {
@@ -1138,7 +1470,7 @@ type SecretRevokeRequest struct {
 
 func (x *SecretRevokeRequest) Reset() {
 	*x = SecretRevokeRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[15]
+	mi := &file_control_v1_control_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1150,7 +1482,7 @@ func (x *SecretRevokeRequest) String() string {
 func (*SecretRevokeRequest) ProtoMessage() {}
 
 func (x *SecretRevokeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[15]
+	mi := &file_control_v1_control_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1163,7 +1495,7 @@ func (x *SecretRevokeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretRevokeRequest.ProtoReflect.Descriptor instead.
 func (*SecretRevokeRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{15}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SecretRevokeRequest) GetRunId() string {
@@ -1190,7 +1522,7 @@ type SecretRevokeResponse struct {
 
 func (x *SecretRevokeResponse) Reset() {
 	*x = SecretRevokeResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[16]
+	mi := &file_control_v1_control_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1202,7 +1534,7 @@ func (x *SecretRevokeResponse) String() string {
 func (*SecretRevokeResponse) ProtoMessage() {}
 
 func (x *SecretRevokeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[16]
+	mi := &file_control_v1_control_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1215,7 +1547,7 @@ func (x *SecretRevokeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretRevokeResponse.ProtoReflect.Descriptor instead.
 func (*SecretRevokeResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{16}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *SecretRevokeResponse) GetAcknowledged() bool {
@@ -1245,7 +1577,7 @@ type AuditQueryRequest struct {
 
 func (x *AuditQueryRequest) Reset() {
 	*x = AuditQueryRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[17]
+	mi := &file_control_v1_control_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1589,7 @@ func (x *AuditQueryRequest) String() string {
 func (*AuditQueryRequest) ProtoMessage() {}
 
 func (x *AuditQueryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[17]
+	mi := &file_control_v1_control_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1602,7 @@ func (x *AuditQueryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditQueryRequest.ProtoReflect.Descriptor instead.
 func (*AuditQueryRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{17}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *AuditQueryRequest) GetAgentName() string {
@@ -1325,7 +1657,7 @@ type TimeRange struct {
 
 func (x *TimeRange) Reset() {
 	*x = TimeRange{}
-	mi := &file_control_v1_control_proto_msgTypes[18]
+	mi := &file_control_v1_control_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1337,7 +1669,7 @@ func (x *TimeRange) String() string {
 func (*TimeRange) ProtoMessage() {}
 
 func (x *TimeRange) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[18]
+	mi := &file_control_v1_control_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1350,7 +1682,7 @@ func (x *TimeRange) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TimeRange.ProtoReflect.Descriptor instead.
 func (*TimeRange) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{18}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *TimeRange) GetStart() *timestamppb.Timestamp {
@@ -1381,7 +1713,7 @@ type AuditEntry struct {
 
 func (x *AuditEntry) Reset() {
 	*x = AuditEntry{}
-	mi := &file_control_v1_control_proto_msgTypes[19]
+	mi := &file_control_v1_control_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1393,7 +1725,7 @@ func (x *AuditEntry) String() string {
 func (*AuditEntry) ProtoMessage() {}
 
 func (x *AuditEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[19]
+	mi := &file_control_v1_control_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1406,7 +1738,7 @@ func (x *AuditEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditEntry.ProtoReflect.Descriptor instead.
 func (*AuditEntry) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{19}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *AuditEntry) GetEventId() string {
@@ -1463,7 +1795,7 @@ type AuditCheckpointIssue struct {
 
 func (x *AuditCheckpointIssue) Reset() {
 	*x = AuditCheckpointIssue{}
-	mi := &file_control_v1_control_proto_msgTypes[20]
+	mi := &file_control_v1_control_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1475,7 +1807,7 @@ func (x *AuditCheckpointIssue) String() string {
 func (*AuditCheckpointIssue) ProtoMessage() {}
 
 func (x *AuditCheckpointIssue) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[20]
+	mi := &file_control_v1_control_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1488,7 +1820,7 @@ func (x *AuditCheckpointIssue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditCheckpointIssue.ProtoReflect.Descriptor instead.
 func (*AuditCheckpointIssue) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{20}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AuditCheckpointIssue) GetType() string {
@@ -1532,7 +1864,7 @@ type AuditChainVerification struct {
 
 func (x *AuditChainVerification) Reset() {
 	*x = AuditChainVerification{}
-	mi := &file_control_v1_control_proto_msgTypes[21]
+	mi := &file_control_v1_control_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1544,7 +1876,7 @@ func (x *AuditChainVerification) String() string {
 func (*AuditChainVerification) ProtoMessage() {}
 
 func (x *AuditChainVerification) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[21]
+	mi := &file_control_v1_control_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1557,7 +1889,7 @@ func (x *AuditChainVerification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditChainVerification.ProtoReflect.Descriptor instead.
 func (*AuditChainVerification) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{21}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *AuditChainVerification) GetVerified() bool {
@@ -1607,7 +1939,7 @@ type AuditQueryResponse struct {
 
 func (x *AuditQueryResponse) Reset() {
 	*x = AuditQueryResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[22]
+	mi := &file_control_v1_control_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1619,7 +1951,7 @@ func (x *AuditQueryResponse) String() string {
 func (*AuditQueryResponse) ProtoMessage() {}
 
 func (x *AuditQueryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[22]
+	mi := &file_control_v1_control_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1632,7 +1964,7 @@ func (x *AuditQueryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditQueryResponse.ProtoReflect.Descriptor instead.
 func (*AuditQueryResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{22}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *AuditQueryResponse) GetEntries() []*AuditEntry {
@@ -1677,7 +2009,7 @@ type AuditExportRequest struct {
 
 func (x *AuditExportRequest) Reset() {
 	*x = AuditExportRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[23]
+	mi := &file_control_v1_control_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1689,7 +2021,7 @@ func (x *AuditExportRequest) String() string {
 func (*AuditExportRequest) ProtoMessage() {}
 
 func (x *AuditExportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[23]
+	mi := &file_control_v1_control_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1702,7 +2034,7 @@ func (x *AuditExportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditExportRequest.ProtoReflect.Descriptor instead.
 func (*AuditExportRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{23}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *AuditExportRequest) GetTimeRange() *TimeRange {
@@ -1738,7 +2070,7 @@ type AuditExportResponse struct {
 
 func (x *AuditExportResponse) Reset() {
 	*x = AuditExportResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[24]
+	mi := &file_control_v1_control_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1750,7 +2082,7 @@ func (x *AuditExportResponse) String() string {
 func (*AuditExportResponse) ProtoMessage() {}
 
 func (x *AuditExportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[24]
+	mi := &file_control_v1_control_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1763,7 +2095,7 @@ func (x *AuditExportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditExportResponse.ProtoReflect.Descriptor instead.
 func (*AuditExportResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{24}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *AuditExportResponse) GetData() []byte {
@@ -1788,7 +2120,7 @@ type DoctorRequest struct {
 
 func (x *DoctorRequest) Reset() {
 	*x = DoctorRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[25]
+	mi := &file_control_v1_control_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1800,7 +2132,7 @@ func (x *DoctorRequest) String() string {
 func (*DoctorRequest) ProtoMessage() {}
 
 func (x *DoctorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[25]
+	mi := &file_control_v1_control_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1813,7 +2145,7 @@ func (x *DoctorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DoctorRequest.ProtoReflect.Descriptor instead.
 func (*DoctorRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{25}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{30}
 }
 
 type CheckResult struct {
@@ -1832,7 +2164,7 @@ type CheckResult struct {
 
 func (x *CheckResult) Reset() {
 	*x = CheckResult{}
-	mi := &file_control_v1_control_proto_msgTypes[26]
+	mi := &file_control_v1_control_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1844,7 +2176,7 @@ func (x *CheckResult) String() string {
 func (*CheckResult) ProtoMessage() {}
 
 func (x *CheckResult) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[26]
+	mi := &file_control_v1_control_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1857,7 +2189,7 @@ func (x *CheckResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckResult.ProtoReflect.Descriptor instead.
 func (*CheckResult) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{26}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *CheckResult) GetName() string {
@@ -1899,7 +2231,7 @@ type DoctorResponse struct {
 
 func (x *DoctorResponse) Reset() {
 	*x = DoctorResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[27]
+	mi := &file_control_v1_control_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1911,7 +2243,7 @@ func (x *DoctorResponse) String() string {
 func (*DoctorResponse) ProtoMessage() {}
 
 func (x *DoctorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[27]
+	mi := &file_control_v1_control_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1924,7 +2256,7 @@ func (x *DoctorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DoctorResponse.ProtoReflect.Descriptor instead.
 func (*DoctorResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{27}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DoctorResponse) GetChecks() []*CheckResult {
@@ -1951,7 +2283,7 @@ type ValidateAgentProjectRequest struct {
 
 func (x *ValidateAgentProjectRequest) Reset() {
 	*x = ValidateAgentProjectRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[28]
+	mi := &file_control_v1_control_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1963,7 +2295,7 @@ func (x *ValidateAgentProjectRequest) String() string {
 func (*ValidateAgentProjectRequest) ProtoMessage() {}
 
 func (x *ValidateAgentProjectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[28]
+	mi := &file_control_v1_control_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1976,7 +2308,7 @@ func (x *ValidateAgentProjectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateAgentProjectRequest.ProtoReflect.Descriptor instead.
 func (*ValidateAgentProjectRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{28}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ValidateAgentProjectRequest) GetProjectPath() string {
@@ -2000,7 +2332,7 @@ type ProjectValidation struct {
 
 func (x *ProjectValidation) Reset() {
 	*x = ProjectValidation{}
-	mi := &file_control_v1_control_proto_msgTypes[29]
+	mi := &file_control_v1_control_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2012,7 +2344,7 @@ func (x *ProjectValidation) String() string {
 func (*ProjectValidation) ProtoMessage() {}
 
 func (x *ProjectValidation) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[29]
+	mi := &file_control_v1_control_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2025,7 +2357,7 @@ func (x *ProjectValidation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProjectValidation.ProtoReflect.Descriptor instead.
 func (*ProjectValidation) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{29}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ProjectValidation) GetCheck() string {
@@ -2074,7 +2406,7 @@ type ValidateAgentProjectResponse struct {
 
 func (x *ValidateAgentProjectResponse) Reset() {
 	*x = ValidateAgentProjectResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[30]
+	mi := &file_control_v1_control_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2086,7 +2418,7 @@ func (x *ValidateAgentProjectResponse) String() string {
 func (*ValidateAgentProjectResponse) ProtoMessage() {}
 
 func (x *ValidateAgentProjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[30]
+	mi := &file_control_v1_control_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2099,7 +2431,7 @@ func (x *ValidateAgentProjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ValidateAgentProjectResponse.ProtoReflect.Descriptor instead.
 func (*ValidateAgentProjectResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{30}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ValidateAgentProjectResponse) GetValidations() []*ProjectValidation {
@@ -2175,7 +2507,7 @@ type OperatorIssue struct {
 
 func (x *OperatorIssue) Reset() {
 	*x = OperatorIssue{}
-	mi := &file_control_v1_control_proto_msgTypes[31]
+	mi := &file_control_v1_control_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2187,7 +2519,7 @@ func (x *OperatorIssue) String() string {
 func (*OperatorIssue) ProtoMessage() {}
 
 func (x *OperatorIssue) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[31]
+	mi := &file_control_v1_control_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2200,7 +2532,7 @@ func (x *OperatorIssue) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OperatorIssue.ProtoReflect.Descriptor instead.
 func (*OperatorIssue) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{31}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *OperatorIssue) GetCategory() string {
@@ -2247,7 +2579,7 @@ type EvidenceRef struct {
 
 func (x *EvidenceRef) Reset() {
 	*x = EvidenceRef{}
-	mi := &file_control_v1_control_proto_msgTypes[32]
+	mi := &file_control_v1_control_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2259,7 +2591,7 @@ func (x *EvidenceRef) String() string {
 func (*EvidenceRef) ProtoMessage() {}
 
 func (x *EvidenceRef) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[32]
+	mi := &file_control_v1_control_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2272,7 +2604,7 @@ func (x *EvidenceRef) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EvidenceRef.ProtoReflect.Descriptor instead.
 func (*EvidenceRef) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{32}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *EvidenceRef) GetType() string {
@@ -2310,7 +2642,7 @@ type RedactedExcerpt struct {
 
 func (x *RedactedExcerpt) Reset() {
 	*x = RedactedExcerpt{}
-	mi := &file_control_v1_control_proto_msgTypes[33]
+	mi := &file_control_v1_control_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2322,7 +2654,7 @@ func (x *RedactedExcerpt) String() string {
 func (*RedactedExcerpt) ProtoMessage() {}
 
 func (x *RedactedExcerpt) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[33]
+	mi := &file_control_v1_control_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2335,7 +2667,7 @@ func (x *RedactedExcerpt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RedactedExcerpt.ProtoReflect.Descriptor instead.
 func (*RedactedExcerpt) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{33}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *RedactedExcerpt) GetSource() string {
@@ -2383,7 +2715,7 @@ type ConfirmationRequirement struct {
 
 func (x *ConfirmationRequirement) Reset() {
 	*x = ConfirmationRequirement{}
-	mi := &file_control_v1_control_proto_msgTypes[34]
+	mi := &file_control_v1_control_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2395,7 +2727,7 @@ func (x *ConfirmationRequirement) String() string {
 func (*ConfirmationRequirement) ProtoMessage() {}
 
 func (x *ConfirmationRequirement) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[34]
+	mi := &file_control_v1_control_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2408,7 +2740,7 @@ func (x *ConfirmationRequirement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfirmationRequirement.ProtoReflect.Descriptor instead.
 func (*ConfirmationRequirement) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{34}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ConfirmationRequirement) GetRequiresConfirmation() bool {
@@ -2469,7 +2801,7 @@ type SummarizeRunRequest struct {
 
 func (x *SummarizeRunRequest) Reset() {
 	*x = SummarizeRunRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[35]
+	mi := &file_control_v1_control_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2481,7 +2813,7 @@ func (x *SummarizeRunRequest) String() string {
 func (*SummarizeRunRequest) ProtoMessage() {}
 
 func (x *SummarizeRunRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[35]
+	mi := &file_control_v1_control_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2494,7 +2826,7 @@ func (x *SummarizeRunRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummarizeRunRequest.ProtoReflect.Descriptor instead.
 func (*SummarizeRunRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{35}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *SummarizeRunRequest) GetRunId() string {
@@ -2515,7 +2847,7 @@ type KeyEvent struct {
 
 func (x *KeyEvent) Reset() {
 	*x = KeyEvent{}
-	mi := &file_control_v1_control_proto_msgTypes[36]
+	mi := &file_control_v1_control_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2527,7 +2859,7 @@ func (x *KeyEvent) String() string {
 func (*KeyEvent) ProtoMessage() {}
 
 func (x *KeyEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[36]
+	mi := &file_control_v1_control_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2540,7 +2872,7 @@ func (x *KeyEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyEvent.ProtoReflect.Descriptor instead.
 func (*KeyEvent) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{36}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *KeyEvent) GetTimestamp() *timestamppb.Timestamp {
@@ -2591,7 +2923,7 @@ type SummarizeRunResponse struct {
 
 func (x *SummarizeRunResponse) Reset() {
 	*x = SummarizeRunResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[37]
+	mi := &file_control_v1_control_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2603,7 +2935,7 @@ func (x *SummarizeRunResponse) String() string {
 func (*SummarizeRunResponse) ProtoMessage() {}
 
 func (x *SummarizeRunResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[37]
+	mi := &file_control_v1_control_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2616,7 +2948,7 @@ func (x *SummarizeRunResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SummarizeRunResponse.ProtoReflect.Descriptor instead.
 func (*SummarizeRunResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{37}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *SummarizeRunResponse) GetSummary() string {
@@ -2719,7 +3051,7 @@ type ExplainFailureRequest struct {
 
 func (x *ExplainFailureRequest) Reset() {
 	*x = ExplainFailureRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[38]
+	mi := &file_control_v1_control_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2731,7 +3063,7 @@ func (x *ExplainFailureRequest) String() string {
 func (*ExplainFailureRequest) ProtoMessage() {}
 
 func (x *ExplainFailureRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[38]
+	mi := &file_control_v1_control_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2744,7 +3076,7 @@ func (x *ExplainFailureRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainFailureRequest.ProtoReflect.Descriptor instead.
 func (*ExplainFailureRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{38}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ExplainFailureRequest) GetRunId() string {
@@ -2776,7 +3108,7 @@ type ExplainFailureResponse struct {
 
 func (x *ExplainFailureResponse) Reset() {
 	*x = ExplainFailureResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[39]
+	mi := &file_control_v1_control_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2788,7 +3120,7 @@ func (x *ExplainFailureResponse) String() string {
 func (*ExplainFailureResponse) ProtoMessage() {}
 
 func (x *ExplainFailureResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[39]
+	mi := &file_control_v1_control_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2801,7 +3133,7 @@ func (x *ExplainFailureResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainFailureResponse.ProtoReflect.Descriptor instead.
 func (*ExplainFailureResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{39}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ExplainFailureResponse) GetRootCause() string {
@@ -2871,7 +3203,7 @@ type ExplainPolicyDenialRequest struct {
 
 func (x *ExplainPolicyDenialRequest) Reset() {
 	*x = ExplainPolicyDenialRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[40]
+	mi := &file_control_v1_control_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2883,7 +3215,7 @@ func (x *ExplainPolicyDenialRequest) String() string {
 func (*ExplainPolicyDenialRequest) ProtoMessage() {}
 
 func (x *ExplainPolicyDenialRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[40]
+	mi := &file_control_v1_control_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2896,7 +3228,7 @@ func (x *ExplainPolicyDenialRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainPolicyDenialRequest.ProtoReflect.Descriptor instead.
 func (*ExplainPolicyDenialRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{40}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ExplainPolicyDenialRequest) GetRunId() string {
@@ -2941,7 +3273,7 @@ type ExplainPolicyDenialResponse struct {
 
 func (x *ExplainPolicyDenialResponse) Reset() {
 	*x = ExplainPolicyDenialResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[41]
+	mi := &file_control_v1_control_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2953,7 +3285,7 @@ func (x *ExplainPolicyDenialResponse) String() string {
 func (*ExplainPolicyDenialResponse) ProtoMessage() {}
 
 func (x *ExplainPolicyDenialResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[41]
+	mi := &file_control_v1_control_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2966,7 +3298,7 @@ func (x *ExplainPolicyDenialResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExplainPolicyDenialResponse.ProtoReflect.Descriptor instead.
 func (*ExplainPolicyDenialResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{41}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ExplainPolicyDenialResponse) GetDeniedDestination() string {
@@ -3056,7 +3388,7 @@ type RecommendPolicyPatchRequest struct {
 
 func (x *RecommendPolicyPatchRequest) Reset() {
 	*x = RecommendPolicyPatchRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[42]
+	mi := &file_control_v1_control_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3068,7 +3400,7 @@ func (x *RecommendPolicyPatchRequest) String() string {
 func (*RecommendPolicyPatchRequest) ProtoMessage() {}
 
 func (x *RecommendPolicyPatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[42]
+	mi := &file_control_v1_control_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3081,7 +3413,7 @@ func (x *RecommendPolicyPatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecommendPolicyPatchRequest.ProtoReflect.Descriptor instead.
 func (*RecommendPolicyPatchRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{42}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RecommendPolicyPatchRequest) GetDesiredBehavior() string {
@@ -3118,7 +3450,7 @@ type RecommendPolicyPatchResponse struct {
 
 func (x *RecommendPolicyPatchResponse) Reset() {
 	*x = RecommendPolicyPatchResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[43]
+	mi := &file_control_v1_control_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3130,7 +3462,7 @@ func (x *RecommendPolicyPatchResponse) String() string {
 func (*RecommendPolicyPatchResponse) ProtoMessage() {}
 
 func (x *RecommendPolicyPatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[43]
+	mi := &file_control_v1_control_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3143,7 +3475,7 @@ func (x *RecommendPolicyPatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecommendPolicyPatchResponse.ProtoReflect.Descriptor instead.
 func (*RecommendPolicyPatchResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{43}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *RecommendPolicyPatchResponse) GetPatchYaml() string {
@@ -3239,7 +3571,7 @@ type GetRunTimelineRequest struct {
 
 func (x *GetRunTimelineRequest) Reset() {
 	*x = GetRunTimelineRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[44]
+	mi := &file_control_v1_control_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3251,7 +3583,7 @@ func (x *GetRunTimelineRequest) String() string {
 func (*GetRunTimelineRequest) ProtoMessage() {}
 
 func (x *GetRunTimelineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[44]
+	mi := &file_control_v1_control_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3264,7 +3596,7 @@ func (x *GetRunTimelineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunTimelineRequest.ProtoReflect.Descriptor instead.
 func (*GetRunTimelineRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{44}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *GetRunTimelineRequest) GetRunId() string {
@@ -3290,7 +3622,7 @@ type TimelineEvent struct {
 
 func (x *TimelineEvent) Reset() {
 	*x = TimelineEvent{}
-	mi := &file_control_v1_control_proto_msgTypes[45]
+	mi := &file_control_v1_control_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3302,7 +3634,7 @@ func (x *TimelineEvent) String() string {
 func (*TimelineEvent) ProtoMessage() {}
 
 func (x *TimelineEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[45]
+	mi := &file_control_v1_control_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3315,7 +3647,7 @@ func (x *TimelineEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TimelineEvent.ProtoReflect.Descriptor instead.
 func (*TimelineEvent) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{45}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *TimelineEvent) GetTimestamp() *timestamppb.Timestamp {
@@ -3358,7 +3690,7 @@ type GetRunTimelineResponse struct {
 
 func (x *GetRunTimelineResponse) Reset() {
 	*x = GetRunTimelineResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[46]
+	mi := &file_control_v1_control_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3370,7 +3702,7 @@ func (x *GetRunTimelineResponse) String() string {
 func (*GetRunTimelineResponse) ProtoMessage() {}
 
 func (x *GetRunTimelineResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[46]
+	mi := &file_control_v1_control_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3383,7 +3715,7 @@ func (x *GetRunTimelineResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetRunTimelineResponse.ProtoReflect.Descriptor instead.
 func (*GetRunTimelineResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{46}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *GetRunTimelineResponse) GetEvents() []*TimelineEvent {
@@ -3417,7 +3749,7 @@ type NextActionRequest struct {
 
 func (x *NextActionRequest) Reset() {
 	*x = NextActionRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[47]
+	mi := &file_control_v1_control_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3429,7 +3761,7 @@ func (x *NextActionRequest) String() string {
 func (*NextActionRequest) ProtoMessage() {}
 
 func (x *NextActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[47]
+	mi := &file_control_v1_control_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3442,7 +3774,7 @@ func (x *NextActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NextActionRequest.ProtoReflect.Descriptor instead.
 func (*NextActionRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{47}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *NextActionRequest) GetContext() string {
@@ -3476,7 +3808,7 @@ type NextActionResponse struct {
 
 func (x *NextActionResponse) Reset() {
 	*x = NextActionResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[48]
+	mi := &file_control_v1_control_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3488,7 +3820,7 @@ func (x *NextActionResponse) String() string {
 func (*NextActionResponse) ProtoMessage() {}
 
 func (x *NextActionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[48]
+	mi := &file_control_v1_control_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3501,7 +3833,7 @@ func (x *NextActionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NextActionResponse.ProtoReflect.Descriptor instead.
 func (*NextActionResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{48}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *NextActionResponse) GetAction() string {
@@ -3592,7 +3924,7 @@ type CronScheduleInfo struct {
 
 func (x *CronScheduleInfo) Reset() {
 	*x = CronScheduleInfo{}
-	mi := &file_control_v1_control_proto_msgTypes[49]
+	mi := &file_control_v1_control_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3604,7 +3936,7 @@ func (x *CronScheduleInfo) String() string {
 func (*CronScheduleInfo) ProtoMessage() {}
 
 func (x *CronScheduleInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[49]
+	mi := &file_control_v1_control_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3617,7 +3949,7 @@ func (x *CronScheduleInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CronScheduleInfo.ProtoReflect.Descriptor instead.
 func (*CronScheduleInfo) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{49}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *CronScheduleInfo) GetScheduleId() string {
@@ -3700,7 +4032,7 @@ type CronAddRequest struct {
 
 func (x *CronAddRequest) Reset() {
 	*x = CronAddRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[50]
+	mi := &file_control_v1_control_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3712,7 +4044,7 @@ func (x *CronAddRequest) String() string {
 func (*CronAddRequest) ProtoMessage() {}
 
 func (x *CronAddRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[50]
+	mi := &file_control_v1_control_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3725,7 +4057,7 @@ func (x *CronAddRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CronAddRequest.ProtoReflect.Descriptor instead.
 func (*CronAddRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{50}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CronAddRequest) GetAgentName() string {
@@ -3794,7 +4126,7 @@ type CronAddResponse struct {
 
 func (x *CronAddResponse) Reset() {
 	*x = CronAddResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[51]
+	mi := &file_control_v1_control_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3806,7 +4138,7 @@ func (x *CronAddResponse) String() string {
 func (*CronAddResponse) ProtoMessage() {}
 
 func (x *CronAddResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[51]
+	mi := &file_control_v1_control_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3819,7 +4151,7 @@ func (x *CronAddResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CronAddResponse.ProtoReflect.Descriptor instead.
 func (*CronAddResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{51}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CronAddResponse) GetSchedule() *CronScheduleInfo {
@@ -3838,7 +4170,7 @@ type CronListRequest struct {
 
 func (x *CronListRequest) Reset() {
 	*x = CronListRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[52]
+	mi := &file_control_v1_control_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3850,7 +4182,7 @@ func (x *CronListRequest) String() string {
 func (*CronListRequest) ProtoMessage() {}
 
 func (x *CronListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[52]
+	mi := &file_control_v1_control_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3863,7 +4195,7 @@ func (x *CronListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CronListRequest.ProtoReflect.Descriptor instead.
 func (*CronListRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{52}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{57}
 }
 
 // CronListResponse returns all schedules.
@@ -3876,7 +4208,7 @@ type CronListResponse struct {
 
 func (x *CronListResponse) Reset() {
 	*x = CronListResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[53]
+	mi := &file_control_v1_control_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3888,7 +4220,7 @@ func (x *CronListResponse) String() string {
 func (*CronListResponse) ProtoMessage() {}
 
 func (x *CronListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[53]
+	mi := &file_control_v1_control_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3901,7 +4233,7 @@ func (x *CronListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CronListResponse.ProtoReflect.Descriptor instead.
 func (*CronListResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{53}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *CronListResponse) GetSchedules() []*CronScheduleInfo {
@@ -3921,7 +4253,7 @@ type CronRemoveRequest struct {
 
 func (x *CronRemoveRequest) Reset() {
 	*x = CronRemoveRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[54]
+	mi := &file_control_v1_control_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3933,7 +4265,7 @@ func (x *CronRemoveRequest) String() string {
 func (*CronRemoveRequest) ProtoMessage() {}
 
 func (x *CronRemoveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[54]
+	mi := &file_control_v1_control_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3946,7 +4278,7 @@ func (x *CronRemoveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CronRemoveRequest.ProtoReflect.Descriptor instead.
 func (*CronRemoveRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{54}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CronRemoveRequest) GetScheduleId() string {
@@ -3966,7 +4298,7 @@ type CronRemoveResponse struct {
 
 func (x *CronRemoveResponse) Reset() {
 	*x = CronRemoveResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[55]
+	mi := &file_control_v1_control_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3978,7 +4310,7 @@ func (x *CronRemoveResponse) String() string {
 func (*CronRemoveResponse) ProtoMessage() {}
 
 func (x *CronRemoveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[55]
+	mi := &file_control_v1_control_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3991,7 +4323,7 @@ func (x *CronRemoveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CronRemoveResponse.ProtoReflect.Descriptor instead.
 func (*CronRemoveResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{55}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *CronRemoveResponse) GetRemoved() bool {
@@ -4013,7 +4345,7 @@ type RunInfo struct {
 
 func (x *RunInfo) Reset() {
 	*x = RunInfo{}
-	mi := &file_control_v1_control_proto_msgTypes[56]
+	mi := &file_control_v1_control_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4025,7 +4357,7 @@ func (x *RunInfo) String() string {
 func (*RunInfo) ProtoMessage() {}
 
 func (x *RunInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[56]
+	mi := &file_control_v1_control_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4038,7 +4370,7 @@ func (x *RunInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunInfo.ProtoReflect.Descriptor instead.
 func (*RunInfo) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{56}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *RunInfo) GetRunId() string {
@@ -4077,7 +4409,7 @@ type ListRunsRequest struct {
 
 func (x *ListRunsRequest) Reset() {
 	*x = ListRunsRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[57]
+	mi := &file_control_v1_control_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4089,7 +4421,7 @@ func (x *ListRunsRequest) String() string {
 func (*ListRunsRequest) ProtoMessage() {}
 
 func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[57]
+	mi := &file_control_v1_control_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4102,7 +4434,7 @@ func (x *ListRunsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunsRequest.ProtoReflect.Descriptor instead.
 func (*ListRunsRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{57}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{62}
 }
 
 type ListRunsResponse struct {
@@ -4114,7 +4446,7 @@ type ListRunsResponse struct {
 
 func (x *ListRunsResponse) Reset() {
 	*x = ListRunsResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[58]
+	mi := &file_control_v1_control_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4126,7 +4458,7 @@ func (x *ListRunsResponse) String() string {
 func (*ListRunsResponse) ProtoMessage() {}
 
 func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[58]
+	mi := &file_control_v1_control_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4139,7 +4471,7 @@ func (x *ListRunsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRunsResponse.ProtoReflect.Descriptor instead.
 func (*ListRunsResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{58}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *ListRunsResponse) GetRuns() []*RunInfo {
@@ -4163,7 +4495,37 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"base_image\x18\x04 \x01(\tR\tbaseImage\"N\n" +
 	"\fPackResponse\x12!\n" +
 	"\fimage_digest\x18\x01 \x01(\tR\vimageDigest\x12\x1b\n" +
-	"\tbuild_log\x18\x02 \x01(\tR\bbuildLog\"\xb5\x01\n" +
+	"\tbuild_log\x18\x02 \x01(\tR\bbuildLog\"i\n" +
+	"\x14ExportPreviewRequest\x12,\n" +
+	"\x12agent_project_path\x18\x01 \x01(\tR\x10agentProjectPath\x12#\n" +
+	"\rinclude_globs\x18\x02 \x03(\tR\fincludeGlobs\"i\n" +
+	"\x0fExportFileEntry\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06digest\x18\x02 \x01(\tR\x06digest\x12\x14\n" +
+	"\x05bytes\x18\x03 \x01(\x03R\x05bytes\x12\x14\n" +
+	"\x05extra\x18\x04 \x01(\bR\x05extra\"\x98\x01\n" +
+	"\x15ExportPreviewResponse\x12\x1d\n" +
+	"\n" +
+	"agent_name\x18\x01 \x01(\tR\tagentName\x12#\n" +
+	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12;\n" +
+	"\x05files\x18\x03 \x03(\v2%.agentpaas.control.v1.ExportFileEntryR\x05files\"\xc0\x01\n" +
+	"\rExportRequest\x12,\n" +
+	"\x12agent_project_path\x18\x01 \x01(\tR\x10agentProjectPath\x12\x1f\n" +
+	"\voutput_path\x18\x02 \x01(\tR\n" +
+	"outputPath\x12\x1d\n" +
+	"\n" +
+	"with_image\x18\x03 \x01(\bR\twithImage\x12#\n" +
+	"\rinclude_globs\x18\x04 \x03(\tR\fincludeGlobs\x12\x1c\n" +
+	"\tconfirmed\x18\x05 \x01(\bR\tconfirmed\"\xcb\x01\n" +
+	"\x0eExportResponse\x12#\n" +
+	"\rbundle_digest\x18\x01 \x01(\tR\fbundleDigest\x123\n" +
+	"\x15publisher_fingerprint\x18\x02 \x01(\tR\x14publisherFingerprint\x12\x1d\n" +
+	"\n" +
+	"file_count\x18\x03 \x01(\x05R\tfileCount\x12\x1f\n" +
+	"\vtotal_bytes\x18\x04 \x01(\x03R\n" +
+	"totalBytes\x12\x1f\n" +
+	"\voutput_path\x18\x05 \x01(\tR\n" +
+	"outputPath\"\xb5\x01\n" +
 	"\n" +
 	"RunRequest\x12\x1d\n" +
 	"\n" +
@@ -4500,9 +4862,11 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x17SECRET_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fSECRET_TYPE_ENV\x10\x01\x12\x14\n" +
 	"\x10SECRET_TYPE_FILE\x10\x02\x12\x16\n" +
-	"\x12SECRET_TYPE_INLINE\x10\x032\x9a\x17\n" +
+	"\x12SECRET_TYPE_INLINE\x10\x032\xa0\x19\n" +
 	"\x0eControlService\x12j\n" +
-	"\x04Pack\x12!.agentpaas.control.v1.PackRequest\x1a\".agentpaas.control.v1.PackResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/pack\x12f\n" +
+	"\x04Pack\x12!.agentpaas.control.v1.PackRequest\x1a\".agentpaas.control.v1.PackResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/pack\x12\x8f\x01\n" +
+	"\rExportPreview\x12*.agentpaas.control.v1.ExportPreviewRequest\x1a+.agentpaas.control.v1.ExportPreviewResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/control/export:preview\x12r\n" +
+	"\x06Export\x12#.agentpaas.control.v1.ExportRequest\x1a$.agentpaas.control.v1.ExportResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/control/export\x12f\n" +
 	"\x03Run\x12 .agentpaas.control.v1.RunRequest\x1a!.agentpaas.control.v1.RunResponse\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/control/run\x12j\n" +
 	"\x04Stop\x12!.agentpaas.control.v1.StopRequest\x1a\".agentpaas.control.v1.StopResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/stop\x12e\n" +
 	"\x04Logs\x12!.agentpaas.control.v1.LogsRequest\x1a\x1e.agentpaas.control.v1.LogEntry\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/control/logs0\x01\x12\x87\x01\n" +
@@ -4542,163 +4906,173 @@ func file_control_v1_control_proto_rawDescGZIP() []byte {
 }
 
 var file_control_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
+var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
 var file_control_v1_control_proto_goTypes = []any{
 	(LogLevel)(0),                        // 0: agentpaas.control.v1.LogLevel
 	(EventType)(0),                       // 1: agentpaas.control.v1.EventType
 	(SecretType)(0),                      // 2: agentpaas.control.v1.SecretType
 	(*PackRequest)(nil),                  // 3: agentpaas.control.v1.PackRequest
 	(*PackResponse)(nil),                 // 4: agentpaas.control.v1.PackResponse
-	(*RunRequest)(nil),                   // 5: agentpaas.control.v1.RunRequest
-	(*BudgetConfig)(nil),                 // 6: agentpaas.control.v1.BudgetConfig
-	(*RunResponse)(nil),                  // 7: agentpaas.control.v1.RunResponse
-	(*StopRequest)(nil),                  // 8: agentpaas.control.v1.StopRequest
-	(*StopResponse)(nil),                 // 9: agentpaas.control.v1.StopResponse
-	(*LogsRequest)(nil),                  // 10: agentpaas.control.v1.LogsRequest
-	(*LogEntry)(nil),                     // 11: agentpaas.control.v1.LogEntry
-	(*PolicyApplyRequest)(nil),           // 12: agentpaas.control.v1.PolicyApplyRequest
-	(*PolicyApplyResponse)(nil),          // 13: agentpaas.control.v1.PolicyApplyResponse
-	(*SecretSetRequest)(nil),             // 14: agentpaas.control.v1.SecretSetRequest
-	(*SecretSetResponse)(nil),            // 15: agentpaas.control.v1.SecretSetResponse
-	(*SecretGrantRequest)(nil),           // 16: agentpaas.control.v1.SecretGrantRequest
-	(*SecretGrantResponse)(nil),          // 17: agentpaas.control.v1.SecretGrantResponse
-	(*SecretRevokeRequest)(nil),          // 18: agentpaas.control.v1.SecretRevokeRequest
-	(*SecretRevokeResponse)(nil),         // 19: agentpaas.control.v1.SecretRevokeResponse
-	(*AuditQueryRequest)(nil),            // 20: agentpaas.control.v1.AuditQueryRequest
-	(*TimeRange)(nil),                    // 21: agentpaas.control.v1.TimeRange
-	(*AuditEntry)(nil),                   // 22: agentpaas.control.v1.AuditEntry
-	(*AuditCheckpointIssue)(nil),         // 23: agentpaas.control.v1.AuditCheckpointIssue
-	(*AuditChainVerification)(nil),       // 24: agentpaas.control.v1.AuditChainVerification
-	(*AuditQueryResponse)(nil),           // 25: agentpaas.control.v1.AuditQueryResponse
-	(*AuditExportRequest)(nil),           // 26: agentpaas.control.v1.AuditExportRequest
-	(*AuditExportResponse)(nil),          // 27: agentpaas.control.v1.AuditExportResponse
-	(*DoctorRequest)(nil),                // 28: agentpaas.control.v1.DoctorRequest
-	(*CheckResult)(nil),                  // 29: agentpaas.control.v1.CheckResult
-	(*DoctorResponse)(nil),               // 30: agentpaas.control.v1.DoctorResponse
-	(*ValidateAgentProjectRequest)(nil),  // 31: agentpaas.control.v1.ValidateAgentProjectRequest
-	(*ProjectValidation)(nil),            // 32: agentpaas.control.v1.ProjectValidation
-	(*ValidateAgentProjectResponse)(nil), // 33: agentpaas.control.v1.ValidateAgentProjectResponse
-	(*OperatorIssue)(nil),                // 34: agentpaas.control.v1.OperatorIssue
-	(*EvidenceRef)(nil),                  // 35: agentpaas.control.v1.EvidenceRef
-	(*RedactedExcerpt)(nil),              // 36: agentpaas.control.v1.RedactedExcerpt
-	(*ConfirmationRequirement)(nil),      // 37: agentpaas.control.v1.ConfirmationRequirement
-	(*SummarizeRunRequest)(nil),          // 38: agentpaas.control.v1.SummarizeRunRequest
-	(*KeyEvent)(nil),                     // 39: agentpaas.control.v1.KeyEvent
-	(*SummarizeRunResponse)(nil),         // 40: agentpaas.control.v1.SummarizeRunResponse
-	(*ExplainFailureRequest)(nil),        // 41: agentpaas.control.v1.ExplainFailureRequest
-	(*ExplainFailureResponse)(nil),       // 42: agentpaas.control.v1.ExplainFailureResponse
-	(*ExplainPolicyDenialRequest)(nil),   // 43: agentpaas.control.v1.ExplainPolicyDenialRequest
-	(*ExplainPolicyDenialResponse)(nil),  // 44: agentpaas.control.v1.ExplainPolicyDenialResponse
-	(*RecommendPolicyPatchRequest)(nil),  // 45: agentpaas.control.v1.RecommendPolicyPatchRequest
-	(*RecommendPolicyPatchResponse)(nil), // 46: agentpaas.control.v1.RecommendPolicyPatchResponse
-	(*GetRunTimelineRequest)(nil),        // 47: agentpaas.control.v1.GetRunTimelineRequest
-	(*TimelineEvent)(nil),                // 48: agentpaas.control.v1.TimelineEvent
-	(*GetRunTimelineResponse)(nil),       // 49: agentpaas.control.v1.GetRunTimelineResponse
-	(*NextActionRequest)(nil),            // 50: agentpaas.control.v1.NextActionRequest
-	(*NextActionResponse)(nil),           // 51: agentpaas.control.v1.NextActionResponse
-	(*CronScheduleInfo)(nil),             // 52: agentpaas.control.v1.CronScheduleInfo
-	(*CronAddRequest)(nil),               // 53: agentpaas.control.v1.CronAddRequest
-	(*CronAddResponse)(nil),              // 54: agentpaas.control.v1.CronAddResponse
-	(*CronListRequest)(nil),              // 55: agentpaas.control.v1.CronListRequest
-	(*CronListResponse)(nil),             // 56: agentpaas.control.v1.CronListResponse
-	(*CronRemoveRequest)(nil),            // 57: agentpaas.control.v1.CronRemoveRequest
-	(*CronRemoveResponse)(nil),           // 58: agentpaas.control.v1.CronRemoveResponse
-	(*RunInfo)(nil),                      // 59: agentpaas.control.v1.RunInfo
-	(*ListRunsRequest)(nil),              // 60: agentpaas.control.v1.ListRunsRequest
-	(*ListRunsResponse)(nil),             // 61: agentpaas.control.v1.ListRunsResponse
-	nil,                                  // 62: agentpaas.control.v1.LogEntry.FieldsEntry
-	nil,                                  // 63: agentpaas.control.v1.NextActionResponse.ParamsEntry
-	(*timestamppb.Timestamp)(nil),        // 64: google.protobuf.Timestamp
+	(*ExportPreviewRequest)(nil),         // 5: agentpaas.control.v1.ExportPreviewRequest
+	(*ExportFileEntry)(nil),              // 6: agentpaas.control.v1.ExportFileEntry
+	(*ExportPreviewResponse)(nil),        // 7: agentpaas.control.v1.ExportPreviewResponse
+	(*ExportRequest)(nil),                // 8: agentpaas.control.v1.ExportRequest
+	(*ExportResponse)(nil),               // 9: agentpaas.control.v1.ExportResponse
+	(*RunRequest)(nil),                   // 10: agentpaas.control.v1.RunRequest
+	(*BudgetConfig)(nil),                 // 11: agentpaas.control.v1.BudgetConfig
+	(*RunResponse)(nil),                  // 12: agentpaas.control.v1.RunResponse
+	(*StopRequest)(nil),                  // 13: agentpaas.control.v1.StopRequest
+	(*StopResponse)(nil),                 // 14: agentpaas.control.v1.StopResponse
+	(*LogsRequest)(nil),                  // 15: agentpaas.control.v1.LogsRequest
+	(*LogEntry)(nil),                     // 16: agentpaas.control.v1.LogEntry
+	(*PolicyApplyRequest)(nil),           // 17: agentpaas.control.v1.PolicyApplyRequest
+	(*PolicyApplyResponse)(nil),          // 18: agentpaas.control.v1.PolicyApplyResponse
+	(*SecretSetRequest)(nil),             // 19: agentpaas.control.v1.SecretSetRequest
+	(*SecretSetResponse)(nil),            // 20: agentpaas.control.v1.SecretSetResponse
+	(*SecretGrantRequest)(nil),           // 21: agentpaas.control.v1.SecretGrantRequest
+	(*SecretGrantResponse)(nil),          // 22: agentpaas.control.v1.SecretGrantResponse
+	(*SecretRevokeRequest)(nil),          // 23: agentpaas.control.v1.SecretRevokeRequest
+	(*SecretRevokeResponse)(nil),         // 24: agentpaas.control.v1.SecretRevokeResponse
+	(*AuditQueryRequest)(nil),            // 25: agentpaas.control.v1.AuditQueryRequest
+	(*TimeRange)(nil),                    // 26: agentpaas.control.v1.TimeRange
+	(*AuditEntry)(nil),                   // 27: agentpaas.control.v1.AuditEntry
+	(*AuditCheckpointIssue)(nil),         // 28: agentpaas.control.v1.AuditCheckpointIssue
+	(*AuditChainVerification)(nil),       // 29: agentpaas.control.v1.AuditChainVerification
+	(*AuditQueryResponse)(nil),           // 30: agentpaas.control.v1.AuditQueryResponse
+	(*AuditExportRequest)(nil),           // 31: agentpaas.control.v1.AuditExportRequest
+	(*AuditExportResponse)(nil),          // 32: agentpaas.control.v1.AuditExportResponse
+	(*DoctorRequest)(nil),                // 33: agentpaas.control.v1.DoctorRequest
+	(*CheckResult)(nil),                  // 34: agentpaas.control.v1.CheckResult
+	(*DoctorResponse)(nil),               // 35: agentpaas.control.v1.DoctorResponse
+	(*ValidateAgentProjectRequest)(nil),  // 36: agentpaas.control.v1.ValidateAgentProjectRequest
+	(*ProjectValidation)(nil),            // 37: agentpaas.control.v1.ProjectValidation
+	(*ValidateAgentProjectResponse)(nil), // 38: agentpaas.control.v1.ValidateAgentProjectResponse
+	(*OperatorIssue)(nil),                // 39: agentpaas.control.v1.OperatorIssue
+	(*EvidenceRef)(nil),                  // 40: agentpaas.control.v1.EvidenceRef
+	(*RedactedExcerpt)(nil),              // 41: agentpaas.control.v1.RedactedExcerpt
+	(*ConfirmationRequirement)(nil),      // 42: agentpaas.control.v1.ConfirmationRequirement
+	(*SummarizeRunRequest)(nil),          // 43: agentpaas.control.v1.SummarizeRunRequest
+	(*KeyEvent)(nil),                     // 44: agentpaas.control.v1.KeyEvent
+	(*SummarizeRunResponse)(nil),         // 45: agentpaas.control.v1.SummarizeRunResponse
+	(*ExplainFailureRequest)(nil),        // 46: agentpaas.control.v1.ExplainFailureRequest
+	(*ExplainFailureResponse)(nil),       // 47: agentpaas.control.v1.ExplainFailureResponse
+	(*ExplainPolicyDenialRequest)(nil),   // 48: agentpaas.control.v1.ExplainPolicyDenialRequest
+	(*ExplainPolicyDenialResponse)(nil),  // 49: agentpaas.control.v1.ExplainPolicyDenialResponse
+	(*RecommendPolicyPatchRequest)(nil),  // 50: agentpaas.control.v1.RecommendPolicyPatchRequest
+	(*RecommendPolicyPatchResponse)(nil), // 51: agentpaas.control.v1.RecommendPolicyPatchResponse
+	(*GetRunTimelineRequest)(nil),        // 52: agentpaas.control.v1.GetRunTimelineRequest
+	(*TimelineEvent)(nil),                // 53: agentpaas.control.v1.TimelineEvent
+	(*GetRunTimelineResponse)(nil),       // 54: agentpaas.control.v1.GetRunTimelineResponse
+	(*NextActionRequest)(nil),            // 55: agentpaas.control.v1.NextActionRequest
+	(*NextActionResponse)(nil),           // 56: agentpaas.control.v1.NextActionResponse
+	(*CronScheduleInfo)(nil),             // 57: agentpaas.control.v1.CronScheduleInfo
+	(*CronAddRequest)(nil),               // 58: agentpaas.control.v1.CronAddRequest
+	(*CronAddResponse)(nil),              // 59: agentpaas.control.v1.CronAddResponse
+	(*CronListRequest)(nil),              // 60: agentpaas.control.v1.CronListRequest
+	(*CronListResponse)(nil),             // 61: agentpaas.control.v1.CronListResponse
+	(*CronRemoveRequest)(nil),            // 62: agentpaas.control.v1.CronRemoveRequest
+	(*CronRemoveResponse)(nil),           // 63: agentpaas.control.v1.CronRemoveResponse
+	(*RunInfo)(nil),                      // 64: agentpaas.control.v1.RunInfo
+	(*ListRunsRequest)(nil),              // 65: agentpaas.control.v1.ListRunsRequest
+	(*ListRunsResponse)(nil),             // 66: agentpaas.control.v1.ListRunsResponse
+	nil,                                  // 67: agentpaas.control.v1.LogEntry.FieldsEntry
+	nil,                                  // 68: agentpaas.control.v1.NextActionResponse.ParamsEntry
+	(*timestamppb.Timestamp)(nil),        // 69: google.protobuf.Timestamp
 }
 var file_control_v1_control_proto_depIdxs = []int32{
-	6,  // 0: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
-	0,  // 1: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
-	64, // 2: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	62, // 3: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
-	2,  // 4: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
-	1,  // 5: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
-	21, // 6: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	64, // 7: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
-	64, // 8: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
-	1,  // 9: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
-	64, // 10: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
-	23, // 11: agentpaas.control.v1.AuditChainVerification.issues:type_name -> agentpaas.control.v1.AuditCheckpointIssue
-	22, // 12: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
-	24, // 13: agentpaas.control.v1.AuditQueryResponse.chain_verification:type_name -> agentpaas.control.v1.AuditChainVerification
-	21, // 14: agentpaas.control.v1.AuditExportRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	29, // 15: agentpaas.control.v1.DoctorResponse.checks:type_name -> agentpaas.control.v1.CheckResult
-	32, // 16: agentpaas.control.v1.ValidateAgentProjectResponse.validations:type_name -> agentpaas.control.v1.ProjectValidation
-	34, // 17: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
-	35, // 18: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	35, // 19: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	64, // 20: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
-	39, // 21: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
-	64, // 22: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
-	64, // 23: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
-	35, // 24: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	36, // 25: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
-	35, // 26: agentpaas.control.v1.ExplainFailureResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	35, // 27: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	35, // 28: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	37, // 29: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
-	64, // 30: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
-	48, // 31: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
-	63, // 32: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
-	35, // 33: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	37, // 34: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
-	52, // 35: agentpaas.control.v1.CronAddResponse.schedule:type_name -> agentpaas.control.v1.CronScheduleInfo
-	52, // 36: agentpaas.control.v1.CronListResponse.schedules:type_name -> agentpaas.control.v1.CronScheduleInfo
-	64, // 37: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
-	59, // 38: agentpaas.control.v1.ListRunsResponse.runs:type_name -> agentpaas.control.v1.RunInfo
-	3,  // 39: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
-	5,  // 40: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
-	8,  // 41: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
-	10, // 42: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
-	12, // 43: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
-	14, // 44: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
-	16, // 45: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
-	18, // 46: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
-	20, // 47: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
-	26, // 48: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
-	28, // 49: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
-	31, // 50: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
-	38, // 51: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
-	41, // 52: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
-	43, // 53: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
-	45, // 54: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
-	47, // 55: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
-	50, // 56: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
-	53, // 57: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
-	55, // 58: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
-	57, // 59: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
-	60, // 60: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
-	4,  // 61: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
-	7,  // 62: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
-	9,  // 63: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
-	11, // 64: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
-	13, // 65: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
-	15, // 66: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
-	17, // 67: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
-	19, // 68: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
-	25, // 69: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
-	27, // 70: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
-	30, // 71: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
-	33, // 72: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
-	40, // 73: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
-	42, // 74: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
-	44, // 75: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
-	46, // 76: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
-	49, // 77: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
-	51, // 78: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
-	54, // 79: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
-	56, // 80: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
-	58, // 81: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
-	61, // 82: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
-	61, // [61:83] is the sub-list for method output_type
-	39, // [39:61] is the sub-list for method input_type
-	39, // [39:39] is the sub-list for extension type_name
-	39, // [39:39] is the sub-list for extension extendee
-	0,  // [0:39] is the sub-list for field type_name
+	6,  // 0: agentpaas.control.v1.ExportPreviewResponse.files:type_name -> agentpaas.control.v1.ExportFileEntry
+	11, // 1: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
+	0,  // 2: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
+	69, // 3: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	67, // 4: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
+	2,  // 5: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
+	1,  // 6: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
+	26, // 7: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
+	69, // 8: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
+	69, // 9: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
+	1,  // 10: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
+	69, // 11: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
+	28, // 12: agentpaas.control.v1.AuditChainVerification.issues:type_name -> agentpaas.control.v1.AuditCheckpointIssue
+	27, // 13: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
+	29, // 14: agentpaas.control.v1.AuditQueryResponse.chain_verification:type_name -> agentpaas.control.v1.AuditChainVerification
+	26, // 15: agentpaas.control.v1.AuditExportRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
+	34, // 16: agentpaas.control.v1.DoctorResponse.checks:type_name -> agentpaas.control.v1.CheckResult
+	37, // 17: agentpaas.control.v1.ValidateAgentProjectResponse.validations:type_name -> agentpaas.control.v1.ProjectValidation
+	39, // 18: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
+	40, // 19: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	40, // 20: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	69, // 21: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
+	44, // 22: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
+	69, // 23: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
+	69, // 24: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
+	40, // 25: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	41, // 26: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
+	40, // 27: agentpaas.control.v1.ExplainFailureResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	40, // 28: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	40, // 29: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	42, // 30: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
+	69, // 31: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
+	53, // 32: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
+	68, // 33: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
+	40, // 34: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	42, // 35: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
+	57, // 36: agentpaas.control.v1.CronAddResponse.schedule:type_name -> agentpaas.control.v1.CronScheduleInfo
+	57, // 37: agentpaas.control.v1.CronListResponse.schedules:type_name -> agentpaas.control.v1.CronScheduleInfo
+	69, // 38: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
+	64, // 39: agentpaas.control.v1.ListRunsResponse.runs:type_name -> agentpaas.control.v1.RunInfo
+	3,  // 40: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
+	5,  // 41: agentpaas.control.v1.ControlService.ExportPreview:input_type -> agentpaas.control.v1.ExportPreviewRequest
+	8,  // 42: agentpaas.control.v1.ControlService.Export:input_type -> agentpaas.control.v1.ExportRequest
+	10, // 43: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
+	13, // 44: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
+	15, // 45: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
+	17, // 46: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
+	19, // 47: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
+	21, // 48: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
+	23, // 49: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
+	25, // 50: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
+	31, // 51: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
+	33, // 52: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
+	36, // 53: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
+	43, // 54: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
+	46, // 55: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
+	48, // 56: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
+	50, // 57: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
+	52, // 58: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
+	55, // 59: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
+	58, // 60: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
+	60, // 61: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
+	62, // 62: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
+	65, // 63: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
+	4,  // 64: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
+	7,  // 65: agentpaas.control.v1.ControlService.ExportPreview:output_type -> agentpaas.control.v1.ExportPreviewResponse
+	9,  // 66: agentpaas.control.v1.ControlService.Export:output_type -> agentpaas.control.v1.ExportResponse
+	12, // 67: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
+	14, // 68: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
+	16, // 69: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
+	18, // 70: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
+	20, // 71: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
+	22, // 72: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
+	24, // 73: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
+	30, // 74: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
+	32, // 75: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
+	35, // 76: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
+	38, // 77: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
+	45, // 78: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
+	47, // 79: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
+	49, // 80: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
+	51, // 81: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
+	54, // 82: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
+	56, // 83: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
+	59, // 84: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
+	61, // 85: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
+	63, // 86: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
+	66, // 87: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
+	64, // [64:88] is the sub-list for method output_type
+	40, // [40:64] is the sub-list for method input_type
+	40, // [40:40] is the sub-list for extension type_name
+	40, // [40:40] is the sub-list for extension extendee
+	0,  // [0:40] is the sub-list for field type_name
 }
 
 func init() { file_control_v1_control_proto_init() }
@@ -4712,7 +5086,7 @@ func file_control_v1_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_v1_control_proto_rawDesc), len(file_control_v1_control_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   61,
+			NumMessages:   66,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
