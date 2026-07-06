@@ -27,15 +27,16 @@ const (
 
 // Config controls the harness HTTP server and Python worker.
 type Config struct {
-	Addr           string
-	AgentPath      string
-	Python         string
-	ImportTimeout  time.Duration
-	InvokeTimeout  time.Duration
-	TerminateGrace time.Duration
-	StdoutPath     string
-	StderrPath     string
-	Audit          AuditAppender
+	Addr            string
+	AgentPath       string
+	Python          string
+	ImportTimeout   time.Duration
+	InvokeTimeout   time.Duration
+	TerminateGrace  time.Duration
+	StdoutPath      string
+	StderrPath      string
+	Audit           AuditAppender
+	CredentialsPath string // Path to credentials.json sidecar file (empty = none)
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.

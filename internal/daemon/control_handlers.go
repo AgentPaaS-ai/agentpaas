@@ -384,10 +384,23 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		)
 	}
 
+	// Write resolved credential values to a sidecar file that is bind-mounted
+	// into the agent container. The harness reads this file at startup and
+	// stores credential values in memory. This keeps raw secrets out of the
+	// Docker ExecWithStdin payload, harness /invoke request body, and Python
+	// worker stdin.
+	credsPath, credsFileWritten := s.writeCredentialsForRun(runID, deployedDir, gatewayConfigDir)
+
+	agentBinds := []string{fmt.Sprintf("%s:/audit", hostAuditDir)}
+	if credsFileWritten {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/credentials.json:ro", credsPath))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_CREDENTIALS_PATH=/agentpaas/credentials.json")
+	}
+
 	agentSpec := runtime.ContainerSpec{
 		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
 		NetworkIDs: []string{string(netID)},
-		Binds:      []string{fmt.Sprintf("%s:/audit", hostAuditDir)},
+		Binds:      agentBinds,
 		Env:        proxyEnv,
 	}
 	if egressFirewallEnabled() {
@@ -978,15 +991,16 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 	return stdout, nil
 }
 
-// buildInvokePayload builds the invoke payload with LLM config and resolved credentials.
-// The credential value NEVER appears in logs or error messages.
+// buildInvokePayload builds the invoke payload with LLM config and credential metadata.
+// Credential VALUES are NEVER included in this payload — only ID and header metadata.
+// Raw secrets are delivered to the harness through a side-channel credentials file.
 //
-// Credentials are resolved from TWO sources:
-//  1. agent.yaml's llm.credential field (LLM credential, resolved with provider auth header)
-//  2. policy.yaml's credentials section (all declared credentials, resolved from Keychain)
+// Credential metadata is collected from TWO sources:
+//  1. agent.yaml's llm.credential field (LLM credential, with provider auth header)
+//  2. policy.yaml's credentials section (all declared credentials, header metadata)
 //
 // This ensures http_with_credential("my-cred-id", ...) works for any credential
-// declared in policy.yaml — not just the LLM credential.
+// declared in policy.yaml.
 //
 // triggerPayload (optional) is the user's trigger payload from RunRequest.trigger_payload
 // or InvokeRequest.payload. When provided and valid JSON, its top-level keys are merged
@@ -1022,49 +1036,33 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		return payload, nil
 	}
 
-	// Resolve the secret store once (used for both LLM and policy credentials).
-	var store secrets.SecretStore
-	if s.secretStoreForTest != nil {
-		store = s.secretStoreForTest
-	} else {
-		store, err = secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
-		if err != nil {
-			return payload, nil // graceful: no keychain
-		}
-	}
+	// --- Collect credential metadata into a map keyed by ID to avoid duplicates ---
+	// Credential values are NEVER included. Only id and header metadata.
+	credMap := make(map[string]map[string]any) // id → {id, header}
 
-	// --- Collect credentials into a map keyed by ID to avoid duplicates ---
-	credMap := make(map[string]map[string]any) // id → {id, header, value}
-
-	// --- 1. Resolve LLM credential from agent.yaml ---
+	// --- 1. Collect LLM credential metadata from agent.yaml ---
 	if lock.AgentYAML != nil && lock.AgentYAML.LLM.Provider != "" {
 		credentialName := lock.AgentYAML.LLM.Credential
 		if credentialName != "" {
-			credValue, credErr := store.Get(ctx, credentialName)
-			if credErr == nil {
-				// Get the auth header for this provider.
-				adapter := llm.GetAdapter(lock.AgentYAML.LLM.Provider)
-				headerName := "Authorization"
-				if adapter != nil {
-					headerName = adapter.AuthHeader()
-				}
-
-				payload["llm"] = map[string]any{
-					"provider":   lock.AgentYAML.LLM.Provider,
-					"model":      lock.AgentYAML.LLM.Model,
-					"credential": credentialName,
-				}
-				credMap[credentialName] = map[string]any{
-					"id":     credentialName,
-					"header": headerName,
-					"value":  string(credValue),
-				}
+			adapter := llm.GetAdapter(lock.AgentYAML.LLM.Provider)
+			headerName := "Authorization"
+			if adapter != nil {
+				headerName = adapter.AuthHeader()
 			}
-			// graceful: credential not found, harness will error at call time
+
+			payload["llm"] = map[string]any{
+				"provider":   lock.AgentYAML.LLM.Provider,
+				"model":      lock.AgentYAML.LLM.Model,
+				"credential": credentialName,
+			}
+			credMap[credentialName] = map[string]any{
+				"id":     credentialName,
+				"header": headerName,
+			}
 		}
 	}
 
-	// --- 2. Resolve policy-declared credentials from policy.yaml ---
+	// --- 2. Collect policy-declared credential metadata from policy.yaml ---
 	policyPath := filepath.Join(deployedDir, "policy.yaml")
 	policyData, perr := os.ReadFile(policyPath)
 	if perr == nil && len(policyData) > 0 {
@@ -1074,13 +1072,9 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 				if c.ID == "" {
 					continue
 				}
-				// Skip if already resolved (e.g., LLM credential already added above).
+				// Skip if already collected (e.g., LLM credential already added above).
 				if _, exists := credMap[c.ID]; exists {
 					continue
-				}
-				credValue, credErr := store.Get(ctx, c.ID)
-				if credErr != nil {
-					continue // graceful: skip unresolved credential
 				}
 				headerName := c.Header
 				if headerName == "" {
@@ -1089,13 +1083,12 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 				credMap[c.ID] = map[string]any{
 					"id":     c.ID,
 					"header": headerName,
-					"value":  string(credValue),
 				}
 			}
 		}
 	}
 
-	// --- Convert credMap to slice for the payload ---
+	// --- Convert credMap to slice for the payload (metadata only, no values) ---
 	if len(credMap) > 0 {
 		creds := make([]map[string]any, 0, len(credMap))
 		for _, c := range credMap {
@@ -1105,6 +1098,109 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 	}
 
 	return payload, nil
+}
+
+// writeCredentialsForRun resolves Keychain secrets for the agent's policy
+// credentials and writes them to a JSON file in the per-run gateway config
+// directory. This file is bind-mounted into the agent container as read-only
+// so the harness can load credential values at startup without raw secrets
+// crossing Docker ExecWithStdin, harness /invoke, or Python worker stdin.
+//
+// Returns the host path to the credentials file and true if the file was
+// written successfully. Returns ("", false) if there are no credentials or
+// if Keychain resolution fails (graceful degradation).
+func (s *controlServer) writeCredentialsForRun(runID string, deployedDir string, gatewayConfigDir string) (string, bool) {
+	if gatewayConfigDir == "" {
+		return "", false
+	}
+
+	// Resolve the secret store.
+	store, err := secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
+	if err != nil {
+		return "", false
+	}
+
+	// Collect all credential IDs that need resolution.
+	credIDs := make(map[string]string) // id → default header
+
+	// Agent.yaml LLM credential.
+	lockPath := filepath.Join(deployedDir, "agent.lock")
+	lock, lockErr := pack.ReadAgentLock(lockPath)
+	if lockErr == nil && lock != nil && lock.AgentYAML != nil && lock.AgentYAML.LLM.Provider != "" {
+		credName := lock.AgentYAML.LLM.Credential
+		if credName != "" {
+			adapter := llm.GetAdapter(lock.AgentYAML.LLM.Provider)
+			header := "Authorization"
+			if adapter != nil {
+				header = adapter.AuthHeader()
+			}
+			credIDs[credName] = header
+		}
+	}
+
+	// Policy.yaml credentials.
+	policyPath := filepath.Join(deployedDir, "policy.yaml")
+	policyData, perr := os.ReadFile(policyPath)
+	if perr == nil && len(policyData) > 0 {
+		parsed, perr := policy.ParsePolicy(bytes.NewReader(policyData))
+		if perr == nil {
+			for _, c := range parsed.Credentials {
+				if c.ID == "" {
+					continue
+				}
+				if _, exists := credIDs[c.ID]; exists {
+					continue
+				}
+				header := c.Header
+				if header == "" {
+					header = "Authorization"
+				}
+				credIDs[c.ID] = header
+			}
+		}
+	}
+
+	if len(credIDs) == 0 {
+		return "", false
+	}
+
+	// Resolve credential values from Keychain.
+	type credEntry struct {
+		ID     string `json:"id"`
+		Header string `json:"header"`
+		Value  string `json:"value"`
+	}
+	var entries []credEntry
+	for id, header := range credIDs {
+		val, credErr := store.Get(context.Background(), id)
+		if credErr != nil {
+			continue // graceful: skip unresolved credential
+		}
+		entries = append(entries, credEntry{
+			ID:     id,
+			Header: header,
+			Value:  string(val),
+		})
+	}
+
+	if len(entries) == 0 {
+		return "", false
+	}
+
+	// Write to a JSON file in the gateway config directory.
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: marshal credentials file: %v\n", err)
+		return "", false
+	}
+
+	credsPath := filepath.Join(gatewayConfigDir, "credentials.json")
+	if err := os.WriteFile(credsPath, data, 0o600); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: write credentials file: %v\n", err)
+		return "", false
+	}
+
+	return credsPath, true
 }
 
 // secretServiceName derives a deterministic macOS Keychain service name from the

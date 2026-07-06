@@ -17,14 +17,15 @@ func main() {
 	harness.DropNetAdminCapability()
 
 	cfg := harness.Config{
-		Addr:           envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
-		AgentPath:      envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
-		Python:         detectPython(),
-		ImportTimeout:  envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),
-		InvokeTimeout:  envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second),
-		TerminateGrace: envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second),
-		StdoutPath:     envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
-		StderrPath:     envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
+		Addr:            envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
+		AgentPath:       envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
+		Python:          detectPython(),
+		ImportTimeout:   envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),
+		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second),
+		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second),
+		StdoutPath:      envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
+		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
+		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
 	}
 
 	// Wire the audit appender if a path is provided. The daemon mounts
