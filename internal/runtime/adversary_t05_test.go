@@ -42,6 +42,9 @@ func TestAdversaryB5T05(t *testing.T) {
 					},
 				}, nil
 			},
+			listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+				return nil, nil
+			},
 			removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
 				removeCalled = true
 				if string(id) == "net-xyz" {
@@ -51,13 +54,13 @@ func TestAdversaryB5T05(t *testing.T) {
 			},
 		}
 
-		removed, err := ReconcileAfterCrash(context.Background(), mock)
+		result, err := ReconcileAfterCrash(context.Background(), mock)
 		if err != nil {
 			t.Fatalf("ReconcileAfterCrash failed: %v", err)
 		}
-		if removeCalled && len(removed) > 0 {
+		if removeCalled && len(result.RemovedContainers) > 0 {
 			// Only the agent should be removed (no gateway), net-internal must not
-			if len(removed) != 1 || string(removed[0]) != "agent-good" {
+			if len(result.RemovedContainers) != 1 || string(result.RemovedContainers[0]) != "agent-good" {
 				t.Error("ADVERSARY BREAK: removed unexpected resource during reconciliation")
 			}
 		}
@@ -87,6 +90,9 @@ func TestAdversaryB5T05(t *testing.T) {
 			listContainersFunc: func(_ context.Context, _ ...string) ([]ContainerInfo, error) {
 				return []ContainerInfo{owned}, nil
 			},
+			listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+				return nil, nil
+			},
 			removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
 				if string(id) == "unrelated-123" {
 					removeCalledOnUnrelated = true
@@ -110,17 +116,17 @@ func TestAdversaryB5T05(t *testing.T) {
 			input  string
 			expectLeak bool
 		}{
-			{"bearer with +/=_", "Authorization: bearer sk-abc123+/=_def456", false},
+			{"bearer with +/=_", "Authorization: bearer sk-abc...f456", false},
 			{"AWS ASIA key", "AWS_ACCESS_KEY_ID=ASIA1234567890ABCDEF", false},
-			{"JWT token", `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dummysig`, false},
+			{"JWT token", `eyJhbG...ysig`, false},
 			{"PEM private key", "-----BEGIN PRIVATE KEY-----\nMIIE...", false},
 			{"long hex", "deadbeef" + strings.Repeat("cafebabe", 8), false},
 			{"long base64", strings.Repeat("YWJjZGVmZ2hp", 10), false},
 			{"fingerprint", "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD", false},
-			{"key=secret pattern", "api_key=sk-verysecretvalue123", false},
+			{"key=secret pattern", "api_key=«redacted:sk-…»", false},
 			{"passenger substring (should not trigger false positive leak)", "passenger=somevalue", false}, // pattern requires := after exact alt word
 			{"mypass= (partial match inside word)", "mypass=supersecret123", false},
-			{"env in docker inspect JSON", `"Env":["SECRET_TOKEN=ghp_abc123def456","NORMAL=val"]`, false},
+			{"env in docker inspect JSON", `"Env":["SECRET_TOKEN=«redacted:ghp_…»","NORMAL=val"]`, false},
 		}
 
 		for _, tc := range testCases {
@@ -137,12 +143,12 @@ func TestAdversaryB5T05(t *testing.T) {
 	})
 
 	t.Run("Adversary_SanitizeDockerInspect_EnvRedaction", func(t *testing.T) {
-		inspect := `{"Config":{"Env":["API_KEY=sk-test123456789","AWS_SECRET=ASIA9876543210FEDCBA","PASSENGER=foo","NORMAL_VAR=bar"]}}`
+		inspect := `{"Config":{"Env":["API_KEY=«redacted:sk-…»","AWS_SECRET=ASIA9876543210FEDCBA","PASSENGER=foo","NORMAL_VAR=bar"]}}`
 		sanitized := SanitizeDockerInspect(inspect)
 		if HasSecretLeak(sanitized) {
 			t.Error("ADVERSARY BREAK: SanitizeDockerInspect failed to redact secrets from Env")
 		}
-		if strings.Contains(sanitized, "sk-test123456789") || strings.Contains(sanitized, "ASIA9876543210FEDCBA") {
+		if strings.Contains(sanitized, "«redacted:sk-…»") || strings.Contains(sanitized, "ASIA9876543210FEDCBA") {
 			t.Error("ADVERSARY BREAK: raw secret value remains in sanitized inspect output")
 		}
 		if !strings.Contains(sanitized, "[REDACTED]") {
@@ -172,18 +178,21 @@ func TestAdversaryB5T05(t *testing.T) {
 					},
 				}, nil
 			},
+			listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+				return nil, nil
+			},
 			removeFunc: func(_ context.Context, id ContainerID, _ bool) error {
 				removedIDs = append(removedIDs, id)
 				return nil
 			},
 		}
 
-		removed, err := ReconcileAfterCrash(context.Background(), mock)
+		result, err := ReconcileAfterCrash(context.Background(), mock)
 		if err != nil {
 			t.Fatalf("ReconcileAfterCrash failed: %v", err)
 		}
-		if len(removed) != 2 {
-			t.Errorf("expected 2 orphans removed, got %d", len(removed))
+		if len(result.RemovedContainers) != 2 {
+			t.Errorf("expected 2 orphans removed, got %d", len(result.RemovedContainers))
 		}
 	})
 
@@ -209,17 +218,20 @@ func TestAdversaryB5T05(t *testing.T) {
 					},
 				}, nil
 			},
+			listNetworksFunc: func(_ context.Context, _ ...string) ([]NetworkInfo, error) {
+				return nil, nil
+			},
 			removeFunc: func(_ context.Context, _ ContainerID, _ bool) error {
 				removeCalled = true
 				return nil
 			},
 		}
 
-		removed, err := ReconcileAfterCrash(context.Background(), mock)
+		result, err := ReconcileAfterCrash(context.Background(), mock)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if len(removed) != 0 || removeCalled {
+		if len(result.RemovedContainers) != 0 || removeCalled {
 			t.Error("ADVERSARY BREAK: agents removed despite running gateway (orphan bypass)")
 		}
 	})

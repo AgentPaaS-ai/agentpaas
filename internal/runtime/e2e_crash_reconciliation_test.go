@@ -91,15 +91,15 @@ func TestE2E_CrashReconciliation(t *testing.T) {
 		}
 
 		// Run reconciliation
-		removed, err := ReconcileAfterCrash(ctx, dr)
+		result, err := ReconcileAfterCrash(ctx, dr)
 		if err != nil {
 			t.Fatalf("ReconcileAfterCrash failed: %v", err)
 		}
-		t.Logf("Reconciliation removed %d container(s)", len(removed))
+		t.Logf("Reconciliation removed %d container(s)", len(result.RemovedContainers))
 
 		// Verify agent was removed
 		foundAgent := false
-		for _, r := range removed {
+		for _, r := range result.RemovedContainers {
 			if strings.HasPrefix(string(r), string(agentID[:12])) {
 				foundAgent = true
 				break
@@ -170,13 +170,13 @@ func TestE2E_CrashReconciliation(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		// Run reconciliation — should NOT remove agent since gateway is running
-		removed, err := ReconcileAfterCrash(ctx, dr)
+		result, err := ReconcileAfterCrash(ctx, dr)
 		if err != nil {
 			t.Fatalf("ReconcileAfterCrash failed: %v", err)
 		}
 
 		// Check agent was NOT removed
-		for _, r := range removed {
+		for _, r := range result.RemovedContainers {
 			if strings.HasPrefix(string(r), string(agentID[:12])) {
 				t.Errorf("Agent container %s was REMOVED despite gateway being running", agentID[:12])
 			}
