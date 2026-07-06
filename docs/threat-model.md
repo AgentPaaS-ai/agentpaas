@@ -75,6 +75,6 @@ surface. The P1 STRIDE table above still applies.
 | A11 | Stolen publisher key | Attacker signs a malicious bundle with the publisher's real private key | **Out of scope for v0.2.0.** AgentPaaS v0.2.0 has no revocation mechanism; a stolen key is outside the current trust boundary. Revocation-list support is planned for B26. The docs acknowledge this limitation explicitly. Until B26 ships, users must treat the publisher keypair as a long-lived credential and protect it accordingly — export an encrypted backup and store it securely. | B26 |
 
 For the full Phase 2 threat model delta (adversaries A1–A11), see
-[the Phase 2 PRD](execution/planning/phase2-sharing-prd-v1.md#9-threat-model-delta).
+the Phase 2 PRD (local-only: docs/execution/planning/phase2-sharing-prd-v1.md, §9).
 For what publisher signatures do and do not prove, see
 [trust-model.md](trust-model.md).
