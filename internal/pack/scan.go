@@ -184,14 +184,14 @@ func maskSecret(s string) string {
 // computeContextSize sums file sizes in projectDir, respecting .agentpaasignore.
 // Symlink-safe.
 func computeContextSize(projectDir string, ignore *IgnoreMatcher) (int64, error) {
-	files, err := collectBuildFiles(projectDir, ignore)
+	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
 		return 0, err
 	}
 
 	var size int64
 	for _, file := range files {
-		size += file.info.Size()
+		size += file.Info.Size()
 	}
 
 	return size, nil
@@ -279,7 +279,7 @@ func parseGitleaksOutput(output []byte, baseDir string) ([]SecretFinding, error)
 }
 
 func materializeBuildContext(projectDir string, ignore *IgnoreMatcher) (string, func(), error) {
-	files, err := collectBuildFiles(projectDir, ignore)
+	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
 		return "", nil, err
 	}
@@ -291,28 +291,28 @@ func materializeBuildContext(projectDir string, ignore *IgnoreMatcher) (string, 
 	cleanup := func() { _ = os.RemoveAll(dir) }
 
 	for _, file := range files {
-		dst := filepath.Join(dir, filepath.FromSlash(file.relPath))
+		dst := filepath.Join(dir, filepath.FromSlash(file.RelPath))
 		rel, err := safeRelPath(dir, dst)
 		if err != nil {
 			cleanup()
 			return "", nil, err
 		}
-		if rel != file.relPath {
+		if rel != file.RelPath {
 			cleanup()
-			return "", nil, fmt.Errorf("invalid build context path: %s", file.relPath)
+			return "", nil, fmt.Errorf("invalid build context path: %s", file.RelPath)
 		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			cleanup()
 			return "", nil, fmt.Errorf("create build context directory: %w", err)
 		}
-		data, err := readProjectFile(file.absPath)
+		data, err := readProjectFile(file.AbsPath)
 		if err != nil {
 			cleanup()
 			return "", nil, err
 		}
-		if err := os.WriteFile(dst, data, file.info.Mode().Perm()); err != nil {
+		if err := os.WriteFile(dst, data, file.Info.Mode().Perm()); err != nil {
 			cleanup()
-			return "", nil, fmt.Errorf("write build context file %s: %w", file.relPath, err)
+			return "", nil, fmt.Errorf("write build context file %s: %w", file.RelPath, err)
 		}
 	}
 
