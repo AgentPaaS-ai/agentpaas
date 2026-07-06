@@ -60,3 +60,21 @@ see [known-limitations.md](known-limitations.md).
   payloads, and permanent red-team gating on every runtime/gateway change.
 - Local mode trusts the developer's machine; we protect against the AGENT,
   not against the user.
+
+---
+
+## Phase 2 Threats (B21-B26)
+
+Phase 2 adds secure agent sharing: bundles, publisher identities, and
+provenance chains. The following adversaries are specific to the sharing
+surface. The P1 STRIDE table above still applies.
+
+| # | Adversary | Attack | Control | Block |
+|---|-----------|--------|---------|-------|
+| A2 | Impersonator | "This bundle is from Parvez" with an attacker-controlled key | TOFU pinning + out-of-band fingerprint verification; key-change hard fail for known publishers (no silent acceptance of a new key for a known publisher fingerprint). Trust store persists verified fingerprints so subsequent bundles from the same publisher are recognized without re-prompting. | B21/B23 |
+| A11 | Stolen publisher key | Attacker signs a malicious bundle with the publisher's real private key | **Out of scope for v0.2.0.** AgentPaaS v0.2.0 has no revocation mechanism; a stolen key is outside the current trust boundary. Revocation-list support is planned for B26. The docs acknowledge this limitation explicitly. Until B26 ships, users must treat the publisher keypair as a long-lived credential and protect it accordingly — export an encrypted backup and store it securely. | B26 |
+
+For the full Phase 2 threat model delta (adversaries A1–A11), see
+[the Phase 2 PRD](execution/planning/phase2-sharing-prd-v1.md#9-threat-model-delta).
+For what publisher signatures do and do not prove, see
+[trust-model.md](trust-model.md).
