@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -47,11 +48,15 @@ type gatewayRoute struct {
 
 type gatewayRouteMatch struct {
 	Method string `yaml:"method,omitempty"`
+	Path   string `yaml:"path,omitempty"`
 }
 
 type gatewayRoutePolicies struct {
 	DirectResponse *gatewayDirectResponse   `yaml:"directResponse,omitempty"`
 	LocalRateLimit []gatewayLocalRateLimit  `yaml:"localRateLimit,omitempty"`
+	JWT            *gatewayJWTAuth          `yaml:"jwt,omitempty"`
+	APIKey         *gatewayAPIKeyAuth       `yaml:"apiKey,omitempty"`
+	BackendOAuth   *backendOAuthConfig      `yaml:"backendOAuth,omitempty"`
 }
 
 type gatewayDirectResponse struct {
@@ -66,6 +71,26 @@ type gatewayLocalRateLimit struct {
 	TokensPerFill  int    `yaml:"tokensPerFill"`
 	FillInterval   string `yaml:"fillInterval"`
 	Type           string `yaml:"type,omitempty"` // "requests" or "tokens"
+}
+
+// gatewayJWTAuth represents a JWT validation policy on a gateway route.
+type gatewayJWTAuth struct {
+	Issuer   string `yaml:"issuer"`
+	Audience string `yaml:"audience"`
+	JWKSURL  string `yaml:"jwksUrl"`
+}
+
+// gatewayAPIKeyAuth represents an API key validation policy on a gateway route.
+type gatewayAPIKeyAuth struct {
+	Header     string `yaml:"header"`
+	Credential string `yaml:"credential"`
+}
+// backendOAuthConfig carries OAuth token refresh configuration for a route's backend.
+type backendOAuthConfig struct {
+	TokenEndpoint          string `yaml:"tokenEndpoint"`
+	ClientID               string `yaml:"clientId"`
+	RefreshTokenCredential string `yaml:"refreshTokenCredential"`
+	Header                 string `yaml:"header,omitempty"`
 }
 
 type gatewayBackend struct {
@@ -102,13 +127,21 @@ type connectConfig struct {
 }
 
 // ----- credential injection rules -----
-
 // CredentialRule represents a credential injection rule by id only.
 // The actual secret values are injected at runtime by the secrets broker.
 type CredentialRule struct {
 	ID     string `yaml:"id"`
 	Header string `yaml:"header,omitempty"`
 	Value  string `yaml:"value,omitempty"`
+	OAuth  *OAuthCredentialRule `yaml:"oauth,omitempty"`
+}
+
+// OAuthCredentialRule carries the OAuth metadata needed by the gateway
+// to obtain and refresh OAuth tokens at runtime.
+type OAuthCredentialRule struct {
+	TokenEndpoint         string `yaml:"tokenEndpoint"`
+	ClientID              string `yaml:"clientId"`
+	RefreshTokenCredential string `yaml:"refreshTokenCredential"`
 }
 
 // CompileGatewayConfig compiles a *Policy into an agentgateway YAML configuration.
@@ -185,6 +218,14 @@ func CompileCredentialRules(p *Policy) ([]byte, error) {
 		case "brokered":
 			rule.Header = "Authorization"
 			rule.Value = "${secrets:" + c.ID + "}"
+		case "oauth":
+			rule.Header = ""
+			rule.Value = ""
+			rule.OAuth = &OAuthCredentialRule{
+				TokenEndpoint:          c.TokenEndpoint,
+				ClientID:               c.ClientID,
+				RefreshTokenCredential: c.RefreshTokenCredential,
+			}
 		case "direct_lease":
 			// direct_lease credentials don't have header injection;
 			// they are mounted as files at runtime.
@@ -229,6 +270,7 @@ func buildBinds(p *Policy) []gatewayBind {
 					Routes: []gatewayRoute{
 						{
 							Name:     "ingress",
+							Policies: buildIngressAuthPolicies(p),
 							Backends: backends,
 						},
 					},
@@ -294,13 +336,16 @@ func buildEgressRoutes(p *Policy) []gatewayRoute {
 			matches = append(matches, gatewayRouteMatch{Method: method})
 		}
 
+		// LLM provider locking: add path restrictions for LLM provider domains.
+		matches = applyLLMProviderLock(p, key, matches)
+
 		routes = append(routes, gatewayRoute{
 			Name:       routeName,
 			Hostnames:  []string{e.Domain},
 			Ports:      e.Ports,
 			Matches:    matches,
 			Credential: e.Credential,
-			Policies:   buildLLMRoutePolicies(p, key),
+			Policies:   buildRoutePolicies(p, key, e.Credential),
 			Backends: []gatewayBackend{
 				{Dynamic: &struct{}{}},
 			},
@@ -338,6 +383,46 @@ var llmProviderDomains = map[string]bool{
 	"api.anthropic.com":              true,
 	"api.x.ai":                       true,
 	"inference-api.nousresearch.com": true,
+}
+
+// findCredByID returns the Credential with the given ID, or nil if not found.
+func findCredByID(p *Policy, id string) *Credential {
+	for i := range p.Credentials {
+		if p.Credentials[i].ID == id {
+			return &p.Credentials[i]
+		}
+	}
+	return nil
+}
+
+// buildRoutePolicies returns gateway route policies combining LLM rate limit
+// policies and OAuth backend configuration when the credential is type=oauth.
+func buildRoutePolicies(p *Policy, domain string, credID string) *gatewayRoutePolicies {
+	llm := buildLLMRoutePolicies(p, domain)
+
+	// Check for OAuth credential.
+	if credID != "" {
+		cred := findCredByID(p, credID)
+		if cred != nil && cred.Type == "oauth" {
+			header := cred.Header
+			if header == "" {
+				header = "Authorization"
+			}
+			oauthCfg := &backendOAuthConfig{
+				TokenEndpoint:          cred.TokenEndpoint,
+				ClientID:               cred.ClientID,
+				RefreshTokenCredential: cred.RefreshTokenCredential,
+				Header:                 header,
+			}
+			if llm == nil {
+				return &gatewayRoutePolicies{BackendOAuth: oauthCfg}
+			}
+			llm.BackendOAuth = oauthCfg
+			return llm
+		}
+	}
+
+	return llm
 }
 
 // buildLLMRoutePolicies returns gateway route policies (localRateLimit) for
@@ -390,6 +475,95 @@ func buildLLMRoutePolicies(p *Policy, domain string) *gatewayRoutePolicies {
 	return &gatewayRoutePolicies{
 		LocalRateLimit: limits,
 	}
+}
+
+// applyLLMProviderLock adds path-based route matches for LLM provider domains
+// when llm_provider_lock is configured. For each allowed endpoint matching the
+// given domain, it adds or augments route matches with the endpoint's path.
+// This provides defense-in-depth beyond hostname-based egress rules.
+func applyLLMProviderLock(p *Policy, domain string, existing []gatewayRouteMatch) []gatewayRouteMatch {
+	if p.LLMProviderLock == nil || len(p.LLMProviderLock.AllowedEndpoints) == 0 {
+		return existing
+	}
+	if !llmProviderDomains[domain] {
+		return existing
+	}
+
+	// Collect unique paths from allowed endpoints that match this domain.
+	pathSet := make(map[string]bool)
+	for _, endpoint := range p.LLMProviderLock.AllowedEndpoints {
+		u, err := url.Parse(endpoint)
+		if err != nil {
+			continue
+		}
+		host := u.Host
+		if host == "" {
+			host = u.Hostname()
+		}
+		if host != domain && u.Hostname() != domain {
+			continue
+		}
+		if u.Path == "" {
+			continue // skip endpoints without a path component
+		}
+		pathSet[u.Path] = true
+	}
+
+	if len(pathSet) == 0 {
+		return existing
+	}
+
+	// Build path-restricted matches. Combine with existing method matches
+	// when present, otherwise create standalone path matches.
+	var lockedMatches []gatewayRouteMatch
+	for path := range pathSet {
+		if len(existing) > 0 {
+			for _, m := range existing {
+				lockedMatches = append(lockedMatches, gatewayRouteMatch{
+					Method: m.Method,
+					Path:   path,
+				})
+			}
+		} else {
+			lockedMatches = append(lockedMatches, gatewayRouteMatch{Path: path})
+		}
+	}
+	return lockedMatches
+}
+
+// buildIngressAuthPolicies returns gateway route policies for ingress auth.
+// When ingress_auth is configured with type=jwt, adds a JWT validation policy.
+// When type=api_key, adds an API key validation policy.
+// Returns nil if no ingress_auth is configured.
+func buildIngressAuthPolicies(p *Policy) *gatewayRoutePolicies {
+	if p.IngressAuth == nil {
+		return nil
+	}
+
+	switch p.IngressAuth.Type {
+	case "jwt":
+		if p.IngressAuth.JWT == nil {
+			return nil
+		}
+		return &gatewayRoutePolicies{
+			JWT: &gatewayJWTAuth{
+				Issuer:   p.IngressAuth.JWT.Issuer,
+				Audience: p.IngressAuth.JWT.Audience,
+				JWKSURL:  p.IngressAuth.JWT.JWKSURL,
+			},
+		}
+	case "api_key":
+		if p.IngressAuth.APIKey == nil {
+			return nil
+		}
+		return &gatewayRoutePolicies{
+			APIKey: &gatewayAPIKeyAuth{
+				Header:     p.IngressAuth.APIKey.Header,
+				Credential: p.IngressAuth.APIKey.Credential,
+			},
+		}
+	}
+	return nil
 }
 
 func buildMCPBinds(p *Policy) []gatewayBind {

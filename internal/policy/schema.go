@@ -3,15 +3,17 @@ package policy
 // Policy represents the canonical agent policy configuration.
 // Unknown fields in the YAML are rejected via strict decoding.
 type Policy struct {
-	Version       string         `yaml:"version"`
-	Agent         AgentConfig    `yaml:"agent"`
-	Egress        []EgressRule   `yaml:"egress"`
-	Credentials   []Credential   `yaml:"credentials"`
-	MCPServers    []MCPServer    `yaml:"mcp_servers"`
-	Hooks         []Hook         `yaml:"hooks"`
-	Ingress       []IngressRule  `yaml:"ingress"`
-	LLMBudget     *LLMBudget     `yaml:"llm_budget,omitempty"`
-	LLMRateLimit  *LLMRateLimit  `yaml:"llm_rate_limit,omitempty"`
+	Version         string           `yaml:"version"`
+	Agent           AgentConfig      `yaml:"agent"`
+	Egress          []EgressRule     `yaml:"egress"`
+	Credentials     []Credential     `yaml:"credentials"`
+	MCPServers      []MCPServer      `yaml:"mcp_servers"`
+	Hooks           []Hook           `yaml:"hooks"`
+	Ingress         []IngressRule    `yaml:"ingress"`
+	LLMBudget       *LLMBudget       `yaml:"llm_budget,omitempty"`
+	LLMRateLimit    *LLMRateLimit    `yaml:"llm_rate_limit,omitempty"`
+	LLMProviderLock *LLMProviderLock `yaml:"llm_provider_lock,omitempty"`
+	IngressAuth     *IngressAuth     `yaml:"ingress_auth,omitempty"`
 }
 
 // LLMBudget defines per-invoke and per-request token budget limits.
@@ -26,6 +28,34 @@ type LLMBudget struct {
 type LLMRateLimit struct {
 	RequestsPerMinute int `yaml:"requests_per_minute"`
 	TokensPerMinute   int `yaml:"tokens_per_minute"`
+}
+
+// LLMProviderLock restricts LLM egress to specific provider endpoint URLs.
+// When set, the compiler adds path-based route matches to LLM provider domain
+// routes, ensuring calls are restricted to the exact API endpoints listed.
+// This is defense-in-depth beyond hostname-based egress rules.
+type LLMProviderLock struct {
+	AllowedEndpoints []string `yaml:"allowed_endpoints"`
+}
+
+// IngressAuth defines authentication for incoming trigger requests.
+type IngressAuth struct {
+	Type   string      `yaml:"type"`            // "jwt" or "api_key"
+	JWT    *JWTAuth    `yaml:"jwt,omitempty"`    // JWT auth config
+	APIKey *APIKeyAuth `yaml:"api_key,omitempty"` // API key auth config
+}
+
+// JWTAuth defines JWT validation parameters.
+type JWTAuth struct {
+	Issuer   string `yaml:"issuer"`
+	Audience string `yaml:"audience"`
+	JWKSURL  string `yaml:"jwks_url"`
+}
+
+// APIKeyAuth defines API key validation parameters.
+type APIKeyAuth struct {
+	Header     string `yaml:"header"`     // HTTP header name (e.g. X-API-Key)
+	Credential string `yaml:"credential"` // Keychain secret name
 }
 
 // AgentConfig describes the agent identity.
@@ -47,7 +77,7 @@ type EgressRule struct {
 }
 
 // Credential defines a credential source for the agent.
-// Type may be "header", "brokered", or "direct_lease".
+// Type may be "header", "brokered", "oauth", or "direct_lease".
 type Credential struct {
 	ID      string `yaml:"id"`
 	Type    string `yaml:"type"`
@@ -59,6 +89,10 @@ type Credential struct {
 	Mode string `yaml:"mode"`
 	// Reason is required for direct-lease credentials.
 	Reason string `yaml:"reason"`
+	// OAuth fields (type: oauth).
+	TokenEndpoint          string `yaml:"token_endpoint,omitempty"`
+	ClientID               string `yaml:"client_id,omitempty"`
+	RefreshTokenCredential string `yaml:"refresh_token_credential,omitempty"`
 }
 
 // MCPServer defines an MCP (Model Context Protocol) server endpoint.
