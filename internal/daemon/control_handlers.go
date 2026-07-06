@@ -262,8 +262,8 @@ func validateCredentialsExist(s *controlServer, agentName string) error {
 		var err error
 		store, err = secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
 		if err != nil {
-			// Keychain unavailable — skip validation (graceful as before).
-			return nil
+			// Keychain unavailable — fail closed.
+			return fmt.Errorf("keychain unavailable: %w", err)
 		}
 	}
 
@@ -520,15 +520,18 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}
 
 	// Write resolved credential values to a sidecar file that is bind-mounted
-	// into the agent container. The harness reads this file at startup and
-	// stores credential values in memory. This keeps raw secrets out of the
-	// Docker ExecWithStdin payload, harness /invoke request body, and Python
-	// worker stdin.
+	// into the agent container. The harness reads this file at startup, loads
+	// credential values into memory, and deletes the file before starting the
+	// Python worker. This keeps raw secrets out of the Docker ExecWithStdin
+	// payload, harness /invoke request body, and Python worker stdin.
+	// NOTE: The file is mounted read-write (not :ro) so the harness can delete
+	// it after loading. If the harness crashes before reading, the container
+	// is stopped and removed on failure, so the file is ephemeral.
 	credsPath, credsFileWritten := s.writeCredentialsForRun(runID, deployedDir, gatewayConfigDir)
 
 	agentBinds := []string{fmt.Sprintf("%s:/audit", hostAuditDir)}
 	if credsFileWritten {
-		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/credentials.json:ro", credsPath))
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/credentials.json", credsPath))
 		proxyEnv = append(proxyEnv, "AGENTPAAS_CREDENTIALS_PATH=/agentpaas/credentials.json")
 	}
 

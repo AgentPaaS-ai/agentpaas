@@ -78,7 +78,7 @@ isolation remains the hard boundary regardless.
 | Feature | What it stops |
 |---|---|
 | **Default-deny egress** | Agent can't call any endpoint you didn't explicitly approve |
-| **Container isolation** | Non-root (UID 64000), read-only rootfs, no shell, all capabilities dropped, seccomp profile |
+| **Container isolation** | Non-root (UID 64000), read-only rootfs, no shell, all capabilities dropped except NET_ADMIN when egress firewall is enabled (defense-in-depth), seccomp profile |
 | **Credential brokering** | Secrets never reach agent code — injected by gateway at request time |
 | **Internal-only network** | No route to internet except through gateway; DNS stub only resolves approved domains |
 | **Tamper-evident audit** | Hash-chained JSONL + signed checkpoints — in-chain tampering (modification, reordering, insertion) detected on verification. Tail truncation (removing last N records) leaves a valid prefix chain and requires external checkpoint anchoring (P2). |
