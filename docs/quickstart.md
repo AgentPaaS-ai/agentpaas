@@ -130,4 +130,4 @@ All commands also work as natural language requests.
 - **Request a feature:** Open an issue on
   [GitHub](https://github.com/AgentPaaS-ai/agentpaas/issues)
 - **Build your own:** Fork the repo, build, test (`make test`), open a PR
-- See [roadmap.md](roadmap.md) for planned features
+- See [known-limitations.md](known-limitations.md) for current development status

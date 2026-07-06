@@ -289,8 +289,8 @@ use xAI or Nous, extract a fresh token immediately before storing it.
 
 Open an issue on
 [GitHub](https://github.com/AgentPaaS-ai/agentpaas/issues) describing
-what you want and why. See [docs/roadmap.md](docs/roadmap.md) for
-planned features.
+what you want and why. See [docs/known-limitations.md](docs/known-limitations.md)
+for current development status and upcoming features.
 
 ### Build Your Own and Merge
 
@@ -299,8 +299,10 @@ planned features.
 3. Test: `make test && make redteam-smoke`
 4. Open a PR describing what changed and why
 
-For LLM provider additions specifically, see the 9-file checklist in
-[docs/roadmap.md](docs/roadmap.md) under "Generic provider registry."
+For LLM provider additions specifically, see the
+[known limitations](docs/known-limitations.md) document for current provider
+support and the [open issues](https://github.com/AgentPaaS-ai/agentpaas/issues)
+for planned additions.
 
 ## Pitfalls
 

@@ -110,7 +110,7 @@ verification checks checkpoint signatures in addition to the hash chain.
 If an attacker removes the last N records from an exported JSONL file, the
 remaining prefix chain is still valid. Detecting deletion requires signed
 checkpoint anchors (P2). See
-[known-limitations.md](known-limitations.md#hash-chain-record-deletion-is-undetectable).
+[known-limitations.md](known-limitations.md#hash-chain-record-deletion-detection).
 
 ## Typical review workflow
 
