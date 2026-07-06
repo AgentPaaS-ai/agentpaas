@@ -10,30 +10,43 @@ import (
 // owned by AgentPaaS.
 var ErrNotOwned = errors.New("resource is not owned by AgentPaaS")
 
+// ReconcileResult summarizes the actions taken during crash reconciliation.
+type ReconcileResult struct {
+	// RemovedContainers is the list of container IDs that were removed.
+	RemovedContainers []ContainerID
+	// RemovedNetworks is the list of network IDs that were removed.
+	RemovedNetworks []NetworkID
+}
+
 // ReconcileAfterCrash performs startup reconciliation after a daemon crash.
-// It discovers all AgentPaaS-owned containers via the managed-by label and
-// removes any agent container whose gateway is absent (stopped or removed)
-// and any MCP sidecar whose owning agent is absent.
+// It discovers all AgentPaaS-owned containers and networks via the managed-by
+// label and removes orphaned resources whose peer is absent.
 //
 // The reconciliation respects the following rules:
 //   - Only resources with agentpaas.managed-by=agentpaas are considered
-//   - Only agent and MCP containers are removed
+//   - Agent, gateway, and MCP containers are cleaned up
 //   - An agent container is removed only if NO running gateway container
 //     (agentpaas.resource-type=gateway) exists for the same run ID
-//   - An MCP container is removed only if NO running agent container
+//   - A gateway container is removed only if NO running agent container
 //     (agentpaas.resource-type=agent) exists for the same run ID
+//   - An MCP container is removed only if NO running agent container exists
+//     for the same run ID
+//   - Per-run networks (internal/egress) are removed when their run has no
+//     remaining containers
+//   - Audit directories (state/runs/<runID>/) are NOT removed — they are
+//     forensic evidence on the filesystem, not Docker resources
 //   - Unrelated Docker resources are never touched
 //
-// ReconcileAfterCrash returns a summary of actions taken (containers removed).
-func ReconcileAfterCrash(ctx context.Context, driver RuntimeDriver) ([]ContainerID, error) {
+// ReconcileAfterCrash returns a summary of actions taken.
+func ReconcileAfterCrash(ctx context.Context, driver RuntimeDriver) (ReconcileResult, error) {
 	if driver == nil {
-		return nil, errors.New("reconcile: runtime driver is nil")
+		return ReconcileResult{}, errors.New("reconcile: runtime driver is nil")
 	}
 
 	// List all AgentPaaS-owned containers.
 	containers, err := driver.ListContainers(ctx, LabelManagedBy+"="+ManagedByValue)
 	if err != nil {
-		return nil, fmt.Errorf("reconcile: list owned containers: %w", err)
+		return ReconcileResult{}, fmt.Errorf("reconcile: list owned containers: %w", err)
 	}
 
 	// Group containers by run ID.
@@ -46,7 +59,7 @@ func ReconcileAfterCrash(ctx context.Context, driver RuntimeDriver) ([]Container
 
 	for _, c := range containers {
 		if c.RunID == "" {
-			continue // skip containers without a run ID label
+			continue
 		}
 		g, ok := groups[c.RunID]
 		if !ok {
@@ -63,9 +76,12 @@ func ReconcileAfterCrash(ctx context.Context, driver RuntimeDriver) ([]Container
 		}
 	}
 
-	// For each run group: if no running gateway exists, remove all agents;
-	// if no running agent exists, remove all MCP sidecars.
-	var removed []ContainerID
+	var result ReconcileResult
+
+	// Track which run IDs have no remaining containers after cleanup.
+	emptyRuns := make(map[string]bool)
+
+	// Phase 1: Remove orphaned containers.
 	for runID, g := range groups {
 		hasRunningGateway := false
 		for _, gw := range g.gateways {
@@ -84,11 +100,12 @@ func ReconcileAfterCrash(ctx context.Context, driver RuntimeDriver) ([]Container
 						if len(shortID) > 12 {
 							shortID = shortID[:12]
 						}
-						return removed, fmt.Errorf("reconcile: remove agent %s (run %s): %w", shortID, runID, err)
+						return result, fmt.Errorf("reconcile: remove agent %s (run %s): %w", shortID, runID, err)
 					}
-					removed = append(removed, cid)
+					result.RemovedContainers = append(result.RemovedContainers, cid)
 				}
 			}
+			g.agents = nil
 		}
 
 		hasRunningAgent := false
@@ -108,15 +125,57 @@ func ReconcileAfterCrash(ctx context.Context, driver RuntimeDriver) ([]Container
 						if len(shortID) > 12 {
 							shortID = shortID[:12]
 						}
-						return removed, fmt.Errorf("reconcile: remove MCP sidecar %s (run %s): %w", shortID, runID, err)
+						return result, fmt.Errorf("reconcile: remove MCP sidecar %s (run %s): %w", shortID, runID, err)
 					}
-					removed = append(removed, cid)
+					result.RemovedContainers = append(result.RemovedContainers, cid)
 				}
+			}
+			g.mcps = nil
+
+			// Remove orphaned gateway containers (B20-T13).
+			for _, gw := range g.gateways {
+				if gw.Status == ContainerStatusRunning || gw.Status == ContainerStatusStopped {
+					cid := ContainerID(gw.ID)
+					if err := driver.Remove(ctx, cid, true); err != nil {
+						shortID := gw.ID
+						if len(shortID) > 12 {
+							shortID = shortID[:12]
+						}
+						return result, fmt.Errorf("reconcile: remove gateway %s (run %s): %w", shortID, runID, err)
+					}
+					result.RemovedContainers = append(result.RemovedContainers, cid)
+				}
+			}
+			g.gateways = nil
+
+			if len(g.agents) == 0 && len(g.gateways) == 0 && len(g.mcps) == 0 {
+				emptyRuns[runID] = true
 			}
 		}
 	}
 
-	return removed, nil
+	// Phase 2: Remove orphaned per-run networks (B20-T13).
+	networks, netErr := driver.ListNetworks(ctx, LabelManagedBy+"="+ManagedByValue)
+	if netErr != nil {
+		return result, fmt.Errorf("reconcile: list owned networks: %w", netErr)
+	}
+
+	for _, net := range networks {
+		runID := net.Labels[LabelRunID]
+		if runID == "" {
+			continue
+		}
+		_, inGroups := groups[runID]
+		if !inGroups || emptyRuns[runID] {
+			nid := NetworkID(net.ID)
+			if err := driver.RemoveNetwork(ctx, nid); err != nil {
+				continue
+			}
+			result.RemovedNetworks = append(result.RemovedNetworks, nid)
+		}
+	}
+
+	return result, nil
 }
 
 // MCPContainerInfo describes an MCP sidecar discovered during reconciliation.
