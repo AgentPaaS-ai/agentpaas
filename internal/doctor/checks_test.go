@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
 
@@ -712,8 +713,8 @@ func TestNewDoctorDefaults(t *testing.T) {
 		t.Error("expected socketPath to be set")
 	}
 
-	if d.cliVersion != "0.1.0-dev" {
-		t.Errorf("expected cliVersion '0.1.0-dev', got %q", d.cliVersion)
+	if d.cliVersion != daemon.CLIVersion {
+		t.Errorf("expected cliVersion=%q (from daemon.CLIVersion, settable via ldflags), got %q", daemon.CLIVersion, d.cliVersion)
 	}
 
 	if d.cliProtoVersion != "v1" {
@@ -1040,6 +1041,45 @@ func TestDoctorRun_EmptySocket(t *testing.T) {
 	}
 	if !foundDaemonReady {
 		t.Error("expected daemon_ready check to report error with empty socket")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: Doctor version reports dynamic value from daemon.CLIVersion
+// (not an independently hardcoded stale string).
+// ---------------------------------------------------------------------------
+
+func TestDoctorVersionInfo(t *testing.T) {
+	d, err := New(WithHomeDir(t.TempDir()))
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+
+	// The doctor's cliVersion must match daemon.CLIVersion — i.e., it
+	// pulls from the ldflags-settable variable, not a separate hardcoded
+	// constant.  daemon.CLIVersion defaults to "0.1.0-dev" when not
+	// injected via ldflags.
+	if d.cliVersion != daemon.CLIVersion {
+		t.Errorf("doctor cliVersion %q != daemon.CLIVersion %q — version is NOT dynamic", d.cliVersion, daemon.CLIVersion)
+	}
+
+	// Also verify the version check appears in the formatted output.
+	checks, overall := d.Run()
+	output := FormatResults(checks, overall)
+	if !strings.Contains(output, "AgentPaaS Doctor Report") {
+		t.Error("expected doctor output to contain report header")
+	}
+
+	// Prove that WithCLIVersion actually overrides the default.
+	d2, err2 := New(
+		WithHomeDir(t.TempDir()),
+		WithCLIVersion("9.9.9-test"),
+	)
+	if err2 != nil {
+		t.Fatalf("New(): %v", err2)
+	}
+	if d2.cliVersion != "9.9.9-test" {
+		t.Errorf("WithCLIVersion override: got %q, want %q", d2.cliVersion, "9.9.9-test")
 	}
 }
 
