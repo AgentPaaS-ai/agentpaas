@@ -217,12 +217,6 @@ func checkFailed(t *testing.T, report *VerifyReport, name string) {
 	t.Fatalf("check %q not found in report", name)
 }
 
-type tarEntry struct {
-	name string
-	hdr  *tar.Header
-	body []byte
-}
-
 func readBundleTar(t *testing.T, path string) []tarEntry {
 	t.Helper()
 	data, err := os.ReadFile(path)

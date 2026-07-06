@@ -1,0 +1,141 @@
+{
+  "header": {
+    "file": "\u003cbundle\u003e",
+    "size_bytes": 0,
+    "bundle_digest": "",
+    "bundle_schema_version": 1,
+    "lock_schema_version": 2,
+    "agent_name": "bundle-test-agent",
+    "agent_version": "0.1.0"
+  },
+  "integrity": {
+    "verified": true,
+    "checks": [
+      {
+        "name": "manifest_parse",
+        "passed": true,
+        "detail": "manifest parsed"
+      },
+      {
+        "name": "manifest_signature",
+        "passed": true,
+        "detail": "manifest signature valid"
+      },
+      {
+        "name": "publisher_match",
+        "passed": true,
+        "detail": "manifest and lock publisher match"
+      },
+      {
+        "name": "lock_provenance",
+        "passed": true,
+        "detail": "lock and provenance verified"
+      },
+      {
+        "name": "content_sha256",
+        "passed": true,
+        "detail": "lock, policy, and sbom digests match manifest"
+      },
+      {
+        "name": "policy_digest",
+        "passed": true,
+        "detail": "policy digest matches lock"
+      },
+      {
+        "name": "sbom_digest",
+        "passed": true,
+        "detail": "sbom digest matches lock"
+      },
+      {
+        "name": "source_digest",
+        "passed": true,
+        "detail": "source digest matches manifest and lock"
+      },
+      {
+        "name": "image_digest",
+        "passed": true,
+        "detail": "no image in bundle"
+      }
+    ]
+  },
+  "verified": true,
+  "publisher": {
+    "name": "test-publisher",
+    "fingerprint": "",
+    "fingerprint_display": "",
+    "trust_disclaimer": "A valid signature proves who signed this and that it is unmodified.\nIt does not mean the agent is safe. Review the policy below."
+  },
+  "provenance": {
+    "verified": true,
+    "entries": [
+      {
+        "index": 0,
+        "action": "created",
+        "publisher_name": "test-publisher",
+        "publisher_fingerprint": "",
+        "agent_name": "bundle-test-agent",
+        "agent_version": "0.1.0",
+        "timestamp": "1970-01-01T00:00:00Z"
+      },
+      {
+        "index": 1,
+        "action": "forked",
+        "publisher_name": "test-publisher",
+        "publisher_fingerprint": "",
+        "agent_name": "bundle-test-agent",
+        "agent_version": "0.1.0",
+        "timestamp": "1970-01-01T01:00:00Z",
+        "policy_delta": {
+          "egress_added": [
+            "api.slack.com:443"
+          ]
+        }
+      },
+      {
+        "index": 2,
+        "action": "forked",
+        "publisher_name": "test-publisher",
+        "publisher_fingerprint": "",
+        "agent_name": "bundle-test-agent",
+        "agent_version": "0.1.0",
+        "timestamp": "1970-01-01T02:00:00Z",
+        "policy_delta": {
+          "egress_added": [
+            "api.slack.com:443"
+          ]
+        }
+      }
+    ],
+    "chain_semantics": "each entry is a signed claim by its signer about its parent; intermediate artifacts are not independently verifiable from this lock alone"
+  },
+  "provenance_text": "Provenance:\n  1. created  bundle-test-agent 0.1.0  by test-publisher  (\u003cfp8\u003e)  1970-01-01\n  2. forked   bundle-test-agent 0.1.0  by test-publisher  (\u003cfp8\u003e)  1970-01-01\n     policy delta (signer-claimed): +egress api.slack.com:443\n  3. forked   bundle-test-agent 0.1.0  by test-publisher  (\u003cfp8\u003e)  1970-01-01\n     policy delta (signer-claimed): +egress api.slack.com:443\n",
+  "policy_summary": [
+    {
+      "section": "egress",
+      "detail": "api.example.com:443 *"
+    },
+    {
+      "section": "credential",
+      "detail": "id=my-key type=header header=X-API-Key"
+    }
+  ],
+  "requirements": {
+    "credentials": [
+      {
+        "id": "my-key",
+        "type": "header",
+        "header": "X-API-Key"
+      }
+    ],
+    "llm_provider": "(not declared)",
+    "image": "rebuild required (source in bundle; no prebuilt image)",
+    "platform": "linux/arm64"
+  },
+  "sbom": {
+    "package_count": 2,
+    "top_level_deps": [
+      "idna",
+      "requests"
+    ]
+  }
+}
