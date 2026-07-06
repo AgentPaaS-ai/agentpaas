@@ -13,12 +13,15 @@ Every agent gets two containers on an isolated Docker network:
    The agent code cannot reach any network directly.
 
 2. **Gateway sidecar** — the ONLY network path out. It enforces your
-   egress policy (default-deny), brokers credentials (secrets never reach
-   agent code), and logs every allowed/denied call to the audit chain.
+   egress policy (default-deny), and logs every allowed/denied call to
+   the audit chain.
 
 Even if the agent is prompt-injected or the agent code is malicious, it
-can only call the exact endpoints you approved. Credentials are injected
-by the gateway at request time — the agent never sees raw API keys.
+can only call the exact endpoints you approved. Credentials are resolved
+from macOS Keychain by the daemon at invoke time and injected into the
+harness — the agent code never sees raw API keys. The SDK sends only
+the credential ID (name); the harness injects the actual value into the
+HTTP request at call time.
 
 ## Installation
 
@@ -131,10 +134,25 @@ result = agent.llm(prompt=f"What's the weather in {city}?")
 ```
 
 The SDK also provides:
-- `agent.http(url, ...)` — non-credentialed HTTP through the gateway
-- `agent.http_with_credential(credential_id, url, ...)` — brokered credentialed HTTP
+- `agent.http(method, url, **kwargs)` — non-credentialed HTTP through the gateway
+- `agent.http_with_credential(credential_id, method, url, **kwargs)` — brokered credentialed HTTP
 - `agent.llm(prompt=...)` — LLM call (provider/model/credential from agent.yaml)
 - `agent.mcp(server, tool, args)` — MCP tool call
+
+**CRITICAL:** `agent.http` and `agent.http_with_credential` take `method` as the
+2nd (or 1st for http) positional arg — NOT the URL. Common mistake: passing the
+URL where `method` should go.
+
+```python
+# CORRECT — method is "GET", url is the full URL
+resp = agent.http("GET", "https://wttr.in/Folsom?format=j1")
+
+# CORRECT — credential_id, method, url
+resp = agent.http_with_credential("my-api-key", "GET", "https://api.example.com/data")
+
+# WRONG — missing method arg, URL passed as method
+resp = agent.http_with_credential("my-api-key", "https://api.example.com/data")
+```
 
 A plain `main()` function will fail with: "agent must register an invoke
 handler with @agent.on_invoke".
@@ -162,7 +180,22 @@ not wait for the user to ask — do them proactively.
    - The user pastes the key when prompted (stdin) — the key value never enters the Hermes conversation
    - After the user confirms, verify via `agentpaas_secret_list` that the label exists (never read the value)
    - Validate it: `agentpaas_secret_test`
-3. If using an LLM, configure the provider (see Step 3).
+3. **Declare each credential in policy.yaml** under the `credentials:` section.
+   The daemon resolves these at runtime and injects them into the harness so
+   `agent.http_with_credential("cred-id", ...)` can use them. Without this
+   declaration, the credential will NOT be available to the agent at runtime.
+
+   ```yaml
+   credentials:
+     - id: my-api-key
+       type: header
+       header: Authorization  # or X-API-Key, X-Custom-Header, etc.
+   ```
+
+   - `id` must match the Keychain secret name (what the user passed to `agentpaas secret add`)
+   - `type` must be `header` (injected as an HTTP header on egress)
+   - `header` is the HTTP header name (defaults to `Authorization` if omitted)
+4. If using an LLM, configure the provider (see Step 3).
 
 ### Step 3: Configure LLM Provider
 
@@ -189,8 +222,10 @@ If the agent needs an LLM (detected from user intent: "answer", "summarize",
 Before calling `agentpaas_pack`, verify:
 1. Egress policy lists every external domain the agent will access.
 2. Every credential is stored in Keychain (verify via `agentpaas_secret_list` — never call `agentpaas_secret_add` with the key value as a tool parameter; the user runs the CLI command directly in their terminal).
-3. If LLM: agent.yaml has `llm:` section pointing to the credential.
-4. The LLM provider's domain is in the egress policy.
+3. Every credential used by `agent.http_with_credential()` is declared in
+   policy.yaml's `credentials:` section (id, type: header, header name).
+4. If LLM: agent.yaml has `llm:` section pointing to the credential.
+5. The LLM provider's domain is in the egress policy.
 
 If ANY are missing, do NOT pack. Ask the user to resolve the gap.
 
