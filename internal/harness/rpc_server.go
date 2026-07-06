@@ -27,10 +27,11 @@ type harnessRPCServer struct {
 	socket   string
 	done     chan struct{}
 
-	mu     sync.RWMutex
-	invoke *rpcInvokeState
-	audit  AuditAppender
-	router *mcpmanager.Router
+	mu          sync.RWMutex
+	invoke      *rpcInvokeState
+	audit       AuditAppender
+	router      *mcpmanager.Router
+	credentials map[string]rpcCredential // Pre-loaded credential values (from sidecar file)
 }
 
 type rpcInvokeState struct {
@@ -107,7 +108,7 @@ func (s *harnessRPCServer) SetInvoke(payload map[string]any, budget *BudgetEnfor
 		budget:      budget,
 		payload:     payload,
 		terminate:   terminate,
-		credentials: credentialsFromPayload(payload),
+		credentials: s.credentials,    // Use pre-loaded credentials, not from payload
 		mcpAllowed:  mcpAllowlistFromPayload(payload),
 	}
 }
@@ -192,6 +193,56 @@ func (s *harnessRPCServer) SetRouter(router *mcpmanager.Router) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.router = router
+}
+
+// SetCredentialsForTest directly injects credentials without file I/O.
+// Intended for test use only where the sidecar file flow is impractical.
+func (s *harnessRPCServer) SetCredentialsForTest(creds map[string]rpcCredential) {
+	s.mu.Lock()
+	s.credentials = creds
+	s.mu.Unlock()
+}
+
+// LoadCredentials reads credential values from a JSON file at the given path.
+// The file contains an array of {id, header, value} objects. After loading,
+// the credentials are stored in memory and are never exposed to agent code.
+// The file is deleted after successful loading to prevent agent access.
+func (s *harnessRPCServer) LoadCredentials(path string) error {
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	// Delete the file immediately so agent code cannot read it.
+	_ = os.Remove(path)
+
+	type credEntry struct {
+		ID     string `json:"id"`
+		Header string `json:"header"`
+		Value  string `json:"value"`
+	}
+	var entries []credEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("unmarshal credentials file: %w", err)
+	}
+
+	creds := make(map[string]rpcCredential)
+	for _, e := range entries {
+		if e.ID == "" {
+			continue
+		}
+		creds[e.ID] = rpcCredential{
+			Header: e.Header,
+			Value:  e.Value,
+		}
+	}
+
+	s.mu.Lock()
+	s.credentials = creds
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcResponse {

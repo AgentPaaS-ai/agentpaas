@@ -29,6 +29,11 @@ def handle(payload):
     )
 `)
 
+	// Inject credentials via the side-channel (new T01/T02 flow).
+	srv.worker.rpc.SetCredentialsForTest(map[string]rpcCredential{
+		"api-key": {Header: "Authorization", Value: secret},
+	})
+
 	errResp := invokeSDKAgentError(t, srv, `{
 		"run_id":"run-http-redact",
 		"invoke_id":"invoke-http-redact",

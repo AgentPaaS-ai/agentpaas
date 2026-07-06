@@ -66,8 +66,9 @@ credentials:
 	if creds[0]["header"] != "X-API-Key" {
 		t.Errorf("credentials[0].header = %q, want X-API-Key", creds[0]["header"])
 	}
-	if creds[0]["value"] != "«redacted:test-key»" {
-		t.Errorf("credentials[0].value = %q, want «redacted:test-key»", creds[0]["value"])
+	// Credential values are NOT in the payload — they come from a sidecar file.
+	if _, hasValue := creds[0]["value"]; hasValue {
+		t.Errorf("credentials[0].value should not be present in payload (values come from sidecar)")
 	}
 
 	// Should NOT have LLM section
@@ -215,9 +216,17 @@ credentials:
 	if err != nil {
 		t.Fatalf("buildInvokePayload() error = %v, want nil", err)
 	}
-	// Should return empty payload (no credentials resolved)
-	if len(payload) != 0 {
-		t.Fatalf("payload should be empty (credential not found), got %v", payload)
+	// Credential metadata (id+header) is always included even when Keychain
+	// resolution fails. Values come from the sidecar file, not the payload.
+	creds, ok := payload["credentials"].([]map[string]any)
+	if !ok || len(creds) != 1 {
+		t.Fatalf("payload[%q] missing or wrong count: %v", "credentials", payload)
+	}
+	if creds[0]["id"] != "nonexistent-key" {
+		t.Errorf("credentials[0].id = %q, want nonexistent-key", creds[0]["id"])
+	}
+	if _, hasValue := creds[0]["value"]; hasValue {
+		t.Errorf("credentials[0].value should not be present (values come from sidecar)")
 	}
 }
 
