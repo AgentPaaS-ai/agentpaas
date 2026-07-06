@@ -305,7 +305,7 @@ agentpaas/
 ├── cmd/                  # agent CLI, agentpaasd daemon, harness
 ├── internal/             # runtime, policy, secrets, audit, pack, llm, ...
 ├── api/                  # control + trigger protobuf APIs
-├── web/dashboard/        # embedded operator dashboard
+├── web/dashboard/        # operator dashboard (not yet enabled)
 ├── python/agentpaas_sdk/ # Python SDK for agent code
 ├── integrations/hermes-plugin/
 ├── test/e2e/             # end-to-end tests
