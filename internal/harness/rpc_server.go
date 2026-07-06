@@ -254,27 +254,31 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// Read LLM config from payload (set by daemon at invoke time).
 	llmConfig, _ := state.payload["llm"].(map[string]any)
 
-	// Backward compat: no LLM config → fake response.
+	// Backward compat: no LLM config → fake response only in test mode.
+	// In production, fail-closed with a structured error.
 	if llmConfig == nil {
-		tokens := int64(len(strings.Fields(prompt)))
-		if tokens == 0 && prompt != "" {
-			tokens = 1
-		}
-		if err := state.budget.RecordTokens(tokens); err != nil {
-			if errors.Is(err, ErrBudgetExceeded) && state.terminate != nil {
-				go state.terminate()
-				return rpcError(req.ID, err.Error(), StatusBudgetExceeded)
+		if os.Getenv("AGENTPAAS_TEST_FAKE_LLM") == "1" {
+			tokens := int64(len(strings.Fields(prompt)))
+			if tokens == 0 && prompt != "" {
+				tokens = 1
 			}
-			return rpcError(req.ID, err.Error(), "llm_failed")
+			if err := state.budget.RecordTokens(tokens); err != nil {
+				if errors.Is(err, ErrBudgetExceeded) && state.terminate != nil {
+					go state.terminate()
+					return rpcError(req.ID, err.Error(), StatusBudgetExceeded)
+				}
+				return rpcError(req.ID, err.Error(), "llm_failed")
+			}
+			return rpcResponse{
+				ID: req.ID,
+				OK: true,
+				Result: map[string]any{
+					"text":   "agentpaas fake llm response",
+					"tokens": tokens,
+				},
+			}
 		}
-		return rpcResponse{
-			ID: req.ID,
-			OK: true,
-			Result: map[string]any{
-				"text":   "agentpaas fake llm response",
-				"tokens": tokens,
-			},
-		}
+		return rpcError(req.ID, "llm not configured; configure llm in agent.yaml or set AGENTPAAS_TEST_FAKE_LLM=1 for testing", "llm_failed")
 	}
 
 	provider := firstString(llmConfig, "provider")
