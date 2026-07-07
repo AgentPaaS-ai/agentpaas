@@ -180,6 +180,80 @@ install refused: version downgrade requires --allow-downgrade
 
 ---
 
+## Forking and redistributing
+
+You can fork an installed shared agent into a normal project directory,
+change it, re-pack, and export a new signed bundle. The new bundle carries
+a provenance chain that records each hop (created, forked, …) and the
+policy delta at each step. Signatures prove identity and integrity at each
+hop — not safety. See [trust-model.md](trust-model.md) section 5 for what
+chains prove and do not prove.
+
+### Fork walkthrough
+
+1. **Fork** from an installed ref (name@pub8, alias, or bare name when
+   unambiguous):
+
+   ```bash
+   agentpaas fork weather-agent@a1b2c3d4 ./my-weather-fork
+   ```
+
+2. The fork directory is a standard project tree: source, `policy.yaml`,
+   `agent.yaml`, and `lineage.json` (provenance input for the next pack).
+
+3. **Edit** the project (prompt, policy, code) as you would for a local agent.
+
+4. **Re-pack** (daemon required):
+
+   ```bash
+   agentpaas daemon start
+   agentpaas pack ./my-weather-fork
+   ```
+
+5. **Export** a bundle for distribution:
+
+   ```bash
+   agentpaas export ./my-weather-fork -o my-weather-fork.agentpaas --yes
+   ```
+
+   The exported lock includes a provenance chain (for example a 2-entry
+   chain: `created` → `forked`) with the signer-claimed policy delta for
+   the fork hop.
+
+### Names, versions, and collisions
+
+Forking does **not** rename the agent. Two bundles both named `weather-agent`
+from different publishers (or forks) is expected. Before you redistribute,
+consider bumping `agent_version` in `agent.yaml` or renaming the agent so
+receivers can tell copies apart.
+
+### Deleting `lineage.json`
+
+You may remove `lineage.json` from a project before packing. The next pack
+emits a fresh `created` provenance entry with no parent reference — the
+project is treated as an **origin**. That is allowed; it is a claim of
+original authorship. The upstream publisher can still prove priority with
+their own signed artifact and earlier chain entries.
+
+### Chain cap
+
+Provenance chains are capped at **32 entries** (each hop adds a signed
+entry and public key material to the lock). If packing would exceed the
+cap, pack fails with guidance to publish as a new original with attribution
+in documentation instead of extending the chain further.
+
+### Multi-hop installs
+
+If publisher **B** forks from **A** and you install from **B**, the consent
+card lists every hop in the chain with policy deltas. Your trust decision
+**anchors on the final signer** — the publisher who signed the bundle you
+are installing (B, the person who sent it to you). Earlier signers are
+lineage claims; see [trust-model.md](trust-model.md) for the tail-anchor
+rule and locally verified hops when you already have a matching parent
+install pinned.
+
+---
+
 ## Troubleshooting
 
 | Problem | Cause | Fix |
