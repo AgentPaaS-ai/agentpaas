@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
@@ -56,8 +57,40 @@ func newInstalledCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newInstalledListCmd())
 	cmd.AddCommand(newInstalledRemoveCmd())
+	cmd.AddCommand(newInstalledAliasCmd())
 	cmd.AddCommand(newInstalledMapCredentialCmd())
 	return cmd
+}
+
+func newInstalledAliasCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "alias <ref> <alias>",
+		Short: "Set or change the display alias for an installed agent",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := homeDirPath(cmd)
+			if err != nil {
+				return err
+			}
+			paths := home.NewHomePaths(homeDir)
+			emit := func(eventType string, payload map[string]string) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s %v\n", eventType, payload)
+			}
+			if err := install.SetInstalledAlias(paths.State, args[0], args[1], emit); err != nil {
+				return err
+			}
+			ref, err := install.ResolveAgentRef(install.ResolveRefOpts{
+				StateRoot: paths.State,
+				Input:     args[0],
+			})
+			if err != nil {
+				return err
+			}
+			display := install.FormatAgentDisplay(ref.Ref, strings.TrimSpace(args[1]))
+			cmd.Printf("Alias updated: %s\n", display)
+			return nil
+		},
+	}
 }
 
 func newInstalledListCmd() *cobra.Command {

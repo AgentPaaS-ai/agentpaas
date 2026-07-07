@@ -16,6 +16,7 @@ import (
 	"time"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
@@ -188,8 +189,12 @@ func resolveRunTarget(cmd *cobra.Command, client controlv1.ControlServiceClient,
 		return agentYAML.Name, nil
 	}
 
-	// Case 3: treat as agent name directly
-	return target, nil
+	// Case 3: agent name / name@pub8 / alias (installed resolution; Phase 1 bare name unchanged).
+	resolved, err := resolveCLIAgentRef(cmd, target)
+	if err != nil {
+		return "", err
+	}
+	return resolved.DaemonKey, nil
 }
 
 // getAgentpaasHome resolves the AgentPaaS home directory from the --home flag
@@ -236,6 +241,10 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			displayAgent := agentName
+			if homeDir, herr := getAgentpaasHome(cmd); herr == nil {
+				displayAgent = install.DisplayForDaemonKey(filepath.Join(homeDir, "state"), agentName)
+			}
 
 			ctx, cancel := contextWithTimeout(30 * time.Second)
 			defer cancel()
@@ -248,12 +257,17 @@ func newRunCmd() *cobra.Command {
 			}
 
 			result := struct {
-				RunID string `json:"run_id"`
-			}{RunID: resp.GetRunId()}
+				RunID      string `json:"run_id"`
+				Agent      string `json:"agent,omitempty"`
+			}{RunID: resp.GetRunId(), Agent: displayAgent}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(struct {
 					RunID string `json:"run_id"`
+					Agent string `json:"agent,omitempty"`
 				})
+				if r.Agent != "" {
+					return fmt.Sprintf("Run started: %s (agent %s)", r.RunID, r.Agent)
+				}
 				return fmt.Sprintf("Run started: %s", r.RunID)
 			})
 		},
@@ -286,6 +300,10 @@ func newListRunsCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("list runs failed: %w", err)
 			}
+			stateRoot := ""
+			if homeDir, herr := getAgentpaasHome(cmd); herr == nil {
+				stateRoot = filepath.Join(homeDir, "state")
+			}
 
 			return printTextOrJSON(jsonOutput(cmd), resp, func(v interface{}) string {
 				r := v.(*controlv1.ListRunsResponse)
@@ -294,7 +312,11 @@ func newListRunsCmd() *cobra.Command {
 				}
 				out := fmt.Sprintf("Recent runs (%d):\n", len(r.GetRuns()))
 				for _, run := range r.GetRuns() {
-					out += fmt.Sprintf("  %s  [%s]\n", run.GetRunId(), run.GetStatus())
+					agentLabel := run.GetAgentName()
+					if stateRoot != "" {
+						agentLabel = install.DisplayForDaemonKey(stateRoot, run.GetAgentName())
+					}
+					out += fmt.Sprintf("  %s  %s  [%s]\n", run.GetRunId(), agentLabel, run.GetStatus())
 				}
 				return out
 			})
@@ -1075,7 +1097,15 @@ func newAuditQueryCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID, _ := cmd.Flags().GetString("run-id")
+			agentFilter, _ := cmd.Flags().GetString("agent-name")
 			pageSize, _ := cmd.Flags().GetInt32("page-size")
+			if agentFilter != "" {
+				resolved, err := resolveCLIAgentRef(cmd, agentFilter)
+				if err != nil {
+					return err
+				}
+				agentFilter = resolved.DaemonKey
+			}
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -1091,8 +1121,9 @@ func newAuditQueryCmd() *cobra.Command {
 			defer cancel()
 
 			resp, err := client.AuditQuery(ctx, &controlv1.AuditQueryRequest{
-				RunId:    runID,
-				PageSize: pageSize,
+				RunId:     runID,
+				AgentName: agentFilter,
+				PageSize:  pageSize,
 			})
 			if err != nil {
 				return fmt.Errorf("audit query failed: %w", err)
@@ -1137,6 +1168,7 @@ func newAuditQueryCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("run-id", "", "Filter by run ID")
+	cmd.Flags().String("agent-name", "", "Filter by agent name, name@pub8, or alias")
 	cmd.Flags().Int32("page-size", 50, "Maximum number of results")
 	return cmd
 }

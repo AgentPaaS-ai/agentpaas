@@ -34,9 +34,13 @@ func (m *dockerResourceManager) ListAgents(ctx context.Context) ([]dashboard.Age
 		if c.ResourceType != runtime.ResourceTypeAgent {
 			continue
 		}
+		name := c.Name
+		if ref := c.Labels[runtime.LabelAgentRef]; ref != "" {
+			name = ref
+		}
 		agents = append(agents, dashboard.AgentResource{
 			ID:          c.RunID,
-			Name:        c.Name,
+			Name:        name,
 			Status:      c.Status.String(),
 			ContainerID: c.ID,
 			Health:      c.Status.String(),

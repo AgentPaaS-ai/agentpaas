@@ -20,6 +20,9 @@ const (
 	// LabelRunID identifies the agent run that owns this resource.
 	LabelRunID = "agentpaas.run-id"
 
+	// LabelAgentRef identifies the installed agent ref on container labels.
+	LabelAgentRef = "agentpaas.agent-ref"
+
 	// LabelMCPServerID identifies which MCP server a container represents.
 	LabelMCPServerID = "agentpaas.mcp-server-id"
 )
@@ -88,6 +91,15 @@ func Labels(resourceType, runID string) map[string]string {
 		LabelResourceType: resourceType,
 		LabelRunID:        runID,
 	}
+}
+
+// LabelsWithAgentRef returns ownership labels plus optional installed agent ref.
+func LabelsWithAgentRef(resourceType, runID, agentRef string) map[string]string {
+	labels := Labels(resourceType, runID)
+	if agentRef != "" {
+		labels[LabelAgentRef] = agentRef
+	}
+	return labels
 }
 
 // IsOwned returns true if the given Docker labels indicate the resource is

@@ -73,6 +73,9 @@ func MaterializeInstall(ctx context.Context, opts MaterializeOpts) (*Materialize
 	if err != nil {
 		return nil, err
 	}
+	if err := CheckAliasUnique(opts.StateRoot, manifest.Alias, ref); err != nil {
+		return nil, err
+	}
 	finalDir, err := InstalledAgentPath(opts.StateRoot, manifest.AgentName, manifest.PublisherFingerprint)
 	if err != nil {
 		return nil, err

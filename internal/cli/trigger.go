@@ -36,7 +36,11 @@ func newTriggerCmd() *cobra.Command {
 		Short: "Invoke an agent via the trigger REST API",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			agentName := args[0]
+			resolved, err := resolveCLIAgentRef(cmd, args[0])
+			if err != nil {
+				return err
+			}
+			agentName := resolved.DaemonKey
 
 			addr := os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR")
 			if addr == "" {
