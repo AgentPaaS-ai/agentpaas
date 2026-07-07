@@ -22,6 +22,7 @@ func TestDocsLinkChecker_NoBrokenLocalLinks(t *testing.T) {
 		"docs/audit-export.md",
 		"docs/known-limitations.md",
 		"docs/quickstart.md",
+		"docs/sharing.md",
 		"docs/policy-reference.md",
 		"docs/manual-testing.md",
 		"docs/secrets.md",
