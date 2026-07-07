@@ -18,6 +18,10 @@ const EventTypePublisherIdentityExported = "publisher_identity_exported"
 const EventTypePublisherIdentityImported = "publisher_identity_imported"
 const EventTypePublisherIdentityRotated = "publisher_identity_rotated"
 
+// Install consent event type constants (B23).
+const EventTypeInstallPolicyApproved   = "install_policy_approved"
+const EventTypeInstallDowngradeAllowed = "install_downgrade_allowed"
+
 // AuditAppender is implemented by audit sinks that accept audit records.
 type AuditAppender interface {
 	Append(record AuditRecord) error
