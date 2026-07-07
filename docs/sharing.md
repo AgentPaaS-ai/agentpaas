@@ -98,8 +98,7 @@ agentpaas provenance show weather.agentpaas
 
 ### 2. Install: trust, consent, credentials, materialize
 
-The install pipeline runs in this order (see
-[b23-summary](execution/blocks/b23-summary.md)):
+The install pipeline runs in this order:
 
 1. Open bundle and verify signatures and digests.
 2. Resolve publisher against the trust store (TOFU, pinned, or key conflict).
