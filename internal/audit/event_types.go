@@ -22,6 +22,7 @@ const EventTypePublisherIdentityRotated = "publisher_identity_rotated"
 const EventTypeInstallPolicyApproved   = "install_policy_approved"
 const EventTypeInstallDowngradeAllowed = "install_downgrade_allowed"
 const EventTypeInstallCredentialMapped = "install_credential_mapped"
+const EventTypeInstallRemoved          = "install_removed"
 
 // AuditAppender is implemented by audit sinks that accept audit records.
 type AuditAppender interface {
