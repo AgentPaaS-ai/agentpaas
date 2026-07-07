@@ -143,7 +143,73 @@ backup (`agentpaas identity export`) and store it securely offline.
 
 ---
 
-## 5. D3 language rules
+## 5. Provenance chains and forks
+
+Forked and re-exported bundles carry a **provenance chain**: an ordered
+list of signed entries in the lock, each from a publisher who claims how
+their artifact relates to a parent (digest + policy delta summary). Install
+and consent UX surface the full chain when present.
+
+### What a chain proves
+
+- **Per-hop parent claims:** Each entry is signed by that hop's publisher
+  and claims the identity and integrity of the parent lock (parent publisher
+  fingerprint and parent lock digest at fork/pack time).
+- **Final artifact integrity:** The lock you hold is signed by the **tail**
+  publisher; signature verification ties the chain's last entry to that
+  publisher's key.
+- **Policy deltas (signer-claimed):** Each hop can record a summary of how
+  policy changed relative to the claimed parent. These summaries are
+  assertions by the signer — not independently verified unless you hold the
+  parent artifacts and compare.
+
+### What a chain does NOT prove
+
+- **Parent content:** The chain does not embed parent source, `policy.yaml`
+  bytes, or full parent locks — only digests and delta summaries.
+- **Absence of deleted lineage:** A publisher may delete `lineage.json`
+  before packing and ship a bundle whose chain starts with `created` and
+  omits any parent reference. That claims original authorship. This is an
+  unavoidable property of any DVCS-style redistribution model; the parent
+  can always prove priority with their own signed artifact and earlier
+  chain entries they published.
+- **Safety of any hop:** Each signer attests to their own packaging step,
+  not that the agent is safe to run. Review policy on every install (D3).
+
+### Tail-anchor trust rule
+
+When you install a forked or re-shared bundle, **anchor your trust decision
+on the final signer** — the publisher whose key signed the lock you are
+installing (the person who sent you this file).
+
+Earlier signers are **lineage claims**: they describe history and parent
+relationships, but your cryptographic trust relationship for this install is
+with the tail publisher. Consent copy states this explicitly: you are
+trusting the tail publisher; earlier signers are lineage claims, not a
+substitute for reviewing the tail signature and policy.
+
+### Chain cap (32 entries)
+
+Chains are limited to **32 entries** to bound lock size and receiver work
+(every hop's public key PEM and signature rides in the lock — on the order
+of ~15KB at the cap). Beyond the cap, `pack` fails with advice to publish
+as a new original with attribution rather than appending another hop.
+
+### Locally verified hops
+
+If you have the **parent publisher pinned** in your trust store **and** an
+installed copy of the parent agent whose lock digest matches the digest
+claimed in the next chain entry, that hop may be labeled **(locally
+verified)** on the consent card.
+
+This is a convenience when your machine already holds matching evidence —
+no network fetch and no registry lookup. When you lack the parent install or
+pin, verification is silent; the hop still appears as a signer-claimed
+lineage step.
+
+---
+
+## 6. D3 language rules
 
 All AgentPaaS documentation, CLI output, consent cards, and plugin
 messages must follow these rules when describing signatures and
@@ -169,7 +235,7 @@ security boundary without understanding what they are consenting to.
 
 ---
 
-## 6. Trust store file
+## 7. Trust store file
 
 The trust store lives at `~/.agentpaas/trust/publishers.json` (mode
 0600, directory 0700). Each entry records:

@@ -110,6 +110,7 @@ func extractSharingDocAgentpaasLines(md string) []string {
 var sharingDaemonOnly = map[string]bool{
 	"pack": true, "export": true, "run": true, "daemon": true,
 	"import": true, // identity import
+	"fork": true,   // requires installed agent ref; smoke test materializes install separately
 }
 
 func TestSharingDoc_CommandsSmoke(t *testing.T) {
