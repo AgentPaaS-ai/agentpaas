@@ -17,6 +17,8 @@ var (
 	ErrSecretTooLarge      = errors.New("secret value too large")
 	ErrSecretNotFound      = errors.New("secret not found")
 	ErrKeychainUnavailable = errors.New("macOS keychain unavailable")
+	// ErrCredentialUnmapped is returned when a declared brokered credential has no install-time map entry.
+	ErrCredentialUnmapped = errors.New("credential unmapped")
 )
 
 type SecretStore interface {
