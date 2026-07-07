@@ -152,10 +152,11 @@ func ResolvePolicyConsent(opts PolicyConsentOpts) (*PolicyConsentResult, error) 
 	}
 
 	card := bundle.FormatConsentCard(opts.Report, bundle.ConsentCardOpts{
-		Mode:              cardMode,
-		AgentName:         opts.AgentName,
-		AgentVersion:      opts.AgentVersion,
-		PolicyDiffLines:   diffLines,
+		Mode:                cardMode,
+		AgentName:           opts.AgentName,
+		AgentVersion:        opts.AgentVersion,
+		PolicyDiffLines:     diffLines,
+		LocallyVerifiedHops: ComputeLocallyVerifiedHops(opts.Report, opts.State),
 	})
 
 	if opts.IsTTY {
