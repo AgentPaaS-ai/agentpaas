@@ -25,6 +25,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
+	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
@@ -317,6 +318,12 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Error(codes.FailedPrecondition, "daemon home paths not configured")
 	}
 
+	resolvedName, agentRefLabel, err := s.resolveDaemonAgentRef(agentName)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	agentName = resolvedName
+
 	deployed, err := pack.LoadDeployedAgent(s.homePaths.Home, agentName)
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "agent %q not deployed: %v (run pack first)", agentName, err)
@@ -537,7 +544,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}
 
 	agentSpec := runtime.ContainerSpec{
-		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
+		Labels:     runtime.LabelsWithAgentRef(runtime.ResourceTypeAgent, runID, agentRefLabel),
 		NetworkIDs: []string{string(netID)},
 		Binds:      agentBinds,
 		Env:        proxyEnv,
@@ -1002,6 +1009,27 @@ func (s *controlServer) AuditQuery(ctx context.Context, req *controlv1.AuditQuer
 	}
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "audit query: %v", err)
+	}
+
+	if req.GetAgentName() != "" {
+		filterAgent := req.GetAgentName()
+		if s.homePaths != nil {
+			resolved, resolveErr := install.ResolveAgentRef(install.ResolveRefOpts{
+				StateRoot: s.homePaths.State,
+				Input:     filterAgent,
+			})
+			if resolveErr != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "%v", resolveErr)
+			}
+			filterAgent = resolved.DaemonKey
+		}
+		filtered := make([]audit.AuditRecord, 0, len(records))
+		for _, record := range records {
+			if auditString(record.Payload, "agent_name") == filterAgent {
+				filtered = append(filtered, record)
+			}
+		}
+		records = filtered
 	}
 
 	if req.GetRunId() != "" {
@@ -2134,9 +2162,20 @@ func (s *controlServer) CronAdd(ctx context.Context, req *controlv1.CronAddReque
 	if s.cronScheduler == nil {
 		return nil, status.Error(codes.FailedPrecondition, "cron scheduler not available")
 	}
+	agentName := req.GetAgentName()
+	if s.homePaths != nil {
+		resolved, err := install.ResolveAgentRef(install.ResolveRefOpts{
+			StateRoot: s.homePaths.State,
+			Input:     agentName,
+		})
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+		}
+		agentName = resolved.DaemonKey
+	}
 	schedule := &trigger.CronSchedule{
 		Expr:              req.GetExpr(),
-		AgentName:         req.GetAgentName(),
+		AgentName:         agentName,
 		AgentVersion:      req.GetAgentVersion(),
 		Timezone:          req.GetTimezone(),
 		MissedRunPolicy:   req.GetMissedRunPolicy(),

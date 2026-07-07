@@ -16,7 +16,7 @@ import (
 )
 
 const installedLocalImageDigestFile = "local_image.digest"
-const installedAgentRefLabel = "agentpaas.agent-ref"
+const installedAgentRefLabel = AgentRefLabel
 
 // InstalledAgentEntry is one row for `installed list`.
 type InstalledAgentEntry struct {
