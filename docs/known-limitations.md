@@ -1,8 +1,8 @@
-# Known Limitations (P1)
+# Known Limitations
 
-AgentPaaS v0.1.0 is a local-first governed runtime for macOS. These are
-accepted P1 limitations documented during adversary review. They are
-intentional trade-offs, not bugs.
+AgentPaaS v0.2.0 is a local-first governed runtime for macOS with secure
+agent sharing. These are accepted limitations documented during adversary
+review. They are intentional trade-offs, not bugs.
 
 For the full security posture, see [threat-model.md](threat-model.md).
 For workarounds and authoring guidance, see
@@ -17,8 +17,14 @@ Blocks are numbered per the internal execution plan. Tracked status:
 |---|---|---|
 | B17 | Network topology isolation, egress gateway, basic audit | ✅ Complete |
 | B18 | Manual testing suite (T1-T10 lifecycle), red-team smoke | ✅ Complete |
-| B20 | Security claim closure — docs truth-sync, audit integrity, credential zero-visibility | 🔄 In progress |
-| B19 | AgentGateway policy integration (token budgets, rate limiting, gateway-native ingress) | ⏭️ Deferred after B20 |
+| B19 | AgentGateway policy integration (token budgets, rate limiting, gateway-native ingress) | ✅ Complete |
+| B20 | Security claim closure — docs truth-sync, audit integrity, credential zero-visibility | ✅ Complete |
+| B21 | Publisher identity, trust store, provenance schema | ✅ Complete |
+| B22 | Bundle format, export, inspect | ✅ Complete |
+| B23 | Verified install, consent, credential mapping, run integration | ✅ Complete |
+| B24 | Fork, modify, redistribute: provenance chains | ✅ Complete |
+| B25 | Hermes plugin integration | ⏭️ Planned |
+| B26 | Revocation, registry, policy-narrowing overlay | ⏭️ Planned |
 
 ## Network enforcement
 
