@@ -8,9 +8,9 @@ import (
 	"encoding/pem"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
-
 	"github.com/AgentPaaS-ai/agentpaas/internal/bundle"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
@@ -171,13 +171,27 @@ func (r *consentSeeded) Read(p []byte) (int, error) {
 
 func consentDetKey(t *testing.T, label string) *ecdsa.PrivateKey {
 	t.Helper()
+	consentKeyMu.Lock()
+	defer consentKeyMu.Unlock()
+	if consentKeyCache == nil {
+		consentKeyCache = make(map[string]*ecdsa.PrivateKey)
+	}
+	if k, ok := consentKeyCache[label]; ok {
+		return k
+	}
 	h := sha256.Sum256([]byte("consent-fixture:" + label))
 	key, err := ecdsa.GenerateKey(elliptic.P256(), &consentSeeded{seed: h[:]})
 	if err != nil {
 		t.Fatalf("key: %v", err)
 	}
+	consentKeyCache[label] = key
 	return key
 }
+
+var (
+	consentKeyMu    sync.Mutex
+	consentKeyCache map[string]*ecdsa.PrivateKey
+)
 
 func consentPubPEM(pub *ecdsa.PublicKey) ([]byte, error) {
 	der, err := x509.MarshalPKIXPublicKey(pub)
