@@ -158,6 +158,7 @@ func Inspect(path string, b *Bundle, verifyReport *VerifyReport) (*InspectReport
 	}
 	report.PolicySummary = renderPolicySummary(pol)
 	report.PolicyLints = ComputePolicyLints(pol)
+	report.PolicyLints = append(report.PolicyLints, ComputeChainLints(report.Provenance)...)
 	report.Requirements = buildRequirements(b, pol)
 	report.SBOM = summarizeSBOM(b.SBOM)
 

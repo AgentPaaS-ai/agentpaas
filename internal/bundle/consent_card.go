@@ -20,6 +20,8 @@ type ConsentCardOpts struct {
 	AgentVersion string
 	// PolicyDiffLines are locally computed structural diff lines (changed-policy updates).
 	PolicyDiffLines []string
+	// LocallyVerifiedHops maps hop index → true for hops verified against local state.
+	LocallyVerifiedHops map[int]bool
 }
 
 // FormatConsentCard renders the install policy approval card from verified bundle
@@ -40,6 +42,8 @@ func FormatConsentCard(r *InspectReport, opts ConsentCardOpts) string {
 			AppendPublisherSection(&b, r.Publisher)
 			fmt.Fprintf(&b, "\n")
 		}
+		AppendTailAnchorSection(&b, r.Provenance)
+		AppendChainDeltasSection(&b, r.Provenance, opts.LocallyVerifiedHops)
 		AppendProvenanceSection(&b, r.ProvenanceText)
 		AppendPolicySummarySection(&b, r.PolicySummary)
 		AppendPolicyLintsSection(&b, r.PolicyLints)

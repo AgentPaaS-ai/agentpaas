@@ -35,6 +35,8 @@ type ProvenanceEntrySummary struct {
 	AgentVersion        string       `json:"agent_version"`
 	Timestamp           time.Time    `json:"timestamp"`
 	PolicyDelta         *PolicyDelta `json:"policy_delta,omitempty"`
+	// ParentLockDigest is the parent lock digest for forked entries (local verification).
+	ParentLockDigest string `json:"parent_lock_digest,omitempty"`
 }
 
 // VerifyProvenance performs full structural and cryptographic verification
@@ -79,6 +81,7 @@ func VerifyProvenance(lock *AgentLock) (*ProvenanceReport, error) {
 			AgentVersion:         e.AgentVersion,
 			Timestamp:            e.Timestamp,
 			PolicyDelta:          e.PolicyDelta,
+			ParentLockDigest:     e.ParentLockDigest,
 		})
 	}
 
