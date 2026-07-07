@@ -147,17 +147,18 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	}
 
 	lock, err := pack.CreateAgentLock(ctx, pack.LockConfig{
-		BuildResult:     result,
-		AgentYAML:       agentYAML,
-		Runtime:         det.Runtime,
-		BaseImageDigest: cfg.BaseImage,
-		HarnessVersion:  "embedded",
-		Platform:        fmt.Sprintf("%s/%s", goruntime.GOOS, goruntime.GOARCH),
-		SourceDateEpoch: time.Unix(0, 0).UTC(),
-		KeyStore:        &packKeyStoreAdapter{store: keyStore},
-		KeyID:           string(keyID),
-		PolicyYAML:      policyYAML,
+		BuildResult:       result,
+		AgentYAML:         agentYAML,
+		Runtime:           det.Runtime,
+		BaseImageDigest:   cfg.BaseImage,
+		HarnessVersion:    "embedded",
+		Platform:          fmt.Sprintf("%s/%s", goruntime.GOOS, goruntime.GOARCH),
+		SourceDateEpoch:   time.Unix(0, 0).UTC(),
+		KeyStore:          &packKeyStoreAdapter{store: keyStore},
+		KeyID:             string(keyID),
+		PolicyYAML:        policyYAML,
 		PublisherKeyStore: keyStore,
+		ProjectDir:        absProjectDir,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "create agent lock: %v", err)
