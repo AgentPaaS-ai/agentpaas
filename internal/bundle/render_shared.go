@@ -3,6 +3,8 @@ package bundle
 import (
 	"fmt"
 	"strings"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 )
 
 // AppendPublisherSection writes the publisher block to b (shared by inspect and consent).
@@ -90,4 +92,64 @@ func AppendSBOMSection(b *strings.Builder, sbom *SBOMSummary) {
 // AppendD3Disclaimer writes the fixed D3 disclaimer line block.
 func AppendD3Disclaimer(b *strings.Builder) {
 	fmt.Fprintf(b, "\n%s\n", strings.ReplaceAll(D3TrustDisclaimer, "\n", "\n"))
+}
+
+// AppendTailAnchorSection writes the multi-hop trust anchor sentence (PRD A4).
+func AppendTailAnchorSection(b *strings.Builder, report *pack.ProvenanceReport) {
+	if report == nil || len(report.Entries) <= 1 {
+		return
+	}
+	tail := report.Entries[len(report.Entries)-1].PublisherName
+	if tail == "" {
+		tail = "(unknown publisher)"
+	}
+	fmt.Fprintf(b, "\nYou are trusting %s. Earlier signers are lineage claims.\n", tail)
+}
+
+// AppendChainDeltasSection renders per-hop policy deltas for forked bundles.
+func AppendChainDeltasSection(b *strings.Builder, report *pack.ProvenanceReport, locallyVerified map[int]bool) {
+	if report == nil || len(report.Entries) <= 1 {
+		return
+	}
+	fmt.Fprintf(b, "\nProvenance chain\n")
+	for _, e := range report.Entries {
+		if e.Index == 0 || e.Action == "created" {
+			continue
+		}
+		suffix := "(signer-claimed)"
+		if locallyVerified != nil && locallyVerified[e.Index] {
+			suffix = "(locally verified)"
+		}
+		fmt.Fprintf(b, "  hop %d: %s by %s — %s %s\n",
+			e.Index, e.Action, e.PublisherName, formatPolicyDeltaSummary(e.PolicyDelta), suffix)
+	}
+}
+
+func formatPolicyDeltaSummary(delta *pack.PolicyDelta) string {
+	if delta == nil {
+		return "no policy changes"
+	}
+	var parts []string
+	if len(delta.EgressAdded) > 0 {
+		parts = append(parts, "+egress "+strings.Join(delta.EgressAdded, ", "))
+	}
+	if len(delta.EgressRemoved) > 0 {
+		parts = append(parts, "-egress "+strings.Join(delta.EgressRemoved, ", "))
+	}
+	if len(delta.CredentialsAdded) > 0 {
+		parts = append(parts, "+credentials "+strings.Join(delta.CredentialsAdded, ", "))
+	}
+	if len(delta.CredentialsRemoved) > 0 {
+		parts = append(parts, "-credentials "+strings.Join(delta.CredentialsRemoved, ", "))
+	}
+	if len(delta.MCPToolsAdded) > 0 {
+		parts = append(parts, "+mcp_tools "+strings.Join(delta.MCPToolsAdded, ", "))
+	}
+	if len(delta.MCPToolsRemoved) > 0 {
+		parts = append(parts, "-mcp_tools "+strings.Join(delta.MCPToolsRemoved, ", "))
+	}
+	if len(parts) == 0 {
+		return "no policy changes"
+	}
+	return strings.Join(parts, ", ")
 }

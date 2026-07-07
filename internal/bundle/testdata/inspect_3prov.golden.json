@@ -89,7 +89,8 @@
           "egress_added": [
             "api.slack.com:443"
           ]
-        }
+        },
+        "parent_lock_digest": "sha256:parentlock"
       },
       {
         "index": 2,
@@ -103,7 +104,8 @@
           "egress_added": [
             "api.slack.com:443"
           ]
-        }
+        },
+        "parent_lock_digest": "sha256:parentlock"
       }
     ],
     "chain_semantics": "each entry is a signed claim by its signer about its parent; intermediate artifacts are not independently verifiable from this lock alone"
@@ -117,6 +119,12 @@
     {
       "section": "credential",
       "detail": "id=my-key type=header header=X-API-Key"
+    }
+  ],
+  "policy_lints": [
+    {
+      "code": "chain_adds_egress",
+      "message": "⚠ chain adds egress vs original: api.slack.com:443"
     }
   ],
   "requirements": {
