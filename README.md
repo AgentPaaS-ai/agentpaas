@@ -90,6 +90,13 @@ isolation remains the hard boundary regardless.
 | **Pack-time secret scan** | Scans build context for leaked secrets before image creation |
 | **Budget enforcement** | Token/wall-clock/iteration limits kill runaway agents |
 | **Locked dependency installs** | `uv` lockfiles only — no typosquatted package injection |
+| **Publisher identity** | ECDSA P-256 keypair per publisher; bundles signed with publisher key; fingerprint verification via TOFU |
+| **Signed bundles** | `.agentpaas` file: deterministic tar.gz with lock, policy, SBOM, source; cosign-signed image optional |
+| **Provenance chains** | Every pack/fork appends a signed entry; chain verifies end-to-end; 32-entry cap prevents bloat |
+| **Policy deltas** | Forked bundles show exactly what egress/credentials/MCP tools changed at each hop |
+| **Tamper-evident install** | Post-install verification: lock signature, image digest, policy digest, source digest — all checked |
+| **Consent card** | Receiver sees publisher, policy summary, provenance chain, egress lints before approving install |
+| **Fork & redistribute** | `agentpaas fork <ref> <dir>` creates editable project; re-pack appends `forked` provenance entry |
 
 ### Verified by red-team smoke
 
@@ -227,33 +234,49 @@ agentpaas audit query
 Every allowed and denied call is logged: timestamp, agent identity,
 destination, credential used, and policy decision.
 
-## What's Next: Share Agents Securely
+## Share Agents Securely (v0.2.0)
 
-The next feature we're building: **securely package and transfer an
-agent to a friend or co-worker.**
-
-Today, when you build and test an agent on your machine, it stays there.
-Soon, you'll be able to export the signed agent artifact (image +
-lockfile + SBOM) and hand it to someone else. They run:
+AgentPaaS v0.2.0 adds secure agent sharing with signed bundles,
+publisher identity, provenance chains, and fork/redistribute:
 
 ```bash
-agentpaas verify agent.lock   # verify signature + SBOM
-agentpaas run my-agent         # run it under the same governance
+# Publisher: create identity, build, pack, export
+agentpaas identity init --name my-publisher
+agentpaas pack ./my-agent
+agentpaas export ./my-agent -o my-agent.agentpaas --yes
+
+# Receiver: inspect offline, install with consent
+agentpaas bundle inspect my-agent.agentpaas
+agentpaas install my-agent.agentpaas
+
+# Fork an installed agent, modify, re-export under your identity
+agentpaas fork weather-agent@a1b2c3d4 ./my-fork
+# edit the forked project...
+agentpaas pack ./my-fork
+agentpaas export ./my-fork -o my-fork.agentpaas --yes
 ```
 
-They get the same security guarantees: default-deny egress, brokered
-credentials, tamper-evident audit — no matter who built the agent.
+Each bundle carries a signed provenance chain. Forks append a `forked`
+entry with a policy delta showing exactly what changed at each hop.
+Receivers see the full chain, trust anchors on the final signer, and
+can locally verify hops when they hold parent artifacts.
+
+See [sharing.md](docs/sharing.md) for the full walkthrough and
+[trust-model.md](docs/trust-model.md) for chain semantics.
 
 See [docs/known-limitations.md](docs/known-limitations.md) for current development status and [open issues](https://github.com/AgentPaaS-ai/agentpaas/issues) for upcoming work.
 
 ## Documentation
 
+- [Sharing guide](docs/sharing.md) — Export, install, fork, and redistribute agents
+- [Trust model](docs/trust-model.md) — What signatures prove, TOFU, provenance chains
 - [Manual testing guide](docs/manual-testing.md) — Step-by-step lifecycle tests (T1-T10)
 - [Quickstart](docs/quickstart.md)
 - [Policy reference](docs/policy-reference.md)
 - [Secrets guide](docs/secrets.md)
 - [Enforcement topology](docs/how-enforcement-works.md)
 - [Threat model](docs/threat-model.md)
+- [Bundle format](docs/bundle-format.md)
 - [Audit export](docs/audit-export.md)
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
 - [Known limitations](docs/known-limitations.md)
