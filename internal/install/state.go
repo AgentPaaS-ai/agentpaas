@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/naming"
 )
 
 // PriorInstallRecord is the stored install state for update/downgrade/diff logic.
@@ -18,6 +20,7 @@ type PriorInstallRecord struct {
 type InstallStateStore interface {
 	GetPriorInstall(publisherFingerprint, agentName string) (*PriorInstallRecord, error)
 	SaveApprovedInstall(manifest InstallManifest, policyYAML []byte) error
+	GetInstallByRef(ref string) (*PriorInstallRecord, error)
 }
 
 // FileInstallState stores install manifests under StateRoot/installs/<fp>/<agent>/.
@@ -76,6 +79,58 @@ func (s *FileInstallState) SaveApprovedInstall(manifest InstallManifest, policyY
 		return fmt.Errorf("write policy: %w", err)
 	}
 	return nil
+}
+
+// GetInstallByRef loads an install record by agent reference name@pub8.
+func (s *FileInstallState) GetInstallByRef(ref string) (*PriorInstallRecord, error) {
+	name, pub8, err := naming.ParseAgentRef(ref)
+	if err != nil {
+		return nil, fmt.Errorf("install ref: %w", err)
+	}
+	if pub8 == "" {
+		return nil, fmt.Errorf("install ref %q requires name@pub8", ref)
+	}
+	installsRoot := filepath.Join(s.StateRoot, "installs")
+	entries, err := os.ReadDir(installsRoot)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	for _, fpEnt := range entries {
+		if !fpEnt.IsDir() {
+			continue
+		}
+		agentDir := filepath.Join(installsRoot, fpEnt.Name(), sanitizePathSegment(name))
+		manifestPath := filepath.Join(agentDir, "manifest.json")
+		if _, err := os.Stat(manifestPath); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		raw, err := os.ReadFile(manifestPath)
+		if err != nil {
+			return nil, fmt.Errorf("read manifest: %w", err)
+		}
+		var m InstallManifest
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return nil, fmt.Errorf("parse manifest: %w", err)
+		}
+		if !strings.EqualFold(m.AgentName, name) {
+			continue
+		}
+		if !MatchPublisherPub8(m.PublisherFingerprint, pub8) {
+			continue
+		}
+		pol, err := os.ReadFile(filepath.Join(agentDir, "policy.yaml"))
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read policy: %w", err)
+		}
+		return &PriorInstallRecord{Manifest: m, PolicyYAML: pol}, nil
+	}
+	return nil, nil
 }
 
 func (s *FileInstallState) installDir(publisherFingerprint, agentName string) (string, error) {
