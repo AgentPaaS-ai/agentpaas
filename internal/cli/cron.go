@@ -2,11 +2,13 @@ package cli
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/spf13/cobra"
 )
 
@@ -44,8 +46,13 @@ func newCronCmd() *cobra.Command {
 			ctx, cancel := contextWithTimeout(30 * time.Second)
 			defer cancel()
 
+			resolved, err := resolveCLIAgentRef(cmd, args[0])
+			if err != nil {
+				return err
+			}
+
 			resp, err := client.CronAdd(ctx, &controlv1.CronAddRequest{
-				AgentName:    args[0],
+				AgentName:    resolved.DaemonKey,
 				Expr:         expr,
 				AgentVersion: version,
 				Timezone:     timezone,
@@ -68,7 +75,7 @@ func newCronCmd() *cobra.Command {
 				Added      bool   `json:"added"`
 			}{
 				ScheduleID: scheduleID,
-				AgentName:  args[0],
+				AgentName:  resolved.Display,
 				Expr:       expr,
 				Added:      true,
 			}
@@ -115,6 +122,16 @@ func newCronCmd() *cobra.Command {
 			}
 
 			schedules := resp.GetSchedules()
+			stateRoot := ""
+			if homeDir, herr := getAgentpaasHome(cmd); herr == nil {
+				stateRoot = filepath.Join(homeDir, "state")
+			}
+			formatAgent := func(name string) string {
+				if stateRoot == "" {
+					return name
+				}
+				return install.DisplayForDaemonKey(stateRoot, name)
+			}
 
 			jsonOut := jsonOutput(cmd)
 			if jsonOut {
@@ -130,7 +147,7 @@ func newCronCmd() *cobra.Command {
 					items = append(items, scheduleJSON{
 						ScheduleID:   s.GetScheduleId(),
 						Expr:         s.GetExpr(),
-						AgentName:    s.GetAgentName(),
+						AgentName:    formatAgent(s.GetAgentName()),
 						AgentVersion: s.GetAgentVersion(),
 						Timezone:     s.GetTimezone(),
 					})
@@ -148,7 +165,7 @@ func newCronCmd() *cobra.Command {
 				if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\n",
 					s.GetScheduleId(),
 					s.GetExpr(),
-					s.GetAgentName(),
+					formatAgent(s.GetAgentName()),
 				); err != nil {
 					return err
 				}

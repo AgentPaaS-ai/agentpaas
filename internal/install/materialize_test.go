@@ -311,6 +311,33 @@ func TestPhase1AgentDirIgnoredByList(t *testing.T) {
 	}
 }
 
+func TestMaterializeInstall_AliasCollisionRejected(t *testing.T) {
+	fix := writeConsentFixtureBundle(t, nil, "0.1.0")
+	b, err := bundle.Open(fix.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close() }()
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	writeInstalledManifestFixture(t, stateRoot, "other", "bbbbbbbb", "maria")
+	_, err = MaterializeInstall(context.Background(), MaterializeOpts{
+		StateRoot: stateRoot,
+		Bundle:    b,
+		Manifest: InstallManifest{
+			PublisherFingerprint: fix.PublisherFP,
+			PublisherName:        fix.PublisherName,
+			AgentName:            fix.AgentName,
+			AgentVersion:         fix.AgentVersion,
+			AcceptedPolicyDigest: fix.PolicyDigest,
+			Alias:                "maria",
+		},
+		Builder: &fakeImageBuilder{digest: "sha256:abc"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "alias") {
+		t.Fatalf("want alias collision, got %v", err)
+	}
+}
+
 func assertInstalledArtifacts(t *testing.T, root string) {
 	t.Helper()
 	names := []string{installedLockName, installedPolicyName, installedSBOMName, installedManifestName, installedParentBundleRef, installedLocalImageDigestFile}
