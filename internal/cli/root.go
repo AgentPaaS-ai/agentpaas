@@ -127,6 +127,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newTrustCmd())
 	rootCmd.AddCommand(newIdentityCmd())
 	rootCmd.AddCommand(newInstalledCmd())
+	rootCmd.AddCommand(newForkCmd())
 	rootCmd.AddCommand(newProvenanceCmd())
 
 	return rootCmd

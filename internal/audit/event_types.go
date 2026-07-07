@@ -25,6 +25,8 @@ const EventTypeInstallCredentialMapped = "install_credential_mapped"
 const EventTypeInstallRemoved          = "install_removed"
 const EventTypeInstallAliasChanged     = "install_alias_changed"
 
+const EventTypeAgentForked = "agent_forked"
+
 // AuditAppender is implemented by audit sinks that accept audit records.
 type AuditAppender interface {
 	Append(record AuditRecord) error
