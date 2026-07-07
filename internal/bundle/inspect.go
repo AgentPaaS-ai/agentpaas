@@ -480,57 +480,14 @@ func FormatInspectText(r *InspectReport) string {
 	}
 
 	if r.Publisher != nil {
-		fmt.Fprintf(&b, "\nPublisher\n")
-		fmt.Fprintf(&b, "  Name:        %s\n", r.Publisher.Name)
-		fmt.Fprintf(&b, "  Fingerprint: %s\n", r.Publisher.FingerprintDisplay)
-		fmt.Fprintf(&b, "  %s\n", strings.ReplaceAll(r.Publisher.TrustDisclaimer, "\n", "\n  "))
+		fmt.Fprintf(&b, "\n")
+		AppendPublisherSection(&b, r.Publisher)
 	}
-	if r.ProvenanceText != "" {
-		fmt.Fprintf(&b, "\n%s\n", r.ProvenanceText)
-	}
-	if len(r.PolicySummary) > 0 {
-		fmt.Fprintf(&b, "\nPolicy summary\n")
-		for _, line := range r.PolicySummary {
-			fmt.Fprintf(&b, "  [%s] %s\n", line.Section, line.Detail)
-		}
-	}
-	if len(r.PolicyLints) > 0 {
-		fmt.Fprintf(&b, "\nPolicy lints (warnings)\n")
-		for _, lint := range r.PolicyLints {
-			fmt.Fprintf(&b, "  - [%s] %s\n", lint.Code, lint.Message)
-		}
-	}
-	if r.Requirements != nil {
-		fmt.Fprintf(&b, "\nRequirements\n")
-		fmt.Fprintf(&b, "  Platform:    %s\n", r.Requirements.Platform)
-		fmt.Fprintf(&b, "  LLM:         %s\n", r.Requirements.LLMProvider)
-		fmt.Fprintf(&b, "  Image:       %s\n", r.Requirements.Image)
-		if len(r.Requirements.Credentials) > 0 {
-			fmt.Fprintf(&b, "  Credentials:\n")
-			for _, c := range r.Requirements.Credentials {
-				line := fmt.Sprintf("    - %s (%s)", c.ID, c.Type)
-				if c.Header != "" {
-					line += fmt.Sprintf(" header=%s", c.Header)
-				}
-				if c.Destination != "" {
-					line += fmt.Sprintf(" destination=%s", c.Destination)
-				}
-				fmt.Fprintf(&b, "%s\n", line)
-			}
-		} else {
-			fmt.Fprintf(&b, "  Credentials: (none declared)\n")
-		}
-	}
-	if r.SBOM != nil {
-		fmt.Fprintf(&b, "\nSBOM\n")
-		fmt.Fprintf(&b, "  Packages: %d\n", r.SBOM.PackageCount)
-		if r.SBOM.ParseWarning != "" {
-			fmt.Fprintf(&b, "  Warning: %s\n", r.SBOM.ParseWarning)
-		}
-		if len(r.SBOM.TopLevelDeps) > 0 {
-			fmt.Fprintf(&b, "  Top-level deps: %s\n", strings.Join(r.SBOM.TopLevelDeps, ", "))
-		}
-	}
+	AppendProvenanceSection(&b, r.ProvenanceText)
+	AppendPolicySummarySection(&b, r.PolicySummary)
+	AppendPolicyLintsSection(&b, r.PolicyLints)
+	AppendRequirementsSection(&b, r.Requirements)
+	AppendSBOMSection(&b, r.SBOM)
 	if len(r.ExtraFiles) > 0 {
 		fmt.Fprintf(&b, "\nextra files (not part of build)\n")
 		for _, ef := range r.ExtraFiles {
