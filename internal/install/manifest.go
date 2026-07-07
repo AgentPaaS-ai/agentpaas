@@ -1,5 +1,7 @@
 package install
 
+import "time"
+
 // InstallManifest records receiver-side install metadata (extended by B23-T04).
 type InstallManifest struct {
 	PublisherFingerprint string `json:"publisher_fingerprint"`
@@ -10,4 +12,18 @@ type InstallManifest struct {
 	// CredentialMap maps declared policy credential IDs to local secret store names
 	// (renames only; scope remains governed by the signed policy).
 	CredentialMap map[string]string `json:"credential_map,omitempty"`
+
+	// B23-T04 materialization fields (install-manifest.json under state/agents/<name>@<pub8>/).
+	InstallMode         string            `json:"install_mode,omitempty"`
+	LocalImageDigest    string            `json:"local_image_digest,omitempty"`
+	DepsUnlockedRebuild bool              `json:"deps_unlocked_rebuild,omitempty"`
+	ParentBundleRef     *ParentBundleRef  `json:"parent_bundle_ref,omitempty"`
+	InstalledAt         time.Time         `json:"installed_at,omitempty"`
+	Alias               string            `json:"alias,omitempty"`
+}
+
+// ParentBundleRef records the originating bundle for fork lineage (B24).
+type ParentBundleRef struct {
+	Digest string `json:"digest"`
+	Path   string `json:"path"`
 }
