@@ -28,6 +28,8 @@ type BrokerConfig struct {
 	RuleMethods        map[string][]string
 	Audit              AuditAppender
 	Now                func() time.Time
+	CredentialResolver CredentialResolver
+	InstallRef         string
 }
 
 // Broker is the sole credential access path for agent workloads. SecretStore
@@ -43,6 +45,8 @@ type Broker struct {
 	ruleMethods        map[string]map[string]struct{}
 	audit              AuditAppender
 	now                func() time.Time
+	resolver           CredentialResolver
+	installRef         string
 }
 
 type CredentialInjection struct {
@@ -106,6 +110,8 @@ func NewBroker(cfg BrokerConfig) (*Broker, error) {
 		ruleMethods:        ruleMethods,
 		audit:              cfg.Audit,
 		now:                now,
+		resolver:           cfg.CredentialResolver,
+		installRef:         strings.TrimSpace(cfg.InstallRef),
 	}, nil
 }
 
@@ -153,7 +159,27 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "%w", err)
 	}
 
-	value, err := b.store.Get(ctx, credentialID)
+	lookupName := credentialID
+	if b.resolver != nil {
+		local, ok := b.resolver.Resolve(credentialID)
+		if !ok {
+			ref := b.installRef
+			if ref == "" {
+				ref = "<ref>"
+			}
+			msg := fmt.Sprintf(
+				"map credential %s: `agentpaas installed map-credential %s %s=<local>`",
+				credentialID, ref, credentialID,
+			)
+			return CredentialInjection{}, b.denyWithReason(
+				ctx, runID, policyRuleID, credentialID, dest.String(), method, "unmapped",
+				"%w: %s", ErrCredentialUnmapped, msg,
+			)
+		}
+		lookupName = local
+	}
+
+	value, err := b.store.Get(ctx, lookupName)
 	if err != nil {
 		msg := "brokered credential " + credentialID + " is referenced by " + ruleID(ruleIndex) + " but is not set in the secret store"
 		if errors.Is(err, ErrSecretNotFound) {
@@ -161,7 +187,7 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 		}
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "load brokered credential %s: %w", credentialID, err)
 	}
-	if err := b.store.TouchLastUsed(ctx, credentialID); err != nil {
+	if err := b.store.TouchLastUsed(ctx, lookupName); err != nil {
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "touch brokered credential %s: %w", credentialID, err)
 	}
 
