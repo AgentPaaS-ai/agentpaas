@@ -126,6 +126,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newCronCmd())
 	rootCmd.AddCommand(newTrustCmd())
 	rootCmd.AddCommand(newIdentityCmd())
+	rootCmd.AddCommand(newInstalledCmd())
 
 	return rootCmd
 }
