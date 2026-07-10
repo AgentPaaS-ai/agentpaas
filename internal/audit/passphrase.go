@@ -18,11 +18,11 @@ const (
 	passphraseFile  = ".audit-key-passphrase"
 )
 
-// loadOrGeneratePassphrase loads the checkpoint key passphrase from macOS
-// Keychain (if available) or a passphrase file. If no passphrase exists,
-// generates a new random one and persists it.
+// loadOrGeneratePassphrase loads the checkpoint key passphrase from a state-dir
+// file by default. Keychain is optional and only used when AGENTPAAS_USE_KEYCHAIN=1
+// (avoids SecurityAgent dialogs during tests/dev automation).
 func loadOrGeneratePassphrase(stateDir string) (string, error) {
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && os.Getenv("AGENTPAAS_USE_KEYCHAIN") == "1" {
 		pass, err := keychainGet(keychainService, keychainAccount)
 		if err == nil && pass != "" {
 			return pass, nil

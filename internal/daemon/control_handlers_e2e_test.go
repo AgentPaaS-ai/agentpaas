@@ -148,6 +148,11 @@ func TestE2E_PolicyEnforcement_AllowedAndDenied(t *testing.T) {
 	if !allowedWeather {
 		t.Error("expected egress_allowed event with destination api.weather.gov")
 	}
+	if !hasEgressDenied || !deniedExfil || !hasEgressAllowed || !allowedWeather {
+		for i, record := range records {
+			t.Logf("audit[%d] type=%s payload=%v", i, record.EventType, record.Payload)
+		}
+	}
 	if !hasEgressDenied {
 		t.Error("expected egress_denied audit event for policy-denied call")
 	}
@@ -311,9 +316,8 @@ func e2eRepoRoot(t *testing.T) string {
 func ensureHarnessLinux(t *testing.T, repoRoot string) {
 	t.Helper()
 	harnessPath := filepath.Join(repoRoot, "bin", "agentpaas-harness-linux")
-	if _, err := os.Stat(harnessPath); err == nil {
-		return
-	}
+	// Always rebuild so e2e validates the current harness, not a stale binary that
+	// predates policy/audit fixes (existence-only cache caused silent regressions).
 	if err := os.MkdirAll(filepath.Dir(harnessPath), 0o755); err != nil {
 		t.Fatalf("MkdirAll bin: %v", err)
 	}

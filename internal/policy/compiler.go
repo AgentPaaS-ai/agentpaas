@@ -141,6 +141,16 @@ type gatewayJWTAuth struct {
 	Location  *gatewayAuthHeaderLocation `yaml:"location,omitempty"`
 }
 
+// SecretPlaceholderPrefix marks compiler-emitted apiKey keys that the daemon
+// must rewrite with Keychain values before starting agentgateway. This form is
+// intentionally not "$NAME" so the gateway will not expand it as an env var.
+const SecretPlaceholderPrefix = "__agentpaas_secret:"
+
+// SecretPlaceholder returns the compiler placeholder for a Keychain credential id.
+func SecretPlaceholder(credentialID string) string {
+	return SecretPlaceholderPrefix + credentialID
+}
+
 // gatewayAPIKeyEntry is one acceptable key under agentgateway apiKey.keys.
 type gatewayAPIKeyEntry struct {
 	// Key is resolved from Keychain at compile/runtime when the daemon can inject
@@ -870,7 +880,7 @@ func buildIngressAuthPolicies(p *Policy) *gatewayRoutePolicies {
 		// Placeholder key is NOT a $env expansion form; daemon rewrites with real secret.
 		// Do NOT use $VAR form — agentgateway expands $ as env vars at startup.
 			// Placeholder is rewritten by the daemon once Keychain values are available.
-			keyPlaceholder := "__agentpaas_secret:" + p.IngressAuth.APIKey.Credential
+			keyPlaceholder := SecretPlaceholder(p.IngressAuth.APIKey.Credential)
 		return &gatewayRoutePolicies{
 			APIKey: &gatewayAPIKeyAuth{
 				Mode: "strict",
