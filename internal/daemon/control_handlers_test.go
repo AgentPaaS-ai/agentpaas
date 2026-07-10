@@ -723,6 +723,7 @@ func (m *mockRuntimeDriver) ListNetworks(ctx context.Context, labelFilters ...st
 
 func testServerWithMockRuntime(t *testing.T, mock *mockRuntimeDriver) (*controlServer, *home.HomePaths) {
 	t.Helper()
+	t.Setenv("AGENTPAAS_SKIP_GATEWAY_WAIT", "1") // skip gateway readiness dial in unit tests
 	dir := t.TempDir()
 	hp := home.NewHomePaths(dir)
 	if err := home.Ensure(hp); err != nil {

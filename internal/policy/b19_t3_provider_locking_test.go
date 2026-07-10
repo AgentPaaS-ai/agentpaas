@@ -196,8 +196,8 @@ func TestCompileGatewayConfig_LLMProviderLockAddsPathRestriction(t *testing.T) {
 	}
 
 	// The LLM route should have path restrictions.
-	if !strings.Contains(outStr, "path: /api/v1/chat/completions") {
-		t.Errorf("expected path restriction in LLM route, got:\n%s", outStr)
+	if !strings.Contains(outStr, "pathPrefix: /api/v1/chat/completions") {
+		t.Errorf("expected pathPrefix restriction in LLM route, got:\n%s", outStr)
 	}
 }
 
@@ -221,10 +221,10 @@ func TestCompileGatewayConfig_LLMProviderLockMultiplePaths(t *testing.T) {
 	}
 	outStr := string(out)
 
-	if !strings.Contains(outStr, "path: /v1/chat/completions") {
+	if !strings.Contains(outStr, "pathPrefix: /v1/chat/completions") {
 		t.Errorf("expected path for chat completions, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "path: /v1/embeddings") {
+	if !strings.Contains(outStr, "pathPrefix: /v1/embeddings") {
 		t.Errorf("expected path for embeddings, got:\n%s", outStr)
 	}
 }
@@ -256,8 +256,8 @@ func TestCompileGatewayConfig_LLMProviderLockOnlyAffectsLLMRoute(t *testing.T) {
 	}
 
 	// OpenAI route should have path restrictions.
-	if !strings.Contains(outStr, "path: /v1/chat/completions") {
-		t.Errorf("expected path restriction on OpenAI route, got:\n%s", outStr)
+	if !strings.Contains(outStr, "pathPrefix: /v1/chat/completions") {
+		t.Errorf("expected pathPrefix restriction on OpenAI route, got:\n%s", outStr)
 	}
 }
 
@@ -282,7 +282,7 @@ func TestCompileGatewayConfig_NonLLMRoutesUnaffected(t *testing.T) {
 	outStr := string(out)
 
 	// Stripe route should have no path restrictions from provider lock.
-	if strings.Contains(outStr, "path:") {
+	if strings.Contains(outStr, "pathPrefix:") && strings.Contains(outStr, "stripe") {
 		t.Errorf("non-LLM routes should not have path restrictions, got:\n%s", outStr)
 	}
 
@@ -320,7 +320,7 @@ func TestCompileGatewayConfig_LLMProviderLockWithMethodRestrictions(t *testing.T
 	if !strings.Contains(outStr, "method: POST") {
 		t.Errorf("expected method: POST, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "path: /v1/chat/completions") {
+	if !strings.Contains(outStr, "pathPrefix: /v1/chat/completions") {
 		t.Errorf("expected path: /v1/chat/completions, got:\n%s", outStr)
 	}
 }
@@ -346,7 +346,7 @@ func TestCompileGatewayConfig_BackwardCompatNoProviderLock(t *testing.T) {
 	}
 
 	// Should not contain path restrictions.
-	if strings.Contains(string(out), "path:") {
+	if strings.Contains(string(out), "pathPrefix:") {
 		t.Error("samplePolicy should not have path restrictions")
 	}
 }

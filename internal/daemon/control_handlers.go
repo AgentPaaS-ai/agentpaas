@@ -197,6 +197,32 @@ func gatewaySubnetFromIP(ipStr string) string {
 	return fmt.Sprintf("%s/16", network.String())
 }
 
+// waitForGateway polls the gateway container's port 15021 (readiness endpoint)
+// until it responds or the timeout elapses. This prevents a race where the
+// harness tries to connect to port 7799 before agentgateway is ready.
+func waitForGateway(ctx context.Context, rt runtime.RuntimeDriver, gatewayID runtime.ContainerID, netID string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		ip, err := rt.InspectContainerIP(ctx, gatewayID, netID)
+		if err != nil || ip == "" {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		// TCP dial port 15021 (readiness). If it connects, gateway is ready.
+		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "15021"), 1*time.Second)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	return fmt.Errorf("gateway not ready after %s", timeout)
+}
+
 // verifyDeployedAgent performs all verification steps on deployed agent
 // artifacts BEFORE any Docker resources are created:
 //  1. Immutability check (agent.lock.sha256, image.digest, source_digest)
@@ -486,6 +512,18 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		_ = rt.RemoveNetwork(ctx, egressNetID)
 		_ = rt.RemoveNetwork(ctx, netID)
 		return nil, status.Errorf(codes.Internal, "start gateway container: %v", err)
+	}
+
+	// Wait for gateway readiness (Bug 021): with gateway-native HTTP routing
+	// the harness connects immediately on the first agent.http/agent.llm call.
+	// The gateway takes ~1-2s to start. Without this wait the harness gets
+	// "connection refused" on port 7799. Poll the gateway's readiness port.
+	// Skip in tests (AGENTPAAS_SKIP_GATEWAY_WAIT=1).
+	if os.Getenv("AGENTPAAS_SKIP_GATEWAY_WAIT") == "" {
+		if err := waitForGateway(ctx, rt, gatewayID, string(netID), 10*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: gateway readiness check: %v\n", err)
+			// Non-fatal: proceed anyway — the agent will retry.
+		}
 	}
 
 	// Discover gateway IP on internal network for HTTP proxy configuration.

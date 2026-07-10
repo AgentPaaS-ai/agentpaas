@@ -51,8 +51,16 @@ type gatewayRoute struct {
 }
 
 type gatewayRouteMatch struct {
-	Method string `yaml:"method,omitempty"`
-	Path   string `yaml:"path,omitempty"`
+	Method string             `yaml:"method,omitempty"`
+	Path   *gatewayPathMatch  `yaml:"path,omitempty"`
+}
+
+// gatewayPathMatch defines path-based route matching. agentgateway expects
+// a structured path match, not a raw string.
+type gatewayPathMatch struct {
+	PathPrefix string `yaml:"pathPrefix,omitempty"`
+	Exact      string `yaml:"exact,omitempty"`
+	Regex      string `yaml:"regex,omitempty"`
 }
 
 type gatewayRoutePolicies struct {
@@ -717,15 +725,16 @@ func applyLLMProviderLock(p *Policy, domain string, existing []gatewayRouteMatch
 	// when present, otherwise create standalone path matches.
 	var lockedMatches []gatewayRouteMatch
 	for path := range pathSet {
+		pathMatch := &gatewayPathMatch{PathPrefix: path}
 		if len(existing) > 0 {
 			for _, m := range existing {
 				lockedMatches = append(lockedMatches, gatewayRouteMatch{
 					Method: m.Method,
-					Path:   path,
+					Path:   pathMatch,
 				})
 			}
 		} else {
-			lockedMatches = append(lockedMatches, gatewayRouteMatch{Path: path})
+			lockedMatches = append(lockedMatches, gatewayRouteMatch{Path: pathMatch})
 		}
 	}
 	return lockedMatches
