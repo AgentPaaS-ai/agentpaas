@@ -106,6 +106,78 @@ func TestHandleLLM_RealCall_OpenAI(t *testing.T) {
 	}
 }
 
+func TestHandleLLM_PerRequestMaxTokensIsForwarded(t *testing.T) {
+	var maxTokens float64
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		maxTokens, _ = body["max_tokens"].(float64)
+		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}}, "usage": map[string]any{"total_tokens": 2}})
+	}))
+	defer ts.Close()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+	s := &harnessRPCServer{}
+	state := &rpcInvokeState{
+		payload: map[string]any{
+			"llm":    map[string]any{"provider": "openai", "model": "gpt-4o-mini", "credential": testCredID},
+			"budget": map[string]any{"max_tokens_per_request": 37},
+		},
+		credentials: map[string]rpcCredential{testCredID: {Value: testSecret}},
+		budget:      NewBudgetEnforcer(BudgetConfig{MaxTokens: 1000}),
+	}
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hello"}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got %s", resp.Error)
+	}
+	if maxTokens != 37 {
+		t.Fatalf("max_tokens = %v, want 37", maxTokens)
+	}
+}
+
+func TestHandleLLM_ObservabilityEmitsResult(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}},
+			"usage":   map[string]any{"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10},
+			"model":   "gpt-4o-mini",
+		})
+	}))
+	defer ts.Close()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+	recorder := &recordingAuditAppender{}
+	s := &harnessRPCServer{audit: recorder}
+	state := &rpcInvokeState{
+		payload: map[string]any{
+			"llm":           map[string]any{"provider": "openai", "model": "gpt-4o-mini", "credential": testCredID},
+			"observability": map[string]any{"cost_tracking": true},
+		},
+		credentials: map[string]rpcCredential{testCredID: {Value: testSecret}},
+		budget:      NewBudgetEnforcer(BudgetConfig{MaxTokens: 1000}),
+	}
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hello"}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got %s", resp.Error)
+	}
+	var found bool
+	for _, event := range recorder.events() {
+		if event.EventType != "llm_result" {
+			continue
+		}
+		found = true
+		if event.Payload["input_tokens"] != int64(4) || event.Payload["output_tokens"] != int64(6) || event.Payload["total_tokens"] != int64(10) {
+			t.Fatalf("unexpected token payload: %#v", event.Payload)
+		}
+		if event.Payload["estimated_cost_usd"] == float64(0) {
+			t.Fatal("expected non-zero estimated cost")
+		}
+	}
+	if !found {
+		t.Fatal("expected llm_result audit event")
+	}
+}
+
 func TestHandleLLM_UnknownProvider(t *testing.T) {
 	recorder := &recordingAuditAppender{}
 	s := &harnessRPCServer{audit: recorder}
