@@ -38,6 +38,9 @@ const externalSignatureTimeout = 30 * time.Second
 // AgentLock is the canonical, signed manifest for a packed agent.
 // This is the exact review unit consumed by `agent run` and promotion.
 type AgentLock struct {
+	// SBOM is the generated SPDX document retained for bundle export. It is
+	// deployed as a sidecar and intentionally excluded from signed JSON.
+	SBOM []byte `json:"-"`
 	// SchemaVersion is the agent.lock schema version (currently 1).
 	SchemaVersion int `json:"schema_version"`
 	// AgentName is the agent name from agent.yaml.
@@ -561,6 +564,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		BuildInputDigest:     cfg.BuildResult.BuildInputDigest,
 		ImageDigest:          cfg.BuildResult.ImageDigest,
 		SBOMDigest:           sbomDigest,
+		SBOM:                 sbom,
 		PolicyDigest:         policyDigest,
 		PolicyYAML:           cfg.PolicyYAML,
 		PackageAID:           string(publicKeyPEM),
@@ -622,17 +626,17 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		}
 		now := time.Now().UTC()
 		entry := ProvenanceEntry{
-			Action:               "forked",
-			PublisherFingerprint: pubIdentity.Fingerprint,
-			PublisherName:        pubIdentity.Name,
+			Action:                "forked",
+			PublisherFingerprint:  pubIdentity.Fingerprint,
+			PublisherName:         pubIdentity.Name,
 			PublisherPublicKeyPEM: pubIdentity.PublicKeyPEM,
-			AgentName:            lock.AgentName,
-			AgentVersion:         lock.AgentVersion,
-			ParentLockDigest:     lineage.Parent.LockDigest,
-			ParentBundleDigest:   lineage.Parent.BundleDigest,
-			ParentPolicyDigest:   lineage.Parent.PolicyDigest,
-			PolicyDelta:          policyDeltaFromPolicy(polDelta),
-			Timestamp:            now,
+			AgentName:             lock.AgentName,
+			AgentVersion:          lock.AgentVersion,
+			ParentLockDigest:      lineage.Parent.LockDigest,
+			ParentBundleDigest:    lineage.Parent.BundleDigest,
+			ParentPolicyDigest:    lineage.Parent.PolicyDigest,
+			PolicyDelta:           policyDeltaFromPolicy(polDelta),
+			Timestamp:             now,
 		}
 		entryCanonical, err := provenanceEntryCanonical(&entry)
 		if err != nil {
@@ -648,17 +652,17 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	} else if pubIdentity != nil {
 		now := time.Now().UTC()
 		entry := ProvenanceEntry{
-			Action:               "created",
-			PublisherFingerprint: pubIdentity.Fingerprint,
-			PublisherName:        pubIdentity.Name,
+			Action:                "created",
+			PublisherFingerprint:  pubIdentity.Fingerprint,
+			PublisherName:         pubIdentity.Name,
 			PublisherPublicKeyPEM: pubIdentity.PublicKeyPEM,
-			AgentName:            lock.AgentName,
-			AgentVersion:         lock.AgentVersion,
-			ParentLockDigest:     "",
-			ParentBundleDigest:   "",
-			ParentPolicyDigest:   "",
-			PolicyDelta:          nil,
-			Timestamp:            now,
+			AgentName:             lock.AgentName,
+			AgentVersion:          lock.AgentVersion,
+			ParentLockDigest:      "",
+			ParentBundleDigest:    "",
+			ParentPolicyDigest:    "",
+			PolicyDelta:           nil,
+			Timestamp:             now,
 		}
 		entryCanonical, err := provenanceEntryCanonical(&entry)
 		if err != nil {
@@ -1037,17 +1041,17 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 		entries := make([]map[string]interface{}, 0, len(lock.Provenance))
 		for _, e := range lock.Provenance {
 			entryMap := map[string]interface{}{
-				"action":                    e.Action,
-				"publisher_fingerprint":     e.PublisherFingerprint,
-				"publisher_name":            e.PublisherName,
-				"publisher_public_key_pem":  e.PublisherPublicKeyPEM,
-				"agent_name":                e.AgentName,
-				"agent_version":             e.AgentVersion,
-				"parent_lock_digest":        e.ParentLockDigest,
-				"parent_bundle_digest":      e.ParentBundleDigest,
-				"parent_policy_digest":      e.ParentPolicyDigest,
-				"timestamp":                 e.Timestamp,
-				"entry_signature":           e.EntrySignature,
+				"action":                   e.Action,
+				"publisher_fingerprint":    e.PublisherFingerprint,
+				"publisher_name":           e.PublisherName,
+				"publisher_public_key_pem": e.PublisherPublicKeyPEM,
+				"agent_name":               e.AgentName,
+				"agent_version":            e.AgentVersion,
+				"parent_lock_digest":       e.ParentLockDigest,
+				"parent_bundle_digest":     e.ParentBundleDigest,
+				"parent_policy_digest":     e.ParentPolicyDigest,
+				"timestamp":                e.Timestamp,
+				"entry_signature":          e.EntrySignature,
 			}
 			if e.PolicyDelta != nil {
 				entryMap["policy_delta"] = e.PolicyDelta

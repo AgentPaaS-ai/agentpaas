@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/ecdsa"
+	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/big"
 	"os"
 	"path/filepath"
 	"sort"
@@ -320,13 +323,13 @@ func writeBundleTar(w io.Writer, manifestJSON, lockJSON, policyYAML, sbomJSON []
 		}
 
 		header := &tar.Header{
-			Name:     e.Name,
-			Size:     size,
-			Mode:     mode,
-			Uid:      0,
-			Gid:      0,
-			ModTime:  mtime,
-			Format:   tar.FormatUSTAR,
+			Name:    e.Name,
+			Size:    size,
+			Mode:    mode,
+			Uid:     0,
+			Gid:     0,
+			ModTime: mtime,
+			Format:  tar.FormatUSTAR,
 		}
 		if isDir {
 			header.Typeflag = tar.TypeDir
@@ -381,13 +384,67 @@ func signManifest(m *Manifest, key *ecdsa.PrivateKey) error {
 	}
 
 	digest := sha256.Sum256(canonical)
-	sig, err := ecdsa.SignASN1(deterministicSignReader{}, key, digest[:])
+	sig, err := deterministicECDSASignASN1(key, digest[:])
 	if err != nil {
 		return fmt.Errorf("sign manifest: %w", err)
 	}
 
 	m.ManifestSignature = base64.StdEncoding.EncodeToString(sig)
 	return nil
+}
+
+// deterministicECDSASignASN1 implements RFC 6979 for P-256/SHA-256. Go's
+// ecdsa signer may consume additional entropy for blinding, so supplying a
+// constant reader is not sufficient to make archive signatures reproducible.
+func deterministicECDSASignASN1(key *ecdsa.PrivateKey, hash []byte) ([]byte, error) {
+	q := key.Params().N
+	rolen := (q.BitLen() + 7) / 8
+	intBytes := func(v *big.Int) []byte {
+		out := make([]byte, rolen)
+		b := v.Bytes()
+		copy(out[len(out)-len(b):], b)
+		return out
+	}
+	z := new(big.Int).SetBytes(hash)
+	if z.BitLen() > q.BitLen() {
+		z.Rsh(z, uint(z.BitLen()-q.BitLen()))
+	}
+	if z.Cmp(q) >= 0 {
+		z.Sub(z, q)
+	}
+	h1 := intBytes(z)
+	x := intBytes(key.D)
+	v := bytes.Repeat([]byte{1}, sha256.Size)
+	k := make([]byte, sha256.Size)
+	mac := func(key, data []byte) []byte { h := hmac.New(sha256.New, key); _, _ = h.Write(data); return h.Sum(nil) }
+	k = mac(k, append(append(append([]byte{}, v...), 0), append(x, h1...)...))
+	v = mac(k, v)
+	k = mac(k, append(append(append([]byte{}, v...), 1), append(x, h1...)...))
+	v = mac(k, v)
+	for {
+		t := make([]byte, 0, rolen)
+		for len(t) < rolen {
+			v = mac(k, v)
+			t = append(t, v...)
+		}
+		candidate := new(big.Int).SetBytes(t[:rolen])
+		if candidate.Sign() > 0 && candidate.Cmp(q) < 0 {
+			x1, _ := key.Curve.ScalarBaseMult(candidate.Bytes())
+			r := new(big.Int).Mod(x1, q)
+			if r.Sign() != 0 {
+				inv := new(big.Int).ModInverse(candidate, q)
+				s := new(big.Int).Mul(r, key.D)
+				s.Add(s, z)
+				s.Mul(s, inv)
+				s.Mod(s, q)
+				if s.Sign() != 0 {
+					return asn1.Marshal(struct{ R, S *big.Int }{r, s})
+				}
+			}
+		}
+		k = mac(k, append(append([]byte{}, v...), 0))
+		v = mac(k, v)
+	}
 }
 
 // manifestCanonicalJSON returns the canonical JSON representation of the manifest.
@@ -418,7 +475,7 @@ func manifestCanonicalJSON(m *Manifest, includeSignature bool) ([]byte, error) {
 			"fingerprint":    m.Publisher.Fingerprint,
 			"public_key_pem": m.Publisher.PublicKeyPEM,
 		},
-		"contents":  contents,
+		"contents":   contents,
 		"created_at": m.CreatedAt,
 	}
 	if len(m.ExtraFiles) > 0 {
