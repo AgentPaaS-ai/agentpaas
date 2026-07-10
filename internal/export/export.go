@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/bundle"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
-	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 // ErrDirtySource is returned when project source no longer matches the locked digest.
@@ -49,18 +49,18 @@ type Config struct {
 
 // PreviewResult is returned by Preview before writing a bundle.
 type PreviewResult struct {
-	AgentName   string
+	AgentName    string
 	AgentVersion string
-	Files       []FileManifestEntry
+	Files        []FileManifestEntry
 }
 
 // Result is returned after a successful export.
 type Result struct {
-	BundleDigest string
+	BundleDigest         string
 	PublisherFingerprint string
-	FileCount    int
-	TotalBytes   int64
-	OutputPath   string
+	FileCount            int
+	TotalBytes           int64
+	OutputPath           string
 }
 
 // Preview validates preconditions and returns the file manifest without writing.
@@ -200,6 +200,9 @@ func prepareExportState(ctx context.Context, cfg Config) (*exportState, error) {
 		if agentYAML.Version != "" {
 			agentVersion = agentYAML.Version
 		}
+	}
+	if err := CheckDeniedProjectFiles(absProject); err != nil {
+		return nil, err
 	}
 
 	lock, err := pack.LoadDeployedLock(cfg.Home, agentName)
@@ -394,7 +397,7 @@ func buildBundleManifest(st *exportState) *bundle.Manifest {
 			SBOM:   bundle.ManifestDigestEntry{},
 			Source: bundle.ManifestDigestEntry{Digest: st.lock.BuildInputDigest},
 		},
-		CreatedAt:  time.Now().UTC().Truncate(time.Second),
+		CreatedAt:  st.lock.CreatedAt,
 		ExtraFiles: extra,
 	}
 }

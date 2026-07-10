@@ -1,6 +1,8 @@
 package export
 
 import (
+	"fmt"
+	"io/fs"
 	"path"
 	"path/filepath"
 	"strings"
@@ -18,6 +20,31 @@ var deniedBasenames = []string{
 	"service-account.json",
 	"id_rsa",
 	"id_ed25519",
+}
+
+// CheckDeniedProjectFiles rejects sensitive filenames even when a project
+// ignore rule would otherwise omit them from the bundle. Ignoring a secret
+// file is not proof that it is safe to export the project.
+func CheckDeniedProjectFiles(projectDir string) error {
+	return filepath.WalkDir(projectDir, func(pathname string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" || entry.Name() == ".venv" || entry.Name() == "__pycache__" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		rel, err := filepath.Rel(projectDir, pathname)
+		if err != nil {
+			return err
+		}
+		if denied, reason := IsDeniedExportPath(rel); denied {
+			return fmt.Errorf("export blocked: %s (%s)", filepath.ToSlash(rel), reason)
+		}
+		return nil
+	})
 }
 
 var deniedSuffixes = []string{

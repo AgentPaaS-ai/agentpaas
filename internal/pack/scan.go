@@ -155,7 +155,10 @@ func runGitleaks(ctx context.Context, dir string) ([]SecretFinding, error) {
 
 	scanCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(scanCtx, "gitleaks", "detect", "--source", dir, "--report-format", "json", "--report-path", "-")
+	// Export scans a staged directory, which is intentionally not a Git
+	// repository. --no-git makes gitleaks inspect the filesystem contents
+	// instead of silently scanning zero commits and returning [].
+	cmd := exec.CommandContext(scanCtx, "gitleaks", "detect", "--no-git", "--source", dir, "--report-format", "json", "--report-path", "-")
 	output, err := cmd.Output()
 	if scanCtx.Err() != nil {
 		return nil, fmt.Errorf("gitleaks scan failed: %w", scanCtx.Err())

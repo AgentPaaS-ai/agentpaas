@@ -210,6 +210,9 @@ func RecordDeployment(homeDir, agentName string, lock *AgentLock) error {
 	if len(lock.PolicyYAML) > 0 {
 		files["policy.yaml"] = lock.PolicyYAML
 	}
+	if len(lock.SBOM) > 0 {
+		files["sbom.spdx.json"] = lock.SBOM
+	}
 	for name, data := range files {
 		if err := writeStagedDeployedFile(stagingDir, name, data, 0o600); err != nil {
 			return err

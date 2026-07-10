@@ -24,7 +24,7 @@ func (s *controlServer) ExportPreview(ctx context.Context, req *controlv1.Export
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "resolve project path: %v", err)
 	}
-	ks, err := s.openIdentityStore()
+	ks, err := s.openPublisherIdentityStore()
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "identity keystore: %v", err)
 	}
@@ -71,7 +71,7 @@ func (s *controlServer) Export(ctx context.Context, req *controlv1.ExportRequest
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "resolve project path: %v", err)
 	}
-	ks, err := s.openIdentityStore()
+	ks, err := s.openPublisherIdentityStore()
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "identity keystore: %v", err)
 	}

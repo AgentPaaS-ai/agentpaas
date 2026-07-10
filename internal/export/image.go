@@ -64,7 +64,10 @@ func copyImageToOCILayout(ctx context.Context, ref, destDir string) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	ociDest := "oci:" + filepath.Clean(destDir)
-	cmd := exec.CommandContext(ctx, "skopeo", "copy", "docker-daemon:"+ref, ociDest)
+	// Pack pushes the locked image to AgentPaaS's local HTTP registry. Use the
+	// registry transport instead of skopeo's docker-daemon transport, which
+	// hard-codes /var/run/docker.sock and cannot follow Colima contexts.
+	cmd := exec.CommandContext(ctx, "skopeo", "copy", "--src-tls-verify=false", "docker://"+ref, ociDest)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if _, lookErr := exec.LookPath("skopeo"); lookErr != nil {
 			return fmt.Errorf("skopeo not found in PATH (required for --with-image): %w", lookErr)
