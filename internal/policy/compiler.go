@@ -173,10 +173,20 @@ type backendOAuthConfig struct {
 }
 
 type gatewayBackend struct {
-	Host    *string            `yaml:"host,omitempty"`
-	Dynamic *struct{}          `yaml:"dynamic,omitempty"`
-	MCP     *gatewayMCPBackend `yaml:"mcp,omitempty"`
+	Host     *string                 `yaml:"host,omitempty"`
+	Dynamic  *struct{}               `yaml:"dynamic,omitempty"`
+	MCP      *gatewayMCPBackend      `yaml:"mcp,omitempty"`
+	Policies *gatewayBackendPolicies `yaml:"policies,omitempty"`
 }
+
+// gatewayBackendPolicies holds per-backend policies (e.g. backendTLS).
+type gatewayBackendPolicies struct {
+	BackendTLS *gatewayBackendTLS `yaml:"backendTLS,omitempty"`
+}
+
+// gatewayBackendTLS enables HTTPS when connecting to the upstream host backend.
+// Empty struct serializes as: backendTLS: {}
+type gatewayBackendTLS struct{}
 
 type gatewayMCPBackend struct {
 	Targets []gatewayMCPTarget `yaml:"targets,omitempty"`
@@ -367,7 +377,7 @@ func buildBinds(p *Policy) []gatewayBind {
 		})
 	}
 
-	// Egress bind: hostname-based routing with dynamic (DFP) backends.
+	// Egress bind: hostname-based routing with static host backends + backendTLS.
 	egressRoutes := buildEgressRoutes(p)
 	if len(egressRoutes) > 1 { // >1 because denied route is always added
 		binds = append(binds, gatewayBind{
@@ -445,15 +455,35 @@ func buildEgressRoutes(p *Policy) []gatewayRoute {
 			}
 		}
 
+		// Static host backend (gateway-native HTTP routing). Prefer port 443
+		// when listed; otherwise use the first declared port or default 443.
+		// Port 443 uses backendTLS so the gateway dials HTTPS upstream; other
+		// ports (e.g. 80) stay plain HTTP.
+		port := 443
+		if len(e.Ports) > 0 {
+			port = e.Ports[0]
+			for _, ep := range e.Ports {
+				if ep == 443 {
+					port = 443
+					break
+				}
+			}
+		}
+		host := fmt.Sprintf("%s:%d", e.Domain, port)
+		backend := gatewayBackend{Host: ptr(host)}
+		if port == 443 {
+			backend.Policies = &gatewayBackendPolicies{
+				BackendTLS: &gatewayBackendTLS{},
+			}
+		}
+
 		routes = append(routes, gatewayRoute{
 			Name:       routeName,
 			Hostnames:  []string{e.Domain},
 			Matches:    matches,
 			Credential: e.Credential,
 			Policies:   policies,
-			Backends: []gatewayBackend{
-				{Dynamic: &struct{}{}},
-			},
+			Backends:   []gatewayBackend{backend},
 		})
 	}
 

@@ -18,18 +18,24 @@ binds:
                 - api.openai.com
               credential: openai-prod
               backends:
-                - dynamic: {}
+                - host: api.openai.com:443
+                  policies:
+                    backendTLS: {}
             - name: egress-api-stripe-com
               hostnames:
                 - api.stripe.com
               credential: stripe-readonly
               backends:
-                - dynamic: {}
+                - host: api.stripe.com:443
+                  policies:
+                    backendTLS: {}
             - name: egress-hooks-slack-com
               hostnames:
                 - hooks.slack.com
               backends:
-                - dynamic: {}
+                - host: hooks.slack.com:443
+                  policies:
+                    backendTLS: {}
             - name: denied
               policies:
                 directResponse:
