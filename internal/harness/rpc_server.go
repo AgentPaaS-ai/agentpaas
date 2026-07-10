@@ -298,6 +298,10 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "llm credential not declared")
 		return rpcError(req.ID, "llm credential not declared", "credential_denied")
 	}
+	if strings.TrimSpace(cred.Value) == "" {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "llm credential value empty")
+		return rpcError(req.ID, "llm credential value is empty; re-run agentpaas secret add "+credentialID+" and repack/run", "credential_denied")
+	}
 
 	// Use model override if provided.
 	if modelOverride != "" {
