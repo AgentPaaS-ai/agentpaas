@@ -172,3 +172,23 @@ func findInstalledDirByRef(stateRoot, name, pub8 string) (string, error) {
 	_ = trust.NormalizeFingerprint(m.PublisherFingerprint)
 	return dir, nil
 }
+
+// LoadManifestByRef loads the install manifest for an installed agent ref (name@pub8).
+func LoadManifestByRef(stateRoot, ref string) (*InstallManifest, error) {
+	name, pub8, err := naming.ParseAgentRef(ref)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := findInstalledDirByRef(stateRoot, name, pub8)
+	if err != nil {
+		return nil, err
+	}
+	if dir == "" {
+		return nil, fmt.Errorf("no installed agent for reference %q", ref)
+	}
+	m, err := loadInstalledManifest(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}

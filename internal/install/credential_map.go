@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/naming"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/AgentPaaS-ai/agentpaas/internal/trust"
@@ -27,6 +29,8 @@ type CredentialMapOpts struct {
 	Policy     *policy.Policy
 	Store      secrets.SecretStore
 	InstallRef string
+	// Lock is the signed agent lock (for extracting the LLM credential requirement).
+	Lock *pack.AgentLock
 
 	IsTTY bool
 	// MapCredentials holds non-TTY mappings as "<declared>=<local>" strings.
@@ -50,6 +54,8 @@ type MapCredentialOpts struct {
 	Store   secrets.SecretStore
 	Ref     string
 	Mapping string // declared=local
+	// StateRoot is the installed agent state root (for reading the signed lock).
+	StateRoot string
 	EmitAudit func(eventType string, payload map[string]string)
 }
 
@@ -62,6 +68,9 @@ func ResolveCredentialMapping(opts CredentialMapOpts) (*CredentialMapResult, err
 		return nil, fmt.Errorf("credential mapping requires secret store")
 	}
 	ids := brokeredCredentialIDs(opts.Policy)
+	if opts.Lock != nil && opts.Lock.AgentYAML != nil && opts.Lock.AgentYAML.LLM.Credential != "" {
+		ids = appendIfMissing(ids, opts.Lock.AgentYAML.LLM.Credential)
+	}
 	if len(ids) == 0 {
 		return &CredentialMapResult{Map: map[string]string{}}, nil
 	}
@@ -130,8 +139,9 @@ func ApplyMapCredential(opts MapCredentialOpts) error {
 	if err != nil {
 		return fmt.Errorf("parse installed policy: %w", err)
 	}
-	if !isDeclaredBrokeredCredential(pol, declared) {
-		return fmt.Errorf("%w: credential %q is not a declared brokered credential in the signed policy", ErrCredentialMapInvalid, declared)
+	llmCredID, _ := SignedLLMCredentialID(opts.StateRoot, opts.Ref)
+	if !isDeclaredBrokeredCredential(pol, declared) && declared != llmCredID {
+		return fmt.Errorf("%w: credential %q is not a declared brokered or signed LLM credential", ErrCredentialMapInvalid, declared)
 	}
 	ctx := context.Background()
 	if _, err := opts.Store.Get(ctx, local); err != nil {
@@ -312,4 +322,37 @@ func MatchPublisherPub8(fingerprint, pub8 string) bool {
 // FormatInstallRef builds name@pub8 for warnings and broker errors.
 func FormatInstallRef(agentName, publisherFingerprint string) string {
 	return naming.FormatAgentRef(agentName, trust.NormalizeFingerprint(publisherFingerprint))
+}
+
+// SignedLLMCredentialID reads the installed lock for ref (name@pub8) and
+// returns the signed agent_yaml.llm.credential ID, or "" if absent.
+func SignedLLMCredentialID(stateRoot, ref string) (string, error) {
+	name, pub8, err := naming.ParseAgentRef(ref)
+	if err != nil {
+		return "", err
+	}
+	dir, err := findInstalledDirByRef(stateRoot, name, pub8)
+	if err != nil {
+		return "", err
+	}
+	if dir == "" {
+		return "", nil
+	}
+	lock, err := pack.ReadAgentLock(filepath.Join(dir, installedLockName))
+	if err != nil {
+		return "", err
+	}
+	if lock == nil || lock.AgentYAML == nil {
+		return "", nil
+	}
+	return lock.AgentYAML.LLM.Credential, nil
+}
+
+func appendIfMissing(ids []string, id string) []string {
+	for _, existing := range ids {
+		if existing == id {
+			return ids
+		}
+	}
+	return append(ids, id)
 }
