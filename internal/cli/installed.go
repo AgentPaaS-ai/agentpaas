@@ -150,6 +150,7 @@ func newInstalledRemoveCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().Bool("yes", false, "Skip confirmation prompts")
 	return cmd
 }
 
