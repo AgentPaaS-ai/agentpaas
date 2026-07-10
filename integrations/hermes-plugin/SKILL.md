@@ -266,6 +266,17 @@ Before `agentpaas_pack`, verify:
 
 If ANY are missing, do NOT pack — ask only for the missing piece.
 
+### Anti-Fabrication (Critical — user-facing results)
+
+Never claim an invoke succeeded unless you verified it from tool output:
+1. After invoke, call `agentpaas_status` with the run_id.
+2. Read the real invoke response (status, conditions/answer, error).
+3. Confirm harness audit has `egress_allowed` for every expected domain
+   (e.g. wttr.in AND openrouter.ai for a weather+LLM agent).
+4. If `result.status` is ERROR, or there is no LLM egress when LLM was
+   required, report FAILURE with the real error — do NOT scrape weather
+   numbers out of an error body and call it success.
+
 ### Security: Secret Ingestion (Critical)
 
 API keys MUST NEVER enter the Hermes conversation context. The Hermes agent

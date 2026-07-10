@@ -126,6 +126,12 @@ confirm the run completed and read the invoke_response. "Run started"
 means the container launched, not that the agent executed successfully.
 If status=failed, use agentpaas_explain_failure and report the real
 root cause.
+
+If invoke_response.result.status is ERROR (even when top-level status
+is OK), that is a FAILURE — report the error field. Do NOT extract
+weather/API numbers from an error body and claim success. For weather+LLM
+agents, success requires egress_allowed for BOTH the weather host AND the
+LLM provider; missing LLM egress means the summary was not produced.
 """
 
         existing_soul = ""
