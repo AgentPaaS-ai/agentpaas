@@ -64,19 +64,24 @@ type gatewayPathMatch struct {
 }
 
 type gatewayRoutePolicies struct {
-	DirectResponse *gatewayDirectResponse   `yaml:"directResponse,omitempty"`
-	LocalRateLimit []gatewayLocalRateLimit  `yaml:"localRateLimit,omitempty"`
-	JWT            *gatewayJWTAuth          `yaml:"jwt,omitempty"`
-	APIKey         *gatewayAPIKeyAuth       `yaml:"apiKey,omitempty"`
-	BackendOAuth   *backendOAuthConfig      `yaml:"backendOAuth,omitempty"`
-	Guardrails     *gatewayGuardrails       `yaml:"guardrails,omitempty"`
-	Timeout        *gatewayTimeout          `yaml:"timeout,omitempty"`
-	Retry          *gatewayRetry            `yaml:"retry,omitempty"`
-	Transformation *gatewayTransformation   `yaml:"transformation,omitempty"`
+	DirectResponse *gatewayDirectResponse  `yaml:"directResponse,omitempty"`
+	LocalRateLimit []gatewayLocalRateLimit `yaml:"localRateLimit,omitempty"`
+	// agentgateway v1.3.0 uses jwtAuth (not jwt) for JWT validation.
+	JWT *gatewayJWTAuth `yaml:"jwtAuth,omitempty"`
+	// agentgateway v1.3.0 expects keys/mode/location under apiKey (not header/credential).
+	APIKey *gatewayAPIKeyAuth `yaml:"apiKey,omitempty"`
+	// backendOAuth is AgentPaaS-specific scaffolding; omitted until the gateway field is confirmed.
+	BackendOAuth *backendOAuthConfig `yaml:"-"`
+	// Guardrails are accepted in policy.yaml but not a route-level field in agentgateway v1.3.0.
+	// Harness-level enforcement is required (same pattern as Bug 019).
+	Guardrails     *gatewayGuardrails     `yaml:"-"`
+	Timeout        *gatewayTimeout        `yaml:"timeout,omitempty"`
+	Retry          *gatewayRetry          `yaml:"retry,omitempty"`
+	Transformation *gatewayTransformation `yaml:"transformations,omitempty"`
 }
 
-// gatewayTransformation represents a request/response transformation policy
-// applied on a gateway route.
+// gatewayTransformation represents agentgateway transformations policy.
+// Values under add/set are CEL expressions (string literals use '"value"' form).
 type gatewayTransformation struct {
 	Request  *gatewayRequestTransform  `yaml:"request,omitempty"`
 	Response *gatewayResponseTransform `yaml:"response,omitempty"`
@@ -84,13 +89,18 @@ type gatewayTransformation struct {
 
 // gatewayRequestTransform defines request-level transformations for the gateway.
 type gatewayRequestTransform struct {
-	InjectHeaders      map[string]string `yaml:"injectHeaders,omitempty"`
-	InjectSystemPrompt string            `yaml:"injectSystemPrompt,omitempty"`
+	Add    map[string]string `yaml:"add,omitempty"`
+	Set    map[string]string `yaml:"set,omitempty"`
+	Remove []string          `yaml:"remove,omitempty"`
+	Body   string            `yaml:"body,omitempty"`
 }
 
 // gatewayResponseTransform defines response-level transformations for the gateway.
 type gatewayResponseTransform struct {
-	RemoveHeaders []string `yaml:"removeHeaders,omitempty"`
+	Add    map[string]string `yaml:"add,omitempty"`
+	Set    map[string]string `yaml:"set,omitempty"`
+	Remove []string          `yaml:"remove,omitempty"`
+	Body   string            `yaml:"body,omitempty"`
 }
 
 type gatewayDirectResponse struct {
@@ -101,23 +111,49 @@ type gatewayDirectResponse struct {
 // gatewayLocalRateLimit represents an agentgateway localRateLimit policy.
 // Used for request-based and token-based rate limiting on routes.
 type gatewayLocalRateLimit struct {
-	MaxTokens      int    `yaml:"maxTokens"`
-	TokensPerFill  int    `yaml:"tokensPerFill"`
-	FillInterval   string `yaml:"fillInterval"`
-	Type           string `yaml:"type,omitempty"` // "requests" or "tokens"
+	MaxTokens     int    `yaml:"maxTokens"`
+	TokensPerFill int    `yaml:"tokensPerFill"`
+	FillInterval  string `yaml:"fillInterval"`
+	Type          string `yaml:"type,omitempty"` // "requests" or "tokens"
 }
 
-// gatewayJWTAuth represents a JWT validation policy on a gateway route.
+// gatewayJWKS is agentgateway's FileInlineOrRemote jwks shape for remote JWKS.
+type gatewayJWKS struct {
+	URL string `yaml:"url,omitempty"`
+}
+
+// gatewayAuthHeaderLocation describes where agentgateway reads a credential.
+type gatewayAuthHeaderLocation struct {
+	Header *gatewayAuthHeader `yaml:"header,omitempty"`
+}
+
+type gatewayAuthHeader struct {
+	Name   string `yaml:"name"`
+	Prefix string `yaml:"prefix,omitempty"`
+}
+
+// gatewayJWTAuth represents agentgateway jwtAuth policy (strict mode + remote JWKS).
 type gatewayJWTAuth struct {
-	Issuer   string `yaml:"issuer"`
-	Audience string `yaml:"audience"`
-	JWKSURL  string `yaml:"jwksUrl"`
+	Mode      string                     `yaml:"mode,omitempty"`
+	Issuer    string                     `yaml:"issuer"`
+	Audiences []string                   `yaml:"audiences,omitempty"`
+	JWKS      *gatewayJWKS               `yaml:"jwks,omitempty"`
+	Location  *gatewayAuthHeaderLocation `yaml:"location,omitempty"`
 }
 
-// gatewayAPIKeyAuth represents an API key validation policy on a gateway route.
+// gatewayAPIKeyEntry is one acceptable key under agentgateway apiKey.keys.
+type gatewayAPIKeyEntry struct {
+	// Key is resolved from Keychain at compile/runtime when the daemon can inject
+	// secret values into gateway config. Placeholder form uses ${cred-id}.
+	Key      string            `yaml:"key"`
+	Metadata map[string]string `yaml:"metadata,omitempty"`
+}
+
+// gatewayAPIKeyAuth represents agentgateway apiKey policy.
 type gatewayAPIKeyAuth struct {
-	Header     string `yaml:"header"`
-	Credential string `yaml:"credential"`
+	Mode     string                     `yaml:"mode,omitempty"`
+	Keys     []gatewayAPIKeyEntry       `yaml:"keys,omitempty"`
+	Location *gatewayAuthHeaderLocation `yaml:"location,omitempty"`
 }
 
 // gatewayTimeout represents a timeout policy on a gateway route.
@@ -664,23 +700,82 @@ func buildGatewayGuardrails(p *Policy) *gatewayGuardrails {
 	}
 }
 
+// celStringLiteral quotes a static value as a CEL string literal expression.
+// agentgateway transformations treat unquoted YAML strings as CEL expressions.
+func celStringLiteral(v string) string {
+	// Prefer double-quoted CEL string form with escaping.
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range v {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '"':
+			b.WriteString(`\"`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case '\t':
+			b.WriteString(`\t`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// resolveTransformationHeaderValue maps AgentPaaS policy placeholders into CEL.
+// Known placeholders use gateway CEL variables; everything else is a literal.
+func resolveTransformationHeaderValue(v string) string {
+	switch v {
+	case "${agent_name}":
+		// Prefer identity header when present; otherwise empty string.
+		return `default(request.headers["x-agent-name"], "")`
+	default:
+		return celStringLiteral(v)
+	}
+}
+
 // buildGatewayTransformation converts a policy Transformation into the gateway
-// transformation policy struct.
+// transformations policy shape expected by agentgateway v1.3.0:
+//
+//	transformations:
+//	  request:
+//	    set: { Header: '"value"' }   # CEL
+//	  response:
+//	    remove: [Header]
+//
+// inject_system_prompt is not a host-backend gateway field and is omitted.
 func buildGatewayTransformation(p *Policy) *gatewayTransformation {
 	if p.Transformations == nil {
 		return nil
 	}
 	gt := &gatewayTransformation{}
 	if p.Transformations.Request != nil {
-		gt.Request = &gatewayRequestTransform{
-			InjectHeaders:      p.Transformations.Request.InjectHeaders,
-			InjectSystemPrompt: p.Transformations.Request.InjectSystemPrompt,
+		req := &gatewayRequestTransform{}
+		if len(p.Transformations.Request.InjectHeaders) > 0 {
+			set := make(map[string]string, len(p.Transformations.Request.InjectHeaders))
+			for k, v := range p.Transformations.Request.InjectHeaders {
+				set[k] = resolveTransformationHeaderValue(v)
+			}
+			req.Set = set
+		}
+		// inject_system_prompt intentionally ignored at gateway compile time.
+		if len(req.Set) > 0 || len(req.Add) > 0 || len(req.Remove) > 0 || req.Body != "" {
+			gt.Request = req
 		}
 	}
 	if p.Transformations.Response != nil {
-		gt.Response = &gatewayResponseTransform{
-			RemoveHeaders: p.Transformations.Response.RemoveHeaders,
+		if len(p.Transformations.Response.RemoveHeaders) > 0 {
+			gt.Response = &gatewayResponseTransform{
+				Remove: append([]string(nil), p.Transformations.Response.RemoveHeaders...),
+			}
 		}
+	}
+	if gt.Request == nil && gt.Response == nil {
+		return nil
 	}
 	return gt
 }
@@ -741,8 +836,8 @@ func applyLLMProviderLock(p *Policy, domain string, existing []gatewayRouteMatch
 }
 
 // buildIngressAuthPolicies returns gateway route policies for ingress auth.
-// When ingress_auth is configured with type=jwt, adds a JWT validation policy.
-// When type=api_key, adds an API key validation policy.
+// When ingress_auth is configured with type=jwt, emits agentgateway jwtAuth.
+// When type=api_key, emits agentgateway apiKey with keys/mode/location.
 // Returns nil if no ingress_auth is configured.
 func buildIngressAuthPolicies(p *Policy) *gatewayRoutePolicies {
 	if p.IngressAuth == nil {
@@ -754,21 +849,42 @@ func buildIngressAuthPolicies(p *Policy) *gatewayRoutePolicies {
 		if p.IngressAuth.JWT == nil {
 			return nil
 		}
-		return &gatewayRoutePolicies{
-			JWT: &gatewayJWTAuth{
-				Issuer:   p.IngressAuth.JWT.Issuer,
-				Audience: p.IngressAuth.JWT.Audience,
-				JWKSURL:  p.IngressAuth.JWT.JWKSURL,
-			},
+		jwt := &gatewayJWTAuth{
+			Mode:   "strict",
+			Issuer: p.IngressAuth.JWT.Issuer,
+			JWKS:   &gatewayJWKS{URL: p.IngressAuth.JWT.JWKSURL},
 		}
+		if p.IngressAuth.JWT.Audience != "" {
+			jwt.Audiences = []string{p.IngressAuth.JWT.Audience}
+		}
+		return &gatewayRoutePolicies{JWT: jwt}
 	case "api_key":
 		if p.IngressAuth.APIKey == nil {
 			return nil
 		}
+		headerName := p.IngressAuth.APIKey.Header
+		if headerName == "" {
+			headerName = "X-API-Key"
+		}
+		// agentgateway requires concrete key values under keys[].key.
+		// Placeholder key is NOT a $env expansion form; daemon rewrites with real secret.
+		// Do NOT use $VAR form — agentgateway expands $ as env vars at startup.
+			// Placeholder is rewritten by the daemon once Keychain values are available.
+			keyPlaceholder := "__agentpaas_secret:" + p.IngressAuth.APIKey.Credential
 		return &gatewayRoutePolicies{
 			APIKey: &gatewayAPIKeyAuth{
-				Header:     p.IngressAuth.APIKey.Header,
-				Credential: p.IngressAuth.APIKey.Credential,
+				Mode: "strict",
+				Keys: []gatewayAPIKeyEntry{{
+					Key: keyPlaceholder,
+					Metadata: map[string]string{
+						"credential_id": p.IngressAuth.APIKey.Credential,
+					},
+				}},
+				Location: &gatewayAuthHeaderLocation{
+					Header: &gatewayAuthHeader{
+						Name: headerName,
+					},
+				},
 			},
 		}
 	}

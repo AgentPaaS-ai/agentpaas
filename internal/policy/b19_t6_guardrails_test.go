@@ -192,6 +192,11 @@ func TestValidateGuardrails_ValidConfig(t *testing.T) {
 }
 
 func TestCompileGatewayConfig_GuardrailsOnLLMRoute(t *testing.T) {
+	// agentgateway v1.3.0 does not support guardrails as a route-level policy
+	// field (requires AI backend type or extProc). Guardrails are parsed and
+	// validated at the policy level but omitted from compiled gateway config.
+	// This test verifies the config compiles without error when guardrails
+	// are declared — enforcement is harness-level (same pattern as Bug 019).
 	p := &Policy{
 		Version: "1",
 		Agent:   AgentConfig{Name: "test"},
@@ -211,11 +216,10 @@ func TestCompileGatewayConfig_GuardrailsOnLLMRoute(t *testing.T) {
 		t.Fatalf("output is not valid YAML: %v\n%s", err, outStr)
 	}
 
-	if !strings.Contains(outStr, "guardrails") {
-		t.Errorf("expected guardrails in output, got:\n%s", outStr)
-	}
-	if !strings.Contains(outStr, "regex") {
-		t.Errorf("expected regex guardrail in output, got:\n%s", outStr)
+	// Guardrails should NOT appear in gateway config (agentgateway v1.3.0
+	// doesn't support route-level guardrails). The config must still be valid.
+	if strings.Contains(outStr, "guardrails") {
+		t.Errorf("guardrails should NOT appear in compiled gateway config (agentgateway v1.3.0), got:\n%s", outStr)
 	}
 }
 
