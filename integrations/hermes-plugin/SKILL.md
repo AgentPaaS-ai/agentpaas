@@ -120,6 +120,9 @@ Correct pattern (weather agent):
 ```python
 # 1. Fetch REAL data via HTTP
 resp = agent.http("GET", f"https://wttr.in/{city}?format=j1")
+# Response keys: status (int), status_code (same int), headers, body (str)
+if resp.get("status", resp.get("status_code")) != 200:
+    return {"status": "ERROR", "error": f"fetch failed: {resp.get('status')}"}
 weather_data = resp.get("body", "")
 
 # 2. Use LLM to SUMMARIZE the real data
@@ -134,8 +137,10 @@ result = agent.llm(prompt=f"What's the weather in {city}?")
 ```
 
 The SDK also provides:
-- `agent.http(method, url, **kwargs)` — non-credentialed HTTP through the gateway
-- `agent.http_with_credential(credential_id, method, url, **kwargs)` — brokered credentialed HTTP
+- `agent.http(method, url, **kwargs)` — non-credentialed HTTP through the gateway.
+  Returns `{"status": <int>, "status_code": <int>, "headers": {...}, "body": "..."}`.
+  Prefer `resp["status"]` (canonical). `status_code` is an alias for the same value.
+- `agent.http_with_credential(credential_id, method, url, **kwargs)` — brokered credentialed HTTP (same response shape)
 - `agent.llm(prompt=...)` — LLM call (provider/model/credential from agent.yaml)
 - `agent.mcp(server, tool, args)` — MCP tool call
 

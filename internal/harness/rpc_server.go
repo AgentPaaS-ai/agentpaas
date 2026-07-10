@@ -472,13 +472,17 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	}
 	// HTTP request succeeded — record as allowed egress.
 	s.auditEgressDecision("harness", rawURL, method, "", "", "allowed", "")
+	// Expose both "status" (canonical) and "status_code" (common alias).
+	// Agents that check either must see the real HTTP status; missing the
+	// alias caused false "Failed to fetch" errors after successful egress.
 	return rpcResponse{
 		ID: req.ID,
 		OK: true,
 		Result: map[string]any{
-			"status":  resp.StatusCode,
-			"headers": redactedHeaders(resp.Header),
-			"body":    string(respBody),
+			"status":      resp.StatusCode,
+			"status_code": resp.StatusCode,
+			"headers":     redactedHeaders(resp.Header),
+			"body":        string(respBody),
 		},
 	}
 }
