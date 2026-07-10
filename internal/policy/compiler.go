@@ -44,7 +44,6 @@ type gatewayListener struct {
 type gatewayRoute struct {
 	Name       string                `yaml:"name,omitempty"`
 	Hostnames  []string              `yaml:"hostnames,omitempty"`
-	Ports      []int                 `yaml:"ports,omitempty"`
 	Matches    []gatewayRouteMatch   `yaml:"matches,omitempty"`
 	Credential string                `yaml:"credential,omitempty"`
 	Policies   *gatewayRoutePolicies `yaml:"policies,omitempty"`
@@ -449,7 +448,6 @@ func buildEgressRoutes(p *Policy) []gatewayRoute {
 		routes = append(routes, gatewayRoute{
 			Name:       routeName,
 			Hostnames:  []string{e.Domain},
-			Ports:      e.Ports,
 			Matches:    matches,
 			Credential: e.Credential,
 			Policies:   policies,

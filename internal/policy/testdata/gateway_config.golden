@@ -16,24 +16,18 @@ binds:
             - name: egress-api-openai-com
               hostnames:
                 - api.openai.com
-              ports:
-                - 443
               credential: openai-prod
               backends:
                 - dynamic: {}
             - name: egress-api-stripe-com
               hostnames:
                 - api.stripe.com
-              ports:
-                - 443
               credential: stripe-readonly
               backends:
                 - dynamic: {}
             - name: egress-hooks-slack-com
               hostnames:
                 - hooks.slack.com
-              ports:
-                - 443
               backends:
                 - dynamic: {}
             - name: denied
