@@ -46,8 +46,8 @@ func TestAdversaryT02_ProxyEnvInjection_MaliciousGatewayIP(t *testing.T) {
 	}
 }
 
-// TestAdversaryT02_NO_PROXY_Bypass confirms current NO_PROXY is limited to
-// localhost only. Attacker could use direct internal IPs or other hosts.
+// TestAdversaryT02_NO_PROXY_Bypass confirms NO_PROXY is no longer injected
+// after Bug 021 (gateway-native routing replaces forward-proxy CONNECT).
 func TestAdversaryT02_NO_PROXY_Bypass(t *testing.T) {
 	const gatewayIP = "172.18.0.42"
 	var capturedSpec runtime.ContainerSpec
@@ -69,20 +69,25 @@ func TestAdversaryT02_NO_PROXY_Bypass(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Current NO_PROXY only covers localhost — insufficient for internal net.
-	noProxyFound := false
+	// Bug 021: forward-proxy CONNECT env vars (incl. NO_PROXY) must not be set.
+	// Routing uses AGENTPAAS_GATEWAY_URL instead.
 	for _, env := range capturedSpec.Env {
 		if strings.HasPrefix(env, "NO_PROXY=") || strings.HasPrefix(env, "no_proxy=") {
-			noProxyFound = true
-			if !strings.Contains(env, "localhost,127.0.0.1") {
-				t.Fatalf("unexpected NO_PROXY value: %s", env)
-			}
-			// ADVERSARY NOTE: no internal CIDR or gateway IP itself in NO_PROXY.
-			// Attacker agent could set NO_PROXY=172.18.0.0/16 to bypass.
+			t.Fatalf("ADVERSARY: NO_PROXY still set after gateway-native routing fix: %s", env)
+		}
+		if strings.HasPrefix(env, "HTTP_PROXY=") || strings.HasPrefix(env, "HTTPS_PROXY=") ||
+			strings.HasPrefix(env, "http_proxy=") || strings.HasPrefix(env, "https_proxy=") {
+			t.Fatalf("ADVERSARY: legacy proxy env still set: %s", env)
 		}
 	}
-	if !noProxyFound {
-		t.Fatal("NO_PROXY not set")
+	foundGatewayURL := false
+	for _, env := range capturedSpec.Env {
+		if env == fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP) {
+			foundGatewayURL = true
+		}
+	}
+	if !foundGatewayURL {
+		t.Fatal("AGENTPAAS_GATEWAY_URL not set")
 	}
 }
 

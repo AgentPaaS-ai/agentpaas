@@ -665,3 +665,175 @@ func TestHandleLLM_NoConfigProductionFailsClosed(t *testing.T) {
 		t.Fatalf("error = %q, must not contain fake llm response text", resp.Error)
 	}
 }
+
+func TestRewriteURLForGateway(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		rawURL     string
+		gatewayURL string
+		want       string
+		wantErr    bool
+	}{
+		{
+			name:       "empty gateway keeps original",
+			rawURL:     "https://openrouter.ai/v1/chat/completions",
+			gatewayURL: "",
+			want:       "https://openrouter.ai/v1/chat/completions",
+		},
+		{
+			name:       "https to http via gateway preserves path",
+			rawURL:     "https://openrouter.ai/v1/chat/completions",
+			gatewayURL: "http://172.18.0.2:7799",
+			want:       "http://172.18.0.2:7799/v1/chat/completions",
+		},
+		{
+			name:       "preserves query string",
+			rawURL:     "https://api.example.com/v1/data?q=1",
+			gatewayURL: "http://gateway:7799",
+			want:       "http://gateway:7799/v1/data?q=1",
+		},
+		{
+			name:       "gateway port preserved",
+			rawURL:     "https://api.openai.com/v1/chat/completions",
+			gatewayURL: "http://10.0.0.5:7799",
+			want:       "http://10.0.0.5:7799/v1/chat/completions",
+		},
+		{
+			name:       "invalid raw URL",
+			rawURL:     "://bad",
+			gatewayURL: "http://gateway:7799",
+			wantErr:    true,
+		},
+		{
+			name:       "invalid gateway URL",
+			rawURL:     "https://api.openai.com/v1/chat/completions",
+			gatewayURL: "://bad-gw",
+			wantErr:    true,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := rewriteURLForGateway(tt.rawURL, tt.gatewayURL)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("rewriteURLForGateway() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestHandleLLM_RewritesURLAndPreservesHost(t *testing.T) {
+	var sawHost string
+	var sawURLHost string
+	var sawPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawHost = r.Host
+		sawURLHost = r.URL.Host
+		sawPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"content": "via gateway"}},
+			},
+			"usage": map[string]any{"total_tokens": 3},
+			"model": "gpt-4o",
+		})
+	}))
+	defer func() { ts.Close() }()
+
+	// Point the OpenAI adapter at a real provider-looking host; gateway env
+	// rewrites the dial target to the test server while Host stays original.
+	providerURL := "https://api.openai.com/v1/chat/completions"
+	restore := llm.SetTestEndpoints(providerURL, "", "")
+	defer restore()
+
+	// Gateway URL is the httptest server (plain HTTP, like gateway:7799).
+	t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+	// Force rewrite path host by swapping Strip? No — rewrite replaces host
+	// with gateway host from AGENTPAAS_GATEWAY_URL which is ts.URL host:port.
+
+	recorder := &recordingAuditAppender{}
+	s := &harnessRPCServer{audit: recorder}
+	state := &rpcInvokeState{
+		payload: map[string]any{
+			"llm": map[string]any{
+				"provider":   "openai",
+				"model":      "gpt-4o",
+				"credential": testCredID,
+			},
+		},
+		credentials: map[string]rpcCredential{
+			testCredID: {Header: "Authorization", Value: testSecret},
+		},
+		budget:    NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+		terminate: nil,
+	}
+
+	req := rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}
+	resp := s.handleLLM(req, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error: %s (code: %s)", resp.Error, resp.Code)
+	}
+	if sawHost != "api.openai.com" {
+		t.Fatalf("Host header = %q, want api.openai.com (gateway route match)", sawHost)
+	}
+	if sawPath != "/v1/chat/completions" {
+		t.Fatalf("path = %q, want /v1/chat/completions", sawPath)
+	}
+	// Server-side r.URL.Host is empty for absolute-path requests; dial host was playwright.
+	_ = sawURLHost
+}
+
+func TestHandleHTTP_RewritesURLAndPreservesHost(t *testing.T) {
+	var sawHost string
+	var sawPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawHost = r.Host
+		sawPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer func() { ts.Close() }()
+
+	t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+	recorder := &recordingAuditAppender{}
+	s := &harnessRPCServer{audit: recorder}
+	state := &rpcInvokeState{
+		payload:     map[string]any{},
+		credentials: map[string]rpcCredential{},
+		budget:      NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+	}
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "http",
+		Params: map[string]any{
+			"method": "GET",
+			"url":    "https://api.example.com/v1/weather",
+		},
+	}
+	resp := s.handleHTTP(req, state, false)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error: %s (code: %s)", resp.Error, resp.Code)
+	}
+	if sawHost != "api.example.com" {
+		t.Fatalf("Host header = %q, want api.example.com", sawHost)
+	}
+	if sawPath != "/v1/weather" {
+		t.Fatalf("path = %q, want /v1/weather", sawPath)
+	}
+}

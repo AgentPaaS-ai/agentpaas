@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -316,6 +317,30 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
 
+	// Rewrite URL for gateway-native HTTP routing (Bug 021). Preserve the
+	// original Host header so the gateway can match routes by hostname.
+	originalEndpoint := adapter.Endpoint()
+	gatewayURL := os.Getenv("AGENTPAAS_GATEWAY_URL")
+	if gatewayURL != "" {
+		rewritten, rewriteErr := rewriteURLForGateway(originalEndpoint, gatewayURL)
+		if rewriteErr != nil {
+			s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, "", "denied", "gateway rewrite failed: "+rewriteErr.Error())
+			return rpcError(req.ID, rewriteErr.Error(), "llm_failed")
+		}
+		origU, parseErr := url.Parse(originalEndpoint)
+		if parseErr != nil {
+			s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, "", "denied", "parse original URL: "+parseErr.Error())
+			return rpcError(req.ID, parseErr.Error(), "llm_failed")
+		}
+		rewrittenU, parseErr := url.Parse(rewritten)
+		if parseErr != nil {
+			s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, "", "denied", "parse rewrittenURL: "+parseErr.Error())
+			return rpcError(req.ID, parseErr.Error(), "llm_failed")
+		}
+		httpReq.URL = rewrittenU
+		httpReq.Host = origU.Host
+	}
+
 	// Execute the HTTP request.
 	// LLM calls (especially reasoning models like grok-4.3, o3, etc.) can take
 	// 30+ seconds to respond. The previous 5s timeout killed requests before
@@ -399,7 +424,33 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	}
 	body := stringParam(req.Params, "body")
 	bodyMarker, bodyHash := redactedBodyEvidence(body)
-	httpReq, err := http.NewRequestWithContext(context.Background(), method, rawURL, strings.NewReader(body))
+
+	// Rewrite for gateway-native routing (Bug 021). Original URL retained for
+	// audit/evidence; Host header set to original hostname for route matching.
+	requestURL := rawURL
+	var originalHost string
+	gatewayURL := os.Getenv("AGENTPAAS_GATEWAY_URL")
+	if gatewayURL != "" {
+		rewritten, rewriteErr := rewriteURLForGateway(rawURL, gatewayURL)
+		if rewriteErr != nil {
+			s.auditEgressDecision("harness", rawURL, method, "", "", "denied", "gateway rewrite failed: "+rewriteErr.Error())
+			state.setFailureEvidence(&UpstreamEvidence{
+				Availability: AvailabilityUnavailable,
+				Method:       method,
+				URL:          sanitizedURL(rawURL),
+				TimingMS:     elapsedMS(start),
+				BodyHash:     bodyHash,
+				BodyRedacted: bodyMarker,
+			})
+			return rpcError(req.ID, rewriteErr.Error(), "invalid_http_request")
+		}
+		if origU, parseErr := url.Parse(rawURL); parseErr == nil {
+			originalHost = origU.Host
+		}
+		requestURL = rewritten
+	}
+
+	httpReq, err := http.NewRequestWithContext(context.Background(), method, requestURL, strings.NewReader(body))
 	if err != nil {
 		s.auditEgressDecision("harness", rawURL, method, "", "", "denied", "invalid request: "+err.Error())
 		state.setFailureEvidence(&UpstreamEvidence{
@@ -411,6 +462,9 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 			BodyRedacted: bodyMarker,
 		})
 		return rpcError(req.ID, err.Error(), "invalid_http_request")
+	}
+	if originalHost != "" {
+		httpReq.Host = originalHost
 	}
 	for key, value := range stringMapParam(req.Params, "headers") {
 		httpReq.Header.Set(key, value)
@@ -722,4 +776,27 @@ func defaultString(value, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+// rewriteURLForGateway rewrites an outbound URL so traffic goes to the
+// agentgateway listener instead of the provider directly. The caller must set
+// req.Host to the original hostname so the gateway can match routes.
+// When gatewayURL is empty (test mode / no gateway), the original URL is returned.
+func rewriteURLForGateway(rawURL, gatewayURL string) (string, error) {
+	if gatewayURL == "" {
+		return rawURL, nil
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	gw, err := url.Parse(gatewayURL)
+	if err != nil {
+		return "", err
+	}
+	// https://openrouter.ai/v1/chat/completions
+	//   → http://gateway:7799/v1/chat/completions
+	u.Scheme = "http"
+	u.Host = gw.Host
+	return u.String(), nil
 }

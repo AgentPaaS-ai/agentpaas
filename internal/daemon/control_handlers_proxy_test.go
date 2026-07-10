@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
@@ -41,17 +42,19 @@ func TestRun_SetsProxyEnvWhenGatewayIPAvailable(t *testing.T) {
 		t.Fatal("Run() returned empty run_id")
 	}
 
-	wantProxy := []string{
-		fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
-		fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
-		fmt.Sprintf("http_proxy=http://%s:7799", gatewayIP),
-		fmt.Sprintf("https_proxy=http://%s:7799", gatewayIP),
-		"NO_PROXY=localhost,127.0.0.1",
-		"no_proxy=localhost,127.0.0.1",
+	wantGateway := []string{
+		fmt.Sprintf("AGENTPAAS_GATEWAY_IP=%s", gatewayIP),
+		fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP),
 	}
-	for _, want := range wantProxy {
+	for _, want := range wantGateway {
 		if !containsEnv(capturedSpec.Env, want) {
 			t.Fatalf("ContainerSpec.Env = %v, want to contain %q", capturedSpec.Env, want)
+		}
+	}
+	// Forward-proxy CONNECT env vars must not be set (Bug 021).
+	for _, env := range capturedSpec.Env {
+		if isLegacyProxyEnvVar(env) {
+			t.Fatalf("unexpected legacy proxy env %q (gateway-native routing uses AGENTPAAS_GATEWAY_URL)", env)
 		}
 	}
 }
@@ -81,8 +84,8 @@ func TestRun_OmitsProxyEnvWhenNoGatewayIP(t *testing.T) {
 	}
 
 	for _, env := range capturedSpec.Env {
-		if isProxyEnvVar(env) {
-			t.Fatalf("unexpected proxy env %q when gateway IP unavailable", env)
+		if isLegacyProxyEnvVar(env) || strings.HasPrefix(env, "AGENTPAAS_GATEWAY_URL=") {
+			t.Fatalf("unexpected gateway/proxy env %q when gateway IP unavailable", env)
 		}
 	}
 
@@ -122,13 +125,14 @@ func TestRun_OmitsProxyEnvWhenInspectContainerIPFails(t *testing.T) {
 	}
 
 	for _, env := range capturedSpec.Env {
-		if isProxyEnvVar(env) {
-			t.Fatalf("unexpected proxy env %q when InspectContainerIP failed", env)
+		if isLegacyProxyEnvVar(env) || strings.HasPrefix(env, "AGENTPAAS_GATEWAY_URL=") {
+			t.Fatalf("unexpected gateway/proxy env %q when InspectContainerIP failed", env)
 		}
 	}
 }
 
-func isProxyEnvVar(env string) bool {
+// isLegacyProxyEnvVar reports forward-proxy CONNECT env vars (removed in Bug 021).
+func isLegacyProxyEnvVar(env string) bool {
 	prefixes := []string{
 		"HTTP_PROXY=",
 		"HTTPS_PROXY=",
@@ -143,4 +147,13 @@ func isProxyEnvVar(env string) bool {
 		}
 	}
 	return false
+}
+
+// isProxyEnvVar is kept for adversary suite compatibility; treats legacy
+// proxy vars and the new AGENTPAAS_GATEWAY_URL as gateway-related env.
+func isProxyEnvVar(env string) bool {
+	if isLegacyProxyEnvVar(env) {
+		return true
+	}
+	return strings.HasPrefix(env, "AGENTPAAS_GATEWAY_URL=")
 }

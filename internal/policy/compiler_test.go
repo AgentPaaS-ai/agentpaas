@@ -310,15 +310,26 @@ func TestCompileGatewayConfig_PortEnforcement_Port443(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
+	outStr := string(out)
 	// agentgateway v1.3.0 matches routes by hostname, not port. Port
 	// enforcement is handled by Docker network topology (only HTTPS/443
 	// is proxied). The hostname must appear in the compiled config.
-	if !strings.Contains(string(out), "api.example.com") {
-		t.Errorf("expected hostname api.example.com in compiled config, got:\n%s", string(out))
+	if !strings.Contains(outStr, "api.example.com") {
+		t.Errorf("expected hostname api.example.com in compiled config, got:\n%s", outStr)
 	}
 	// The compiled config must be accepted by agentgateway — no `ports` field on routes.
-	if strings.Contains(string(out), "ports:") {
-		t.Errorf("ports field should not appear on routes (agentgateway v1.3.0 rejects it), got:\n%s", string(out))
+	if strings.Contains(outStr, "ports:") {
+		t.Errorf("ports field should not appear on routes (agentgateway v1.3.0 rejects it), got:\n%s", outStr)
+	}
+	// Bug 021: static host backend with backendTLS instead of dynamic.
+	if !strings.Contains(outStr, "host: api.example.com:443") {
+		t.Errorf("expected static host api.example.com:443, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "backendTLS:") {
+		t.Errorf("expected backendTLS for port 443, got:\n%s", outStr)
+	}
+	if strings.Contains(outStr, "dynamic:") {
+		t.Errorf("dynamic backends must not appear after Bug 021, got:\n%s", outStr)
 	}
 }
 
@@ -334,14 +345,25 @@ func TestCompileGatewayConfig_PortEnforcement_Non443(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
+	outStr := string(out)
 	// agentgateway matches by hostname; port 8080 is enforced at the network layer.
 	// The hostname must still appear.
-	if !strings.Contains(string(out), "api.example.com") {
-		t.Errorf("expected hostname api.example.com in compiled config, got:\n%s", string(out))
+	if !strings.Contains(outStr, "api.example.com") {
+		t.Errorf("expected hostname api.example.com in compiled config, got:\n%s", outStr)
 	}
 	// No ports field on routes (agentgateway v1.3.0 rejects it).
-	if strings.Contains(string(out), "ports:") {
-		t.Errorf("ports field should not appear on routes, got:\n%s", string(out))
+	if strings.Contains(outStr, "ports:") {
+		t.Errorf("ports field should not appear on routes, got:\n%s", outStr)
+	}
+	// Bug 021: non-443 uses static host without backendTLS.
+	if !strings.Contains(outStr, "host: api.example.com:8080") {
+		t.Errorf("expected static host api.example.com:8080, got:\n%s", outStr)
+	}
+	if strings.Contains(outStr, "backendTLS:") {
+		t.Errorf("backendTLS must not be set for non-443 ports, got:\n%s", outStr)
+	}
+	if strings.Contains(outStr, "dynamic:") {
+		t.Errorf("dynamic backends must not appear after Bug 021, got:\n%s", outStr)
 	}
 }
 

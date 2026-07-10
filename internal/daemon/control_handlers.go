@@ -519,12 +519,11 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		proxyEnv = append(proxyEnv,
 			fmt.Sprintf("AGENTPAAS_GATEWAY_IP=%s", gatewayIP),
 			fmt.Sprintf("AGENTPAAS_GATEWAY_SUBNET=%s", gatewaySubnet),
-			fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
-			fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
-			fmt.Sprintf("http_proxy=http://%s:7799", gatewayIP),
-			fmt.Sprintf("https_proxy=http://%s:7799", gatewayIP),
-			"NO_PROXY=localhost,127.0.0.1",
-			"no_proxy=localhost,127.0.0.1",
+			// Gateway-native HTTP routing (Bug 021): harness rewrites
+			// outbound HTTPS URLs to plain HTTP against the gateway and
+			// preserves the original Host header for route matching.
+			// Forward-proxy CONNECT (HTTP_PROXY/HTTPS_PROXY) is not used.
+			fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP),
 		)
 	}
 
