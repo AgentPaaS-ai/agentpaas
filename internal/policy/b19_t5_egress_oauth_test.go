@@ -284,21 +284,12 @@ func TestCompileGatewayConfig_OAuthBackendConfig(t *testing.T) {
 	}
 
 	// Should contain backendOAuth configuration.
-	if !strings.Contains(outStr, "backendOAuth") {
-		t.Errorf("expected backendOAuth in compiled config, got:\n%s", outStr)
+	if strings.Contains(outStr, "backendOAuth") {
+		t.Errorf("backendOAuth is not a valid agentgateway v1.3.0 route policy field and must be omitted, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "tokenEndpoint: https://api.x.ai/oauth/token") {
-		t.Errorf("expected tokenEndpoint in backendOAuth, got:\n%s", outStr)
-	}
-	if !strings.Contains(outStr, "clientId: my-client-id") {
-		t.Errorf("expected clientId: my-client-id in backendOAuth, got:\n%s", outStr)
-	}
-	if !strings.Contains(outStr, "refreshTokenCredential: xai-refresh-token") {
-		t.Errorf("expected refreshTokenCredential in backendOAuth, got:\n%s", outStr)
-	}
-	// Default header should be Authorization.
-	if !strings.Contains(outStr, "header: Authorization") {
-		t.Errorf("expected header: Authorization in backendOAuth, got:\n%s", outStr)
+
+	if !strings.Contains(outStr, "credential: xai-oauth") {
+		t.Errorf("expected route credential binding xai-oauth, got:\n%s", outStr)
 	}
 }
 
@@ -331,9 +322,11 @@ func TestCompileGatewayConfig_OAuthBackendConfig_CustomHeader(t *testing.T) {
 		t.Fatalf("compile failed: %v", err)
 	}
 	outStr := string(out)
-
-	if !strings.Contains(outStr, "header: X-Custom-Auth") {
-		t.Errorf("expected custom header X-Custom-Auth in backendOAuth, got:\n%s", outStr)
+	if strings.Contains(outStr, "backendOAuth") {
+		t.Errorf("backendOAuth must be omitted, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "credential: xai-oauth") {
+		t.Errorf("expected route credential binding xai-oauth, got:\n%s", outStr)
 	}
 }
 
@@ -359,15 +352,6 @@ func TestCompileCredentialRules_OAuthRule(t *testing.T) {
 	}
 	outStr := string(out)
 
-	if !strings.Contains(outStr, "tokenEndpoint: https://api.x.ai/oauth/token") {
-		t.Errorf("expected tokenEndpoint in credential rules, got:\n%s", outStr)
-	}
-	if !strings.Contains(outStr, "clientId: my-client-id") {
-		t.Errorf("expected clientId in credential rules, got:\n%s", outStr)
-	}
-	if !strings.Contains(outStr, "refreshTokenCredential: xai-refresh-token") {
-		t.Errorf("expected refreshTokenCredential in credential rules, got:\n%s", outStr)
-	}
 	if !strings.Contains(outStr, "oauth:") {
 		t.Errorf("expected oauth field in credential rule, got:\n%s", outStr)
 	}
@@ -408,11 +392,11 @@ func TestCompileGatewayConfig_OAuthWithLLMRateLimit(t *testing.T) {
 	outStr := string(out)
 
 	// Should have both backendOAuth and localRateLimit
-	if !strings.Contains(outStr, "backendOAuth") {
-		t.Errorf("expected backendOAuth in compiled config, got:\n%s", outStr)
+	if strings.Contains(outStr, "backendOAuth") {
+		t.Errorf("backendOAuth is not a valid agentgateway v1.3.0 route policy field and must be omitted, got:\n%s", outStr)
 	}
 	if !strings.Contains(outStr, "localRateLimit") {
-		t.Errorf("expected localRateLimit alongside backendOAuth, got:\n%s", outStr)
+		t.Errorf("expected localRateLimit alongside oauth credential binding, got:\n%s", outStr)
 	}
 }
 
@@ -542,8 +526,8 @@ func TestCompileGatewayConfig_OAuthOnNonLLMDomain(t *testing.T) {
 	outStr := string(out)
 
 	// Non-LLM route should still get backendOAuth.
-	if !strings.Contains(outStr, "backendOAuth") {
-		t.Errorf("expected backendOAuth on non-LLM route, got:\n%s", outStr)
+	if strings.Contains(outStr, "backendOAuth") {
+		t.Errorf("backendOAuth must be omitted on non-LLM route, got:\n%s", outStr)
 	}
 	// Non-LLM route should NOT get localRateLimit.
 	if strings.Contains(outStr, "localRateLimit") {

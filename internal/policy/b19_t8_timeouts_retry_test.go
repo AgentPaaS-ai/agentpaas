@@ -433,7 +433,7 @@ func TestCompileGatewayConfig_TimeoutAndRetryWithOAuth(t *testing.T) {
 	if !strings.Contains(outStr, "attempts: 2") {
 		t.Errorf("expected attempts: 2, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "backendOAuth") {
-		t.Errorf("expected backendOAuth with timeout+retry, got:\n%s", outStr)
+	if strings.Contains(outStr, "backendOAuth") {
+		t.Errorf("backendOAuth must be omitted (not agentgateway v1.3.0 route field), got:\n%s", outStr)
 	}
 }

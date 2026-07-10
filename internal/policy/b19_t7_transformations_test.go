@@ -308,24 +308,22 @@ func TestCompileGatewayConfig_TransformationsOnLLMRoute(t *testing.T) {
 		t.Fatalf("output is not valid YAML: %v\n%s", err, outStr)
 	}
 
-	// Transformation should appear in the output.
-	if !strings.Contains(outStr, "transformation") {
-		t.Errorf("expected transformation in compiled config, got:\n%s", outStr)
+	// agentgateway transformations: request.set + response.remove.
+	if !strings.Contains(outStr, "transformations:") {
+		t.Errorf("expected transformations in compiled config, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "injectHeaders") {
-		t.Errorf("expected injectHeaders in compiled config, got:\n%s", outStr)
+	if !strings.Contains(outStr, "set:") {
+		t.Errorf("expected request set in compiled config, got:\n%s", outStr)
 	}
 	if !strings.Contains(outStr, "X-Agent-ID") {
 		t.Errorf("expected X-Agent-ID in compiled config, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "injectSystemPrompt") {
-		t.Errorf("expected injectSystemPrompt in compiled config, got:\n%s", outStr)
+	// inject_system_prompt is omitted for host backends (no gateway field).
+	if strings.Contains(outStr, "injectSystemPrompt") || strings.Contains(outStr, "Always be concise") {
+		t.Errorf("inject_system_prompt must not appear in host-backend gateway config, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "Always be concise") {
-		t.Errorf("expected system prompt content in compiled config, got:\n%s", outStr)
-	}
-	if !strings.Contains(outStr, "removeHeaders") {
-		t.Errorf("expected removeHeaders in compiled config, got:\n%s", outStr)
+	if !strings.Contains(outStr, "remove:") {
+		t.Errorf("expected response remove in compiled config, got:\n%s", outStr)
 	}
 	if !strings.Contains(outStr, "X-Internal-Debug") {
 		t.Errorf("expected X-Internal-Debug in compiled config, got:\n%s", outStr)
@@ -370,7 +368,7 @@ func TestCompileGatewayConfig_TransformationsWithRateLimits(t *testing.T) {
 		},
 		Transformations: &Transformation{
 			Request: &RequestTransform{
-				InjectSystemPrompt: "Be concise.",
+				InjectHeaders: map[string]string{"X-Mode": "concise"},
 			},
 		},
 	}
@@ -380,8 +378,8 @@ func TestCompileGatewayConfig_TransformationsWithRateLimits(t *testing.T) {
 	}
 	outStr := string(out)
 
-	if !strings.Contains(outStr, "transformation") {
-		t.Errorf("expected transformation in compiled config, got:\n%s", outStr)
+	if !strings.Contains(outStr, "transformations:") {
+		t.Errorf("expected transformations in compiled config, got:\n%s", outStr)
 	}
 	if !strings.Contains(outStr, "localRateLimit") {
 		t.Errorf("expected localRateLimit in compiled config, got:\n%s", outStr)
@@ -409,15 +407,15 @@ func TestCompileGatewayConfig_RequestOnlyTransformation(t *testing.T) {
 	}
 	outStr := string(out)
 
-	if !strings.Contains(outStr, "injectHeaders") {
-		t.Errorf("expected injectHeaders in output, got:\n%s", outStr)
+	if !strings.Contains(outStr, "set:") {
+		t.Errorf("expected request set in output, got:\n%s", outStr)
 	}
 	if !strings.Contains(outStr, "X-Custom") {
 		t.Errorf("expected X-Custom in output, got:\n%s", outStr)
 	}
 	// No response path.
-	if strings.Contains(outStr, "removeHeaders") {
-		t.Errorf("removeHeaders should not appear when only request transforms are set, got:\n%s", outStr)
+	if strings.Contains(outStr, "remove:") && strings.Contains(outStr, "response:") {
+		t.Errorf("response remove should not appear when only request transforms are set, got:\n%s", outStr)
 	}
 }
 
@@ -440,14 +438,14 @@ func TestCompileGatewayConfig_ResponseOnlyTransformation(t *testing.T) {
 	}
 	outStr := string(out)
 
-	if !strings.Contains(outStr, "removeHeaders") {
-		t.Errorf("expected removeHeaders in output, got:\n%s", outStr)
+	if !strings.Contains(outStr, "remove:") {
+		t.Errorf("expected response remove in output, got:\n%s", outStr)
 	}
 	if !strings.Contains(outStr, "X-Debug") {
 		t.Errorf("expected X-Debug in output, got:\n%s", outStr)
 	}
-	if strings.Contains(outStr, "injectHeaders") {
-		t.Errorf("injectHeaders should not appear when only response transforms are set, got:\n%s", outStr)
+	if strings.Contains(outStr, "set:") && strings.Contains(outStr, "request:") {
+		t.Errorf("request set should not appear when only response transforms are set, got:\n%s", outStr)
 	}
 }
 

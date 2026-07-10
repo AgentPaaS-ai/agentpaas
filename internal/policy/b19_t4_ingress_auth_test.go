@@ -298,24 +298,28 @@ func TestCompileGatewayConfig_IngressAuth_JWT(t *testing.T) {
 	}
 	outStr := string(out)
 
-	// Must be valid YAML.
 	var decoded any
 	if err := yaml.Unmarshal(out, &decoded); err != nil {
 		t.Fatalf("output is not valid YAML: %v\n%s", err, outStr)
 	}
 
-	// JWT policy should appear on the ingress route.
-	if !strings.Contains(outStr, "jwt:") {
-		t.Errorf("expected jwt policy in gateway config, got:\n%s", outStr)
+	if !strings.Contains(outStr, "jwtAuth:") {
+		t.Errorf("expected jwtAuth policy in gateway config, got:\n%s", outStr)
 	}
 	if !strings.Contains(outStr, "issuer: https://auth.example.com") {
-		t.Errorf("expected issuer in jwt policy, got:\n%s", outStr)
+		t.Errorf("expected issuer in jwtAuth policy, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "audience: agentpaas") {
-		t.Errorf("expected audience in jwt policy, got:\n%s", outStr)
+	if !strings.Contains(outStr, "agentpaas") {
+		t.Errorf("expected audience agentpaas in jwtAuth policy, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "jwksUrl: https://auth.example.com/.well-known/jwks.json") {
-		t.Errorf("expected jwksUrl in jwt policy, got:\n%s", outStr)
+	if !strings.Contains(outStr, "jwks:") {
+		t.Errorf("expected jwks in jwtAuth policy, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "url: https://auth.example.com/.well-known/jwks.json") {
+		t.Errorf("expected jwks.url in jwtAuth policy, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "mode: strict") {
+		t.Errorf("expected jwtAuth mode strict, got:\n%s", outStr)
 	}
 }
 
@@ -343,21 +347,25 @@ func TestCompileGatewayConfig_IngressAuth_APIKey(t *testing.T) {
 	}
 	outStr := string(out)
 
-	// Must be valid YAML.
 	var decoded any
 	if err := yaml.Unmarshal(out, &decoded); err != nil {
 		t.Fatalf("output is not valid YAML: %v\n%s", err, outStr)
 	}
 
-	// API key policy should appear on the ingress route.
 	if !strings.Contains(outStr, "apiKey:") {
 		t.Errorf("expected apiKey policy in gateway config, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "header: X-API-Key") {
-		t.Errorf("expected header in apiKey policy, got:\n%s", outStr)
+	if !strings.Contains(outStr, "mode: strict") {
+		t.Errorf("expected apiKey mode strict, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "credential: trigger-api-key") {
-		t.Errorf("expected credential in apiKey policy, got:\n%s", outStr)
+	if !strings.Contains(outStr, "keys:") {
+		t.Errorf("expected apiKey.keys, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "name: X-API-Key") {
+		t.Errorf("expected apiKey.location.header.name X-API-Key, got:\n%s", outStr)
+	}
+	if !strings.Contains(outStr, "credential_id: trigger-api-key") {
+		t.Errorf("expected credential_id metadata for trigger-api-key, got:\n%s", outStr)
 	}
 }
 
@@ -388,10 +396,9 @@ func TestCompileGatewayConfig_IngressAuth_NoAuthOnNonIngressRoutes(t *testing.T)
 	}
 	outStr := string(out)
 
-	// JWT should appear exactly once (on the ingress route only).
-	jwtCount := strings.Count(outStr, "jwt:")
+	jwtCount := strings.Count(outStr, "jwtAuth:")
 	if jwtCount != 1 {
-		t.Errorf("expected jwt to appear exactly once, got %d occurrences:\n%s", jwtCount, outStr)
+		t.Errorf("expected jwtAuth: count=1 (ingress only), got %d:\n%s", jwtCount, outStr)
 	}
 }
 
@@ -413,7 +420,7 @@ func TestCompileGatewayConfig_BackwardCompat_NoIngressAuth(t *testing.T) {
 	}
 
 	// Should not contain auth policies.
-	if strings.Contains(string(out), "jwt:") {
+	if strings.Contains(string(out), "jwtAuth:") {
 		t.Error("backward compat policy should not have jwt auth")
 	}
 	if strings.Contains(string(out), "apiKey:") {
@@ -442,7 +449,7 @@ func TestCompileGatewayConfig_BackwardCompat_NoIngress(t *testing.T) {
 	outStr := string(out)
 
 	// No ingress rules → no ingress bind → no jwt should appear.
-	if strings.Contains(outStr, "jwt:") {
+	if strings.Contains(outStr, "jwtAuth:") {
 		t.Errorf("jwt should NOT appear when no ingress rules exist, got:\n%s", outStr)
 	}
 }
