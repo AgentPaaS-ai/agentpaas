@@ -6,6 +6,18 @@ import (
 	"testing"
 )
 
+func TestCredentialInvisibility_EchoedUpstreamBody(t *testing.T) {
+	const sentinel = "ZERO-VIS-SENTINEL-2026-DO-NOT-LEAK"
+	body := `{"headers":{"Authorization":"` + sentinel + `"}}`
+	got := redactCredentialValue(body, sentinel)
+	if strings.Contains(got, sentinel) {
+		t.Fatalf("upstream response leaked credential: %s", got)
+	}
+	if !strings.Contains(got, "[REDACTED:credential]") {
+		t.Fatalf("upstream response missing credential redaction: %s", got)
+	}
+}
+
 // TestCredentialInvisibility_NoSecretInPayload verifies that credentials
 // injected via the invoke payload are stripped before reaching the agent
 // handler, and do not appear in the response.

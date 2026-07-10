@@ -16,9 +16,10 @@ import (
 	"time"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
-	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -1087,6 +1088,56 @@ func newAuditCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newAuditQueryCmd())
 	cmd.AddCommand(newAuditExportCmd())
+	cmd.AddCommand(newAuditVerifyCmd())
+	return cmd
+}
+
+func newAuditVerifyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "verify",
+		Short: "Verify the audit hash chain and checkpoints",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			auditPath, _ := cmd.Flags().GetString("audit")
+			checkpointsPath, _ := cmd.Flags().GetString("checkpoints")
+			if auditPath == "" || checkpointsPath == "" {
+				homeDir, err := homeDirPath(cmd)
+				if err != nil {
+					return err
+				}
+				stateDir := filepath.Join(homeDir, "state")
+				if auditPath == "" {
+					auditPath = filepath.Join(stateDir, "audit.jsonl")
+				}
+				if checkpointsPath == "" {
+					checkpointsPath = filepath.Join(stateDir, "audit.jsonl.checkpoints")
+				}
+			}
+
+			result, err := audit.VerifyAuditChain(auditPath, checkpointsPath, nil)
+			if err != nil {
+				return fmt.Errorf("audit verification failed: %w", err)
+			}
+			if jsonOutput(cmd) {
+				if err := json.NewEncoder(cmd.OutOrStdout()).Encode(result); err != nil {
+					return err
+				}
+			} else if len(result.Issues) == 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Audit chain valid: %d records, %d checkpoints\n", result.AuditRecordCount, result.CheckpointCount)
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), "Audit chain verification FAILED")
+				for _, issue := range result.Issues {
+					fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", issue.Message)
+				}
+			}
+			if len(result.Issues) > 0 {
+				return fmt.Errorf("audit chain verification failed: %d issue(s)", len(result.Issues))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().String("audit", "", "Audit JSONL path")
+	cmd.Flags().String("checkpoints", "", "Audit checkpoints JSONL path")
 	return cmd
 }
 

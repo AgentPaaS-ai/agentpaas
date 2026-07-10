@@ -516,6 +516,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	}
 	body := stringParam(req.Params, "body")
 	bodyMarker, bodyHash := redactedBodyEvidence(body)
+	credentialValue := ""
 
 	// Rewrite for gateway-native routing (Bug 021). Original URL retained for
 	// audit/evidence; Host header set to original hostname for route matching.
@@ -580,6 +581,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		}
 		header := defaultString(cred.Header, "Authorization")
 		httpReq.Header.Set(header, cred.Value)
+		credentialValue = cred.Value
 	}
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(httpReq)
@@ -622,7 +624,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	}
 	// Gateway-native policy denials return HTTP 403 with an explicit body.
 	// Treat these as egress_denied (not allowed) even though TCP to the gateway succeeded.
-	bodyStr := string(respBody)
+	bodyStr := redactCredentialValue(string(respBody), credentialValue)
 	if isGatewayEgressDenied(resp.StatusCode, bodyStr) {
 		reason := "gateway denied egress"
 		if bodyStr != "" {
@@ -656,6 +658,17 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 			"body":        bodyStr,
 		},
 	}
+}
+
+// redactCredentialValue prevents a credential from becoming agent-visible when
+// an upstream echoes request headers (for example, httpbin /headers). The
+// broker may inject a secret into an outbound request, but no response body,
+// invoke result, or persisted run artifact may carry that value back.
+func redactCredentialValue(body, credentialValue string) string {
+	if credentialValue == "" {
+		return body
+	}
+	return strings.ReplaceAll(body, credentialValue, "[REDACTED:credential]")
 }
 
 // isGatewayEgressDenied detects agentgateway allowlist denials under native HTTP routing.
