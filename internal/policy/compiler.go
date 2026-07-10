@@ -13,9 +13,9 @@ import (
 
 // gatewayConfig represents the top-level agentgateway configuration.
 type gatewayConfig struct {
-	Config           *rawConfig                `yaml:"config,omitempty"`
-	Binds            []gatewayBind             `yaml:"binds,omitempty"`
-	FrontendPolicies *gatewayFrontendPolicies  `yaml:"frontendPolicies,omitempty"`
+	Config           *rawConfig               `yaml:"config,omitempty"`
+	Binds            []gatewayBind            `yaml:"binds,omitempty"`
+	FrontendPolicies *gatewayFrontendPolicies `yaml:"frontendPolicies,omitempty"`
 }
 
 type rawConfig struct {
@@ -37,7 +37,7 @@ type gatewayBind struct {
 }
 
 type gatewayListener struct {
-	Protocol string        `yaml:"protocol,omitempty"`
+	Protocol string         `yaml:"protocol,omitempty"`
 	Routes   []gatewayRoute `yaml:"routes,omitempty"`
 }
 
@@ -51,8 +51,8 @@ type gatewayRoute struct {
 }
 
 type gatewayRouteMatch struct {
-	Method string             `yaml:"method,omitempty"`
-	Path   *gatewayPathMatch  `yaml:"path,omitempty"`
+	Method string            `yaml:"method,omitempty"`
+	Path   *gatewayPathMatch `yaml:"path,omitempty"`
 }
 
 // gatewayPathMatch defines path-based route matching. agentgateway expects
@@ -186,9 +186,9 @@ type gatewayGuardrails struct {
 
 // gatewayGuardrail is a union type for a single guardrail entry.
 type gatewayGuardrail struct {
-	Regex            *gatewayRegexGuardrail     `yaml:"regex,omitempty"`
-	OpenAIModeration *gatewayOpenAIModeration   `yaml:"openAIModeration,omitempty"`
-	Webhook          *gatewayWebhookGuardrail   `yaml:"webhook,omitempty"`
+	Regex            *gatewayRegexGuardrail   `yaml:"regex,omitempty"`
+	OpenAIModeration *gatewayOpenAIModeration `yaml:"openAIModeration,omitempty"`
+	Webhook          *gatewayWebhookGuardrail `yaml:"webhook,omitempty"`
 }
 
 // gatewayRegexGuardrail represents a regex-based guardrail.
@@ -247,11 +247,11 @@ type gatewayMCPBackend struct {
 }
 
 type gatewayMCPTarget struct {
-	Name         string             `yaml:"name"`
-	Stdio        *gatewayStdio      `yaml:"stdio,omitempty"`
-	MCP          *gatewayMCPHost    `yaml:"mcp,omitempty"`
-	AllowedTools []string           `yaml:"allowedTools,omitempty"`
-	DeniedTools  []string           `yaml:"deniedTools,omitempty"`
+	Name         string          `yaml:"name"`
+	Stdio        *gatewayStdio   `yaml:"stdio,omitempty"`
+	MCP          *gatewayMCPHost `yaml:"mcp,omitempty"`
+	AllowedTools []string        `yaml:"allowedTools,omitempty"`
+	DeniedTools  []string        `yaml:"deniedTools,omitempty"`
 }
 
 type gatewayStdio struct {
@@ -275,17 +275,17 @@ type connectConfig struct {
 // CredentialRule represents a credential injection rule by id only.
 // The actual secret values are injected at runtime by the secrets broker.
 type CredentialRule struct {
-	ID     string `yaml:"id"`
-	Header string `yaml:"header,omitempty"`
-	Value  string `yaml:"value,omitempty"`
+	ID     string               `yaml:"id"`
+	Header string               `yaml:"header,omitempty"`
+	Value  string               `yaml:"value,omitempty"`
 	OAuth  *OAuthCredentialRule `yaml:"oauth,omitempty"`
 }
 
 // OAuthCredentialRule carries the OAuth metadata needed by the gateway
 // to obtain and refresh OAuth tokens at runtime.
 type OAuthCredentialRule struct {
-	TokenEndpoint         string `yaml:"tokenEndpoint"`
-	ClientID              string `yaml:"clientId"`
+	TokenEndpoint          string `yaml:"tokenEndpoint"`
+	ClientID               string `yaml:"clientId"`
 	RefreshTokenCredential string `yaml:"refreshTokenCredential"`
 }
 
@@ -772,7 +772,8 @@ func buildGatewayTransformation(p *Policy) *gatewayTransformation {
 			}
 			req.Set = set
 		}
-		// inject_system_prompt intentionally ignored at gateway compile time.
+		// inject_system_prompt is applied by the harness using provider-safe
+		// request shaping; agentgateway has no host-backend field for it.
 		if len(req.Set) > 0 || len(req.Add) > 0 || len(req.Remove) > 0 || req.Body != "" {
 			gt.Request = req
 		}
@@ -879,8 +880,8 @@ func buildIngressAuthPolicies(p *Policy) *gatewayRoutePolicies {
 		// agentgateway requires concrete key values under keys[].key.
 		// Placeholder key is NOT a $env expansion form; daemon rewrites with real secret.
 		// Do NOT use $VAR form — agentgateway expands $ as env vars at startup.
-			// Placeholder is rewritten by the daemon once Keychain values are available.
-			keyPlaceholder := SecretPlaceholder(p.IngressAuth.APIKey.Credential)
+		// Placeholder is rewritten by the daemon once Keychain values are available.
+		keyPlaceholder := SecretPlaceholder(p.IngressAuth.APIKey.Credential)
 		return &gatewayRoutePolicies{
 			APIKey: &gatewayAPIKeyAuth{
 				Mode: "strict",

@@ -109,7 +109,7 @@ func (s *harnessRPCServer) SetInvoke(payload map[string]any, budget *BudgetEnfor
 		budget:      budget,
 		payload:     payload,
 		terminate:   terminate,
-		credentials: s.credentials,    // Use pre-loaded credentials, not from payload
+		credentials: s.credentials, // Use pre-loaded credentials, not from payload
 		mcpAllowed:  mcpAllowlistFromPayload(payload),
 	}
 }
@@ -299,6 +299,15 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	provider := firstString(llmConfig, "provider")
 	model := firstString(llmConfig, "model")
 	credentialID := firstString(llmConfig, "credential")
+	maxTokensPerRequest := 0
+	if budget, ok := state.payload["budget"].(map[string]any); ok {
+		if value, ok := budget["max_tokens_per_request"].(int); ok {
+			maxTokensPerRequest = value
+		}
+		if value, ok := budget["max_tokens_per_request"].(float64); ok {
+			maxTokensPerRequest = int(value)
+		}
+	}
 
 	// Get the provider adapter.
 	adapter := llm.GetAdapter(provider)
@@ -340,7 +349,13 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 
 	// Build the HTTP request.
 	ctx := context.Background()
-	httpReq, err := adapter.BuildRequest(ctx, model, prompt, cred.Value)
+	var httpReq *http.Request
+	var err error
+	if maxTokensPerRequest > 0 {
+		httpReq, err = adapter.BuildRequest(ctx, model, prompt, cred.Value, maxTokensPerRequest)
+	} else {
+		httpReq, err = adapter.BuildRequest(ctx, model, prompt, cred.Value)
+	}
 	if err != nil {
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "build request failed: "+err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
@@ -422,6 +437,13 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
+	if observabilityEnabled(state.payload) {
+		inputTokens, outputTokens := result.InputTokens, result.OutputTokens
+		if inputTokens == 0 && outputTokens == 0 {
+			outputTokens = tokens
+		}
+		s.auditLLMResult(provider, model, inputTokens, outputTokens, result.Tokens)
+	}
 
 	// Audit allowed egress.
 	respModel := result.Model
@@ -439,6 +461,39 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 			"model":  respModel,
 		},
 	}
+}
+
+func observabilityEnabled(payload map[string]any) bool {
+	config, ok := payload["observability"].(map[string]any)
+	if !ok {
+		return false
+	}
+	switch value := config["cost_tracking"].(type) {
+	case bool:
+		return value
+	case string:
+		return value == "true"
+	default:
+		return false
+	}
+}
+
+func (s *harnessRPCServer) auditLLMResult(provider, model string, inputTokens, outputTokens, totalTokens int64) {
+	if s.audit == nil {
+		return
+	}
+	if totalTokens == 0 {
+		totalTokens = inputTokens + outputTokens
+	}
+	s.audit.Append(audit.AuditRecord{
+		Timestamp: time.Now().UTC().Format(time.RFC3339Nano), EventType: "llm_result",
+		DeploymentMode: "local", Actor: "harness",
+		Payload: map[string]interface{}{
+			"provider": provider, "model": model,
+			"input_tokens": inputTokens, "output_tokens": outputTokens, "total_tokens": totalTokens,
+			"estimated_cost_usd": llm.EstimateCost(provider, model, inputTokens, outputTokens),
+		},
+	})
 }
 
 func (s *harnessRPCServer) handleRecordIteration(req rpcRequest, state *rpcInvokeState) rpcResponse {

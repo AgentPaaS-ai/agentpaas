@@ -16,7 +16,7 @@ func (a *anthropicAdapter) Name() string       { return "anthropic" }
 func (a *anthropicAdapter) Endpoint() string   { return anthropicEndpoint }
 func (a *anthropicAdapter) AuthHeader() string { return "x-api-key" }
 
-func (a *anthropicAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string) (*http.Request, error) {
+func (a *anthropicAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string, maxTokens ...int) (*http.Request, error) {
 	if model == "" {
 		model = defaultAnthropicModel
 	}
@@ -26,6 +26,9 @@ func (a *anthropicAdapter) BuildRequest(ctx context.Context, model, prompt, cred
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
+	}
+	if len(maxTokens) > 0 && maxTokens[0] > 0 {
+		body["max_tokens"] = maxTokens[0]
 	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
@@ -51,6 +54,7 @@ func (a *anthropicAdapter) ParseResponse(statusCode int, body []byte) (*LLMResul
 			Text string `json:"text"`
 		} `json:"content"`
 		Usage struct {
+			InputTokens  int64 `json:"input_tokens"`
 			OutputTokens int64 `json:"output_tokens"`
 		} `json:"usage"`
 		Model string `json:"model"`
@@ -63,8 +67,10 @@ func (a *anthropicAdapter) ParseResponse(statusCode int, body []byte) (*LLMResul
 		text = resp.Content[0].Text
 	}
 	return &LLMResult{
-		Text:   text,
-		Tokens: resp.Usage.OutputTokens,
-		Model:  resp.Model,
+		Text:         text,
+		Tokens:       resp.Usage.OutputTokens,
+		InputTokens:  resp.Usage.InputTokens,
+		OutputTokens: resp.Usage.OutputTokens,
+		Model:        resp.Model,
 	}, nil
 }

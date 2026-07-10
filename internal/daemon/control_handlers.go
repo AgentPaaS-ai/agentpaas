@@ -22,8 +22,8 @@ import (
 	"strings"
 	"time"
 
-	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas"
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
@@ -202,8 +202,9 @@ func gatewaySubnetFromIP(ipStr string) string {
 // harness can open route traffic. On macOS/Colima, the host cannot TCP-dial
 // container-network IPs (bridged ranging is isolated), so host Dial of :15021
 // never succeeds even when the gateway is healthy. Instead we:
-//  1) require a container IP on the internal network (attachment success)
-//  2) scrape container logs for agentgateway's ready markers
+//  1. require a container IP on the internal network (attachment success)
+//  2. scrape container logs for agentgateway's ready markers
+//
 // This keeps startup ordered without depending on host↔container L3 routes.
 func waitForGateway(ctx context.Context, rt runtime.RuntimeDriver, gatewayID runtime.ContainerID, netID string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
@@ -1371,6 +1372,7 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		// pass it to the harness as the per-request budget too so the
 		// harness BudgetEnforcer caps tokens per LLM call.
 		if parsedPolicy.LLMBudget.MaxTokensPerRequest > 0 {
+			budget["max_tokens_per_request"] = parsedPolicy.LLMBudget.MaxTokensPerRequest
 			if _, ok := budget["max_tokens"]; !ok {
 				budget["max_tokens"] = parsedPolicy.LLMBudget.MaxTokensPerRequest
 			}
@@ -1413,11 +1415,16 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 				payload["inject_system_prompt"] = sp
 			}
 		}
+		if parsedPolicy.Observability != nil {
+			payload["observability"] = map[string]any{
+				"cost_tracking": parsedPolicy.Observability.CostTracking,
+				"otel_endpoint": parsedPolicy.Observability.OTelEndpoint,
+			}
+		}
 	}
 
 	return payload, nil
 }
-
 
 // rewriteGatewayConfigSecrets replaces __agentpaas_secret:<id> placeholders in
 // the compiled gateway config with concrete Keychain secret values. agentgateway
@@ -1933,11 +1940,11 @@ func auditChainVerificationToProto(result *audit.VerificationResult) *controlv1.
 		})
 	}
 	return &controlv1.AuditChainVerification{
-		Verified:          len(result.Issues) == 0,
-		AuditRecordCount:  result.AuditRecordCount,
-		AuditHeadSeq:      result.AuditHeadSeq,
-		CheckpointCount:   int32(result.CheckpointCount),
-		Issues:            issues,
+		Verified:         len(result.Issues) == 0,
+		AuditRecordCount: result.AuditRecordCount,
+		AuditHeadSeq:     result.AuditHeadSeq,
+		CheckpointCount:  int32(result.CheckpointCount),
+		Issues:           issues,
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 type ProviderAdapter interface {
 	// BuildRequest creates an HTTP request for the LLM provider.
 	// credentialValue is the API key (NEVER logged or included in errors).
-	BuildRequest(ctx context.Context, model, prompt string, credentialValue string) (*http.Request, error)
+	BuildRequest(ctx context.Context, model, prompt string, credentialValue string, maxTokens ...int) (*http.Request, error)
 	// ParseResponse extracts text and token count from the provider response body.
 	ParseResponse(statusCode int, body []byte) (*LLMResult, error)
 	// Endpoint returns the provider's API endpoint URL (for logging/audit).
@@ -25,9 +25,22 @@ type ProviderAdapter interface {
 
 // LLMResult holds the parsed response from an LLM provider call.
 type LLMResult struct {
-	Text   string `json:"text"`
-	Tokens int64  `json:"tokens"`
-	Model  string `json:"model,omitempty"`
+	Text         string `json:"text"`
+	Tokens       int64  `json:"tokens"`
+	Model        string `json:"model,omitempty"`
+	InputTokens  int64  `json:"input_tokens,omitempty"`
+	OutputTokens int64  `json:"output_tokens,omitempty"`
+}
+
+// EstimateCost returns a conservative per-call USD estimate. Unknown models
+// use the documented fallback price so observability remains useful without
+// exposing provider credentials or requiring a remote price lookup.
+func EstimateCost(provider, model string, inputTokens, outputTokens int64) float64 {
+	inputRate, outputRate := 0.000003, 0.000003
+	if strings.EqualFold(provider, "openrouter") && strings.EqualFold(model, "deepseek/deepseek-v4-flash") {
+		inputRate, outputRate = 0.00000011, 0.00000028
+	}
+	return float64(inputTokens)*inputRate + float64(outputTokens)*outputRate
 }
 
 // GetAdapter returns the adapter for the given provider name.

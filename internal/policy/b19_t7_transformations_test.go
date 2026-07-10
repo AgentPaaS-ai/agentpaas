@@ -318,7 +318,9 @@ func TestCompileGatewayConfig_TransformationsOnLLMRoute(t *testing.T) {
 	if !strings.Contains(outStr, "X-Agent-ID") {
 		t.Errorf("expected X-Agent-ID in compiled config, got:\n%s", outStr)
 	}
-	// inject_system_prompt is omitted for host backends (no gateway field).
+	// inject_system_prompt is applied by the harness, where provider-specific
+	// request shaping is available, rather than emitted as an unknown gateway
+	// field.
 	if strings.Contains(outStr, "injectSystemPrompt") || strings.Contains(outStr, "Always be concise") {
 		t.Errorf("inject_system_prompt must not appear in host-backend gateway config, got:\n%s", outStr)
 	}
