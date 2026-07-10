@@ -140,6 +140,24 @@ func resolveRunTarget(cmd *cobra.Command, client controlv1.ControlServiceClient,
 		if agentYAML.Name == "" {
 			return "", fmt.Errorf("agent.yaml in %s has no 'name' field", absPath)
 		}
+		// A project-path run must use the exact source that was packed. The
+		// daemon verifies deployed artifacts, but it cannot see the caller's
+		// project directory, so perform this comparison at the CLI boundary.
+		if homeDir, homeErr := getAgentpaasHome(cmd); homeErr == nil {
+			if lock, lockErr := pack.LoadDeployedLock(homeDir, agentYAML.Name); lockErr == nil {
+				ignore, ignoreErr := pack.LoadIgnore(absPath)
+				if ignoreErr != nil {
+					return "", fmt.Errorf("load .agentpaasignore from %s: %w", absPath, ignoreErr)
+				}
+				currentDigest, digestErr := pack.ComputeBuildInputDigest(absPath, ignore)
+				if digestErr != nil {
+					return "", fmt.Errorf("compute source digest for %s: %w", absPath, digestErr)
+				}
+				if currentDigest != lock.BuildInputDigest {
+					return "", fmt.Errorf("source changed since pack; repack before running")
+				}
+			}
+		}
 		return agentYAML.Name, nil
 	}
 
