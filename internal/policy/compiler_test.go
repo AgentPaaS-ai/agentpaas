@@ -310,9 +310,15 @@ func TestCompileGatewayConfig_PortEnforcement_Port443(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
-	// Port 443 should appear in the compiled config.
-	if !strings.Contains(string(out), "ports:") || !strings.Contains(string(out), "443") {
-		t.Errorf("expected port 443 in compiled config, got:\n%s", string(out))
+	// agentgateway v1.3.0 matches routes by hostname, not port. Port
+	// enforcement is handled by Docker network topology (only HTTPS/443
+	// is proxied). The hostname must appear in the compiled config.
+	if !strings.Contains(string(out), "api.example.com") {
+		t.Errorf("expected hostname api.example.com in compiled config, got:\n%s", string(out))
+	}
+	// The compiled config must be accepted by agentgateway — no `ports` field on routes.
+	if strings.Contains(string(out), "ports:") {
+		t.Errorf("ports field should not appear on routes (agentgateway v1.3.0 rejects it), got:\n%s", string(out))
 	}
 }
 
@@ -328,9 +334,14 @@ func TestCompileGatewayConfig_PortEnforcement_Non443(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
-	// Port 8080 must appear — port enforcement is present in the config.
-	if !strings.Contains(string(out), "8080") {
-		t.Errorf("expected port 8080 enforcement in compiled config, got:\n%s", string(out))
+	// agentgateway matches by hostname; port 8080 is enforced at the network layer.
+	// The hostname must still appear.
+	if !strings.Contains(string(out), "api.example.com") {
+		t.Errorf("expected hostname api.example.com in compiled config, got:\n%s", string(out))
+	}
+	// No ports field on routes (agentgateway v1.3.0 rejects it).
+	if strings.Contains(string(out), "ports:") {
+		t.Errorf("ports field should not appear on routes, got:\n%s", string(out))
 	}
 }
 
@@ -346,8 +357,13 @@ func TestCompileGatewayConfig_PortEnforcement_MultiplePorts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
-	if !strings.Contains(string(out), "443") || !strings.Contains(string(out), "80") {
-		t.Errorf("expected both ports 443 and 80 in compiled config, got:\n%s", string(out))
+	// agentgateway matches by hostname; multiple ports are enforced at the network layer.
+	if !strings.Contains(string(out), "api.example.com") {
+		t.Errorf("expected hostname api.example.com in compiled config, got:\n%s", string(out))
+	}
+	// No ports field on routes (agentgateway v1.3.0 rejects it).
+	if strings.Contains(string(out), "ports:") {
+		t.Errorf("ports field should not appear on routes, got:\n%s", string(out))
 	}
 }
 
@@ -522,18 +538,11 @@ func TestCompileGatewayConfig_FullSemantics(t *testing.T) {
 		t.Error("expected method: POST in compiled config")
 	}
 
-	// Port enforcement.
-	if !strings.Contains(outStr, "ports:") {
-		t.Error("expected ports field in compiled config")
-	}
-	if !strings.Contains(outStr, "443") {
-		t.Error("expected port 443 in compiled config")
-	}
-	if !strings.Contains(outStr, "5432") {
-		t.Error("expected port 5432 in compiled config")
-	}
-	if !strings.Contains(outStr, "80") {
-		t.Error("expected port 80 in compiled config")
+	// Port enforcement is handled by Docker network topology, not gateway
+	// route config (agentgateway v1.3.0 matches by hostname only).
+	// Verify no ports field on routes (it would crash the gateway).
+	if strings.Contains(outStr, "ports:") {
+		t.Error("ports field should not appear on routes (agentgateway v1.3.0 rejects it)")
 	}
 
 	// Credential binding.
@@ -594,9 +603,10 @@ func TestCompileGatewayConfig_EnforcementFieldsNotLost(t *testing.T) {
 	outStr := string(out)
 
 	// Every enforcement field must be present.
+	// Note: port enforcement is handled by Docker network topology, not
+	// gateway route config (agentgateway v1.3.0 matches by hostname only).
 	checks := map[string]string{
 		"hostname":   "secure.example.com",
-		"port":       "443",
 		"method":     "method: GET",
 		"credential": "credential: secure-key",
 	}
