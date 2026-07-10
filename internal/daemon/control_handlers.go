@@ -146,6 +146,14 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "identity keystore: %v", err)
 	}
+	// Publisher identities are managed by the identity CLI in the macOS
+	// Keychain. Package identity material remains in the daemon's encrypted
+	// file keystore, but publisher signing must read the same Keychain service
+	// or `identity init` will not affect subsequent packs in this daemon.
+	var publisherKeyStore identity.KeyStore
+	if store, storeErr := identity.NewKeychainKeyStore("agentpaas-daemon"); storeErr == nil {
+		publisherKeyStore = store
+	}
 
 	lock, err := pack.CreateAgentLock(ctx, pack.LockConfig{
 		BuildResult:       result,
@@ -158,7 +166,7 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		KeyStore:          &packKeyStoreAdapter{store: keyStore},
 		KeyID:             string(keyID),
 		PolicyYAML:        policyYAML,
-		PublisherKeyStore: keyStore,
+		PublisherKeyStore: publisherKeyStore,
 		ProjectDir:        absProjectDir,
 	})
 	if err != nil {
@@ -1865,6 +1873,13 @@ func (s *controlServer) openIdentityStore() (identity.KeyStore, error) {
 	// dialogs ("A keychain cannot be found to store local_ca") when no interactive
 	// keychain is available, hanging headless tests and user sessions.
 	return s.openFileIdentityStore()
+}
+
+// openPublisherIdentityStore opens the Keychain-backed store used by the
+// identity CLI. Publisher operations must use this store; the encrypted file
+// store above is reserved for daemon-owned package identity material.
+func (s *controlServer) openPublisherIdentityStore() (identity.KeyStore, error) {
+	return identity.NewKeychainKeyStore("agentpaas-daemon")
 }
 
 func (s *controlServer) openFileIdentityStore() (identity.KeyStore, error) {
