@@ -1197,7 +1197,7 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		if err := json.Unmarshal(triggerPayload, &userPayload); err != nil {
 			return nil, fmt.Errorf("invalid trigger payload JSON: %w", err)
 		}
-		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true}
+		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true, "budget": true}
 		for k, v := range userPayload {
 			if reserved[k] {
 				continue
@@ -1245,8 +1245,9 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 	// --- 2. Collect policy-declared credential metadata from policy.yaml ---
 	policyPath := filepath.Join(deployedDir, "policy.yaml")
 	policyData, perr := os.ReadFile(policyPath)
+	var parsedPolicy *policy.Policy
 	if perr == nil && len(policyData) > 0 {
-		parsedPolicy, perr := policy.ParsePolicy(bytes.NewReader(policyData))
+		parsedPolicy, perr = policy.ParsePolicy(bytes.NewReader(policyData))
 		if perr == nil {
 			for _, c := range parsedPolicy.Credentials {
 				if c.ID == "" {
@@ -1275,6 +1276,29 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 			creds = append(creds, c)
 		}
 		payload["credentials"] = creds
+	}
+
+	// --- 3. Wire llm_budget from policy.yaml to the harness budget enforcer ---
+	// The harness BudgetEnforcer reads budget config from payload["budget"].
+	// Without this, it always uses defaults (30s wall clock, 100k tokens).
+	// The policy.yaml is already parsed above for credentials; reuse it to
+	// also extract llm_budget settings.
+	if parsedPolicy != nil && parsedPolicy.LLMBudget != nil {
+		budget := map[string]any{}
+		if parsedPolicy.LLMBudget.MaxTokens > 0 {
+			budget["max_tokens"] = parsedPolicy.LLMBudget.MaxTokens
+		}
+		// max_tokens_per_request is enforced by the gateway localRateLimit;
+		// pass it to the harness as the per-request budget too so the
+		// harness BudgetEnforcer caps tokens per LLM call.
+		if parsedPolicy.LLMBudget.MaxTokensPerRequest > 0 {
+			if _, ok := budget["max_tokens"]; !ok {
+				budget["max_tokens"] = parsedPolicy.LLMBudget.MaxTokensPerRequest
+			}
+		}
+		if len(budget) > 0 {
+			payload["budget"] = budget
+		}
 	}
 
 	return payload, nil
