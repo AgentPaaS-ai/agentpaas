@@ -259,6 +259,20 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// In production, fail-closed with a structured error.
 	if llmConfig == nil {
 		if os.Getenv("AGENTPAAS_TEST_FAKE_LLM") == "1" {
+			cg := guardrailsFromPayload(state.payload)
+			promptAfterGuard, gerr := applyGuardrailsToText(cg, prompt, "request", state.credentials)
+			if gerr != nil {
+				return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
+			}
+			prompt = promptAfterGuard
+			if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
+				prompt = combineSystemPrompt(sp, prompt)
+			}
+			text := "agentpaas fake llm response"
+			text, gerr = applyGuardrailsToText(cg, text, "response", state.credentials)
+			if gerr != nil {
+				return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
+			}
 			tokens := int64(len(strings.Fields(prompt)))
 			if tokens == 0 && prompt != "" {
 				tokens = 1
@@ -274,7 +288,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 				ID: req.ID,
 				OK: true,
 				Result: map[string]any{
-					"text":   "agentpaas fake llm response",
+					"text":   text,
 					"tokens": tokens,
 				},
 			}
@@ -307,6 +321,21 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// Use model override if provided.
 	if modelOverride != "" {
 		model = modelOverride
+	}
+
+	// Harness-level guardrails (T16): agentgateway v1.3.0 has no route-level
+	// guardrails field for host backends. Enforce request-side before egress.
+	cg := guardrailsFromPayload(state.payload)
+	promptAfterGuard, gerr := applyGuardrailsToText(cg, prompt, "request", state.credentials)
+	if gerr != nil {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", gerr.Error())
+		return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
+	}
+	prompt = promptAfterGuard
+
+	// T18: inject_system_prompt (not expressible as host-backend gateway transform).
+	if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
+		prompt = combineSystemPrompt(sp, prompt)
 	}
 
 	// Build the HTTP request.
@@ -367,6 +396,14 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
+
+	// Response-side guardrails (same ruleset as request for regex/webhook).
+	respText, gerr := applyGuardrailsToText(cg, result.Text, "response", state.credentials)
+	if gerr != nil {
+		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", gerr.Error())
+		return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
+	}
+	result.Text = respText
 
 	// Record tokens (use provider tokens, fall back to word-count estimate).
 	tokens := result.Tokens
@@ -515,7 +552,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	defer func() { _ = resp.Body.Close() }()
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
-		s.auditEgressDecision("harness", rawURL, method, "", "", "denied", "response read failed: "+err.Error())
+		s.auditEgressDecision("harness", rawURL, method, "", strconv.Itoa(resp.StatusCode), "denied", "response read failed: "+err.Error())
 		state.setFailureEvidence(&UpstreamEvidence{
 			StatusCode:   resp.StatusCode,
 			Availability: availabilityFromStatus(resp.StatusCode),
@@ -528,8 +565,29 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		})
 		return rpcError(req.ID, err.Error(), "http_failed")
 	}
+	// Gateway-native policy denials return HTTP 403 with an explicit body.
+	// Treat these as egress_denied (not allowed) even though TCP to the gateway succeeded.
+	bodyStr := string(respBody)
+	if isGatewayEgressDenied(resp.StatusCode, bodyStr) {
+		reason := "gateway denied egress"
+		if bodyStr != "" {
+			reason = bodyStr
+		}
+		s.auditEgressDecision("harness", rawURL, method, "", strconv.Itoa(resp.StatusCode), "denied", reason)
+		state.setFailureEvidence(&UpstreamEvidence{
+			StatusCode:   resp.StatusCode,
+			Availability: AvailabilityForbidden,
+			Method:       method,
+			URL:          sanitizedURL(rawURL),
+			TimingMS:     elapsedMS(start),
+			Headers:      hashedHeaders(resp.Header),
+			BodyHash:     bodyHash,
+			BodyRedacted: bodyMarker,
+		})
+		return rpcError(req.ID, reason, "http_failed")
+	}
 	// HTTP request succeeded — record as allowed egress.
-	s.auditEgressDecision("harness", rawURL, method, "", "", "allowed", "")
+	s.auditEgressDecision("harness", rawURL, method, "", strconv.Itoa(resp.StatusCode), "allowed", "")
 	// Expose both "status" (canonical) and "status_code" (common alias).
 	// Agents that check either must see the real HTTP status; missing the
 	// alias caused false "Failed to fetch" errors after successful egress.
@@ -540,9 +598,20 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 			"status":      resp.StatusCode,
 			"status_code": resp.StatusCode,
 			"headers":     redactedHeaders(resp.Header),
-			"body":        string(respBody),
+			"body":        bodyStr,
 		},
 	}
+}
+
+// isGatewayEgressDenied detects agentgateway allowlist denials under native HTTP routing.
+func isGatewayEgressDenied(statusCode int, body string) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	lb := strings.ToLower(body)
+	return strings.Contains(lb, "egress denied") ||
+		strings.Contains(lb, "domain not in allowlist") ||
+		strings.Contains(lb, "not in allowlist")
 }
 
 func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcResponse {

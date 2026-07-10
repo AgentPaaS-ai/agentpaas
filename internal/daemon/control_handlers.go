@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -197,22 +198,30 @@ func gatewaySubnetFromIP(ipStr string) string {
 	return fmt.Sprintf("%s/16", network.String())
 }
 
-// waitForGateway polls the gateway container's port 15021 (readiness endpoint)
-// until it responds or the timeout elapses. This prevents a race where the
-// harness tries to connect to port 7799 before agentgateway is ready.
+// waitForGateway waits until the gateway process is ready enough that the
+// harness can open route traffic. On macOS/Colima, the host cannot TCP-dial
+// container-network IPs (bridged ranging is isolated), so host Dial of :15021
+// never succeeds even when the gateway is healthy. Instead we:
+//  1) require a container IP on the internal network (attachment success)
+//  2) scrape container logs for agentgateway's ready markers
+// This keeps startup ordered without depending on host↔container L3 routes.
 func waitForGateway(ctx context.Context, rt runtime.RuntimeDriver, gatewayID runtime.ContainerID, netID string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	var sawIP bool
 	for time.Now().Before(deadline) {
 		ip, err := rt.InspectContainerIP(ctx, gatewayID, netID)
-		if err != nil || ip == "" {
-			time.Sleep(500 * time.Millisecond)
-			continue
-		}
-		// TCP dial port 15021 (readiness). If it connects, gateway is ready.
-		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "15021"), 1*time.Second)
-		if err == nil {
-			_ = conn.Close()
-			return nil
+		if err == nil && ip != "" {
+			sawIP = true
+			// Prefer log readiness markers; fall back to elapsed time after IP is known.
+			if gatewayLogsIndicateReady(ctx, rt, gatewayID) {
+				return nil
+			}
+			// Host may be able to dial on Linux. Try 15021 before next sleep.
+			conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(ip, "15021"), 250*time.Millisecond)
+			if dialErr == nil {
+				_ = conn.Close()
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -220,7 +229,29 @@ func waitForGateway(ctx context.Context, rt runtime.RuntimeDriver, gatewayID run
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
+	if sawIP {
+		// IP assignment succeeded; treat markerless timeout as ready so agent start
+		// can proceed. Harness retries connect on 7799 if still warming.
+		return nil
+	}
 	return fmt.Errorf("gateway not ready after %s", timeout)
+}
+
+func gatewayLogsIndicateReady(ctx context.Context, rt runtime.RuntimeDriver, gatewayID runtime.ContainerID) bool {
+	reader, err := rt.Logs(ctx, gatewayID, runtime.LogOptions{Tail: 200})
+	if err != nil {
+		return false
+	}
+	defer func() { _ = reader.Close() }()
+	all, err := io.ReadAll(io.LimitReader(reader, 64*1024))
+	if err != nil || len(all) == 0 {
+		return false
+	}
+	text := string(all)
+	// agentgateway v1.3.0 readiness markers observed in production logs.
+	return strings.Contains(text, "started bind") ||
+		strings.Contains(text, "marking server ready") ||
+		strings.Contains(text, "Task 'state manager' complete")
 }
 
 // verifyDeployedAgent performs all verification steps on deployed agent
@@ -471,6 +502,13 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			_ = rt.RemoveNetwork(ctx, egressNetID)
 			_ = rt.RemoveNetwork(ctx, netID)
 			return nil, status.Errorf(codes.Internal, "write gateway config: %v", err)
+		}
+		// Rewrite __agentpaas_secret:<id> placeholders in apiKey.keys with Keychain values
+		// so agentgateway can validate ingress keys at startup/runtime.
+		if err := s.rewriteGatewayConfigSecrets(gatewayConfigPath, parsedPolicy); err != nil {
+			_ = rt.RemoveNetwork(ctx, egressNetID)
+			_ = rt.RemoveNetwork(ctx, netID)
+			return nil, status.Errorf(codes.FailedPrecondition, "resolve gateway ingress secrets: %v", err)
 		}
 		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", gatewayConfigPath)}
 		gatewayConfigDir = perRunConfigDir
@@ -812,11 +850,15 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 	if req.GetForce() {
 		timeout = 0
 	}
-	if err := rt.Stop(ctx, containerID, &timeout); err != nil {
-		return nil, status.Errorf(codes.Internal, "stop container: %v", err)
+	// Auto-invoke finalize/cleanup may have already removed containers.
+	// Treat "not found" as success so Stop is idempotent for completed runs.
+	if containerID != "" {
+		if err := rt.Stop(ctx, containerID, &timeout); err != nil && !errors.Is(err, runtime.ErrContainerNotFound) {
+			return nil, status.Errorf(codes.Internal, "stop container: %v", err)
+		}
 	}
 
-	// Stop and remove gateway container.
+	// Stop and remove gateway container (best-effort; may already be cleaned).
 	if tracked.Gateway != "" {
 		_ = rt.Stop(ctx, tracked.Gateway, &timeout)
 		_ = rt.Remove(ctx, tracked.Gateway, req.GetForce())
@@ -1234,7 +1276,7 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		if err := json.Unmarshal(triggerPayload, &userPayload); err != nil {
 			return nil, fmt.Errorf("invalid trigger payload JSON: %w", err)
 		}
-		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true, "budget": true}
+		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true, "budget": true, "guardrails": true, "inject_system_prompt": true}
 		for k, v := range userPayload {
 			if reserved[k] {
 				continue
@@ -1338,7 +1380,117 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		}
 	}
 
+	// --- 4. Harness-level policies that gateway cannot enforce on host backends ---
+	// Guardrails: agentgateway v1.3.0 has no route-level guardrails field for host backends.
+	// Transformations.inject_system_prompt: not supported as a host-backend transform field.
+	if parsedPolicy != nil {
+		if len(parsedPolicy.Guardrails) > 0 {
+			gs := make([]map[string]any, 0, len(parsedPolicy.Guardrails))
+			for _, g := range parsedPolicy.Guardrails {
+				entry := map[string]any{"type": g.Type}
+				if g.Pattern != "" {
+					entry["pattern"] = g.Pattern
+				}
+				if g.Action != "" {
+					entry["action"] = g.Action
+				}
+				if g.Provider != "" {
+					entry["provider"] = g.Provider
+				}
+				if g.Credential != "" {
+					entry["credential"] = g.Credential
+				}
+				if g.URL != "" {
+					entry["url"] = g.URL
+				}
+				gs = append(gs, entry)
+			}
+			payload["guardrails"] = gs
+		}
+		if parsedPolicy.Transformations != nil && parsedPolicy.Transformations.Request != nil {
+			sp := parsedPolicy.Transformations.Request.InjectSystemPrompt
+			if sp != "" {
+				payload["inject_system_prompt"] = sp
+			}
+		}
+	}
+
 	return payload, nil
+}
+
+
+// rewriteGatewayConfigSecrets replaces __agentpaas_secret:<id> placeholders in
+// the compiled gateway config with concrete Keychain secret values. agentgateway
+// apiKey.keys require real key material, not env/credentials placeholders.
+//
+// Fail-closed for ingress API-key auth: if the declared credential cannot be
+// resolved, the gateway is not started with a non-functional auth policy.
+func (s *controlServer) rewriteGatewayConfigSecrets(gatewayConfigPath string, p *policy.Policy) error {
+	if p == nil || p.IngressAuth == nil || p.IngressAuth.Type != "api_key" || p.IngressAuth.APIKey == nil {
+		return nil
+	}
+	credID := strings.TrimSpace(p.IngressAuth.APIKey.Credential)
+	if credID == "" {
+		return fmt.Errorf("ingress_auth.api_key.credential is empty")
+	}
+	placeholder := policy.SecretPlaceholder(credID)
+
+	data, err := os.ReadFile(gatewayConfigPath)
+	if err != nil {
+		return fmt.Errorf("read gateway config: %w", err)
+	}
+	if !bytes.Contains(data, []byte(placeholder)) {
+		return nil
+	}
+
+	var store secrets.SecretStore
+	if s.secretStoreForTest != nil {
+		store = s.secretStoreForTest
+	} else {
+		var storeErr error
+		store, storeErr = secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
+		if storeErr != nil {
+			return fmt.Errorf("keychain unavailable for ingress api key %q: %w", credID, storeErr)
+		}
+	}
+	val, err := store.Get(context.Background(), credID)
+	if err != nil {
+		return fmt.Errorf("credential %q not found in keychain; run: agentpaas secret add %s", credID, credID)
+	}
+	secret := strings.TrimSpace(string(val))
+	if secret == "" {
+		return fmt.Errorf("credential %q is empty in keychain; re-run: agentpaas secret add %s", credID, credID)
+	}
+	if strings.ContainsAny(secret, "\n\r") {
+		return fmt.Errorf("credential %q contains newline; rejected for gateway apiKey injection", credID)
+	}
+
+	// YAML double-quoted scalar.
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range secret {
+		switch r {
+		case '\\':
+			b.WriteString(`\\`)
+		case '"':
+			b.WriteString(`\"`)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	quoted := b.String()
+
+	out := string(data)
+	out = strings.ReplaceAll(out, "key: "+placeholder, "key: "+quoted)
+	out = strings.ReplaceAll(out, `key: "`+placeholder+`"`, "key: "+quoted)
+	if strings.Contains(out, placeholder) {
+		return fmt.Errorf("failed to substitute ingress api key placeholder for %q", credID)
+	}
+	if err := os.WriteFile(gatewayConfigPath, []byte(out), 0o600); err != nil {
+		return fmt.Errorf("write rewritten gateway config: %w", err)
+	}
+	return nil
 }
 
 // writeCredentialsForRun resolves Keychain secrets for the agent's policy
@@ -1355,10 +1507,16 @@ func (s *controlServer) writeCredentialsForRun(runID string, deployedDir string,
 		return "", false
 	}
 
-	// Resolve the secret store.
-	store, err := secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
-	if err != nil {
-		return "", false
+	// Resolve the secret store (tests may inject FakeKeyStore).
+	var store secrets.SecretStore
+	if s.secretStoreForTest != nil {
+		store = s.secretStoreForTest
+	} else {
+		var storeErr error
+		store, storeErr = secrets.NewKeychainStore(secretServiceName(s.homePaths.Home))
+		if storeErr != nil {
+			return "", false
+		}
 	}
 
 	// Collect all credential IDs that need resolution.
@@ -1677,7 +1835,8 @@ func generateRunID() string {
 }
 
 func (s *controlServer) openPackageIdentityKey(ctx context.Context, agentName string) (identity.KeyStore, identity.KeyID, error) {
-	store, err := s.openIdentityStore()
+	// Package identity material always uses the encrypted file keystore (no Keychain UI).
+	store, err := s.openFileIdentityStore()
 	if err != nil {
 		return nil, "", err
 	}
@@ -1694,10 +1853,16 @@ func (s *controlServer) openPackageIdentityKey(ctx context.Context, agentName st
 }
 
 func (s *controlServer) openIdentityStore() (identity.KeyStore, error) {
-	if goruntime.GOOS == "darwin" {
-		if store, err := identity.NewKeychainKeyStore("agentpaas-daemon"); err == nil {
-			return store, nil
-		}
+	// Daemon automation (pack/start/export) uses the encrypted file keystore only.
+	// Never call KeychainKeyStore here: Create("local_ca") triggers macOS SecurityAgent
+	// dialogs ("A keychain cannot be found to store local_ca") when no interactive
+	// keychain is available, hanging headless tests and user sessions.
+	return s.openFileIdentityStore()
+}
+
+func (s *controlServer) openFileIdentityStore() (identity.KeyStore, error) {
+	if s.homePaths == nil {
+		return nil, fmt.Errorf("daemon home paths not configured")
 	}
 	passphrase, err := ensureKeystorePassphrase(s.homePaths.State)
 	if err != nil {
