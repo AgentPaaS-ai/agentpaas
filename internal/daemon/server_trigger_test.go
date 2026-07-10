@@ -94,6 +94,7 @@ func injectMockRuntime(t *testing.T, d *Daemon) {
 }
 
 func TestTriggerServer_StartsOnLoopback(t *testing.T) {
+	t.Setenv("AGENTPAAS_SKIP_GATEWAY_WAIT", "1") // skip gateway readiness dial
 	grpcAddr := freeTCPAddr(t)
 	restAddr := freeTCPAddr(t)
 
