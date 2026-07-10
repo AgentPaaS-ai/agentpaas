@@ -159,75 +159,107 @@ handler with @agent.on_invoke".
 
 ## Build-Time Onboarding (Mandatory)
 
-When building an agent, you MUST complete these steps BEFORE packing. Do
-not wait for the user to ask — do them proactively.
+When building an agent, complete these steps BEFORE packing. Ask the user
+what you need, then act. Do not dump plans, secure-pattern lectures, or
+multi-item checklists into the chat.
 
-### Step 1: Confirm Egress
+### User-facing tone (critical)
 
-1. Read the agent's source code.
-2. Find ALL external domains (URLs, API endpoints, requests.get, etc.).
-3. Present them to the user: "This agent will access: api.weather.gov,
-   api.x.ai. Allow these?"
-4. Generate `policy.yaml` with ONLY the confirmed domains — never use
-   wildcard `*:443` unless the user explicitly requests it.
+- Be terse. One short question at a time.
+- NEVER show ports (`:443`, `ports: [443]`) to the user. Users confirm
+  hostnames only (e.g. `wttr.in`, `openrouter.ai`). Ports are an
+  implementation detail you add only when writing `policy.yaml`.
+- NEVER ask the user to "confirm domains with ports" or to author policy
+  YAML. You invent the policy from confirmed hostnames + provider.
+- Do not paste long "Next steps" / "I will not proceed until" walls.
+  Ask, wait, proceed.
 
-### Step 2: Procure Credentials
+### Step order (default for new agents)
 
-1. Search the code for credential needs (env vars, auth headers, API keys).
-2. For each credential needed:
-   - Tell the user to run this command in their terminal:
+If the agent needs an LLM (intent words: answer, summarize, look up with
+LLM, chat, classify, generate, analyze, translate, weather with LLM, etc.):
+start with **LLM + secret**, then confirm hostnames, then write code.
+
+If the agent has no LLM: confirm hostnames (and any API keys), then code.
+
+### Step 1: Configure LLM Provider (when needed)
+
+1. Ask only: "Which LLM provider? (openrouter / openai / anthropic / xai / nous)"
+2. Ask only: "Which model?"
+3. Tell the user to store the API key in a separate terminal (key never
+   enters this conversation). Suggest a name, e.g. for OpenRouter:
+   ```
+   agentpaas secret add openrouter-key
+   ```
+   Then: "Paste your OpenRouter API key when prompted, then tell me when done."
+4. After the user confirms, verify via `agentpaas_secret_list` (labels only)
+   and `agentpaas_secret_test`.
+5. Later call `agentpaas_llm_configure` with provider, model, credential name.
+6. Agent code uses `agent.llm()` — never reads the key from env.
+
+Provider → hostname map (for YOU when writing policy; do not show as
+`host:port` to the user):
+- openrouter → openrouter.ai
+- openai → api.openai.com
+- anthropic → api.anthropic.com
+- xai → api.x.ai
+- nous → inference-api.nousresearch.com
+
+Default port in policy.yaml for all of the above: 443.
+
+### Step 2: Confirm Egress Hostnames
+
+1. From intent and/or source code, list external hostnames only.
+2. Present briefly, no ports:
+   "This agent will access: wttr.in, openrouter.ai. Allow these?"
+3. Generate `policy.yaml` with ONLY confirmed hostnames. Write ports
+   yourself (default 443). Never use wildcard `*:443` unless the user
+   explicitly requests it.
+
+### Step 3: Other Credentials (non-LLM APIs)
+
+1. For each non-LLM API key needed:
+   - Tell the user to run in their terminal:
      `agentpaas secret add <suggested-name>`
-   - The user pastes the key when prompted (stdin) — the key value never enters the Hermes conversation
-   - After the user confirms, verify via `agentpaas_secret_list` that the label exists (never read the value)
-   - Validate it: `agentpaas_secret_test`
-3. **Declare each credential in policy.yaml** under the `credentials:` section.
-   The daemon resolves these at runtime and injects them into the harness so
-   `agent.http_with_credential("cred-id", ...)` can use them. Without this
-   declaration, the credential will NOT be available to the agent at runtime.
+   - User pastes via stdin; key never enters the Hermes conversation
+   - Verify with `agentpaas_secret_list` + `agentpaas_secret_test`
+2. Declare each credential in policy.yaml:
 
    ```yaml
    credentials:
      - id: my-api-key
        type: header
-       header: Authorization  # or X-API-Key, X-Custom-Header, etc.
+       header: Authorization  # or X-API-Key, etc.
    ```
 
-   - `id` must match the Keychain secret name (what the user passed to `agentpaas secret add`)
-   - `type` must be `header` (injected as an HTTP header on egress)
-   - `header` is the HTTP header name (defaults to `Authorization` if omitted)
-4. If using an LLM, configure the provider (see Step 3).
+   - `id` must match the Keychain secret name
+   - `type` must be `header`
+   - `header` defaults to `Authorization` if omitted
 
-### Step 3: Configure LLM Provider
+### Example: Weather Agent (user-facing turns)
 
-If the agent needs an LLM (detected from user intent: "answer", "summarize",
-"classify", "generate", "chat", "analyze", "translate", etc.):
+User: "Build a weather agent that uses an LLM…"
 
-1. Ask: "Which LLM provider?" (openrouter / openai / anthropic / xai / nous)
-2. Ask: "Which model?"
-3. Tell the user to run this command in their terminal to store the API key:
-   `agentpaas secret add <suggested-name>`
-   (The user pastes the key via stdin — it never enters the Hermes conversation)
-   Then verify the secret exists via `agentpaas_secret_list` and test via `agentpaas_secret_test`
-4. Call `agentpaas_llm_configure` with provider, model, credential name
-5. Add the provider domain to egress policy:
-   - openrouter → `openrouter.ai:443`
-   - openai → `api.openai.com:443`
-   - anthropic → `api.anthropic.com:443`
-   - xai → `api.x.ai:443`
-   - nous → `inference-api.nousresearch.com:443`
-6. The agent code uses `agent.llm()` — never reads the key from env.
+You (turn 1): "Which LLM provider? (openrouter / openai / anthropic / xai / nous)"
+You (turn 2): "Which model?"
+You (turn 3): "In your terminal run: `agentpaas secret add openrouter-key`
+then paste your OpenRouter API key. Tell me when done."
+You (turn 4): "This agent will access wttr.in and openrouter.ai. Allow these?"
+Then: scaffold project, write main.py (http fetch + llm summarize), write
+policy.yaml with hostnames + port 443, configure LLM, pack, run.
 
-### Pre-Pack Gate
+### Pre-Pack Gate (silent checks — do not dump this list to the user)
 
-Before calling `agentpaas_pack`, verify:
-1. Egress policy lists every external domain the agent will access.
-2. Every credential is stored in Keychain (verify via `agentpaas_secret_list` — never call `agentpaas_secret_add` with the key value as a tool parameter; the user runs the CLI command directly in their terminal).
+Before `agentpaas_pack`, verify:
+1. Egress policy lists every external hostname the agent will access.
+2. Every credential is in Keychain (`agentpaas_secret_list` — never
+   `agentpaas_secret_add` with the key value as a tool parameter).
 3. Every credential used by `agent.http_with_credential()` is declared in
-   policy.yaml's `credentials:` section (id, type: header, header name).
-4. If LLM: agent.yaml has `llm:` section pointing to the credential.
-5. The LLM provider's domain is in the egress policy.
+   policy.yaml `credentials:`.
+4. If LLM: agent.yaml has `llm:` pointing at the credential.
+5. The LLM provider hostname is in the egress policy.
 
-If ANY are missing, do NOT pack. Ask the user to resolve the gap.
+If ANY are missing, do NOT pack — ask only for the missing piece.
 
 ### Security: Secret Ingestion (Critical)
 
