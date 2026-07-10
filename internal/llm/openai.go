@@ -16,7 +16,7 @@ func (a *openAIAdapter) Name() string       { return "openai" }
 func (a *openAIAdapter) Endpoint() string   { return openAIEndpoint }
 func (a *openAIAdapter) AuthHeader() string { return "Authorization" }
 
-func (a *openAIAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string) (*http.Request, error) {
+func (a *openAIAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string, maxTokens ...int) (*http.Request, error) {
 	if model == "" {
 		model = defaultOpenAIModel
 	}
@@ -25,6 +25,9 @@ func (a *openAIAdapter) BuildRequest(ctx context.Context, model, prompt, credent
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
+	}
+	if len(maxTokens) > 0 && maxTokens[0] > 0 {
+		body["max_tokens"] = maxTokens[0]
 	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
@@ -50,7 +53,9 @@ func (a *openAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, 
 			} `json:"message"`
 		} `json:"choices"`
 		Usage struct {
-			TotalTokens int64 `json:"total_tokens"`
+			TotalTokens      int64 `json:"total_tokens"`
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
 		} `json:"usage"`
 		Model string `json:"model"`
 	}
@@ -62,8 +67,10 @@ func (a *openAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, 
 		text = resp.Choices[0].Message.Content
 	}
 	return &LLMResult{
-		Text:   text,
-		Tokens: resp.Usage.TotalTokens,
-		Model:  resp.Model,
+		Text:         text,
+		Tokens:       resp.Usage.TotalTokens,
+		InputTokens:  resp.Usage.PromptTokens,
+		OutputTokens: resp.Usage.CompletionTokens,
+		Model:        resp.Model,
 	}, nil
 }
