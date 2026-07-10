@@ -771,6 +771,149 @@ def _write_build_marker(project_dir):
         pass  # non-fatal — the marker is best-effort
 
 
+def _pre_pack_onboarding_gate(project_dir):
+    """Block pack when LLM/onboarding prerequisites are missing (Bug 017).
+
+    Enforces: if agent.yaml declares llm.credential, that secret must exist
+    in Keychain (labels only). Prevents packing demo-copied agents that
+    never completed secret/LLM onboarding.
+    """
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        yaml = None
+    agent_path = os.path.join(project_dir, "agent.yaml")
+    if not os.path.isfile(agent_path):
+        return None
+    try:
+        with open(agent_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except OSError as e:
+        return {"error": f"read agent.yaml: {e}", "error_category": "onboarding_incomplete"}
+    provider = model = credential = ""
+    if yaml is not None:
+        try:
+            data = yaml.safe_load(raw) or {}
+            llm = data.get("llm") or {}
+            if isinstance(llm, dict):
+                provider = str(llm.get("provider") or "").strip()
+                model = str(llm.get("model") or "").strip()
+                credential = str(llm.get("credential") or "").strip()
+        except Exception:
+            llm = {}
+    else:
+        # minimal fallback without PyYAML
+        m = _re.search(r"(?m)^\s*credential:\s*(\S+)", raw)
+        if m:
+            credential = m.group(1).split("#")[0].strip()
+        m = _re.search(r"(?m)^\s*provider:\s*(\S+)", raw)
+        if m:
+            provider = m.group(1).split("#")[0].strip()
+        m = _re.search(r"(?m)^\s*model:\s*(\S+)", raw)
+        if m:
+            model = m.group(1).split("#")[0].strip()
+        llm = {"credential": credential} if credential else {}
+
+    if not credential and not provider:
+        return None  # no LLM config — pack may proceed
+
+    if provider and not credential:
+        return {
+            "error": "onboarding incomplete: agent.yaml has llm.provider but no llm.credential",
+            "error_category": "onboarding_incomplete",
+            "next_action": "ask_user",
+            "instructions": (
+                "Ask which LLM provider/model, then tell the user to run "
+                "`agentpaas secret add <name>` in their terminal. Call "
+                "agentpaas_llm_configure, then pack again."
+            ),
+        }
+
+    # Verify secret exists (labels only).
+    listed = _run_cli(["secret", "list"])
+    names = set()
+    if isinstance(listed, dict):
+        if listed.get("error"):
+            return {
+                "error": f"cannot verify secrets (is daemon running?): {listed.get('error')}",
+                "error_category": "onboarding_incomplete",
+                "next_action": "ask_user",
+                "instructions": "Start daemon (`agentpaas daemon start`), ensure user ran "
+                f"`agentpaas secret add {credential}`, then pack again.",
+            }
+        # CLI may return {secrets:[...]} or tabular converted structure
+        for key in ("secrets", "items", "credentials"):
+            arr = listed.get(key)
+            if isinstance(arr, list):
+                for item in arr:
+                    if isinstance(item, dict):
+                        n = item.get("name") or item.get("Name") or item.get("id")
+                        if n:
+                            names.add(str(n))
+                    elif isinstance(item, str):
+                        names.add(item)
+        # flat name list
+        if not names and isinstance(listed.get("names"), list):
+            names.update(str(x) for x in listed["names"])
+        # raw text fallback
+        raw_out = listed.get("output") or listed.get("stdout") or ""
+        if isinstance(raw_out, str) and credential in raw_out.split():
+            names.add(credential)
+        # if structure is list at top after our _run_cli normalization
+    if isinstance(listed, list):
+        for item in listed:
+            if isinstance(item, dict):
+                n = item.get("name") or item.get("Name")
+                if n:
+                    names.add(str(n))
+
+    # Also parse human table if present as string error-free body
+    if not names and isinstance(listed, dict):
+        blob = json.dumps(listed)
+        if f'"{credential}"' in blob or f" {credential} " in f" {blob} ":
+            names.add(credential)
+        # header-only table means empty
+        if listed.get("NAME") is None and "CREATED_AT" in blob and credential not in blob:
+            pass
+
+    # Final check: secret list CLI text mode often returns {lines} or unparsed
+    if credential not in names:
+        # re-check via substring on full CLI string form
+        try:
+            r2 = subprocess.run(
+                [AGENT_BIN if os.path.isabs(AGENT_BIN) else shutil.which(AGENT_BIN) or "agentpaas",
+                 "secret", "list"],
+                capture_output=True, text=True, timeout=30,
+            )
+            out = (r2.stdout or "") + "\n" + (r2.stderr or "")
+            # first column names (skip header)
+            for line in out.splitlines():
+                cols = line.split()
+                if cols and cols[0] not in ("NAME", "Name", "---") and not cols[0].startswith("Error"):
+                    names.add(cols[0])
+        except Exception:
+            pass
+
+    if credential not in names:
+        return {
+            "error": (
+                f"onboarding incomplete: llm.credential '{credential}' is not in "
+                f"Keychain (agentpaas secret list). Do NOT pack yet."
+            ),
+            "error_category": "onboarding_incomplete",
+            "next_action": "ask_user",
+            "provider": provider or None,
+            "model": model or None,
+            "credential": credential,
+            "instructions": (
+                f"Tell the user to run in their terminal: "
+                f"`agentpaas secret add {credential}` then paste the API key. "
+                "After they confirm, call agentpaas_secret_list to verify, then pack."
+            ),
+        }
+    return None
+
+
 def agentpaas_pack(args, **kwargs):
     """Build an agent image from a project directory."""
     args = args or {}
@@ -778,6 +921,9 @@ def agentpaas_pack(args, **kwargs):
     is_valid, resolved, err = _validate_project_path(project_dir)
     if not is_valid:
         return json.dumps(err)
+    gate = _pre_pack_onboarding_gate(resolved)
+    if gate is not None:
+        return json.dumps(gate)
     try:
         _write_build_marker(resolved)
         result = _run_cli(["pack", resolved])

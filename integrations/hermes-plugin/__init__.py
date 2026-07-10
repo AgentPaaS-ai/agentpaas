@@ -10,141 +10,134 @@ logger = logging.getLogger(__name__)
 
 _POINTER_NAME = "agentpaas-build"  # deliberately != "agentpaas-deploy" (slash cmd collision)
 
-_SKILL_POINTER_CONTENT = f"""---
-name: {_POINTER_NAME}
-description: >
-  Build, deploy, package, run, and govern AI agents. Use when the user
-  asks to build, create, deploy, pack, or run any agent. You MUST load
-  the full skill with skill_view(name="agentpaas:deploy") for onboarding
-  instructions, code structure requirements (@agent.on_invoke SDK
-  pattern), egress policy rules, credential onboarding, and LLM
-  configuration.
----
-
-# AgentPaaS Deploy Pointer
-
-When the user asks to build, create, deploy, pack, run, or govern any
-agent, you MUST load the real skill immediately:
-
-skill_view(name="agentpaas:deploy")
-
-This pointer exists because plugin skills do not appear in the
-available_skills index. The full instructions (agent code structure
-with @agent.on_invoke, egress confirmation, credential onboarding,
-LLM configuration, pack/run workflow) live in the plugin skill at
-agentpaas:deploy. Load it BEFORE writing any agent code or calling
-agentpaas tools. Do NOT skip this step.
-"""
+# Marker for SOUL upsert (must stay stable).
+_SOUL_MARK_BEGIN = "# AgentPaaS Onboarding Rule"
+_SOUL_MARK_END = "# End AgentPaaS Rules"
 
 
-def _ensure_local_skill_pointer():
-    """Create a local skill pointer in the active profile so it appears
-    in <available_skills>. Plugin skills are opt-in (skill_view only)
-    and never appear in the system prompt index. This pointer bridges
-    that gap deterministically at plugin registration time — no reliance
-    on after-install.md being shown to the agent.
+def _full_skill_content() -> str:
+    """Return the full deploy SKILL.md with frontmatter for the local skill index.
 
-    Also writes a SOUL.md snippet (BUG 8 fix) that is always injected
-    into the system prompt, ensuring the agent loads the deploy skill
-    before building any agent — even if it ignores the available_skills
-    hint.
+    Bug 017: skill_view("agentpaas:deploy") fails on fresh plugin installs
+    (plugin skill registry not always available). Writing the FULL skill into
+    the profile skills index as agentpaas-build makes onboarding loadable via
+    the normal available_skills path.
     """
-    try:
-        # Resolve the active profile directory. Hermes activates a profile
-        # by setting a HERMES_HOME override that points directly at
-        # ``~/.hermes/profiles/<name>``. We must use ``get_hermes_home()``
-        # (which honors the override) — NOT ``os.environ["HERMES_HOME"]``,
-        # which is the *parent* process env and does not reflect the -p flag.
-        from hermes_constants import get_hermes_home
-        profile_dir = get_hermes_home()
+    skill_path = Path(__file__).resolve().parent / "SKILL.md"
+    body = skill_path.read_text(encoding="utf-8") if skill_path.is_file() else ""
+    # Strip a leading H1 if present; frontmatter provides the title.
+    if body.startswith("# "):
+        body = body.split("\n", 1)[1] if "\n" in body else ""
+    return (
+        f"---\n"
+        f"name: {_POINTER_NAME}\n"
+        f"description: >\n"
+        f"  Build, deploy, package, run, and govern AI agents. Load this skill\n"
+        f"  BEFORE writing agent code. Contains mandatory onboarding (LLM provider,\n"
+        f"  model, secret add, hostname confirm — no ports in chat), @agent.on_invoke\n"
+        f"  pattern, pack/run, and anti-fabrication rules.\n"
+        f"---\n\n"
+        f"# AgentPaaS Deploy\n\n"
+        f"**MANDATORY:** Follow Build-Time Onboarding below BEFORE packing.\n"
+        f"Ask one short question at a time. Never show ports to the user.\n"
+        f"Never copy demo agents without completing onboarding with the user.\n\n"
+        f"{body}"
+    )
 
-        # When running without an override (HERMES_HOME == ~/.hermes),
-        # get_active_profile_name() tells us which sub-profile to target.
-        from hermes_cli.profiles import get_active_profile_name
-        profile = get_active_profile_name()
-        if profile not in ("default", "custom"):
-            # Only descend if profile_dir is still the root ~/.hermes.
-            # If the override already pointed at profiles/<name>, the
-            # profile name will not appear as a trailing dir component.
-            if profile_dir.name != profile:
-                profile_dir = profile_dir / "profiles" / profile
 
-        # 1. Create skill pointer (appears in available_skills index)
-        skills_dir = profile_dir / "skills" / "agentpaas"
-        skills_dir.mkdir(parents=True, exist_ok=True)
-        pointer = skills_dir / "SKILL.md"
-        pointer.write_text(_SKILL_POINTER_CONTENT, encoding="utf-8")
-
-        # 2. Write SOUL.md snippet (always injected into system prompt)
-        # This ensures the agent loads the deploy skill even if it ignores
-        # the available_skills hint. SOUL.md is loaded fresh every turn.
-        soul_path = profile_dir / "SOUL.md"
-        soul_snippet = """
-# AgentPaaS Onboarding Rule
+def _soul_snippet() -> str:
+    return f"""
+{_SOUL_MARK_BEGIN}
 
 CRITICAL: When the user asks to build, create, deploy, pack, run, or
-govern any agent, you MUST load the agentpaas:deploy skill FIRST by
-calling skill_view(name="agentpaas:deploy") BEFORE writing any code
-or calling any agentpaas tools. This skill contains essential
-instructions for:
-- Agent code structure (@agent.on_invoke SDK pattern)
-- Egress policy confirmation (ask user, write specific domains)
-- Credential and LLM configuration (ask BEFORE writing code)
-- Pack/run workflow and verification
+govern any agent, you MUST load the full skill FIRST by calling
+skill_view(name="{_POINTER_NAME}") BEFORE writing any code or calling
+any agentpaas tools. That skill contains onboarding (LLM provider/model,
+secret add in the user terminal, hostname confirm without ports),
+@agent.on_invoke requirements, and pack gates.
 
-Do NOT skip this step. Do NOT write agent code without loading the
-skill first. Do NOT use wildcard egress policies without asking the
-user for specific domains.
+Do NOT skip onboarding. Do NOT pre-fill openrouter/model/secrets without
+asking. Do NOT copy demo/weather-agent as a substitute for onboarding.
+Do NOT use wildcard egress without the user explicitly requesting it.
 
 BEFORE packing any agent, you MUST verify:
-1. Egress policy lists every external domain.
-2. Every credential is stored in Keychain.
-3. If the agent uses an LLM: agent.yaml has llm: section, the API key
-   is stored in Keychain (user runs 'agentpaas secret add <name>' in
-   their terminal — NEVER call agentpaas_secret_add with the key value
-   as a tool parameter, as it leaks the key to the LLM), and the LLM
-   provider domain is in the egress policy.
+1. Egress policy lists every external hostname (ports are write-time only).
+2. Every credential is stored in Keychain (user ran `agentpaas secret add <name>`).
+3. If the agent uses an LLM: agent.yaml has llm:, secret exists (secret_list),
+   and the LLM provider hostname is in the egress policy.
 If any are missing, do NOT pack — ask the user to resolve first.
 
 NEVER call agentpaas_secret_add with the key value as a tool parameter.
-The user MUST run 'agentpaas secret add <name>' in their terminal and
-paste the key via stdin. Hermes only verifies the secret exists via
-agentpaas_secret_list (labels only, never values).
+The user MUST run `agentpaas secret add <name>` in their terminal and
+paste the key via stdin. Hermes only verifies via agentpaas_secret_list.
 
 # AgentPaaS Anti-Fabrication Rule
 
 NEVER fabricate agent output. If agentpaas_run, agentpaas_trigger_invoke,
 or any agentpaas tool returns an error, empty response, or a result you
-don't understand, report the error honestly to the user. Do NOT invent
-plausible-looking output (e.g. "temperature 82F, sunny") to mask the
-failure. If the invoke did not return a response, say so. The user trusts
-your output to be real data from the agent, not synthesized.
+don't understand, report the error honestly. Do NOT invent weather or
+API values. After invoke, call agentpaas_status and read the real
+invoke_response. If result.status is ERROR, report failure — do not
+scrape numbers from an error body and claim success. Weather+LLM agents
+need egress_allowed for BOTH the weather host AND the LLM provider.
 
-ALWAYS verify run status after invoke. After agentpaas_run or
-agentpaas_trigger_invoke, call agentpaas_status with the run_id to
-confirm the run completed and read the invoke_response. "Run started"
-means the container launched, not that the agent executed successfully.
-If status=failed, use agentpaas_explain_failure and report the real
-root cause.
-
-If invoke_response.result.status is ERROR (even when top-level status
-is OK), that is a FAILURE — report the error field. Do NOT extract
-weather/API numbers from an error body and claim success. For weather+LLM
-agents, success requires egress_allowed for BOTH the weather host AND the
-LLM provider; missing LLM egress means the summary was not produced.
+{_SOUL_MARK_END}
 """
 
-        existing_soul = ""
-        if soul_path.exists():
-            existing_soul = soul_path.read_text(encoding="utf-8")
 
-        # Only append if the snippet isn't already there (idempotent)
-        if "AgentPaaS Onboarding Rule" not in existing_soul:
-            if existing_soul and not existing_soul.endswith("\n"):
-                existing_soul += "\n"
-            soul_path.write_text(existing_soul + soul_snippet, encoding="utf-8")
+def _upsert_soul(soul_path: Path, snippet: str) -> None:
+    """Insert or replace the AgentPaaS SOUL block (force-update on every register)."""
+    existing = soul_path.read_text(encoding="utf-8") if soul_path.exists() else ""
+    begin = _SOUL_MARK_BEGIN
+    end = _SOUL_MARK_END
+    if begin in existing:
+        # Replace from begin through end marker (inclusive).
+        pre, rest = existing.split(begin, 1)
+        if end in rest:
+            _, post = rest.split(end, 1)
+            new = pre.rstrip() + "\n" + snippet.strip() + "\n" + post.lstrip("\n")
+        else:
+            # Old snippet without end marker: drop from begin to EOF, re-append.
+            new = pre.rstrip() + "\n" + snippet.strip() + "\n"
+    else:
+        if existing and not existing.endswith("\n"):
+            existing += "\n"
+        new = existing + snippet
+    soul_path.write_text(new if new.endswith("\n") else new + "\n", encoding="utf-8")
 
-        logger.debug("AgentPaaS skill pointer + SOUL.md created in profile %s", profile)
+
+def _ensure_local_skill_pointer():
+    """Install full deploy skill into the profile skill index + upsert SOUL.md.
+
+    Bug 017 root cause: a tiny pointer told the agent to skill_view
+    ("agentpaas:deploy"), which fails on fresh installs; the agent then
+    skipped onboarding and copied the demo weather agent with pre-filled
+    OpenRouter config and no secret. Writing the full SKILL.md as
+    agentpaas-build makes onboarding loadable from available_skills.
+    """
+    try:
+        from hermes_constants import get_hermes_home
+        profile_dir = get_hermes_home()
+
+        from hermes_cli.profiles import get_active_profile_name
+        profile = get_active_profile_name()
+        if profile not in ("default", "custom"):
+            if profile_dir.name != profile:
+                profile_dir = profile_dir / "profiles" / profile
+
+        # 1. Full skill body (not a broken pointer to agentpaas:deploy)
+        skills_dir = profile_dir / "skills" / "agentpaas"
+        skills_dir.mkdir(parents=True, exist_ok=True)
+        (skills_dir / "SKILL.md").write_text(_full_skill_content(), encoding="utf-8")
+
+        # 2. Force-upsert SOUL rules every register (not append-only)
+        _upsert_soul(profile_dir / "SOUL.md", _soul_snippet())
+
+        logger.info(
+            "AgentPaaS full skill + SOUL.md installed in profile %s (%s)",
+            profile,
+            profile_dir,
+        )
     except Exception as e:
         logger.warning("Could not create skill pointer: %s", e)
 
