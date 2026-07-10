@@ -321,8 +321,11 @@ func verifyDeployedAgent(homeDir, agentName string, auditAppender audit.AuditApp
 // runs BEFORE any Docker resources are created so missing credentials fail-closed
 // with actionable guidance for the operator.
 //
+// For installed agents, the credential map is applied: the LOCAL secret name
+// (from the manifest) is checked, not the declared ID.
+//
 // In test mode, uses s.secretStoreForTest. In production, uses KeychainStore.
-func validateCredentialsExist(s *controlServer, agentName string) error {
+func validateCredentialsExist(s *controlServer, agentName string, isInstalled bool, credentialMap map[string]string) error {
 	// Resolve the secret store.
 	var store secrets.SecretStore
 	if s.secretStoreForTest != nil {
@@ -336,7 +339,18 @@ func validateCredentialsExist(s *controlServer, agentName string) error {
 		}
 	}
 
-	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	var deployedDir string
+	if isInstalled {
+		// For installed agents, the state dir layout is different.
+		name, pub8, _ := install.ParseInstalledAgentDir(agentName)
+		dir, err := install.InstalledAgentPath(s.homePaths.State, name, pub8)
+		if err != nil {
+			return fmt.Errorf("resolve installed agent dir: %w", err)
+		}
+		deployedDir = dir
+	} else {
+		deployedDir = pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	}
 
 	// Collect all credential IDs.
 	credIDs := make(map[string]bool)
@@ -367,9 +381,16 @@ func validateCredentialsExist(s *controlServer, agentName string) error {
 
 	// Verify each credential exists in the secret store.
 	for id := range credIDs {
-		_, err := store.Get(context.Background(), id)
+		// For installed agents, apply the credential map: check the local secret name.
+		lookupName := id
+		if isInstalled && credentialMap != nil {
+			if localName, ok := credentialMap[id]; ok && localName != "" {
+				lookupName = localName
+			}
+		}
+		_, err := store.Get(context.Background(), lookupName)
 		if err != nil {
-			return fmt.Errorf("credential %q not found in keychain; run: agentpaas secret add %s", id, id)
+			return fmt.Errorf("credential %q not found in keychain; run: agentpaas secret add %s", lookupName, lookupName)
 		}
 	}
 
@@ -391,22 +412,45 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}
 	agentName = resolvedName
 
-	deployed, err := pack.LoadDeployedAgent(s.homePaths.Home, agentName)
-	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "agent %q not deployed: %v (run pack first)", agentName, err)
-	}
-
-	// Enforce concurrent run limit before creating any Docker resources.
+	// Enforce concurrent run limit before any verification or Docker resources.
 	if s.activeRunCount() >= maxConcurrentRuns {
 		return nil, status.Errorf(codes.ResourceExhausted,
 			"concurrent run limit reached (%d/%d active); stop an existing run before starting a new one",
 			s.activeRunCount(), maxConcurrentRuns)
 	}
 
-	// Verify deployed agent integrity, lockfile signature, and policy digest
-	// BEFORE creating any Docker resources.
-	if err := verifyDeployedAgent(s.homePaths.Home, agentName, s.auditWriter); err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "deployed agent verification failed: %v", err)
+	// Detect installed (shared bundle) agents vs packed (local) agents.
+	// Installed agents use a different verification and image digest path.
+	isInstalled := false
+	if _, _, ok := install.ParseInstalledAgentDir(agentName); ok {
+		isInstalled = true
+	}
+
+	var imageDigest string
+	var credentialMap map[string]string
+
+	if isInstalled {
+		// Installed agent verification path.
+		if err := install.VerifyInstalledAgent(s.homePaths.State, agentName, s.auditWriter); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "installed agent verification failed: %v", err)
+		}
+		manifest, err := install.LoadManifestByRef(s.homePaths.State, agentName)
+		if err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "load install manifest: %v", err)
+		}
+		imageDigest = manifest.LocalImageDigest
+		credentialMap = manifest.CredentialMap
+	} else {
+		deployed, err := pack.LoadDeployedAgent(s.homePaths.Home, agentName)
+		if err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "agent %q not deployed: %v (run pack first)", agentName, err)
+		}
+		// Verify deployed agent integrity, lockfile signature, and policy digest
+		// BEFORE creating any Docker resources.
+		if err := verifyDeployedAgent(s.homePaths.Home, agentName, s.auditWriter); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "deployed agent verification failed: %v", err)
+		}
+		imageDigest = deployed.ImageDigest
 	}
 
 	// Validate trigger payload JSON early (before CreateNetwork).
@@ -421,7 +465,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 
 	// Validate that all declared credentials exist in Keychain BEFORE creating
 	// any Docker resources. Missing credentials fail-closed with actionable guidance.
-	if err := validateCredentialsExist(s, agentName); err != nil {
+	if err := validateCredentialsExist(s, agentName, isInstalled, credentialMap); err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "%v", err)
 	}
 
@@ -475,8 +519,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	var gatewayBinds []string
 	var gatewayConfigDir string
 
-	// Read the agent's policy.yaml from the deployed directory.
-	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	// Read the agent's policy.yaml from the deployed/installed directory.
+	var deployedDir string
+	if isInstalled {
+		name, pub8, _ := install.ParseInstalledAgentDir(agentName)
+		deployedDir, _ = install.InstalledAgentPath(s.homePaths.State, name, pub8)
+	} else {
+		deployedDir = pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	}
 	agentPolicyPath := filepath.Join(deployedDir, "policy.yaml")
 
 	policyData, err := os.ReadFile(agentPolicyPath)
@@ -620,7 +670,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// NOTE: The file is mounted read-write (not :ro) so the harness can delete
 	// it after loading. If the harness crashes before reading, the container
 	// is stopped and removed on failure, so the file is ephemeral.
-	credsPath, credsFileWritten := s.writeCredentialsForRun(runID, deployedDir, gatewayConfigDir)
+	credsPath, credsFileWritten := s.writeCredentialsForRun(runID, deployedDir, gatewayConfigDir, credentialMap)
 
 	agentBinds := []string{fmt.Sprintf("%s:/audit", hostAuditDir)}
 	if credsFileWritten {
@@ -638,7 +688,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		agentSpec.CapAdd = []string{"NET_ADMIN"}
 	}
 
-	imageRef := pack.LocalImageRef(agentName, deployed.ImageDigest)
+	imageRef := pack.LocalImageRef(agentName, imageDigest)
 	agentSpec.Image = imageRef
 	containerID, err := rt.Create(ctx, agentSpec)
 	if err != nil {
@@ -755,7 +805,6 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		}
 	}(tracked)
 
-	_ = deployed
 	return &controlv1.RunResponse{RunId: runID}, nil
 }
 
@@ -1517,7 +1566,7 @@ func (s *controlServer) rewriteGatewayConfigSecrets(gatewayConfigPath string, p 
 // Returns the host path to the credentials file and true if the file was
 // written successfully. Returns ("", false) if there are no credentials or
 // if Keychain resolution fails (graceful degradation).
-func (s *controlServer) writeCredentialsForRun(runID string, deployedDir string, gatewayConfigDir string) (string, bool) {
+func (s *controlServer) writeCredentialsForRun(runID string, deployedDir string, gatewayConfigDir string, credentialMap map[string]string) (string, bool) {
 	if gatewayConfigDir == "" {
 		return "", false
 	}
@@ -1586,7 +1635,14 @@ func (s *controlServer) writeCredentialsForRun(runID string, deployedDir string,
 	}
 	var entries []credEntry
 	for id, header := range credIDs {
-		val, credErr := store.Get(context.Background(), id)
+		// Apply the credential map: for installed agents, look up the local secret name.
+		lookupName := id
+		if credentialMap != nil {
+			if localName, ok := credentialMap[id]; ok && localName != "" {
+				lookupName = localName
+			}
+		}
+		val, credErr := store.Get(context.Background(), lookupName)
 		if credErr != nil {
 			continue // graceful: skip unresolved credential
 		}

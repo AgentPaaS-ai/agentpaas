@@ -160,6 +160,10 @@ func newInstalledMapCredentialCmd() *cobra.Command {
 		Short: "Map a declared policy credential to a local secret name",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := homeDirPath(cmd)
+			if err != nil {
+				return err
+			}
 			state, err := installStateFactory(cmd)
 			if err != nil {
 				return err
@@ -168,11 +172,13 @@ func newInstalledMapCredentialCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			paths := home.NewHomePaths(homeDir)
 			if err := install.ApplyMapCredential(install.MapCredentialOpts{
-				State:   state,
-				Store:   store,
-				Ref:     args[0],
-				Mapping: args[1],
+				State:     state,
+				Store:     store,
+				Ref:       args[0],
+				Mapping:   args[1],
+				StateRoot: paths.State,
 			}); err != nil {
 				return err
 			}

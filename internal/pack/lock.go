@@ -256,6 +256,48 @@ func NewSignedTestLock(agentName string, policyYAML []byte) (*AgentLock, error) 
 	return lock, nil
 }
 
+// NewSignedTestLockWithLLM creates a signed test lock that includes an
+// AgentYAML with an LLM credential. This is for testing installed-agent
+// flows where the signed lock's LLM credential must be present.
+func NewSignedTestLockWithLLM(agentName string, policyYAML []byte, llmCredentialName string) (*AgentLock, error) {
+	lock, err := NewSignedTestLock(agentName, policyYAML)
+	if err != nil {
+		return nil, err
+	}
+	lock.AgentYAML = &AgentYAML{
+		Name:    agentName,
+		Version: lock.AgentVersion,
+		LLM: LLMConfig{
+			Provider:   "openrouter",
+			Model:      "anthropic/claude-sonnet-4",
+			Credential: llmCredentialName,
+		},
+	}
+	// Re-sign because AgentYAML changes the canonical JSON.
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate key: %w", err)
+	}
+	pubPEM, err := publicKeyPEM(&key.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("encode public key: %w", err)
+	}
+	lock.PackageAID = string(pubPEM)
+	lock.PublicKeyFingerprint = PublicKeyFingerprint(&key.PublicKey)
+	lock.LockfileSignature = ""
+	canonical, err := canonicalJSON(lock)
+	if err != nil {
+		return nil, fmt.Errorf("canonical JSON: %w", err)
+	}
+	digest := sha256.Sum256(canonical)
+	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+	if err != nil {
+		return nil, fmt.Errorf("sign lock: %w", err)
+	}
+	lock.LockfileSignature = base64.StdEncoding.EncodeToString(sig)
+	return lock, nil
+}
+
 // SignLockfileWithKey sets lockfile_signature on lock using the package AID
 // private key. The lock must have LockfileSignature cleared before calling.
 // Intended for tests and bundle fixtures that mutate lock fields after creation.
@@ -267,14 +309,22 @@ func SignLockfileWithKey(lock *AgentLock, key *ecdsa.PrivateKey) error {
 		return errors.New("private key must not be nil")
 	}
 	lock.LockfileSignature = ""
+	lock.PackageAID = ""
+	lock.PublicKeyFingerprint = ""
+	pubPEM, err := publicKeyPEM(&key.PublicKey)
+	if err != nil {
+		return fmt.Errorf("encode public key: %w", err)
+	}
+	lock.PackageAID = string(pubPEM)
+	lock.PublicKeyFingerprint = PublicKeyFingerprint(&key.PublicKey)
 	canonical, err := canonicalJSON(lock)
 	if err != nil {
-		return err
+		return fmt.Errorf("canonical JSON: %w", err)
 	}
 	digest := sha256.Sum256(canonical)
 	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
 	if err != nil {
-		return fmt.Errorf("sign lockfile: %w", err)
+		return fmt.Errorf("sign lock: %w", err)
 	}
 	lock.LockfileSignature = base64.StdEncoding.EncodeToString(sig)
 	return nil
