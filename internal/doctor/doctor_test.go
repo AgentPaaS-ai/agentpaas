@@ -142,8 +142,8 @@ func TestDoctorAllChecksIndependent(t *testing.T) {
 	checks, _ := doc.Run()
 
 	// Ensure all 10 checks ran (9 original + harness_copies).
-	if len(checks) != 10 {
-		t.Errorf("expected 10 checks, got %d", len(checks))
+	if len(checks) != 11 {
+		t.Errorf("expected 11 checks, got %d", len(checks))
 	}
 
 	// Each check should have a non-empty name.
