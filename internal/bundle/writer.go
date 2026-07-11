@@ -396,6 +396,8 @@ func signManifest(m *Manifest, key *ecdsa.PrivateKey) error {
 // deterministicECDSASignASN1 implements RFC 6979 for P-256/SHA-256. Go's
 // ecdsa signer may consume additional entropy for blinding, so supplying a
 // constant reader is not sufficient to make archive signatures reproducible.
+//
+//nolint:staticcheck // crypto/ecdh does not support deterministic (RFC 6979) ECDSA signing.
 func deterministicECDSASignASN1(key *ecdsa.PrivateKey, hash []byte) ([]byte, error) {
 	q := key.Params().N
 	rolen := (q.BitLen() + 7) / 8
@@ -413,6 +415,7 @@ func deterministicECDSASignASN1(key *ecdsa.PrivateKey, hash []byte) ([]byte, err
 		z.Sub(z, q)
 	}
 	h1 := intBytes(z)
+	//nolint:staticcheck // SA1019: crypto/ecdh does not support deterministic signing (RFC 6979)
 	x := intBytes(key.D)
 	v := bytes.Repeat([]byte{1}, sha256.Size)
 	k := make([]byte, sha256.Size)
@@ -429,10 +432,12 @@ func deterministicECDSASignASN1(key *ecdsa.PrivateKey, hash []byte) ([]byte, err
 		}
 		candidate := new(big.Int).SetBytes(t[:rolen])
 		if candidate.Sign() > 0 && candidate.Cmp(q) < 0 {
+			//nolint:staticcheck // SA1019: crypto/ecdh does not support deterministic signing (RFC 6979)
 			x1, _ := key.Curve.ScalarBaseMult(candidate.Bytes())
 			r := new(big.Int).Mod(x1, q)
 			if r.Sign() != 0 {
 				inv := new(big.Int).ModInverse(candidate, q)
+				//nolint:staticcheck // SA1019: crypto/ecdh does not support deterministic signing (RFC 6979)
 				s := new(big.Int).Mul(r, key.D)
 				s.Add(s, z)
 				s.Mul(s, inv)
@@ -494,17 +499,6 @@ func manifestCanonicalJSON(m *Manifest, includeSignature bool) ([]byte, error) {
 	}
 
 	return json.Marshal(out)
-}
-
-// deterministicSignReader supplies fixed entropy so repeated signing of the same
-// manifest bytes yields identical bundle archives (D1 determinism).
-type deterministicSignReader struct{}
-
-func (deterministicSignReader) Read(b []byte) (int, error) {
-	for i := range b {
-		b[i] = 0x42
-	}
-	return len(b), nil
 }
 
 // --- Image handling ---

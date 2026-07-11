@@ -346,6 +346,65 @@ agentpaas/
 └── landing-page/
 ```
 
+## Changelog
+
+### v0.2.0 (July 2026)
+
+**Agent sharing, provenance chains, and fork/redistribute.**
+
+Major additions since v0.1.1:
+
+- **Publisher identity** (`agentpaas identity init/show/export`): ECDSA P-256
+  keypair per publisher, stored in macOS Keychain. Every pack signs the lockfile
+  with both the agent identity key and the publisher key.
+
+- **Signed bundles** (`.agentpaas`): deterministic tar.gz containing lock,
+  policy, SBOM, source, and optional cosign-signed image. Offline
+  `bundle inspect` verifies all signatures and digests without a running daemon.
+
+- **Provenance chains**: every pack appends a signed `created` entry; every
+  fork appends a signed `forked` entry with a policy delta. Chains verify
+  end-to-end. 32-entry cap prevents chain bloat.
+
+- **Fork & redistribute** (`agentpaas fork <ref> <dir>`): creates an editable
+  project from an installed agent with `lineage.json` capturing parent
+  metadata. Re-packing appends a `forked` provenance entry. Tampering
+  lineage.json fails pack closed.
+
+- **Bundle install with consent card** (`agentpaas install`): TOFU trust flow,
+  policy approval, per-hop locally-verified/signer-claimed markings,
+  tail-anchor trust sentence, chain egress lints.
+
+- **Credential mapping** (`agentpaas installed map-credential`): map declared
+  credential IDs to local secrets. Raw values never appear in manifests or
+  audit. Dual storage ensures daemon sees the map at run time.
+
+- **Gateway policy enforcement** (B19): token budgets, rate limiting, LLM
+  provider locking, ingress auth (JWT/API key), guardrails, transformations,
+  timeouts/retry, cost tracking, MCP tool access control — all compiled into
+  per-run agentgateway configs and enforced at runtime.
+
+- **Security claim closure** (B20): credential zero-visibility (raw secrets
+  never cross Docker exec or harness /invoke), guaranteed audit ingestion on
+  every terminal path, fail-closed on invalid input/missing credentials/fake
+  LLM, README-claim red-team release gate, docs truth-sync regression tests.
+
+- **Manual testing**: T1-T52 all pass. 52 test cards covering the full lifecycle
+  from plugin install through multi-hop fork chains. Red-team adversary tests
+  at every layer.
+
+Bug fixes since v0.1.1: gateway port field crash (#001), HTTP response status
+field (#013), stale harness credentials (#016), onboarding skip (#017),
+gateway-native rate limiting (#021), budget enforcement wiring (#019),
+HTTP_PROXY regression for non-LLM egress, CLI run timeout (30s→90s),
+install builder SDK resolution, divergent harness binary detection.
+
+### v0.1.1 (July 2026)
+
+Initial public release. Local-first governed runtime with default-deny egress,
+credential brokering, tamper-evident audit, SBOM, pack-time secret scan, and
+budget enforcement.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

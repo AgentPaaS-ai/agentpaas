@@ -485,7 +485,7 @@ func (s *harnessRPCServer) auditLLMResult(provider, model string, inputTokens, o
 	if totalTokens == 0 {
 		totalTokens = inputTokens + outputTokens
 	}
-	s.audit.Append(audit.AuditRecord{
+	if err := s.audit.Append(audit.AuditRecord{
 		Timestamp: time.Now().UTC().Format(time.RFC3339Nano), EventType: "llm_result",
 		DeploymentMode: "local", Actor: "harness",
 		Payload: map[string]interface{}{
@@ -493,7 +493,10 @@ func (s *harnessRPCServer) auditLLMResult(provider, model string, inputTokens, o
 			"input_tokens": inputTokens, "output_tokens": outputTokens, "total_tokens": totalTokens,
 			"estimated_cost_usd": llm.EstimateCost(provider, model, inputTokens, outputTokens),
 		},
-	})
+	}); err != nil {
+		// Audit is best-effort; log but don't fail the harness.
+		fmt.Fprintf(os.Stderr, "harness: audit append failed: %v\n", err)
+	}
 }
 
 func (s *harnessRPCServer) handleRecordIteration(req rpcRequest, state *rpcInvokeState) rpcResponse {
