@@ -36,7 +36,23 @@ protocols (raw TCP, UDP, ICMP) are blocked by internal-network isolation,
 not by deep packet inspection. A transparent proxy for all protocols is
 deferred to P2.
 
+### llm_provider_lock restricts agent.llm() only, not agent.http()
+
+The `llm_provider_lock.allowed_endpoints` field restricts the LLM route path in the
+gateway config — it applies only to `agent.llm()` calls (which route through the
+harness LLM RPC and then the gateway's LLM route). An agent can call a non-approved
+LLM provider via `agent.http("POST", "https://api.openai.com/...")` and it passes
+egress if the domain is in the egress allowlist. This is defense-in-depth, not a
+primary security control — egress policy is the primary restriction. To fully lock
+LLM calls to a provider, also remove other LLM provider domains from the egress list.
+
 ## Runtime and harness
+
+### Install requires --allow-unlocked-deps without uv.lock
+
+When installing an agent bundle that has no `uv.lock` file, `agentpaas install --yes`
+fails with "missing uv.lock requires --allow-unlocked-deps in non-interactive mode".
+Pass `--allow-unlocked-deps` to allow the rebuild without locked dependencies.
 
 ### LLM integration routes through gateway egress (no special-casing)
 
