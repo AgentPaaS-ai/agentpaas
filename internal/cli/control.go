@@ -265,7 +265,7 @@ func newRunCmd() *cobra.Command {
 				displayAgent = install.DisplayForDaemonKey(filepath.Join(homeDir, "state"), agentName)
 			}
 
-			ctx, cancel := contextWithTimeout(30 * time.Second)
+			ctx, cancel := contextWithTimeout(90 * time.Second)
 			defer cancel()
 
 			resp, err := client.Run(ctx, &controlv1.RunRequest{
