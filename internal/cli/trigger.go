@@ -84,7 +84,7 @@ func newTriggerCmd() *cobra.Command {
 				req.Header.Set("Authorization", "Bearer "+key)
 			}
 
-			client := &http.Client{Timeout: 30 * time.Second}
+			client := &http.Client{Timeout: 90 * time.Second}
 			resp, err := client.Do(req)
 			if err != nil {
 				return fmt.Errorf("trigger invoke failed: %w", err)
