@@ -14,7 +14,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"sort"
@@ -25,6 +24,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas"
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/binresolve"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
@@ -108,8 +108,8 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	}
 
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
-	harnessPath := resolveHarnessBinary()
-	sdkDir := resolveSDKDir(harnessPath)
+	harnessPath := binresolve.HarnessBinary()
+	sdkDir := binresolve.SDKDir(harnessPath)
 	// If the SDK is not on disk (brew-only install, release tarball without
 	// python/), fall back to the SDK embedded in the binary.
 	if sdkDir == "" {
@@ -2358,79 +2358,6 @@ func (s *controlServer) reconcileOrphanedContainers(ctx context.Context) {
 	s.recordAudit("reconciliation_complete", "daemon", map[string]interface{}{
 		"removals": removals,
 	})
-}
-
-// resolveExecutable returns the path to the current executable. Tests may override it.
-var resolveExecutable = os.Executable
-
-// resolveHarnessBinary finds the agentpaas-harness binary for container images.
-// It prefers the linux/arm64 cross-compile (agentpaas-harness-linux) over the
-// darwin/arm64 Mac binary. Returns an empty string if not found; pack.BuildImage
-// will then fall back to its own exec.LookPath and produce a clear error.
-func resolveHarnessBinary() string {
-	exePath, err := resolveExecutable()
-	if err == nil {
-		exeDir := filepath.Dir(exePath)
-		if p := harnessCandidate(filepath.Join(exeDir, "agentpaas-harness-linux")); p != "" {
-			return p
-		}
-		if p := harnessCandidate(filepath.Join(exeDir, "..", "bin", "agentpaas-harness-linux")); p != "" {
-			return p
-		}
-		if p := harnessCandidate(filepath.Join(exeDir, "agentpaas-harness")); p != "" {
-			return p
-		}
-	}
-	if p, err := exec.LookPath("agentpaas-harness-linux"); err == nil {
-		return p
-	}
-	if p, err := exec.LookPath("agentpaas-harness"); err == nil {
-		return p
-	}
-	return ""
-}
-
-func harnessCandidate(path string) string {
-	info, err := os.Stat(path)
-	if err == nil && !info.IsDir() {
-		return path
-	}
-	return ""
-}
-
-// resolveSDKDir finds the Python SDK directory (containing agentpaas_sdk)
-// relative to the harness binary. The SDK lives in a "python/" subdirectory
-// alongside the harness binary (e.g. /usr/local/bin → /usr/local/python).
-// If not found there, it checks common repo locations.
-func resolveSDKDir(harnessPath string) string {
-	if harnessPath == "" {
-		return ""
-	}
-
-	// Check sibling "python" directory: <harnessDir>/../python
-	harnessDir := filepath.Dir(harnessPath)
-	candidates := []string{
-		filepath.Join(filepath.Dir(harnessDir), "python"),
-		filepath.Join(harnessDir, "python"),
-	}
-
-	for _, c := range candidates {
-		if info, err := os.Stat(filepath.Join(c, "agentpaas_sdk")); err == nil && info.IsDir() {
-			return c
-		}
-	}
-
-	// Check if the daemon binary is running from a repo build (bin/ directory)
-	if exePath, err := resolveExecutable(); err == nil {
-		exeDir := filepath.Dir(exePath)
-		// If exeDir is bin/, check ../python
-		repoPython := filepath.Join(exeDir, "..", "python")
-		if info, err := os.Stat(filepath.Join(repoPython, "agentpaas_sdk")); err == nil && info.IsDir() {
-			return repoPython
-		}
-	}
-
-	return ""
 }
 
 // writeFileAtomic replaces path with data using a same-directory temp file and rename,
