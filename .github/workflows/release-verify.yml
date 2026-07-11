@@ -59,7 +59,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.5'
       - name: Real cosign integration test
         run: |
           export PATH="/opt/homebrew/bin:$PATH:$(go env GOPATH)/bin"
@@ -78,7 +78,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: '1.26.5'
       - name: Goreleaser config validation (build only, skip signing/publish)
         # R22 goal: catch .goreleaser.yaml errors before release. Snapshot mode
         # builds all targets but we skip signing (cosign keyless hangs without
