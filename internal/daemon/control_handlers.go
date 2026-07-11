@@ -1953,14 +1953,6 @@ func (s *controlServer) openPackageIdentityKey(ctx context.Context, agentName st
 	return store, keyID, nil
 }
 
-func (s *controlServer) openIdentityStore() (identity.KeyStore, error) {
-	// Daemon automation (pack/start/export) uses the encrypted file keystore only.
-	// Never call KeychainKeyStore here: Create("local_ca") triggers macOS SecurityAgent
-	// dialogs ("A keychain cannot be found to store local_ca") when no interactive
-	// keychain is available, hanging headless tests and user sessions.
-	return s.openFileIdentityStore()
-}
-
 // openPublisherIdentityStore opens the Keychain-backed store used by the
 // identity CLI. Publisher operations must use this store; the encrypted file
 // store above is reserved for daemon-owned package identity material.

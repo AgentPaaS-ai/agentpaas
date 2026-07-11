@@ -1141,11 +1141,11 @@ func newAuditVerifyCmd() *cobra.Command {
 					return err
 				}
 			} else if len(result.Issues) == 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "Audit chain valid: %d records, %d checkpoints\n", result.AuditRecordCount, result.CheckpointCount)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Audit chain valid: %d records, %d checkpoints\n", result.AuditRecordCount, result.CheckpointCount)
 			} else {
-				fmt.Fprintln(cmd.OutOrStdout(), "Audit chain verification FAILED")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Audit chain verification FAILED")
 				for _, issue := range result.Issues {
-					fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", issue.Message)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", issue.Message)
 				}
 			}
 			if len(result.Issues) > 0 {

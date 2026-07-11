@@ -30,7 +30,7 @@ func newInstallBundleCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer b.Close()
+			defer func() { _ = b.Close() }()
 			vr, err := bundle.Verify(b)
 			if err != nil {
 				return err
@@ -67,7 +67,7 @@ func newInstallBundleCmd() *cobra.Command {
 				return formatInstallError(err)
 			}
 			for _, line := range trustResult.DisplayLines {
-				fmt.Fprintln(cmd.OutOrStdout(), line)
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), line)
 			}
 
 			state := &installpkg.FileInstallState{StateRoot: filepath.Join(homeDir, "state")}
@@ -83,7 +83,7 @@ func newInstallBundleCmd() *cobra.Command {
 			if err != nil {
 				return formatInstallError(err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), consent.CardText)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), consent.CardText)
 			digest, err := bundle.FileBundleDigest(path)
 			if err != nil {
 				return err
@@ -105,7 +105,7 @@ func newInstallBundleCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Installed: %s\n", result.AgentRef)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Installed: %s\n", result.AgentRef)
 			return nil
 		},
 	}
