@@ -234,37 +234,47 @@ agentpaas audit query
 Every allowed and denied call is logged: timestamp, agent identity,
 destination, credential used, and policy decision.
 
-## Share Agents Securely (v0.2.0)
+## Sharing Agents
 
-AgentPaaS v0.2.0 adds secure agent sharing with signed bundles,
-publisher identity, provenance chains, and fork/redistribute:
+AgentPaaS supports signed agent bundles for secure sharing between users.
+
+### Export (Share)
 
 ```bash
-# Publisher: create identity, build, pack, export
-agentpaas identity init --name my-publisher
-agentpaas pack ./my-agent
-agentpaas export ./my-agent -o my-agent.agentpaas --yes
+# Initialize your publisher identity (first time only)
+agentpaas identity init
 
-# Receiver: inspect offline, install with consent
-agentpaas bundle inspect my-agent.agentpaas
-agentpaas install my-agent.agentpaas
+# Export an agent as a shareable bundle
+agentpaas export --project-dir ~/weather-agent
 
-# Fork an installed agent, modify, re-export under your identity
-agentpaas fork weather-agent@a1b2c3d4 ./my-fork
-# edit the forked project...
-agentpaas pack ./my-fork
-agentpaas export ./my-fork -o my-fork.agentpaas --yes
+# Result: weather-agent.agentpaas bundle + your publisher fingerprint
+# Read your fingerprint to the receiver over a separate channel
 ```
 
-Each bundle carries a signed provenance chain. Forks append a `forked`
-entry with a policy delta showing exactly what changed at each hop.
-Receivers see the full chain, trust anchors on the final signer, and
-can locally verify hops when they hold parent artifacts.
+### Install (Receive)
 
-See [sharing.md](docs/sharing.md) for the full walkthrough and
-[trust-model.md](docs/trust-model.md) for chain semantics.
+```bash
+# Inspect before installing — see policy, credentials, provenance
+agentpaas bundle inspect weather-agent.agentpaas
 
-See [docs/known-limitations.md](docs/known-limitations.md) for current development status and [open issues](https://github.com/AgentPaaS-ai/agentpaas/issues) for upcoming work.
+# Install (interactive — confirms fingerprint, policy, credentials)
+agentpaas install weather-agent.agentpaas
+
+# Run the installed agent
+agentpaas run weather-agent@&lt;pub8&gt;
+```
+
+### Fork and Redistribute
+
+```bash
+# Fork creates an editable project from an installed agent
+agentpaas fork weather-agent@&lt;pub8&gt; ~/my-weather-agent
+
+# After modifying, repack and re-export — provenance chain tracks all changes
+cd ~/my-weather-agent && agentpaas pack . && agentpaas export --project-dir .
+```
+
+See [docs/sharing.md](docs/sharing.md) for the full guide.
 
 ## Documentation
 
