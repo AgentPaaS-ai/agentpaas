@@ -15,6 +15,7 @@ import (
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/binresolve"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
@@ -200,11 +201,11 @@ func TestResolveHarnessBinary_PrefersLinux(t *testing.T) {
 		}
 	}
 
-	oldResolveExecutable := resolveExecutable
-	resolveExecutable = func() (string, error) { return daemonBinary, nil }
-	t.Cleanup(func() { resolveExecutable = oldResolveExecutable })
+	oldResolveExecutable := binresolve.Executable
+	binresolve.Executable = func() (string, error) { return daemonBinary, nil }
+	t.Cleanup(func() { binresolve.Executable = oldResolveExecutable })
 
-	got := resolveHarnessBinary()
+	got := binresolve.HarnessBinary()
 	if got != linuxHarness {
 		t.Fatalf("resolveHarnessBinary() = %q, want %q", got, linuxHarness)
 	}
@@ -213,7 +214,7 @@ func TestResolveHarnessBinary_PrefersLinux(t *testing.T) {
 		t.Fatalf("os.Remove(linuxHarness) error = %v", err)
 	}
 
-	got = resolveHarnessBinary()
+	got = binresolve.HarnessBinary()
 	if got != macHarness {
 		t.Fatalf("resolveHarnessBinary() without linux = %q, want %q", got, macHarness)
 	}
