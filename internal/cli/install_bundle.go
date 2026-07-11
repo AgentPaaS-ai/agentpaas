@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	agentpaas "github.com/AgentPaaS-ai/agentpaas"
+	"github.com/AgentPaaS-ai/agentpaas/internal/binresolve"
 	"github.com/AgentPaaS-ai/agentpaas/internal/bundle"
 	installpkg "github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/trust"
@@ -88,10 +90,17 @@ func newInstallBundleCmd() *cobra.Command {
 			}
 			preferImage := mustBool(cmd.Flags().GetBool("prefer-image"))
 			allowUnlocked := mustBool(cmd.Flags().GetBool("allow-unlocked-deps"))
+			builder, cleanup, err := installBuilder()
+			if err != nil {
+				return err
+			}
+			if cleanup != nil {
+				defer cleanup()
+			}
 			result, err := installpkg.MaterializeInstall(context.Background(), installpkg.MaterializeOpts{
 				StateRoot: filepath.Join(homeDir, "state"), Bundle: b, BundlePath: path, BundleDigest: digest,
 				Manifest: consent.Manifest, PreferImage: preferImage, AllowUnlockedDeps: allowUnlocked,
-				IsTTY: isTTY, PromptUnlocked: promptReader(), Builder: installBuilder(),
+				IsTTY: isTTY, PromptUnlocked: promptReader(), Builder: builder,
 			})
 			if err != nil {
 				return err
@@ -109,15 +118,33 @@ func newInstallBundleCmd() *cobra.Command {
 	return cmd
 }
 
-func installBuilder() *installpkg.PackImageBuilder {
-	b := &installpkg.PackImageBuilder{}
-	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "agentpaas-harness")
-		if _, statErr := os.Stat(candidate); statErr == nil {
-			b.HarnessPath = candidate
+// installBuilder resolves the harness binary and Python SDK directory,
+// mirroring the daemon pack path (control_handlers.go). If the SDK is not on
+// disk (brew-only install), it falls back to the SDK embedded in the binary.
+// The returned cleanup function (if non-nil) removes the extracted temp SDK
+// directory and MUST be called after the build completes.
+func installBuilder() (*installpkg.PackImageBuilder, func(), error) {
+	harnessPath := binresolve.HarnessBinary()
+	sdkDir := binresolve.SDKDir(harnessPath)
+
+	// If the SDK is not on disk (brew-only install, release tarball without
+	// python/), fall back to the SDK embedded in the binary.
+	if sdkDir == "" {
+		embeddedSDKDir, cleanup, err := agentpaas.ExtractEmbeddedSDKToTemp()
+		if err != nil {
+			return nil, nil, fmt.Errorf("SDK not found on disk and embedded SDK extraction failed: %w", err)
 		}
+		sdkDir = embeddedSDKDir
+		return &installpkg.PackImageBuilder{
+			HarnessPath: harnessPath,
+			SDKDir:      sdkDir,
+		}, cleanup, nil
 	}
-	return b
+
+	return &installpkg.PackImageBuilder{
+		HarnessPath: harnessPath,
+		SDKDir:      sdkDir,
+	}, nil, nil
 }
 
 func promptReader() func(string) (string, error) {
