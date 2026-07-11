@@ -670,6 +670,157 @@ def _cmd_trigger(args_str, ctx=None):
     return msg
 
 
+def _cmd_export(args_str, ctx=None):
+    """`/agentpaas-export <project_path>` — export an agent project as a signed bundle."""
+    path = (args_str or "").strip()
+    if not path:
+        return "Usage: /agentpaas-export <project_path>"
+    result = json.loads(tools.agentpaas_export({"project_dir": path}))
+    err = _format_error(result, "Export failed")
+    if err:
+        return err
+    if isinstance(result, dict):
+        lines = []
+        if result.get("bundle_path"):
+            lines.append(f"Bundle: {result['bundle_path']}")
+        if result.get("digest"):
+            lines.append(f"Digest: {result['digest']}")
+        if result.get("publisher_fingerprint"):
+            fp = result["publisher_fingerprint"]
+            lines.append(f"Fingerprint: {fp}")
+            lines.append(
+                f"Read your fingerprint {fp} to the receiver over another "
+                f"channel (phone, Signal, etc.) so they can verify the bundle."
+            )
+        if result.get("instruction"):
+            lines.append(result["instruction"])
+        if lines:
+            return "\n".join(lines)
+    return json.dumps(result, indent=2)
+
+
+def _cmd_inspect(args_str, ctx=None):
+    """`/agentpaas-inspect <bundle_path>` — inspect a signed agent bundle."""
+    bundle_path = (args_str or "").strip()
+    if not bundle_path:
+        return "Usage: /agentpaas-inspect <bundle_path>"
+    result = json.loads(tools.agentpaas_bundle_inspect({"bundle_path": bundle_path}))
+    err = _format_error(result, "Inspect failed")
+    if err:
+        return err
+    return json.dumps(result, indent=2)
+
+
+def _cmd_install(args_str, ctx=None):
+    """`/agentpaas-install <bundle_path>` — install a signed agent bundle.
+
+    CRITICAL: This command NEVER approves consent. It instructs the user
+    to run the install in their terminal where they can follow prompts.
+    """
+    bundle_path = (args_str or "").strip()
+    if not bundle_path:
+        return "Usage: /agentpaas-install <bundle_path>"
+    result = json.loads(tools.agentpaas_install({"bundle_path": bundle_path}))
+    err = _format_error(result, "Install failed")
+    if err:
+        instruction = result.get("terminal_instruction") if isinstance(result, dict) else ""
+        if instruction:
+            return f"{err}\n\n{instruction}"
+        return err
+    return json.dumps(result, indent=2)
+
+
+def _cmd_installed(args_str, ctx=None):
+    """`/agentpaas-installed` — list installed agents."""
+    result = json.loads(tools.agentpaas_installed_list({}))
+    err = _format_error(result, "List installed failed")
+    if err:
+        return err
+    agents = result if isinstance(result, list) else result.get("agents", [])
+    if not agents:
+        return "No installed agents."
+    lines = [f"Installed agents ({len(agents)}):"]
+    for a in agents:
+        if isinstance(a, dict):
+            ref = a.get("ref", a.get("digest", "?"))
+            alias = a.get("alias", "")
+            fp = a.get("fingerprint", "")
+            line = f"  {ref}"
+            if alias:
+                line += f"  (alias: {alias})"
+            if fp:
+                line += f"  [{fp}]"
+            lines.append(line)
+        else:
+            lines.append(f"  {a}")
+    return "\n".join(lines)
+
+
+def _cmd_fork(args_str, ctx=None):
+    """`/agentpaas-fork <ref> <target_dir>` — fork an installed agent to a local project."""
+    parts = (args_str or "").strip().split(None, 1)
+    if len(parts) < 2:
+        return "Usage: /agentpaas-fork <ref> <target_dir>"
+    ref, target_dir = parts[0], parts[1]
+    result = json.loads(tools.agentpaas_fork({"installed_ref": ref, "target_dir": target_dir}))
+    err = _format_error(result, "Fork failed")
+    if err:
+        return err
+    return f"Forked {ref} to {target_dir}"
+
+
+def _cmd_provenance(args_str, ctx=None):
+    """`/agentpaas-provenance <ref>` — show provenance chain for an installed agent."""
+    ref = (args_str or "").strip()
+    if not ref:
+        return "Usage: /agentpaas-provenance <ref>"
+    result = json.loads(tools.agentpaas_provenance_show({"installed_ref": ref}))
+    err = _format_error(result, "Provenance failed")
+    if err:
+        return err
+    return json.dumps(result, indent=2)
+
+
+def _cmd_trust(args_str, ctx=None):
+    """`/agentpaas-trust` — list trusted publishers."""
+    result = json.loads(tools.agentpaas_trust_list({}))
+    err = _format_error(result, "Trust list failed")
+    if err:
+        return err
+    publishers = result if isinstance(result, list) else result.get("publishers", [])
+    if not publishers:
+        return "No trusted publishers."
+    lines = [f"Trusted publishers ({len(publishers)}):"]
+    for p in publishers:
+        if isinstance(p, dict):
+            fp = p.get("fingerprint", p.get("id", "?"))
+            name = p.get("name", "")
+            line = f"  {fp}"
+            if name:
+                line += f"  ({name})"
+            lines.append(line)
+        else:
+            lines.append(f"  {p}")
+    return "\n".join(lines)
+
+
+def _cmd_identity(args_str, ctx=None):
+    """`/agentpaas-identity` — show current publisher identity."""
+    result = json.loads(tools.agentpaas_identity_show({}))
+    err = _format_error(result, "Identity show failed")
+    if err:
+        return err
+    if isinstance(result, dict):
+        fp = result.get("fingerprint", result.get("publisher", "?"))
+        name = result.get("name", "")
+        lines = [f"Publisher identity:"]
+        lines.append(f"  Fingerprint: {fp}")
+        if name:
+            lines.append(f"  Name: {name}")
+        return "\n".join(lines)
+    return json.dumps(result, indent=2)
+
+
 # ---------------------------------------------------------------------------
 # Slash command registry
 #
@@ -695,6 +846,14 @@ _SLASH_COMMANDS = {
     "agentpaas summarize": (_cmd_summarize, "Summarize a completed or failed run", "<run_id>"),
     "agentpaas explain-failure": (_cmd_explain_failure, "Diagnose a failed run", "<run_id>"),
     "agentpaas trigger": (_cmd_trigger, "Invoke an agent via trigger API", "<agent_name>"),
+    "agentpaas export": (_cmd_export, "Export an agent project as a signed bundle", "<project_path>"),
+    "agentpaas inspect": (_cmd_inspect, "Inspect a signed agent bundle", "<bundle_path>"),
+    "agentpaas install": (_cmd_install, "Install a signed agent bundle (NEVER approves consent — requires terminal)", "<bundle_path>"),
+    "agentpaas installed": (_cmd_installed, "List installed agents", ""),
+    "agentpaas fork": (_cmd_fork, "Fork an installed agent to a local project", "<ref> <target_dir>"),
+    "agentpaas provenance": (_cmd_provenance, "Show provenance chain for an installed agent", "<ref>"),
+    "agentpaas trust": (_cmd_trust, "List trusted publishers", ""),
+    "agentpaas identity": (_cmd_identity, "Show current publisher identity", ""),
 }
 
 
