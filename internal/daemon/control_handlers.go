@@ -875,7 +875,7 @@ func checkDockerEngineVersion(ctx context.Context, rt *runtime.DockerRuntime) er
 		return nil
 	}
 	if major < 29 || (major == 29 && minor < 5) || (major == 29 && minor == 5 && patch < 1) {
-		return fmt.Errorf("Docker Engine %s has known vulnerabilities (CVE-2026-41567/41568/42306); upgrade to 29.5.1+ (set AGENTPAAS_ALLOW_VULNERABLE_DOCKER=1 to bypass for testing)", serverVer)
+		return fmt.Errorf("docker Engine %s has known vulnerabilities (CVE-2026-41567/41568/42306); upgrade to 29.5.1+ (set AGENTPAAS_ALLOW_VULNERABLE_DOCKER=1 to bypass for testing)", serverVer)
 	}
 	return nil
 }
