@@ -481,6 +481,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Errorf(codes.FailedPrecondition, "docker runtime not available: %v", err)
 	}
 
+	// Verify Docker Engine version is patched (T00-B).
+	// Known-vulnerable engines (< 29.5.1) fail before any Docker resources are created.
+	if os.Getenv("AGENTPAAS_ALLOW_VULNERABLE_DOCKER") != "1" {
+		if err := checkDockerEngineVersion(ctx, rt); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "%v", err)
+		}
+	}
+
 	runID := generateRunID()
 	netID, err := rt.CreateNetwork(ctx, runtime.NetworkSpec{
 		Name:     runtime.NetworkName("internal", runID),
@@ -844,6 +852,34 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 // runs don't leak resources) and from Stop() on explicit termination.
 // Safe to call multiple times — Remove/RemoveNetwork are idempotent on
 // already-removed resources.
+// checkDockerEngineVersion verifies the Docker Engine is patched against
+// known vulnerabilities (CVE-2026-41567/41568/42306, fixed in 29.5.1).
+// Returns nil if patched or if the version cannot be determined (fail-open
+// for unknown versions to avoid blocking valid custom engines).
+func checkDockerEngineVersion(ctx context.Context, rt *runtime.DockerRuntime) error {
+	serverVer, err := rt.ServerVersion(ctx)
+	if err != nil {
+		// If we can't get the version, don't block — the daemon already
+		// checks Docker reachability separately.
+		return nil
+	}
+	parts := strings.Split(serverVer, ".")
+	if len(parts) < 3 {
+		// Unknown version format — fail open.
+		return nil
+	}
+	major, err1 := strconv.Atoi(parts[0])
+	minor, err2 := strconv.Atoi(parts[1])
+	patch, err3 := strconv.Atoi(strings.SplitN(parts[2], "-", 2)[0])
+	if err1 != nil || err2 != nil || err3 != nil {
+		return nil
+	}
+	if major < 29 || (major == 29 && minor < 5) || (major == 29 && minor == 5 && patch < 1) {
+		return fmt.Errorf("Docker Engine %s has known vulnerabilities (CVE-2026-41567/41568/42306); upgrade to 29.5.1+ (set AGENTPAAS_ALLOW_VULNERABLE_DOCKER=1 to bypass for testing)", serverVer)
+	}
+	return nil
+}
+
 func (s *controlServer) cleanupRun(ctx context.Context, tr *trackedRun) {
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {

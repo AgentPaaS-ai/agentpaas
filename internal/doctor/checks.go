@@ -160,8 +160,118 @@ func CheckDockerReachable() CheckResult {
 	return CheckResult{
 		Name:    name,
 		Status:  "ok",
-		Message: fmt.Sprintf("Docker daemon is reachable (API version: %s)", apiVersion),
+		Message: fmt.Sprintf("Docker daemon is reachable (Server version: %s)", apiVersion),
 	}
+}
+
+// CheckDockerServerVersion validates the Docker server version against known
+// vulnerable ranges. Currently rejects Docker Engine < 29.5.1 (vulnerable to
+// CVE-2026-41567 / 41568 / 42306).
+//
+// It shells out to "docker info" for the server version, then compares
+// against the minimum fixed version using numeric semver comparison.
+func CheckDockerServerVersion() CheckResult {
+	name := "docker_server_version"
+
+	// Validate the docker binary path before running it.
+	if result := validateDockerBinary(name); result != nil {
+		return *result
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), dockerInfoTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").Output()
+	if err != nil {
+		return CheckResult{
+			Name:    name,
+			Status:  "error",
+			Message: fmt.Sprintf("Cannot determine Docker server version: %v", err),
+			FixHint: "Run 'docker info' to verify the daemon is running.",
+		}
+	}
+
+	serverVersion := strings.TrimSpace(string(out))
+	if serverVersion == "" {
+		return CheckResult{
+			Name:    name,
+			Status:  "error",
+			Message: "Docker daemon returned an empty version string",
+			FixHint: "Run 'docker info' to check Docker daemon status.",
+		}
+	}
+
+	if isDockerVersionVulnerable(serverVersion) {
+		return CheckResult{
+			Name:    name,
+			Status:  "error",
+			Message: fmt.Sprintf("Docker Engine %s has known vulnerabilities (CVE-2026-41567/41568/42306). Upgrade to 29.5.1+ via Docker Desktop update or 'colima upgrade'.", serverVersion),
+			FixHint: "Update Docker Desktop from the official channel or run 'colima stop && colima start --edit' to adjust the version.",
+		}
+	}
+
+	return CheckResult{
+		Name:    name,
+		Status:  "ok",
+		Message: fmt.Sprintf("Docker Engine %s (patched)", serverVersion),
+	}
+}
+
+// parseDockerVersion splits a dotted semver string (e.g. "29.5.1") into
+// its major, minor, and patch components. Leading 'v' prefix and build
+// metadata are rejected.
+func parseDockerVersion(v string) (major, minor, patch int, err error) {
+	parts := strings.Split(v, ".")
+	if len(parts) != 3 {
+		return 0, 0, 0, fmt.Errorf("invalid version %q: expected 3 dot-separated components", v)
+	}
+	major, err = strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("parse major version %q: %w", parts[0], err)
+	}
+	minor, err = strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("parse minor version %q: %w", parts[1], err)
+	}
+	patch, err = strconv.Atoi(parts[2])
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("parse patch version %q: %w", parts[2], err)
+	}
+	return major, minor, patch, nil
+}
+
+// minFixedDockerVersionMajor, Minor, Patch define the minimum safe Docker
+// Engine version (29.5.1) that fixes CVE-2026-41567/41568/42306.
+const (
+	minFixedDockerVersionMajor = 29
+	minFixedDockerVersionMinor = 5
+	minFixedDockerVersionPatch = 1
+)
+
+// isDockerVersionVulnerable returns true if the given Docker Engine version
+// is below the minimum fixed version (29.5.1). Uses numeric comparison so
+// that v29.5.10 > v29.5.1 is handled correctly (backport-aware).
+func isDockerVersionVulnerable(version string) bool {
+	major, minor, patch, err := parseDockerVersion(version)
+	if err != nil {
+		// If we can't parse the version, assume vulnerable (fail closed).
+		return true
+	}
+	if major < minFixedDockerVersionMajor {
+		return true
+	}
+	if major > minFixedDockerVersionMajor {
+		return false
+	}
+	// major == 29
+	if minor < minFixedDockerVersionMinor {
+		return true
+	}
+	if minor > minFixedDockerVersionMinor {
+		return false
+	}
+	// minor == 5
+	return patch < minFixedDockerVersionPatch
 }
 
 // CheckDockerContext reports the current Docker context name.
