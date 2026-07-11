@@ -54,6 +54,21 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 	return &DockerRuntime{cli: cli}, nil
 }
 
+// ServerVersion returns the Docker Engine server version string.
+// It calls the Engine API and returns the version. This is used by the
+// daemon's Run() handler to reject known-vulnerable Docker Engines before
+// creating any containers.
+func (d *DockerRuntime) ServerVersion(ctx context.Context) (string, error) {
+	if d.cli == nil {
+		return "", errors.New("DockerRuntime: not initialized (no Docker client)")
+	}
+	info, err := d.cli.Info(ctx)
+	if err != nil {
+		return "", fmt.Errorf("get Docker server info: %w", err)
+	}
+	return info.ServerVersion, nil
+}
+
 // ensureImage ensures the required image is available locally. For registry
 // refs (localhost:5001/...) it pulls if missing. For bare digest refs
 // (sha256:...) used by installed agents, it verifies the image exists locally
