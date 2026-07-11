@@ -42,6 +42,7 @@ func TestRun_SetsProxyEnvWhenGatewayIPAvailable(t *testing.T) {
 		t.Fatal("Run() returned empty run_id")
 	}
 
+	// Gateway-native routing for LLM calls.
 	wantGateway := []string{
 		fmt.Sprintf("AGENTPAAS_GATEWAY_IP=%s", gatewayIP),
 		fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP),
@@ -51,10 +52,15 @@ func TestRun_SetsProxyEnvWhenGatewayIPAvailable(t *testing.T) {
 			t.Fatalf("ContainerSpec.Env = %v, want to contain %q", capturedSpec.Env, want)
 		}
 	}
-	// Forward-proxy CONNECT env vars must not be set (Bug 021).
-	for _, env := range capturedSpec.Env {
-		if isLegacyProxyEnvVar(env) {
-			t.Fatalf("unexpected legacy proxy env %q (gateway-native routing uses AGENTPAAS_GATEWAY_URL)", env)
+	// Forward proxy for non-LLM egress (Bug 021 regression fix).
+	wantProxy := []string{
+		fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
+		fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
+		fmt.Sprintf("NO_PROXY=localhost,127.0.0.1,%s", gatewayIP),
+	}
+	for _, want := range wantProxy {
+		if !containsEnv(capturedSpec.Env, want) {
+			t.Fatalf("ContainerSpec.Env = %v, want to contain %q", capturedSpec.Env, want)
 		}
 	}
 }
@@ -86,6 +92,9 @@ func TestRun_OmitsProxyEnvWhenNoGatewayIP(t *testing.T) {
 	for _, env := range capturedSpec.Env {
 		if isLegacyProxyEnvVar(env) || strings.HasPrefix(env, "AGENTPAAS_GATEWAY_URL=") {
 			t.Fatalf("unexpected gateway/proxy env %q when gateway IP unavailable", env)
+		}
+		if strings.HasPrefix(env, "HTTP_PROXY=") || strings.HasPrefix(env, "HTTPS_PROXY=") {
+			t.Fatalf("unexpected proxy env %q when gateway IP unavailable", env)
 		}
 	}
 
@@ -127,6 +136,9 @@ func TestRun_OmitsProxyEnvWhenInspectContainerIPFails(t *testing.T) {
 	for _, env := range capturedSpec.Env {
 		if isLegacyProxyEnvVar(env) || strings.HasPrefix(env, "AGENTPAAS_GATEWAY_URL=") {
 			t.Fatalf("unexpected gateway/proxy env %q when InspectContainerIP failed", env)
+		}
+		if strings.HasPrefix(env, "HTTP_PROXY=") || strings.HasPrefix(env, "HTTPS_PROXY=") {
+			t.Fatalf("unexpected proxy env %q when InspectContainerIP failed", env)
 		}
 	}
 }
