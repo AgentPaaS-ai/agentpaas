@@ -1489,3 +1489,176 @@ def agentpaas_cron_remove(args, **kwargs):
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_identity_show(args, **kwargs):
+    """Show the current publisher identity (fingerprint, name).
+
+    Read-only tool. If no identity has been created yet, returns guidance
+    telling the USER to run ``agentpaas identity init`` in their terminal.
+    """
+    try:
+        result = _run_cli(["identity", "show", "--json"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_export(args, **kwargs):
+    """Export an agent project as a signed bundle for sharing.
+
+    Args:
+        project_dir (str): Project directory to export.
+        with_image (bool): Include the Docker image in the bundle.
+        output (str): Output path for the bundle file.
+    """
+    args = args or {}
+    project_dir = args.get("project_dir", ".")
+    is_valid, resolved, err = _validate_project_path(project_dir)
+    if not is_valid:
+        return json.dumps(err)
+    cmd = ["export", "--yes", "--project-dir", resolved]
+    if args.get("with_image"):
+        cmd.append("--with-image")
+    if args.get("output"):
+        cmd.extend(["--output", args["output"]])
+    try:
+        result = _run_cli(cmd)
+        if isinstance(result, dict) and result.get("publisher_fingerprint"):
+            result["instruction"] = (
+                f"Read your fingerprint {result['publisher_fingerprint']} "
+                f"to the receiver over another channel (phone, Signal, etc.) "
+                f"so they can verify the bundle."
+            )
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_bundle_inspect(args, **kwargs):
+    """Inspect a signed agent bundle and return its structured report.
+
+    Args:
+        bundle_path (str): Path to the bundle file to inspect.
+    """
+    args = args or {}
+    bundle_path = args.get("bundle_path", "")
+    if not bundle_path:
+        return json.dumps({
+            "error": "bundle_path is required",
+            "error_category": "tool_invocation_failed",
+        })
+    try:
+        result = _run_cli(["bundle", "inspect", "--json", bundle_path])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_install(args, **kwargs):
+    """Install a signed agent bundle.
+
+    CRITICAL SECURITY DESIGN: This tool has NO confirm_fingerprint or
+    accept_policy parameters. It runs install in TTY-less mode which
+    fails at trust/consent steps. The tool instructs the user:
+    "Run in your terminal: ``agentpaas install <file>`` and follow the prompts."
+    The agent explains but NEVER approves.
+    """
+    args = args or {}
+    bundle_path = args.get("bundle_path", "")
+    if not bundle_path:
+        return json.dumps({
+            "error": "bundle_path is required",
+            "error_category": "tool_invocation_failed",
+        })
+    cmd = ["install", "--yes", bundle_path]
+    alias = args.get("alias")
+    if alias:
+        cmd.extend(["--alias", alias])
+    map_credential = args.get("map_credential")
+    if map_credential:
+        if isinstance(map_credential, list):
+            for mc in map_credential:
+                cmd.extend(["--map-credential", mc])
+        elif isinstance(map_credential, str):
+            cmd.extend(["--map-credential", map_credential])
+    try:
+        result = _run_cli(cmd)
+        if isinstance(result, dict) and "error" in result:
+            result["terminal_instruction"] = (
+                "Run in your terminal: `agentpaas install <file>` "
+                "and follow the prompts. The agent explains but NEVER approves consent."
+            )
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({
+            "error": str(e),
+            "error_category": "tool_invocation_failed",
+            "terminal_instruction": (
+                "Run in your terminal: `agentpaas install <file>` "
+                "and follow the prompts. The agent explains but NEVER approves consent."
+            ),
+        })
+
+
+def agentpaas_installed_list(args, **kwargs):
+    """List all installed agents with their refs, aliases, and fingerprints."""
+    try:
+        result = _run_cli(["installed", "list", "--json"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_provenance_show(args, **kwargs):
+    """Show the provenance chain for an installed agent.
+
+    Args:
+        installed_ref (str): Reference (digest or alias) of the installed agent.
+    """
+    args = args or {}
+    installed_ref = args.get("installed_ref", "")
+    if not installed_ref:
+        return json.dumps({
+            "error": "installed_ref is required",
+            "error_category": "tool_invocation_failed",
+        })
+    try:
+        result = _run_cli(["provenance", "show", "--json", installed_ref])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_trust_list(args, **kwargs):
+    """List trusted publishers."""
+    try:
+        result = _run_cli(["trust", "list", "--json"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+def agentpaas_fork(args, **kwargs):
+    """Create a local project copy from an installed agent (safe, no trust decision).
+
+    Args:
+        installed_ref (str): Reference (digest or alias) of the installed agent.
+        target_dir (str): Target directory for the forked project.
+    """
+    args = args or {}
+    installed_ref = args.get("installed_ref", "")
+    if not installed_ref:
+        return json.dumps({
+            "error": "installed_ref is required",
+            "error_category": "tool_invocation_failed",
+        })
+    target_dir = args.get("target_dir", ".")
+    is_valid, resolved, err = _validate_project_path(target_dir)
+    if not is_valid:
+        return json.dumps(err)
+    try:
+        result = _run_cli(["fork", installed_ref, resolved, "--json"])
+        return json.dumps(result)
+    except Exception as e:
+        return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})

@@ -31,6 +31,14 @@ TOOL_NAMES = [
     "agentpaas_cron_add",
     "agentpaas_cron_list",
     "agentpaas_cron_remove",
+    "agentpaas_identity_show",
+    "agentpaas_export",
+    "agentpaas_bundle_inspect",
+    "agentpaas_install",
+    "agentpaas_installed_list",
+    "agentpaas_provenance_show",
+    "agentpaas_trust_list",
+    "agentpaas_fork",
 ]
 
 AGENTPAAS_INIT_PROJECT = {
@@ -574,6 +582,145 @@ AGENTPAAS_CRON_REMOVE = {
             },
         },
         "required": ["schedule_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_IDENTITY_SHOW = {
+    "name": "agentpaas_identity_show",
+    "description": "Show the current publisher identity (fingerprint, name). Read-only. If no identity exists, returns guidance to run `agentpaas identity init` in the terminal (identity creation is terminal-gated).",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_EXPORT = {
+    "name": "agentpaas_export",
+    "description": "Export an agent project as a signed bundle for sharing. Returns bundle path, digest, publisher fingerprint, and a canned instruction to read the fingerprint to the receiver over another channel (phone, Signal, etc.) so they can verify the bundle.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "project_dir": {
+                "type": "string",
+                "description": "Project directory to export.",
+            },
+            "with_image": {
+                "type": "boolean",
+                "description": "Include the Docker image in the bundle.",
+            },
+            "output": {
+                "type": "string",
+                "description": "Output path for the bundle file.",
+            },
+        },
+        "required": ["project_dir"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_BUNDLE_INSPECT = {
+    "name": "agentpaas_bundle_inspect",
+    "description": "Inspect a signed agent bundle and return its structured report (policy, lints, provenance, credentials needed).",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "bundle_path": {
+                "type": "string",
+                "description": "Path to the bundle file to inspect.",
+            },
+        },
+        "required": ["bundle_path"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_INSTALL = {
+    "name": "agentpaas_install",
+    "description": "Install a signed agent bundle. NEVER includes approval parameters (no confirm_fingerprint, no accept_policy) — consent happens in terminal. The tool will fail at trust/consent steps; instructs user to run `agentpaas install <file>` in their terminal and follow prompts.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "bundle_path": {
+                "type": "string",
+                "description": "Path to the bundle file to install.",
+            },
+            "alias": {
+                "type": "string",
+                "description": "Optional alias to assign to the installed agent.",
+            },
+            "map_credential": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of credential mappings (e.g. ['local_key=remote_key']).",
+            },
+        },
+        "required": ["bundle_path"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_INSTALLED_LIST = {
+    "name": "agentpaas_installed_list",
+    "description": "List all installed agents with their refs, aliases, and fingerprints.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_PROVENANCE_SHOW = {
+    "name": "agentpaas_provenance_show",
+    "description": "Show the provenance chain for an installed agent.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "installed_ref": {
+                "type": "string",
+                "description": "Reference (digest or alias) of the installed agent.",
+            },
+        },
+        "required": ["installed_ref"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_TRUST_LIST = {
+    "name": "agentpaas_trust_list",
+    "description": "List trusted publishers.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_FORK = {
+    "name": "agentpaas_fork",
+    "description": "Create a local project copy from an installed agent (safe, no trust decision).",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "installed_ref": {
+                "type": "string",
+                "description": "Reference (digest or alias) of the installed agent.",
+            },
+            "target_dir": {
+                "type": "string",
+                "description": "Target directory for the forked project.",
+            },
+        },
+        "required": ["installed_ref", "target_dir"],
         "additionalProperties": False,
     },
 }
