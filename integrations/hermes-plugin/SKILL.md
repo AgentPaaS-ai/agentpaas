@@ -88,6 +88,19 @@ All commands are also available as natural language — just ask Hermes.
 | `/agentpaas-secret-list` | List stored credentials (by label, never value) |
 | `/agentpaas-cron-list` | List scheduled agent invocations |
 
+### Sharing
+
+| Command | Description |
+|---------|-------------|
+| `/agentpaas-export <path>` | Export agent as shareable bundle |
+| `/agentpaas-inspect <file>` | Inspect a bundle before installing |
+| `/agentpaas-install <file>` | Print terminal install instructions |
+| `/agentpaas-installed` | List installed agents |
+| `/agentpaas-fork <ref> <dir>` | Fork an installed agent |
+| `/agentpaas-provenance <ref>` | Show provenance chain |
+| `/agentpaas-trust` | List trusted publishers |
+| `/agentpaas-identity` | Show publisher identity |
+
 ## Agent Code Structure (Required)
 
 AgentPaaS agents MUST use the SDK pattern. The harness loads
@@ -330,6 +343,67 @@ xAI and Nous Research use OAuth tokens that expire:
 
 For these reasons, **OpenRouter is strongly recommended**. If you must
 use xAI or Nous, extract a fresh token immediately before storing it.
+
+## Sharing Agents (Export)
+
+When a user wants to share an agent with someone else:
+
+1. **Verify identity exists** — call `agentpaas_identity_show`. If no identity,
+   tell the USER to run in their terminal: `agentpaas identity init` and follow
+   the prompts. Do NOT create the identity yourself.
+
+2. **Export the bundle** — call `agentpaas_export` with the project directory.
+   The tool returns the bundle path, digest, and publisher fingerprint.
+
+3. **Relay the fingerprint** — tell the user: "Read your fingerprint
+   <fingerprint> to the receiver over another channel (phone, Signal, etc.)
+   so they can verify the bundle is genuinely from you."
+
+4. **Share the file** — tell the user where the .agentpaas bundle file is
+   located. They can send it via any file-sharing method.
+
+The bundle contains signed code, policy, and credential declarations (IDs only
+— no secret values). The receiver will need their own API keys.
+
+## Receiving Agents (Install)
+
+When a user receives a .agentpaas bundle and wants to install it:
+
+1. **Inspect before trust** — call `agentpaas_bundle_inspect` with the bundle
+   path. Summarize for the user:
+   - What the agent CAN ACCESS (list every egress domain)
+   - What credentials it needs (list credential IDs)
+   - Publisher name and fingerprint
+   - Provenance chain (who created it, who forked it)
+   - Any policy lints or warnings
+
+2. **Verify fingerprint** — tell the user: "The publisher's fingerprint is
+   <fingerprint>. Verify this matches what the sender told you over a
+   separate channel." Do NOT skip this step or assume trust.
+
+3. **Check credentials** — call `agentpaas_secret_list` to see which of the
+   required credentials the user already has. For missing ones, guide the
+   user through `agentpaas secret add <name>` in their terminal.
+
+4. **Hand off to terminal** — tell the user: "Run in your terminal:
+   `agentpaas install <bundle-path>` and follow the prompts. You'll confirm
+   the fingerprint, approve the policy, and map credentials." Do NOT attempt
+   to complete the install yourself — trust approval and policy acceptance
+   ALWAYS happen in the user's terminal.
+
+5. **Verify install** — after the user confirms, call `agentpaas_installed_list`
+   to verify the agent appears.
+
+6. **Offer a test run** — suggest running the installed agent to verify it
+   works with the user's credentials.
+
+### D3 Language Rules (Critical)
+
+- NEVER describe a bundle as "safe" or "trusted". Always say "verified" or
+  "the fingerprint matches."
+- ALWAYS summarize what the agent CAN ACCESS (egress domains, credentials).
+- NEVER say "the agent cannot access anything" — list what it CAN do.
+- NEVER auto-approve or skip consent steps. The user must decide.
 
 ## Contributing
 
