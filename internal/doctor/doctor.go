@@ -91,6 +91,7 @@ func New(opts ...Option) (*Doctor, error) {
 func (d *Doctor) Run() ([]CheckResult, string) {
 	checks := []CheckResult{
 		CheckDockerReachable(),
+		CheckDockerServerVersion(),
 		CheckDockerContext(),
 		CheckDockerDesktop(),
 		CheckLinuxDockerd(),
