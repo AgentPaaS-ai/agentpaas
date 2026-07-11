@@ -688,7 +688,17 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		agentSpec.CapAdd = []string{"NET_ADMIN"}
 	}
 
-	imageRef := pack.LocalImageRef(agentName, imageDigest)
+	var imageRef string
+	if isInstalled {
+		// Installed agents (from shared bundles) use a bare digest ref.
+		// The image was loaded locally at install time and was never
+		// pushed to the local registry. Using a bare sha256: digest
+		// avoids network exposure and TOCTOU risk — the Docker daemon
+		// resolves it directly from its local image store.
+		imageRef = "sha256:" + strings.TrimPrefix(imageDigest, "sha256:")
+	} else {
+		imageRef = pack.LocalImageRef(agentName, imageDigest)
+	}
 	agentSpec.Image = imageRef
 	containerID, err := rt.Create(ctx, agentSpec)
 	if err != nil {

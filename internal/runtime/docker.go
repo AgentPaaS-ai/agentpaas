@@ -54,9 +54,29 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 	return &DockerRuntime{cli: cli}, nil
 }
 
-// ensureImage ensures the required image is pulled locally. For P1 we default
-// to alpine:latest which is small and commonly cached.
+// ensureImage ensures the required image is available locally. For registry
+// refs (localhost:5001/...) it pulls if missing. For bare digest refs
+// (sha256:...) used by installed agents, it verifies the image exists locally
+// and NEVER attempts a pull — the image is local-only (loaded at install
+// time via skopeo/docker build), there is no registry to pull from.
 func (d *DockerRuntime) ensureImage(ctx context.Context, imageRef string) error {
+	if strings.HasPrefix(imageRef, "sha256:") {
+		// Bare digest ref: check local Docker image store by ID.
+		// Never pull — installed agent images are local-only.
+		images, err := d.cli.ImageList(ctx, image.ListOptions{
+			All: true,
+		})
+		if err != nil {
+			return fmt.Errorf("list images: %w", err)
+		}
+		for _, img := range images {
+			if img.ID == imageRef || img.ID == strings.TrimPrefix(imageRef, "sha256:") {
+				return nil // found locally
+			}
+		}
+		return fmt.Errorf("local image %s not found in Docker store — agent may need reinstallation", imageRef)
+	}
+
 	summary, err := d.cli.ImageList(ctx, image.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
 	})
