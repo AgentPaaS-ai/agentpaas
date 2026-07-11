@@ -288,8 +288,9 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 				ID: req.ID,
 				OK: true,
 				Result: map[string]any{
-					"text":   text,
-					"tokens": tokens,
+					"text":    text,
+					"content": text, // alias for common OpenAI-style usage (Bug 024)
+					"tokens":  tokens,
 				},
 			}
 		}
@@ -456,9 +457,10 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		ID: req.ID,
 		OK: true,
 		Result: map[string]any{
-			"text":   result.Text,
-			"tokens": tokens,
-			"model":  respModel,
+			"text":    result.Text,
+			"content": result.Text, // alias for common OpenAI-style usage (Bug 024)
+			"tokens":  tokens,
+			"model":   respModel,
 		},
 	}
 }
@@ -520,6 +522,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	body := stringParam(req.Params, "body")
 	bodyMarker, bodyHash := redactedBodyEvidence(body)
 	credentialValue := ""
+	credID := ""
 
 	// Rewrite for gateway-native routing (Bug 021). Original URL retained for
 	// audit/evidence; Host header set to original hostname for route matching.
@@ -566,7 +569,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		httpReq.Header.Set(key, value)
 	}
 	if withCredential {
-		credID := stringParam(req.Params, "credential_id")
+		credID = stringParam(req.Params, "credential_id")
 		cred, ok := state.credentials[credID]
 		if !ok {
 			s.auditEgressDecision("harness", rawURL, method, credID, "", "denied", "credential not declared")
@@ -647,7 +650,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		return rpcError(req.ID, reason, "http_failed")
 	}
 	// HTTP request succeeded — record as allowed egress.
-	s.auditEgressDecision("harness", rawURL, method, "", strconv.Itoa(resp.StatusCode), "allowed", "")
+	s.auditEgressDecision("harness", rawURL, method, credID, strconv.Itoa(resp.StatusCode), "allowed", "")
 	// Expose both "status" (canonical) and "status_code" (common alias).
 	// Agents that check either must see the real HTTP status; missing the
 	// alias caused false "Failed to fetch" errors after successful egress.
