@@ -204,41 +204,43 @@ func runDoctorChecks() []map[string]string {
 	}
 
 	// 6. Home directory
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		checks = append(checks, map[string]string{
-			"name":    "Home directory",
-			"status":  "fail",
-			"message": fmt.Sprintf("cannot resolve home dir: %v", err),
-		})
-	} else {
-		agentpaasHome := filepath.Join(homeDir, ".agentpaas")
-		if err := os.MkdirAll(agentpaasHome, 0o700); err != nil {
+	agentpaasHome := os.Getenv("AGENTPAAS_HOME")
+	if agentpaasHome == "" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
 			checks = append(checks, map[string]string{
 				"name":    "Home directory",
 				"status":  "fail",
-				"message": fmt.Sprintf("cannot create %s: %v", agentpaasHome, err),
+				"message": fmt.Sprintf("cannot resolve home dir: %v", err),
+			})
+			return checks
+		}
+		agentpaasHome = filepath.Join(homeDir, ".agentpaas")
+	}
+	if err := os.MkdirAll(agentpaasHome, 0o700); err != nil {
+		checks = append(checks, map[string]string{
+			"name":    "Home directory",
+			"status":  "fail",
+			"message": fmt.Sprintf("cannot create %s: %v", agentpaasHome, err),
+		})
+	} else {
+		// Test writability
+		testFile := filepath.Join(agentpaasHome, ".doctor-write-test")
+		if err := os.WriteFile(testFile, []byte("ok"), 0o644); err != nil {
+			checks = append(checks, map[string]string{
+				"name":    "Home directory",
+				"status":  "fail",
+				"message": fmt.Sprintf("%s not writable: %v", agentpaasHome, err),
 			})
 		} else {
-			// Test writability
-			testFile := filepath.Join(agentpaasHome, ".doctor-write-test")
-			if err := os.WriteFile(testFile, []byte("ok"), 0o644); err != nil {
-				checks = append(checks, map[string]string{
-					"name":    "Home directory",
-					"status":  "fail",
-					"message": fmt.Sprintf("%s not writable: %v", agentpaasHome, err),
-				})
-			} else {
-				_ = os.Remove(testFile)
-				checks = append(checks, map[string]string{
-					"name":    "Home directory",
-					"status":  "ok",
-					"message": fmt.Sprintf("(%s, writable)", agentpaasHome),
-				})
-			}
+			_ = os.Remove(testFile)
+			checks = append(checks, map[string]string{
+				"name":    "Home directory",
+				"status":  "ok",
+				"message": fmt.Sprintf("(%s, writable)", agentpaasHome),
+			})
 		}
 	}
-
 	_ = dockerDaemonOK // reserved for future use (e.g. only show container info if daemon up)
 
 	return checks
