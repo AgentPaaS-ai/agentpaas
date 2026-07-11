@@ -46,9 +46,12 @@ func TestAdversaryT02_ProxyEnvInjection_MaliciousGatewayIP(t *testing.T) {
 	}
 }
 
-// TestAdversaryT02_NO_PROXY_Bypass confirms NO_PROXY is no longer injected
-// after Bug 021 (gateway-native routing replaces forward-proxy CONNECT).
-func TestAdversaryT02_NO_PROXY_Bypass(t *testing.T) {
+// TestAdversaryT02_NO_PROXY_IncludesGatewayIP confirms that NO_PROXY
+// includes the gateway IP so the harness's rewritten LLM calls (already
+// pointing at gateway:7799) are not double-proxied through HTTP_PROXY.
+// Bug 021 regression fix: HTTP_PROXY is set for non-LLM egress, but
+// NO_PROXY must exempt the gateway itself.
+func TestAdversaryT02_NO_PROXY_IncludesGatewayIP(t *testing.T) {
 	const gatewayIP = "172.18.0.42"
 	var capturedSpec runtime.ContainerSpec
 	mock := defaultMockRuntimeDriver()
@@ -69,17 +72,22 @@ func TestAdversaryT02_NO_PROXY_Bypass(t *testing.T) {
 		t.Fatalf("Run() error = %v", err)
 	}
 
-	// Bug 021: forward-proxy CONNECT env vars (incl. NO_PROXY) must not be set.
-	// Routing uses AGENTPAAS_GATEWAY_URL instead.
+	// NO_PROXY must contain the gateway IP so LLM calls (rewritten to
+	// http://gatewayIP:7799 by harness) bypass the proxy.
+	foundNO_PROXY := false
 	for _, env := range capturedSpec.Env {
-		if strings.HasPrefix(env, "NO_PROXY=") || strings.HasPrefix(env, "no_proxy=") {
-			t.Fatalf("ADVERSARY: NO_PROXY still set after gateway-native routing fix: %s", env)
-		}
-		if strings.HasPrefix(env, "HTTP_PROXY=") || strings.HasPrefix(env, "HTTPS_PROXY=") ||
-			strings.HasPrefix(env, "http_proxy=") || strings.HasPrefix(env, "https_proxy=") {
-			t.Fatalf("ADVERSARY: legacy proxy env still set: %s", env)
+		if strings.HasPrefix(env, "NO_PROXY=") {
+			foundNO_PROXY = true
+			if !strings.Contains(env, gatewayIP) {
+				t.Fatalf("ADVERSARY: NO_PROXY does not contain gateway IP %q: %s", gatewayIP, env)
+			}
 		}
 	}
+	if !foundNO_PROXY {
+		t.Fatal("ADVERSARY: NO_PROXY not set — LLM calls would be double-proxied")
+	}
+
+	// Gateway-native routing must also be present.
 	foundGatewayURL := false
 	for _, env := range capturedSpec.Env {
 		if env == fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP) {

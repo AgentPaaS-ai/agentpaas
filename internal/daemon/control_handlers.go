@@ -662,10 +662,23 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			fmt.Sprintf("AGENTPAAS_GATEWAY_IP=%s", gatewayIP),
 			fmt.Sprintf("AGENTPAAS_GATEWAY_SUBNET=%s", gatewaySubnet),
 			// Gateway-native HTTP routing (Bug 021): harness rewrites
-			// outbound HTTPS URLs to plain HTTP against the gateway and
-			// preserves the original Host header for route matching.
-			// Forward-proxy CONNECT (HTTP_PROXY/HTTPS_PROXY) is not used.
+			// outbound HTTPS LLM URLs to plain HTTP against the gateway
+			// and preserves the original Host header for route matching.
 			fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP),
+			// Forward proxy for non-LLM egress (Bug 021 regression fix):
+			// The gateway-native routing only rewrites LLM provider URLs.
+			// Agent code making direct HTTP calls to allowed egress domains
+			// (e.g. wttr.in) needs HTTP_PROXY/HTTPS_PROXY to route through
+			// the gateway, since the container is on an isolated network.
+			// NO_PROXY includes the gateway IP so the harness's rewritten
+			// LLM calls (already pointing at gateway:7799) are not
+			// double-proxied.
+			fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
+			fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
+			fmt.Sprintf("http_proxy=http://%s:7799", gatewayIP),
+			fmt.Sprintf("https_proxy=http://%s:7799", gatewayIP),
+			fmt.Sprintf("NO_PROXY=localhost,127.0.0.1,%s", gatewayIP),
+			fmt.Sprintf("no_proxy=localhost,127.0.0.1,%s", gatewayIP),
 		)
 	}
 
