@@ -34,3 +34,11 @@ provides_tools:
   - agentpaas_cron_add
   - agentpaas_cron_list
   - agentpaas_cron_remove
+  - agentpaas_identity_show
+  - agentpaas_export
+  - agentpaas_bundle_inspect
+  - agentpaas_install
+  - agentpaas_installed_list
+  - agentpaas_provenance_show
+  - agentpaas_trust_list
+  - agentpaas_fork
