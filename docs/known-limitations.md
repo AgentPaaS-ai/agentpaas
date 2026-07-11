@@ -23,7 +23,7 @@ Blocks are numbered per the internal execution plan. Tracked status:
 | B22 | Bundle format, export, inspect | ✅ Complete |
 | B23 | Verified install, consent, credential mapping, run integration | ✅ Complete |
 | B24 | Fork, modify, redistribute: provenance chains | ✅ Complete |
-| B25 | Hermes plugin integration | ⏭️ Planned |
+| B25 | Hermes sharing UX, vulnerability closure, v0.2.1 release | 🔄 In Progress |
 | B26 | Revocation, registry, policy-narrowing overlay | ⏭️ Planned |
 
 ## Network enforcement
@@ -79,6 +79,38 @@ The real cosign signing integration test is guarded by
 `//go:build integration` and `AGENTPAAS_PACK_REAL_TOOLS=1`. CI does not run
 it by default. Local manual runs with Docker + cosign + registry are
 required to exercise real signing.
+
+## Agent sharing
+
+### TOFU (Trust On First Use) identity model
+
+Publisher identity uses TOFU — the first time you install an agent from a
+publisher, you verify their fingerprint out-of-band. There is no centralized
+certificate authority. If a publisher's key is stolen, the attacker can sign
+bundles with the same fingerprint. Report stolen keys to your team immediately.
+
+### Rebuilt images differ from publisher's
+
+When a receiver installs a bundle without `--prefer-image`, the Docker image
+is rebuilt locally from source. The image digest will differ from the
+publisher's (different build environment, layers, timestamps). The source
+digest, lock signature, and policy digest are verified — but the image
+itself is not byte-identical. Use `--prefer-image` with a cosign-signed
+image for identical reproduction.
+
+### No revocation (P2)
+
+There is no revocation mechanism in P1. A stolen publisher key can sign
+valid bundles until the receiver manually removes trust via
+`agentpaas trust remove <fingerprint>`. Revocation infrastructure is P2.
+
+### Plugin consent gate is client-side
+
+The Hermes plugin's consent enforcement (no auto-approve, terminal-only
+install) is a client-side policy. A user could bypass it by running
+`agentpaas install` directly in their terminal without Hermes. This is by
+design — the user owns their machine. The plugin prevents LLM-mediated
+auto-approval, not user-mediated manual approval.
 
 ## Audit integrity
 
