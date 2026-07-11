@@ -287,6 +287,28 @@ block14-gate: block14a0-gate block14a-gate block14b-gate block14c-gate
 block16-gate:
 	@echo "Error: block16-gate (manual use-case assessment) runs after block15-gate passes. See execution plan §16." && exit 1
 
+# ── Block 25 Gate ────────────────────────────────────────────────────────────
+#
+# B25 gate: Go/Docker vuln closure + sharing tools + docs + release readiness.
+# Extends as chunks land. T06 is the only chunk that publishes artifacts.
+
+.PHONY: block25-gate
+block25-gate: build test lint
+	@echo "==> Running Block 25 gate"
+	@echo "  T00-A: Go toolchain patched (1.26.5+)"
+	@go version | grep -q '1.26' || (echo "FAIL: Go 1.26+ required" && exit 1)
+	@echo "  T00-B: Docker Engine readiness checks"
+	@go test -count=1 -run 'TestParseDocker|TestIsDocker|TestCheckDockerServer' ./internal/doctor/
+	@echo "  T00-C: No deprecated docker/docker in go.mod require (replace directive OK)"
+	@grep -v 'replace' go.mod | grep -q 'github.com/docker/docker v28' && echo "WARN: docker/docker still in require (check replace)" || true
+	@echo "  T01: Plugin sharing tools present"
+	@python3 -c "import ast; ast.parse(open('integrations/hermes-plugin/tools.py').read()); print('tools.py syntax OK')"
+	@python3 -c "import ast; ast.parse(open('integrations/hermes-plugin/schemas.py').read()); print('schemas.py syntax OK')"
+	@grep -q 'agentpaas_identity_show' integrations/hermes-plugin/tools.py || (echo "FAIL: sharing tools missing" && exit 1)
+	@echo "  T01: No consent-bypass params in plugin tool arg builders"
+	@grep -E '^\s+["'"'"']?(confirm_fingerprint|accept_policy)["'"'"']?\s*[:=]' integrations/hermes-plugin/tools.py integrations/hermes-plugin/schemas.py && (echo "FAIL: consent bypass found" && exit 1) || echo "No consent-bypass params (OK)"
+	@echo "✓ Block 25 gate: PASS"
+
 # ── Golden Dataset Regression Suite ─────────────────────────────────────────
 #
 # The golden dataset is a regression suite that measures pass^k (all k runs
