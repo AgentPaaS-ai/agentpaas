@@ -99,6 +99,7 @@ func (d *Doctor) Run() ([]CheckResult, string) {
 		CheckHomeDirPerms(d.homeDir),
 		CheckDaemonReady(d.socketPath),
 		CheckProtoCompatible(d.socketPath, d.cliVersion, d.cliProtoVersion),
+		CheckHarnessCopies(),
 	}
 
 	overall := OverallStatus(checks)

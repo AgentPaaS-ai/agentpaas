@@ -454,6 +454,7 @@ func TestCheckNames_Unique(t *testing.T) {
 		func() CheckResult { return CheckHomeDirPerms(t.TempDir()) },
 		func() CheckResult { return CheckDaemonReady("") },
 		func() CheckResult { return CheckProtoCompatible("", "0.1.0-dev", "v1") },
+		func() CheckResult { return CheckHarnessCopies() },
 	}
 
 	for _, fn := range checkFns {
@@ -768,9 +769,9 @@ func TestDoctorRun_Aggregation(t *testing.T) {
 
 	checks, overall := d.Run()
 
-	// Should have all 9 checks.
-	if len(checks) != 9 {
-		t.Errorf("expected 9 checks, got %d", len(checks))
+	// Should have all 10 checks (9 original + harness_copies).
+	if len(checks) != 10 {
+		t.Errorf("expected 10 checks, got %d", len(checks))
 	}
 
 	// Check names are present.
@@ -789,6 +790,7 @@ func TestDoctorRun_Aggregation(t *testing.T) {
 		"home_perms",
 		"daemon_ready",
 		"proto_compatible",
+		"harness_copies",
 	}
 
 	for _, name := range expectedNames {
@@ -821,9 +823,9 @@ func TestChecksIndependent(t *testing.T) {
 
 	checks, overall := d.Run()
 
-	// Even with bad home dir, all 9 checks should run.
-	if len(checks) != 9 {
-		t.Errorf("expected 9 checks even with bad home dir, got %d", len(checks))
+	// Even with bad home dir, all 10 checks should run.
+	if len(checks) != 10 {
+		t.Errorf("expected 10 checks even with bad home dir, got %d", len(checks))
 	}
 
 	// Some checks should be errors (socket perms, home perms, daemon ready),
@@ -860,8 +862,8 @@ func TestDoctorWithTempHome(t *testing.T) {
 	}
 
 	checks, overall := d.Run()
-	if len(checks) != 9 {
-		t.Errorf("expected 9 checks, got %d", len(checks))
+	if len(checks) != 10 {
+		t.Errorf("expected 10 checks, got %d", len(checks))
 	}
 	t.Logf("Overall: %s", overall)
 }

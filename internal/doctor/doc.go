@@ -16,6 +16,7 @@
 //   - Home dir perms   — validates ~/.agentpaas directory permissions (0700)
 //   - Daemon ready     — checks if the agentpaas daemon gRPC endpoint responds
 //   - Proto compatible — compares CLI and daemon protocol versions
+//   - Harness copies   — detects divergent agentpaas-harness binaries on the host
 //
 // Each check is independent; one failure does not block subsequent checks.
 package doctor

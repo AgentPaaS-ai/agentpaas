@@ -109,6 +109,13 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
 	harnessPath := resolveHarnessBinary()
+	if harnessPath != "" {
+		if info, err := os.Stat(harnessPath); err == nil {
+			fmt.Fprintf(os.Stderr, "daemon: pack using harness %s (modified %s)\n", harnessPath, info.ModTime().Format(time.RFC3339))
+		} else {
+			fmt.Fprintf(os.Stderr, "daemon: pack using harness %s (mtime unknown)\n", harnessPath)
+		}
+	}
 	sdkDir := resolveSDKDir(harnessPath)
 	// If the SDK is not on disk (brew-only install, release tarball without
 	// python/), fall back to the SDK embedded in the binary.
