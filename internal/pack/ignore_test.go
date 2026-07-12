@@ -81,8 +81,9 @@ func TestLoadIgnoreExists(t *testing.T) {
 	if !matcher.Match("custom.tmp") {
 		t.Fatal("Match(custom.tmp) = false, want true")
 	}
-	if matcher.Match(".git") {
-		t.Fatal("Match(.git) = true, want false for custom matcher")
+	// Defaults are always merged: .git should still be ignored.
+	if !matcher.Match(".git") {
+		t.Fatal("Match(.git) = false, want true (defaults always merged)")
 	}
 }
 

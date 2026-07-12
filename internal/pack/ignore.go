@@ -26,7 +26,10 @@ type ignorePattern struct {
 }
 
 // LoadIgnore reads .agentpaasignore from projectDir and returns a matcher.
-// If .agentpaasignore does not exist, returns a matcher with default excludes.
+// Default patterns (including build artifacts like *.agentpaas) are ALWAYS
+// applied, then user patterns are appended on top. This ensures build
+// artifacts never contaminate the source context even when the user's
+// .agentpaasignore doesn't list them.
 func LoadIgnore(projectDir string) (*IgnoreMatcher, error) {
 	if err := validateProjectDir(projectDir); err != nil {
 		return nil, err
@@ -40,7 +43,10 @@ func LoadIgnore(projectDir string) (*IgnoreMatcher, error) {
 		return nil, err
 	}
 
-	return NewIgnoreMatcher(string(data)), nil
+	// Merge: defaults first, then user patterns. User patterns can
+	// negate a default with !pattern if they need to include something.
+	merged := strings.Join(DefaultIgnorePatterns(), "\n") + "\n" + string(data)
+	return NewIgnoreMatcher(merged), nil
 }
 
 // NewIgnoreMatcher creates a matcher from the given .agentpaasignore content.
@@ -118,6 +124,8 @@ func DefaultIgnorePatterns() []string {
 		"*.egg-info",
 		".env",
 		".DS_Store",
+		"*.agentpaas",
+		".agentpaas-built-via",
 	}
 }
 

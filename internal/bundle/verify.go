@@ -259,7 +259,17 @@ func computeSourceDigestFromBundle(b *Bundle) (string, error) {
 	if err := b.ExtractSource(tmpDir); err != nil {
 		return "", fmt.Errorf("extract source: %w", err)
 	}
-	files, err := pack.CollectBuildFiles(tmpDir, nil)
+	// Use the .agentpaasignore from the extracted source if present,
+	// matching what pack used. CollectBuildFiles with nil will call
+	// LoadIgnore(tmpDir) which won't find the bundled .agentpaasignore
+	// (it's at the root of the extracted files, not necessarily read
+	// by LoadIgnore). Pass an explicit ignore matcher to ensure
+	// consistency with pack's digest computation.
+	ignore, err := pack.LoadIgnore(tmpDir)
+	if err != nil {
+		return "", fmt.Errorf("load ignore for verification: %w", err)
+	}
+	files, err := pack.CollectBuildFiles(tmpDir, ignore)
 	if err != nil {
 		return "", fmt.Errorf("collect source files: %w", err)
 	}
