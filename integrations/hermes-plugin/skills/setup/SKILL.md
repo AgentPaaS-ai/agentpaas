@@ -45,12 +45,14 @@ colima start
 brew install agentpaas-ai/tap/agentpaas
 ```
 
-### 3. Clear macOS Quarantine
+### 3. Clear macOS Quarantine (MUST be first — before any agentpaas command)
 
-The brew cask is not notarized. Clear quarantine on all three binaries:
+The brew cask is not notarized. macOS will KILL the binaries (exit 137)
+if you run them before clearing quarantine. Run xattr FIRST:
 
 ```bash
 xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux
+agentpaas version
 ```
 
 ### 4. Verify Harness Binary (bundled since v0.2.1)
