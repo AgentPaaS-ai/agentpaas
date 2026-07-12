@@ -631,23 +631,30 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		AgentYAML: cfg.AgentYAML,
 	}
 
-	// Attempt publisher identity population (v2 feature).
+	// Publisher identity is REQUIRED — no agent may be packed without one.
+	// This ensures every agent has a verifiable provenance chain and a
+	// fingerprint the receiver can verify out-of-band.
 	var pubIdentity *identity.PublisherIdentity
 	if cfg.PublisherKeyStore != nil {
 		var pubErr error
 		pubIdentity, pubErr = identity.LoadPublisherIdentity(cfg.PublisherKeyStore)
-		if pubErr != nil && !errors.Is(pubErr, identity.ErrNoPublisherIdentity) {
-			// Any identity error other than "no identity" fails closed.
+		if pubErr != nil {
+			if errors.Is(pubErr, identity.ErrNoPublisherIdentity) {
+				return nil, errors.New("no publisher identity — run 'agentpaas identity init' before packing agents")
+			}
+			// Any other identity error also fails closed.
 			return nil, fmt.Errorf("load publisher identity: %w", pubErr)
 		}
-		if pubIdentity != nil {
-			now := time.Now().UTC()
-			lock.Publisher = &PublisherInfo{
-				Name:         pubIdentity.Name,
-				Fingerprint:  pubIdentity.Fingerprint,
-				PublicKeyPEM: pubIdentity.PublicKeyPEM,
-				SignedAt:     now,
-			}
+	} else {
+		return nil, errors.New("no publisher keystore configured — run 'agentpaas identity init' before packing agents")
+	}
+	if pubIdentity != nil {
+		now := time.Now().UTC()
+		lock.Publisher = &PublisherInfo{
+			Name:         pubIdentity.Name,
+			Fingerprint:  pubIdentity.Fingerprint,
+			PublicKeyPEM: pubIdentity.PublicKeyPEM,
+			SignedAt:     now,
 		}
 	}
 
