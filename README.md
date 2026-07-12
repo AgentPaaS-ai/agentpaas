@@ -211,15 +211,15 @@ never by value) and proceeds.
 
 Tell Hermes:
 
-> Build an agent that takes a question as input and uses an LLM to answer it.
-> Use OpenRouter with the deepseek/deepseek-v4-flash model.
-> My OpenRouter key is stored as "openrouter-key".
+> Build a weather agent that takes a city name as input, fetches real weather data from wttr.in, uses an LLM to summarize the conditions, and returns a short forecast.
 
-Hermes writes the agent code, creates an egress policy allowing only the
-LLM provider's domain, packs it into a signed container image, and runs
-it under governance. The pack step enforces that the configured provider's
-domain is in the egress policy — if it's missing, the build fails before
-the agent can ship with a broken runtime.
+Hermes asks you a few short questions (which LLM provider, which model,
+confirm the hostnames), writes the agent code, creates an egress policy
+allowing only `wttr.in` and your LLM provider's domain, packs it into a
+signed container image, and runs it under governance. The pack step
+enforces that every external hostname and credential is declared in the
+policy — if anything is missing, the build fails before the agent can
+ship with a broken or insecure runtime.
 
 ### Step 4: Invoke the agent
 
