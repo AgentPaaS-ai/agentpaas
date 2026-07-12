@@ -175,13 +175,20 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		return nil, fmt.Errorf("inspect built image %q: %w", cfg.ImageTag, err)
 	}
 
-	return &BuildResult{
+	result := &BuildResult{
 		ImageDigest:      imageDigest(inspect.ID, inspect.RepoDigests),
 		ImageRef:         cfg.ImageTag,
 		BuildTime:        cfg.SourceDateEpoch.UTC(),
 		BuildInputDigest: inputDigest,
 		DepsLocked:       deps,
-	}, nil
+	}
+
+	// Post-build verification: ensure the image contains all required components.
+	if err := VerifyBuildOutput(ctx, cfg.ImageTag, cfg); err != nil {
+		return nil, fmt.Errorf("post-build verification failed: %w", err)
+	}
+
+	return result, nil
 }
 
 // ComputeBuildInputDigest computes SHA-256 over the canonical build context.
