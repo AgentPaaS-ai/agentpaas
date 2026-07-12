@@ -180,6 +180,11 @@ Tell Hermes:
 
 > Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
 
+**IMPORTANT:** Use `hermes plugins install` from GitHub. Do NOT use
+`make install-plugin` from a local clone — that bypasses the after-install
+flow (skill pointer creation, toolset registration) and a real user does
+not have the source repo.
+
 Hermes installs the plugin, registers the toolset, and creates the skill
 pointer. Restart Hermes when it tells you to:
 
