@@ -159,9 +159,9 @@ agentpaas daemon start
 agentpaas doctor
 ```
 
-**Important:** The brew cask is not notarized. The `xattr -cr` command
-clears the macOS quarantine attribute so the binaries can run. You only
-need to do this once after install.
+**Important:** The brew cask is not notarized. Run `xattr -cr` BEFORE any
+`agentpaas` command — the binaries will be killed by macOS (exit 137)
+if you skip this step. You only need to do this once after install.
 
 `agentpaas doctor` verifies Docker, the daemon, keychain, and the harness
 binary are all ready. If any check fails, it will tell you what to fix.
@@ -305,9 +305,10 @@ See [docs/sharing.md](docs/sharing.md) for the full guide.
 
 ## Troubleshooting
 
-### `agentpaas` binary won't run after brew install
+### `agentpaas` binary killed (exit 137) after brew install
 
-The brew cask is not notarized. Clear the quarantine attribute:
+The brew cask is not notarized. macOS kills the binary with exit code 137.
+Clear quarantine on ALL THREE binaries before running any agentpaas command:
 ```bash
 xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux
 ```
