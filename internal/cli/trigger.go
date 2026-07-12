@@ -53,9 +53,16 @@ func newTriggerCmd() *cobra.Command {
 			// Build request body.
 			var body map[string]interface{}
 			if payloadPath != "" {
-				payloadBytes, err := os.ReadFile(payloadPath)
-				if err != nil {
-					return fmt.Errorf("read payload file: %w", err)
+				var payloadBytes []byte
+				// If the value starts with '{', treat it as inline JSON;
+				// otherwise treat it as a file path.
+				if strings.HasPrefix(strings.TrimSpace(payloadPath), "{") {
+					payloadBytes = []byte(payloadPath)
+				} else {
+					payloadBytes, err = os.ReadFile(payloadPath)
+					if err != nil {
+						return fmt.Errorf("read payload file: %w", err)
+					}
 				}
 				body = map[string]interface{}{
 					"agentName":   agentName,
@@ -151,7 +158,7 @@ func newTriggerCmd() *cobra.Command {
 	})
 
 	invokeCmd := cmd.Commands()[0]
-	invokeCmd.Flags().String("payload", "", "Path to a payload file (optional)")
+	invokeCmd.Flags().String("payload", "", "Inline JSON payload or path to a payload file (optional)")
 	invokeCmd.Flags().String("content-type", "application/json", "Payload content type")
 	invokeCmd.Flags().Bool("wait", false, "Wait for run to complete and show invoke response")
 
