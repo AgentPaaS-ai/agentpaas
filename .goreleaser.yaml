@@ -115,6 +115,5 @@ release:
   github:
     owner: AgentPaaS-ai
     name: agentpaas
-  draft: true
   prerelease: auto
   name_template: "v{{.Version}}"
