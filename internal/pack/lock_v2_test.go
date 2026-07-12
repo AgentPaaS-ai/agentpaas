@@ -28,9 +28,8 @@ func TestLockSchemaVersionIsTwo(t *testing.T) {
 	}
 }
 
-// TestV2Lock_WithoutPublisher verifies that a v2 lock produced without
-// a publisher identity is valid — nil publisher, empty provenance,
-// AID signature only.
+// TestV2Lock_WithoutPublisher verifies that a v2 lock CANNOT be created
+// without a publisher identity — pack must fail closed.
 func TestV2Lock_WithoutPublisher(t *testing.T) {
 	installFakeTool(t, "syft", `#!/bin/sh
 printf '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
@@ -39,7 +38,7 @@ printf '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 	key, _ := testKeyPair(t)
 	store := testStoreForKey(t, key)
 
-	lock, err := CreateAgentLock(context.Background(), LockConfig{
+	_, err := CreateAgentLock(context.Background(), LockConfig{
 		BuildResult: &BuildResult{
 			ImageDigest:      digestString("image"),
 			ImageRef:         "agentpaas-test:latest",
@@ -54,31 +53,13 @@ printf '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 		SourceDateEpoch: testTime(),
 		KeyStore:        store,
 		KeyID:           store.keyID,
-		// PublisherKeyStore is nil — no publisher identity
+		// PublisherKeyStore is nil — must fail
 	})
-	if err != nil {
-		t.Fatalf("CreateAgentLock: %v", err)
+	if err == nil {
+		t.Fatal("expected error when PublisherKeyStore is nil, got nil")
 	}
-
-	if lock.SchemaVersion != 2 {
-		t.Fatalf("schema_version = %d, want 2", lock.SchemaVersion)
-	}
-	if lock.Publisher != nil {
-		t.Fatal("Publisher should be nil when no publisher identity")
-	}
-	if lock.PublisherSignature != "" {
-		t.Fatal("PublisherSignature should be empty when no publisher identity")
-	}
-	if len(lock.Provenance) != 0 {
-		t.Fatalf("Provenance should be empty, got %d entries", len(lock.Provenance))
-	}
-	// AID signature must verify.
-	if err := VerifyLockfileSignature(lock); err != nil {
-		t.Fatalf("VerifyLockfileSignature: %v", err)
-	}
-	// Full VerifyAgentLock should pass for v2 without publisher.
-	if err := VerifyAgentLock(lock, ""); err != nil {
-		t.Fatalf("VerifyAgentLock: %v", err)
+	if !strings.Contains(err.Error(), "no publisher keystore") {
+		t.Fatalf("expected 'no publisher keystore' error, got: %v", err)
 	}
 }
 

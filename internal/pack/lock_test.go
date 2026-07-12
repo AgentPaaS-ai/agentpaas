@@ -206,6 +206,7 @@ func TestCreateAgentLock(t *testing.T) {
 	installFakeTool(t, "cosign", fakeCosignScript())
 	key, _ := testKeyPair(t)
 	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
 
 	lock, err := CreateAgentLock(context.Background(), LockConfig{
 		BuildResult: &BuildResult{
@@ -222,6 +223,7 @@ func TestCreateAgentLock(t *testing.T) {
 		SourceDateEpoch: testTime(),
 		KeyStore:        store,
 		KeyID:           store.keyID,
+		PublisherKeyStore: pubKS,
 	})
 	if err != nil {
 		t.Fatalf("CreateAgentLock: %v", err)

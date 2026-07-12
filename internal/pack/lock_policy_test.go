@@ -111,6 +111,7 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 	installFakeTool(t, "cosign", fakeCosignScript())
 	key, _ := testKeyPair(t)
 	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
 
 	policyBytes := []byte(validPolicyYAML)
 	lock, err := CreateAgentLock(context.Background(), LockConfig{
@@ -129,6 +130,7 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 		KeyStore:        store,
 		KeyID:           store.keyID,
 		PolicyYAML:      policyBytes,
+		PublisherKeyStore: pubKS,
 	})
 	if err != nil {
 		t.Fatalf("CreateAgentLock: %v", err)
@@ -159,6 +161,7 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 	installFakeTool(t, "cosign", fakeCosignScript())
 	key, _ := testKeyPair(t)
 	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
 
 	lock, err := CreateAgentLock(context.Background(), LockConfig{
 		BuildResult: &BuildResult{
@@ -176,6 +179,7 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 		KeyStore:        store,
 		KeyID:           store.keyID,
 		PolicyYAML:      nil,
+		PublisherKeyStore: pubKS,
 	})
 	if err != nil {
 		t.Fatalf("CreateAgentLock: %v", err)
