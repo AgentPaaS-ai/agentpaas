@@ -129,6 +129,12 @@ Six attack fixtures through the real pack → run → gateway → audit pipeline
 
 ## Install
 
+**IMPORTANT: Install via Homebrew. Do NOT build from source.** Even if
+you have the repo cloned, `make build-all` produces dev binaries
+(`0.1.0-dev`, unknown commit, no version stamp). The brew cask ships
+proper versioned binaries with the Linux harness bundled. A new user
+should never need Go, `make`, or the source repo.
+
 ### 1. Install Hermes
 
 If you don't have Hermes yet:

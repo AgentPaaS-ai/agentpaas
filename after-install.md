@@ -83,8 +83,14 @@ instructions. YOU run it.
 This is the ONLY step the user must do — plugin changes require a
 process restart:
 
-"Restart Hermes for the changes to take effect: quit this session and
-run `hermes -p <profile>` again."
+"AgentPaaS setup complete. Restart Hermes to load the plugin and tools:
+quit this session and run `hermes -p <profile>` again."
+
+**STOP HERE.** Do NOT offer to build, pack, run, or test any agent. Do
+NOT ask "would you like me to build a test agent?" Do NOT run `make test`
+or any Go commands. The setup is DONE. After the user restarts and asks
+to build something, THEN load the plugin skill via
+`skill_view(name="agentpaas:deploy")`. Until then, do nothing.
 
 ## STEP 4 — AFTER RESTART, VERIFY
 
