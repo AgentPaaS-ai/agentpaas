@@ -138,12 +138,17 @@ func TestDefaultBaseImage(t *testing.T) {
 }
 
 func TestRenderDockerfileMultiStageWithDeps(t *testing.T) {
+	tmpHarness := filepath.Join(t.TempDir(), "agentpaas-harness-linux")
+	if err := os.WriteFile(tmpHarness, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("create dummy harness: %v", err)
+	}
 	cfg := BuildConfig{
 		ProjectDir:      t.TempDir(),
 		BaseImage:       "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
 		ImageTag:        "test:tag",
 		SourceDateEpoch: time.Unix(0, 0),
 		NonRootUID:      64000,
+		HarnessPath:     tmpHarness,
 	}
 	if err := validateBuildConfig(&cfg); err != nil {
 		t.Fatalf("validateBuildConfig() error = %v", err)

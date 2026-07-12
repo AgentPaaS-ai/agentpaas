@@ -339,8 +339,12 @@ func validateBuildConfig(cfg *BuildConfig) error {
 		}
 		cfg.HarnessPath = absPath
 	}
-	if err := rejectSymlinkPath(cfg.HarnessPath, false); err != nil {
-		return err
+	// Resolve symlinks — Homebrew casks install binaries as symlinks
+	// (e.g. /opt/homebrew/bin/agentpaas-harness-linux -> /opt/homebrew/Caskroom/...).
+	// The harness is a trusted binary installed by brew, not user-supplied,
+	// so dereferencing is safe. Without this, brew installs are unusable.
+	if resolved, err := filepath.EvalSymlinks(cfg.HarnessPath); err == nil {
+		cfg.HarnessPath = resolved
 	}
 	if cfg.SDKDir == "" {
 		harnessDir := filepath.Dir(cfg.HarnessPath)
@@ -609,12 +613,9 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 		return nil, err
 	}
 
-	harnessInfo, err := os.Lstat(cfg.HarnessPath)
+	harnessInfo, err := os.Stat(cfg.HarnessPath)
 	if err != nil {
 		return nil, fmt.Errorf("inspect harness %s: %w", cfg.HarnessPath, err)
-	}
-	if harnessInfo.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("symlinks are not allowed: %s", cfg.HarnessPath)
 	}
 	if err := addFileToTarWithMode(tw, cfg.HarnessPath, "harness", harnessInfo, 0o555, cfg.SourceDateEpoch); err != nil {
 		return nil, err
