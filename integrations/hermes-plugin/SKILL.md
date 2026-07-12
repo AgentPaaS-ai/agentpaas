@@ -200,6 +200,28 @@ start with **LLM + secret**, then confirm hostnames, then write code.
 
 If the agent has no LLM: confirm hostnames (and any API keys), then code.
 
+### Step 0: Publisher Identity (REQUIRED before packing)
+
+Every agent MUST be signed with a publisher identity. Pack will fail
+with "no publisher identity" if this hasn't been done. Check first:
+
+```
+agentpaas identity show
+```
+
+If it returns "no publisher identity", tell the user to run in their
+terminal:
+
+```
+agentpaas identity init
+```
+
+They'll be prompted for a publisher name (GitHub-style slug, 1-39 chars).
+After they confirm, verify with `agentpaas identity show`. This is a
+one-time setup — subsequent packs reuse the same identity.
+
+This step MUST happen before `agentpaas_pack`. Do NOT skip it.
+
 ### Step 1: Configure LLM Provider (when needed)
 
 1. Ask only: "Which LLM provider? (openrouter / openai / anthropic / xai / nous)"
@@ -269,13 +291,14 @@ policy.yaml with hostnames + port 443, configure LLM, pack, run.
 ### Pre-Pack Gate (silent checks — do not dump this list to the user)
 
 Before `agentpaas_pack`, verify:
-1. Egress policy lists every external hostname the agent will access.
-2. Every credential is in Keychain (`agentpaas_secret_list` — never
+1. Publisher identity exists (`agentpaas identity show` — must not error).
+2. Egress policy lists every external hostname the agent will access.
+3. Every credential is in Keychain (`agentpaas_secret_list` — never
    `agentpaas_secret_add` with the key value as a tool parameter).
-3. Every credential used by `agent.http_with_credential()` is declared in
+4. Every credential used by `agent.http_with_credential()` is declared in
    policy.yaml `credentials:`.
-4. If LLM: agent.yaml has `llm:` pointing at the credential.
-5. The LLM provider hostname is in the egress policy.
+5. If LLM: agent.yaml has `llm:` pointing at the credential.
+6. The LLM provider hostname is in the egress policy.
 
 If ANY are missing, do NOT pack — ask only for the missing piece.
 
