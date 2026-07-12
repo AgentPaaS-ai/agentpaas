@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -164,5 +165,39 @@ func TestTriggerInvokeCmd_WithPayloadFile(t *testing.T) {
 
 	if !strings.Contains(stdout, "run_id=run-payload") {
 		t.Errorf("expected run_id=run-payload in output, got: %s", stdout)
+	}
+}
+
+func TestTriggerInvokeCmd_WithInlineJSONPayload(t *testing.T) {
+	mockResp := `{"run":{"runId":"run-inline","agentName":"inline-agent","status":"RUN_STATUS_RUNNING"}}`
+	var receivedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/trigger/invoke" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		receivedBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(mockResp))
+	}))
+	defer srv.Close()
+
+	addr := strings.TrimPrefix(srv.URL, "http://")
+	t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", addr)
+
+	stdout := captureStdout(t, func() {
+		resetAgentCmd()
+		cmd := freshCmd()
+		cmd.SetArgs([]string{"trigger", "invoke", "inline-agent", "--payload", `{"city":"Folsom"}`})
+		_ = cmd.Execute()
+	})
+
+	if !strings.Contains(stdout, "run_id=run-inline") {
+		t.Errorf("expected run_id=run-inline in output, got: %s", stdout)
+	}
+	// Verify the inline JSON was sent as base64-encoded payload.
+	if !strings.Contains(receivedBody, `"payload"`) {
+		t.Errorf("expected payload field in request body, got: %s", receivedBody)
 	}
 }
