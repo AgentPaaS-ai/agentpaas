@@ -1,0 +1,66 @@
+# Changelog
+
+All notable changes to AgentPaaS are documented in this file.
+Format follows [Keep a Changelog](https://keepachangelog.com/).
+
+## [0.2.1] — 2026-07-12
+
+### Added
+- **Post-build pack verification** (S30-002 through S30-010): Pack now runs
+  a 4-step verification checklist after `docker build` succeeds — SDK presence,
+  image content audit (harness + entry + SDK in image), harness freshness
+  (MD5 match), and smoke test (healthz + readyz). Pack fails closed if any
+  check fails, preventing silent pack-then-runtime-failure cycles.
+- **Doctor skopeo check** (info-level): Doctor now reports whether skopeo is
+  available. Skopeo is an optional dependency for prebuilt image
+  install/export. Default install path (rebuild from source) works without it.
+- **Golden dataset tasks for sharing**: G46-G48 cover bundle export, TOFU
+  install, and fork-chain provenance for pass^k regression testing.
+
+### Fixed
+- S30-002: Pack no longer succeeds silently when SDK is missing.
+- S30-003/004: Post-build verification confirms harness and SDK are in image.
+- S30-007: Smoke test catches broken harness, missing SDK, and import errors
+  before pack is declared done.
+- S30-008: Harness freshness check prevents stale harness embedded in images.
+- S30-010: Pack is not declared successful until the image actually runs.
+
+### Changed
+- Doctor check count increased from 11 to 12 (added skopeo check).
+
+## [0.2.0] — 2026-07-11
+
+### Added
+- **Phase 2 sharing**: Bundle export/import, TOFU trust, provenance chains,
+  fork support, identity onboarding, credential mapping.
+- **Hermes plugin sharing tools**: 8 new tools for identity, export, inspect,
+  install, list, provenance, trust, fork.
+- **Docker Engine readiness gate**: Doctor checks Docker server version and
+  rejects known-vulnerable versions.
+- **Moby SDK migration**: Replaced deprecated `github.com/docker/docker` with
+  `github.com/moby/moby` via go.mod replace directive.
+- **Go 1.26.5**: Upgraded toolchain to fix reachable `govulncheck` findings.
+- **Seven-claim red-team gate**: Integrity, provenance, policy transparency,
+  no-secret-export, no-credential-sharing, lineage integrity, human consent.
+
+### Fixed
+- Bug 021 regression: HTTP_PROXY re-added alongside AGENTPAAS_GATEWAY_URL.
+- Bug 024: SDK `agent.llm()` returns both `text` and `content` keys.
+- Bug 026: Trigger invoke timeout increased to 90s for installed agents.
+- Bug 029: Doctor now respects AGENTPAAS_HOME env var.
+
+## [0.1.1] — 2026-07-06
+
+### Added
+- Credential brokering: raw secrets never cross Docker exec boundary.
+- Gateway-native HTTP routing for rate limiting and guardrails.
+- LLM token budget enforcement at runtime.
+- Cost tracking and observability in harness audit.
+
+### Fixed
+- Bug 019: Daemon wires policy budget to harness BudgetEnforcer.
+- Bug 021: Gateway-native HTTP routing replaces CONNECT tunneling.
+
+## [0.1.0] — 2026-07-02
+
+Initial release.

@@ -241,6 +241,23 @@ func runDoctorChecks() []map[string]string {
 			})
 		}
 	}
+
+	// 7. skopeo (optional)
+	skopeoExe, err := exec.LookPath("skopeo")
+	if err != nil {
+		checks = append(checks, map[string]string{
+			"name":    "skopeo (optional)",
+			"status":  "ok",
+			"message": "not found (needed for prebuilt image install/export; brew install skopeo)",
+		})
+	} else {
+		checks = append(checks, map[string]string{
+			"name":    "skopeo (optional)",
+			"status":  "ok",
+			"message": fmt.Sprintf("(%s)", skopeoExe),
+		})
+	}
+
 	_ = dockerDaemonOK // reserved for future use (e.g. only show container info if daemon up)
 
 	return checks

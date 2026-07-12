@@ -770,9 +770,9 @@ func TestDoctorRun_Aggregation(t *testing.T) {
 
 	checks, overall := d.Run()
 
-	// Should have all 11 checks (10 original + docker_server_version + harness_copies).
-	if len(checks) != 11 {
-		t.Errorf("expected 11 checks, got %d", len(checks))
+	// Should have all 12 checks (10 original + docker_server_version + harness_copies).
+	if len(checks) != 12 {
+		t.Errorf("expected 12 checks, got %d", len(checks))
 	}
 
 	// Check names are present.
@@ -825,9 +825,9 @@ func TestChecksIndependent(t *testing.T) {
 
 	checks, overall := d.Run()
 
-	// Even with bad home dir, all 11 checks should run.
-	if len(checks) != 11 {
-		t.Errorf("expected 11 checks even with bad home dir, got %d", len(checks))
+	// Even with bad home dir, all 12 checks should run.
+	if len(checks) != 12 {
+		t.Errorf("expected 12 checks even with bad home dir, got %d", len(checks))
 	}
 
 	// Some checks should be errors (socket perms, home perms, daemon ready),
@@ -864,8 +864,8 @@ func TestDoctorWithTempHome(t *testing.T) {
 	}
 
 	checks, overall := d.Run()
-	if len(checks) != 11 {
-		t.Errorf("expected 11 checks, got %d", len(checks))
+	if len(checks) != 12 {
+		t.Errorf("expected 12 checks, got %d", len(checks))
 	}
 	t.Logf("Overall: %s", overall)
 }

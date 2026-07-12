@@ -615,3 +615,46 @@ tasks:
     success_criteria:
       marker_file_exists: true
       marker_contains: "hermes-plugin"
+
+  - id: G46
+    name: "Bundle export produces signed .agentpaas file"
+    tier: slow
+    grader: code
+    category: sharing
+    source_failure: "S30-002: pack succeeded but SDK was missing from image. Export must verify image contents."
+    inputs:
+      project_dir: "demo/weather-agent"
+    success_criteria:
+      bundle_file_exists: true
+      bundle_has_manifest: true
+      bundle_has_lock: true
+      bundle_has_sbom: true
+      exit_code: 0
+
+  - id: G47
+    name: "Bundle inspect shows integrity and policy"
+    tier: fast
+    grader: code
+    category: sharing
+    source_failure: "S3: receiver must see policy summary, provenance, and trust disclaimer before deciding to install"
+    inputs:
+      bundle_file: "demo/weather-agent.agentpaas"
+    success_criteria:
+      inspect_shows_integrity: true
+      inspect_shows_policy: true
+      inspect_shows_publisher: true
+      exit_code: 0
+
+  - id: G48
+    name: "Fork creates lineage chain with policy delta"
+    tier: slow
+    grader: code
+    category: sharing
+    source_failure: "S8: fork must show provenance chain with policy delta and chain_adds_egress lint"
+    inputs:
+      installed_ref: "weather-agent@alice"
+      target_dir: "/tmp/fork-test"
+    success_criteria:
+      lineage_json_exists: true
+      lineage_has_parent: true
+      exit_code: 0

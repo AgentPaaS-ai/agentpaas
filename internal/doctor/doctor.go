@@ -101,6 +101,7 @@ func (d *Doctor) Run() ([]CheckResult, string) {
 		CheckDaemonReady(d.socketPath),
 		CheckProtoCompatible(d.socketPath, d.cliVersion, d.cliProtoVersion),
 		CheckHarnessCopies(),
+		CheckSkopeo(),
 	}
 
 	overall := OverallStatus(checks)
