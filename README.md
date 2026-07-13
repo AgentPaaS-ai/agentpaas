@@ -225,65 +225,165 @@ ship with a broken or insecure runtime.
 
 Tell Hermes:
 
-> Ask the agent: "What is the capital of France?"
+> What's the weather in Folsom?
 
-Hermes invokes the agent through the trigger API. The agent calls the
-LLM through the gateway (credential brokered, egress enforced), and
-returns the answer.
+Hermes invokes the agent through the trigger API. The agent fetches
+real weather data from wttr.in through the gateway (egress enforced),
+calls the LLM to summarize it (credential brokered), and returns the
+forecast.
 
-### Step 5: Check the audit trail
+### Step 5: Verify the audit trail
 
-Tell Hermes:
-
-> Show me the audit trail for the last run
-
-Or from the terminal:
+Every allowed and denied call is logged: timestamp, agent identity,
+destination, credential used, and policy decision. View the full trail:
 
 ```bash
 agentpaas audit query
 ```
 
-Every allowed and denied call is logged: timestamp, agent identity,
-destination, credential used, and policy decision.
+Filter to a specific run:
+
+```bash
+agentpaas audit query --run-id <run-id>
+```
+
+The audit trail is **tamper-evident** — every record is hash-chained to
+the previous one, and each record gets a signed checkpoint. Verify the
+integrity of the entire chain at any time:
+
+```bash
+agentpaas audit verify
+# Output: "Audit chain valid: N records, N checkpoints"
+# Exit code 0 = chain intact, non-zero = tampering detected
+```
+
+This works during daemon operation and after shutdown. Run it whenever
+you need cryptographic proof that the audit log has not been modified.
+
+You can also export a signed audit bundle for verification on a second
+machine:
+
+```bash
+agentpaas export-audit --output ~/audit-export.json
+```
 
 ## Sharing Agents
 
 AgentPaaS supports signed agent bundles for secure sharing between users.
 
-### Export (Share)
+### Sender: Export and Share
 
 ```bash
 # Initialize your publisher identity (first time only)
 agentpaas identity init
+# You'll be prompted for a publisher name (GitHub-style slug, 1-39 chars)
+
+# Verify your identity and get your fingerprint
+agentpaas identity show
+# Output:
+#   Name:        your-name
+#   Fingerprint: abcd 1234 ... (64 hex chars)
 
 # Export an agent as a shareable bundle
-agentpaas export --project-dir ~/weather-agent
+agentpaas export ~/weather-agent --output ~/weather-agent/weather-agent.agentpaas --yes
+# Produces: weather-agent.agentpaas
 
-# Result: weather-agent.agentpaas bundle + your publisher fingerprint
-# Read your fingerprint to the receiver over a separate channel
+# Verify the bundle before sharing
+agentpaas bundle inspect weather-agent.agentpaas
+# Shows: 9 integrity checks, policy summary, provenance chain, SBOM
+
+# View the agent's provenance chain
+agentpaas provenance show weather-agent
+# Shows every pack/fork event with publisher signature
+
+# Share TWO things with the receiver:
+# 1. The .agentpaas bundle file (via any file-sharing method)
+# 2. Your full 64-character fingerprint (via a SEPARATE channel — phone,
+#    Signal, etc.) so they can verify authenticity
 ```
 
-### Install (Receive)
+### Receiver: Inspect, Verify, Install
 
 ```bash
-# Inspect before installing — see policy, credentials, provenance
+# Step 1: Inspect before installing — see what the agent can access
 agentpaas bundle inspect weather-agent.agentpaas
+```
 
-# Install (interactive — confirms fingerprint, policy, credentials)
+The inspect output shows 9 integrity checks, each must PASS:
+
+| Check | What it verifies |
+|---|---|
+| manifest_parse | Bundle manifest is valid |
+| manifest_signature | Manifest is signed by the publisher |
+| publisher_match | Manifest and lock publisher match |
+| lock_provenance | Lock file and provenance chain are verified |
+| content_sha256 | All content digests match the manifest |
+| policy_digest | Policy digest matches the lock |
+| sbom_digest | SBOM digest matches the lock |
+| source_digest | Source code digest matches the manifest and lock |
+| image_digest | Image digest matches (or "no image" for source-only bundles) |
+
+The policy summary shows every egress domain the agent can reach and
+every credential it declares. Review these carefully — this is your
+chance to see exactly what the agent can do before you trust it.
+
+```bash
+# Step 2: Verify the publisher fingerprint
+# Compare the fingerprint shown by `bundle inspect` against what the
+# sender told you over a SEPARATE channel. Do NOT skip this step.
+# If they don't match, do NOT install — the bundle may be forged.
+
+# Step 3: Install (interactive — confirms fingerprint, policy, credentials)
 agentpaas install weather-agent.agentpaas
+# You'll be prompted to:
+#   - Type the last 8 characters of the fingerprint to confirm
+#   - Approve the policy
+#   - Confirm any missing locked dependencies
 
-# Run the installed agent
-agentpaas run weather-agent@&lt;pub8&gt;
+# For non-interactive / automated install:
+agentpaas install weather-agent.agentpaas \
+  --yes \
+  --confirm-fingerprint "<full-64-char-hex-fingerprint>" \
+  --accept-policy "<policy-digest>" \
+  --allow-unlocked-deps
+# Get the policy digest from: agentpaas bundle inspect --json | jq .policy_digest
+# NOTE: --confirm-fingerprint requires the FULL 64-character hex, not last 8
+
+# Step 4: Verify the install
+agentpaas installed list
+# Shows: weather-agent@<pub8> — installed agents with publisher reference
+
+# Step 5: Map credentials (if the agent declares any)
+agentpaas installed map-credential weather-agent@<pub8> \
+  --credential-id openrouter-key \
+  --secret-name openrouter-key
+# Maps the bundle's credential ID to a secret in YOUR Keychain.
+# The agent's original credentials don't travel with the bundle.
+
+# Step 6: Run the installed agent
+agentpaas run weather-agent@<pub8>
+
+# Step 7: Invoke it
+agentpaas trigger invoke weather-agent@<pub8> --payload '{"city":"Folsom"}' --wait
+
+# Step 8: Verify your own audit trail (same as sender)
+agentpaas audit verify
+# The receiver's audit chain is independently verifiable — proving
+# what the agent did on YOUR machine, with YOUR credentials
 ```
 
 ### Fork and Redistribute
 
 ```bash
 # Fork creates an editable project from an installed agent
-agentpaas fork weather-agent@&lt;pub8&gt; ~/my-weather-agent
+agentpaas fork weather-agent@<pub8> ~/my-weather-agent
 
 # After modifying, repack and re-export — provenance chain tracks all changes
-cd ~/my-weather-agent && agentpaas pack . && agentpaas export --project-dir .
+cd ~/my-weather-agent && agentpaas pack . && agentpaas export . --output ~/my-weather-agent/my-weather-agent.agentpaas --yes
+# The new bundle's provenance chain shows:
+#   1. created  weather-agent 0.1.0  by original-publisher
+#   2. forked   weather-agent 0.1.0  by your-name  (policy delta: +egress)
+# Receivers can see the full chain and verify each hop
 ```
 
 See [docs/sharing.md](docs/sharing.md) for the full guide.
@@ -299,7 +399,8 @@ See [docs/sharing.md](docs/sharing.md) for the full guide.
 - [Enforcement topology](docs/how-enforcement-works.md)
 - [Threat model](docs/threat-model.md)
 - [Bundle format](docs/bundle-format.md)
-- [Audit export](docs/audit-export.md)
+- [Audit export](docs/audit-export.md) — Export signed audit trail for verification on a second machine
+- [Golden loop test](docs/execution/golden-loop-test.md) — 12-phase release gate test
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
 - [Known limitations](docs/known-limitations.md)
 
@@ -370,6 +471,55 @@ agentpaas/
 ```
 
 ## Changelog
+
+### v0.2.3 (July 2026)
+
+**Audit checkpoint fix, redirect blocking, export integrity, and golden loop release gate.**
+
+What's new since v0.2.2:
+
+- **Audit checkpoint verification** (`agentpaas audit verify`): every audit
+  record now gets an immediate signed checkpoint (cadence lowered from 25 to
+  1). `audit verify` passes during daemon operation AND after shutdown —
+  proving the full hash-chained JSONL + checkpoint trail is tamper-evident.
+- **Golden loop test** (12 phases): release gate test covering the full
+  lifecycle — clean install, build, modify, provenance, export, teardown,
+  receive, inspect, install, run. Every public release must pass it.
+- **Consolidated defect log** (`docs/defects.md`): single source of truth for
+  all 35 tracked bugs with root cause, reproduce steps, fix, and post-fix
+  verification.
+
+Bug fixes since v0.2.2:
+
+- Bug 032: Export source_digest mismatch caused by `.agentpaas.tmp` file
+  contaminating the source digest. Fixed: `.agentpaas.tmp` and
+  `audit-export.json` added to default ignore patterns.
+- Bug 033: Gateway no longer follows HTTP redirects. `CheckRedirect` returns
+  `ErrUseLastResponse` on both http.Client instances. Redirect responses
+  returned to agent with `redirect_url` field. Audited as `egress_denied`.
+- Bug 034: TLS handshake error on redirect URLs resolved by Bug 033 fix.
+- Bug 031: SKILL.md now explicitly requires egress hostname confirmation for
+  agent modification, not just creation.
+- Bug 018: SKILL.md now explicitly instructs agent to use `domain` field name
+  (not `host` or `hostname`) in policy.yaml.
+- Bug 027: Install error message for missing `uv.lock` now explains the issue
+  and provides the exact command to fix it.
+- Bug 028: Added `--limit` as alias for `--page-size` on `audit query`.
+- Bug 035: Audit checkpoint verification failed because
+  `DefaultCheckpointCadence` was 25 but typical sessions produced <25 records,
+  so `ShouldCheckpoint` never fired. Fixed: cadence lowered to 1.
+
+### v0.2.2 (July 2026)
+
+**After-install prerequisite check and wall clock budget fix.**
+
+- **After-install Step 0 prerequisite check**: `hermes plugins install` now
+  detects missing prerequisites (colima, docker, agentpaas binaries) and
+  installs them via brew before proceeding. Includes anti-clone guard.
+- Bug 030: Wall clock budget increased from 30s to 120s. The first
+  `agent.llm()` call to an LLM provider can take 10-30s (cold connection,
+  model loading). The 30s default caused `wall_clock_budget_exceeded` kills
+  before the LLM responded.
 
 ### v0.2.0 + v0.2.1 (July 2026)
 

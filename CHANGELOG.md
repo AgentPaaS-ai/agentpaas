@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   post-fix verification. Supersedes scattered bug logs.
 
 ### Fixed
+- Bug 032: Export source_digest mismatch caused by `.agentpaas.tmp` file
+  contaminating the source digest. Fixed: `.agentpaas.tmp` and
+  `audit-export.json` added to default ignore patterns.
 - Bug 033: Gateway no longer follows HTTP redirects. CheckRedirect on
   both http.Client instances returns ErrUseLastResponse. Redirect
   responses returned to agent with redirect_url field. Audited as
@@ -28,6 +31,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
   AND after shutdown. Lowered DefaultCheckpointCadence from 25 to 1 so every
   audit record gets an immediate checkpoint. AuditWriter.Close() final
   checkpoint remains as a safety net for crash scenarios.
+
+## [0.2.2] — 2026-07-12
+
+### Added
+- **After-install Step 0 prerequisite check**: `hermes plugins install` now
+  detects missing prerequisites (colima, docker, agentpaas binaries) and
+  installs them via brew before proceeding. Includes anti-clone guard.
+
+### Fixed
+- Bug 030: Wall clock budget increased from 30s to 120s. The first
+  `agent.llm()` call to an LLM provider can take 10-30s (cold connection,
+  model loading). The 30s default caused `wall_clock_budget_exceeded` kills
+  before the LLM responded.
 
 ## [0.2.1] — 2026-07-12
 
