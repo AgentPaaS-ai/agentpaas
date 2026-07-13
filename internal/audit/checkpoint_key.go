@@ -18,7 +18,9 @@ import (
 )
 
 // DefaultCheckpointCadence is the number of audit records between automatic checkpoints.
-const DefaultCheckpointCadence int64 = 25
+// Set to 1 so every record gets a checkpoint. This ensures audit verification
+// always has checkpoints available, even mid-operation (not just on daemon shutdown).
+const DefaultCheckpointCadence int64 = 1
 
 const (
 	// Encryption format version.
