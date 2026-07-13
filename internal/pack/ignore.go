@@ -125,6 +125,8 @@ func DefaultIgnorePatterns() []string {
 		".env",
 		".DS_Store",
 		"*.agentpaas",
+		"*.agentpaas.tmp",
+		"audit-export.json",
 		".agentpaas-built-via",
 	}
 }
