@@ -45,7 +45,13 @@ jobs:
         run: make race
 
       - name: Golden fast tier
-        run: make golden-fast
+        run: |
+          # Start daemon for golden tests that require it (G14, G44, G47)
+          bin/agentpaasd &
+          sleep 2
+          make golden-fast
+          # Stop daemon after tests
+          bin/agentpaas daemon stop 2>/dev/null || true
 
       - name: OSV scan
         run: make osv
