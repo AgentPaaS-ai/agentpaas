@@ -49,6 +49,8 @@ jobs:
           # Start daemon for golden tests that require it (G14, G44, G47)
           bin/agentpaasd &
           sleep 2
+          # Create publisher identity for G47 (pack requires it)
+          bin/agentpaas identity init --name ci-test-publisher 2>/dev/null || true
           make golden-fast
           # Stop daemon after tests
           bin/agentpaas daemon stop 2>/dev/null || true
