@@ -47,6 +47,7 @@ func DefaultRegistry() map[string]TaskFunc {
 		// ── fast tier: plugin layer ──
 		"G44": g44_pluginInstalledState,
 		"G45": g45_pluginPackMarker,
+		"G47": g47_bundleInspect,
 
 		// ── slow tier: pack ──
 		"G17": g17_packGovernedWeather,
@@ -592,4 +593,55 @@ else:
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// ─── G47: Bundle inspect shows integrity and policy ─────────────────────────
+
+func g47_bundleInspect(spec TaskSpec) (bool, string, error) {
+	// Use the demo weather-agent project to pack + export + inspect
+	projectDir, _ := spec.Inputs["project_dir"].(string)
+	if projectDir == "" {
+		projectDir = "demo/weather-agent"
+	}
+	fullDir := filepath.Join(repoRoot(), projectDir)
+
+	// Copy to temp so we don't pollute the repo
+	tmpDir, err := os.MkdirTemp("", "golden-g47-*")
+	if err != nil {
+		return false, "", err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	if err := copyDir(fullDir, tmpDir); err != nil {
+		return false, "", err
+	}
+
+	// Pack the project (requires daemon running)
+	packOutput, _, packExit, _ := runBinary("pack", tmpDir)
+	if packExit != 0 {
+		return false, packOutput, fmt.Errorf("pack failed: exit %d", packExit)
+	}
+
+	// Export the bundle
+	bundlePath := filepath.Join(tmpDir, "weather-agent.agentpaas")
+	exportOutput, _, exportExit, _ := runBinary("export", tmpDir, "--output", bundlePath, "--yes")
+	if exportExit != 0 {
+		return false, exportOutput, fmt.Errorf("export failed: exit %d", exportExit)
+	}
+
+	// Inspect the bundle
+	inspectOutput, _, inspectExit, _ := runBinary("bundle", "inspect", bundlePath)
+	if inspectExit != 0 {
+		return false, inspectOutput, fmt.Errorf("bundle inspect failed: exit %d", inspectExit)
+	}
+
+	// Verify expected content in inspect output
+	expected := []string{"PASS", "manifest_parse", "manifest_signature", "publisher_match", "source_digest", "Policy summary", "egress"}
+	for _, s := range expected {
+		if !strings.Contains(inspectOutput, s) {
+			return false, inspectOutput, fmt.Errorf("inspect output missing expected content: %q", s)
+		}
+	}
+
+	return true, inspectOutput, nil
 }
