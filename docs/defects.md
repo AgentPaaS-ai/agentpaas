@@ -1123,23 +1123,28 @@ Error: audit chain verification failed: 1 issue(s)
 4. `agentpaas audit verify` — fails with "no checkpoints found"
 5. `agentpaas audit query` — shows entries exist
 
-**Fix:**
-1. Lowered `DefaultCheckpointCadence` from 100 to 25 records (so
-   moderate usage triggers periodic checkpoints).
-2. Added final checkpoint creation in `AuditWriter.Close()`: if the
-   audit head has advanced beyond the last checkpoint, a final checkpoint
-   is created before closing. This ensures `audit verify` always passes
-   after daemon shutdown, regardless of how many records were written.
+**Fix (thorough):**
+1. Lowered `DefaultCheckpointCadence` from 25 to **1** — every audit
+   record now gets a checkpoint immediately during normal operation.
+   This ensures `audit verify` passes even while the daemon is running,
+   not just after a graceful shutdown.
+2. `AuditWriter.Close()` already creates a final checkpoint on daemon
+   shutdown (added in the initial v0.2.3 fix). With cadence=1, the
+   Close() final checkpoint is redundant for normal shutdown but still
+   serves as a safety net for SIGKILL or crash scenarios where the last
+   record's checkpoint may not have been written.
 3. The final checkpoint is best-effort — if it fails, the daemon still
    shuts down (log-only, no block). The audit chain remains valid; only
    the checkpoint verification would be affected.
 
 **Post-fix verification:**
-1. Fresh install + pack + run + invoke → `agentpaas daemon stop`
-2. `agentpaas audit verify` → "Audit chain valid: 13 records, 1 checkpoints"
-3. Checkpoint file contains 1 signed checkpoint with `head_anchor_seq: 12`
+1. Fresh install + pack + run + invoke → `agentpaas audit verify` while
+   daemon is still running → "Audit chain valid: 12 records, 12 checkpoints"
+2. After `agentpaas daemon stop` → `agentpaas audit verify` → same result
+3. Checkpoint file contains 12 signed checkpoints, one per audit record
 4. All existing audit tests pass (`go test ./internal/audit/... -count=1`)
 5. All daemon tests pass (`go test ./internal/daemon/... -count=1`)
+6. Golden fast tier: 19/19 PASS
 
 **Related files:** `internal/audit/checkpoint_key.go`, `internal/audit/writer.go`
 **Related commits:** (this fix)
