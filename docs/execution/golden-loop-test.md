@@ -150,26 +150,34 @@ Build a weather agent that takes a city name as input, uses an LLM to look up th
 **Action:** Paste the modify prompt.
 
 ```
-Add a Google News lookup to the weather agent — fetch news headlines for the same city and include them in the response. Repack and retest.
+Add headline news to the weather agent — fetch the top 5 current news headlines from Hacker News and include them in the response. Repack and retest.
 ```
 
 **Expected agent behavior:**
 1. Read existing main.py
 2. **Confirm new hostname** before adding to policy: "This agent will now also
-   access: news.google.com. Allow?" (Bug 030 — agent may skip this)
-3. Modify main.py to fetch Google News RSS
-4. Update policy.yaml with `domain: news.google.com, ports: [443]`
+   access: hn.algolia.com. Allow?" (Bug 031 — agent may skip this)
+3. Modify main.py to fetch HN Algolia search API:
+   `GET https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=5`
+   (JSON response, no auth needed, no XML to parse)
+4. Update policy.yaml with `domain: hn.algolia.com, ports: [443]`
 5. Repack (new digest)
 6. Run, invoke, verify
 
 **Verify on disk:**
 - New image digest differs from Phase 4
-- `policy.yaml`: has `news.google.com` with `domain:` + `ports: [443]`
-- `harness-audit.jsonl`: 3 egress_allowed (wttr.in, news.google.com, openrouter.ai), 0 denials
-- `invoke-response.json`: real news headlines in response
+- `policy.yaml`: has `hn.algolia.com` with `domain:` + `ports: [443]`
+- `harness-audit.jsonl`: 3 egress_allowed (wttr.in, hn.algolia.com, openrouter.ai), 0 denials
+- `invoke-response.json`: real news headlines in response (not "no headlines found")
 - wttr.in cross-check: weather data matches
 
-**Bug 030:** If agent does NOT confirm hostname before adding to policy, log it.
+**Bug 031:** If agent does NOT confirm hostname before adding to policy, log it.
+
+**Why Hacker News Algolia API instead of Google News RSS:**
+- Google News RSS returns XML which LLMs struggle to parse reliably
+- Google News RSS may return 302 redirects (Bug 033/034)
+- HN Algolia API returns clean JSON, no auth, no redirects, always has headlines
+- General headlines (not city-specific) guarantee content is always returned
 
 ---
 
@@ -188,9 +196,9 @@ Switch the weather agent to use Open-Meteo instead of wttr.in for weather data. 
 4. Repack, run, invoke with Folsom
 
 **Verify on disk:**
-- `policy.yaml`: wttr.in removed, open-meteo domains added
-- `harness-audit.jsonl`: egress_allowed for open-meteo domains + openrouter.ai
-- `invoke-response.json`: real weather data from Open-Meteo
+- `policy.yaml`: wttr.in removed, open-meteo domains added, hn.algolia.com still present
+- `harness-audit.jsonl`: egress_allowed for open-meteo domains + hn.algolia.com + openrouter.ai (4 total), 0 denials
+- `invoke-response.json`: real weather data from Open-Meteo, real news headlines
 
 ---
 
