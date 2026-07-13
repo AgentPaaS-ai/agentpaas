@@ -1168,6 +1168,11 @@ func newAuditQueryCmd() *cobra.Command {
 			runID, _ := cmd.Flags().GetString("run-id")
 			agentFilter, _ := cmd.Flags().GetString("agent-name")
 			pageSize, _ := cmd.Flags().GetInt32("page-size")
+			limit, _ := cmd.Flags().GetInt32("limit")
+			// --limit is an alias for --page-size; use whichever was explicitly set.
+			if limit != 50 && pageSize == 50 {
+				pageSize = limit
+			}
 			if agentFilter != "" {
 				resolved, err := resolveCLIAgentRef(cmd, agentFilter)
 				if err != nil {
@@ -1238,7 +1243,8 @@ func newAuditQueryCmd() *cobra.Command {
 	}
 	cmd.Flags().String("run-id", "", "Filter by run ID")
 	cmd.Flags().String("agent-name", "", "Filter by agent name, name@pub8, or alias")
-	cmd.Flags().Int32("page-size", 50, "Maximum number of results")
+	cmd.Flags().Int32("page-size", 50, "Maximum number of results (alias: --limit)")
+	cmd.Flags().Int32("limit", 50, "Maximum number of results (alias of --page-size)")
 	return cmd
 }
 

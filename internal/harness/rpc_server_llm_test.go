@@ -909,3 +909,107 @@ func TestHandleHTTP_RewritesURLAndPreservesHost(t *testing.T) {
 		t.Fatalf("path = %q, want /v1/weather", sawPath)
 	}
 }
+
+// TestHandleHTTP_RedirectNotFollowed verifies BUG-033/034 fix: when a server
+// returns a 302 redirect, the harness does NOT follow it. Instead it returns
+// the 3xx response with the redirect URL and audits the redirect.
+func TestHandleHTTP_RedirectNotFollowed(t *testing.T) {
+	redirectTarget := "https://news.google.com/rss/search?q=Folsom+weather&hl=en-US&gl=US&ceid=US:en"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", redirectTarget)
+		w.WriteHeader(http.StatusFound) // 302
+		_, _ = w.Write([]byte(`<html>Redirecting...</html>`))
+	}))
+	defer func() { ts.Close() }()
+
+	t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+	recorder := &recordingAuditAppender{}
+	s := &harnessRPCServer{audit: recorder}
+	state := &rpcInvokeState{
+		payload:     map[string]any{},
+		credentials: map[string]rpcCredential{},
+		budget:      NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+	}
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "http",
+		Params: map[string]any{
+			"method": "GET",
+			"url":    "https://news.google.com/rss/search?q=Folsom+weather&hl=en",
+		},
+	}
+	resp := s.handleHTTP(req, state, false)
+	if !resp.OK {
+		t.Fatalf("expected OK response, got error: %s (code: %s)", resp.Error, resp.Code)
+	}
+	result := resp.Result.(map[string]any)
+	status := result["status"].(int)
+	if status != http.StatusFound {
+		t.Fatalf("status = %d, want %d (302)", status, http.StatusFound)
+	}
+	redirectURL, _ := result["redirect_url"].(string)
+	if redirectURL != redirectTarget {
+		t.Fatalf("redirect_url = %q, want %q", redirectURL, redirectTarget)
+	}
+	// Verify audit recorded the redirect as denied
+	foundRedirect := false
+	for _, e := range recorder.events() {
+		decision, _ := e.Payload["decision"].(string)
+		reason, _ := e.Payload["reason"].(string)
+		if decision == "denied" && strings.Contains(reason, "redirect not followed") {
+			foundRedirect = true
+			break
+		}
+	}
+	if !foundRedirect {
+		t.Fatal("expected audit entry for redirect not followed")
+	}
+}
+
+// TestHandleHTTP_RedirectNotFollowedWithCredential verifies that redirects
+// are not followed even for credentialed HTTP requests.
+func TestHandleHTTP_RedirectNotFollowedWithCredential(t *testing.T) {
+	redirectTarget := "https://evil.com/steal?token=abc"
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", redirectTarget)
+		w.WriteHeader(http.StatusMovedPermanently) // 301
+	}))
+	defer func() { ts.Close() }()
+
+	t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+	recorder := &recordingAuditAppender{}
+	s := &harnessRPCServer{audit: recorder}
+	state := &rpcInvokeState{
+		payload: map[string]any{},
+		credentials: map[string]rpcCredential{
+			"test-key": {Value: "secret123", Header: "Authorization"},
+		},
+		budget: NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+	}
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "http_with_credential",
+		Params: map[string]any{
+			"method":        "GET",
+			"url":           "https://api.example.com/data",
+			"credential_id": "test-key",
+		},
+	}
+	resp := s.handleHTTP(req, state, true)
+	if !resp.OK {
+		t.Fatalf("expected OK response, got error: %s", resp.Error)
+	}
+	result := resp.Result.(map[string]any)
+	status := result["status"].(int)
+	if status != http.StatusMovedPermanently {
+		t.Fatalf("status = %d, want %d (301)", status, http.StatusMovedPermanently)
+	}
+	redirectURL, _ := result["redirect_url"].(string)
+	if redirectURL != redirectTarget {
+		t.Fatalf("redirect_url = %q, want %q", redirectURL, redirectTarget)
+	}
+}

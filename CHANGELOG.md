@@ -3,6 +3,28 @@
 All notable changes to AgentPaaS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.3] — 2026-07-13
+
+### Added
+- **Consolidated defect log** (`docs/defects.md`): single source of truth
+  for all tracked bugs with root cause, reproduce steps, fix, and
+  post-fix verification. Supersedes scattered bug logs.
+
+### Fixed
+- Bug 033: Gateway no longer follows HTTP redirects. CheckRedirect on
+  both http.Client instances returns ErrUseLastResponse. Redirect
+  responses returned to agent with redirect_url field. Audited as
+  egress_denied.
+- Bug 034: TLS handshake error on redirect URLs resolved by Bug 033 fix
+  (redirects not followed, so no direct TLS connection to redirect target).
+- Bug 031: SKILL.md now explicitly requires egress hostname confirmation
+  for agent modification, not just creation.
+- Bug 018: SKILL.md now explicitly instructs agent to use `domain` field
+  name (not `host` or `hostname`) in policy.yaml.
+- Bug 027: Install error message for missing uv.lock now clearly explains
+  the issue and provides the exact command to fix it.
+- Bug 028: Added `--limit` as alias for `--page-size` on `audit query`.
+
 ## [0.2.1] — 2026-07-12
 
 ### Added

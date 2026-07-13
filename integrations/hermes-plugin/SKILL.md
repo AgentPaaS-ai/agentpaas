@@ -249,12 +249,32 @@ Default port in policy.yaml for all of the above: 443.
 
 ### Step 2: Confirm Egress Hostnames
 
+**CRITICAL — applies to BOTH new agent creation AND agent modification.**
+
+When creating a new agent OR modifying an existing packed agent to add
+new egress destinations:
+
 1. From intent and/or source code, list external hostnames only.
 2. Present briefly, no ports:
    "This agent will access: wttr.in, openrouter.ai. Allow these?"
-3. Generate `policy.yaml` with ONLY confirmed hostnames. Write ports
+   — OR for modification: "This agent will now also access:
+   news.google.com. Allow?"
+3. Wait for explicit user confirmation. Do NOT write to policy.yaml
+   until the user approves.
+4. Generate `policy.yaml` with ONLY confirmed hostnames. Write ports
    yourself (default 443). Never use wildcard `*:443` unless the user
    explicitly requests it.
+
+**BUG-031 rule:** If the user asks to add a new API or data source to
+an existing agent, you MUST ask for confirmation before adding the new
+hostname to policy.yaml. The egress policy is the primary security
+control — the user must explicitly approve every new hostname, whether
+creating or modifying.
+
+**BUG-018 rule:** Use `domain` (not `host` or `hostname`) as the
+field name for egress rules in policy.yaml. The schema field is
+`domain` (`internal/policy/canonical.go` line 37). `host` and
+`hostname` are NOT valid schema fields and will cause pack to fail.
 
 ### Step 3: Other Credentials (non-LLM APIs)
 

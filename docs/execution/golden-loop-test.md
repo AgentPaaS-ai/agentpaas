@@ -316,13 +316,10 @@ Run the installed weather agent with city=Folsom.
 
 ## Bug Log
 
-Bugs found during golden loop testing. Update for each release.
+All bugs are tracked in the single source of truth: [`docs/defects.md`](../defects.md)
 
-| Bug ID | Phase | Priority | Description | Status |
-|--------|-------|----------|-------------|--------|
-| 018 | 4 | P2 | Agent writes host/hostname instead of domain in policy.yaml, self-corrects after pack failure | open |
-| 024 | 4 | minor | SDK agent.llm() returns dict with key "text" but no docs guide agent authors | open |
-| 030 | 5 | security/UX | Agent doesn't confirm new egress hostname when modifying existing agent | open |
+When a new release is cut, update `docs/defects.md` with any new bugs found
+during the golden loop. Do not maintain a separate bug log here.
 
 ---
 
@@ -341,5 +338,5 @@ When a new release is cut:
 2. Add any new phases for new features
 3. Adjust existing phases if behavior changed
 4. Run the full golden loop from Phase 1
-5. Update bug log with any new bugs found
+5. Update `docs/defects.md` with any new bugs found
 6. Mark release gate GO/NO-GO

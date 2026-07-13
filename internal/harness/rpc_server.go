@@ -391,7 +391,19 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// 30+ seconds to respond. The previous 5s timeout killed requests before
 	// the provider returned, causing "context deadline exceeded" failures on
 	// anything requiring non-trivial reasoning.
-	client := &http.Client{Timeout: 120 * time.Second}
+	//
+	// BUG-033/034 fix: deny HTTP redirects. The gateway rewrites URLs to
+	// http://gateway:7799/path; a 302 redirect target is an HTTPS URL that
+	// the client cannot TLS-terminate directly (the gateway does TLS). Without
+	// this guard, Go's default redirect follower (up to 10 hops) tries to
+	// connect directly to the redirect target, bypassing the gateway's
+	// egress policy and producing TLS handshake errors.
+	client := &http.Client{
+		Timeout: 120 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "http request failed: "+err.Error())
@@ -589,7 +601,15 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		httpReq.Header.Set(header, cred.Value)
 		credentialValue = cred.Value
 	}
-	client := &http.Client{Timeout: 5 * time.Second}
+	// BUG-033/034 fix: deny HTTP redirects. Same rationale as handleLLM —
+	// a redirect target bypasses the gateway's egress policy and may produce
+	// TLS handshake errors when the client tries to connect directly.
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		// HTTP request failed — this is an egress denial when the container
@@ -648,6 +668,26 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 			BodyRedacted: bodyMarker,
 		})
 		return rpcError(req.ID, reason, "http_failed")
+	}
+	// BUG-033: detect and audit HTTP redirects. Redirects are NOT followed
+	// (CheckRedirect returns ErrUseLastResponse). We log the redirect target
+	// so the user can see what domain the server tried to redirect to, and
+	// decide whether to add it to the egress policy.
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		redirectTarget := resp.Header.Get("Location")
+		reason := fmt.Sprintf("redirect not followed: %d → %s", resp.StatusCode, redirectTarget)
+		s.auditEgressDecision("harness", rawURL, method, credID, strconv.Itoa(resp.StatusCode), "denied", reason)
+		return rpcResponse{
+			ID: req.ID,
+			OK: true,
+			Result: map[string]any{
+				"status":       resp.StatusCode,
+				"status_code":  resp.StatusCode,
+				"headers":      redactedHeaders(resp.Header),
+				"body":         bodyStr,
+				"redirect_url": redirectTarget,
+			},
+		}
 	}
 	// HTTP request succeeded — record as allowed egress.
 	s.auditEgressDecision("harness", rawURL, method, credID, strconv.Itoa(resp.StatusCode), "allowed", "")

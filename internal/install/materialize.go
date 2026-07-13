@@ -20,7 +20,7 @@ import (
 var ErrMaterializeFailed = errors.New("install materialization failed")
 
 // ErrDepsUnlockedRefused is returned when uv.lock is missing and operator did not allow unlocked deps.
-var ErrDepsUnlockedRefused = errors.New("missing uv.lock requires --allow-unlocked-deps in non-interactive mode")
+var ErrDepsUnlockedRefused = errors.New("this agent has no uv.lock file (dependency lock). To install with unlocked dependencies, re-run with --allow-unlocked-deps. This is safe for simple agents with no third-party dependencies")
 
 // MaterializeOpts configures state materialization + image acquisition.
 type MaterializeOpts struct {
