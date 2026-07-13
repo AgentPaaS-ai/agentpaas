@@ -14,7 +14,7 @@ import (
 const (
 	StatusBudgetExceeded = "BUDGET_EXCEEDED"
 
-	defaultWallClockBudget = 30 * time.Second
+	defaultWallClockBudget = 120 * time.Second
 	defaultMaxIterations   = 10000
 	defaultMaxTokens       = 100000
 
