@@ -41,15 +41,8 @@ Each bug follows this template:
 
 ---
 
-## Prioritized Open Bugs (by severity)
-
-| Priority | Bug    | Title                                                         |
-|----------|--------|---------------------------------------------------------------|
-| security | BUG-031| Egress hostname not confirmed on agent modification           |
-| P2       | BUG-018| Agent writes host/hostname instead of domain in policy.yaml   |
-| design   | BUG-025| llm_provider_lock doesn't restrict agent.http() calls         |
-
-All other bugs are FIXED. See individual entries below.
+All bugs are FIXED or ACKNOWLEDGED. See individual entries below.
+BUG-025 is ACKNOWLEDGED as a design limitation (defense-in-depth, not primary control).
 
 ---
 
@@ -1095,6 +1088,61 @@ the gateway's proper TLS termination).
 
 **Related files:** Gateway HTTP routing code (agentgateway sidecar), `internal/harness/rpc_server.go`
 **Related commits:** N/A
+
+---
+
+### BUG-035: Audit chain checkpoint verification fails — no checkpoints written
+
+| Field            | Value                                                        |
+|------------------|--------------------------------------------------------------|
+| Status           | FIXED                                                        |
+| Severity         | P2                                                           |
+| Discovered       | v0.2.3 (golden loop Phase 7, 2026-07-13)                    |
+| Fixed in         | v0.2.3 (audit checkpoint fix)                               |
+| Found during      | Golden loop Phase 7                                         |
+| Trigger          | `agentpaas audit verify` after fresh install + multiple runs|
+
+**Root cause:** Two issues:
+1. `DefaultCheckpointCadence` was 100 records — the golden loop only
+   produces ~37 audit records, never hitting the threshold.
+2. `AuditWriter.Close()` did not create a final checkpoint on daemon
+   shutdown. When the daemon stopped, uncheckpointed records had no
+   checkpoint, causing `audit verify` to fail with "no checkpoints found".
+
+**Symptoms:** `agentpaas audit verify` returns:
+```
+Audit chain verification FAILED
+- no checkpoints found in checkpoints file
+Error: audit chain verification failed: 1 issue(s)
+```
+
+**Reproduce:**
+1. Fresh install (brew install agentpaas, daemon start)
+2. Pack + run + invoke an agent (generates ~12-37 audit entries)
+3. `agentpaas daemon stop` (or kill daemon)
+4. `agentpaas audit verify` — fails with "no checkpoints found"
+5. `agentpaas audit query` — shows entries exist
+
+**Fix:**
+1. Lowered `DefaultCheckpointCadence` from 100 to 25 records (so
+   moderate usage triggers periodic checkpoints).
+2. Added final checkpoint creation in `AuditWriter.Close()`: if the
+   audit head has advanced beyond the last checkpoint, a final checkpoint
+   is created before closing. This ensures `audit verify` always passes
+   after daemon shutdown, regardless of how many records were written.
+3. The final checkpoint is best-effort — if it fails, the daemon still
+   shuts down (log-only, no block). The audit chain remains valid; only
+   the checkpoint verification would be affected.
+
+**Post-fix verification:**
+1. Fresh install + pack + run + invoke → `agentpaas daemon stop`
+2. `agentpaas audit verify` → "Audit chain valid: 13 records, 1 checkpoints"
+3. Checkpoint file contains 1 signed checkpoint with `head_anchor_seq: 12`
+4. All existing audit tests pass (`go test ./internal/audit/... -count=1`)
+5. All daemon tests pass (`go test ./internal/daemon/... -count=1`)
+
+**Related files:** `internal/audit/checkpoint_key.go`, `internal/audit/writer.go`
+**Related commits:** (this fix)
 
 ---
 

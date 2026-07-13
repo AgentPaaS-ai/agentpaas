@@ -18,7 +18,7 @@ import (
 )
 
 // DefaultCheckpointCadence is the number of audit records between automatic checkpoints.
-const DefaultCheckpointCadence int64 = 100
+const DefaultCheckpointCadence int64 = 25
 
 const (
 	// Encryption format version.

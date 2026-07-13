@@ -24,6 +24,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Bug 027: Install error message for missing uv.lock now clearly explains
   the issue and provides the exact command to fix it.
 - Bug 028: Added `--limit` as alias for `--page-size` on `audit query`.
+- Bug 035: Audit checkpoint verification now passes after daemon shutdown.
+  Lowered DefaultCheckpointCadence from 100 to 25 records, and added final
+  checkpoint creation in AuditWriter.Close() so uncheckpointed records get
+  a checkpoint before the daemon exits.
 
 ## [0.2.1] — 2026-07-12
 

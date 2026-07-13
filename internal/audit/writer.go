@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 )
@@ -415,9 +416,27 @@ func (w *AuditWriter) CurrentHead() (seq int64, hash string) {
 // Close flushes and closes the underlying file. After Close, the writer must
 // not be used. It is safe to call Close multiple times (the second call is a
 // no-op after the file is closed).
+//
+// If a checkpoint manager is configured and there are uncheckpointed records
+// (i.e., the audit head has advanced beyond the last checkpoint), a final
+// checkpoint is created before closing. This ensures audit chain verification
+// passes even when the daemon shuts down before hitting the cadence threshold.
 func (w *AuditWriter) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+
+	// Create a final checkpoint if there are uncheckpointed records.
+	if w.checkpointMgr != nil && w.seq > 0 {
+		lastCpSeq, _ := w.checkpointMgr.LatestAnchor()
+		if w.seq > lastCpSeq {
+			if _, err := w.checkpointMgr.CreateCheckpoint(w.seq, w.hash); err != nil {
+				// Log but don't block shutdown — the chain is still valid,
+				// just without a final checkpoint.
+				log.Printf("audit: failed to create final checkpoint on close (seq %d): %v", w.seq, err)
+			}
+		}
+	}
+
 	var err error
 	if w.checkpointMgr != nil {
 		err = w.checkpointMgr.Close()
