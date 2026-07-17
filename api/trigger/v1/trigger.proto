@@ -37,6 +37,7 @@ option go_package = "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1;triggerv1"
 // ---------------------------------------------------------------------------
 
 // RunStatus represents the lifecycle state of an agent run.
+// New values are additive; existing numbers MUST NOT be renumbered.
 enum RunStatus {
   RUN_STATUS_UNSPECIFIED = 0;
   RUN_STATUS_PENDING = 1;
@@ -45,6 +46,11 @@ enum RunStatus {
   RUN_STATUS_FAILED = 4;
   RUN_STATUS_CANCELLED = 5;
   RUN_STATUS_BUDGET_EXCEEDED = 6;
+  // B26 routed-run states (additive; old clients ignore unknown enum values).
+  RUN_STATUS_PAUSE_REQUESTED = 7;
+  RUN_STATUS_PAUSED = 8;
+  RUN_STATUS_NEEDS_REPLAN = 9;
+  RUN_STATUS_EXPIRED = 10;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +78,14 @@ message Run {
   BudgetSummary budget_summary = 9;
   string policy_digest = 10;
   string image_digest = 11;
+  // B26 additive hierarchy IDs (standalone trigger runs also receive a workflow_id).
+  // Old clients ignore unknown fields; new clients may inspect hierarchy without
+  // inferring that pipeline/spawn execution is already enabled.
+  string workflow_id = 12;
+  string invocation_id = 13;
+  // Absent in the immediate admission receipt until the asynchronous scheduler
+  // claim creates the attempt; present in later status.
+  string attempt_id = 14;
 }
 
 // ---------------------------------------------------------------------------

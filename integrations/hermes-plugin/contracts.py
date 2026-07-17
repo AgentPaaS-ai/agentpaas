@@ -4,7 +4,7 @@ These mirror internal/operator/schema.go and categories.go.
 If the Go structs change, these fixtures must be updated in the same PR.
 """
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 # Error categories (from categories.go AllErrorCategories)
 ERROR_CATEGORIES = frozenset({
@@ -14,6 +14,10 @@ ERROR_CATEGORIES = frozenset({
     "policy_validation_failed", "network_sandbox_failed",
     "secret_scan_failed", "package_verification_failed",
     "dashboard_unavailable",
+    # B26-T04 typed control/admission categories (additive)
+    "deployment_inactive", "idempotency_conflict", "concurrency_unavailable",
+    "limit_amendment_denied", "unsafe_pause_boundary", "run_terminal",
+    "feature_not_enabled", "missing_scope",
 })
 
 # Next actions (from categories.go AllNextActions)
@@ -21,10 +25,17 @@ NEXT_ACTIONS = frozenset({
     "fix_code", "install_dependency", "start_docker", "set_secret",
     "review_policy_patch", "review_handoff", "increase_budget",
     "rerun", "export_audit", "ask_user",
+    # B26-T04 additive recovery recommendations
+    "more_time", "capability_up", "larger_context", "split_task", "stop",
 })
 
 # Risk levels
 RISK_LEVELS = frozenset({"low", "medium", "high"})
+
+# Authority scopes (invoke vs administrative control separation)
+AUTHORITY_SCOPES = frozenset({
+    "default", "runs:control", "runs:amend_limits",
+})
 
 # Evidence ref types (from schema.go EvidenceRef.Type doc)
 EVIDENCE_REF_TYPES = frozenset({
@@ -43,6 +54,9 @@ TRUSTED_CONTROL_FIELDS = frozenset({
     "denied_action", "proposed_patch", "summary", "events",
     "audit_seq", "event_type", "timestamp", "detail",
     "category", "message", "type", "ref",
+    # B26 additive trusted control fields
+    "latest_reason", "latest_action", "attempt_id", "workflow_id",
+    "invocation_id", "attempt_report",
 })
 
 # Untrusted evidence fields (may contain agent/log/source content)
@@ -65,11 +79,13 @@ RESPONSE_CONTRACTS = {
     "summarize": {
         "required": ["schema_version", "run_id", "status", "summary"],
         "optional": ["exit_code", "started_at", "finished_at", "duration_ms",
-                      "invocations", "policy_denials", "error_category", "evidence_refs"],
+                      "invocations", "policy_denials", "error_category",
+                      "evidence_refs", "invoke_response", "attempt_report"],
+        "nested": {"attempt_report": "attempt_report"},
     },
     "explain-failure": {
         "required": ["schema_version", "run_id", "error_category", "root_cause", "next_action"],
-        "optional": ["redacted_excerpts", "evidence_refs"],
+        "optional": ["redacted_excerpts", "evidence_refs", "latest_reason", "latest_action"],
         "nested": {"redacted_excerpts": "redacted_excerpt"},
     },
     "explain-denial": {
@@ -91,7 +107,7 @@ RESPONSE_CONTRACTS = {
     },
     "next-action": {
         "required": ["schema_version", "next_action", "rationale"],
-        "optional": ["run_id", "evidence_refs", "confirmation"],
+        "optional": ["run_id", "evidence_refs", "confirmation", "latest_reason"],
     },
 }
 
@@ -128,5 +144,47 @@ NESTED_CONTRACTS = {
         "required": ["requires_confirmation"],
         "optional": ["confirmation_id", "risk_level", "rationale",
                       "affected_destinations", "credential_ids", "evidence_refs"],
+    },
+    "attempt_report": {
+        "required": ["schema_version", "run_id", "attempt_id", "status"],
+        "optional": [
+            "reason", "failure_scope", "recovery_disposition", "resume_capability",
+            "progress", "checkpoint", "artifacts", "time", "llm_budget",
+            "route_decisions", "recommended_actions", "evidence_refs", "created_at",
+        ],
+        "nested": {
+            "progress": "progress_summary",
+            "checkpoint": "checkpoint_summary",
+            "time": "time_budget_summary",
+            "llm_budget": "llm_budget_summary",
+        },
+    },
+    "progress_summary": {
+        "required": [],
+        "optional": [
+            "schema_version", "model_calls_completed", "tool_calls_completed",
+            "actions_since_checkpoint", "actions_without_progress",
+        ],
+    },
+    "checkpoint_summary": {
+        "required": [],
+        "optional": [
+            "schema_version", "checkpoint_id", "attempt_id", "run_id",
+            "action_count", "total_model_calls", "created_at",
+        ],
+    },
+    "time_budget_summary": {
+        "required": [],
+        "optional": [
+            "schema_version", "attempt_duration_ms", "run_active_time_ms",
+            "workflow_active_time_ms", "remaining_ms",
+        ],
+    },
+    "llm_budget_summary": {
+        "required": [],
+        "optional": [
+            "schema_version", "total_tokens", "input_tokens", "output_tokens",
+            "total_cost_decimal", "remaining_cost_decimal", "model_calls",
+        ],
     },
 }

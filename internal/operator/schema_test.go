@@ -21,6 +21,9 @@ func TestSchemaVersion(t *testing.T) {
 	if parts[0] != "1" {
 		t.Fatalf("P1 schema major version must be 1, got %s", parts[0])
 	}
+	if SchemaVersion != "1.1.0" {
+		t.Fatalf("B26-T04 SchemaVersion must be 1.1.0, got %s", SchemaVersion)
+	}
 }
 
 // TestAllErrorCategories verifies every defined error category is in the
@@ -40,6 +43,14 @@ func TestAllErrorCategories(t *testing.T) {
 		ErrSecretScanFailed,
 		ErrPackageVerificationFailed,
 		ErrDashboardUnavailable,
+		ErrDeploymentInactive,
+		ErrIdempotencyConflict,
+		ErrConcurrencyUnavailable,
+		ErrLimitAmendmentDenied,
+		ErrUnsafePauseBoundary,
+		ErrRunTerminal,
+		ErrFeatureNotEnabled,
+		ErrMissingScope,
 	}
 
 	all := AllErrorCategories()
@@ -84,6 +95,11 @@ func TestAllNextActions(t *testing.T) {
 		ActionRerun,
 		ActionExportAudit,
 		ActionAskUser,
+		ActionMoreTime,
+		ActionCapabilityUp,
+		ActionLargerContext,
+		ActionSplitTask,
+		ActionStop,
 	}
 
 	all := AllNextActions()
@@ -521,10 +537,10 @@ func TestEveryErrorCategoryHasFixture(t *testing.T) {
 
 	// Mark categories used in fixtures
 	fixtures := []ErrorCategory{
-		ErrMissingSecretBinding,       // ValidateAgentProjectResponse
-		ErrAgentRuntimeException,      // SummarizeRunResponse
-		ErrDependencyConflict,         // ExplainFailureResponse
-		ErrPolicyDenied,               // (used in ExplainPolicyDenial context)
+		ErrMissingSecretBinding,  // ValidateAgentProjectResponse
+		ErrAgentRuntimeException, // SummarizeRunResponse
+		ErrDependencyConflict,    // ExplainFailureResponse
+		ErrPolicyDenied,          // (used in ExplainPolicyDenial context)
 	}
 
 	for _, cat := range fixtures {
@@ -540,5 +556,163 @@ func TestEveryErrorCategoryHasFixture(t *testing.T) {
 			// defined and valid; fixtures come in later subtasks.
 			_ = cat
 		}
+	}
+}
+
+// TestB26AttemptReportOnSummarize verifies SummarizeRunResponse includes
+// attempt_report fields when set.
+func TestB26AttemptReportOnSummarize(t *testing.T) {
+	resp := SummarizeRunResponse{
+		SchemaVersion: SchemaVersion,
+		RunID:         "run_abc",
+		Status:        "failed",
+		Summary:       "budget exceeded during attempt",
+		AttemptReport: &AttemptReport{
+			SchemaVersion: SchemaVersion,
+			RunID:         "run_abc",
+			AttemptID:     "att_1",
+			Status:        "FAILED",
+			Reason:        "BUDGET_EXCEEDED",
+			Time: &TimeBudgetSummary{
+				AttemptDurationMS: 1200,
+				RemainingMS:      0,
+			},
+			LLMBudget: &LLMBudgetSummary{
+				TotalTokens:      1000,
+				TotalCostDecimal: "0.42",
+			},
+			RecommendedActions: []string{string(ActionMoreTime), string(ActionStop)},
+		},
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	ar, ok := m["attempt_report"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("attempt_report missing or wrong type: %v", m["attempt_report"])
+	}
+	if ar["attempt_id"] != "att_1" {
+		t.Errorf("attempt_id = %v, want att_1", ar["attempt_id"])
+	}
+	if ar["reason"] != "BUDGET_EXCEEDED" {
+		t.Errorf("reason = %v, want BUDGET_EXCEEDED", ar["reason"])
+	}
+	llm, ok := ar["llm_budget"].(map[string]interface{})
+	if !ok {
+		t.Fatal("llm_budget missing")
+	}
+	if llm["total_cost_decimal"] != "0.42" {
+		t.Errorf("total_cost_decimal = %v, want 0.42", llm["total_cost_decimal"])
+	}
+}
+
+// TestB26LatestReasonOnExplainAndNextAction verifies additive latest_* fields.
+func TestB26LatestReasonOnExplainAndNextAction(t *testing.T) {
+	fail := ExplainFailureResponse{
+		SchemaVersion: SchemaVersion,
+		RunID:         "run_x",
+		ErrorCategory: ErrBudgetExceeded,
+		RootCause:     "active time ceiling hit",
+		NextAction:    ActionMoreTime,
+		LatestReason:  "BUDGET_EXCEEDED",
+		LatestAction:  "more_time",
+	}
+	data, err := json.Marshal(fail)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m["latest_reason"] != "BUDGET_EXCEEDED" {
+		t.Errorf("latest_reason = %v", m["latest_reason"])
+	}
+	if m["latest_action"] != "more_time" {
+		t.Errorf("latest_action = %v", m["latest_action"])
+	}
+
+	na := NextActionResponse{
+		SchemaVersion: SchemaVersion,
+		RunID:         "run_x",
+		NextAction:    ActionMoreTime,
+		Rationale:     "extend ceiling",
+		LatestReason:  "BUDGET_EXCEEDED",
+	}
+	data2, err := json.Marshal(na)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var m2 map[string]interface{}
+	if err := json.Unmarshal(data2, &m2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m2["latest_reason"] != "BUDGET_EXCEEDED" {
+		t.Errorf("next-action latest_reason = %v", m2["latest_reason"])
+	}
+}
+
+// TestB26UnknownActionFailsClosed verifies unknown actions are rejected.
+func TestB26UnknownActionFailsClosed(t *testing.T) {
+	if IsValidNextAction("spawn_pipeline") {
+		t.Error("unknown next action must fail closed")
+	}
+	if IsValidErrorCategory("IDEMPOTENT_REPLAY") {
+		// code names are not error categories
+		t.Error("admission code names must not pass as error categories")
+	}
+	if !IsValidErrorCategory(ErrIdempotencyConflict) {
+		t.Error("typed error category must be valid")
+	}
+	if !IsValidAuthorityScope(AuthScopeRunsControl) {
+		t.Error("runs:control must be a valid authority scope")
+	}
+	if IsValidAuthorityScope("runs:admin") {
+		t.Error("unknown authority scope must fail closed")
+	}
+}
+
+// TestOldJSONFixtureUnmarshalsIntoNewStructs verifies additive compatibility:
+// old 1.0.0 JSON payloads still unmarshal into 1.1.0 structs without data loss.
+func TestOldJSONFixtureUnmarshalsIntoNewStructs(t *testing.T) {
+	oldSummarize := `{
+		"schema_version": "1.0.0",
+		"run_id": "run_old",
+		"status": "failed",
+		"summary": "legacy summary",
+		"error_category": "agent_runtime_exception"
+	}`
+	var s SummarizeRunResponse
+	if err := json.Unmarshal([]byte(oldSummarize), &s); err != nil {
+		t.Fatalf("unmarshal old summarize: %v", err)
+	}
+	if s.RunID != "run_old" || s.Status != "failed" || s.Summary != "legacy summary" {
+		t.Fatalf("data loss on old summarize: %+v", s)
+	}
+	if s.AttemptReport != nil {
+		t.Error("attempt_report should be nil for old payload")
+	}
+
+	oldExplain := `{
+		"schema_version": "1.0.0",
+		"run_id": "run_old",
+		"error_category": "dependency_conflict",
+		"root_cause": "missing pkg",
+		"next_action": "install_dependency"
+	}`
+	var e ExplainFailureResponse
+	if err := json.Unmarshal([]byte(oldExplain), &e); err != nil {
+		t.Fatalf("unmarshal old explain: %v", err)
+	}
+	if e.RootCause != "missing pkg" || e.NextAction != ActionInstallDependency {
+		t.Fatalf("data loss on old explain: %+v", e)
+	}
+	if e.LatestReason != "" {
+		t.Error("latest_reason should be empty for old payload")
 	}
 }
