@@ -22,6 +22,7 @@ var validCredentialTypes = map[string]bool{
 // struct. It rejects unknown fields at every nesting level via strict
 // YAML decoding, and validates credential type fields against the enum
 // set at parse time (rejecting non-string scalars and invalid values).
+// Schema version must be "1.0" or "1.1". Unknown versions are rejected.
 func ParsePolicy(r io.Reader) (*Policy, error) {
 	if r == nil {
 		return nil, fmt.Errorf("policy: reader is nil")
@@ -55,6 +56,12 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 	var p Policy
 	if err := dec.Decode(&p); err != nil {
 		return nil, fmt.Errorf("policy: invalid yaml: %w", err)
+	}
+
+	// Validate schema version.
+	if p.Version != SchemaVersion10 && p.Version != SchemaVersion11 {
+		return nil, fmt.Errorf("policy: unknown schema version %q (must be %q or %q)",
+			p.Version, SchemaVersion10, SchemaVersion11)
 	}
 
 	// Decode a second time to ensure there is no trailing document.
