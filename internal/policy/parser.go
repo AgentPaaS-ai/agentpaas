@@ -22,6 +22,7 @@ var validCredentialTypes = map[string]bool{
 // struct. It rejects unknown fields at every nesting level via strict
 // YAML decoding, and validates credential type fields against the enum
 // set at parse time (rejecting non-string scalars and invalid values).
+// Schema version must be "1.0" or "1.1". Unknown versions are rejected.
 func ParsePolicy(r io.Reader) (*Policy, error) {
 	if r == nil {
 		return nil, fmt.Errorf("policy: reader is nil")
@@ -55,6 +56,23 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 	var p Policy
 	if err := dec.Decode(&p); err != nil {
 		return nil, fmt.Errorf("policy: invalid yaml: %w", err)
+	}
+
+	// Validate schema version. Empty version defaults to "1.0" for backward
+	// compatibility with v0.2.3 policies that omit the version field.
+	if p.Version == "" {
+		p.Version = SchemaVersion10
+	}
+	if p.Version != SchemaVersion10 && p.Version != SchemaVersion11 {
+		return nil, fmt.Errorf("policy: unknown schema version %q (must be %q or %q)",
+			p.Version, SchemaVersion10, SchemaVersion11)
+	}
+
+	// Reject v1.0 policies that contain v1.1 routed fields at parse time.
+	// This prevents invalid policies from being accepted by ParsePolicy and
+	// having their digest computed before ValidatePolicy catches the mismatch.
+	if p.Version == SchemaVersion10 && p.HasRoutedFields() {
+		return nil, fmt.Errorf("policy: v1.0 schema must not contain v1.1 routed fields (routed_run, model_routes, max_cost_usd)")
 	}
 
 	// Decode a second time to ensure there is no trailing document.

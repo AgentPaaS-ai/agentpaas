@@ -110,7 +110,7 @@ func InitFromCode(projectDir string, runtime RuntimeType) error {
 	}
 	name := sanitizeAgentName(filepath.Base(absPath))
 	content := fmt.Sprintf(
-		"version: \"1\"\nruntime: %s\nname: %s\ndescription: \"\"\n",
+		"version: \"1.0\"\nruntime: %s\nname: %s\ndescription: \"\"\n",
 		runtime,
 		name,
 	)
@@ -141,7 +141,7 @@ func InitPolicy(projectDir string) error {
 		return fmt.Errorf("inspect policy.yaml: %w", err)
 	}
 
-	const content = `version: "1"
+	const content = `version: "1.0"
 agent:
   name: ""
   description: ""
@@ -233,7 +233,7 @@ def handle_invoke(payload):
 // DefaultPolicyYAML returns a default-deny policy.yaml — no egress allowed
 // until the agent onboarding flow adds explicit domain rules.
 func DefaultPolicyYAML() string {
-	return `version: "1"
+	return `version: "1.0"
 agent:
   name: ""
   description: ""

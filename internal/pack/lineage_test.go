@@ -12,7 +12,7 @@ import (
 
 func TestReadLineage_Valid(t *testing.T) {
 	dir := t.TempDir()
-	parentPolicy := []byte("version: \"1\"\negress: []\n")
+	parentPolicy := []byte("version: \"1.0\"\negress: []\n")
 	prov := []ProvenanceEntry{{
 		Action: "created", AgentName: "a", AgentVersion: "1",
 		Timestamp: time.Now().UTC(),

@@ -109,7 +109,7 @@ func newPolicyInitCmd() *cobra.Command {
 // buildAllowLLMTemplate generates an allow-llm policy template YAML
 // with the specified provider domain as the egress destination.
 func buildAllowLLMTemplate(domain string) string {
-	return fmt.Sprintf(`version: "1"
+	return fmt.Sprintf(`version: "1.0"
 agent:
   name: ""
   description: ""
