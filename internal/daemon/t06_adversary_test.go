@@ -90,12 +90,14 @@ func TestAdversaryT06_DeactivateWithActiveRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Deactivate err: %v", err)
 	}
-	_, err = s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{DeploymentRef: depID, IdempotencyKey: "k2"})
+	// Post-deactivate invoke must still fail-closed (new invocations blocked).
+	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{DeploymentRef: depID, IdempotencyKey: "k2"})
 	if err != nil {
-		// expected fail-closed
-	} else {
-		t.Logf("ADVERSARY BREAK DETECTED: invoke after deactivate succeeded (no extra active-runs gate)")
+		// expected fail-closed (gRPC error path)
+	} else if resp.GetError() == nil || resp.GetOutcomeName() != "FEATURE_NOT_ENABLED" {
+		t.Errorf("ADVERSARY BREAK: invoke after deactivate succeeded (no fail-closed)")
 	}
+	// Confirmed: deactivation works without cancelling actives, new invokes blocked.
 }
 
 func TestAdversaryT06_CLIIdempotencyKeyLeak(t *testing.T) {
@@ -132,9 +134,14 @@ func TestAdversaryT06_MissingScopeBypass_Amend(t *testing.T) {
 	s := newTestControlServer(t)
 	ctx := context.Background()
 	req := &controlv1.AmendLimitsRequest{WorkflowId: "wf1", IdempotencyKey: "k", Reason: "r"}
-	_, err := s.AmendLimits(ctx, req)
-	if err == nil {
-		t.Logf("ADVERSARY BREAK DETECTED: missing scope allowed amend path (no explicit scope check)")
+	resp, err := s.AmendLimits(ctx, req)
+	if err != nil {
+		// gRPC-level error is acceptable (e.g. validation failure).
+		return
+	}
+	// Response-level error must be FEATURE_NOT_ENABLED (not-enabled, no mutation).
+	if resp.GetError() == nil {
+		t.Error("ADVERSARY BREAK: AmendLimits returned no error (scope bypass)")
 	}
 }
 
