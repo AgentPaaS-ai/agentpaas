@@ -25,7 +25,7 @@ func TestInitFromCodeNoninteractive_CreatesAgentYamlAndPolicy(t *testing.T) {
 
 	agentYAML := readCLITestFile(t, projectDir, "agent.yaml")
 	for _, want := range []string{
-		`version: "1"`,
+		`version: "1.0"`,
 		"runtime: python",
 		"name: my-agent",
 		`description: ""`,
@@ -37,7 +37,7 @@ func TestInitFromCodeNoninteractive_CreatesAgentYamlAndPolicy(t *testing.T) {
 
 	policyYAML := readCLITestFile(t, projectDir, "policy.yaml")
 	for _, want := range []string{
-		`version: "1"`,
+		`version: "1.0"`,
 		"agent:",
 		`name: ""`,
 		"egress: []",

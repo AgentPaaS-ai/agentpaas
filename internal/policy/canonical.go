@@ -17,13 +17,15 @@ import (
 // domains are lowercased and punycode-normalized, and duplicate entries are
 // removed with warnings.
 type CanonicalPolicy struct {
-	Version     string                 `json:"version"`
-	Agent       CanonicalAgentConfig   `json:"agent"`
-	Egress      []CanonicalEgressRule  `json:"egress,omitempty"`
-	Credentials []CanonicalCredential  `json:"credentials,omitempty"`
-	MCPServers  []CanonicalMCPServer   `json:"mcp_servers,omitempty"`
-	Hooks       []CanonicalHook        `json:"hooks,omitempty"`
-	Ingress     []CanonicalIngressRule `json:"ingress,omitempty"`
+	Version         string                       `json:"version"`
+	Agent           CanonicalAgentConfig         `json:"agent"`
+	Egress          []CanonicalEgressRule        `json:"egress,omitempty"`
+	Credentials     []CanonicalCredential        `json:"credentials,omitempty"`
+	MCPServers      []CanonicalMCPServer         `json:"mcp_servers,omitempty"`
+	Hooks           []CanonicalHook              `json:"hooks,omitempty"`
+	Ingress         []CanonicalIngressRule       `json:"ingress,omitempty"`
+	RoutedRun       *CanonicalRoutedRunPolicy    `json:"routed_run,omitempty"`
+	ModelRoutes     map[string]CanonicalModelRoute `json:"model_routes,omitempty"`
 }
 
 // CanonicalAgentConfig is the canonical form of AgentConfig.
@@ -74,6 +76,49 @@ type CanonicalHook struct {
 type CanonicalIngressRule struct {
 	Path string `json:"path"`
 	Port int    `json:"port"`
+}
+
+// CanonicalRoutedRunPolicy is the canonical form of RoutedRunPolicy.
+type CanonicalRoutedRunPolicy struct {
+	ModelCallTimeout               string `json:"model_call_timeout,omitempty"`
+	StallTimeout                   string `json:"stall_timeout,omitempty"`
+	AttemptLease                   string `json:"attempt_lease,omitempty"`
+	MaxActiveDuration              string `json:"max_active_duration,omitempty"`
+	RecoveryMargin                 string `json:"recovery_margin,omitempty"`
+	MaxLLMCalls                    int    `json:"max_llm_calls,omitempty"`
+	MaxModelRecoveriesPerAttempt   int    `json:"max_model_recoveries_per_attempt,omitempty"`
+	MaxWorkerRetries               int    `json:"max_worker_retries,omitempty"`
+	MaxIdenticalToolActions        int    `json:"max_identical_tool_actions,omitempty"`
+	MaxActionsWithoutProgress      int    `json:"max_actions_without_progress,omitempty"`
+}
+
+// CanonicalModelRoute is the canonical form of ModelRoute.
+type CanonicalModelRoute struct {
+	Pattern       string                `json:"pattern,omitempty"`
+	CloudTransfer string                `json:"cloud_transfer,omitempty"`
+	Minimum       *CanonicalModelMinimum `json:"minimum,omitempty"`
+	Candidates    []CanonicalCandidate   `json:"candidates,omitempty"`
+}
+
+// CanonicalModelMinimum is the canonical form of ModelMinimum.
+type CanonicalModelMinimum struct {
+	CapabilityTier string   `json:"capability_tier,omitempty"`
+	ContextTokens  int      `json:"context_tokens,omitempty"`
+	Features       []string `json:"features,omitempty"`
+	Effort         string   `json:"effort,omitempty"`
+}
+
+// CanonicalCandidate is the canonical form of Candidate.
+type CanonicalCandidate struct {
+	ID                string   `json:"id"`
+	Role              string   `json:"role,omitempty"`
+	Provider          string   `json:"provider,omitempty"`
+	Model             string   `json:"model,omitempty"`
+	UpstreamProviders []string `json:"upstream_providers,omitempty"`
+	Credential        string   `json:"credential,omitempty"`
+	Location          string   `json:"location,omitempty"`
+	Endpoint          string   `json:"endpoint,omitempty"`
+	AuthMode          string   `json:"auth_mode,omitempty"`
 }
 
 // egressRuleKey returns a sortable key for deduplication + ordering.
@@ -184,7 +229,95 @@ func Canonicalize(p *Policy) (*CanonicalPolicy, []string) {
 	// --- Ingress: deduplicate by Path and sort ---
 	cp.Ingress = canonicalizeIngress(p.Ingress, &warnings)
 
+	// --- RoutedRun: include when present (v1.1+) ---
+	if p.RoutedRun != nil {
+		cp.RoutedRun = canonicalizeRoutedRun(p.RoutedRun)
+	}
+
+	// --- ModelRoutes: sort by key, candidates by ID, upstream_providers bytewise ---
+	if len(p.ModelRoutes) > 0 {
+		cp.ModelRoutes = canonicalizeModelRoutes(p.ModelRoutes)
+	}
+
 	return cp, warnings
+}
+
+func canonicalizeRoutedRun(rr *RoutedRunPolicy) *CanonicalRoutedRunPolicy {
+	if rr == nil {
+		return nil
+	}
+	return &CanonicalRoutedRunPolicy{
+		ModelCallTimeout:               rr.ModelCallTimeout,
+		StallTimeout:                   rr.StallTimeout,
+		AttemptLease:                   rr.AttemptLease,
+		MaxActiveDuration:              rr.MaxActiveDuration,
+		RecoveryMargin:                 rr.RecoveryMargin,
+		MaxLLMCalls:                    rr.MaxLLMCalls,
+		MaxModelRecoveriesPerAttempt:   rr.MaxModelRecoveriesPerAttempt,
+		MaxWorkerRetries:               rr.MaxWorkerRetries,
+		MaxIdenticalToolActions:        rr.MaxIdenticalToolActions,
+		MaxActionsWithoutProgress:      rr.MaxActionsWithoutProgress,
+	}
+}
+
+func canonicalizeModelRoutes(routes map[string]ModelRoute) map[string]CanonicalModelRoute {
+	result := make(map[string]CanonicalModelRoute, len(routes))
+	for key, route := range routes {
+		cmr := CanonicalModelRoute{
+			Pattern:       route.Pattern,
+			CloudTransfer: route.CloudTransfer,
+			Candidates:    canonicalizeCandidates(route.Candidates),
+		}
+		if route.Minimum != nil {
+			cmr.Minimum = &CanonicalModelMinimum{
+				CapabilityTier: route.Minimum.CapabilityTier,
+				ContextTokens:  route.Minimum.ContextTokens,
+				Features:       sortedStrings(route.Minimum.Features),
+				Effort:         route.Minimum.Effort,
+			}
+		}
+		// MaxCostUSD is NOT in model_routes — it's in llm_budget.
+		// The canonical form includes routed fields only when present.
+		result[key] = cmr
+	}
+	return result
+}
+
+func canonicalizeCandidates(candidates []Candidate) []CanonicalCandidate {
+	if len(candidates) == 0 {
+		return nil
+	}
+	sorted := make([]Candidate, len(candidates))
+	copy(sorted, candidates)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].ID < sorted[j].ID
+	})
+	result := make([]CanonicalCandidate, len(sorted))
+	for i, c := range sorted {
+		upstream := sortedStrings(c.UpstreamProviders)
+		result[i] = CanonicalCandidate{
+			ID:                c.ID,
+			Role:              c.Role,
+			Provider:          c.Provider,
+			Model:             c.Model,
+			UpstreamProviders: upstream,
+			Credential:        c.Credential,
+			Location:          c.Location,
+			Endpoint:          c.Endpoint,
+			AuthMode:          c.AuthMode,
+		}
+	}
+	return result
+}
+
+func sortedStrings(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	out := make([]string, len(s))
+	copy(out, s)
+	sort.Strings(out)
+	return out
 }
 
 func canonicalizeEgress(rules []EgressRule, warnings *[]string) []CanonicalEgressRule {
