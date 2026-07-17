@@ -372,9 +372,10 @@ const (
 	ChildBatchPaused                                 // 4
 	ChildBatchJoining                                // 5
 	ChildBatchStopping                               // 6
-	ChildBatchSucceeded                              // 7
-	ChildBatchFailed                                 // 8
-	ChildBatchCancelled                              // 9
+	ChildBatchStopped                                // 7
+	ChildBatchSucceeded                              // 8
+	ChildBatchFailed                                 // 9
+	ChildBatchCancelled                              // 10
 )
 
 var childBatchStatusNames = map[ChildBatchStatus]string{
@@ -385,6 +386,7 @@ var childBatchStatusNames = map[ChildBatchStatus]string{
 	ChildBatchPaused:         "PAUSED",
 	ChildBatchJoining:        "JOINING",
 	ChildBatchStopping:       "STOPPING",
+	ChildBatchStopped:        "STOPPED",
 	ChildBatchSucceeded:      "SUCCEEDED",
 	ChildBatchFailed:         "FAILED",
 	ChildBatchCancelled:      "CANCELLED",
@@ -435,8 +437,8 @@ func AllChildBatchStatuses() []ChildBatchStatus {
 	return []ChildBatchStatus{
 		ChildBatchIntent, ChildBatchAllocated, ChildBatchRunning,
 		ChildBatchPauseRequested, ChildBatchPaused, ChildBatchJoining,
-		ChildBatchStopping, ChildBatchSucceeded, ChildBatchFailed,
-		ChildBatchCancelled,
+		ChildBatchStopping, ChildBatchStopped, ChildBatchSucceeded,
+		ChildBatchFailed, ChildBatchCancelled,
 	}
 }
 
