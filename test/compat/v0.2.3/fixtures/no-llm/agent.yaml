@@ -1,0 +1,5 @@
+name: no-llm-project
+version: "0.1.0"
+runtime: python
+entry: main.py
+description: "Project with no LLM config"

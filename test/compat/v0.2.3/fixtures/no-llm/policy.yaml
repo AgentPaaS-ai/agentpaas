@@ -1,0 +1,7 @@
+version: "1.0"
+agent:
+  name: no-llm-project
+  description: "Project with no LLM config"
+egress:
+  - domain: "api.example.com"
+    ports: [443]

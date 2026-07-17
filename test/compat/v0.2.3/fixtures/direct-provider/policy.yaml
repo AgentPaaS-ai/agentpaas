@@ -1,0 +1,12 @@
+version: "1.0"
+agent:
+  name: direct-provider-project
+  description: "Legacy direct provider project fixture"
+egress:
+  - domain: "api.openai.com"
+    ports: [443]
+credentials:
+  - id: "openai-key"
+    type: header
+    header: "Authorization"
+    value: "${env:OPENAI_KEY}"

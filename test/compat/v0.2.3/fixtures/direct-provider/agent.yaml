@@ -1,0 +1,9 @@
+name: direct-provider-project
+version: "0.1.0"
+runtime: python
+entry: main.py
+description: "Legacy direct provider project fixture"
+llm:
+  provider: openai
+  model: gpt-4o
+  credential: openai-key
