@@ -17,6 +17,9 @@ type Policy struct {
 	Guardrails      []Guardrail      `yaml:"guardrails,omitempty"`
 	Transformations *Transformation  `yaml:"transformations,omitempty"`
 	Observability   *Observability   `yaml:"observability,omitempty"`
+	// v1.1 routed fields
+	RoutedRun   *RoutedRunPolicy       `yaml:"routed_run,omitempty"`
+	ModelRoutes map[string]ModelRoute  `yaml:"model_routes,omitempty"`
 }
 
 // Transformation defines request/response transformations applied by the gateway.
@@ -41,8 +44,9 @@ type ResponseTransform struct {
 // LLMBudget defines per-invoke and per-request token budget limits.
 // The gateway enforces these via budget limit policies on the LLM route.
 type LLMBudget struct {
-	MaxTokens           int `yaml:"max_tokens"`              // total tokens per invoke
-	MaxTokensPerRequest int `yaml:"max_tokens_per_request"` // per-LLM-call limit
+	MaxTokens           int    `yaml:"max_tokens"`              // total tokens per invoke
+	MaxTokensPerRequest int    `yaml:"max_tokens_per_request"` // per-LLM-call limit
+	MaxCostUSD          string `yaml:"max_cost_usd,omitempty"`  // v1.1: exact decimal (nano-USD precision)
 }
 
 // LLMRateLimit defines rate limiting for LLM calls.
