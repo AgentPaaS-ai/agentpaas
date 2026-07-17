@@ -39,30 +39,46 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ControlService_Pack_FullMethodName                 = "/agentpaas.control.v1.ControlService/Pack"
-	ControlService_ExportPreview_FullMethodName        = "/agentpaas.control.v1.ControlService/ExportPreview"
-	ControlService_Export_FullMethodName               = "/agentpaas.control.v1.ControlService/Export"
-	ControlService_Run_FullMethodName                  = "/agentpaas.control.v1.ControlService/Run"
-	ControlService_Stop_FullMethodName                 = "/agentpaas.control.v1.ControlService/Stop"
-	ControlService_Logs_FullMethodName                 = "/agentpaas.control.v1.ControlService/Logs"
-	ControlService_PolicyApply_FullMethodName          = "/agentpaas.control.v1.ControlService/PolicyApply"
-	ControlService_SecretSet_FullMethodName            = "/agentpaas.control.v1.ControlService/SecretSet"
-	ControlService_SecretGrant_FullMethodName          = "/agentpaas.control.v1.ControlService/SecretGrant"
-	ControlService_SecretRevoke_FullMethodName         = "/agentpaas.control.v1.ControlService/SecretRevoke"
-	ControlService_AuditQuery_FullMethodName           = "/agentpaas.control.v1.ControlService/AuditQuery"
-	ControlService_AuditExport_FullMethodName          = "/agentpaas.control.v1.ControlService/AuditExport"
-	ControlService_Doctor_FullMethodName               = "/agentpaas.control.v1.ControlService/Doctor"
-	ControlService_ValidateAgentProject_FullMethodName = "/agentpaas.control.v1.ControlService/ValidateAgentProject"
-	ControlService_SummarizeRun_FullMethodName         = "/agentpaas.control.v1.ControlService/SummarizeRun"
-	ControlService_ExplainFailure_FullMethodName       = "/agentpaas.control.v1.ControlService/ExplainFailure"
-	ControlService_ExplainPolicyDenial_FullMethodName  = "/agentpaas.control.v1.ControlService/ExplainPolicyDenial"
-	ControlService_RecommendPolicyPatch_FullMethodName = "/agentpaas.control.v1.ControlService/RecommendPolicyPatch"
-	ControlService_GetRunTimeline_FullMethodName       = "/agentpaas.control.v1.ControlService/GetRunTimeline"
-	ControlService_NextAction_FullMethodName           = "/agentpaas.control.v1.ControlService/NextAction"
-	ControlService_CronAdd_FullMethodName              = "/agentpaas.control.v1.ControlService/CronAdd"
-	ControlService_CronList_FullMethodName             = "/agentpaas.control.v1.ControlService/CronList"
-	ControlService_CronRemove_FullMethodName           = "/agentpaas.control.v1.ControlService/CronRemove"
-	ControlService_ListRuns_FullMethodName             = "/agentpaas.control.v1.ControlService/ListRuns"
+	ControlService_Pack_FullMethodName                    = "/agentpaas.control.v1.ControlService/Pack"
+	ControlService_ExportPreview_FullMethodName           = "/agentpaas.control.v1.ControlService/ExportPreview"
+	ControlService_Export_FullMethodName                  = "/agentpaas.control.v1.ControlService/Export"
+	ControlService_Run_FullMethodName                     = "/agentpaas.control.v1.ControlService/Run"
+	ControlService_Stop_FullMethodName                    = "/agentpaas.control.v1.ControlService/Stop"
+	ControlService_Logs_FullMethodName                    = "/agentpaas.control.v1.ControlService/Logs"
+	ControlService_PolicyApply_FullMethodName             = "/agentpaas.control.v1.ControlService/PolicyApply"
+	ControlService_SecretSet_FullMethodName               = "/agentpaas.control.v1.ControlService/SecretSet"
+	ControlService_SecretGrant_FullMethodName             = "/agentpaas.control.v1.ControlService/SecretGrant"
+	ControlService_SecretRevoke_FullMethodName            = "/agentpaas.control.v1.ControlService/SecretRevoke"
+	ControlService_AuditQuery_FullMethodName              = "/agentpaas.control.v1.ControlService/AuditQuery"
+	ControlService_AuditExport_FullMethodName             = "/agentpaas.control.v1.ControlService/AuditExport"
+	ControlService_Doctor_FullMethodName                  = "/agentpaas.control.v1.ControlService/Doctor"
+	ControlService_ValidateAgentProject_FullMethodName    = "/agentpaas.control.v1.ControlService/ValidateAgentProject"
+	ControlService_SummarizeRun_FullMethodName            = "/agentpaas.control.v1.ControlService/SummarizeRun"
+	ControlService_ExplainFailure_FullMethodName          = "/agentpaas.control.v1.ControlService/ExplainFailure"
+	ControlService_ExplainPolicyDenial_FullMethodName     = "/agentpaas.control.v1.ControlService/ExplainPolicyDenial"
+	ControlService_RecommendPolicyPatch_FullMethodName    = "/agentpaas.control.v1.ControlService/RecommendPolicyPatch"
+	ControlService_GetRunTimeline_FullMethodName          = "/agentpaas.control.v1.ControlService/GetRunTimeline"
+	ControlService_NextAction_FullMethodName              = "/agentpaas.control.v1.ControlService/NextAction"
+	ControlService_CronAdd_FullMethodName                 = "/agentpaas.control.v1.ControlService/CronAdd"
+	ControlService_CronList_FullMethodName                = "/agentpaas.control.v1.ControlService/CronList"
+	ControlService_CronRemove_FullMethodName              = "/agentpaas.control.v1.ControlService/CronRemove"
+	ControlService_ListRuns_FullMethodName                = "/agentpaas.control.v1.ControlService/ListRuns"
+	ControlService_CreateDeployment_FullMethodName        = "/agentpaas.control.v1.ControlService/CreateDeployment"
+	ControlService_GetDeployment_FullMethodName           = "/agentpaas.control.v1.ControlService/GetDeployment"
+	ControlService_ListDeployments_FullMethodName         = "/agentpaas.control.v1.ControlService/ListDeployments"
+	ControlService_DeactivateDeployment_FullMethodName    = "/agentpaas.control.v1.ControlService/DeactivateDeployment"
+	ControlService_CreateDeploymentAlias_FullMethodName   = "/agentpaas.control.v1.ControlService/CreateDeploymentAlias"
+	ControlService_GetDeploymentAlias_FullMethodName      = "/agentpaas.control.v1.ControlService/GetDeploymentAlias"
+	ControlService_ListDeploymentAliases_FullMethodName   = "/agentpaas.control.v1.ControlService/ListDeploymentAliases"
+	ControlService_CasDeploymentAlias_FullMethodName      = "/agentpaas.control.v1.ControlService/CasDeploymentAlias"
+	ControlService_InvokeDeployment_FullMethodName        = "/agentpaas.control.v1.ControlService/InvokeDeployment"
+	ControlService_CreateWorkflow_FullMethodName          = "/agentpaas.control.v1.ControlService/CreateWorkflow"
+	ControlService_GetWorkflow_FullMethodName             = "/agentpaas.control.v1.ControlService/GetWorkflow"
+	ControlService_CancelWorkflow_FullMethodName          = "/agentpaas.control.v1.ControlService/CancelWorkflow"
+	ControlService_SetWorkflowDesiredState_FullMethodName = "/agentpaas.control.v1.ControlService/SetWorkflowDesiredState"
+	ControlService_RestartWorkflow_FullMethodName         = "/agentpaas.control.v1.ControlService/RestartWorkflow"
+	ControlService_AmendLimits_FullMethodName             = "/agentpaas.control.v1.ControlService/AmendLimits"
+	ControlService_GetWorkflowGraph_FullMethodName        = "/agentpaas.control.v1.ControlService/GetWorkflowGraph"
 )
 
 // ControlServiceClient is the client API for ControlService service.
@@ -124,6 +140,22 @@ type ControlServiceClient interface {
 	CronRemove(ctx context.Context, in *CronRemoveRequest, opts ...grpc.CallOption) (*CronRemoveResponse, error)
 	// ListRuns returns all currently tracked agent runs.
 	ListRuns(ctx context.Context, in *ListRunsRequest, opts ...grpc.CallOption) (*ListRunsResponse, error)
+	CreateDeployment(ctx context.Context, in *CreateDeploymentRequest, opts ...grpc.CallOption) (*CreateDeploymentResponse, error)
+	GetDeployment(ctx context.Context, in *GetDeploymentRequest, opts ...grpc.CallOption) (*GetDeploymentResponse, error)
+	ListDeployments(ctx context.Context, in *ListDeploymentsRequest, opts ...grpc.CallOption) (*ListDeploymentsResponse, error)
+	DeactivateDeployment(ctx context.Context, in *DeactivateDeploymentRequest, opts ...grpc.CallOption) (*DeactivateDeploymentResponse, error)
+	CreateDeploymentAlias(ctx context.Context, in *CreateDeploymentAliasRequest, opts ...grpc.CallOption) (*CreateDeploymentAliasResponse, error)
+	GetDeploymentAlias(ctx context.Context, in *GetDeploymentAliasRequest, opts ...grpc.CallOption) (*GetDeploymentAliasResponse, error)
+	ListDeploymentAliases(ctx context.Context, in *ListDeploymentAliasesRequest, opts ...grpc.CallOption) (*ListDeploymentAliasesResponse, error)
+	CasDeploymentAlias(ctx context.Context, in *CasDeploymentAliasRequest, opts ...grpc.CallOption) (*CasDeploymentAliasResponse, error)
+	InvokeDeployment(ctx context.Context, in *InvokeDeploymentRequest, opts ...grpc.CallOption) (*InvokeDeploymentResponse, error)
+	CreateWorkflow(ctx context.Context, in *CreateWorkflowRequest, opts ...grpc.CallOption) (*CreateWorkflowResponse, error)
+	GetWorkflow(ctx context.Context, in *GetWorkflowRequest, opts ...grpc.CallOption) (*GetWorkflowResponse, error)
+	CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error)
+	SetWorkflowDesiredState(ctx context.Context, in *SetWorkflowDesiredStateRequest, opts ...grpc.CallOption) (*SetWorkflowDesiredStateResponse, error)
+	RestartWorkflow(ctx context.Context, in *RestartWorkflowRequest, opts ...grpc.CallOption) (*RestartWorkflowResponse, error)
+	AmendLimits(ctx context.Context, in *AmendLimitsRequest, opts ...grpc.CallOption) (*AmendLimitsResponse, error)
+	GetWorkflowGraph(ctx context.Context, in *GetWorkflowGraphRequest, opts ...grpc.CallOption) (*GetWorkflowGraphResponse, error)
 }
 
 type controlServiceClient struct {
@@ -383,6 +415,166 @@ func (c *controlServiceClient) ListRuns(ctx context.Context, in *ListRunsRequest
 	return out, nil
 }
 
+func (c *controlServiceClient) CreateDeployment(ctx context.Context, in *CreateDeploymentRequest, opts ...grpc.CallOption) (*CreateDeploymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateDeploymentResponse)
+	err := c.cc.Invoke(ctx, ControlService_CreateDeployment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) GetDeployment(ctx context.Context, in *GetDeploymentRequest, opts ...grpc.CallOption) (*GetDeploymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDeploymentResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetDeployment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) ListDeployments(ctx context.Context, in *ListDeploymentsRequest, opts ...grpc.CallOption) (*ListDeploymentsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDeploymentsResponse)
+	err := c.cc.Invoke(ctx, ControlService_ListDeployments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) DeactivateDeployment(ctx context.Context, in *DeactivateDeploymentRequest, opts ...grpc.CallOption) (*DeactivateDeploymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeactivateDeploymentResponse)
+	err := c.cc.Invoke(ctx, ControlService_DeactivateDeployment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) CreateDeploymentAlias(ctx context.Context, in *CreateDeploymentAliasRequest, opts ...grpc.CallOption) (*CreateDeploymentAliasResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateDeploymentAliasResponse)
+	err := c.cc.Invoke(ctx, ControlService_CreateDeploymentAlias_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) GetDeploymentAlias(ctx context.Context, in *GetDeploymentAliasRequest, opts ...grpc.CallOption) (*GetDeploymentAliasResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDeploymentAliasResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetDeploymentAlias_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) ListDeploymentAliases(ctx context.Context, in *ListDeploymentAliasesRequest, opts ...grpc.CallOption) (*ListDeploymentAliasesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDeploymentAliasesResponse)
+	err := c.cc.Invoke(ctx, ControlService_ListDeploymentAliases_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) CasDeploymentAlias(ctx context.Context, in *CasDeploymentAliasRequest, opts ...grpc.CallOption) (*CasDeploymentAliasResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CasDeploymentAliasResponse)
+	err := c.cc.Invoke(ctx, ControlService_CasDeploymentAlias_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) InvokeDeployment(ctx context.Context, in *InvokeDeploymentRequest, opts ...grpc.CallOption) (*InvokeDeploymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InvokeDeploymentResponse)
+	err := c.cc.Invoke(ctx, ControlService_InvokeDeployment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) CreateWorkflow(ctx context.Context, in *CreateWorkflowRequest, opts ...grpc.CallOption) (*CreateWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateWorkflowResponse)
+	err := c.cc.Invoke(ctx, ControlService_CreateWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) GetWorkflow(ctx context.Context, in *GetWorkflowRequest, opts ...grpc.CallOption) (*GetWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWorkflowResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CancelWorkflowResponse)
+	err := c.cc.Invoke(ctx, ControlService_CancelWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) SetWorkflowDesiredState(ctx context.Context, in *SetWorkflowDesiredStateRequest, opts ...grpc.CallOption) (*SetWorkflowDesiredStateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetWorkflowDesiredStateResponse)
+	err := c.cc.Invoke(ctx, ControlService_SetWorkflowDesiredState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) RestartWorkflow(ctx context.Context, in *RestartWorkflowRequest, opts ...grpc.CallOption) (*RestartWorkflowResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RestartWorkflowResponse)
+	err := c.cc.Invoke(ctx, ControlService_RestartWorkflow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) AmendLimits(ctx context.Context, in *AmendLimitsRequest, opts ...grpc.CallOption) (*AmendLimitsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AmendLimitsResponse)
+	err := c.cc.Invoke(ctx, ControlService_AmendLimits_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) GetWorkflowGraph(ctx context.Context, in *GetWorkflowGraphRequest, opts ...grpc.CallOption) (*GetWorkflowGraphResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetWorkflowGraphResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetWorkflowGraph_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControlServiceServer is the server API for ControlService service.
 // All implementations must embed UnimplementedControlServiceServer
 // for forward compatibility.
@@ -442,6 +634,22 @@ type ControlServiceServer interface {
 	CronRemove(context.Context, *CronRemoveRequest) (*CronRemoveResponse, error)
 	// ListRuns returns all currently tracked agent runs.
 	ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error)
+	CreateDeployment(context.Context, *CreateDeploymentRequest) (*CreateDeploymentResponse, error)
+	GetDeployment(context.Context, *GetDeploymentRequest) (*GetDeploymentResponse, error)
+	ListDeployments(context.Context, *ListDeploymentsRequest) (*ListDeploymentsResponse, error)
+	DeactivateDeployment(context.Context, *DeactivateDeploymentRequest) (*DeactivateDeploymentResponse, error)
+	CreateDeploymentAlias(context.Context, *CreateDeploymentAliasRequest) (*CreateDeploymentAliasResponse, error)
+	GetDeploymentAlias(context.Context, *GetDeploymentAliasRequest) (*GetDeploymentAliasResponse, error)
+	ListDeploymentAliases(context.Context, *ListDeploymentAliasesRequest) (*ListDeploymentAliasesResponse, error)
+	CasDeploymentAlias(context.Context, *CasDeploymentAliasRequest) (*CasDeploymentAliasResponse, error)
+	InvokeDeployment(context.Context, *InvokeDeploymentRequest) (*InvokeDeploymentResponse, error)
+	CreateWorkflow(context.Context, *CreateWorkflowRequest) (*CreateWorkflowResponse, error)
+	GetWorkflow(context.Context, *GetWorkflowRequest) (*GetWorkflowResponse, error)
+	CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error)
+	SetWorkflowDesiredState(context.Context, *SetWorkflowDesiredStateRequest) (*SetWorkflowDesiredStateResponse, error)
+	RestartWorkflow(context.Context, *RestartWorkflowRequest) (*RestartWorkflowResponse, error)
+	AmendLimits(context.Context, *AmendLimitsRequest) (*AmendLimitsResponse, error)
+	GetWorkflowGraph(context.Context, *GetWorkflowGraphRequest) (*GetWorkflowGraphResponse, error)
 	mustEmbedUnimplementedControlServiceServer()
 }
 
@@ -523,6 +731,54 @@ func (UnimplementedControlServiceServer) CronRemove(context.Context, *CronRemove
 }
 func (UnimplementedControlServiceServer) ListRuns(context.Context, *ListRunsRequest) (*ListRunsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRuns not implemented")
+}
+func (UnimplementedControlServiceServer) CreateDeployment(context.Context, *CreateDeploymentRequest) (*CreateDeploymentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateDeployment not implemented")
+}
+func (UnimplementedControlServiceServer) GetDeployment(context.Context, *GetDeploymentRequest) (*GetDeploymentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDeployment not implemented")
+}
+func (UnimplementedControlServiceServer) ListDeployments(context.Context, *ListDeploymentsRequest) (*ListDeploymentsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDeployments not implemented")
+}
+func (UnimplementedControlServiceServer) DeactivateDeployment(context.Context, *DeactivateDeploymentRequest) (*DeactivateDeploymentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeactivateDeployment not implemented")
+}
+func (UnimplementedControlServiceServer) CreateDeploymentAlias(context.Context, *CreateDeploymentAliasRequest) (*CreateDeploymentAliasResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateDeploymentAlias not implemented")
+}
+func (UnimplementedControlServiceServer) GetDeploymentAlias(context.Context, *GetDeploymentAliasRequest) (*GetDeploymentAliasResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDeploymentAlias not implemented")
+}
+func (UnimplementedControlServiceServer) ListDeploymentAliases(context.Context, *ListDeploymentAliasesRequest) (*ListDeploymentAliasesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDeploymentAliases not implemented")
+}
+func (UnimplementedControlServiceServer) CasDeploymentAlias(context.Context, *CasDeploymentAliasRequest) (*CasDeploymentAliasResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CasDeploymentAlias not implemented")
+}
+func (UnimplementedControlServiceServer) InvokeDeployment(context.Context, *InvokeDeploymentRequest) (*InvokeDeploymentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InvokeDeployment not implemented")
+}
+func (UnimplementedControlServiceServer) CreateWorkflow(context.Context, *CreateWorkflowRequest) (*CreateWorkflowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateWorkflow not implemented")
+}
+func (UnimplementedControlServiceServer) GetWorkflow(context.Context, *GetWorkflowRequest) (*GetWorkflowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetWorkflow not implemented")
+}
+func (UnimplementedControlServiceServer) CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CancelWorkflow not implemented")
+}
+func (UnimplementedControlServiceServer) SetWorkflowDesiredState(context.Context, *SetWorkflowDesiredStateRequest) (*SetWorkflowDesiredStateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetWorkflowDesiredState not implemented")
+}
+func (UnimplementedControlServiceServer) RestartWorkflow(context.Context, *RestartWorkflowRequest) (*RestartWorkflowResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RestartWorkflow not implemented")
+}
+func (UnimplementedControlServiceServer) AmendLimits(context.Context, *AmendLimitsRequest) (*AmendLimitsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AmendLimits not implemented")
+}
+func (UnimplementedControlServiceServer) GetWorkflowGraph(context.Context, *GetWorkflowGraphRequest) (*GetWorkflowGraphResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetWorkflowGraph not implemented")
 }
 func (UnimplementedControlServiceServer) mustEmbedUnimplementedControlServiceServer() {}
 func (UnimplementedControlServiceServer) testEmbeddedByValue()                        {}
@@ -970,6 +1226,294 @@ func _ControlService_ListRuns_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_CreateDeployment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDeploymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CreateDeployment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CreateDeployment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CreateDeployment(ctx, req.(*CreateDeploymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_GetDeployment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDeploymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetDeployment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetDeployment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetDeployment(ctx, req.(*GetDeploymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_ListDeployments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDeploymentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).ListDeployments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_ListDeployments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).ListDeployments(ctx, req.(*ListDeploymentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_DeactivateDeployment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeactivateDeploymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).DeactivateDeployment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_DeactivateDeployment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).DeactivateDeployment(ctx, req.(*DeactivateDeploymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_CreateDeploymentAlias_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateDeploymentAliasRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CreateDeploymentAlias(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CreateDeploymentAlias_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CreateDeploymentAlias(ctx, req.(*CreateDeploymentAliasRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_GetDeploymentAlias_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDeploymentAliasRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetDeploymentAlias(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetDeploymentAlias_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetDeploymentAlias(ctx, req.(*GetDeploymentAliasRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_ListDeploymentAliases_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDeploymentAliasesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).ListDeploymentAliases(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_ListDeploymentAliases_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).ListDeploymentAliases(ctx, req.(*ListDeploymentAliasesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_CasDeploymentAlias_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CasDeploymentAliasRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CasDeploymentAlias(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CasDeploymentAlias_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CasDeploymentAlias(ctx, req.(*CasDeploymentAliasRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_InvokeDeployment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InvokeDeploymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).InvokeDeployment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_InvokeDeployment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).InvokeDeployment(ctx, req.(*InvokeDeploymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_CreateWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CreateWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CreateWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CreateWorkflow(ctx, req.(*CreateWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_GetWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetWorkflow(ctx, req.(*GetWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_CancelWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CancelWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).CancelWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_CancelWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).CancelWorkflow(ctx, req.(*CancelWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_SetWorkflowDesiredState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetWorkflowDesiredStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).SetWorkflowDesiredState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_SetWorkflowDesiredState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).SetWorkflowDesiredState(ctx, req.(*SetWorkflowDesiredStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_RestartWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RestartWorkflowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).RestartWorkflow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_RestartWorkflow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).RestartWorkflow(ctx, req.(*RestartWorkflowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_AmendLimits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AmendLimitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).AmendLimits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_AmendLimits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).AmendLimits(ctx, req.(*AmendLimitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_GetWorkflowGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetWorkflowGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetWorkflowGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetWorkflowGraph_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetWorkflowGraph(ctx, req.(*GetWorkflowGraphRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControlService_ServiceDesc is the grpc.ServiceDesc for ControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1068,6 +1612,70 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListRuns",
 			Handler:    _ControlService_ListRuns_Handler,
+		},
+		{
+			MethodName: "CreateDeployment",
+			Handler:    _ControlService_CreateDeployment_Handler,
+		},
+		{
+			MethodName: "GetDeployment",
+			Handler:    _ControlService_GetDeployment_Handler,
+		},
+		{
+			MethodName: "ListDeployments",
+			Handler:    _ControlService_ListDeployments_Handler,
+		},
+		{
+			MethodName: "DeactivateDeployment",
+			Handler:    _ControlService_DeactivateDeployment_Handler,
+		},
+		{
+			MethodName: "CreateDeploymentAlias",
+			Handler:    _ControlService_CreateDeploymentAlias_Handler,
+		},
+		{
+			MethodName: "GetDeploymentAlias",
+			Handler:    _ControlService_GetDeploymentAlias_Handler,
+		},
+		{
+			MethodName: "ListDeploymentAliases",
+			Handler:    _ControlService_ListDeploymentAliases_Handler,
+		},
+		{
+			MethodName: "CasDeploymentAlias",
+			Handler:    _ControlService_CasDeploymentAlias_Handler,
+		},
+		{
+			MethodName: "InvokeDeployment",
+			Handler:    _ControlService_InvokeDeployment_Handler,
+		},
+		{
+			MethodName: "CreateWorkflow",
+			Handler:    _ControlService_CreateWorkflow_Handler,
+		},
+		{
+			MethodName: "GetWorkflow",
+			Handler:    _ControlService_GetWorkflow_Handler,
+		},
+		{
+			MethodName: "CancelWorkflow",
+			Handler:    _ControlService_CancelWorkflow_Handler,
+		},
+		{
+			MethodName: "SetWorkflowDesiredState",
+			Handler:    _ControlService_SetWorkflowDesiredState_Handler,
+		},
+		{
+			MethodName: "RestartWorkflow",
+			Handler:    _ControlService_RestartWorkflow_Handler,
+		},
+		{
+			MethodName: "AmendLimits",
+			Handler:    _ControlService_AmendLimits_Handler,
+		},
+		{
+			MethodName: "GetWorkflowGraph",
+			Handler:    _ControlService_GetWorkflowGraph_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

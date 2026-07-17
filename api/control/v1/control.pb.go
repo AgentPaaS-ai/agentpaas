@@ -226,6 +226,263 @@ func (SecretType) EnumDescriptor() ([]byte, []int) {
 	return file_control_v1_control_proto_rawDescGZIP(), []int{2}
 }
 
+// AuthorityScope separates invoke authority from administrative control.
+// runs:amend_limits must NOT be granted to Python/SDK or ordinary trigger credentials.
+type AuthorityScope int32
+
+const (
+	AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED       AuthorityScope = 0
+	AuthorityScope_AUTHORITY_SCOPE_DEFAULT           AuthorityScope = 1
+	AuthorityScope_AUTHORITY_SCOPE_RUNS_CONTROL      AuthorityScope = 2 // "runs:control"
+	AuthorityScope_AUTHORITY_SCOPE_RUNS_AMEND_LIMITS AuthorityScope = 3 // "runs:amend_limits"
+)
+
+// Enum value maps for AuthorityScope.
+var (
+	AuthorityScope_name = map[int32]string{
+		0: "AUTHORITY_SCOPE_UNSPECIFIED",
+		1: "AUTHORITY_SCOPE_DEFAULT",
+		2: "AUTHORITY_SCOPE_RUNS_CONTROL",
+		3: "AUTHORITY_SCOPE_RUNS_AMEND_LIMITS",
+	}
+	AuthorityScope_value = map[string]int32{
+		"AUTHORITY_SCOPE_UNSPECIFIED":       0,
+		"AUTHORITY_SCOPE_DEFAULT":           1,
+		"AUTHORITY_SCOPE_RUNS_CONTROL":      2,
+		"AUTHORITY_SCOPE_RUNS_AMEND_LIMITS": 3,
+	}
+)
+
+func (x AuthorityScope) Enum() *AuthorityScope {
+	p := new(AuthorityScope)
+	*p = x
+	return p
+}
+
+func (x AuthorityScope) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AuthorityScope) Descriptor() protoreflect.EnumDescriptor {
+	return file_control_v1_control_proto_enumTypes[3].Descriptor()
+}
+
+func (AuthorityScope) Type() protoreflect.EnumType {
+	return &file_control_v1_control_proto_enumTypes[3]
+}
+
+func (x AuthorityScope) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AuthorityScope.Descriptor instead.
+func (AuthorityScope) EnumDescriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{3}
+}
+
+// AdmissionOutcomeCode is a typed admission result. Callers must not infer
+// these outcomes from error strings.
+type AdmissionOutcomeCode int32
+
+const (
+	AdmissionOutcomeCode_ADMISSION_OUTCOME_UNSPECIFIED          AdmissionOutcomeCode = 0
+	AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED             AdmissionOutcomeCode = 1
+	AdmissionOutcomeCode_ADMISSION_OUTCOME_IDEMPOTENT_REPLAY    AdmissionOutcomeCode = 2
+	AdmissionOutcomeCode_ADMISSION_OUTCOME_ALREADY_RUNNING      AdmissionOutcomeCode = 3
+	AdmissionOutcomeCode_ADMISSION_OUTCOME_IDEMPOTENCY_CONFLICT AdmissionOutcomeCode = 4
+	AdmissionOutcomeCode_ADMISSION_OUTCOME_DEPLOYMENT_INACTIVE  AdmissionOutcomeCode = 5
+)
+
+// Enum value maps for AdmissionOutcomeCode.
+var (
+	AdmissionOutcomeCode_name = map[int32]string{
+		0: "ADMISSION_OUTCOME_UNSPECIFIED",
+		1: "ADMISSION_OUTCOME_ACCEPTED",
+		2: "ADMISSION_OUTCOME_IDEMPOTENT_REPLAY",
+		3: "ADMISSION_OUTCOME_ALREADY_RUNNING",
+		4: "ADMISSION_OUTCOME_IDEMPOTENCY_CONFLICT",
+		5: "ADMISSION_OUTCOME_DEPLOYMENT_INACTIVE",
+	}
+	AdmissionOutcomeCode_value = map[string]int32{
+		"ADMISSION_OUTCOME_UNSPECIFIED":          0,
+		"ADMISSION_OUTCOME_ACCEPTED":             1,
+		"ADMISSION_OUTCOME_IDEMPOTENT_REPLAY":    2,
+		"ADMISSION_OUTCOME_ALREADY_RUNNING":      3,
+		"ADMISSION_OUTCOME_IDEMPOTENCY_CONFLICT": 4,
+		"ADMISSION_OUTCOME_DEPLOYMENT_INACTIVE":  5,
+	}
+)
+
+func (x AdmissionOutcomeCode) Enum() *AdmissionOutcomeCode {
+	p := new(AdmissionOutcomeCode)
+	*p = x
+	return p
+}
+
+func (x AdmissionOutcomeCode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AdmissionOutcomeCode) Descriptor() protoreflect.EnumDescriptor {
+	return file_control_v1_control_proto_enumTypes[4].Descriptor()
+}
+
+func (AdmissionOutcomeCode) Type() protoreflect.EnumType {
+	return &file_control_v1_control_proto_enumTypes[4]
+}
+
+func (x AdmissionOutcomeCode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AdmissionOutcomeCode.Descriptor instead.
+func (AdmissionOutcomeCode) EnumDescriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{4}
+}
+
+// TypedControlErrorCode identifies structured control-plane errors.
+// Callers must not infer these from error strings.
+type TypedControlErrorCode int32
+
+const (
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_UNSPECIFIED                 TypedControlErrorCode = 0
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_IDEMPOTENT_REPLAY           TypedControlErrorCode = 1
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_ALREADY_RUNNING             TypedControlErrorCode = 2
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_IDEMPOTENCY_CONFLICT        TypedControlErrorCode = 3
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_DEPLOYMENT_INACTIVE         TypedControlErrorCode = 4
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_RUN_TERMINAL                TypedControlErrorCode = 5
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_UNSAFE_PAUSE_BOUNDARY       TypedControlErrorCode = 6
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_CONCURRENCY_UNAVAILABLE     TypedControlErrorCode = 7
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_LIMIT_AMENDMENT_DENIED      TypedControlErrorCode = 8
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED         TypedControlErrorCode = 9
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_MISSING_SCOPE               TypedControlErrorCode = 10
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_NUMERIC_OVERFLOW            TypedControlErrorCode = 11
+	TypedControlErrorCode_TYPED_CONTROL_ERROR_CHANGED_IDEMPOTENCY_PAYLOAD TypedControlErrorCode = 12
+)
+
+// Enum value maps for TypedControlErrorCode.
+var (
+	TypedControlErrorCode_name = map[int32]string{
+		0:  "TYPED_CONTROL_ERROR_UNSPECIFIED",
+		1:  "TYPED_CONTROL_ERROR_IDEMPOTENT_REPLAY",
+		2:  "TYPED_CONTROL_ERROR_ALREADY_RUNNING",
+		3:  "TYPED_CONTROL_ERROR_IDEMPOTENCY_CONFLICT",
+		4:  "TYPED_CONTROL_ERROR_DEPLOYMENT_INACTIVE",
+		5:  "TYPED_CONTROL_ERROR_RUN_TERMINAL",
+		6:  "TYPED_CONTROL_ERROR_UNSAFE_PAUSE_BOUNDARY",
+		7:  "TYPED_CONTROL_ERROR_CONCURRENCY_UNAVAILABLE",
+		8:  "TYPED_CONTROL_ERROR_LIMIT_AMENDMENT_DENIED",
+		9:  "TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED",
+		10: "TYPED_CONTROL_ERROR_MISSING_SCOPE",
+		11: "TYPED_CONTROL_ERROR_NUMERIC_OVERFLOW",
+		12: "TYPED_CONTROL_ERROR_CHANGED_IDEMPOTENCY_PAYLOAD",
+	}
+	TypedControlErrorCode_value = map[string]int32{
+		"TYPED_CONTROL_ERROR_UNSPECIFIED":                 0,
+		"TYPED_CONTROL_ERROR_IDEMPOTENT_REPLAY":           1,
+		"TYPED_CONTROL_ERROR_ALREADY_RUNNING":             2,
+		"TYPED_CONTROL_ERROR_IDEMPOTENCY_CONFLICT":        3,
+		"TYPED_CONTROL_ERROR_DEPLOYMENT_INACTIVE":         4,
+		"TYPED_CONTROL_ERROR_RUN_TERMINAL":                5,
+		"TYPED_CONTROL_ERROR_UNSAFE_PAUSE_BOUNDARY":       6,
+		"TYPED_CONTROL_ERROR_CONCURRENCY_UNAVAILABLE":     7,
+		"TYPED_CONTROL_ERROR_LIMIT_AMENDMENT_DENIED":      8,
+		"TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED":         9,
+		"TYPED_CONTROL_ERROR_MISSING_SCOPE":               10,
+		"TYPED_CONTROL_ERROR_NUMERIC_OVERFLOW":            11,
+		"TYPED_CONTROL_ERROR_CHANGED_IDEMPOTENCY_PAYLOAD": 12,
+	}
+)
+
+func (x TypedControlErrorCode) Enum() *TypedControlErrorCode {
+	p := new(TypedControlErrorCode)
+	*p = x
+	return p
+}
+
+func (x TypedControlErrorCode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (TypedControlErrorCode) Descriptor() protoreflect.EnumDescriptor {
+	return file_control_v1_control_proto_enumTypes[5].Descriptor()
+}
+
+func (TypedControlErrorCode) Type() protoreflect.EnumType {
+	return &file_control_v1_control_proto_enumTypes[5]
+}
+
+func (x TypedControlErrorCode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use TypedControlErrorCode.Descriptor instead.
+func (TypedControlErrorCode) EnumDescriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{5}
+}
+
+// ControlCommand is an operator lifecycle command for a run/workflow.
+type ControlCommand int32
+
+const (
+	ControlCommand_CONTROL_COMMAND_UNSPECIFIED  ControlCommand = 0
+	ControlCommand_CONTROL_COMMAND_CANCEL       ControlCommand = 1
+	ControlCommand_CONTROL_COMMAND_PAUSE        ControlCommand = 2
+	ControlCommand_CONTROL_COMMAND_RESUME       ControlCommand = 3
+	ControlCommand_CONTROL_COMMAND_RESTART      ControlCommand = 4
+	ControlCommand_CONTROL_COMMAND_CONTINUE     ControlCommand = 5
+	ControlCommand_CONTROL_COMMAND_AMEND_LIMITS ControlCommand = 6
+)
+
+// Enum value maps for ControlCommand.
+var (
+	ControlCommand_name = map[int32]string{
+		0: "CONTROL_COMMAND_UNSPECIFIED",
+		1: "CONTROL_COMMAND_CANCEL",
+		2: "CONTROL_COMMAND_PAUSE",
+		3: "CONTROL_COMMAND_RESUME",
+		4: "CONTROL_COMMAND_RESTART",
+		5: "CONTROL_COMMAND_CONTINUE",
+		6: "CONTROL_COMMAND_AMEND_LIMITS",
+	}
+	ControlCommand_value = map[string]int32{
+		"CONTROL_COMMAND_UNSPECIFIED":  0,
+		"CONTROL_COMMAND_CANCEL":       1,
+		"CONTROL_COMMAND_PAUSE":        2,
+		"CONTROL_COMMAND_RESUME":       3,
+		"CONTROL_COMMAND_RESTART":      4,
+		"CONTROL_COMMAND_CONTINUE":     5,
+		"CONTROL_COMMAND_AMEND_LIMITS": 6,
+	}
+)
+
+func (x ControlCommand) Enum() *ControlCommand {
+	p := new(ControlCommand)
+	*p = x
+	return p
+}
+
+func (x ControlCommand) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ControlCommand) Descriptor() protoreflect.EnumDescriptor {
+	return file_control_v1_control_proto_enumTypes[6].Descriptor()
+}
+
+func (ControlCommand) Type() protoreflect.EnumType {
+	return &file_control_v1_control_proto_enumTypes[6]
+}
+
+func (x ControlCommand) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ControlCommand.Descriptor instead.
+func (ControlCommand) EnumDescriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{6}
+}
+
 type PackRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Path to the agent project directory.
@@ -693,7 +950,16 @@ type RunRequest struct {
 	// Trigger payload passed to the agent.
 	TriggerPayload []byte `protobuf:"bytes,3,opt,name=trigger_payload,json=triggerPayload,proto3" json:"trigger_payload,omitempty"`
 	// Budget configuration (optional).
-	Budget        *BudgetConfig `protobuf:"bytes,4,opt,name=budget,proto3" json:"budget,omitempty"`
+	Budget *BudgetConfig `protobuf:"bytes,4,opt,name=budget,proto3" json:"budget,omitempty"`
+	// B26 additive continuation / deployment invocation fields.
+	ContinueRunId  string `protobuf:"bytes,5,opt,name=continue_run_id,json=continueRunId,proto3" json:"continue_run_id,omitempty"`
+	RecoveryAction string `protobuf:"bytes,6,opt,name=recovery_action,json=recoveryAction,proto3" json:"recovery_action,omitempty"`
+	// Attempt lease duration in milliseconds (checked integer, never float).
+	RequestedAttemptLeaseMs int64 `protobuf:"varint,7,opt,name=requested_attempt_lease_ms,json=requestedAttemptLeaseMs,proto3" json:"requested_attempt_lease_ms,omitempty"`
+	// Idempotency key for deployment invocation (required when invoking deployments).
+	IdempotencyKey string `protobuf:"bytes,8,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	// Optional deployment reference (alias or exact). Representational in B26.
+	DeploymentRef string `protobuf:"bytes,9,opt,name=deployment_ref,json=deploymentRef,proto3" json:"deployment_ref,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -754,6 +1020,41 @@ func (x *RunRequest) GetBudget() *BudgetConfig {
 		return x.Budget
 	}
 	return nil
+}
+
+func (x *RunRequest) GetContinueRunId() string {
+	if x != nil {
+		return x.ContinueRunId
+	}
+	return ""
+}
+
+func (x *RunRequest) GetRecoveryAction() string {
+	if x != nil {
+		return x.RecoveryAction
+	}
+	return ""
+}
+
+func (x *RunRequest) GetRequestedAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.RequestedAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *RunRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *RunRequest) GetDeploymentRef() string {
+	if x != nil {
+		return x.DeploymentRef
+	}
+	return ""
 }
 
 type BudgetConfig struct {
@@ -831,9 +1132,20 @@ func (x *BudgetConfig) GetMaxIterations() int32 {
 type RunResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Unique identifier for the started run.
-	RunId         string `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	RunId string `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	// B26 additive hierarchy and admission fields (old clients ignore).
+	InvocationId string `protobuf:"bytes,2,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	WorkflowId   string `protobuf:"bytes,3,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	// Absent in the immediate admission receipt until the asynchronous scheduler
+	// claim creates the attempt; present in later status.
+	AttemptId string `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	// Run status string (PENDING, RUNNING, PAUSE_REQUESTED, PAUSED, ...).
+	Status                    string `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	RequestedDeploymentRef    string `protobuf:"bytes,6,opt,name=requested_deployment_ref,json=requestedDeploymentRef,proto3" json:"requested_deployment_ref,omitempty"`
+	ResolvedDeploymentId      string `protobuf:"bytes,7,opt,name=resolved_deployment_id,json=resolvedDeploymentId,proto3" json:"resolved_deployment_id,omitempty"`
+	ResolvedDeploymentVersion string `protobuf:"bytes,8,opt,name=resolved_deployment_version,json=resolvedDeploymentVersion,proto3" json:"resolved_deployment_version,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
 }
 
 func (x *RunResponse) Reset() {
@@ -869,6 +1181,55 @@ func (*RunResponse) Descriptor() ([]byte, []int) {
 func (x *RunResponse) GetRunId() string {
 	if x != nil {
 		return x.RunId
+	}
+	return ""
+}
+
+func (x *RunResponse) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *RunResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *RunResponse) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *RunResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *RunResponse) GetRequestedDeploymentRef() string {
+	if x != nil {
+		return x.RequestedDeploymentRef
+	}
+	return ""
+}
+
+func (x *RunResponse) GetResolvedDeploymentId() string {
+	if x != nil {
+		return x.ResolvedDeploymentId
+	}
+	return ""
+}
+
+func (x *RunResponse) GetResolvedDeploymentVersion() string {
+	if x != nil {
+		return x.ResolvedDeploymentVersion
 	}
 	return ""
 }
@@ -2917,6 +3278,8 @@ type SummarizeRunResponse struct {
 	// Stable error category (set when status is "failed").
 	ErrorCategory string         `protobuf:"bytes,18,opt,name=error_category,json=errorCategory,proto3" json:"error_category,omitempty"`
 	EvidenceRefs  []*EvidenceRef `protobuf:"bytes,19,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	// B26: portable attempt report (additive).
+	AttemptReport *AttemptReport `protobuf:"bytes,20,opt,name=attempt_report,json=attemptReport,proto3" json:"attempt_report,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3042,6 +3405,13 @@ func (x *SummarizeRunResponse) GetEvidenceRefs() []*EvidenceRef {
 	return nil
 }
 
+func (x *SummarizeRunResponse) GetAttemptReport() *AttemptReport {
+	if x != nil {
+		return x.AttemptReport
+	}
+	return nil
+}
+
 type ExplainFailureRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -3101,7 +3471,10 @@ type ExplainFailureResponse struct {
 	RedactedExcerpts []*RedactedExcerpt `protobuf:"bytes,12,rep,name=redacted_excerpts,json=redactedExcerpts,proto3" json:"redacted_excerpts,omitempty"`
 	EvidenceRefs     []*EvidenceRef     `protobuf:"bytes,13,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
 	// Recommended next action from the fixed enum.
-	NextAction    string `protobuf:"bytes,14,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
+	NextAction string `protobuf:"bytes,14,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
+	// B26: latest relevant failure reason / recovery action (additive).
+	LatestReason  string `protobuf:"bytes,15,opt,name=latest_reason,json=latestReason,proto3" json:"latest_reason,omitempty"`
+	LatestAction  string `protobuf:"bytes,16,opt,name=latest_action,json=latestAction,proto3" json:"latest_action,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3188,6 +3561,20 @@ func (x *ExplainFailureResponse) GetEvidenceRefs() []*EvidenceRef {
 func (x *ExplainFailureResponse) GetNextAction() string {
 	if x != nil {
 		return x.NextAction
+	}
+	return ""
+}
+
+func (x *ExplainFailureResponse) GetLatestReason() string {
+	if x != nil {
+		return x.LatestReason
+	}
+	return ""
+}
+
+func (x *ExplainFailureResponse) GetLatestAction() string {
+	if x != nil {
+		return x.LatestAction
 	}
 	return ""
 }
@@ -3798,10 +4185,12 @@ type NextActionResponse struct {
 	SchemaVersion string `protobuf:"bytes,10,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	RunId         string `protobuf:"bytes,11,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
 	// Next action from the fixed enum.
-	NextAction    string                   `protobuf:"bytes,12,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
-	Rationale     string                   `protobuf:"bytes,13,opt,name=rationale,proto3" json:"rationale,omitempty"`
-	EvidenceRefs  []*EvidenceRef           `protobuf:"bytes,14,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
-	Confirmation  *ConfirmationRequirement `protobuf:"bytes,15,opt,name=confirmation,proto3" json:"confirmation,omitempty"`
+	NextAction   string                   `protobuf:"bytes,12,opt,name=next_action,json=nextAction,proto3" json:"next_action,omitempty"`
+	Rationale    string                   `protobuf:"bytes,13,opt,name=rationale,proto3" json:"rationale,omitempty"`
+	EvidenceRefs []*EvidenceRef           `protobuf:"bytes,14,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	Confirmation *ConfirmationRequirement `protobuf:"bytes,15,opt,name=confirmation,proto3" json:"confirmation,omitempty"`
+	// B26: latest relevant failure reason that motivated the action (additive).
+	LatestReason  string `protobuf:"bytes,16,opt,name=latest_reason,json=latestReason,proto3" json:"latest_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3904,6 +4293,13 @@ func (x *NextActionResponse) GetConfirmation() *ConfirmationRequirement {
 		return x.Confirmation
 	}
 	return nil
+}
+
+func (x *NextActionResponse) GetLatestReason() string {
+	if x != nil {
+		return x.LatestReason
+	}
+	return ""
 }
 
 // CronScheduleInfo represents a cron trigger schedule.
@@ -4334,11 +4730,14 @@ func (x *CronRemoveResponse) GetRemoved() bool {
 }
 
 type RunInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	AgentName     string                 `protobuf:"bytes,2,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	RunId     string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	AgentName string                 `protobuf:"bytes,2,opt,name=agent_name,json=agentName,proto3" json:"agent_name,omitempty"`
+	Status    string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	StartedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	// B26 additive hierarchy (optional; old clients ignore).
+	WorkflowId    string `protobuf:"bytes,5,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	InvocationId  string `protobuf:"bytes,6,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4399,6 +4798,20 @@ func (x *RunInfo) GetStartedAt() *timestamppb.Timestamp {
 		return x.StartedAt
 	}
 	return nil
+}
+
+func (x *RunInfo) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *RunInfo) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
 }
 
 type ListRunsRequest struct {
@@ -4481,6 +4894,4842 @@ func (x *ListRunsResponse) GetRuns() []*RunInfo {
 	return nil
 }
 
+// ProgressSummary describes progress within an attempt.
+type ProgressSummary struct {
+	state                  protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion          string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	ModelCallsCompleted    int32                  `protobuf:"varint,2,opt,name=model_calls_completed,json=modelCallsCompleted,proto3" json:"model_calls_completed,omitempty"`
+	ToolCallsCompleted     int32                  `protobuf:"varint,3,opt,name=tool_calls_completed,json=toolCallsCompleted,proto3" json:"tool_calls_completed,omitempty"`
+	ActionsSinceCheckpoint int32                  `protobuf:"varint,4,opt,name=actions_since_checkpoint,json=actionsSinceCheckpoint,proto3" json:"actions_since_checkpoint,omitempty"`
+	ActionsWithoutProgress int32                  `protobuf:"varint,5,opt,name=actions_without_progress,json=actionsWithoutProgress,proto3" json:"actions_without_progress,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *ProgressSummary) Reset() {
+	*x = ProgressSummary{}
+	mi := &file_control_v1_control_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProgressSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProgressSummary) ProtoMessage() {}
+
+func (x *ProgressSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProgressSummary.ProtoReflect.Descriptor instead.
+func (*ProgressSummary) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *ProgressSummary) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ProgressSummary) GetModelCallsCompleted() int32 {
+	if x != nil {
+		return x.ModelCallsCompleted
+	}
+	return 0
+}
+
+func (x *ProgressSummary) GetToolCallsCompleted() int32 {
+	if x != nil {
+		return x.ToolCallsCompleted
+	}
+	return 0
+}
+
+func (x *ProgressSummary) GetActionsSinceCheckpoint() int32 {
+	if x != nil {
+		return x.ActionsSinceCheckpoint
+	}
+	return 0
+}
+
+func (x *ProgressSummary) GetActionsWithoutProgress() int32 {
+	if x != nil {
+		return x.ActionsWithoutProgress
+	}
+	return 0
+}
+
+// CheckpointSummary describes a checkpoint (no host paths).
+type CheckpointSummary struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion   string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	CheckpointId    string                 `protobuf:"bytes,2,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	AttemptId       string                 `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	RunId           string                 `protobuf:"bytes,4,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ActionCount     int32                  `protobuf:"varint,5,opt,name=action_count,json=actionCount,proto3" json:"action_count,omitempty"`
+	TotalModelCalls int32                  `protobuf:"varint,6,opt,name=total_model_calls,json=totalModelCalls,proto3" json:"total_model_calls,omitempty"`
+	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *CheckpointSummary) Reset() {
+	*x = CheckpointSummary{}
+	mi := &file_control_v1_control_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckpointSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckpointSummary) ProtoMessage() {}
+
+func (x *CheckpointSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckpointSummary.ProtoReflect.Descriptor instead.
+func (*CheckpointSummary) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *CheckpointSummary) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *CheckpointSummary) GetCheckpointId() string {
+	if x != nil {
+		return x.CheckpointId
+	}
+	return ""
+}
+
+func (x *CheckpointSummary) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *CheckpointSummary) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *CheckpointSummary) GetActionCount() int32 {
+	if x != nil {
+		return x.ActionCount
+	}
+	return 0
+}
+
+func (x *CheckpointSummary) GetTotalModelCalls() int32 {
+	if x != nil {
+		return x.TotalModelCalls
+	}
+	return 0
+}
+
+func (x *CheckpointSummary) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// ArtifactRef is an immutable logical reference to an artifact.
+// It NEVER exposes a host/container path.
+type ArtifactRef struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	ArtifactId    string                 `protobuf:"bytes,2,opt,name=artifact_id,json=artifactId,proto3" json:"artifact_id,omitempty"`
+	WorkflowId    string                 `protobuf:"bytes,3,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	NodeId        string                 `protobuf:"bytes,4,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	RunId         string                 `protobuf:"bytes,5,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	AttemptId     string                 `protobuf:"bytes,6,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	LogicalRef    string                 `protobuf:"bytes,7,opt,name=logical_ref,json=logicalRef,proto3" json:"logical_ref,omitempty"`
+	Digest        string                 `protobuf:"bytes,8,opt,name=digest,proto3" json:"digest,omitempty"`
+	ByteSize      int64                  `protobuf:"varint,9,opt,name=byte_size,json=byteSize,proto3" json:"byte_size,omitempty"`
+	MediaType     string                 `protobuf:"bytes,10,opt,name=media_type,json=mediaType,proto3" json:"media_type,omitempty"`
+	Schema        string                 `protobuf:"bytes,11,opt,name=schema,proto3" json:"schema,omitempty"`
+	// Data classification string (e.g. "public", "internal", "confidential").
+	Classification string                 `protobuf:"bytes,12,opt,name=classification,proto3" json:"classification,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *ArtifactRef) Reset() {
+	*x = ArtifactRef{}
+	mi := &file_control_v1_control_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ArtifactRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ArtifactRef) ProtoMessage() {}
+
+func (x *ArtifactRef) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ArtifactRef.ProtoReflect.Descriptor instead.
+func (*ArtifactRef) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{66}
+}
+
+func (x *ArtifactRef) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetArtifactId() string {
+	if x != nil {
+		return x.ArtifactId
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetLogicalRef() string {
+	if x != nil {
+		return x.LogicalRef
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetDigest() string {
+	if x != nil {
+		return x.Digest
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetByteSize() int64 {
+	if x != nil {
+		return x.ByteSize
+	}
+	return 0
+}
+
+func (x *ArtifactRef) GetMediaType() string {
+	if x != nil {
+		return x.MediaType
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetSchema() string {
+	if x != nil {
+		return x.Schema
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetClassification() string {
+	if x != nil {
+		return x.Classification
+	}
+	return ""
+}
+
+func (x *ArtifactRef) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// TimeBudgetSummary uses checked int64 milliseconds (never float).
+type TimeBudgetSummary struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion        string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	AttemptDurationMs    int64                  `protobuf:"varint,2,opt,name=attempt_duration_ms,json=attemptDurationMs,proto3" json:"attempt_duration_ms,omitempty"`
+	RunActiveTimeMs      int64                  `protobuf:"varint,3,opt,name=run_active_time_ms,json=runActiveTimeMs,proto3" json:"run_active_time_ms,omitempty"`
+	WorkflowActiveTimeMs int64                  `protobuf:"varint,4,opt,name=workflow_active_time_ms,json=workflowActiveTimeMs,proto3" json:"workflow_active_time_ms,omitempty"`
+	RemainingMs          int64                  `protobuf:"varint,5,opt,name=remaining_ms,json=remainingMs,proto3" json:"remaining_ms,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *TimeBudgetSummary) Reset() {
+	*x = TimeBudgetSummary{}
+	mi := &file_control_v1_control_proto_msgTypes[67]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TimeBudgetSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TimeBudgetSummary) ProtoMessage() {}
+
+func (x *TimeBudgetSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[67]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TimeBudgetSummary.ProtoReflect.Descriptor instead.
+func (*TimeBudgetSummary) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{67}
+}
+
+func (x *TimeBudgetSummary) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *TimeBudgetSummary) GetAttemptDurationMs() int64 {
+	if x != nil {
+		return x.AttemptDurationMs
+	}
+	return 0
+}
+
+func (x *TimeBudgetSummary) GetRunActiveTimeMs() int64 {
+	if x != nil {
+		return x.RunActiveTimeMs
+	}
+	return 0
+}
+
+func (x *TimeBudgetSummary) GetWorkflowActiveTimeMs() int64 {
+	if x != nil {
+		return x.WorkflowActiveTimeMs
+	}
+	return 0
+}
+
+func (x *TimeBudgetSummary) GetRemainingMs() int64 {
+	if x != nil {
+		return x.RemainingMs
+	}
+	return 0
+}
+
+// LLMBudgetSummary uses decimal strings for spend (never float).
+type LLMBudgetSummary struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion        string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	TotalTokens          int64                  `protobuf:"varint,2,opt,name=total_tokens,json=totalTokens,proto3" json:"total_tokens,omitempty"`
+	InputTokens          int64                  `protobuf:"varint,3,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
+	OutputTokens         int64                  `protobuf:"varint,4,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
+	TotalCostDecimal     string                 `protobuf:"bytes,5,opt,name=total_cost_decimal,json=totalCostDecimal,proto3" json:"total_cost_decimal,omitempty"`
+	RemainingCostDecimal string                 `protobuf:"bytes,6,opt,name=remaining_cost_decimal,json=remainingCostDecimal,proto3" json:"remaining_cost_decimal,omitempty"`
+	ModelCalls           int32                  `protobuf:"varint,7,opt,name=model_calls,json=modelCalls,proto3" json:"model_calls,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *LLMBudgetSummary) Reset() {
+	*x = LLMBudgetSummary{}
+	mi := &file_control_v1_control_proto_msgTypes[68]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LLMBudgetSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LLMBudgetSummary) ProtoMessage() {}
+
+func (x *LLMBudgetSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[68]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LLMBudgetSummary.ProtoReflect.Descriptor instead.
+func (*LLMBudgetSummary) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{68}
+}
+
+func (x *LLMBudgetSummary) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *LLMBudgetSummary) GetTotalTokens() int64 {
+	if x != nil {
+		return x.TotalTokens
+	}
+	return 0
+}
+
+func (x *LLMBudgetSummary) GetInputTokens() int64 {
+	if x != nil {
+		return x.InputTokens
+	}
+	return 0
+}
+
+func (x *LLMBudgetSummary) GetOutputTokens() int64 {
+	if x != nil {
+		return x.OutputTokens
+	}
+	return 0
+}
+
+func (x *LLMBudgetSummary) GetTotalCostDecimal() string {
+	if x != nil {
+		return x.TotalCostDecimal
+	}
+	return ""
+}
+
+func (x *LLMBudgetSummary) GetRemainingCostDecimal() string {
+	if x != nil {
+		return x.RemainingCostDecimal
+	}
+	return ""
+}
+
+func (x *LLMBudgetSummary) GetModelCalls() int32 {
+	if x != nil {
+		return x.ModelCalls
+	}
+	return 0
+}
+
+// RouteDecision records the routing decision for a model call.
+type RouteDecision struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion     string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	ModelCallId       string                 `protobuf:"bytes,2,opt,name=model_call_id,json=modelCallId,proto3" json:"model_call_id,omitempty"`
+	AttemptId         string                 `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	RunId             string                 `protobuf:"bytes,4,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	CandidateId       string                 `protobuf:"bytes,5,opt,name=candidate_id,json=candidateId,proto3" json:"candidate_id,omitempty"`
+	Provider          string                 `protobuf:"bytes,6,opt,name=provider,proto3" json:"provider,omitempty"`
+	Model             string                 `protobuf:"bytes,7,opt,name=model,proto3" json:"model,omitempty"`
+	AttemptedRecovery bool                   `protobuf:"varint,8,opt,name=attempted_recovery,json=attemptedRecovery,proto3" json:"attempted_recovery,omitempty"`
+	Succeeded         bool                   `protobuf:"varint,9,opt,name=succeeded,proto3" json:"succeeded,omitempty"`
+	FailureReason     string                 `protobuf:"bytes,10,opt,name=failure_reason,json=failureReason,proto3" json:"failure_reason,omitempty"`
+	Timestamp         *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *RouteDecision) Reset() {
+	*x = RouteDecision{}
+	mi := &file_control_v1_control_proto_msgTypes[69]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RouteDecision) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RouteDecision) ProtoMessage() {}
+
+func (x *RouteDecision) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[69]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RouteDecision.ProtoReflect.Descriptor instead.
+func (*RouteDecision) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{69}
+}
+
+func (x *RouteDecision) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetModelCallId() string {
+	if x != nil {
+		return x.ModelCallId
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetCandidateId() string {
+	if x != nil {
+		return x.CandidateId
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetAttemptedRecovery() bool {
+	if x != nil {
+		return x.AttemptedRecovery
+	}
+	return false
+}
+
+func (x *RouteDecision) GetSucceeded() bool {
+	if x != nil {
+		return x.Succeeded
+	}
+	return false
+}
+
+func (x *RouteDecision) GetFailureReason() string {
+	if x != nil {
+		return x.FailureReason
+	}
+	return ""
+}
+
+func (x *RouteDecision) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+// AttemptReport is the portable report for a single attempt.
+type AttemptReport struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion       string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	RunId               string                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	AttemptId           string                 `protobuf:"bytes,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	Status              string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	Reason              string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
+	FailureScope        string                 `protobuf:"bytes,6,opt,name=failure_scope,json=failureScope,proto3" json:"failure_scope,omitempty"`
+	RecoveryDisposition string                 `protobuf:"bytes,7,opt,name=recovery_disposition,json=recoveryDisposition,proto3" json:"recovery_disposition,omitempty"`
+	ResumeCapability    string                 `protobuf:"bytes,8,opt,name=resume_capability,json=resumeCapability,proto3" json:"resume_capability,omitempty"`
+	Progress            *ProgressSummary       `protobuf:"bytes,9,opt,name=progress,proto3" json:"progress,omitempty"`
+	Checkpoint          *CheckpointSummary     `protobuf:"bytes,10,opt,name=checkpoint,proto3" json:"checkpoint,omitempty"`
+	Artifacts           []*ArtifactRef         `protobuf:"bytes,11,rep,name=artifacts,proto3" json:"artifacts,omitempty"`
+	Time                *TimeBudgetSummary     `protobuf:"bytes,12,opt,name=time,proto3" json:"time,omitempty"`
+	LlmBudget           *LLMBudgetSummary      `protobuf:"bytes,13,opt,name=llm_budget,json=llmBudget,proto3" json:"llm_budget,omitempty"`
+	RouteDecisions      []*RouteDecision       `protobuf:"bytes,14,rep,name=route_decisions,json=routeDecisions,proto3" json:"route_decisions,omitempty"`
+	RecommendedActions  []string               `protobuf:"bytes,15,rep,name=recommended_actions,json=recommendedActions,proto3" json:"recommended_actions,omitempty"`
+	EvidenceRefs        []string               `protobuf:"bytes,16,rep,name=evidence_refs,json=evidenceRefs,proto3" json:"evidence_refs,omitempty"`
+	CreatedAt           *timestamppb.Timestamp `protobuf:"bytes,17,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *AttemptReport) Reset() {
+	*x = AttemptReport{}
+	mi := &file_control_v1_control_proto_msgTypes[70]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AttemptReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AttemptReport) ProtoMessage() {}
+
+func (x *AttemptReport) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[70]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AttemptReport.ProtoReflect.Descriptor instead.
+func (*AttemptReport) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *AttemptReport) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetFailureScope() string {
+	if x != nil {
+		return x.FailureScope
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetRecoveryDisposition() string {
+	if x != nil {
+		return x.RecoveryDisposition
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetResumeCapability() string {
+	if x != nil {
+		return x.ResumeCapability
+	}
+	return ""
+}
+
+func (x *AttemptReport) GetProgress() *ProgressSummary {
+	if x != nil {
+		return x.Progress
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetCheckpoint() *CheckpointSummary {
+	if x != nil {
+		return x.Checkpoint
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetArtifacts() []*ArtifactRef {
+	if x != nil {
+		return x.Artifacts
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetTime() *TimeBudgetSummary {
+	if x != nil {
+		return x.Time
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetLlmBudget() *LLMBudgetSummary {
+	if x != nil {
+		return x.LlmBudget
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetRouteDecisions() []*RouteDecision {
+	if x != nil {
+		return x.RouteDecisions
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetRecommendedActions() []string {
+	if x != nil {
+		return x.RecommendedActions
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetEvidenceRefs() []string {
+	if x != nil {
+		return x.EvidenceRefs
+	}
+	return nil
+}
+
+func (x *AttemptReport) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// TypedControlError is a structured error. Callers must not infer codes from strings.
+type TypedControlError struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Code  TypedControlErrorCode  `protobuf:"varint,1,opt,name=code,proto3,enum=agentpaas.control.v1.TypedControlErrorCode" json:"code,omitempty"`
+	// Stable machine-readable code string (e.g. "IDEMPOTENT_REPLAY").
+	CodeName string `protobuf:"bytes,2,opt,name=code_name,json=codeName,proto3" json:"code_name,omitempty"`
+	// Human-readable detail (never the sole signal for control decisions).
+	Message      string `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	RunId        string `protobuf:"bytes,4,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	WorkflowId   string `protobuf:"bytes,5,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	InvocationId string `protobuf:"bytes,6,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	DeploymentId string `protobuf:"bytes,7,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	// Original idempotency key when relevant.
+	IdempotencyKey string `protobuf:"bytes,8,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	// Required authority scope that was missing (e.g. "runs:control").
+	RequiredScope string            `protobuf:"bytes,9,opt,name=required_scope,json=requiredScope,proto3" json:"required_scope,omitempty"`
+	Details       map[string]string `protobuf:"bytes,10,rep,name=details,proto3" json:"details,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TypedControlError) Reset() {
+	*x = TypedControlError{}
+	mi := &file_control_v1_control_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TypedControlError) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TypedControlError) ProtoMessage() {}
+
+func (x *TypedControlError) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TypedControlError.ProtoReflect.Descriptor instead.
+func (*TypedControlError) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *TypedControlError) GetCode() TypedControlErrorCode {
+	if x != nil {
+		return x.Code
+	}
+	return TypedControlErrorCode_TYPED_CONTROL_ERROR_UNSPECIFIED
+}
+
+func (x *TypedControlError) GetCodeName() string {
+	if x != nil {
+		return x.CodeName
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetDeploymentId() string {
+	if x != nil {
+		return x.DeploymentId
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetRequiredScope() string {
+	if x != nil {
+		return x.RequiredScope
+	}
+	return ""
+}
+
+func (x *TypedControlError) GetDetails() map[string]string {
+	if x != nil {
+		return x.Details
+	}
+	return nil
+}
+
+// IdempotentReplayResponse is returned when the same key+payload is replayed.
+type IdempotentReplayResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	Original      *RunResponse           `protobuf:"bytes,2,opt,name=original,proto3" json:"original,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IdempotentReplayResponse) Reset() {
+	*x = IdempotentReplayResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdempotentReplayResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdempotentReplayResponse) ProtoMessage() {}
+
+func (x *IdempotentReplayResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdempotentReplayResponse.ProtoReflect.Descriptor instead.
+func (*IdempotentReplayResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *IdempotentReplayResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *IdempotentReplayResponse) GetOriginal() *RunResponse {
+	if x != nil {
+		return x.Original
+	}
+	return nil
+}
+
+// AlreadyRunningResponse is returned when a concurrent equivalent run exists.
+type AlreadyRunningResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Error              *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	ExistingRunId      string                 `protobuf:"bytes,2,opt,name=existing_run_id,json=existingRunId,proto3" json:"existing_run_id,omitempty"`
+	ExistingWorkflowId string                 `protobuf:"bytes,3,opt,name=existing_workflow_id,json=existingWorkflowId,proto3" json:"existing_workflow_id,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *AlreadyRunningResponse) Reset() {
+	*x = AlreadyRunningResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AlreadyRunningResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AlreadyRunningResponse) ProtoMessage() {}
+
+func (x *AlreadyRunningResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AlreadyRunningResponse.ProtoReflect.Descriptor instead.
+func (*AlreadyRunningResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *AlreadyRunningResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *AlreadyRunningResponse) GetExistingRunId() string {
+	if x != nil {
+		return x.ExistingRunId
+	}
+	return ""
+}
+
+func (x *AlreadyRunningResponse) GetExistingWorkflowId() string {
+	if x != nil {
+		return x.ExistingWorkflowId
+	}
+	return ""
+}
+
+// IdempotencyConflictResponse is returned for same key, different payload.
+type IdempotencyConflictResponse struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Error                 *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	IdempotencyKey        string                 `protobuf:"bytes,2,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	OriginalIntentDigest  string                 `protobuf:"bytes,3,opt,name=original_intent_digest,json=originalIntentDigest,proto3" json:"original_intent_digest,omitempty"`
+	RequestedIntentDigest string                 `protobuf:"bytes,4,opt,name=requested_intent_digest,json=requestedIntentDigest,proto3" json:"requested_intent_digest,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *IdempotencyConflictResponse) Reset() {
+	*x = IdempotencyConflictResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IdempotencyConflictResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IdempotencyConflictResponse) ProtoMessage() {}
+
+func (x *IdempotencyConflictResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IdempotencyConflictResponse.ProtoReflect.Descriptor instead.
+func (*IdempotencyConflictResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *IdempotencyConflictResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *IdempotencyConflictResponse) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *IdempotencyConflictResponse) GetOriginalIntentDigest() string {
+	if x != nil {
+		return x.OriginalIntentDigest
+	}
+	return ""
+}
+
+func (x *IdempotencyConflictResponse) GetRequestedIntentDigest() string {
+	if x != nil {
+		return x.RequestedIntentDigest
+	}
+	return ""
+}
+
+// DeploymentInactiveResponse is returned when invoking an inactive deployment.
+type DeploymentInactiveResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Error            *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	DeploymentId     string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	DeploymentStatus string                 `protobuf:"bytes,3,opt,name=deployment_status,json=deploymentStatus,proto3" json:"deployment_status,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DeploymentInactiveResponse) Reset() {
+	*x = DeploymentInactiveResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeploymentInactiveResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeploymentInactiveResponse) ProtoMessage() {}
+
+func (x *DeploymentInactiveResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeploymentInactiveResponse.ProtoReflect.Descriptor instead.
+func (*DeploymentInactiveResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *DeploymentInactiveResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *DeploymentInactiveResponse) GetDeploymentId() string {
+	if x != nil {
+		return x.DeploymentId
+	}
+	return ""
+}
+
+func (x *DeploymentInactiveResponse) GetDeploymentStatus() string {
+	if x != nil {
+		return x.DeploymentStatus
+	}
+	return ""
+}
+
+// RunTerminalResponse is returned when control targets a terminal run.
+type RunTerminalResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Error          *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	RunId          string                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	TerminalStatus string                 `protobuf:"bytes,3,opt,name=terminal_status,json=terminalStatus,proto3" json:"terminal_status,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RunTerminalResponse) Reset() {
+	*x = RunTerminalResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunTerminalResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunTerminalResponse) ProtoMessage() {}
+
+func (x *RunTerminalResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunTerminalResponse.ProtoReflect.Descriptor instead.
+func (*RunTerminalResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *RunTerminalResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *RunTerminalResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *RunTerminalResponse) GetTerminalStatus() string {
+	if x != nil {
+		return x.TerminalStatus
+	}
+	return ""
+}
+
+// UnsafePauseBoundaryResponse is returned when pause is not safe at this boundary.
+type UnsafePauseBoundaryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Error         *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	RunId         string                 `protobuf:"bytes,2,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	Boundary      string                 `protobuf:"bytes,3,opt,name=boundary,proto3" json:"boundary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnsafePauseBoundaryResponse) Reset() {
+	*x = UnsafePauseBoundaryResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnsafePauseBoundaryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnsafePauseBoundaryResponse) ProtoMessage() {}
+
+func (x *UnsafePauseBoundaryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnsafePauseBoundaryResponse.ProtoReflect.Descriptor instead.
+func (*UnsafePauseBoundaryResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *UnsafePauseBoundaryResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *UnsafePauseBoundaryResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *UnsafePauseBoundaryResponse) GetBoundary() string {
+	if x != nil {
+		return x.Boundary
+	}
+	return ""
+}
+
+// ConcurrencyUnavailableResponse is returned when max concurrent runs is saturated.
+type ConcurrencyUnavailableResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Error             *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	DeploymentId      string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	MaxConcurrentRuns int32                  `protobuf:"varint,3,opt,name=max_concurrent_runs,json=maxConcurrentRuns,proto3" json:"max_concurrent_runs,omitempty"`
+	ActiveRuns        int32                  `protobuf:"varint,4,opt,name=active_runs,json=activeRuns,proto3" json:"active_runs,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ConcurrencyUnavailableResponse) Reset() {
+	*x = ConcurrencyUnavailableResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConcurrencyUnavailableResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConcurrencyUnavailableResponse) ProtoMessage() {}
+
+func (x *ConcurrencyUnavailableResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConcurrencyUnavailableResponse.ProtoReflect.Descriptor instead.
+func (*ConcurrencyUnavailableResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *ConcurrencyUnavailableResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *ConcurrencyUnavailableResponse) GetDeploymentId() string {
+	if x != nil {
+		return x.DeploymentId
+	}
+	return ""
+}
+
+func (x *ConcurrencyUnavailableResponse) GetMaxConcurrentRuns() int32 {
+	if x != nil {
+		return x.MaxConcurrentRuns
+	}
+	return 0
+}
+
+func (x *ConcurrencyUnavailableResponse) GetActiveRuns() int32 {
+	if x != nil {
+		return x.ActiveRuns
+	}
+	return 0
+}
+
+// LimitAmendmentDeniedResponse is returned when an amendment is rejected.
+type LimitAmendmentDeniedResponse struct {
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	Error                       *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	WorkflowId                  string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	ExpectedAuthorityGeneration int64                  `protobuf:"varint,3,opt,name=expected_authority_generation,json=expectedAuthorityGeneration,proto3" json:"expected_authority_generation,omitempty"`
+	CurrentAuthorityGeneration  int64                  `protobuf:"varint,4,opt,name=current_authority_generation,json=currentAuthorityGeneration,proto3" json:"current_authority_generation,omitempty"`
+	Reason                      string                 `protobuf:"bytes,5,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
+}
+
+func (x *LimitAmendmentDeniedResponse) Reset() {
+	*x = LimitAmendmentDeniedResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LimitAmendmentDeniedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LimitAmendmentDeniedResponse) ProtoMessage() {}
+
+func (x *LimitAmendmentDeniedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LimitAmendmentDeniedResponse.ProtoReflect.Descriptor instead.
+func (*LimitAmendmentDeniedResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *LimitAmendmentDeniedResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *LimitAmendmentDeniedResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *LimitAmendmentDeniedResponse) GetExpectedAuthorityGeneration() int64 {
+	if x != nil {
+		return x.ExpectedAuthorityGeneration
+	}
+	return 0
+}
+
+func (x *LimitAmendmentDeniedResponse) GetCurrentAuthorityGeneration() int64 {
+	if x != nil {
+		return x.CurrentAuthorityGeneration
+	}
+	return 0
+}
+
+func (x *LimitAmendmentDeniedResponse) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// FeatureNotEnabledResponse is returned for B26 representational RPCs that
+// depend on later blocks (B28/B35). No partial state or resources are created.
+type FeatureNotEnabledResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Error          *TypedControlError     `protobuf:"bytes,1,opt,name=error,proto3" json:"error,omitempty"`
+	Feature        string                 `protobuf:"bytes,2,opt,name=feature,proto3" json:"feature,omitempty"`
+	EnabledInBlock string                 `protobuf:"bytes,3,opt,name=enabled_in_block,json=enabledInBlock,proto3" json:"enabled_in_block,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *FeatureNotEnabledResponse) Reset() {
+	*x = FeatureNotEnabledResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FeatureNotEnabledResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FeatureNotEnabledResponse) ProtoMessage() {}
+
+func (x *FeatureNotEnabledResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FeatureNotEnabledResponse.ProtoReflect.Descriptor instead.
+func (*FeatureNotEnabledResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *FeatureNotEnabledResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *FeatureNotEnabledResponse) GetFeature() string {
+	if x != nil {
+		return x.Feature
+	}
+	return ""
+}
+
+func (x *FeatureNotEnabledResponse) GetEnabledInBlock() string {
+	if x != nil {
+		return x.EnabledInBlock
+	}
+	return ""
+}
+
+type CreateDeploymentRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	PackageName    string                 `protobuf:"bytes,1,opt,name=package_name,json=packageName,proto3" json:"package_name,omitempty"`
+	PackageVersion string                 `protobuf:"bytes,2,opt,name=package_version,json=packageVersion,proto3" json:"package_version,omitempty"`
+	// Exact installed artifact identity (bundle/image digests).
+	BundleDigest         string            `protobuf:"bytes,3,opt,name=bundle_digest,json=bundleDigest,proto3" json:"bundle_digest,omitempty"`
+	PolicyDigest         string            `protobuf:"bytes,4,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
+	ImageLockDigest      string            `protobuf:"bytes,5,opt,name=image_lock_digest,json=imageLockDigest,proto3" json:"image_lock_digest,omitempty"`
+	ProvenanceDigest     string            `protobuf:"bytes,6,opt,name=provenance_digest,json=provenanceDigest,proto3" json:"provenance_digest,omitempty"`
+	MaxConcurrentRuns    int32             `protobuf:"varint,7,opt,name=max_concurrent_runs,json=maxConcurrentRuns,proto3" json:"max_concurrent_runs,omitempty"`
+	NestedPackageDigests map[string]string `protobuf:"bytes,8,rep,name=nested_package_digests,json=nestedPackageDigests,proto3" json:"nested_package_digests,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ActorIdentity        string            `protobuf:"bytes,9,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *CreateDeploymentRequest) Reset() {
+	*x = CreateDeploymentRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[81]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateDeploymentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateDeploymentRequest) ProtoMessage() {}
+
+func (x *CreateDeploymentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[81]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateDeploymentRequest.ProtoReflect.Descriptor instead.
+func (*CreateDeploymentRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{81}
+}
+
+func (x *CreateDeploymentRequest) GetPackageName() string {
+	if x != nil {
+		return x.PackageName
+	}
+	return ""
+}
+
+func (x *CreateDeploymentRequest) GetPackageVersion() string {
+	if x != nil {
+		return x.PackageVersion
+	}
+	return ""
+}
+
+func (x *CreateDeploymentRequest) GetBundleDigest() string {
+	if x != nil {
+		return x.BundleDigest
+	}
+	return ""
+}
+
+func (x *CreateDeploymentRequest) GetPolicyDigest() string {
+	if x != nil {
+		return x.PolicyDigest
+	}
+	return ""
+}
+
+func (x *CreateDeploymentRequest) GetImageLockDigest() string {
+	if x != nil {
+		return x.ImageLockDigest
+	}
+	return ""
+}
+
+func (x *CreateDeploymentRequest) GetProvenanceDigest() string {
+	if x != nil {
+		return x.ProvenanceDigest
+	}
+	return ""
+}
+
+func (x *CreateDeploymentRequest) GetMaxConcurrentRuns() int32 {
+	if x != nil {
+		return x.MaxConcurrentRuns
+	}
+	return 0
+}
+
+func (x *CreateDeploymentRequest) GetNestedPackageDigests() map[string]string {
+	if x != nil {
+		return x.NestedPackageDigests
+	}
+	return nil
+}
+
+func (x *CreateDeploymentRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+type DeploymentRecord struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion  string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	DeploymentId   string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	PackageName    string                 `protobuf:"bytes,3,opt,name=package_name,json=packageName,proto3" json:"package_name,omitempty"`
+	PackageVersion string                 `protobuf:"bytes,4,opt,name=package_version,json=packageVersion,proto3" json:"package_version,omitempty"`
+	Generation     int64                  `protobuf:"varint,5,opt,name=generation,proto3" json:"generation,omitempty"`
+	// ACTIVE or INACTIVE.
+	Status               string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	MaxConcurrentRuns    int32                  `protobuf:"varint,7,opt,name=max_concurrent_runs,json=maxConcurrentRuns,proto3" json:"max_concurrent_runs,omitempty"`
+	BundleDigest         string                 `protobuf:"bytes,8,opt,name=bundle_digest,json=bundleDigest,proto3" json:"bundle_digest,omitempty"`
+	PolicyDigest         string                 `protobuf:"bytes,9,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
+	ImageLockDigest      string                 `protobuf:"bytes,10,opt,name=image_lock_digest,json=imageLockDigest,proto3" json:"image_lock_digest,omitempty"`
+	ProvenanceDigest     string                 `protobuf:"bytes,11,opt,name=provenance_digest,json=provenanceDigest,proto3" json:"provenance_digest,omitempty"`
+	NestedPackageDigests map[string]string      `protobuf:"bytes,12,rep,name=nested_package_digests,json=nestedPackageDigests,proto3" json:"nested_package_digests,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	CreatedAt            *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ActivatedAt          *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=activated_at,json=activatedAt,proto3" json:"activated_at,omitempty"`
+	DeactivatedAt        *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=deactivated_at,json=deactivatedAt,proto3" json:"deactivated_at,omitempty"`
+	CreatedBy            string                 `protobuf:"bytes,16,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *DeploymentRecord) Reset() {
+	*x = DeploymentRecord{}
+	mi := &file_control_v1_control_proto_msgTypes[82]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeploymentRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeploymentRecord) ProtoMessage() {}
+
+func (x *DeploymentRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[82]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeploymentRecord.ProtoReflect.Descriptor instead.
+func (*DeploymentRecord) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{82}
+}
+
+func (x *DeploymentRecord) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetDeploymentId() string {
+	if x != nil {
+		return x.DeploymentId
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetPackageName() string {
+	if x != nil {
+		return x.PackageName
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetPackageVersion() string {
+	if x != nil {
+		return x.PackageVersion
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *DeploymentRecord) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetMaxConcurrentRuns() int32 {
+	if x != nil {
+		return x.MaxConcurrentRuns
+	}
+	return 0
+}
+
+func (x *DeploymentRecord) GetBundleDigest() string {
+	if x != nil {
+		return x.BundleDigest
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetPolicyDigest() string {
+	if x != nil {
+		return x.PolicyDigest
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetImageLockDigest() string {
+	if x != nil {
+		return x.ImageLockDigest
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetProvenanceDigest() string {
+	if x != nil {
+		return x.ProvenanceDigest
+	}
+	return ""
+}
+
+func (x *DeploymentRecord) GetNestedPackageDigests() map[string]string {
+	if x != nil {
+		return x.NestedPackageDigests
+	}
+	return nil
+}
+
+func (x *DeploymentRecord) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *DeploymentRecord) GetActivatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ActivatedAt
+	}
+	return nil
+}
+
+func (x *DeploymentRecord) GetDeactivatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DeactivatedAt
+	}
+	return nil
+}
+
+func (x *DeploymentRecord) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
+type CreateDeploymentResponse struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Deployment *DeploymentRecord      `protobuf:"bytes,1,opt,name=deployment,proto3" json:"deployment,omitempty"`
+	// When feature not enabled, error is set and deployment is unset.
+	Error         *TypedControlError `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateDeploymentResponse) Reset() {
+	*x = CreateDeploymentResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[83]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateDeploymentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateDeploymentResponse) ProtoMessage() {}
+
+func (x *CreateDeploymentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[83]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateDeploymentResponse.ProtoReflect.Descriptor instead.
+func (*CreateDeploymentResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{83}
+}
+
+func (x *CreateDeploymentResponse) GetDeployment() *DeploymentRecord {
+	if x != nil {
+		return x.Deployment
+	}
+	return nil
+}
+
+func (x *CreateDeploymentResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type GetDeploymentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeploymentId  string                 `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDeploymentRequest) Reset() {
+	*x = GetDeploymentRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[84]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDeploymentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDeploymentRequest) ProtoMessage() {}
+
+func (x *GetDeploymentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[84]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDeploymentRequest.ProtoReflect.Descriptor instead.
+func (*GetDeploymentRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{84}
+}
+
+func (x *GetDeploymentRequest) GetDeploymentId() string {
+	if x != nil {
+		return x.DeploymentId
+	}
+	return ""
+}
+
+type GetDeploymentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deployment    *DeploymentRecord      `protobuf:"bytes,1,opt,name=deployment,proto3" json:"deployment,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDeploymentResponse) Reset() {
+	*x = GetDeploymentResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[85]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDeploymentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDeploymentResponse) ProtoMessage() {}
+
+func (x *GetDeploymentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[85]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDeploymentResponse.ProtoReflect.Descriptor instead.
+func (*GetDeploymentResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{85}
+}
+
+func (x *GetDeploymentResponse) GetDeployment() *DeploymentRecord {
+	if x != nil {
+		return x.Deployment
+	}
+	return nil
+}
+
+func (x *GetDeploymentResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type ListDeploymentsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PackageName   string                 `protobuf:"bytes,1,opt,name=package_name,json=packageName,proto3" json:"package_name,omitempty"`
+	PageSize      int32                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeploymentsRequest) Reset() {
+	*x = ListDeploymentsRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[86]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeploymentsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeploymentsRequest) ProtoMessage() {}
+
+func (x *ListDeploymentsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[86]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeploymentsRequest.ProtoReflect.Descriptor instead.
+func (*ListDeploymentsRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{86}
+}
+
+func (x *ListDeploymentsRequest) GetPackageName() string {
+	if x != nil {
+		return x.PackageName
+	}
+	return ""
+}
+
+func (x *ListDeploymentsRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListDeploymentsRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListDeploymentsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deployments   []*DeploymentRecord    `protobuf:"bytes,1,rep,name=deployments,proto3" json:"deployments,omitempty"`
+	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeploymentsResponse) Reset() {
+	*x = ListDeploymentsResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[87]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeploymentsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeploymentsResponse) ProtoMessage() {}
+
+func (x *ListDeploymentsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[87]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeploymentsResponse.ProtoReflect.Descriptor instead.
+func (*ListDeploymentsResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{87}
+}
+
+func (x *ListDeploymentsResponse) GetDeployments() []*DeploymentRecord {
+	if x != nil {
+		return x.Deployments
+	}
+	return nil
+}
+
+func (x *ListDeploymentsResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+func (x *ListDeploymentsResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type DeactivateDeploymentRequest struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	DeploymentId string                 `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	// Deactivate without cancelling active runs.
+	PreserveActiveRuns bool   `protobuf:"varint,2,opt,name=preserve_active_runs,json=preserveActiveRuns,proto3" json:"preserve_active_runs,omitempty"`
+	ActorIdentity      string `protobuf:"bytes,3,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	IdempotencyKey     string `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	// Required scope: runs:control
+	AuthorityScope AuthorityScope `protobuf:"varint,5,opt,name=authority_scope,json=authorityScope,proto3,enum=agentpaas.control.v1.AuthorityScope" json:"authority_scope,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *DeactivateDeploymentRequest) Reset() {
+	*x = DeactivateDeploymentRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[88]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeactivateDeploymentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeactivateDeploymentRequest) ProtoMessage() {}
+
+func (x *DeactivateDeploymentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[88]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeactivateDeploymentRequest.ProtoReflect.Descriptor instead.
+func (*DeactivateDeploymentRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{88}
+}
+
+func (x *DeactivateDeploymentRequest) GetDeploymentId() string {
+	if x != nil {
+		return x.DeploymentId
+	}
+	return ""
+}
+
+func (x *DeactivateDeploymentRequest) GetPreserveActiveRuns() bool {
+	if x != nil {
+		return x.PreserveActiveRuns
+	}
+	return false
+}
+
+func (x *DeactivateDeploymentRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+func (x *DeactivateDeploymentRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *DeactivateDeploymentRequest) GetAuthorityScope() AuthorityScope {
+	if x != nil {
+		return x.AuthorityScope
+	}
+	return AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED
+}
+
+type DeactivateDeploymentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deployment    *DeploymentRecord      `protobuf:"bytes,1,opt,name=deployment,proto3" json:"deployment,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeactivateDeploymentResponse) Reset() {
+	*x = DeactivateDeploymentResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[89]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeactivateDeploymentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeactivateDeploymentResponse) ProtoMessage() {}
+
+func (x *DeactivateDeploymentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[89]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeactivateDeploymentResponse.ProtoReflect.Descriptor instead.
+func (*DeactivateDeploymentResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{89}
+}
+
+func (x *DeactivateDeploymentResponse) GetDeployment() *DeploymentRecord {
+	if x != nil {
+		return x.Deployment
+	}
+	return nil
+}
+
+func (x *DeactivateDeploymentResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type CreateDeploymentAliasRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Alias              string                 `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	TargetDeploymentId string                 `protobuf:"bytes,2,opt,name=target_deployment_id,json=targetDeploymentId,proto3" json:"target_deployment_id,omitempty"`
+	ActorIdentity      string                 `protobuf:"bytes,3,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	IdempotencyKey     string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	AuthorityScope     AuthorityScope         `protobuf:"varint,5,opt,name=authority_scope,json=authorityScope,proto3,enum=agentpaas.control.v1.AuthorityScope" json:"authority_scope,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *CreateDeploymentAliasRequest) Reset() {
+	*x = CreateDeploymentAliasRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[90]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateDeploymentAliasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateDeploymentAliasRequest) ProtoMessage() {}
+
+func (x *CreateDeploymentAliasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[90]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateDeploymentAliasRequest.ProtoReflect.Descriptor instead.
+func (*CreateDeploymentAliasRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{90}
+}
+
+func (x *CreateDeploymentAliasRequest) GetAlias() string {
+	if x != nil {
+		return x.Alias
+	}
+	return ""
+}
+
+func (x *CreateDeploymentAliasRequest) GetTargetDeploymentId() string {
+	if x != nil {
+		return x.TargetDeploymentId
+	}
+	return ""
+}
+
+func (x *CreateDeploymentAliasRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+func (x *CreateDeploymentAliasRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CreateDeploymentAliasRequest) GetAuthorityScope() AuthorityScope {
+	if x != nil {
+		return x.AuthorityScope
+	}
+	return AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED
+}
+
+type DeploymentAliasRecord struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion      string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	Alias              string                 `protobuf:"bytes,2,opt,name=alias,proto3" json:"alias,omitempty"`
+	TargetDeploymentId string                 `protobuf:"bytes,3,opt,name=target_deployment_id,json=targetDeploymentId,proto3" json:"target_deployment_id,omitempty"`
+	TargetVersion      string                 `protobuf:"bytes,4,opt,name=target_version,json=targetVersion,proto3" json:"target_version,omitempty"`
+	Generation         int64                  `protobuf:"varint,5,opt,name=generation,proto3" json:"generation,omitempty"`
+	UpdatedAt          *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	UpdatedBy          string                 `protobuf:"bytes,7,opt,name=updated_by,json=updatedBy,proto3" json:"updated_by,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *DeploymentAliasRecord) Reset() {
+	*x = DeploymentAliasRecord{}
+	mi := &file_control_v1_control_proto_msgTypes[91]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeploymentAliasRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeploymentAliasRecord) ProtoMessage() {}
+
+func (x *DeploymentAliasRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[91]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeploymentAliasRecord.ProtoReflect.Descriptor instead.
+func (*DeploymentAliasRecord) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{91}
+}
+
+func (x *DeploymentAliasRecord) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *DeploymentAliasRecord) GetAlias() string {
+	if x != nil {
+		return x.Alias
+	}
+	return ""
+}
+
+func (x *DeploymentAliasRecord) GetTargetDeploymentId() string {
+	if x != nil {
+		return x.TargetDeploymentId
+	}
+	return ""
+}
+
+func (x *DeploymentAliasRecord) GetTargetVersion() string {
+	if x != nil {
+		return x.TargetVersion
+	}
+	return ""
+}
+
+func (x *DeploymentAliasRecord) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *DeploymentAliasRecord) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *DeploymentAliasRecord) GetUpdatedBy() string {
+	if x != nil {
+		return x.UpdatedBy
+	}
+	return ""
+}
+
+type CreateDeploymentAliasResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Alias         *DeploymentAliasRecord `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateDeploymentAliasResponse) Reset() {
+	*x = CreateDeploymentAliasResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[92]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateDeploymentAliasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateDeploymentAliasResponse) ProtoMessage() {}
+
+func (x *CreateDeploymentAliasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[92]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateDeploymentAliasResponse.ProtoReflect.Descriptor instead.
+func (*CreateDeploymentAliasResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{92}
+}
+
+func (x *CreateDeploymentAliasResponse) GetAlias() *DeploymentAliasRecord {
+	if x != nil {
+		return x.Alias
+	}
+	return nil
+}
+
+func (x *CreateDeploymentAliasResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type GetDeploymentAliasRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Alias         string                 `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDeploymentAliasRequest) Reset() {
+	*x = GetDeploymentAliasRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[93]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDeploymentAliasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDeploymentAliasRequest) ProtoMessage() {}
+
+func (x *GetDeploymentAliasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[93]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDeploymentAliasRequest.ProtoReflect.Descriptor instead.
+func (*GetDeploymentAliasRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{93}
+}
+
+func (x *GetDeploymentAliasRequest) GetAlias() string {
+	if x != nil {
+		return x.Alias
+	}
+	return ""
+}
+
+type GetDeploymentAliasResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Alias         *DeploymentAliasRecord `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDeploymentAliasResponse) Reset() {
+	*x = GetDeploymentAliasResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[94]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDeploymentAliasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDeploymentAliasResponse) ProtoMessage() {}
+
+func (x *GetDeploymentAliasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[94]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDeploymentAliasResponse.ProtoReflect.Descriptor instead.
+func (*GetDeploymentAliasResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{94}
+}
+
+func (x *GetDeploymentAliasResponse) GetAlias() *DeploymentAliasRecord {
+	if x != nil {
+		return x.Alias
+	}
+	return nil
+}
+
+func (x *GetDeploymentAliasResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type ListDeploymentAliasesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeploymentAliasesRequest) Reset() {
+	*x = ListDeploymentAliasesRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[95]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeploymentAliasesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeploymentAliasesRequest) ProtoMessage() {}
+
+func (x *ListDeploymentAliasesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[95]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeploymentAliasesRequest.ProtoReflect.Descriptor instead.
+func (*ListDeploymentAliasesRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{95}
+}
+
+func (x *ListDeploymentAliasesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListDeploymentAliasesRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+type ListDeploymentAliasesResponse struct {
+	state         protoimpl.MessageState   `protogen:"open.v1"`
+	Aliases       []*DeploymentAliasRecord `protobuf:"bytes,1,rep,name=aliases,proto3" json:"aliases,omitempty"`
+	NextPageToken string                   `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	Error         *TypedControlError       `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDeploymentAliasesResponse) Reset() {
+	*x = ListDeploymentAliasesResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[96]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDeploymentAliasesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDeploymentAliasesResponse) ProtoMessage() {}
+
+func (x *ListDeploymentAliasesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[96]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDeploymentAliasesResponse.ProtoReflect.Descriptor instead.
+func (*ListDeploymentAliasesResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{96}
+}
+
+func (x *ListDeploymentAliasesResponse) GetAliases() []*DeploymentAliasRecord {
+	if x != nil {
+		return x.Aliases
+	}
+	return nil
+}
+
+func (x *ListDeploymentAliasesResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+func (x *ListDeploymentAliasesResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// Compare-and-swap deployment alias (generation-checked).
+type CasDeploymentAliasRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Alias              string                 `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	TargetDeploymentId string                 `protobuf:"bytes,2,opt,name=target_deployment_id,json=targetDeploymentId,proto3" json:"target_deployment_id,omitempty"`
+	ExpectedGeneration int64                  `protobuf:"varint,3,opt,name=expected_generation,json=expectedGeneration,proto3" json:"expected_generation,omitempty"`
+	ActorIdentity      string                 `protobuf:"bytes,4,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	IdempotencyKey     string                 `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	AuthorityScope     AuthorityScope         `protobuf:"varint,6,opt,name=authority_scope,json=authorityScope,proto3,enum=agentpaas.control.v1.AuthorityScope" json:"authority_scope,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *CasDeploymentAliasRequest) Reset() {
+	*x = CasDeploymentAliasRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[97]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CasDeploymentAliasRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CasDeploymentAliasRequest) ProtoMessage() {}
+
+func (x *CasDeploymentAliasRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[97]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CasDeploymentAliasRequest.ProtoReflect.Descriptor instead.
+func (*CasDeploymentAliasRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{97}
+}
+
+func (x *CasDeploymentAliasRequest) GetAlias() string {
+	if x != nil {
+		return x.Alias
+	}
+	return ""
+}
+
+func (x *CasDeploymentAliasRequest) GetTargetDeploymentId() string {
+	if x != nil {
+		return x.TargetDeploymentId
+	}
+	return ""
+}
+
+func (x *CasDeploymentAliasRequest) GetExpectedGeneration() int64 {
+	if x != nil {
+		return x.ExpectedGeneration
+	}
+	return 0
+}
+
+func (x *CasDeploymentAliasRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+func (x *CasDeploymentAliasRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CasDeploymentAliasRequest) GetAuthorityScope() AuthorityScope {
+	if x != nil {
+		return x.AuthorityScope
+	}
+	return AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED
+}
+
+type CasDeploymentAliasResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Alias         *DeploymentAliasRecord `protobuf:"bytes,1,opt,name=alias,proto3" json:"alias,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CasDeploymentAliasResponse) Reset() {
+	*x = CasDeploymentAliasResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[98]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CasDeploymentAliasResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CasDeploymentAliasResponse) ProtoMessage() {}
+
+func (x *CasDeploymentAliasResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[98]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CasDeploymentAliasResponse.ProtoReflect.Descriptor instead.
+func (*CasDeploymentAliasResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{98}
+}
+
+func (x *CasDeploymentAliasResponse) GetAlias() *DeploymentAliasRecord {
+	if x != nil {
+		return x.Alias
+	}
+	return nil
+}
+
+func (x *CasDeploymentAliasResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type InvokeDeploymentRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Alias or exact deployment reference.
+	DeploymentRef string `protobuf:"bytes,1,opt,name=deployment_ref,json=deploymentRef,proto3" json:"deployment_ref,omitempty"`
+	// Bounded input JSON.
+	InputJson []byte `protobuf:"bytes,2,opt,name=input_json,json=inputJson,proto3" json:"input_json,omitempty"`
+	// Initial ceilings: duration ms are checked int64; spend is decimal string.
+	InitialMaxActiveDurationMs int64  `protobuf:"varint,3,opt,name=initial_max_active_duration_ms,json=initialMaxActiveDurationMs,proto3" json:"initial_max_active_duration_ms,omitempty"`
+	InitialAttemptLeaseMs      int64  `protobuf:"varint,4,opt,name=initial_attempt_lease_ms,json=initialAttemptLeaseMs,proto3" json:"initial_attempt_lease_ms,omitempty"`
+	InitialMaxCostUsdDecimal   string `protobuf:"bytes,5,opt,name=initial_max_cost_usd_decimal,json=initialMaxCostUsdDecimal,proto3" json:"initial_max_cost_usd_decimal,omitempty"`
+	// Required for exactly-once admission semantics.
+	IdempotencyKey string `protobuf:"bytes,6,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	CallerIdentity string `protobuf:"bytes,7,opt,name=caller_identity,json=callerIdentity,proto3" json:"caller_identity,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *InvokeDeploymentRequest) Reset() {
+	*x = InvokeDeploymentRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[99]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvokeDeploymentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvokeDeploymentRequest) ProtoMessage() {}
+
+func (x *InvokeDeploymentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[99]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvokeDeploymentRequest.ProtoReflect.Descriptor instead.
+func (*InvokeDeploymentRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{99}
+}
+
+func (x *InvokeDeploymentRequest) GetDeploymentRef() string {
+	if x != nil {
+		return x.DeploymentRef
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentRequest) GetInputJson() []byte {
+	if x != nil {
+		return x.InputJson
+	}
+	return nil
+}
+
+func (x *InvokeDeploymentRequest) GetInitialMaxActiveDurationMs() int64 {
+	if x != nil {
+		return x.InitialMaxActiveDurationMs
+	}
+	return 0
+}
+
+func (x *InvokeDeploymentRequest) GetInitialAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.InitialAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *InvokeDeploymentRequest) GetInitialMaxCostUsdDecimal() string {
+	if x != nil {
+		return x.InitialMaxCostUsdDecimal
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentRequest) GetCallerIdentity() string {
+	if x != nil {
+		return x.CallerIdentity
+	}
+	return ""
+}
+
+// AbsoluteCeilingsSnapshot carries original/current/consumed/reserved values
+// with authority generation. Duration uses int64 ms; spend uses decimal strings.
+type AbsoluteCeilingsSnapshot struct {
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	OriginalMaxActiveDurationMs int64                  `protobuf:"varint,1,opt,name=original_max_active_duration_ms,json=originalMaxActiveDurationMs,proto3" json:"original_max_active_duration_ms,omitempty"`
+	CurrentMaxActiveDurationMs  int64                  `protobuf:"varint,2,opt,name=current_max_active_duration_ms,json=currentMaxActiveDurationMs,proto3" json:"current_max_active_duration_ms,omitempty"`
+	ConsumedActiveDurationMs    int64                  `protobuf:"varint,3,opt,name=consumed_active_duration_ms,json=consumedActiveDurationMs,proto3" json:"consumed_active_duration_ms,omitempty"`
+	ReservedActiveDurationMs    int64                  `protobuf:"varint,4,opt,name=reserved_active_duration_ms,json=reservedActiveDurationMs,proto3" json:"reserved_active_duration_ms,omitempty"`
+	OriginalAttemptLeaseMs      int64                  `protobuf:"varint,5,opt,name=original_attempt_lease_ms,json=originalAttemptLeaseMs,proto3" json:"original_attempt_lease_ms,omitempty"`
+	CurrentAttemptLeaseMs       int64                  `protobuf:"varint,6,opt,name=current_attempt_lease_ms,json=currentAttemptLeaseMs,proto3" json:"current_attempt_lease_ms,omitempty"`
+	OriginalMaxLlmSpendDecimal  string                 `protobuf:"bytes,7,opt,name=original_max_llm_spend_decimal,json=originalMaxLlmSpendDecimal,proto3" json:"original_max_llm_spend_decimal,omitempty"`
+	CurrentMaxLlmSpendDecimal   string                 `protobuf:"bytes,8,opt,name=current_max_llm_spend_decimal,json=currentMaxLlmSpendDecimal,proto3" json:"current_max_llm_spend_decimal,omitempty"`
+	ConsumedLlmSpendDecimal     string                 `protobuf:"bytes,9,opt,name=consumed_llm_spend_decimal,json=consumedLlmSpendDecimal,proto3" json:"consumed_llm_spend_decimal,omitempty"`
+	ReservedLlmSpendDecimal     string                 `protobuf:"bytes,10,opt,name=reserved_llm_spend_decimal,json=reservedLlmSpendDecimal,proto3" json:"reserved_llm_spend_decimal,omitempty"`
+	AuthorityGeneration         int64                  `protobuf:"varint,11,opt,name=authority_generation,json=authorityGeneration,proto3" json:"authority_generation,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
+}
+
+func (x *AbsoluteCeilingsSnapshot) Reset() {
+	*x = AbsoluteCeilingsSnapshot{}
+	mi := &file_control_v1_control_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AbsoluteCeilingsSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AbsoluteCeilingsSnapshot) ProtoMessage() {}
+
+func (x *AbsoluteCeilingsSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AbsoluteCeilingsSnapshot.ProtoReflect.Descriptor instead.
+func (*AbsoluteCeilingsSnapshot) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{100}
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetOriginalMaxActiveDurationMs() int64 {
+	if x != nil {
+		return x.OriginalMaxActiveDurationMs
+	}
+	return 0
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetCurrentMaxActiveDurationMs() int64 {
+	if x != nil {
+		return x.CurrentMaxActiveDurationMs
+	}
+	return 0
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetConsumedActiveDurationMs() int64 {
+	if x != nil {
+		return x.ConsumedActiveDurationMs
+	}
+	return 0
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetReservedActiveDurationMs() int64 {
+	if x != nil {
+		return x.ReservedActiveDurationMs
+	}
+	return 0
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetOriginalAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.OriginalAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetCurrentAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.CurrentAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetOriginalMaxLlmSpendDecimal() string {
+	if x != nil {
+		return x.OriginalMaxLlmSpendDecimal
+	}
+	return ""
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetCurrentMaxLlmSpendDecimal() string {
+	if x != nil {
+		return x.CurrentMaxLlmSpendDecimal
+	}
+	return ""
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetConsumedLlmSpendDecimal() string {
+	if x != nil {
+		return x.ConsumedLlmSpendDecimal
+	}
+	return ""
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetReservedLlmSpendDecimal() string {
+	if x != nil {
+		return x.ReservedLlmSpendDecimal
+	}
+	return ""
+}
+
+func (x *AbsoluteCeilingsSnapshot) GetAuthorityGeneration() int64 {
+	if x != nil {
+		return x.AuthorityGeneration
+	}
+	return 0
+}
+
+type InvokeDeploymentResponse struct {
+	state                     protoimpl.MessageState    `protogen:"open.v1"`
+	Outcome                   AdmissionOutcomeCode      `protobuf:"varint,1,opt,name=outcome,proto3,enum=agentpaas.control.v1.AdmissionOutcomeCode" json:"outcome,omitempty"`
+	OutcomeName               string                    `protobuf:"bytes,2,opt,name=outcome_name,json=outcomeName,proto3" json:"outcome_name,omitempty"`
+	InvocationId              string                    `protobuf:"bytes,3,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	WorkflowId                string                    `protobuf:"bytes,4,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	RunId                     string                    `protobuf:"bytes,5,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	RequestedDeploymentRef    string                    `protobuf:"bytes,6,opt,name=requested_deployment_ref,json=requestedDeploymentRef,proto3" json:"requested_deployment_ref,omitempty"`
+	ResolvedDeploymentId      string                    `protobuf:"bytes,7,opt,name=resolved_deployment_id,json=resolvedDeploymentId,proto3" json:"resolved_deployment_id,omitempty"`
+	ResolvedDeploymentVersion string                    `protobuf:"bytes,8,opt,name=resolved_deployment_version,json=resolvedDeploymentVersion,proto3" json:"resolved_deployment_version,omitempty"`
+	Ceilings                  *AbsoluteCeilingsSnapshot `protobuf:"bytes,9,opt,name=ceilings,proto3" json:"ceilings,omitempty"`
+	Error                     *TypedControlError        `protobuf:"bytes,10,opt,name=error,proto3" json:"error,omitempty"`
+	AdmittedAt                *timestamppb.Timestamp    `protobuf:"bytes,11,opt,name=admitted_at,json=admittedAt,proto3" json:"admitted_at,omitempty"`
+	unknownFields             protoimpl.UnknownFields
+	sizeCache                 protoimpl.SizeCache
+}
+
+func (x *InvokeDeploymentResponse) Reset() {
+	*x = InvokeDeploymentResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[101]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvokeDeploymentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvokeDeploymentResponse) ProtoMessage() {}
+
+func (x *InvokeDeploymentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[101]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvokeDeploymentResponse.ProtoReflect.Descriptor instead.
+func (*InvokeDeploymentResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{101}
+}
+
+func (x *InvokeDeploymentResponse) GetOutcome() AdmissionOutcomeCode {
+	if x != nil {
+		return x.Outcome
+	}
+	return AdmissionOutcomeCode_ADMISSION_OUTCOME_UNSPECIFIED
+}
+
+func (x *InvokeDeploymentResponse) GetOutcomeName() string {
+	if x != nil {
+		return x.OutcomeName
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentResponse) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentResponse) GetRequestedDeploymentRef() string {
+	if x != nil {
+		return x.RequestedDeploymentRef
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentResponse) GetResolvedDeploymentId() string {
+	if x != nil {
+		return x.ResolvedDeploymentId
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentResponse) GetResolvedDeploymentVersion() string {
+	if x != nil {
+		return x.ResolvedDeploymentVersion
+	}
+	return ""
+}
+
+func (x *InvokeDeploymentResponse) GetCeilings() *AbsoluteCeilingsSnapshot {
+	if x != nil {
+		return x.Ceilings
+	}
+	return nil
+}
+
+func (x *InvokeDeploymentResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+func (x *InvokeDeploymentResponse) GetAdmittedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AdmittedAt
+	}
+	return nil
+}
+
+type CreateWorkflowRequest struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowKind        string                 `protobuf:"bytes,1,opt,name=workflow_kind,json=workflowKind,proto3" json:"workflow_kind,omitempty"` // standalone, pipeline, parent_child
+	DeploymentRef       string                 `protobuf:"bytes,2,opt,name=deployment_ref,json=deploymentRef,proto3" json:"deployment_ref,omitempty"`
+	InputJson           []byte                 `protobuf:"bytes,3,opt,name=input_json,json=inputJson,proto3" json:"input_json,omitempty"`
+	IdempotencyKey      string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	CallerIdentity      string                 `protobuf:"bytes,5,opt,name=caller_identity,json=callerIdentity,proto3" json:"caller_identity,omitempty"`
+	MaxActiveDurationMs int64                  `protobuf:"varint,6,opt,name=max_active_duration_ms,json=maxActiveDurationMs,proto3" json:"max_active_duration_ms,omitempty"`
+	MaxAttemptLeaseMs   int64                  `protobuf:"varint,7,opt,name=max_attempt_lease_ms,json=maxAttemptLeaseMs,proto3" json:"max_attempt_lease_ms,omitempty"`
+	MaxLlmSpendDecimal  string                 `protobuf:"bytes,8,opt,name=max_llm_spend_decimal,json=maxLlmSpendDecimal,proto3" json:"max_llm_spend_decimal,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *CreateWorkflowRequest) Reset() {
+	*x = CreateWorkflowRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateWorkflowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateWorkflowRequest) ProtoMessage() {}
+
+func (x *CreateWorkflowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateWorkflowRequest.ProtoReflect.Descriptor instead.
+func (*CreateWorkflowRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{102}
+}
+
+func (x *CreateWorkflowRequest) GetWorkflowKind() string {
+	if x != nil {
+		return x.WorkflowKind
+	}
+	return ""
+}
+
+func (x *CreateWorkflowRequest) GetDeploymentRef() string {
+	if x != nil {
+		return x.DeploymentRef
+	}
+	return ""
+}
+
+func (x *CreateWorkflowRequest) GetInputJson() []byte {
+	if x != nil {
+		return x.InputJson
+	}
+	return nil
+}
+
+func (x *CreateWorkflowRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CreateWorkflowRequest) GetCallerIdentity() string {
+	if x != nil {
+		return x.CallerIdentity
+	}
+	return ""
+}
+
+func (x *CreateWorkflowRequest) GetMaxActiveDurationMs() int64 {
+	if x != nil {
+		return x.MaxActiveDurationMs
+	}
+	return 0
+}
+
+func (x *CreateWorkflowRequest) GetMaxAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.MaxAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *CreateWorkflowRequest) GetMaxLlmSpendDecimal() string {
+	if x != nil {
+		return x.MaxLlmSpendDecimal
+	}
+	return ""
+}
+
+type WorkflowRecord struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion       string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	WorkflowId          string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	WorkflowKind        string                 `protobuf:"bytes,3,opt,name=workflow_kind,json=workflowKind,proto3" json:"workflow_kind,omitempty"`
+	InvocationId        string                 `protobuf:"bytes,4,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	DeploymentId        string                 `protobuf:"bytes,5,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
+	Status              string                 `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
+	Generation          int64                  `protobuf:"varint,7,opt,name=generation,proto3" json:"generation,omitempty"`
+	PolicyDigest        string                 `protobuf:"bytes,8,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
+	MaxActiveDurationMs int64                  `protobuf:"varint,9,opt,name=max_active_duration_ms,json=maxActiveDurationMs,proto3" json:"max_active_duration_ms,omitempty"`
+	MaxAttemptLeaseMs   int64                  `protobuf:"varint,10,opt,name=max_attempt_lease_ms,json=maxAttemptLeaseMs,proto3" json:"max_attempt_lease_ms,omitempty"`
+	MaxLlmSpendDecimal  string                 `protobuf:"bytes,11,opt,name=max_llm_spend_decimal,json=maxLlmSpendDecimal,proto3" json:"max_llm_spend_decimal,omitempty"`
+	AuthorityGeneration int64                  `protobuf:"varint,12,opt,name=authority_generation,json=authorityGeneration,proto3" json:"authority_generation,omitempty"`
+	CreatedAt           *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt           *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	TerminatedAt        *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=terminated_at,json=terminatedAt,proto3" json:"terminated_at,omitempty"`
+	TerminalReason      string                 `protobuf:"bytes,16,opt,name=terminal_reason,json=terminalReason,proto3" json:"terminal_reason,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *WorkflowRecord) Reset() {
+	*x = WorkflowRecord{}
+	mi := &file_control_v1_control_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkflowRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkflowRecord) ProtoMessage() {}
+
+func (x *WorkflowRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkflowRecord.ProtoReflect.Descriptor instead.
+func (*WorkflowRecord) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{103}
+}
+
+func (x *WorkflowRecord) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetWorkflowKind() string {
+	if x != nil {
+		return x.WorkflowKind
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetDeploymentId() string {
+	if x != nil {
+		return x.DeploymentId
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *WorkflowRecord) GetPolicyDigest() string {
+	if x != nil {
+		return x.PolicyDigest
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetMaxActiveDurationMs() int64 {
+	if x != nil {
+		return x.MaxActiveDurationMs
+	}
+	return 0
+}
+
+func (x *WorkflowRecord) GetMaxAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.MaxAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *WorkflowRecord) GetMaxLlmSpendDecimal() string {
+	if x != nil {
+		return x.MaxLlmSpendDecimal
+	}
+	return ""
+}
+
+func (x *WorkflowRecord) GetAuthorityGeneration() int64 {
+	if x != nil {
+		return x.AuthorityGeneration
+	}
+	return 0
+}
+
+func (x *WorkflowRecord) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *WorkflowRecord) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *WorkflowRecord) GetTerminatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.TerminatedAt
+	}
+	return nil
+}
+
+func (x *WorkflowRecord) GetTerminalReason() string {
+	if x != nil {
+		return x.TerminalReason
+	}
+	return ""
+}
+
+type CreateWorkflowResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Workflow      *WorkflowRecord        `protobuf:"bytes,1,opt,name=workflow,proto3" json:"workflow,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateWorkflowResponse) Reset() {
+	*x = CreateWorkflowResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[104]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateWorkflowResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateWorkflowResponse) ProtoMessage() {}
+
+func (x *CreateWorkflowResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[104]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateWorkflowResponse.ProtoReflect.Descriptor instead.
+func (*CreateWorkflowResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{104}
+}
+
+func (x *CreateWorkflowResponse) GetWorkflow() *WorkflowRecord {
+	if x != nil {
+		return x.Workflow
+	}
+	return nil
+}
+
+func (x *CreateWorkflowResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type GetWorkflowRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkflowRequest) Reset() {
+	*x = GetWorkflowRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[105]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkflowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkflowRequest) ProtoMessage() {}
+
+func (x *GetWorkflowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[105]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkflowRequest.ProtoReflect.Descriptor instead.
+func (*GetWorkflowRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{105}
+}
+
+func (x *GetWorkflowRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+type GetWorkflowResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Workflow      *WorkflowRecord        `protobuf:"bytes,1,opt,name=workflow,proto3" json:"workflow,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkflowResponse) Reset() {
+	*x = GetWorkflowResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[106]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkflowResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkflowResponse) ProtoMessage() {}
+
+func (x *GetWorkflowResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[106]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkflowResponse.ProtoReflect.Descriptor instead.
+func (*GetWorkflowResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{106}
+}
+
+func (x *GetWorkflowResponse) GetWorkflow() *WorkflowRecord {
+	if x != nil {
+		return x.Workflow
+	}
+	return nil
+}
+
+func (x *GetWorkflowResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type CancelWorkflowRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId         string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Reason             string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	ActorIdentity      string                 `protobuf:"bytes,3,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	IdempotencyKey     string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	ExpectedGeneration int64                  `protobuf:"varint,5,opt,name=expected_generation,json=expectedGeneration,proto3" json:"expected_generation,omitempty"`
+	AuthorityScope     AuthorityScope         `protobuf:"varint,6,opt,name=authority_scope,json=authorityScope,proto3,enum=agentpaas.control.v1.AuthorityScope" json:"authority_scope,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *CancelWorkflowRequest) Reset() {
+	*x = CancelWorkflowRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[107]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelWorkflowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelWorkflowRequest) ProtoMessage() {}
+
+func (x *CancelWorkflowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[107]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelWorkflowRequest.ProtoReflect.Descriptor instead.
+func (*CancelWorkflowRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{107}
+}
+
+func (x *CancelWorkflowRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *CancelWorkflowRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *CancelWorkflowRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+func (x *CancelWorkflowRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CancelWorkflowRequest) GetExpectedGeneration() int64 {
+	if x != nil {
+		return x.ExpectedGeneration
+	}
+	return 0
+}
+
+func (x *CancelWorkflowRequest) GetAuthorityScope() AuthorityScope {
+	if x != nil {
+		return x.AuthorityScope
+	}
+	return AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED
+}
+
+type CancelWorkflowResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Workflow      *WorkflowRecord        `protobuf:"bytes,1,opt,name=workflow,proto3" json:"workflow,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CancelWorkflowResponse) Reset() {
+	*x = CancelWorkflowResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[108]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CancelWorkflowResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CancelWorkflowResponse) ProtoMessage() {}
+
+func (x *CancelWorkflowResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[108]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CancelWorkflowResponse.ProtoReflect.Descriptor instead.
+func (*CancelWorkflowResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{108}
+}
+
+func (x *CancelWorkflowResponse) GetWorkflow() *WorkflowRecord {
+	if x != nil {
+		return x.Workflow
+	}
+	return nil
+}
+
+func (x *CancelWorkflowResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// Pause/resume workflow desired state (operator control; requires runs:control).
+type SetWorkflowDesiredStateRequest struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId         string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	DesiredCommand     ControlCommand         `protobuf:"varint,2,opt,name=desired_command,json=desiredCommand,proto3,enum=agentpaas.control.v1.ControlCommand" json:"desired_command,omitempty"`
+	ExpectedGeneration int64                  `protobuf:"varint,3,opt,name=expected_generation,json=expectedGeneration,proto3" json:"expected_generation,omitempty"`
+	ActorIdentity      string                 `protobuf:"bytes,4,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	IdempotencyKey     string                 `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	AuthorityScope     AuthorityScope         `protobuf:"varint,6,opt,name=authority_scope,json=authorityScope,proto3,enum=agentpaas.control.v1.AuthorityScope" json:"authority_scope,omitempty"`
+	// For restart: source exact deployment or explicitly requested current alias.
+	TargetDeploymentRef string `protobuf:"bytes,7,opt,name=target_deployment_ref,json=targetDeploymentRef,proto3" json:"target_deployment_ref,omitempty"`
+	RecoveryAction      string `protobuf:"bytes,8,opt,name=recovery_action,json=recoveryAction,proto3" json:"recovery_action,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *SetWorkflowDesiredStateRequest) Reset() {
+	*x = SetWorkflowDesiredStateRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[109]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetWorkflowDesiredStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetWorkflowDesiredStateRequest) ProtoMessage() {}
+
+func (x *SetWorkflowDesiredStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[109]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetWorkflowDesiredStateRequest.ProtoReflect.Descriptor instead.
+func (*SetWorkflowDesiredStateRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{109}
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetDesiredCommand() ControlCommand {
+	if x != nil {
+		return x.DesiredCommand
+	}
+	return ControlCommand_CONTROL_COMMAND_UNSPECIFIED
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetExpectedGeneration() int64 {
+	if x != nil {
+		return x.ExpectedGeneration
+	}
+	return 0
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetAuthorityScope() AuthorityScope {
+	if x != nil {
+		return x.AuthorityScope
+	}
+	return AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetTargetDeploymentRef() string {
+	if x != nil {
+		return x.TargetDeploymentRef
+	}
+	return ""
+}
+
+func (x *SetWorkflowDesiredStateRequest) GetRecoveryAction() string {
+	if x != nil {
+		return x.RecoveryAction
+	}
+	return ""
+}
+
+type SetWorkflowDesiredStateResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	ControlRequestId string                 `protobuf:"bytes,1,opt,name=control_request_id,json=controlRequestId,proto3" json:"control_request_id,omitempty"`
+	WorkflowId       string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	DesiredCommand   ControlCommand         `protobuf:"varint,3,opt,name=desired_command,json=desiredCommand,proto3,enum=agentpaas.control.v1.ControlCommand" json:"desired_command,omitempty"`
+	Generation       int64                  `protobuf:"varint,4,opt,name=generation,proto3" json:"generation,omitempty"`
+	Error            *TypedControlError     `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *SetWorkflowDesiredStateResponse) Reset() {
+	*x = SetWorkflowDesiredStateResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[110]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetWorkflowDesiredStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetWorkflowDesiredStateResponse) ProtoMessage() {}
+
+func (x *SetWorkflowDesiredStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[110]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetWorkflowDesiredStateResponse.ProtoReflect.Descriptor instead.
+func (*SetWorkflowDesiredStateResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{110}
+}
+
+func (x *SetWorkflowDesiredStateResponse) GetControlRequestId() string {
+	if x != nil {
+		return x.ControlRequestId
+	}
+	return ""
+}
+
+func (x *SetWorkflowDesiredStateResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *SetWorkflowDesiredStateResponse) GetDesiredCommand() ControlCommand {
+	if x != nil {
+		return x.DesiredCommand
+	}
+	return ControlCommand_CONTROL_COMMAND_UNSPECIFIED
+}
+
+func (x *SetWorkflowDesiredStateResponse) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *SetWorkflowDesiredStateResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// Restart as a new invocation from source exact deployment/input or alias.
+type RestartWorkflowRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	SourceWorkflowId string                 `protobuf:"bytes,1,opt,name=source_workflow_id,json=sourceWorkflowId,proto3" json:"source_workflow_id,omitempty"`
+	// Empty = source exact deployment; set to alias name for current alias restart.
+	TargetDeploymentRef string         `protobuf:"bytes,2,opt,name=target_deployment_ref,json=targetDeploymentRef,proto3" json:"target_deployment_ref,omitempty"`
+	ActorIdentity       string         `protobuf:"bytes,3,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	IdempotencyKey      string         `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	AuthorityScope      AuthorityScope `protobuf:"varint,5,opt,name=authority_scope,json=authorityScope,proto3,enum=agentpaas.control.v1.AuthorityScope" json:"authority_scope,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *RestartWorkflowRequest) Reset() {
+	*x = RestartWorkflowRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[111]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartWorkflowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartWorkflowRequest) ProtoMessage() {}
+
+func (x *RestartWorkflowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[111]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartWorkflowRequest.ProtoReflect.Descriptor instead.
+func (*RestartWorkflowRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{111}
+}
+
+func (x *RestartWorkflowRequest) GetSourceWorkflowId() string {
+	if x != nil {
+		return x.SourceWorkflowId
+	}
+	return ""
+}
+
+func (x *RestartWorkflowRequest) GetTargetDeploymentRef() string {
+	if x != nil {
+		return x.TargetDeploymentRef
+	}
+	return ""
+}
+
+func (x *RestartWorkflowRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+func (x *RestartWorkflowRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *RestartWorkflowRequest) GetAuthorityScope() AuthorityScope {
+	if x != nil {
+		return x.AuthorityScope
+	}
+	return AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED
+}
+
+type RestartWorkflowResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	NewInvocationId  string                 `protobuf:"bytes,1,opt,name=new_invocation_id,json=newInvocationId,proto3" json:"new_invocation_id,omitempty"`
+	NewWorkflowId    string                 `protobuf:"bytes,2,opt,name=new_workflow_id,json=newWorkflowId,proto3" json:"new_workflow_id,omitempty"`
+	NewRunId         string                 `protobuf:"bytes,3,opt,name=new_run_id,json=newRunId,proto3" json:"new_run_id,omitempty"`
+	SourceWorkflowId string                 `protobuf:"bytes,4,opt,name=source_workflow_id,json=sourceWorkflowId,proto3" json:"source_workflow_id,omitempty"`
+	SourceRunId      string                 `protobuf:"bytes,5,opt,name=source_run_id,json=sourceRunId,proto3" json:"source_run_id,omitempty"`
+	Error            *TypedControlError     `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *RestartWorkflowResponse) Reset() {
+	*x = RestartWorkflowResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[112]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestartWorkflowResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestartWorkflowResponse) ProtoMessage() {}
+
+func (x *RestartWorkflowResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[112]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestartWorkflowResponse.ProtoReflect.Descriptor instead.
+func (*RestartWorkflowResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{112}
+}
+
+func (x *RestartWorkflowResponse) GetNewInvocationId() string {
+	if x != nil {
+		return x.NewInvocationId
+	}
+	return ""
+}
+
+func (x *RestartWorkflowResponse) GetNewWorkflowId() string {
+	if x != nil {
+		return x.NewWorkflowId
+	}
+	return ""
+}
+
+func (x *RestartWorkflowResponse) GetNewRunId() string {
+	if x != nil {
+		return x.NewRunId
+	}
+	return ""
+}
+
+func (x *RestartWorkflowResponse) GetSourceWorkflowId() string {
+	if x != nil {
+		return x.SourceWorkflowId
+	}
+	return ""
+}
+
+func (x *RestartWorkflowResponse) GetSourceRunId() string {
+	if x != nil {
+		return x.SourceRunId
+	}
+	return ""
+}
+
+func (x *RestartWorkflowResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+// Amend absolute active-time/current-attempt/spend ceilings.
+// Requires runs:amend_limits (never exposed to ordinary trigger credentials).
+type AmendLimitsRequest struct {
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId                  string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	ExpectedAuthorityGeneration int64                  `protobuf:"varint,2,opt,name=expected_authority_generation,json=expectedAuthorityGeneration,proto3" json:"expected_authority_generation,omitempty"`
+	// Absolute, increase-only values (zero = unchanged). int64 ms / decimal spend.
+	NewMaxActiveDurationMs   int64          `protobuf:"varint,3,opt,name=new_max_active_duration_ms,json=newMaxActiveDurationMs,proto3" json:"new_max_active_duration_ms,omitempty"`
+	NewCurrentAttemptLeaseMs int64          `protobuf:"varint,4,opt,name=new_current_attempt_lease_ms,json=newCurrentAttemptLeaseMs,proto3" json:"new_current_attempt_lease_ms,omitempty"`
+	NewMaxLlmSpendDecimal    string         `protobuf:"bytes,5,opt,name=new_max_llm_spend_decimal,json=newMaxLlmSpendDecimal,proto3" json:"new_max_llm_spend_decimal,omitempty"`
+	Reason                   string         `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	IdempotencyKey           string         `protobuf:"bytes,7,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	ActorIdentity            string         `protobuf:"bytes,8,opt,name=actor_identity,json=actorIdentity,proto3" json:"actor_identity,omitempty"`
+	AuthorityScope           AuthorityScope `protobuf:"varint,9,opt,name=authority_scope,json=authorityScope,proto3,enum=agentpaas.control.v1.AuthorityScope" json:"authority_scope,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *AmendLimitsRequest) Reset() {
+	*x = AmendLimitsRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[113]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AmendLimitsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AmendLimitsRequest) ProtoMessage() {}
+
+func (x *AmendLimitsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[113]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AmendLimitsRequest.ProtoReflect.Descriptor instead.
+func (*AmendLimitsRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{113}
+}
+
+func (x *AmendLimitsRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *AmendLimitsRequest) GetExpectedAuthorityGeneration() int64 {
+	if x != nil {
+		return x.ExpectedAuthorityGeneration
+	}
+	return 0
+}
+
+func (x *AmendLimitsRequest) GetNewMaxActiveDurationMs() int64 {
+	if x != nil {
+		return x.NewMaxActiveDurationMs
+	}
+	return 0
+}
+
+func (x *AmendLimitsRequest) GetNewCurrentAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.NewCurrentAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *AmendLimitsRequest) GetNewMaxLlmSpendDecimal() string {
+	if x != nil {
+		return x.NewMaxLlmSpendDecimal
+	}
+	return ""
+}
+
+func (x *AmendLimitsRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *AmendLimitsRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *AmendLimitsRequest) GetActorIdentity() string {
+	if x != nil {
+		return x.ActorIdentity
+	}
+	return ""
+}
+
+func (x *AmendLimitsRequest) GetAuthorityScope() AuthorityScope {
+	if x != nil {
+		return x.AuthorityScope
+	}
+	return AuthorityScope_AUTHORITY_SCOPE_UNSPECIFIED
+}
+
+type AmendLimitsResponse struct {
+	state                  protoimpl.MessageState    `protogen:"open.v1"`
+	AmendmentId            string                    `protobuf:"bytes,1,opt,name=amendment_id,json=amendmentId,proto3" json:"amendment_id,omitempty"`
+	WorkflowId             string                    `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Ceilings               *AbsoluteCeilingsSnapshot `protobuf:"bytes,3,opt,name=ceilings,proto3" json:"ceilings,omitempty"`
+	NewAuthorityGeneration int64                     `protobuf:"varint,4,opt,name=new_authority_generation,json=newAuthorityGeneration,proto3" json:"new_authority_generation,omitempty"`
+	Error                  *TypedControlError        `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields          protoimpl.UnknownFields
+	sizeCache              protoimpl.SizeCache
+}
+
+func (x *AmendLimitsResponse) Reset() {
+	*x = AmendLimitsResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[114]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AmendLimitsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AmendLimitsResponse) ProtoMessage() {}
+
+func (x *AmendLimitsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[114]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AmendLimitsResponse.ProtoReflect.Descriptor instead.
+func (*AmendLimitsResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{114}
+}
+
+func (x *AmendLimitsResponse) GetAmendmentId() string {
+	if x != nil {
+		return x.AmendmentId
+	}
+	return ""
+}
+
+func (x *AmendLimitsResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *AmendLimitsResponse) GetCeilings() *AbsoluteCeilingsSnapshot {
+	if x != nil {
+		return x.Ceilings
+	}
+	return nil
+}
+
+func (x *AmendLimitsResponse) GetNewAuthorityGeneration() int64 {
+	if x != nil {
+		return x.NewAuthorityGeneration
+	}
+	return 0
+}
+
+func (x *AmendLimitsResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type WorkflowNodeStatus struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion     string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	NodeId            string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	WorkflowId        string                 `protobuf:"bytes,3,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Status            string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	RunId             string                 `protobuf:"bytes,5,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	StageOrder        int32                  `protobuf:"varint,6,opt,name=stage_order,json=stageOrder,proto3" json:"stage_order,omitempty"`
+	PackageName       string                 `protobuf:"bytes,7,opt,name=package_name,json=packageName,proto3" json:"package_name,omitempty"`
+	PackageVersion    string                 `protobuf:"bytes,8,opt,name=package_version,json=packageVersion,proto3" json:"package_version,omitempty"`
+	IncomingHandoffId string                 `protobuf:"bytes,9,opt,name=incoming_handoff_id,json=incomingHandoffId,proto3" json:"incoming_handoff_id,omitempty"`
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *WorkflowNodeStatus) Reset() {
+	*x = WorkflowNodeStatus{}
+	mi := &file_control_v1_control_proto_msgTypes[115]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkflowNodeStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkflowNodeStatus) ProtoMessage() {}
+
+func (x *WorkflowNodeStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[115]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkflowNodeStatus.ProtoReflect.Descriptor instead.
+func (*WorkflowNodeStatus) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{115}
+}
+
+func (x *WorkflowNodeStatus) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetNodeId() string {
+	if x != nil {
+		return x.NodeId
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetStageOrder() int32 {
+	if x != nil {
+		return x.StageOrder
+	}
+	return 0
+}
+
+func (x *WorkflowNodeStatus) GetPackageName() string {
+	if x != nil {
+		return x.PackageName
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetPackageVersion() string {
+	if x != nil {
+		return x.PackageVersion
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetIncomingHandoffId() string {
+	if x != nil {
+		return x.IncomingHandoffId
+	}
+	return ""
+}
+
+func (x *WorkflowNodeStatus) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *WorkflowNodeStatus) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ServiceBindingStatus struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion  string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	ServiceId      string                 `protobuf:"bytes,2,opt,name=service_id,json=serviceId,proto3" json:"service_id,omitempty"`
+	WorkflowId     string                 `protobuf:"bytes,3,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Status         string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	PackageName    string                 `protobuf:"bytes,5,opt,name=package_name,json=packageName,proto3" json:"package_name,omitempty"`
+	PackageVersion string                 `protobuf:"bytes,6,opt,name=package_version,json=packageVersion,proto3" json:"package_version,omitempty"`
+	ServiceName    string                 `protobuf:"bytes,7,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt      *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Readiness summary.
+	Ready         bool   `protobuf:"varint,10,opt,name=ready,proto3" json:"ready,omitempty"`
+	LastError     string `protobuf:"bytes,11,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceBindingStatus) Reset() {
+	*x = ServiceBindingStatus{}
+	mi := &file_control_v1_control_proto_msgTypes[116]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceBindingStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceBindingStatus) ProtoMessage() {}
+
+func (x *ServiceBindingStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[116]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceBindingStatus.ProtoReflect.Descriptor instead.
+func (*ServiceBindingStatus) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{116}
+}
+
+func (x *ServiceBindingStatus) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ServiceBindingStatus) GetServiceId() string {
+	if x != nil {
+		return x.ServiceId
+	}
+	return ""
+}
+
+func (x *ServiceBindingStatus) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *ServiceBindingStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ServiceBindingStatus) GetPackageName() string {
+	if x != nil {
+		return x.PackageName
+	}
+	return ""
+}
+
+func (x *ServiceBindingStatus) GetPackageVersion() string {
+	if x != nil {
+		return x.PackageVersion
+	}
+	return ""
+}
+
+func (x *ServiceBindingStatus) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+func (x *ServiceBindingStatus) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ServiceBindingStatus) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *ServiceBindingStatus) GetReady() bool {
+	if x != nil {
+		return x.Ready
+	}
+	return false
+}
+
+func (x *ServiceBindingStatus) GetLastError() string {
+	if x != nil {
+		return x.LastError
+	}
+	return ""
+}
+
+type HandoffMetadata struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	HandoffId     string                 `protobuf:"bytes,2,opt,name=handoff_id,json=handoffId,proto3" json:"handoff_id,omitempty"`
+	WorkflowId    string                 `protobuf:"bytes,3,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	SourceNodeId  string                 `protobuf:"bytes,4,opt,name=source_node_id,json=sourceNodeId,proto3" json:"source_node_id,omitempty"`
+	TargetNodeId  string                 `protobuf:"bytes,5,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"`
+	ContextDigest string                 `protobuf:"bytes,6,opt,name=context_digest,json=contextDigest,proto3" json:"context_digest,omitempty"`
+	ArtifactIds   []string               `protobuf:"bytes,7,rep,name=artifact_ids,json=artifactIds,proto3" json:"artifact_ids,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HandoffMetadata) Reset() {
+	*x = HandoffMetadata{}
+	mi := &file_control_v1_control_proto_msgTypes[117]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HandoffMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HandoffMetadata) ProtoMessage() {}
+
+func (x *HandoffMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[117]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HandoffMetadata.ProtoReflect.Descriptor instead.
+func (*HandoffMetadata) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{117}
+}
+
+func (x *HandoffMetadata) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *HandoffMetadata) GetHandoffId() string {
+	if x != nil {
+		return x.HandoffId
+	}
+	return ""
+}
+
+func (x *HandoffMetadata) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *HandoffMetadata) GetSourceNodeId() string {
+	if x != nil {
+		return x.SourceNodeId
+	}
+	return ""
+}
+
+func (x *HandoffMetadata) GetTargetNodeId() string {
+	if x != nil {
+		return x.TargetNodeId
+	}
+	return ""
+}
+
+func (x *HandoffMetadata) GetContextDigest() string {
+	if x != nil {
+		return x.ContextDigest
+	}
+	return ""
+}
+
+func (x *HandoffMetadata) GetArtifactIds() []string {
+	if x != nil {
+		return x.ArtifactIds
+	}
+	return nil
+}
+
+func (x *HandoffMetadata) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+type ChildBatchStatus struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion    string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	BatchId          string                 `protobuf:"bytes,2,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
+	ParentWorkflowId string                 `protobuf:"bytes,3,opt,name=parent_workflow_id,json=parentWorkflowId,proto3" json:"parent_workflow_id,omitempty"`
+	ParentRunId      string                 `protobuf:"bytes,4,opt,name=parent_run_id,json=parentRunId,proto3" json:"parent_run_id,omitempty"`
+	Status           string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	ChildCount       int32                  `protobuf:"varint,6,opt,name=child_count,json=childCount,proto3" json:"child_count,omitempty"`
+	CompletedCount   int32                  `protobuf:"varint,7,opt,name=completed_count,json=completedCount,proto3" json:"completed_count,omitempty"`
+	FailedCount      int32                  `protobuf:"varint,8,opt,name=failed_count,json=failedCount,proto3" json:"failed_count,omitempty"`
+	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ChildBatchStatus) Reset() {
+	*x = ChildBatchStatus{}
+	mi := &file_control_v1_control_proto_msgTypes[118]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChildBatchStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChildBatchStatus) ProtoMessage() {}
+
+func (x *ChildBatchStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[118]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChildBatchStatus.ProtoReflect.Descriptor instead.
+func (*ChildBatchStatus) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{118}
+}
+
+func (x *ChildBatchStatus) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ChildBatchStatus) GetBatchId() string {
+	if x != nil {
+		return x.BatchId
+	}
+	return ""
+}
+
+func (x *ChildBatchStatus) GetParentWorkflowId() string {
+	if x != nil {
+		return x.ParentWorkflowId
+	}
+	return ""
+}
+
+func (x *ChildBatchStatus) GetParentRunId() string {
+	if x != nil {
+		return x.ParentRunId
+	}
+	return ""
+}
+
+func (x *ChildBatchStatus) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ChildBatchStatus) GetChildCount() int32 {
+	if x != nil {
+		return x.ChildCount
+	}
+	return 0
+}
+
+func (x *ChildBatchStatus) GetCompletedCount() int32 {
+	if x != nil {
+		return x.CompletedCount
+	}
+	return 0
+}
+
+func (x *ChildBatchStatus) GetFailedCount() int32 {
+	if x != nil {
+		return x.FailedCount
+	}
+	return 0
+}
+
+func (x *ChildBatchStatus) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ChildBatchStatus) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+type ChildResult struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion   string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	ChildRunId      string                 `protobuf:"bytes,2,opt,name=child_run_id,json=childRunId,proto3" json:"child_run_id,omitempty"`
+	ChildWorkflowId string                 `protobuf:"bytes,3,opt,name=child_workflow_id,json=childWorkflowId,proto3" json:"child_workflow_id,omitempty"`
+	BatchId         string                 `protobuf:"bytes,4,opt,name=batch_id,json=batchId,proto3" json:"batch_id,omitempty"`
+	Status          string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	TerminalReason  string                 `protobuf:"bytes,6,opt,name=terminal_reason,json=terminalReason,proto3" json:"terminal_reason,omitempty"`
+	OutputDigest    string                 `protobuf:"bytes,7,opt,name=output_digest,json=outputDigest,proto3" json:"output_digest,omitempty"`
+	FinishedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ChildResult) Reset() {
+	*x = ChildResult{}
+	mi := &file_control_v1_control_proto_msgTypes[119]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChildResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChildResult) ProtoMessage() {}
+
+func (x *ChildResult) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[119]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChildResult.ProtoReflect.Descriptor instead.
+func (*ChildResult) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{119}
+}
+
+func (x *ChildResult) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *ChildResult) GetChildRunId() string {
+	if x != nil {
+		return x.ChildRunId
+	}
+	return ""
+}
+
+func (x *ChildResult) GetChildWorkflowId() string {
+	if x != nil {
+		return x.ChildWorkflowId
+	}
+	return ""
+}
+
+func (x *ChildResult) GetBatchId() string {
+	if x != nil {
+		return x.BatchId
+	}
+	return ""
+}
+
+func (x *ChildResult) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ChildResult) GetTerminalReason() string {
+	if x != nil {
+		return x.TerminalReason
+	}
+	return ""
+}
+
+func (x *ChildResult) GetOutputDigest() string {
+	if x != nil {
+		return x.OutputDigest
+	}
+	return ""
+}
+
+func (x *ChildResult) GetFinishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FinishedAt
+	}
+	return nil
+}
+
+type GetWorkflowGraphRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkflowId    string                 `protobuf:"bytes,1,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkflowGraphRequest) Reset() {
+	*x = GetWorkflowGraphRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[120]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkflowGraphRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkflowGraphRequest) ProtoMessage() {}
+
+func (x *GetWorkflowGraphRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[120]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkflowGraphRequest.ProtoReflect.Descriptor instead.
+func (*GetWorkflowGraphRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{120}
+}
+
+func (x *GetWorkflowGraphRequest) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+type GetWorkflowGraphResponse struct {
+	state         protoimpl.MessageState  `protogen:"open.v1"`
+	Workflow      *WorkflowRecord         `protobuf:"bytes,1,opt,name=workflow,proto3" json:"workflow,omitempty"`
+	Nodes         []*WorkflowNodeStatus   `protobuf:"bytes,2,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	Services      []*ServiceBindingStatus `protobuf:"bytes,3,rep,name=services,proto3" json:"services,omitempty"`
+	Handoffs      []*HandoffMetadata      `protobuf:"bytes,4,rep,name=handoffs,proto3" json:"handoffs,omitempty"`
+	ChildBatches  []*ChildBatchStatus     `protobuf:"bytes,5,rep,name=child_batches,json=childBatches,proto3" json:"child_batches,omitempty"`
+	ChildResults  []*ChildResult          `protobuf:"bytes,6,rep,name=child_results,json=childResults,proto3" json:"child_results,omitempty"`
+	Error         *TypedControlError      `protobuf:"bytes,7,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkflowGraphResponse) Reset() {
+	*x = GetWorkflowGraphResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[121]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkflowGraphResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkflowGraphResponse) ProtoMessage() {}
+
+func (x *GetWorkflowGraphResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[121]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkflowGraphResponse.ProtoReflect.Descriptor instead.
+func (*GetWorkflowGraphResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{121}
+}
+
+func (x *GetWorkflowGraphResponse) GetWorkflow() *WorkflowRecord {
+	if x != nil {
+		return x.Workflow
+	}
+	return nil
+}
+
+func (x *GetWorkflowGraphResponse) GetNodes() []*WorkflowNodeStatus {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
+func (x *GetWorkflowGraphResponse) GetServices() []*ServiceBindingStatus {
+	if x != nil {
+		return x.Services
+	}
+	return nil
+}
+
+func (x *GetWorkflowGraphResponse) GetHandoffs() []*HandoffMetadata {
+	if x != nil {
+		return x.Handoffs
+	}
+	return nil
+}
+
+func (x *GetWorkflowGraphResponse) GetChildBatches() []*ChildBatchStatus {
+	if x != nil {
+		return x.ChildBatches
+	}
+	return nil
+}
+
+func (x *GetWorkflowGraphResponse) GetChildResults() []*ChildResult {
+	if x != nil {
+		return x.ChildResults
+	}
+	return nil
+}
+
+func (x *GetWorkflowGraphResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
 var File_control_v1_control_proto protoreflect.FileDescriptor
 
 const file_control_v1_control_proto_rawDesc = "" +
@@ -4525,23 +9774,37 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\vtotal_bytes\x18\x04 \x01(\x03R\n" +
 	"totalBytes\x12\x1f\n" +
 	"\voutput_path\x18\x05 \x01(\tR\n" +
-	"outputPath\"\xb5\x01\n" +
+	"outputPath\"\x93\x03\n" +
 	"\n" +
 	"RunRequest\x12\x1d\n" +
 	"\n" +
 	"agent_name\x18\x01 \x01(\tR\tagentName\x12#\n" +
 	"\ragent_version\x18\x02 \x01(\tR\fagentVersion\x12'\n" +
 	"\x0ftrigger_payload\x18\x03 \x01(\fR\x0etriggerPayload\x12:\n" +
-	"\x06budget\x18\x04 \x01(\v2\".agentpaas.control.v1.BudgetConfigR\x06budget\"\xa1\x01\n" +
+	"\x06budget\x18\x04 \x01(\v2\".agentpaas.control.v1.BudgetConfigR\x06budget\x12&\n" +
+	"\x0fcontinue_run_id\x18\x05 \x01(\tR\rcontinueRunId\x12'\n" +
+	"\x0frecovery_action\x18\x06 \x01(\tR\x0erecoveryAction\x12;\n" +
+	"\x1arequested_attempt_lease_ms\x18\a \x01(\x03R\x17requestedAttemptLeaseMs\x12'\n" +
+	"\x0fidempotency_key\x18\b \x01(\tR\x0eidempotencyKey\x12%\n" +
+	"\x0edeployment_ref\x18\t \x01(\tR\rdeploymentRef\"\xa1\x01\n" +
 	"\fBudgetConfig\x12\x1d\n" +
 	"\n" +
 	"max_tokens\x18\x01 \x01(\x03R\tmaxTokens\x12 \n" +
 	"\fmax_cost_usd\x18\x02 \x01(\x01R\n" +
 	"maxCostUsd\x12)\n" +
 	"\x11max_wall_clock_ms\x18\x03 \x01(\x03R\x0emaxWallClockMs\x12%\n" +
-	"\x0emax_iterations\x18\x04 \x01(\x05R\rmaxIterations\"$\n" +
+	"\x0emax_iterations\x18\x04 \x01(\x05R\rmaxIterations\"\xd1\x02\n" +
 	"\vRunResponse\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\tR\x05runId\"R\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
+	"\rinvocation_id\x18\x02 \x01(\tR\finvocationId\x12\x1f\n" +
+	"\vworkflow_id\x18\x03 \x01(\tR\n" +
+	"workflowId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x04 \x01(\tR\tattemptId\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x128\n" +
+	"\x18requested_deployment_ref\x18\x06 \x01(\tR\x16requestedDeploymentRef\x124\n" +
+	"\x16resolved_deployment_id\x18\a \x01(\tR\x14resolvedDeploymentId\x12>\n" +
+	"\x1bresolved_deployment_version\x18\b \x01(\tR\x19resolvedDeploymentVersion\"R\n" +
 	"\vStopRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12\x14\n" +
@@ -4695,7 +9958,7 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\ttimestamp\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1d\n" +
 	"\n" +
-	"event_type\x18\x03 \x01(\tR\teventType\"\xbd\x04\n" +
+	"event_type\x18\x03 \x01(\tR\teventType\"\x89\x05\n" +
 	"\x14SummarizeRunResponse\x12\x18\n" +
 	"\asummary\x18\x01 \x01(\tR\asummary\x12=\n" +
 	"\n" +
@@ -4715,9 +9978,10 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\vinvocations\x18\x10 \x01(\x05R\vinvocations\x12%\n" +
 	"\x0epolicy_denials\x18\x11 \x01(\x05R\rpolicyDenials\x12%\n" +
 	"\x0eerror_category\x18\x12 \x01(\tR\rerrorCategory\x12F\n" +
-	"\revidence_refs\x18\x13 \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\".\n" +
+	"\revidence_refs\x18\x13 \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12J\n" +
+	"\x0eattempt_report\x18\x14 \x01(\v2#.agentpaas.control.v1.AttemptReportR\rattemptReport\".\n" +
 	"\x15ExplainFailureRequest\x12\x15\n" +
-	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\x9e\x03\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\xe8\x03\n" +
 	"\x16ExplainFailureResponse\x12\x1d\n" +
 	"\n" +
 	"root_cause\x18\x01 \x01(\tR\trootCause\x121\n" +
@@ -4729,7 +9993,9 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x11redacted_excerpts\x18\f \x03(\v2%.agentpaas.control.v1.RedactedExcerptR\x10redactedExcerpts\x12F\n" +
 	"\revidence_refs\x18\r \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12\x1f\n" +
 	"\vnext_action\x18\x0e \x01(\tR\n" +
-	"nextAction\"b\n" +
+	"nextAction\x12#\n" +
+	"\rlatest_reason\x18\x0f \x01(\tR\flatestReason\x12#\n" +
+	"\rlatest_action\x18\x10 \x01(\tR\flatestAction\"b\n" +
 	"\x1aExplainPolicyDenialRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12-\n" +
 	"\x12denied_destination\x18\x02 \x01(\tR\x11deniedDestination\"\xcc\x03\n" +
@@ -4779,7 +10045,7 @@ const file_control_v1_control_proto_rawDesc = "" +
 	" \x01(\tR\rschemaVersion\x12\x15\n" +
 	"\x06run_id\x18\v \x01(\tR\x05runId\"-\n" +
 	"\x11NextActionRequest\x12\x18\n" +
-	"\acontext\x18\x01 \x01(\tR\acontext\"\x83\x04\n" +
+	"\acontext\x18\x01 \x01(\tR\acontext\"\xa8\x04\n" +
 	"\x12NextActionResponse\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x16\n" +
 	"\x06target\x18\x02 \x01(\tR\x06target\x12L\n" +
@@ -4792,7 +10058,8 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"nextAction\x12\x1c\n" +
 	"\trationale\x18\r \x01(\tR\trationale\x12F\n" +
 	"\revidence_refs\x18\x0e \x03(\v2!.agentpaas.control.v1.EvidenceRefR\fevidenceRefs\x12Q\n" +
-	"\fconfirmation\x18\x0f \x01(\v2-.agentpaas.control.v1.ConfirmationRequirementR\fconfirmation\x1a9\n" +
+	"\fconfirmation\x18\x0f \x01(\v2-.agentpaas.control.v1.ConfirmationRequirementR\fconfirmation\x12#\n" +
+	"\rlatest_reason\x18\x10 \x01(\tR\flatestReason\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbf\x02\n" +
@@ -4827,17 +10094,506 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\vschedule_id\x18\x01 \x01(\tR\n" +
 	"scheduleId\".\n" +
 	"\x12CronRemoveResponse\x12\x18\n" +
-	"\aremoved\x18\x01 \x01(\bR\aremoved\"\x92\x01\n" +
+	"\aremoved\x18\x01 \x01(\bR\aremoved\"\xd8\x01\n" +
 	"\aRunInfo\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1d\n" +
 	"\n" +
 	"agent_name\x18\x02 \x01(\tR\tagentName\x12\x16\n" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x129\n" +
 	"\n" +
-	"started_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\"\x11\n" +
+	"started_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12\x1f\n" +
+	"\vworkflow_id\x18\x05 \x01(\tR\n" +
+	"workflowId\x12#\n" +
+	"\rinvocation_id\x18\x06 \x01(\tR\finvocationId\"\x11\n" +
 	"\x0fListRunsRequest\"E\n" +
 	"\x10ListRunsResponse\x121\n" +
-	"\x04runs\x18\x01 \x03(\v2\x1d.agentpaas.control.v1.RunInfoR\x04runs*w\n" +
+	"\x04runs\x18\x01 \x03(\v2\x1d.agentpaas.control.v1.RunInfoR\x04runs\"\x92\x02\n" +
+	"\x0fProgressSummary\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x122\n" +
+	"\x15model_calls_completed\x18\x02 \x01(\x05R\x13modelCallsCompleted\x120\n" +
+	"\x14tool_calls_completed\x18\x03 \x01(\x05R\x12toolCallsCompleted\x128\n" +
+	"\x18actions_since_checkpoint\x18\x04 \x01(\x05R\x16actionsSinceCheckpoint\x128\n" +
+	"\x18actions_without_progress\x18\x05 \x01(\x05R\x16actionsWithoutProgress\"\x9f\x02\n" +
+	"\x11CheckpointSummary\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12#\n" +
+	"\rcheckpoint_id\x18\x02 \x01(\tR\fcheckpointId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x03 \x01(\tR\tattemptId\x12\x15\n" +
+	"\x06run_id\x18\x04 \x01(\tR\x05runId\x12!\n" +
+	"\faction_count\x18\x05 \x01(\x05R\vactionCount\x12*\n" +
+	"\x11total_model_calls\x18\x06 \x01(\x05R\x0ftotalModelCalls\x129\n" +
+	"\n" +
+	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xb5\x03\n" +
+	"\vArtifactRef\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1f\n" +
+	"\vartifact_id\x18\x02 \x01(\tR\n" +
+	"artifactId\x12\x1f\n" +
+	"\vworkflow_id\x18\x03 \x01(\tR\n" +
+	"workflowId\x12\x17\n" +
+	"\anode_id\x18\x04 \x01(\tR\x06nodeId\x12\x15\n" +
+	"\x06run_id\x18\x05 \x01(\tR\x05runId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x06 \x01(\tR\tattemptId\x12\x1f\n" +
+	"\vlogical_ref\x18\a \x01(\tR\n" +
+	"logicalRef\x12\x16\n" +
+	"\x06digest\x18\b \x01(\tR\x06digest\x12\x1b\n" +
+	"\tbyte_size\x18\t \x01(\x03R\bbyteSize\x12\x1d\n" +
+	"\n" +
+	"media_type\x18\n" +
+	" \x01(\tR\tmediaType\x12\x16\n" +
+	"\x06schema\x18\v \x01(\tR\x06schema\x12&\n" +
+	"\x0eclassification\x18\f \x01(\tR\x0eclassification\x129\n" +
+	"\n" +
+	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xf1\x01\n" +
+	"\x11TimeBudgetSummary\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12.\n" +
+	"\x13attempt_duration_ms\x18\x02 \x01(\x03R\x11attemptDurationMs\x12+\n" +
+	"\x12run_active_time_ms\x18\x03 \x01(\x03R\x0frunActiveTimeMs\x125\n" +
+	"\x17workflow_active_time_ms\x18\x04 \x01(\x03R\x14workflowActiveTimeMs\x12!\n" +
+	"\fremaining_ms\x18\x05 \x01(\x03R\vremainingMs\"\xa9\x02\n" +
+	"\x10LLMBudgetSummary\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12!\n" +
+	"\ftotal_tokens\x18\x02 \x01(\x03R\vtotalTokens\x12!\n" +
+	"\finput_tokens\x18\x03 \x01(\x03R\vinputTokens\x12#\n" +
+	"\routput_tokens\x18\x04 \x01(\x03R\foutputTokens\x12,\n" +
+	"\x12total_cost_decimal\x18\x05 \x01(\tR\x10totalCostDecimal\x124\n" +
+	"\x16remaining_cost_decimal\x18\x06 \x01(\tR\x14remainingCostDecimal\x12\x1f\n" +
+	"\vmodel_calls\x18\a \x01(\x05R\n" +
+	"modelCalls\"\x93\x03\n" +
+	"\rRouteDecision\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\"\n" +
+	"\rmodel_call_id\x18\x02 \x01(\tR\vmodelCallId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x03 \x01(\tR\tattemptId\x12\x15\n" +
+	"\x06run_id\x18\x04 \x01(\tR\x05runId\x12!\n" +
+	"\fcandidate_id\x18\x05 \x01(\tR\vcandidateId\x12\x1a\n" +
+	"\bprovider\x18\x06 \x01(\tR\bprovider\x12\x14\n" +
+	"\x05model\x18\a \x01(\tR\x05model\x12-\n" +
+	"\x12attempted_recovery\x18\b \x01(\bR\x11attemptedRecovery\x12\x1c\n" +
+	"\tsucceeded\x18\t \x01(\bR\tsucceeded\x12%\n" +
+	"\x0efailure_reason\x18\n" +
+	" \x01(\tR\rfailureReason\x128\n" +
+	"\ttimestamp\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xd1\x06\n" +
+	"\rAttemptReport\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x15\n" +
+	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x03 \x01(\tR\tattemptId\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\x12#\n" +
+	"\rfailure_scope\x18\x06 \x01(\tR\ffailureScope\x121\n" +
+	"\x14recovery_disposition\x18\a \x01(\tR\x13recoveryDisposition\x12+\n" +
+	"\x11resume_capability\x18\b \x01(\tR\x10resumeCapability\x12A\n" +
+	"\bprogress\x18\t \x01(\v2%.agentpaas.control.v1.ProgressSummaryR\bprogress\x12G\n" +
+	"\n" +
+	"checkpoint\x18\n" +
+	" \x01(\v2'.agentpaas.control.v1.CheckpointSummaryR\n" +
+	"checkpoint\x12?\n" +
+	"\tartifacts\x18\v \x03(\v2!.agentpaas.control.v1.ArtifactRefR\tartifacts\x12;\n" +
+	"\x04time\x18\f \x01(\v2'.agentpaas.control.v1.TimeBudgetSummaryR\x04time\x12E\n" +
+	"\n" +
+	"llm_budget\x18\r \x01(\v2&.agentpaas.control.v1.LLMBudgetSummaryR\tllmBudget\x12L\n" +
+	"\x0froute_decisions\x18\x0e \x03(\v2#.agentpaas.control.v1.RouteDecisionR\x0erouteDecisions\x12/\n" +
+	"\x13recommended_actions\x18\x0f \x03(\tR\x12recommendedActions\x12#\n" +
+	"\revidence_refs\x18\x10 \x03(\tR\fevidenceRefs\x129\n" +
+	"\n" +
+	"created_at\x18\x11 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xe9\x03\n" +
+	"\x11TypedControlError\x12?\n" +
+	"\x04code\x18\x01 \x01(\x0e2+.agentpaas.control.v1.TypedControlErrorCodeR\x04code\x12\x1b\n" +
+	"\tcode_name\x18\x02 \x01(\tR\bcodeName\x12\x18\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\x12\x15\n" +
+	"\x06run_id\x18\x04 \x01(\tR\x05runId\x12\x1f\n" +
+	"\vworkflow_id\x18\x05 \x01(\tR\n" +
+	"workflowId\x12#\n" +
+	"\rinvocation_id\x18\x06 \x01(\tR\finvocationId\x12#\n" +
+	"\rdeployment_id\x18\a \x01(\tR\fdeploymentId\x12'\n" +
+	"\x0fidempotency_key\x18\b \x01(\tR\x0eidempotencyKey\x12%\n" +
+	"\x0erequired_scope\x18\t \x01(\tR\rrequiredScope\x12N\n" +
+	"\adetails\x18\n" +
+	" \x03(\v24.agentpaas.control.v1.TypedControlError.DetailsEntryR\adetails\x1a:\n" +
+	"\fDetailsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x98\x01\n" +
+	"\x18IdempotentReplayResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12=\n" +
+	"\boriginal\x18\x02 \x01(\v2!.agentpaas.control.v1.RunResponseR\boriginal\"\xb1\x01\n" +
+	"\x16AlreadyRunningResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12&\n" +
+	"\x0fexisting_run_id\x18\x02 \x01(\tR\rexistingRunId\x120\n" +
+	"\x14existing_workflow_id\x18\x03 \x01(\tR\x12existingWorkflowId\"\xf3\x01\n" +
+	"\x1bIdempotencyConflictResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12'\n" +
+	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x124\n" +
+	"\x16original_intent_digest\x18\x03 \x01(\tR\x14originalIntentDigest\x126\n" +
+	"\x17requested_intent_digest\x18\x04 \x01(\tR\x15requestedIntentDigest\"\xad\x01\n" +
+	"\x1aDeploymentInactiveResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12#\n" +
+	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12+\n" +
+	"\x11deployment_status\x18\x03 \x01(\tR\x10deploymentStatus\"\x94\x01\n" +
+	"\x13RunTerminalResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12\x15\n" +
+	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12'\n" +
+	"\x0fterminal_status\x18\x03 \x01(\tR\x0eterminalStatus\"\x8f\x01\n" +
+	"\x1bUnsafePauseBoundaryResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12\x15\n" +
+	"\x06run_id\x18\x02 \x01(\tR\x05runId\x12\x1a\n" +
+	"\bboundary\x18\x03 \x01(\tR\bboundary\"\xd5\x01\n" +
+	"\x1eConcurrencyUnavailableResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12#\n" +
+	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12.\n" +
+	"\x13max_concurrent_runs\x18\x03 \x01(\x05R\x11maxConcurrentRuns\x12\x1f\n" +
+	"\vactive_runs\x18\x04 \x01(\x05R\n" +
+	"activeRuns\"\x9c\x02\n" +
+	"\x1cLimitAmendmentDeniedResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12\x1f\n" +
+	"\vworkflow_id\x18\x02 \x01(\tR\n" +
+	"workflowId\x12B\n" +
+	"\x1dexpected_authority_generation\x18\x03 \x01(\x03R\x1bexpectedAuthorityGeneration\x12@\n" +
+	"\x1ccurrent_authority_generation\x18\x04 \x01(\x03R\x1acurrentAuthorityGeneration\x12\x16\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\"\x9e\x01\n" +
+	"\x19FeatureNotEnabledResponse\x12=\n" +
+	"\x05error\x18\x01 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12\x18\n" +
+	"\afeature\x18\x02 \x01(\tR\afeature\x12(\n" +
+	"\x10enabled_in_block\x18\x03 \x01(\tR\x0eenabledInBlock\"\xa7\x04\n" +
+	"\x17CreateDeploymentRequest\x12!\n" +
+	"\fpackage_name\x18\x01 \x01(\tR\vpackageName\x12'\n" +
+	"\x0fpackage_version\x18\x02 \x01(\tR\x0epackageVersion\x12#\n" +
+	"\rbundle_digest\x18\x03 \x01(\tR\fbundleDigest\x12#\n" +
+	"\rpolicy_digest\x18\x04 \x01(\tR\fpolicyDigest\x12*\n" +
+	"\x11image_lock_digest\x18\x05 \x01(\tR\x0fimageLockDigest\x12+\n" +
+	"\x11provenance_digest\x18\x06 \x01(\tR\x10provenanceDigest\x12.\n" +
+	"\x13max_concurrent_runs\x18\a \x01(\x05R\x11maxConcurrentRuns\x12}\n" +
+	"\x16nested_package_digests\x18\b \x03(\v2G.agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntryR\x14nestedPackageDigests\x12%\n" +
+	"\x0eactor_identity\x18\t \x01(\tR\ractorIdentity\x1aG\n" +
+	"\x19NestedPackageDigestsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd2\x06\n" +
+	"\x10DeploymentRecord\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12#\n" +
+	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12!\n" +
+	"\fpackage_name\x18\x03 \x01(\tR\vpackageName\x12'\n" +
+	"\x0fpackage_version\x18\x04 \x01(\tR\x0epackageVersion\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x05 \x01(\x03R\n" +
+	"generation\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12.\n" +
+	"\x13max_concurrent_runs\x18\a \x01(\x05R\x11maxConcurrentRuns\x12#\n" +
+	"\rbundle_digest\x18\b \x01(\tR\fbundleDigest\x12#\n" +
+	"\rpolicy_digest\x18\t \x01(\tR\fpolicyDigest\x12*\n" +
+	"\x11image_lock_digest\x18\n" +
+	" \x01(\tR\x0fimageLockDigest\x12+\n" +
+	"\x11provenance_digest\x18\v \x01(\tR\x10provenanceDigest\x12v\n" +
+	"\x16nested_package_digests\x18\f \x03(\v2@.agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntryR\x14nestedPackageDigests\x129\n" +
+	"\n" +
+	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12=\n" +
+	"\factivated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\vactivatedAt\x12A\n" +
+	"\x0edeactivated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\rdeactivatedAt\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\x10 \x01(\tR\tcreatedBy\x1aG\n" +
+	"\x19NestedPackageDigestsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa1\x01\n" +
+	"\x18CreateDeploymentResponse\x12F\n" +
+	"\n" +
+	"deployment\x18\x01 \x01(\v2&.agentpaas.control.v1.DeploymentRecordR\n" +
+	"deployment\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\";\n" +
+	"\x14GetDeploymentRequest\x12#\n" +
+	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\"\x9e\x01\n" +
+	"\x15GetDeploymentResponse\x12F\n" +
+	"\n" +
+	"deployment\x18\x01 \x01(\v2&.agentpaas.control.v1.DeploymentRecordR\n" +
+	"deployment\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"w\n" +
+	"\x16ListDeploymentsRequest\x12!\n" +
+	"\fpackage_name\x18\x01 \x01(\tR\vpackageName\x12\x1b\n" +
+	"\tpage_size\x18\x02 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x03 \x01(\tR\tpageToken\"\xca\x01\n" +
+	"\x17ListDeploymentsResponse\x12H\n" +
+	"\vdeployments\x18\x01 \x03(\v2&.agentpaas.control.v1.DeploymentRecordR\vdeployments\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12=\n" +
+	"\x05error\x18\x03 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\x93\x02\n" +
+	"\x1bDeactivateDeploymentRequest\x12#\n" +
+	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentId\x120\n" +
+	"\x14preserve_active_runs\x18\x02 \x01(\bR\x12preserveActiveRuns\x12%\n" +
+	"\x0eactor_identity\x18\x03 \x01(\tR\ractorIdentity\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12M\n" +
+	"\x0fauthority_scope\x18\x05 \x01(\x0e2$.agentpaas.control.v1.AuthorityScopeR\x0eauthorityScope\"\xa5\x01\n" +
+	"\x1cDeactivateDeploymentResponse\x12F\n" +
+	"\n" +
+	"deployment\x18\x01 \x01(\v2&.agentpaas.control.v1.DeploymentRecordR\n" +
+	"deployment\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\x85\x02\n" +
+	"\x1cCreateDeploymentAliasRequest\x12\x14\n" +
+	"\x05alias\x18\x01 \x01(\tR\x05alias\x120\n" +
+	"\x14target_deployment_id\x18\x02 \x01(\tR\x12targetDeploymentId\x12%\n" +
+	"\x0eactor_identity\x18\x03 \x01(\tR\ractorIdentity\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12M\n" +
+	"\x0fauthority_scope\x18\x05 \x01(\x0e2$.agentpaas.control.v1.AuthorityScopeR\x0eauthorityScope\"\xa7\x02\n" +
+	"\x15DeploymentAliasRecord\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x14\n" +
+	"\x05alias\x18\x02 \x01(\tR\x05alias\x120\n" +
+	"\x14target_deployment_id\x18\x03 \x01(\tR\x12targetDeploymentId\x12%\n" +
+	"\x0etarget_version\x18\x04 \x01(\tR\rtargetVersion\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x05 \x01(\x03R\n" +
+	"generation\x129\n" +
+	"\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1d\n" +
+	"\n" +
+	"updated_by\x18\a \x01(\tR\tupdatedBy\"\xa1\x01\n" +
+	"\x1dCreateDeploymentAliasResponse\x12A\n" +
+	"\x05alias\x18\x01 \x01(\v2+.agentpaas.control.v1.DeploymentAliasRecordR\x05alias\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"1\n" +
+	"\x19GetDeploymentAliasRequest\x12\x14\n" +
+	"\x05alias\x18\x01 \x01(\tR\x05alias\"\x9e\x01\n" +
+	"\x1aGetDeploymentAliasResponse\x12A\n" +
+	"\x05alias\x18\x01 \x01(\v2+.agentpaas.control.v1.DeploymentAliasRecordR\x05alias\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"Z\n" +
+	"\x1cListDeploymentAliasesRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\xcd\x01\n" +
+	"\x1dListDeploymentAliasesResponse\x12E\n" +
+	"\aaliases\x18\x01 \x03(\v2+.agentpaas.control.v1.DeploymentAliasRecordR\aaliases\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12=\n" +
+	"\x05error\x18\x03 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\xb3\x02\n" +
+	"\x19CasDeploymentAliasRequest\x12\x14\n" +
+	"\x05alias\x18\x01 \x01(\tR\x05alias\x120\n" +
+	"\x14target_deployment_id\x18\x02 \x01(\tR\x12targetDeploymentId\x12/\n" +
+	"\x13expected_generation\x18\x03 \x01(\x03R\x12expectedGeneration\x12%\n" +
+	"\x0eactor_identity\x18\x04 \x01(\tR\ractorIdentity\x12'\n" +
+	"\x0fidempotency_key\x18\x05 \x01(\tR\x0eidempotencyKey\x12M\n" +
+	"\x0fauthority_scope\x18\x06 \x01(\x0e2$.agentpaas.control.v1.AuthorityScopeR\x0eauthorityScope\"\x9e\x01\n" +
+	"\x1aCasDeploymentAliasResponse\x12A\n" +
+	"\x05alias\x18\x01 \x01(\v2+.agentpaas.control.v1.DeploymentAliasRecordR\x05alias\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\xee\x02\n" +
+	"\x17InvokeDeploymentRequest\x12%\n" +
+	"\x0edeployment_ref\x18\x01 \x01(\tR\rdeploymentRef\x12\x1d\n" +
+	"\n" +
+	"input_json\x18\x02 \x01(\fR\tinputJson\x12B\n" +
+	"\x1einitial_max_active_duration_ms\x18\x03 \x01(\x03R\x1ainitialMaxActiveDurationMs\x127\n" +
+	"\x18initial_attempt_lease_ms\x18\x04 \x01(\x03R\x15initialAttemptLeaseMs\x12>\n" +
+	"\x1cinitial_max_cost_usd_decimal\x18\x05 \x01(\tR\x18initialMaxCostUsdDecimal\x12'\n" +
+	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\x12'\n" +
+	"\x0fcaller_identity\x18\a \x01(\tR\x0ecallerIdentity\"\xc9\x05\n" +
+	"\x18AbsoluteCeilingsSnapshot\x12D\n" +
+	"\x1foriginal_max_active_duration_ms\x18\x01 \x01(\x03R\x1boriginalMaxActiveDurationMs\x12B\n" +
+	"\x1ecurrent_max_active_duration_ms\x18\x02 \x01(\x03R\x1acurrentMaxActiveDurationMs\x12=\n" +
+	"\x1bconsumed_active_duration_ms\x18\x03 \x01(\x03R\x18consumedActiveDurationMs\x12=\n" +
+	"\x1breserved_active_duration_ms\x18\x04 \x01(\x03R\x18reservedActiveDurationMs\x129\n" +
+	"\x19original_attempt_lease_ms\x18\x05 \x01(\x03R\x16originalAttemptLeaseMs\x127\n" +
+	"\x18current_attempt_lease_ms\x18\x06 \x01(\x03R\x15currentAttemptLeaseMs\x12B\n" +
+	"\x1eoriginal_max_llm_spend_decimal\x18\a \x01(\tR\x1aoriginalMaxLlmSpendDecimal\x12@\n" +
+	"\x1dcurrent_max_llm_spend_decimal\x18\b \x01(\tR\x19currentMaxLlmSpendDecimal\x12;\n" +
+	"\x1aconsumed_llm_spend_decimal\x18\t \x01(\tR\x17consumedLlmSpendDecimal\x12;\n" +
+	"\x1areserved_llm_spend_decimal\x18\n" +
+	" \x01(\tR\x17reservedLlmSpendDecimal\x121\n" +
+	"\x14authority_generation\x18\v \x01(\x03R\x13authorityGeneration\"\xd8\x04\n" +
+	"\x18InvokeDeploymentResponse\x12D\n" +
+	"\aoutcome\x18\x01 \x01(\x0e2*.agentpaas.control.v1.AdmissionOutcomeCodeR\aoutcome\x12!\n" +
+	"\foutcome_name\x18\x02 \x01(\tR\voutcomeName\x12#\n" +
+	"\rinvocation_id\x18\x03 \x01(\tR\finvocationId\x12\x1f\n" +
+	"\vworkflow_id\x18\x04 \x01(\tR\n" +
+	"workflowId\x12\x15\n" +
+	"\x06run_id\x18\x05 \x01(\tR\x05runId\x128\n" +
+	"\x18requested_deployment_ref\x18\x06 \x01(\tR\x16requestedDeploymentRef\x124\n" +
+	"\x16resolved_deployment_id\x18\a \x01(\tR\x14resolvedDeploymentId\x12>\n" +
+	"\x1bresolved_deployment_version\x18\b \x01(\tR\x19resolvedDeploymentVersion\x12J\n" +
+	"\bceilings\x18\t \x01(\v2..agentpaas.control.v1.AbsoluteCeilingsSnapshotR\bceilings\x12=\n" +
+	"\x05error\x18\n" +
+	" \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12;\n" +
+	"\vadmitted_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"admittedAt\"\xed\x02\n" +
+	"\x15CreateWorkflowRequest\x12#\n" +
+	"\rworkflow_kind\x18\x01 \x01(\tR\fworkflowKind\x12%\n" +
+	"\x0edeployment_ref\x18\x02 \x01(\tR\rdeploymentRef\x12\x1d\n" +
+	"\n" +
+	"input_json\x18\x03 \x01(\fR\tinputJson\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12'\n" +
+	"\x0fcaller_identity\x18\x05 \x01(\tR\x0ecallerIdentity\x123\n" +
+	"\x16max_active_duration_ms\x18\x06 \x01(\x03R\x13maxActiveDurationMs\x12/\n" +
+	"\x14max_attempt_lease_ms\x18\a \x01(\x03R\x11maxAttemptLeaseMs\x121\n" +
+	"\x15max_llm_spend_decimal\x18\b \x01(\tR\x12maxLlmSpendDecimal\"\xd0\x05\n" +
+	"\x0eWorkflowRecord\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1f\n" +
+	"\vworkflow_id\x18\x02 \x01(\tR\n" +
+	"workflowId\x12#\n" +
+	"\rworkflow_kind\x18\x03 \x01(\tR\fworkflowKind\x12#\n" +
+	"\rinvocation_id\x18\x04 \x01(\tR\finvocationId\x12#\n" +
+	"\rdeployment_id\x18\x05 \x01(\tR\fdeploymentId\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status\x12\x1e\n" +
+	"\n" +
+	"generation\x18\a \x01(\x03R\n" +
+	"generation\x12#\n" +
+	"\rpolicy_digest\x18\b \x01(\tR\fpolicyDigest\x123\n" +
+	"\x16max_active_duration_ms\x18\t \x01(\x03R\x13maxActiveDurationMs\x12/\n" +
+	"\x14max_attempt_lease_ms\x18\n" +
+	" \x01(\x03R\x11maxAttemptLeaseMs\x121\n" +
+	"\x15max_llm_spend_decimal\x18\v \x01(\tR\x12maxLlmSpendDecimal\x121\n" +
+	"\x14authority_generation\x18\f \x01(\x03R\x13authorityGeneration\x129\n" +
+	"\n" +
+	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12?\n" +
+	"\rterminated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\fterminatedAt\x12'\n" +
+	"\x0fterminal_reason\x18\x10 \x01(\tR\x0eterminalReason\"\x99\x01\n" +
+	"\x16CreateWorkflowResponse\x12@\n" +
+	"\bworkflow\x18\x01 \x01(\v2$.agentpaas.control.v1.WorkflowRecordR\bworkflow\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"5\n" +
+	"\x12GetWorkflowRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId\"\x96\x01\n" +
+	"\x13GetWorkflowResponse\x12@\n" +
+	"\bworkflow\x18\x01 \x01(\v2$.agentpaas.control.v1.WorkflowRecordR\bworkflow\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\xa0\x02\n" +
+	"\x15CancelWorkflowRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\x12%\n" +
+	"\x0eactor_identity\x18\x03 \x01(\tR\ractorIdentity\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12/\n" +
+	"\x13expected_generation\x18\x05 \x01(\x03R\x12expectedGeneration\x12M\n" +
+	"\x0fauthority_scope\x18\x06 \x01(\x0e2$.agentpaas.control.v1.AuthorityScopeR\x0eauthorityScope\"\x99\x01\n" +
+	"\x16CancelWorkflowResponse\x12@\n" +
+	"\bworkflow\x18\x01 \x01(\v2$.agentpaas.control.v1.WorkflowRecordR\bworkflow\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\xbd\x03\n" +
+	"\x1eSetWorkflowDesiredStateRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId\x12M\n" +
+	"\x0fdesired_command\x18\x02 \x01(\x0e2$.agentpaas.control.v1.ControlCommandR\x0edesiredCommand\x12/\n" +
+	"\x13expected_generation\x18\x03 \x01(\x03R\x12expectedGeneration\x12%\n" +
+	"\x0eactor_identity\x18\x04 \x01(\tR\ractorIdentity\x12'\n" +
+	"\x0fidempotency_key\x18\x05 \x01(\tR\x0eidempotencyKey\x12M\n" +
+	"\x0fauthority_scope\x18\x06 \x01(\x0e2$.agentpaas.control.v1.AuthorityScopeR\x0eauthorityScope\x122\n" +
+	"\x15target_deployment_ref\x18\a \x01(\tR\x13targetDeploymentRef\x12'\n" +
+	"\x0frecovery_action\x18\b \x01(\tR\x0erecoveryAction\"\x9e\x02\n" +
+	"\x1fSetWorkflowDesiredStateResponse\x12,\n" +
+	"\x12control_request_id\x18\x01 \x01(\tR\x10controlRequestId\x12\x1f\n" +
+	"\vworkflow_id\x18\x02 \x01(\tR\n" +
+	"workflowId\x12M\n" +
+	"\x0fdesired_command\x18\x03 \x01(\x0e2$.agentpaas.control.v1.ControlCommandR\x0edesiredCommand\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x04 \x01(\x03R\n" +
+	"generation\x12=\n" +
+	"\x05error\x18\x05 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\x99\x02\n" +
+	"\x16RestartWorkflowRequest\x12,\n" +
+	"\x12source_workflow_id\x18\x01 \x01(\tR\x10sourceWorkflowId\x122\n" +
+	"\x15target_deployment_ref\x18\x02 \x01(\tR\x13targetDeploymentRef\x12%\n" +
+	"\x0eactor_identity\x18\x03 \x01(\tR\ractorIdentity\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12M\n" +
+	"\x0fauthority_scope\x18\x05 \x01(\x0e2$.agentpaas.control.v1.AuthorityScopeR\x0eauthorityScope\"\x9c\x02\n" +
+	"\x17RestartWorkflowResponse\x12*\n" +
+	"\x11new_invocation_id\x18\x01 \x01(\tR\x0fnewInvocationId\x12&\n" +
+	"\x0fnew_workflow_id\x18\x02 \x01(\tR\rnewWorkflowId\x12\x1c\n" +
+	"\n" +
+	"new_run_id\x18\x03 \x01(\tR\bnewRunId\x12,\n" +
+	"\x12source_workflow_id\x18\x04 \x01(\tR\x10sourceWorkflowId\x12\"\n" +
+	"\rsource_run_id\x18\x05 \x01(\tR\vsourceRunId\x12=\n" +
+	"\x05error\x18\x06 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\xe6\x03\n" +
+	"\x12AmendLimitsRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId\x12B\n" +
+	"\x1dexpected_authority_generation\x18\x02 \x01(\x03R\x1bexpectedAuthorityGeneration\x12:\n" +
+	"\x1anew_max_active_duration_ms\x18\x03 \x01(\x03R\x16newMaxActiveDurationMs\x12>\n" +
+	"\x1cnew_current_attempt_lease_ms\x18\x04 \x01(\x03R\x18newCurrentAttemptLeaseMs\x128\n" +
+	"\x19new_max_llm_spend_decimal\x18\x05 \x01(\tR\x15newMaxLlmSpendDecimal\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason\x12'\n" +
+	"\x0fidempotency_key\x18\a \x01(\tR\x0eidempotencyKey\x12%\n" +
+	"\x0eactor_identity\x18\b \x01(\tR\ractorIdentity\x12M\n" +
+	"\x0fauthority_scope\x18\t \x01(\x0e2$.agentpaas.control.v1.AuthorityScopeR\x0eauthorityScope\"\x9e\x02\n" +
+	"\x13AmendLimitsResponse\x12!\n" +
+	"\famendment_id\x18\x01 \x01(\tR\vamendmentId\x12\x1f\n" +
+	"\vworkflow_id\x18\x02 \x01(\tR\n" +
+	"workflowId\x12J\n" +
+	"\bceilings\x18\x03 \x01(\v2..agentpaas.control.v1.AbsoluteCeilingsSnapshotR\bceilings\x128\n" +
+	"\x18new_authority_generation\x18\x04 \x01(\x03R\x16newAuthorityGeneration\x12=\n" +
+	"\x05error\x18\x05 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\xb7\x03\n" +
+	"\x12WorkflowNodeStatus\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x17\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x1f\n" +
+	"\vworkflow_id\x18\x03 \x01(\tR\n" +
+	"workflowId\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12\x15\n" +
+	"\x06run_id\x18\x05 \x01(\tR\x05runId\x12\x1f\n" +
+	"\vstage_order\x18\x06 \x01(\x05R\n" +
+	"stageOrder\x12!\n" +
+	"\fpackage_name\x18\a \x01(\tR\vpackageName\x12'\n" +
+	"\x0fpackage_version\x18\b \x01(\tR\x0epackageVersion\x12.\n" +
+	"\x13incoming_handoff_id\x18\t \x01(\tR\x11incomingHandoffId\x129\n" +
+	"\n" +
+	"created_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xaf\x03\n" +
+	"\x14ServiceBindingStatus\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1d\n" +
+	"\n" +
+	"service_id\x18\x02 \x01(\tR\tserviceId\x12\x1f\n" +
+	"\vworkflow_id\x18\x03 \x01(\tR\n" +
+	"workflowId\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12!\n" +
+	"\fpackage_name\x18\x05 \x01(\tR\vpackageName\x12'\n" +
+	"\x0fpackage_version\x18\x06 \x01(\tR\x0epackageVersion\x12!\n" +
+	"\fservice_name\x18\a \x01(\tR\vserviceName\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x14\n" +
+	"\x05ready\x18\n" +
+	" \x01(\bR\x05ready\x12\x1d\n" +
+	"\n" +
+	"last_error\x18\v \x01(\tR\tlastError\"\xc9\x02\n" +
+	"\x0fHandoffMetadata\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x1d\n" +
+	"\n" +
+	"handoff_id\x18\x02 \x01(\tR\thandoffId\x12\x1f\n" +
+	"\vworkflow_id\x18\x03 \x01(\tR\n" +
+	"workflowId\x12$\n" +
+	"\x0esource_node_id\x18\x04 \x01(\tR\fsourceNodeId\x12$\n" +
+	"\x0etarget_node_id\x18\x05 \x01(\tR\ftargetNodeId\x12%\n" +
+	"\x0econtext_digest\x18\x06 \x01(\tR\rcontextDigest\x12!\n" +
+	"\fartifact_ids\x18\a \x03(\tR\vartifactIds\x129\n" +
+	"\n" +
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xa1\x03\n" +
+	"\x10ChildBatchStatus\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12\x19\n" +
+	"\bbatch_id\x18\x02 \x01(\tR\abatchId\x12,\n" +
+	"\x12parent_workflow_id\x18\x03 \x01(\tR\x10parentWorkflowId\x12\"\n" +
+	"\rparent_run_id\x18\x04 \x01(\tR\vparentRunId\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1f\n" +
+	"\vchild_count\x18\x06 \x01(\x05R\n" +
+	"childCount\x12'\n" +
+	"\x0fcompleted_count\x18\a \x01(\x05R\x0ecompletedCount\x12!\n" +
+	"\ffailed_count\x18\b \x01(\x05R\vfailedCount\x129\n" +
+	"\n" +
+	"created_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\n" +
+	" \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xc0\x02\n" +
+	"\vChildResult\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12 \n" +
+	"\fchild_run_id\x18\x02 \x01(\tR\n" +
+	"childRunId\x12*\n" +
+	"\x11child_workflow_id\x18\x03 \x01(\tR\x0fchildWorkflowId\x12\x19\n" +
+	"\bbatch_id\x18\x04 \x01(\tR\abatchId\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12'\n" +
+	"\x0fterminal_reason\x18\x06 \x01(\tR\x0eterminalReason\x12#\n" +
+	"\routput_digest\x18\a \x01(\tR\foutputDigest\x12;\n" +
+	"\vfinished_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"finishedAt\":\n" +
+	"\x17GetWorkflowGraphRequest\x12\x1f\n" +
+	"\vworkflow_id\x18\x01 \x01(\tR\n" +
+	"workflowId\"\xfb\x03\n" +
+	"\x18GetWorkflowGraphResponse\x12@\n" +
+	"\bworkflow\x18\x01 \x01(\v2$.agentpaas.control.v1.WorkflowRecordR\bworkflow\x12>\n" +
+	"\x05nodes\x18\x02 \x03(\v2(.agentpaas.control.v1.WorkflowNodeStatusR\x05nodes\x12F\n" +
+	"\bservices\x18\x03 \x03(\v2*.agentpaas.control.v1.ServiceBindingStatusR\bservices\x12A\n" +
+	"\bhandoffs\x18\x04 \x03(\v2%.agentpaas.control.v1.HandoffMetadataR\bhandoffs\x12K\n" +
+	"\rchild_batches\x18\x05 \x03(\v2&.agentpaas.control.v1.ChildBatchStatusR\fchildBatches\x12F\n" +
+	"\rchild_results\x18\x06 \x03(\v2!.agentpaas.control.v1.ChildResultR\fchildResults\x12=\n" +
+	"\x05error\x18\a \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error*w\n" +
 	"\bLogLevel\x12\x19\n" +
 	"\x15LOG_LEVEL_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fLOG_LEVEL_DEBUG\x10\x01\x12\x12\n" +
@@ -4862,7 +10618,42 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x17SECRET_TYPE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fSECRET_TYPE_ENV\x10\x01\x12\x14\n" +
 	"\x10SECRET_TYPE_FILE\x10\x02\x12\x16\n" +
-	"\x12SECRET_TYPE_INLINE\x10\x032\xa0\x19\n" +
+	"\x12SECRET_TYPE_INLINE\x10\x03*\x97\x01\n" +
+	"\x0eAuthorityScope\x12\x1f\n" +
+	"\x1bAUTHORITY_SCOPE_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17AUTHORITY_SCOPE_DEFAULT\x10\x01\x12 \n" +
+	"\x1cAUTHORITY_SCOPE_RUNS_CONTROL\x10\x02\x12%\n" +
+	"!AUTHORITY_SCOPE_RUNS_AMEND_LIMITS\x10\x03*\x80\x02\n" +
+	"\x14AdmissionOutcomeCode\x12!\n" +
+	"\x1dADMISSION_OUTCOME_UNSPECIFIED\x10\x00\x12\x1e\n" +
+	"\x1aADMISSION_OUTCOME_ACCEPTED\x10\x01\x12'\n" +
+	"#ADMISSION_OUTCOME_IDEMPOTENT_REPLAY\x10\x02\x12%\n" +
+	"!ADMISSION_OUTCOME_ALREADY_RUNNING\x10\x03\x12*\n" +
+	"&ADMISSION_OUTCOME_IDEMPOTENCY_CONFLICT\x10\x04\x12)\n" +
+	"%ADMISSION_OUTCOME_DEPLOYMENT_INACTIVE\x10\x05*\xd4\x04\n" +
+	"\x15TypedControlErrorCode\x12#\n" +
+	"\x1fTYPED_CONTROL_ERROR_UNSPECIFIED\x10\x00\x12)\n" +
+	"%TYPED_CONTROL_ERROR_IDEMPOTENT_REPLAY\x10\x01\x12'\n" +
+	"#TYPED_CONTROL_ERROR_ALREADY_RUNNING\x10\x02\x12,\n" +
+	"(TYPED_CONTROL_ERROR_IDEMPOTENCY_CONFLICT\x10\x03\x12+\n" +
+	"'TYPED_CONTROL_ERROR_DEPLOYMENT_INACTIVE\x10\x04\x12$\n" +
+	" TYPED_CONTROL_ERROR_RUN_TERMINAL\x10\x05\x12-\n" +
+	")TYPED_CONTROL_ERROR_UNSAFE_PAUSE_BOUNDARY\x10\x06\x12/\n" +
+	"+TYPED_CONTROL_ERROR_CONCURRENCY_UNAVAILABLE\x10\a\x12.\n" +
+	"*TYPED_CONTROL_ERROR_LIMIT_AMENDMENT_DENIED\x10\b\x12+\n" +
+	"'TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED\x10\t\x12%\n" +
+	"!TYPED_CONTROL_ERROR_MISSING_SCOPE\x10\n" +
+	"\x12(\n" +
+	"$TYPED_CONTROL_ERROR_NUMERIC_OVERFLOW\x10\v\x123\n" +
+	"/TYPED_CONTROL_ERROR_CHANGED_IDEMPOTENCY_PAYLOAD\x10\f*\xe1\x01\n" +
+	"\x0eControlCommand\x12\x1f\n" +
+	"\x1bCONTROL_COMMAND_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16CONTROL_COMMAND_CANCEL\x10\x01\x12\x19\n" +
+	"\x15CONTROL_COMMAND_PAUSE\x10\x02\x12\x1a\n" +
+	"\x16CONTROL_COMMAND_RESUME\x10\x03\x12\x1b\n" +
+	"\x17CONTROL_COMMAND_RESTART\x10\x04\x12\x1c\n" +
+	"\x18CONTROL_COMMAND_CONTINUE\x10\x05\x12 \n" +
+	"\x1cCONTROL_COMMAND_AMEND_LIMITS\x10\x062\xff-\n" +
 	"\x0eControlService\x12j\n" +
 	"\x04Pack\x12!.agentpaas.control.v1.PackRequest\x1a\".agentpaas.control.v1.PackResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/pack\x12\x8f\x01\n" +
 	"\rExportPreview\x12*.agentpaas.control.v1.ExportPreviewRequest\x1a+.agentpaas.control.v1.ExportPreviewResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/control/export:preview\x12r\n" +
@@ -4890,7 +10681,23 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\bCronList\x12%.agentpaas.control.v1.CronListRequest\x1a&.agentpaas.control.v1.CronListResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/control/cron\x12\x87\x01\n" +
 	"\n" +
 	"CronRemove\x12'.agentpaas.control.v1.CronRemoveRequest\x1a(.agentpaas.control.v1.CronRemoveResponse\"&\x82\xd3\xe4\x93\x02 *\x1e/v1/control/cron/{schedule_id}\x12s\n" +
-	"\bListRuns\x12%.agentpaas.control.v1.ListRunsRequest\x1a&.agentpaas.control.v1.ListRunsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/control/runsB\xd6\x01\n" +
+	"\bListRuns\x12%.agentpaas.control.v1.ListRunsRequest\x1a&.agentpaas.control.v1.ListRunsResponse\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/control/runs\x12\x95\x01\n" +
+	"\x10CreateDeployment\x12-.agentpaas.control.v1.CreateDeploymentRequest\x1a..agentpaas.control.v1.CreateDeploymentResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/control/deployments\x12\x99\x01\n" +
+	"\rGetDeployment\x12*.agentpaas.control.v1.GetDeploymentRequest\x1a+.agentpaas.control.v1.GetDeploymentResponse\"/\x82\xd3\xe4\x93\x02)\x12'/v1/control/deployments/{deployment_id}\x12\x8f\x01\n" +
+	"\x0fListDeployments\x12,.agentpaas.control.v1.ListDeploymentsRequest\x1a-.agentpaas.control.v1.ListDeploymentsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/control/deployments\x12\xbc\x01\n" +
+	"\x14DeactivateDeployment\x121.agentpaas.control.v1.DeactivateDeploymentRequest\x1a2.agentpaas.control.v1.DeactivateDeploymentResponse\"=\x82\xd3\xe4\x93\x027:\x01*\"2/v1/control/deployments/{deployment_id}:deactivate\x12\xab\x01\n" +
+	"\x15CreateDeploymentAlias\x122.agentpaas.control.v1.CreateDeploymentAliasRequest\x1a3.agentpaas.control.v1.CreateDeploymentAliasResponse\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/control/deployment-aliases\x12\xa7\x01\n" +
+	"\x12GetDeploymentAlias\x12/.agentpaas.control.v1.GetDeploymentAliasRequest\x1a0.agentpaas.control.v1.GetDeploymentAliasResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/control/deployment-aliases/{alias}\x12\xa8\x01\n" +
+	"\x15ListDeploymentAliases\x122.agentpaas.control.v1.ListDeploymentAliasesRequest\x1a3.agentpaas.control.v1.ListDeploymentAliasesResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/control/deployment-aliases\x12\xae\x01\n" +
+	"\x12CasDeploymentAlias\x12/.agentpaas.control.v1.CasDeploymentAliasRequest\x1a0.agentpaas.control.v1.CasDeploymentAliasResponse\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/control/deployment-aliases/{alias}:cas\x12\x9c\x01\n" +
+	"\x10InvokeDeployment\x12-.agentpaas.control.v1.InvokeDeploymentRequest\x1a..agentpaas.control.v1.InvokeDeploymentResponse\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/control/deployments:invoke\x12\x8d\x01\n" +
+	"\x0eCreateWorkflow\x12+.agentpaas.control.v1.CreateWorkflowRequest\x1a,.agentpaas.control.v1.CreateWorkflowResponse\" \x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/control/workflows\x12\x8f\x01\n" +
+	"\vGetWorkflow\x12(.agentpaas.control.v1.GetWorkflowRequest\x1a).agentpaas.control.v1.GetWorkflowResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/control/workflows/{workflow_id}\x12\xa2\x01\n" +
+	"\x0eCancelWorkflow\x12+.agentpaas.control.v1.CancelWorkflowRequest\x1a,.agentpaas.control.v1.CancelWorkflowResponse\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/control/workflows/{workflow_id}:cancel\x12\xc4\x01\n" +
+	"\x17SetWorkflowDesiredState\x124.agentpaas.control.v1.SetWorkflowDesiredStateRequest\x1a5.agentpaas.control.v1.SetWorkflowDesiredStateResponse\"<\x82\xd3\xe4\x93\x026:\x01*\"1/v1/control/workflows/{workflow_id}:desired-state\x12\xad\x01\n" +
+	"\x0fRestartWorkflow\x12,.agentpaas.control.v1.RestartWorkflowRequest\x1a-.agentpaas.control.v1.RestartWorkflowResponse\"=\x82\xd3\xe4\x93\x027:\x01*\"2/v1/control/workflows/{source_workflow_id}:restart\x12\x9f\x01\n" +
+	"\vAmendLimits\x12(.agentpaas.control.v1.AmendLimitsRequest\x1a).agentpaas.control.v1.AmendLimitsResponse\";\x82\xd3\xe4\x93\x025:\x01*\"0/v1/control/workflows/{workflow_id}:amend-limits\x12\xa4\x01\n" +
+	"\x10GetWorkflowGraph\x12-.agentpaas.control.v1.GetWorkflowGraphRequest\x1a..agentpaas.control.v1.GetWorkflowGraphResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/control/workflows/{workflow_id}/graphB\xd6\x01\n" +
 	"\x18com.agentpaas.control.v1B\fControlProtoP\x01Z:github.com/AgentPaaS-ai/agentpaas/api/control/v1;controlv1\xa2\x02\x03ACX\xaa\x02\x14Agentpaas.Control.V1\xca\x02\x14Agentpaas\\Control\\V1\xe2\x02 Agentpaas\\Control\\V1\\GPBMetadata\xea\x02\x16Agentpaas::Control::V1b\x06proto3"
 
 var (
@@ -4905,174 +10712,357 @@ func file_control_v1_control_proto_rawDescGZIP() []byte {
 	return file_control_v1_control_proto_rawDescData
 }
 
-var file_control_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 66)
+var file_control_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
+var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 127)
 var file_control_v1_control_proto_goTypes = []any{
-	(LogLevel)(0),                        // 0: agentpaas.control.v1.LogLevel
-	(EventType)(0),                       // 1: agentpaas.control.v1.EventType
-	(SecretType)(0),                      // 2: agentpaas.control.v1.SecretType
-	(*PackRequest)(nil),                  // 3: agentpaas.control.v1.PackRequest
-	(*PackResponse)(nil),                 // 4: agentpaas.control.v1.PackResponse
-	(*ExportPreviewRequest)(nil),         // 5: agentpaas.control.v1.ExportPreviewRequest
-	(*ExportFileEntry)(nil),              // 6: agentpaas.control.v1.ExportFileEntry
-	(*ExportPreviewResponse)(nil),        // 7: agentpaas.control.v1.ExportPreviewResponse
-	(*ExportRequest)(nil),                // 8: agentpaas.control.v1.ExportRequest
-	(*ExportResponse)(nil),               // 9: agentpaas.control.v1.ExportResponse
-	(*RunRequest)(nil),                   // 10: agentpaas.control.v1.RunRequest
-	(*BudgetConfig)(nil),                 // 11: agentpaas.control.v1.BudgetConfig
-	(*RunResponse)(nil),                  // 12: agentpaas.control.v1.RunResponse
-	(*StopRequest)(nil),                  // 13: agentpaas.control.v1.StopRequest
-	(*StopResponse)(nil),                 // 14: agentpaas.control.v1.StopResponse
-	(*LogsRequest)(nil),                  // 15: agentpaas.control.v1.LogsRequest
-	(*LogEntry)(nil),                     // 16: agentpaas.control.v1.LogEntry
-	(*PolicyApplyRequest)(nil),           // 17: agentpaas.control.v1.PolicyApplyRequest
-	(*PolicyApplyResponse)(nil),          // 18: agentpaas.control.v1.PolicyApplyResponse
-	(*SecretSetRequest)(nil),             // 19: agentpaas.control.v1.SecretSetRequest
-	(*SecretSetResponse)(nil),            // 20: agentpaas.control.v1.SecretSetResponse
-	(*SecretGrantRequest)(nil),           // 21: agentpaas.control.v1.SecretGrantRequest
-	(*SecretGrantResponse)(nil),          // 22: agentpaas.control.v1.SecretGrantResponse
-	(*SecretRevokeRequest)(nil),          // 23: agentpaas.control.v1.SecretRevokeRequest
-	(*SecretRevokeResponse)(nil),         // 24: agentpaas.control.v1.SecretRevokeResponse
-	(*AuditQueryRequest)(nil),            // 25: agentpaas.control.v1.AuditQueryRequest
-	(*TimeRange)(nil),                    // 26: agentpaas.control.v1.TimeRange
-	(*AuditEntry)(nil),                   // 27: agentpaas.control.v1.AuditEntry
-	(*AuditCheckpointIssue)(nil),         // 28: agentpaas.control.v1.AuditCheckpointIssue
-	(*AuditChainVerification)(nil),       // 29: agentpaas.control.v1.AuditChainVerification
-	(*AuditQueryResponse)(nil),           // 30: agentpaas.control.v1.AuditQueryResponse
-	(*AuditExportRequest)(nil),           // 31: agentpaas.control.v1.AuditExportRequest
-	(*AuditExportResponse)(nil),          // 32: agentpaas.control.v1.AuditExportResponse
-	(*DoctorRequest)(nil),                // 33: agentpaas.control.v1.DoctorRequest
-	(*CheckResult)(nil),                  // 34: agentpaas.control.v1.CheckResult
-	(*DoctorResponse)(nil),               // 35: agentpaas.control.v1.DoctorResponse
-	(*ValidateAgentProjectRequest)(nil),  // 36: agentpaas.control.v1.ValidateAgentProjectRequest
-	(*ProjectValidation)(nil),            // 37: agentpaas.control.v1.ProjectValidation
-	(*ValidateAgentProjectResponse)(nil), // 38: agentpaas.control.v1.ValidateAgentProjectResponse
-	(*OperatorIssue)(nil),                // 39: agentpaas.control.v1.OperatorIssue
-	(*EvidenceRef)(nil),                  // 40: agentpaas.control.v1.EvidenceRef
-	(*RedactedExcerpt)(nil),              // 41: agentpaas.control.v1.RedactedExcerpt
-	(*ConfirmationRequirement)(nil),      // 42: agentpaas.control.v1.ConfirmationRequirement
-	(*SummarizeRunRequest)(nil),          // 43: agentpaas.control.v1.SummarizeRunRequest
-	(*KeyEvent)(nil),                     // 44: agentpaas.control.v1.KeyEvent
-	(*SummarizeRunResponse)(nil),         // 45: agentpaas.control.v1.SummarizeRunResponse
-	(*ExplainFailureRequest)(nil),        // 46: agentpaas.control.v1.ExplainFailureRequest
-	(*ExplainFailureResponse)(nil),       // 47: agentpaas.control.v1.ExplainFailureResponse
-	(*ExplainPolicyDenialRequest)(nil),   // 48: agentpaas.control.v1.ExplainPolicyDenialRequest
-	(*ExplainPolicyDenialResponse)(nil),  // 49: agentpaas.control.v1.ExplainPolicyDenialResponse
-	(*RecommendPolicyPatchRequest)(nil),  // 50: agentpaas.control.v1.RecommendPolicyPatchRequest
-	(*RecommendPolicyPatchResponse)(nil), // 51: agentpaas.control.v1.RecommendPolicyPatchResponse
-	(*GetRunTimelineRequest)(nil),        // 52: agentpaas.control.v1.GetRunTimelineRequest
-	(*TimelineEvent)(nil),                // 53: agentpaas.control.v1.TimelineEvent
-	(*GetRunTimelineResponse)(nil),       // 54: agentpaas.control.v1.GetRunTimelineResponse
-	(*NextActionRequest)(nil),            // 55: agentpaas.control.v1.NextActionRequest
-	(*NextActionResponse)(nil),           // 56: agentpaas.control.v1.NextActionResponse
-	(*CronScheduleInfo)(nil),             // 57: agentpaas.control.v1.CronScheduleInfo
-	(*CronAddRequest)(nil),               // 58: agentpaas.control.v1.CronAddRequest
-	(*CronAddResponse)(nil),              // 59: agentpaas.control.v1.CronAddResponse
-	(*CronListRequest)(nil),              // 60: agentpaas.control.v1.CronListRequest
-	(*CronListResponse)(nil),             // 61: agentpaas.control.v1.CronListResponse
-	(*CronRemoveRequest)(nil),            // 62: agentpaas.control.v1.CronRemoveRequest
-	(*CronRemoveResponse)(nil),           // 63: agentpaas.control.v1.CronRemoveResponse
-	(*RunInfo)(nil),                      // 64: agentpaas.control.v1.RunInfo
-	(*ListRunsRequest)(nil),              // 65: agentpaas.control.v1.ListRunsRequest
-	(*ListRunsResponse)(nil),             // 66: agentpaas.control.v1.ListRunsResponse
-	nil,                                  // 67: agentpaas.control.v1.LogEntry.FieldsEntry
-	nil,                                  // 68: agentpaas.control.v1.NextActionResponse.ParamsEntry
-	(*timestamppb.Timestamp)(nil),        // 69: google.protobuf.Timestamp
+	(LogLevel)(0),                           // 0: agentpaas.control.v1.LogLevel
+	(EventType)(0),                          // 1: agentpaas.control.v1.EventType
+	(SecretType)(0),                         // 2: agentpaas.control.v1.SecretType
+	(AuthorityScope)(0),                     // 3: agentpaas.control.v1.AuthorityScope
+	(AdmissionOutcomeCode)(0),               // 4: agentpaas.control.v1.AdmissionOutcomeCode
+	(TypedControlErrorCode)(0),              // 5: agentpaas.control.v1.TypedControlErrorCode
+	(ControlCommand)(0),                     // 6: agentpaas.control.v1.ControlCommand
+	(*PackRequest)(nil),                     // 7: agentpaas.control.v1.PackRequest
+	(*PackResponse)(nil),                    // 8: agentpaas.control.v1.PackResponse
+	(*ExportPreviewRequest)(nil),            // 9: agentpaas.control.v1.ExportPreviewRequest
+	(*ExportFileEntry)(nil),                 // 10: agentpaas.control.v1.ExportFileEntry
+	(*ExportPreviewResponse)(nil),           // 11: agentpaas.control.v1.ExportPreviewResponse
+	(*ExportRequest)(nil),                   // 12: agentpaas.control.v1.ExportRequest
+	(*ExportResponse)(nil),                  // 13: agentpaas.control.v1.ExportResponse
+	(*RunRequest)(nil),                      // 14: agentpaas.control.v1.RunRequest
+	(*BudgetConfig)(nil),                    // 15: agentpaas.control.v1.BudgetConfig
+	(*RunResponse)(nil),                     // 16: agentpaas.control.v1.RunResponse
+	(*StopRequest)(nil),                     // 17: agentpaas.control.v1.StopRequest
+	(*StopResponse)(nil),                    // 18: agentpaas.control.v1.StopResponse
+	(*LogsRequest)(nil),                     // 19: agentpaas.control.v1.LogsRequest
+	(*LogEntry)(nil),                        // 20: agentpaas.control.v1.LogEntry
+	(*PolicyApplyRequest)(nil),              // 21: agentpaas.control.v1.PolicyApplyRequest
+	(*PolicyApplyResponse)(nil),             // 22: agentpaas.control.v1.PolicyApplyResponse
+	(*SecretSetRequest)(nil),                // 23: agentpaas.control.v1.SecretSetRequest
+	(*SecretSetResponse)(nil),               // 24: agentpaas.control.v1.SecretSetResponse
+	(*SecretGrantRequest)(nil),              // 25: agentpaas.control.v1.SecretGrantRequest
+	(*SecretGrantResponse)(nil),             // 26: agentpaas.control.v1.SecretGrantResponse
+	(*SecretRevokeRequest)(nil),             // 27: agentpaas.control.v1.SecretRevokeRequest
+	(*SecretRevokeResponse)(nil),            // 28: agentpaas.control.v1.SecretRevokeResponse
+	(*AuditQueryRequest)(nil),               // 29: agentpaas.control.v1.AuditQueryRequest
+	(*TimeRange)(nil),                       // 30: agentpaas.control.v1.TimeRange
+	(*AuditEntry)(nil),                      // 31: agentpaas.control.v1.AuditEntry
+	(*AuditCheckpointIssue)(nil),            // 32: agentpaas.control.v1.AuditCheckpointIssue
+	(*AuditChainVerification)(nil),          // 33: agentpaas.control.v1.AuditChainVerification
+	(*AuditQueryResponse)(nil),              // 34: agentpaas.control.v1.AuditQueryResponse
+	(*AuditExportRequest)(nil),              // 35: agentpaas.control.v1.AuditExportRequest
+	(*AuditExportResponse)(nil),             // 36: agentpaas.control.v1.AuditExportResponse
+	(*DoctorRequest)(nil),                   // 37: agentpaas.control.v1.DoctorRequest
+	(*CheckResult)(nil),                     // 38: agentpaas.control.v1.CheckResult
+	(*DoctorResponse)(nil),                  // 39: agentpaas.control.v1.DoctorResponse
+	(*ValidateAgentProjectRequest)(nil),     // 40: agentpaas.control.v1.ValidateAgentProjectRequest
+	(*ProjectValidation)(nil),               // 41: agentpaas.control.v1.ProjectValidation
+	(*ValidateAgentProjectResponse)(nil),    // 42: agentpaas.control.v1.ValidateAgentProjectResponse
+	(*OperatorIssue)(nil),                   // 43: agentpaas.control.v1.OperatorIssue
+	(*EvidenceRef)(nil),                     // 44: agentpaas.control.v1.EvidenceRef
+	(*RedactedExcerpt)(nil),                 // 45: agentpaas.control.v1.RedactedExcerpt
+	(*ConfirmationRequirement)(nil),         // 46: agentpaas.control.v1.ConfirmationRequirement
+	(*SummarizeRunRequest)(nil),             // 47: agentpaas.control.v1.SummarizeRunRequest
+	(*KeyEvent)(nil),                        // 48: agentpaas.control.v1.KeyEvent
+	(*SummarizeRunResponse)(nil),            // 49: agentpaas.control.v1.SummarizeRunResponse
+	(*ExplainFailureRequest)(nil),           // 50: agentpaas.control.v1.ExplainFailureRequest
+	(*ExplainFailureResponse)(nil),          // 51: agentpaas.control.v1.ExplainFailureResponse
+	(*ExplainPolicyDenialRequest)(nil),      // 52: agentpaas.control.v1.ExplainPolicyDenialRequest
+	(*ExplainPolicyDenialResponse)(nil),     // 53: agentpaas.control.v1.ExplainPolicyDenialResponse
+	(*RecommendPolicyPatchRequest)(nil),     // 54: agentpaas.control.v1.RecommendPolicyPatchRequest
+	(*RecommendPolicyPatchResponse)(nil),    // 55: agentpaas.control.v1.RecommendPolicyPatchResponse
+	(*GetRunTimelineRequest)(nil),           // 56: agentpaas.control.v1.GetRunTimelineRequest
+	(*TimelineEvent)(nil),                   // 57: agentpaas.control.v1.TimelineEvent
+	(*GetRunTimelineResponse)(nil),          // 58: agentpaas.control.v1.GetRunTimelineResponse
+	(*NextActionRequest)(nil),               // 59: agentpaas.control.v1.NextActionRequest
+	(*NextActionResponse)(nil),              // 60: agentpaas.control.v1.NextActionResponse
+	(*CronScheduleInfo)(nil),                // 61: agentpaas.control.v1.CronScheduleInfo
+	(*CronAddRequest)(nil),                  // 62: agentpaas.control.v1.CronAddRequest
+	(*CronAddResponse)(nil),                 // 63: agentpaas.control.v1.CronAddResponse
+	(*CronListRequest)(nil),                 // 64: agentpaas.control.v1.CronListRequest
+	(*CronListResponse)(nil),                // 65: agentpaas.control.v1.CronListResponse
+	(*CronRemoveRequest)(nil),               // 66: agentpaas.control.v1.CronRemoveRequest
+	(*CronRemoveResponse)(nil),              // 67: agentpaas.control.v1.CronRemoveResponse
+	(*RunInfo)(nil),                         // 68: agentpaas.control.v1.RunInfo
+	(*ListRunsRequest)(nil),                 // 69: agentpaas.control.v1.ListRunsRequest
+	(*ListRunsResponse)(nil),                // 70: agentpaas.control.v1.ListRunsResponse
+	(*ProgressSummary)(nil),                 // 71: agentpaas.control.v1.ProgressSummary
+	(*CheckpointSummary)(nil),               // 72: agentpaas.control.v1.CheckpointSummary
+	(*ArtifactRef)(nil),                     // 73: agentpaas.control.v1.ArtifactRef
+	(*TimeBudgetSummary)(nil),               // 74: agentpaas.control.v1.TimeBudgetSummary
+	(*LLMBudgetSummary)(nil),                // 75: agentpaas.control.v1.LLMBudgetSummary
+	(*RouteDecision)(nil),                   // 76: agentpaas.control.v1.RouteDecision
+	(*AttemptReport)(nil),                   // 77: agentpaas.control.v1.AttemptReport
+	(*TypedControlError)(nil),               // 78: agentpaas.control.v1.TypedControlError
+	(*IdempotentReplayResponse)(nil),        // 79: agentpaas.control.v1.IdempotentReplayResponse
+	(*AlreadyRunningResponse)(nil),          // 80: agentpaas.control.v1.AlreadyRunningResponse
+	(*IdempotencyConflictResponse)(nil),     // 81: agentpaas.control.v1.IdempotencyConflictResponse
+	(*DeploymentInactiveResponse)(nil),      // 82: agentpaas.control.v1.DeploymentInactiveResponse
+	(*RunTerminalResponse)(nil),             // 83: agentpaas.control.v1.RunTerminalResponse
+	(*UnsafePauseBoundaryResponse)(nil),     // 84: agentpaas.control.v1.UnsafePauseBoundaryResponse
+	(*ConcurrencyUnavailableResponse)(nil),  // 85: agentpaas.control.v1.ConcurrencyUnavailableResponse
+	(*LimitAmendmentDeniedResponse)(nil),    // 86: agentpaas.control.v1.LimitAmendmentDeniedResponse
+	(*FeatureNotEnabledResponse)(nil),       // 87: agentpaas.control.v1.FeatureNotEnabledResponse
+	(*CreateDeploymentRequest)(nil),         // 88: agentpaas.control.v1.CreateDeploymentRequest
+	(*DeploymentRecord)(nil),                // 89: agentpaas.control.v1.DeploymentRecord
+	(*CreateDeploymentResponse)(nil),        // 90: agentpaas.control.v1.CreateDeploymentResponse
+	(*GetDeploymentRequest)(nil),            // 91: agentpaas.control.v1.GetDeploymentRequest
+	(*GetDeploymentResponse)(nil),           // 92: agentpaas.control.v1.GetDeploymentResponse
+	(*ListDeploymentsRequest)(nil),          // 93: agentpaas.control.v1.ListDeploymentsRequest
+	(*ListDeploymentsResponse)(nil),         // 94: agentpaas.control.v1.ListDeploymentsResponse
+	(*DeactivateDeploymentRequest)(nil),     // 95: agentpaas.control.v1.DeactivateDeploymentRequest
+	(*DeactivateDeploymentResponse)(nil),    // 96: agentpaas.control.v1.DeactivateDeploymentResponse
+	(*CreateDeploymentAliasRequest)(nil),    // 97: agentpaas.control.v1.CreateDeploymentAliasRequest
+	(*DeploymentAliasRecord)(nil),           // 98: agentpaas.control.v1.DeploymentAliasRecord
+	(*CreateDeploymentAliasResponse)(nil),   // 99: agentpaas.control.v1.CreateDeploymentAliasResponse
+	(*GetDeploymentAliasRequest)(nil),       // 100: agentpaas.control.v1.GetDeploymentAliasRequest
+	(*GetDeploymentAliasResponse)(nil),      // 101: agentpaas.control.v1.GetDeploymentAliasResponse
+	(*ListDeploymentAliasesRequest)(nil),    // 102: agentpaas.control.v1.ListDeploymentAliasesRequest
+	(*ListDeploymentAliasesResponse)(nil),   // 103: agentpaas.control.v1.ListDeploymentAliasesResponse
+	(*CasDeploymentAliasRequest)(nil),       // 104: agentpaas.control.v1.CasDeploymentAliasRequest
+	(*CasDeploymentAliasResponse)(nil),      // 105: agentpaas.control.v1.CasDeploymentAliasResponse
+	(*InvokeDeploymentRequest)(nil),         // 106: agentpaas.control.v1.InvokeDeploymentRequest
+	(*AbsoluteCeilingsSnapshot)(nil),        // 107: agentpaas.control.v1.AbsoluteCeilingsSnapshot
+	(*InvokeDeploymentResponse)(nil),        // 108: agentpaas.control.v1.InvokeDeploymentResponse
+	(*CreateWorkflowRequest)(nil),           // 109: agentpaas.control.v1.CreateWorkflowRequest
+	(*WorkflowRecord)(nil),                  // 110: agentpaas.control.v1.WorkflowRecord
+	(*CreateWorkflowResponse)(nil),          // 111: agentpaas.control.v1.CreateWorkflowResponse
+	(*GetWorkflowRequest)(nil),              // 112: agentpaas.control.v1.GetWorkflowRequest
+	(*GetWorkflowResponse)(nil),             // 113: agentpaas.control.v1.GetWorkflowResponse
+	(*CancelWorkflowRequest)(nil),           // 114: agentpaas.control.v1.CancelWorkflowRequest
+	(*CancelWorkflowResponse)(nil),          // 115: agentpaas.control.v1.CancelWorkflowResponse
+	(*SetWorkflowDesiredStateRequest)(nil),  // 116: agentpaas.control.v1.SetWorkflowDesiredStateRequest
+	(*SetWorkflowDesiredStateResponse)(nil), // 117: agentpaas.control.v1.SetWorkflowDesiredStateResponse
+	(*RestartWorkflowRequest)(nil),          // 118: agentpaas.control.v1.RestartWorkflowRequest
+	(*RestartWorkflowResponse)(nil),         // 119: agentpaas.control.v1.RestartWorkflowResponse
+	(*AmendLimitsRequest)(nil),              // 120: agentpaas.control.v1.AmendLimitsRequest
+	(*AmendLimitsResponse)(nil),             // 121: agentpaas.control.v1.AmendLimitsResponse
+	(*WorkflowNodeStatus)(nil),              // 122: agentpaas.control.v1.WorkflowNodeStatus
+	(*ServiceBindingStatus)(nil),            // 123: agentpaas.control.v1.ServiceBindingStatus
+	(*HandoffMetadata)(nil),                 // 124: agentpaas.control.v1.HandoffMetadata
+	(*ChildBatchStatus)(nil),                // 125: agentpaas.control.v1.ChildBatchStatus
+	(*ChildResult)(nil),                     // 126: agentpaas.control.v1.ChildResult
+	(*GetWorkflowGraphRequest)(nil),         // 127: agentpaas.control.v1.GetWorkflowGraphRequest
+	(*GetWorkflowGraphResponse)(nil),        // 128: agentpaas.control.v1.GetWorkflowGraphResponse
+	nil,                                     // 129: agentpaas.control.v1.LogEntry.FieldsEntry
+	nil,                                     // 130: agentpaas.control.v1.NextActionResponse.ParamsEntry
+	nil,                                     // 131: agentpaas.control.v1.TypedControlError.DetailsEntry
+	nil,                                     // 132: agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
+	nil,                                     // 133: agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
+	(*timestamppb.Timestamp)(nil),           // 134: google.protobuf.Timestamp
 }
 var file_control_v1_control_proto_depIdxs = []int32{
-	6,  // 0: agentpaas.control.v1.ExportPreviewResponse.files:type_name -> agentpaas.control.v1.ExportFileEntry
-	11, // 1: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
-	0,  // 2: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
-	69, // 3: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	67, // 4: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
-	2,  // 5: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
-	1,  // 6: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
-	26, // 7: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	69, // 8: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
-	69, // 9: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
-	1,  // 10: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
-	69, // 11: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
-	28, // 12: agentpaas.control.v1.AuditChainVerification.issues:type_name -> agentpaas.control.v1.AuditCheckpointIssue
-	27, // 13: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
-	29, // 14: agentpaas.control.v1.AuditQueryResponse.chain_verification:type_name -> agentpaas.control.v1.AuditChainVerification
-	26, // 15: agentpaas.control.v1.AuditExportRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	34, // 16: agentpaas.control.v1.DoctorResponse.checks:type_name -> agentpaas.control.v1.CheckResult
-	37, // 17: agentpaas.control.v1.ValidateAgentProjectResponse.validations:type_name -> agentpaas.control.v1.ProjectValidation
-	39, // 18: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
-	40, // 19: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	40, // 20: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	69, // 21: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
-	44, // 22: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
-	69, // 23: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
-	69, // 24: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
-	40, // 25: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	41, // 26: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
-	40, // 27: agentpaas.control.v1.ExplainFailureResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	40, // 28: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	40, // 29: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	42, // 30: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
-	69, // 31: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
-	53, // 32: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
-	68, // 33: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
-	40, // 34: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	42, // 35: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
-	57, // 36: agentpaas.control.v1.CronAddResponse.schedule:type_name -> agentpaas.control.v1.CronScheduleInfo
-	57, // 37: agentpaas.control.v1.CronListResponse.schedules:type_name -> agentpaas.control.v1.CronScheduleInfo
-	69, // 38: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
-	64, // 39: agentpaas.control.v1.ListRunsResponse.runs:type_name -> agentpaas.control.v1.RunInfo
-	3,  // 40: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
-	5,  // 41: agentpaas.control.v1.ControlService.ExportPreview:input_type -> agentpaas.control.v1.ExportPreviewRequest
-	8,  // 42: agentpaas.control.v1.ControlService.Export:input_type -> agentpaas.control.v1.ExportRequest
-	10, // 43: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
-	13, // 44: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
-	15, // 45: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
-	17, // 46: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
-	19, // 47: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
-	21, // 48: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
-	23, // 49: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
-	25, // 50: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
-	31, // 51: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
-	33, // 52: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
-	36, // 53: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
-	43, // 54: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
-	46, // 55: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
-	48, // 56: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
-	50, // 57: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
-	52, // 58: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
-	55, // 59: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
-	58, // 60: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
-	60, // 61: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
-	62, // 62: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
-	65, // 63: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
-	4,  // 64: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
-	7,  // 65: agentpaas.control.v1.ControlService.ExportPreview:output_type -> agentpaas.control.v1.ExportPreviewResponse
-	9,  // 66: agentpaas.control.v1.ControlService.Export:output_type -> agentpaas.control.v1.ExportResponse
-	12, // 67: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
-	14, // 68: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
-	16, // 69: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
-	18, // 70: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
-	20, // 71: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
-	22, // 72: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
-	24, // 73: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
-	30, // 74: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
-	32, // 75: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
-	35, // 76: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
-	38, // 77: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
-	45, // 78: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
-	47, // 79: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
-	49, // 80: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
-	51, // 81: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
-	54, // 82: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
-	56, // 83: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
-	59, // 84: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
-	61, // 85: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
-	63, // 86: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
-	66, // 87: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
-	64, // [64:88] is the sub-list for method output_type
-	40, // [40:64] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	10,  // 0: agentpaas.control.v1.ExportPreviewResponse.files:type_name -> agentpaas.control.v1.ExportFileEntry
+	15,  // 1: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
+	0,   // 2: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
+	134, // 3: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	129, // 4: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
+	2,   // 5: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
+	1,   // 6: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
+	30,  // 7: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
+	134, // 8: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
+	134, // 9: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
+	1,   // 10: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
+	134, // 11: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
+	32,  // 12: agentpaas.control.v1.AuditChainVerification.issues:type_name -> agentpaas.control.v1.AuditCheckpointIssue
+	31,  // 13: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
+	33,  // 14: agentpaas.control.v1.AuditQueryResponse.chain_verification:type_name -> agentpaas.control.v1.AuditChainVerification
+	30,  // 15: agentpaas.control.v1.AuditExportRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
+	38,  // 16: agentpaas.control.v1.DoctorResponse.checks:type_name -> agentpaas.control.v1.CheckResult
+	41,  // 17: agentpaas.control.v1.ValidateAgentProjectResponse.validations:type_name -> agentpaas.control.v1.ProjectValidation
+	43,  // 18: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
+	44,  // 19: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	44,  // 20: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	134, // 21: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
+	48,  // 22: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
+	134, // 23: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
+	134, // 24: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
+	44,  // 25: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	77,  // 26: agentpaas.control.v1.SummarizeRunResponse.attempt_report:type_name -> agentpaas.control.v1.AttemptReport
+	45,  // 27: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
+	44,  // 28: agentpaas.control.v1.ExplainFailureResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	44,  // 29: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	44,  // 30: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	46,  // 31: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
+	134, // 32: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
+	57,  // 33: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
+	130, // 34: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
+	44,  // 35: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
+	46,  // 36: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
+	61,  // 37: agentpaas.control.v1.CronAddResponse.schedule:type_name -> agentpaas.control.v1.CronScheduleInfo
+	61,  // 38: agentpaas.control.v1.CronListResponse.schedules:type_name -> agentpaas.control.v1.CronScheduleInfo
+	134, // 39: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
+	68,  // 40: agentpaas.control.v1.ListRunsResponse.runs:type_name -> agentpaas.control.v1.RunInfo
+	134, // 41: agentpaas.control.v1.CheckpointSummary.created_at:type_name -> google.protobuf.Timestamp
+	134, // 42: agentpaas.control.v1.ArtifactRef.created_at:type_name -> google.protobuf.Timestamp
+	134, // 43: agentpaas.control.v1.RouteDecision.timestamp:type_name -> google.protobuf.Timestamp
+	71,  // 44: agentpaas.control.v1.AttemptReport.progress:type_name -> agentpaas.control.v1.ProgressSummary
+	72,  // 45: agentpaas.control.v1.AttemptReport.checkpoint:type_name -> agentpaas.control.v1.CheckpointSummary
+	73,  // 46: agentpaas.control.v1.AttemptReport.artifacts:type_name -> agentpaas.control.v1.ArtifactRef
+	74,  // 47: agentpaas.control.v1.AttemptReport.time:type_name -> agentpaas.control.v1.TimeBudgetSummary
+	75,  // 48: agentpaas.control.v1.AttemptReport.llm_budget:type_name -> agentpaas.control.v1.LLMBudgetSummary
+	76,  // 49: agentpaas.control.v1.AttemptReport.route_decisions:type_name -> agentpaas.control.v1.RouteDecision
+	134, // 50: agentpaas.control.v1.AttemptReport.created_at:type_name -> google.protobuf.Timestamp
+	5,   // 51: agentpaas.control.v1.TypedControlError.code:type_name -> agentpaas.control.v1.TypedControlErrorCode
+	131, // 52: agentpaas.control.v1.TypedControlError.details:type_name -> agentpaas.control.v1.TypedControlError.DetailsEntry
+	78,  // 53: agentpaas.control.v1.IdempotentReplayResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	16,  // 54: agentpaas.control.v1.IdempotentReplayResponse.original:type_name -> agentpaas.control.v1.RunResponse
+	78,  // 55: agentpaas.control.v1.AlreadyRunningResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 56: agentpaas.control.v1.IdempotencyConflictResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 57: agentpaas.control.v1.DeploymentInactiveResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 58: agentpaas.control.v1.RunTerminalResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 59: agentpaas.control.v1.UnsafePauseBoundaryResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 60: agentpaas.control.v1.ConcurrencyUnavailableResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 61: agentpaas.control.v1.LimitAmendmentDeniedResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 62: agentpaas.control.v1.FeatureNotEnabledResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	132, // 63: agentpaas.control.v1.CreateDeploymentRequest.nested_package_digests:type_name -> agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
+	133, // 64: agentpaas.control.v1.DeploymentRecord.nested_package_digests:type_name -> agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
+	134, // 65: agentpaas.control.v1.DeploymentRecord.created_at:type_name -> google.protobuf.Timestamp
+	134, // 66: agentpaas.control.v1.DeploymentRecord.activated_at:type_name -> google.protobuf.Timestamp
+	134, // 67: agentpaas.control.v1.DeploymentRecord.deactivated_at:type_name -> google.protobuf.Timestamp
+	89,  // 68: agentpaas.control.v1.CreateDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
+	78,  // 69: agentpaas.control.v1.CreateDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	89,  // 70: agentpaas.control.v1.GetDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
+	78,  // 71: agentpaas.control.v1.GetDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	89,  // 72: agentpaas.control.v1.ListDeploymentsResponse.deployments:type_name -> agentpaas.control.v1.DeploymentRecord
+	78,  // 73: agentpaas.control.v1.ListDeploymentsResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 74: agentpaas.control.v1.DeactivateDeploymentRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	89,  // 75: agentpaas.control.v1.DeactivateDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
+	78,  // 76: agentpaas.control.v1.DeactivateDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 77: agentpaas.control.v1.CreateDeploymentAliasRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	134, // 78: agentpaas.control.v1.DeploymentAliasRecord.updated_at:type_name -> google.protobuf.Timestamp
+	98,  // 79: agentpaas.control.v1.CreateDeploymentAliasResponse.alias:type_name -> agentpaas.control.v1.DeploymentAliasRecord
+	78,  // 80: agentpaas.control.v1.CreateDeploymentAliasResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	98,  // 81: agentpaas.control.v1.GetDeploymentAliasResponse.alias:type_name -> agentpaas.control.v1.DeploymentAliasRecord
+	78,  // 82: agentpaas.control.v1.GetDeploymentAliasResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	98,  // 83: agentpaas.control.v1.ListDeploymentAliasesResponse.aliases:type_name -> agentpaas.control.v1.DeploymentAliasRecord
+	78,  // 84: agentpaas.control.v1.ListDeploymentAliasesResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 85: agentpaas.control.v1.CasDeploymentAliasRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	98,  // 86: agentpaas.control.v1.CasDeploymentAliasResponse.alias:type_name -> agentpaas.control.v1.DeploymentAliasRecord
+	78,  // 87: agentpaas.control.v1.CasDeploymentAliasResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	4,   // 88: agentpaas.control.v1.InvokeDeploymentResponse.outcome:type_name -> agentpaas.control.v1.AdmissionOutcomeCode
+	107, // 89: agentpaas.control.v1.InvokeDeploymentResponse.ceilings:type_name -> agentpaas.control.v1.AbsoluteCeilingsSnapshot
+	78,  // 90: agentpaas.control.v1.InvokeDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	134, // 91: agentpaas.control.v1.InvokeDeploymentResponse.admitted_at:type_name -> google.protobuf.Timestamp
+	134, // 92: agentpaas.control.v1.WorkflowRecord.created_at:type_name -> google.protobuf.Timestamp
+	134, // 93: agentpaas.control.v1.WorkflowRecord.updated_at:type_name -> google.protobuf.Timestamp
+	134, // 94: agentpaas.control.v1.WorkflowRecord.terminated_at:type_name -> google.protobuf.Timestamp
+	110, // 95: agentpaas.control.v1.CreateWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	78,  // 96: agentpaas.control.v1.CreateWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	110, // 97: agentpaas.control.v1.GetWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	78,  // 98: agentpaas.control.v1.GetWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 99: agentpaas.control.v1.CancelWorkflowRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	110, // 100: agentpaas.control.v1.CancelWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	78,  // 101: agentpaas.control.v1.CancelWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	6,   // 102: agentpaas.control.v1.SetWorkflowDesiredStateRequest.desired_command:type_name -> agentpaas.control.v1.ControlCommand
+	3,   // 103: agentpaas.control.v1.SetWorkflowDesiredStateRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	6,   // 104: agentpaas.control.v1.SetWorkflowDesiredStateResponse.desired_command:type_name -> agentpaas.control.v1.ControlCommand
+	78,  // 105: agentpaas.control.v1.SetWorkflowDesiredStateResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 106: agentpaas.control.v1.RestartWorkflowRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	78,  // 107: agentpaas.control.v1.RestartWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 108: agentpaas.control.v1.AmendLimitsRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	107, // 109: agentpaas.control.v1.AmendLimitsResponse.ceilings:type_name -> agentpaas.control.v1.AbsoluteCeilingsSnapshot
+	78,  // 110: agentpaas.control.v1.AmendLimitsResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	134, // 111: agentpaas.control.v1.WorkflowNodeStatus.created_at:type_name -> google.protobuf.Timestamp
+	134, // 112: agentpaas.control.v1.WorkflowNodeStatus.updated_at:type_name -> google.protobuf.Timestamp
+	134, // 113: agentpaas.control.v1.ServiceBindingStatus.created_at:type_name -> google.protobuf.Timestamp
+	134, // 114: agentpaas.control.v1.ServiceBindingStatus.updated_at:type_name -> google.protobuf.Timestamp
+	134, // 115: agentpaas.control.v1.HandoffMetadata.created_at:type_name -> google.protobuf.Timestamp
+	134, // 116: agentpaas.control.v1.ChildBatchStatus.created_at:type_name -> google.protobuf.Timestamp
+	134, // 117: agentpaas.control.v1.ChildBatchStatus.updated_at:type_name -> google.protobuf.Timestamp
+	134, // 118: agentpaas.control.v1.ChildResult.finished_at:type_name -> google.protobuf.Timestamp
+	110, // 119: agentpaas.control.v1.GetWorkflowGraphResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	122, // 120: agentpaas.control.v1.GetWorkflowGraphResponse.nodes:type_name -> agentpaas.control.v1.WorkflowNodeStatus
+	123, // 121: agentpaas.control.v1.GetWorkflowGraphResponse.services:type_name -> agentpaas.control.v1.ServiceBindingStatus
+	124, // 122: agentpaas.control.v1.GetWorkflowGraphResponse.handoffs:type_name -> agentpaas.control.v1.HandoffMetadata
+	125, // 123: agentpaas.control.v1.GetWorkflowGraphResponse.child_batches:type_name -> agentpaas.control.v1.ChildBatchStatus
+	126, // 124: agentpaas.control.v1.GetWorkflowGraphResponse.child_results:type_name -> agentpaas.control.v1.ChildResult
+	78,  // 125: agentpaas.control.v1.GetWorkflowGraphResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	7,   // 126: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
+	9,   // 127: agentpaas.control.v1.ControlService.ExportPreview:input_type -> agentpaas.control.v1.ExportPreviewRequest
+	12,  // 128: agentpaas.control.v1.ControlService.Export:input_type -> agentpaas.control.v1.ExportRequest
+	14,  // 129: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
+	17,  // 130: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
+	19,  // 131: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
+	21,  // 132: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
+	23,  // 133: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
+	25,  // 134: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
+	27,  // 135: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
+	29,  // 136: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
+	35,  // 137: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
+	37,  // 138: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
+	40,  // 139: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
+	47,  // 140: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
+	50,  // 141: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
+	52,  // 142: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
+	54,  // 143: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
+	56,  // 144: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
+	59,  // 145: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
+	62,  // 146: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
+	64,  // 147: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
+	66,  // 148: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
+	69,  // 149: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
+	88,  // 150: agentpaas.control.v1.ControlService.CreateDeployment:input_type -> agentpaas.control.v1.CreateDeploymentRequest
+	91,  // 151: agentpaas.control.v1.ControlService.GetDeployment:input_type -> agentpaas.control.v1.GetDeploymentRequest
+	93,  // 152: agentpaas.control.v1.ControlService.ListDeployments:input_type -> agentpaas.control.v1.ListDeploymentsRequest
+	95,  // 153: agentpaas.control.v1.ControlService.DeactivateDeployment:input_type -> agentpaas.control.v1.DeactivateDeploymentRequest
+	97,  // 154: agentpaas.control.v1.ControlService.CreateDeploymentAlias:input_type -> agentpaas.control.v1.CreateDeploymentAliasRequest
+	100, // 155: agentpaas.control.v1.ControlService.GetDeploymentAlias:input_type -> agentpaas.control.v1.GetDeploymentAliasRequest
+	102, // 156: agentpaas.control.v1.ControlService.ListDeploymentAliases:input_type -> agentpaas.control.v1.ListDeploymentAliasesRequest
+	104, // 157: agentpaas.control.v1.ControlService.CasDeploymentAlias:input_type -> agentpaas.control.v1.CasDeploymentAliasRequest
+	106, // 158: agentpaas.control.v1.ControlService.InvokeDeployment:input_type -> agentpaas.control.v1.InvokeDeploymentRequest
+	109, // 159: agentpaas.control.v1.ControlService.CreateWorkflow:input_type -> agentpaas.control.v1.CreateWorkflowRequest
+	112, // 160: agentpaas.control.v1.ControlService.GetWorkflow:input_type -> agentpaas.control.v1.GetWorkflowRequest
+	114, // 161: agentpaas.control.v1.ControlService.CancelWorkflow:input_type -> agentpaas.control.v1.CancelWorkflowRequest
+	116, // 162: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:input_type -> agentpaas.control.v1.SetWorkflowDesiredStateRequest
+	118, // 163: agentpaas.control.v1.ControlService.RestartWorkflow:input_type -> agentpaas.control.v1.RestartWorkflowRequest
+	120, // 164: agentpaas.control.v1.ControlService.AmendLimits:input_type -> agentpaas.control.v1.AmendLimitsRequest
+	127, // 165: agentpaas.control.v1.ControlService.GetWorkflowGraph:input_type -> agentpaas.control.v1.GetWorkflowGraphRequest
+	8,   // 166: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
+	11,  // 167: agentpaas.control.v1.ControlService.ExportPreview:output_type -> agentpaas.control.v1.ExportPreviewResponse
+	13,  // 168: agentpaas.control.v1.ControlService.Export:output_type -> agentpaas.control.v1.ExportResponse
+	16,  // 169: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
+	18,  // 170: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
+	20,  // 171: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
+	22,  // 172: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
+	24,  // 173: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
+	26,  // 174: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
+	28,  // 175: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
+	34,  // 176: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
+	36,  // 177: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
+	39,  // 178: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
+	42,  // 179: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
+	49,  // 180: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
+	51,  // 181: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
+	53,  // 182: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
+	55,  // 183: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
+	58,  // 184: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
+	60,  // 185: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
+	63,  // 186: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
+	65,  // 187: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
+	67,  // 188: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
+	70,  // 189: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
+	90,  // 190: agentpaas.control.v1.ControlService.CreateDeployment:output_type -> agentpaas.control.v1.CreateDeploymentResponse
+	92,  // 191: agentpaas.control.v1.ControlService.GetDeployment:output_type -> agentpaas.control.v1.GetDeploymentResponse
+	94,  // 192: agentpaas.control.v1.ControlService.ListDeployments:output_type -> agentpaas.control.v1.ListDeploymentsResponse
+	96,  // 193: agentpaas.control.v1.ControlService.DeactivateDeployment:output_type -> agentpaas.control.v1.DeactivateDeploymentResponse
+	99,  // 194: agentpaas.control.v1.ControlService.CreateDeploymentAlias:output_type -> agentpaas.control.v1.CreateDeploymentAliasResponse
+	101, // 195: agentpaas.control.v1.ControlService.GetDeploymentAlias:output_type -> agentpaas.control.v1.GetDeploymentAliasResponse
+	103, // 196: agentpaas.control.v1.ControlService.ListDeploymentAliases:output_type -> agentpaas.control.v1.ListDeploymentAliasesResponse
+	105, // 197: agentpaas.control.v1.ControlService.CasDeploymentAlias:output_type -> agentpaas.control.v1.CasDeploymentAliasResponse
+	108, // 198: agentpaas.control.v1.ControlService.InvokeDeployment:output_type -> agentpaas.control.v1.InvokeDeploymentResponse
+	111, // 199: agentpaas.control.v1.ControlService.CreateWorkflow:output_type -> agentpaas.control.v1.CreateWorkflowResponse
+	113, // 200: agentpaas.control.v1.ControlService.GetWorkflow:output_type -> agentpaas.control.v1.GetWorkflowResponse
+	115, // 201: agentpaas.control.v1.ControlService.CancelWorkflow:output_type -> agentpaas.control.v1.CancelWorkflowResponse
+	117, // 202: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:output_type -> agentpaas.control.v1.SetWorkflowDesiredStateResponse
+	119, // 203: agentpaas.control.v1.ControlService.RestartWorkflow:output_type -> agentpaas.control.v1.RestartWorkflowResponse
+	121, // 204: agentpaas.control.v1.ControlService.AmendLimits:output_type -> agentpaas.control.v1.AmendLimitsResponse
+	128, // 205: agentpaas.control.v1.ControlService.GetWorkflowGraph:output_type -> agentpaas.control.v1.GetWorkflowGraphResponse
+	166, // [166:206] is the sub-list for method output_type
+	126, // [126:166] is the sub-list for method input_type
+	126, // [126:126] is the sub-list for extension type_name
+	126, // [126:126] is the sub-list for extension extendee
+	0,   // [0:126] is the sub-list for field type_name
 }
 
 func init() { file_control_v1_control_proto_init() }
@@ -5085,8 +11075,8 @@ func file_control_v1_control_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_v1_control_proto_rawDesc), len(file_control_v1_control_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   66,
+			NumEnums:      7,
+			NumMessages:   127,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

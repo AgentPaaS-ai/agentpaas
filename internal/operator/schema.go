@@ -148,6 +148,102 @@ type SummarizeRunResponse struct {
 	// InvokeResponse is the raw agent output from the invoke call (BUG 11).
 	// Empty if the agent hasn't been invoked or the response was not captured.
 	InvokeResponse string `json:"invoke_response,omitempty"`
+
+	// AttemptReport is the B26 portable attempt report (additive).
+	AttemptReport *AttemptReport `json:"attempt_report,omitempty"`
+}
+
+// ProgressSummary describes progress within an attempt (operator JSON contract).
+type ProgressSummary struct {
+	SchemaVersion           string `json:"schema_version,omitempty"`
+	ModelCallsCompleted     int    `json:"model_calls_completed,omitempty"`
+	ToolCallsCompleted      int    `json:"tool_calls_completed,omitempty"`
+	ActionsSinceCheckpoint  int    `json:"actions_since_checkpoint,omitempty"`
+	ActionsWithoutProgress  int    `json:"actions_without_progress,omitempty"`
+}
+
+// CheckpointSummary describes a checkpoint (no host paths).
+type CheckpointSummary struct {
+	SchemaVersion   string    `json:"schema_version,omitempty"`
+	CheckpointID    string    `json:"checkpoint_id,omitempty"`
+	AttemptID       string    `json:"attempt_id,omitempty"`
+	RunID           string    `json:"run_id,omitempty"`
+	ActionCount     int       `json:"action_count,omitempty"`
+	TotalModelCalls int       `json:"total_model_calls,omitempty"`
+	CreatedAt       time.Time `json:"created_at,omitempty"`
+}
+
+// ArtifactRefSummary is an immutable logical artifact reference (no host paths).
+type ArtifactRefSummary struct {
+	SchemaVersion  string    `json:"schema_version,omitempty"`
+	ArtifactID     string    `json:"artifact_id,omitempty"`
+	WorkflowID     string    `json:"workflow_id,omitempty"`
+	NodeID         string    `json:"node_id,omitempty"`
+	RunID          string    `json:"run_id,omitempty"`
+	AttemptID      string    `json:"attempt_id,omitempty"`
+	LogicalRef     string    `json:"logical_ref,omitempty"`
+	Digest         string    `json:"digest,omitempty"`
+	ByteSize       int64     `json:"byte_size,omitempty"`
+	MediaType      string    `json:"media_type,omitempty"`
+	Schema         string    `json:"schema,omitempty"`
+	Classification string    `json:"classification,omitempty"`
+	CreatedAt      time.Time `json:"created_at,omitempty"`
+}
+
+// TimeBudgetSummary uses checked int64 milliseconds (never float).
+type TimeBudgetSummary struct {
+	SchemaVersion        string `json:"schema_version,omitempty"`
+	AttemptDurationMS    int64  `json:"attempt_duration_ms,omitempty"`
+	RunActiveTimeMS      int64  `json:"run_active_time_ms,omitempty"`
+	WorkflowActiveTimeMS int64  `json:"workflow_active_time_ms,omitempty"`
+	RemainingMS          int64  `json:"remaining_ms,omitempty"`
+}
+
+// LLMBudgetSummary uses decimal strings for spend (never float).
+type LLMBudgetSummary struct {
+	SchemaVersion         string `json:"schema_version,omitempty"`
+	TotalTokens           int64  `json:"total_tokens,omitempty"`
+	InputTokens           int64  `json:"input_tokens,omitempty"`
+	OutputTokens          int64  `json:"output_tokens,omitempty"`
+	TotalCostDecimal      string `json:"total_cost_decimal,omitempty"`
+	RemainingCostDecimal  string `json:"remaining_cost_decimal,omitempty"`
+	ModelCalls            int    `json:"model_calls,omitempty"`
+}
+
+// RouteDecisionSummary records a model routing decision for operator reports.
+type RouteDecisionSummary struct {
+	SchemaVersion     string    `json:"schema_version,omitempty"`
+	ModelCallID       string    `json:"model_call_id,omitempty"`
+	AttemptID         string    `json:"attempt_id,omitempty"`
+	RunID             string    `json:"run_id,omitempty"`
+	CandidateID       string    `json:"candidate_id,omitempty"`
+	Provider          string    `json:"provider,omitempty"`
+	Model             string    `json:"model,omitempty"`
+	AttemptedRecovery bool      `json:"attempted_recovery,omitempty"`
+	Succeeded         bool      `json:"succeeded,omitempty"`
+	FailureReason     string    `json:"failure_reason,omitempty"`
+	Timestamp         time.Time `json:"timestamp,omitempty"`
+}
+
+// AttemptReport is the portable report for a single attempt (B26 operator contract).
+type AttemptReport struct {
+	SchemaVersion       string                 `json:"schema_version"`
+	RunID               string                 `json:"run_id"`
+	AttemptID           string                 `json:"attempt_id"`
+	Status              string                 `json:"status"`
+	Reason              string                 `json:"reason,omitempty"`
+	FailureScope        string                 `json:"failure_scope,omitempty"`
+	RecoveryDisposition string                 `json:"recovery_disposition,omitempty"`
+	ResumeCapability    string                 `json:"resume_capability,omitempty"`
+	Progress            *ProgressSummary       `json:"progress,omitempty"`
+	Checkpoint          *CheckpointSummary     `json:"checkpoint,omitempty"`
+	Artifacts           []ArtifactRefSummary   `json:"artifacts,omitempty"`
+	Time                *TimeBudgetSummary     `json:"time,omitempty"`
+	LLMBudget           *LLMBudgetSummary      `json:"llm_budget,omitempty"`
+	RouteDecisions      []RouteDecisionSummary `json:"route_decisions,omitempty"`
+	RecommendedActions  []string               `json:"recommended_actions,omitempty"`
+	EvidenceRefs        []string               `json:"evidence_refs,omitempty"`
+	CreatedAt           time.Time              `json:"created_at,omitempty"`
 }
 
 // ExplainFailureResponse is the operator response for root-cause diagnosis of
@@ -172,6 +268,12 @@ type ExplainFailureResponse struct {
 
 	// NextAction is the recommended operator action to resolve the failure.
 	NextAction NextAction `json:"next_action"`
+
+	// LatestReason is the latest relevant failure reason (B26 additive).
+	LatestReason string `json:"latest_reason,omitempty"`
+
+	// LatestAction is the latest relevant recovery/next action (B26 additive).
+	LatestAction string `json:"latest_action,omitempty"`
 }
 
 // ExplainPolicyDenialResponse is the operator response for identifying the
@@ -289,4 +391,7 @@ type NextActionResponse struct {
 	// Confirmation is set when NextAction requires confirmation (e.g.
 	// "review_policy_patch"). Empty for non-trust-boundary actions.
 	Confirmation *ConfirmationRequirement `json:"confirmation,omitempty"`
+
+	// LatestReason is the latest relevant failure reason (B26 additive).
+	LatestReason string `json:"latest_reason,omitempty"`
 }
