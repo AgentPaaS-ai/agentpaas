@@ -9,6 +9,7 @@ import (
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
@@ -72,6 +73,14 @@ type controlServer struct {
 	runtimeOnce sync.Once
 	runtimeErr  error
 	dockerRT    *runtime.DockerRuntime
+
+	// B26 routed-run stores (state foundation). Initialized in Start via
+	// initRoutedStores. Deployment/alias CRUD is enabled; invocation/control
+	// fail closed until B28/B35.
+	localStore       *routedrun.LocalStore
+	deploymentStore  routedrun.DeploymentStore
+	runStore         routedrun.RunStore
+	workflowStore    routedrun.WorkflowStore
 }
 
 // compile-time interface check.

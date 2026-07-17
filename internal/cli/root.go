@@ -130,6 +130,7 @@ to pack, run, and manage agents.`,
 	rootCmd.AddCommand(newInstalledCmd())
 	rootCmd.AddCommand(newForkCmd())
 	rootCmd.AddCommand(newProvenanceCmd())
+	rootCmd.AddCommand(newDeployCmd())
 
 	return rootCmd
 }
