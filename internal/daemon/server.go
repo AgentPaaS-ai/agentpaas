@@ -314,7 +314,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		grpc.StreamInterceptor(d.readinessStreamInterceptor),
 	)
 
-	// Register stub ControlService handlers.
+	// Register ControlService handlers (legacy + B26 routed skeleton).
 	controlServer := &controlServer{
 		version:               d.version,
 		auditIndex:            d.auditIndexer,
@@ -323,6 +323,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 		eventBus:              d.eventBus,
 		auditCheckpointPubKey: checkpointPubKey,
 		auditCheckpointsPath:  checkpointPath,
+	}
+	// Wire DeploymentStore / RunStore / WorkflowStore (state foundation).
+	if err := controlServer.initRoutedStores(routedStoreRoot(d.paths)); err != nil {
+		_ = auditWriter.Close()
+		_ = auditIndex.Close()
+		_ = ln.Close()
+		_ = d.cleanupFiles()
+		return fmt.Errorf("daemon: init routed stores: %w", err)
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
 	d.control = controlServer

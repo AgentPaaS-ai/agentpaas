@@ -416,6 +416,19 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Error(codes.FailedPrecondition, "daemon home paths not configured")
 	}
 
+	// B26: parse continuation / control fields but fail closed without mutation.
+	if req.GetContinueRunId() != "" || req.GetRecoveryAction() != "" || req.GetRequestedAttemptLeaseMs() != 0 {
+		return nil, notEnabledFailedPrecondition(
+			"routed_run_continuation", "B35", "routed_run_continuation_not_enabled")
+	}
+	// B26: deployment invocation via Run is representational only.
+	if strings.TrimSpace(req.GetDeploymentRef()) != "" {
+		return nil, notEnabledFailedPrecondition(
+			"deployment_invocation", "B28", "routed_run_invocation_not_enabled")
+	}
+	// Idempotency key alone on legacy Run is accepted as ignored additive field
+	// (API-required only for InvokeDeployment).
+
 	resolvedName, agentRefLabel, err := s.resolveDaemonAgentRef(agentName)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -434,6 +447,13 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	isInstalled := false
 	if _, _, ok := install.ParseInstalledAgentDir(agentName); ok {
 		isInstalled = true
+	}
+
+	// B26: routed projects (Route or workflow.yaml) fail closed before Docker.
+	if sig, derr := s.detectRoutedProject(agentName, isInstalled); derr != nil {
+		return nil, status.Errorf(codes.Internal, "detect routed project: %v", derr)
+	} else if sig != nil {
+		return nil, s.failClosedRoutedRun(ctx, agentName, sig)
 	}
 
 	var imageDigest string
@@ -846,7 +866,13 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		}
 	}(tracked)
 
-	return &controlv1.RunResponse{RunId: runID}, nil
+	// B26: persist legacy as one run / one attempt; return additive fields.
+	attemptID, _ := s.persistLegacyRunAsOneAttempt(ctx, runID, agentName)
+	return &controlv1.RunResponse{
+		RunId:     runID,
+		AttemptId: attemptID,
+		Status:    "RUNNING",
+	}, nil
 }
 
 // cleanupRun removes the run's Docker resources (agent container, gateway
@@ -935,6 +961,8 @@ func (s *controlServer) finalizeRun(ctx context.Context, runID string, tr *track
 			"run_id": runID,
 			"status": tr.Status,
 		})
+		// 3b. Best-effort persist terminal status into routed run store.
+		s.updateLegacyRunStatus(ctx, runID, tr.Status)
 		// 4. Clean up Docker resources (containers, networks, config dirs).
 		//    Safe to call even if resources are already removed — Docker
 		//    Remove/RemoveNetwork are idempotent on already-removed resources.
@@ -2485,12 +2513,13 @@ func (s *controlServer) CronAdd(ctx context.Context, req *controlv1.CronAddReque
 	}, nil
 }
 
-// ListRuns returns all currently tracked agent runs.
+// ListRuns returns all currently tracked agent runs, merging in-memory
+// tracking with persisted store records when available (survives restart).
 func (s *controlServer) ListRuns(ctx context.Context, req *controlv1.ListRunsRequest) (*controlv1.ListRunsResponse, error) {
+	_ = req
 	s.runMu.Lock()
-	defer s.runMu.Unlock()
-
 	runs := make([]*controlv1.RunInfo, 0, len(s.runs))
+	seen := make(map[string]struct{}, len(s.runs))
 	for runID, tr := range s.runs {
 		info := &controlv1.RunInfo{
 			RunId:     runID,
@@ -2501,7 +2530,38 @@ func (s *controlServer) ListRuns(ctx context.Context, req *controlv1.ListRunsReq
 			info.StartedAt = timestamppb.New(tr.StartedAt)
 		}
 		runs = append(runs, info)
+		seen[runID] = struct{}{}
 	}
+	s.runMu.Unlock()
+
+	// Merge persisted store runs (legacy one/one + any durable records).
+	if s.runStore != nil {
+		if stored, err := s.runStore.ListRuns(ctx, ""); err == nil {
+			for _, r := range stored {
+				id := string(r.RunID)
+				if _, ok := seen[id]; ok {
+					// Enrich in-memory entry with hierarchy IDs.
+					for _, info := range runs {
+						if info.RunId == id {
+							info.WorkflowId = string(r.WorkflowID)
+							break
+						}
+					}
+					continue
+				}
+				info := &controlv1.RunInfo{
+					RunId:      id,
+					Status:     r.Status.String(),
+					WorkflowId: string(r.WorkflowID),
+				}
+				if !r.CreatedAt.IsZero() {
+					info.StartedAt = timestamppb.New(r.CreatedAt)
+				}
+				runs = append(runs, info)
+			}
+		}
+	}
+
 	sort.Slice(runs, func(i, j int) bool {
 		return runs[i].GetRunId() < runs[j].GetRunId()
 	})
