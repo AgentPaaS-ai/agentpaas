@@ -189,19 +189,20 @@ func (s *MemoryStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecor
 		return fmt.Errorf("%w: alias", ErrInvalidArgument)
 	}
 	existing, ok := s.aliases[alias.Alias]
+	// Work on a copy so we never mutate the caller's struct.
+	cp := *alias
 	if ok {
-		if existing.Generation != alias.Generation {
+		if existing.Generation != cp.Generation {
 			return fmt.Errorf("%w: alias %s", ErrCASConflict, alias.Alias)
 		}
-		alias.Generation = existing.Generation + 1
-	} else if alias.Generation == 0 {
-		alias.Generation = 1
+		cp.Generation = existing.Generation + 1
+	} else if cp.Generation == 0 {
+		cp.Generation = 1
 	}
-	if alias.SchemaVersion == "" {
-		alias.SchemaVersion = CurrentSchemaVersion
+	if cp.SchemaVersion == "" {
+		cp.SchemaVersion = CurrentSchemaVersion
 	}
-	alias.UpdatedAt = s.now()
-	cp := *alias
+	cp.UpdatedAt = s.now()
 	s.aliases[alias.Alias] = &cp
 	return nil
 }
