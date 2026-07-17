@@ -162,7 +162,7 @@ def _minimal_field_value(field):
     return values[field]
 
 
-_COMPLEX_RESPONSE_FIELDS = frozenset({"issues", "events", "confirmation"})
+_COMPLEX_RESPONSE_FIELDS = frozenset({"issues", "events", "confirmation", "attempt_report"})
 
 
 def _build_minimal_response(subcommand, contracts):
@@ -399,6 +399,8 @@ class NestedFieldParityTests(unittest.TestCase):
         expected = {
             "validation_issue", "timeline_event", "redacted_excerpt",
             "evidence_ref", "confirmation_requirement",
+            "attempt_report", "progress_summary", "checkpoint_summary",
+            "time_budget_summary", "llm_budget_summary",
         }
         self.assertEqual(set(self.contracts.NESTED_CONTRACTS.keys()), expected)
 
