@@ -833,14 +833,8 @@ func TestRouteUpstreamProvidersUnsafeChars(t *testing.T) {
 
 // TestRouteAuthNoneOnCloudCandidate tests auth: none on cloud candidate fails.
 func TestRouteAuthNoneOnCloudCandidate(t *testing.T) {
-	yaml := makeRouteYAML("primary", func(r *routeTemplate) {
-		r.pattern = "cloud-cost-first"
-		r.cloudTransfer = "allowed"
-		r.candidateRoles = []string{"primary", "recovery"}
-		r.candidateLocations = []string{"cloud", "cloud"}
-	})
-	// Add auth_mode: none to the first candidate manually
-	yaml = `version: "1.1"
+	// Add auth_mode: none to a cloud candidate manually
+	yaml := `version: "1.1"
 agent:
   name: test-agent
 llm_budget:

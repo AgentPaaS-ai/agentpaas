@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-const validDefaultDenyPolicy = `version: "1"
+const validDefaultDenyPolicy = `version: "1.0"
 agent:
   name: ""
   description: ""

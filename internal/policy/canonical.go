@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/money"
 	"golang.org/x/net/idna"
 )
 
@@ -26,6 +27,16 @@ type CanonicalPolicy struct {
 	Ingress         []CanonicalIngressRule       `json:"ingress,omitempty"`
 	RoutedRun       *CanonicalRoutedRunPolicy    `json:"routed_run,omitempty"`
 	ModelRoutes     map[string]CanonicalModelRoute `json:"model_routes,omitempty"`
+	LLMBudget       *CanonicalLLMBudget           `json:"llm_budget,omitempty"`
+}
+
+// CanonicalLLMBudget is the canonical form of LLMBudget.
+// Only included in canonical form for v1.1 policies (where max_cost_usd is required).
+// v1.0 policies omit this entirely to preserve legacy digest compatibility.
+type CanonicalLLMBudget struct {
+	MaxTokens           int    `json:"max_tokens,omitempty"`
+	MaxTokensPerRequest int    `json:"max_tokens_per_request,omitempty"`
+	MaxCostUSD          string `json:"max_cost_usd,omitempty"` // canonical decimal string
 }
 
 // CanonicalAgentConfig is the canonical form of AgentConfig.
@@ -237,6 +248,21 @@ func Canonicalize(p *Policy) (*CanonicalPolicy, []string) {
 	// --- ModelRoutes: sort by key, candidates by ID, upstream_providers bytewise ---
 	if len(p.ModelRoutes) > 0 {
 		cp.ModelRoutes = canonicalizeModelRoutes(p.ModelRoutes)
+	}
+
+	// --- LLMBudget: include in canonical form only for v1.1 policies ---
+	// v1.0 policies must produce identical canonical JSON to v0.2.3 (which
+	// never included LLMBudget in the canonical form).
+	if p.Version == SchemaVersion11 && p.LLMBudget != nil {
+		cp.LLMBudget = &CanonicalLLMBudget{
+			MaxTokens:           p.LLMBudget.MaxTokens,
+			MaxTokensPerRequest: p.LLMBudget.MaxTokensPerRequest,
+		}
+		if p.LLMBudget.MaxCostUSD != "" {
+			if d, err := money.Parse(p.LLMBudget.MaxCostUSD); err == nil {
+				cp.LLMBudget.MaxCostUSD = d.String()
+			}
+		}
 	}
 
 	return cp, warnings

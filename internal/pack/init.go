@@ -110,7 +110,7 @@ func InitFromCode(projectDir string, runtime RuntimeType) error {
 	}
 	name := sanitizeAgentName(filepath.Base(absPath))
 	content := fmt.Sprintf(
-		"version: \"1\"\nruntime: %s\nname: %s\ndescription: \"\"\n",
+		"version: \"1.0\"\nruntime: %s\nname: %s\ndescription: \"\"\n",
 		runtime,
 		name,
 	)

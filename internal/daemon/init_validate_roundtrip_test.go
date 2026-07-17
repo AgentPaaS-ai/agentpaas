@@ -50,7 +50,7 @@ func TestPolicyInitThenValidate(t *testing.T) {
 
 			// Write agent.yaml directly for the test (minimal valid).
 			writeOperatorTestFile(t, projectDir, "agent.yaml",
-				`version: "1"
+				`version: "1.0"
 runtime: python
 name: test-agent
 `)
@@ -79,7 +79,7 @@ name: test-agent
 func policyTemplateContent(t *testing.T, name string) string {
 	t.Helper()
 	templates := map[string]string{
-		"deny-all": `version: "1"
+		"deny-all": `version: "1.0"
 agent:
   name: ""
   description: ""
@@ -89,7 +89,7 @@ mcp_servers: []
 hooks: []
 ingress: []
 `,
-		"allow-http": `version: "1"
+		"allow-http": `version: "1.0"
 agent:
   name: ""
   description: ""
@@ -103,7 +103,7 @@ mcp_servers: []
 hooks: []
 ingress: []
 `,
-		"allow-llm": `version: "1"
+		"allow-llm": `version: "1.0"
 agent:
   name: ""
   description: ""
@@ -126,7 +126,7 @@ mcp_servers: []
 hooks: []
 ingress: []
 `,
-		"allow-mcp": `version: "1"
+		"allow-mcp": `version: "1.0"
 agent:
   name: ""
   description: ""
