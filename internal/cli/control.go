@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -245,6 +246,86 @@ func newRunCmd() *cobra.Command {
 			if len(args) > 0 {
 				target = args[0]
 			}
+
+			// B26 continuation / control flags — fail closed via daemon.
+			continueRunID, _ := cmd.Flags().GetString("continue")
+			action, _ := cmd.Flags().GetString("action")
+			attemptLease, _ := cmd.Flags().GetDuration("attempt-lease")
+			deploymentRef, _ := cmd.Flags().GetString("deployment-ref")
+			inputFlag, _ := cmd.Flags().GetString("input")
+			idempotencyKey, _ := cmd.Flags().GetString("idempotency-key")
+			generatedKey := false
+
+			// Deployment invocation path: when --deployment-ref or --input is set,
+			// use InvokeDeployment RPC (API requires idempotency key).
+			if deploymentRef != "" || inputFlag != "" {
+				if deploymentRef == "" {
+					// Treat positional arg as deployment ref when using --input.
+					deploymentRef = target
+				}
+				if deploymentRef == "" {
+					return fmt.Errorf("deployment ref is required for deployment invocation (use --deployment-ref or positional arg)")
+				}
+				if idempotencyKey == "" {
+					// CLI generates a key when omitted; API requires one.
+					id, err := newCLIIdempotencyKey()
+					if err != nil {
+						return err
+					}
+					idempotencyKey = id
+					generatedKey = true
+					fmt.Printf("Generated idempotency key: %s\n", idempotencyKey)
+				}
+				inputBytes, err := readInputFlag(inputFlag)
+				if err != nil {
+					return err
+				}
+				sock, err := socketPath(cmd)
+				if err != nil {
+					return err
+				}
+				client, conn, err := ConnectToDaemon(sock)
+				if err != nil {
+					return err
+				}
+				defer func() { _ = conn.Close() }()
+				ctx, cancel := contextWithTimeout(30 * time.Second)
+				defer cancel()
+				resp, err := client.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
+					DeploymentRef:  deploymentRef,
+					InputJson:      inputBytes,
+					IdempotencyKey: idempotencyKey,
+					CallerIdentity: "cli",
+				})
+				if err != nil {
+					return fmt.Errorf("invoke deployment failed: %w", err)
+				}
+				if e := resp.GetError(); e != nil {
+					return fmt.Errorf("%s: %s", e.GetCodeName(), e.GetMessage())
+				}
+				result := struct {
+					Outcome       string `json:"outcome"`
+					InvocationID  string `json:"invocation_id,omitempty"`
+					RunID         string `json:"run_id,omitempty"`
+					IdempotencyKey string `json:"idempotency_key,omitempty"`
+				}{
+					Outcome:        resp.GetOutcomeName(),
+					InvocationID:   resp.GetInvocationId(),
+					RunID:          resp.GetRunId(),
+					IdempotencyKey: idempotencyKey,
+				}
+				_ = generatedKey
+				return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
+					r := v.(struct {
+						Outcome        string `json:"outcome"`
+						InvocationID   string `json:"invocation_id,omitempty"`
+						RunID          string `json:"run_id,omitempty"`
+						IdempotencyKey string `json:"idempotency_key,omitempty"`
+					})
+					return fmt.Sprintf("Invoke outcome: %s (run %s)", r.Outcome, r.RunID)
+				})
+			}
+
 			sock, err := socketPath(cmd)
 			if err != nil {
 				return err
@@ -268,22 +349,46 @@ func newRunCmd() *cobra.Command {
 			ctx, cancel := contextWithTimeout(90 * time.Second)
 			defer cancel()
 
-			resp, err := client.Run(ctx, &controlv1.RunRequest{
+			runReq := &controlv1.RunRequest{
 				AgentName: agentName,
-			})
+			}
+			if continueRunID != "" {
+				runReq.ContinueRunId = continueRunID
+			}
+			if action != "" {
+				runReq.RecoveryAction = action
+			}
+			if attemptLease > 0 {
+				runReq.RequestedAttemptLeaseMs = attemptLease.Milliseconds()
+			}
+			if idempotencyKey != "" {
+				runReq.IdempotencyKey = idempotencyKey
+			}
+
+			resp, err := client.Run(ctx, runReq)
 			if err != nil {
 				return fmt.Errorf("run failed: %w", err)
 			}
 
 			result := struct {
-				RunID      string `json:"run_id"`
-				Agent      string `json:"agent,omitempty"`
-			}{RunID: resp.GetRunId(), Agent: displayAgent}
+				RunID     string `json:"run_id"`
+				Agent     string `json:"agent,omitempty"`
+				AttemptID string `json:"attempt_id,omitempty"`
+				Status    string `json:"status,omitempty"`
+			}{
+				RunID:     resp.GetRunId(),
+				Agent:     displayAgent,
+				AttemptID: resp.GetAttemptId(),
+				Status:    resp.GetStatus(),
+			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(struct {
-					RunID string `json:"run_id"`
-					Agent string `json:"agent,omitempty"`
+					RunID     string `json:"run_id"`
+					Agent     string `json:"agent,omitempty"`
+					AttemptID string `json:"attempt_id,omitempty"`
+					Status    string `json:"status,omitempty"`
 				})
+				// Preserve legacy primary output line.
 				if r.Agent != "" {
 					return fmt.Sprintf("Run started: %s (agent %s)", r.RunID, r.Agent)
 				}
@@ -291,8 +396,205 @@ func newRunCmd() *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().String("continue", "", "Continue a prior run (not enabled until B35)")
+	cmd.Flags().String("action", "", "Recovery action: more_time|capability_up|larger_context (not enabled until B35)")
+	cmd.Flags().Duration("attempt-lease", 0, "Requested attempt lease duration (not enabled until B35)")
+	cmd.Flags().String("input", "", "Input JSON string or @file for deployment invocation")
+	cmd.Flags().String("idempotency-key", "", "Idempotency key (CLI generates one when omitted for deploy invoke)")
+	cmd.Flags().String("deployment-ref", "", "Deployment alias or exact ID to invoke (not enabled until B28)")
+
 	cmd.AddCommand(newListRunsCmd())
+	cmd.AddCommand(newRunCancelCmd())
+	cmd.AddCommand(newRunPauseCmd())
+	cmd.AddCommand(newRunResumeCmd())
+	cmd.AddCommand(newRunRestartCmd())
+	cmd.AddCommand(newRunExtendCmd())
 	return cmd
+}
+
+func newRunCancelCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cancel <run-id>",
+		Short: "Cancel a run/workflow (not enabled until B35)",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runControlNotEnabled("cancel"),
+	}
+}
+
+func newRunPauseCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "pause <run-id>",
+		Short: "Pause a run/workflow (not enabled until B35)",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runControlNotEnabled("pause"),
+	}
+}
+
+func newRunResumeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "resume <run-id>",
+		Short: "Resume a run/workflow (not enabled until B35)",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runControlNotEnabled("resume"),
+	}
+}
+
+func newRunRestartCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "restart <run-id>",
+		Short: "Restart a run/workflow (not enabled until B35)",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runControlNotEnabled("restart"),
+	}
+}
+
+func newRunExtendCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "extend <run-id>",
+		Short: "Amend run limits (not enabled until B35)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			reason, _ := cmd.Flags().GetString("reason")
+			if strings.TrimSpace(reason) == "" {
+				return fmt.Errorf("--reason is required")
+			}
+			key, _ := cmd.Flags().GetString("idempotency-key")
+			if key == "" {
+				return fmt.Errorf("--idempotency-key is required for extend (API contract)")
+			}
+			maxActive, _ := cmd.Flags().GetDuration("max-active-time")
+			maxSpend, _ := cmd.Flags().GetString("max-llm-spend-usd")
+			_ = maxActive
+			_ = maxSpend
+
+			sock, err := socketPath(cmd)
+			if err != nil {
+				return err
+			}
+			client, conn, err := ConnectToDaemon(sock)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = conn.Close() }()
+			ctx, cancel := contextWithTimeout(15 * time.Second)
+			defer cancel()
+
+			// Treat run-id as workflow_id for the amend-limits RPC skeleton.
+			resp, err := client.AmendLimits(ctx, &controlv1.AmendLimitsRequest{
+				WorkflowId:              args[0],
+				NewMaxActiveDurationMs:  maxActive.Milliseconds(),
+				NewMaxLlmSpendDecimal:   maxSpend,
+				Reason:                  reason,
+				IdempotencyKey:          key,
+				ActorIdentity:           "cli",
+			})
+			if err != nil {
+				return fmt.Errorf("extend failed: %w", err)
+			}
+			if e := resp.GetError(); e != nil {
+				return fmt.Errorf("%s: %s", e.GetCodeName(), e.GetMessage())
+			}
+			return fmt.Errorf("extend unexpectedly succeeded (not enabled in B26)")
+		},
+	}
+	cmd.Flags().Duration("max-active-time", 0, "New absolute max active time")
+	cmd.Flags().String("max-llm-spend-usd", "", "New absolute max LLM spend (decimal string)")
+	cmd.Flags().Bool("extend-current-attempt", false, "Also extend current attempt lease")
+	cmd.Flags().String("reason", "", "Required reason for the amendment")
+	cmd.Flags().String("idempotency-key", "", "Required idempotency key")
+	return cmd
+}
+
+func runControlNotEnabled(command string) func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		sock, err := socketPath(cmd)
+		if err != nil {
+			return err
+		}
+		client, conn, err := ConnectToDaemon(sock)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = conn.Close() }()
+		ctx, cancel := contextWithTimeout(15 * time.Second)
+		defer cancel()
+
+		key := "cli-control-" + command + "-" + args[0]
+		var desired controlv1.ControlCommand
+		switch command {
+		case "cancel":
+			// Prefer CancelWorkflow for cancel.
+			resp, err := client.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+				WorkflowId:     args[0],
+				Reason:         "cli cancel",
+				ActorIdentity:  "cli",
+				IdempotencyKey: key,
+			})
+			if err != nil {
+				return fmt.Errorf("%s failed: %w", command, err)
+			}
+			if e := resp.GetError(); e != nil {
+				return fmt.Errorf("%s: %s", e.GetCodeName(), e.GetMessage())
+			}
+			return fmt.Errorf("%s unexpectedly succeeded (not enabled in B26)", command)
+		case "pause":
+			desired = controlv1.ControlCommand_CONTROL_COMMAND_PAUSE
+		case "resume":
+			desired = controlv1.ControlCommand_CONTROL_COMMAND_RESUME
+		case "restart":
+			resp, err := client.RestartWorkflow(ctx, &controlv1.RestartWorkflowRequest{
+				SourceWorkflowId: args[0],
+				ActorIdentity:    "cli",
+				IdempotencyKey:   key,
+			})
+			if err != nil {
+				return fmt.Errorf("%s failed: %w", command, err)
+			}
+			if e := resp.GetError(); e != nil {
+				return fmt.Errorf("%s: %s", e.GetCodeName(), e.GetMessage())
+			}
+			return fmt.Errorf("%s unexpectedly succeeded (not enabled in B26)", command)
+		default:
+			desired = controlv1.ControlCommand_CONTROL_COMMAND_UNSPECIFIED
+		}
+		resp, err := client.SetWorkflowDesiredState(ctx, &controlv1.SetWorkflowDesiredStateRequest{
+			WorkflowId:       args[0],
+			DesiredCommand:   desired,
+			ActorIdentity:    "cli",
+			IdempotencyKey:   key,
+		})
+		if err != nil {
+			return fmt.Errorf("%s failed: %w", command, err)
+		}
+		if e := resp.GetError(); e != nil {
+			return fmt.Errorf("%s: %s", e.GetCodeName(), e.GetMessage())
+		}
+		return fmt.Errorf("%s unexpectedly succeeded (not enabled in B26)", command)
+	}
+}
+
+func readInputFlag(input string) ([]byte, error) {
+	if input == "" {
+		return []byte("{}"), nil
+	}
+	if strings.HasPrefix(input, "@") {
+		path := strings.TrimPrefix(input, "@")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read input file %s: %w", path, err)
+		}
+		return data, nil
+	}
+	return []byte(input), nil
+}
+
+func newCLIIdempotencyKey() (string, error) {
+	// Use routedrun-compatible inv- prefix via crypto/rand hex.
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate idempotency key: %w", err)
+	}
+	return "inv-" + hex.EncodeToString(buf), nil
 }
 
 // newListRunsCmd creates the `agent run list` command.
