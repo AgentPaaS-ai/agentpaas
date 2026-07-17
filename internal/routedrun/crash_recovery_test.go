@@ -422,13 +422,11 @@ func TestCrashRecovery_WAL_MultiOpAtomicityNoMixture(t *testing.T) {
 	if _, err := os.Lstat(walPath); !os.IsNotExist(err) {
 		t.Fatalf("uncommitted wal should be gone")
 	}
-	// BUG: Part A recovery discards uncommitted WAL but does not undo partial
-	// materialization performed before crash. Leaked nodeA may remain.
-	// Spec wants never a mixture — ideal recovery would roll back uncommitted puts.
+	// Uncommitted recovery must roll back partial materialization (no mixture).
 	_, errA := s.GetNode(ctx, nodeA)
 	_, errB := s.GetNode(ctx, nodeB)
-	if errA == nil && errB != nil {
-		t.Log("BUG: uncommitted partial materialization left nodeA without nodeB; recovery did not roll back")
+	if errA == nil || errB == nil {
+		t.Fatalf("uncommitted partial materialization must be rolled back; nodeA err=%v nodeB err=%v", errA, errB)
 	}
 	// Workflow generation must still be pre-transition (auto workflow op not applied).
 	got, err := s.GetWorkflow(ctx, wf.WorkflowID)

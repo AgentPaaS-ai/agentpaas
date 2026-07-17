@@ -33,6 +33,7 @@ type MemoryStore struct {
 	amendments    map[LimitAmendmentID]*LimitAmendment
 	controls      map[ControlRequestID]*ControlRequest
 	controlResults []controlResultEntry
+	activeTime    map[WorkflowID]*ActiveTimeLedger
 
 	runs       map[RunID]*RunRecord
 	runGen     map[RunID]int64
@@ -67,6 +68,7 @@ func NewMemoryStore(opts ...MemoryStoreOption) *MemoryStore {
 		desired:       make(map[WorkflowID]*DesiredState),
 		amendments:    make(map[LimitAmendmentID]*LimitAmendment),
 		controls:      make(map[ControlRequestID]*ControlRequest),
+		activeTime:    make(map[WorkflowID]*ActiveTimeLedger),
 		runs:          make(map[RunID]*RunRecord),
 		runGen:        make(map[RunID]int64),
 		attempts:      make(map[AttemptID]*AttemptRecord),
@@ -401,6 +403,10 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 		Outcome:                AdmissionAccepted,
 		CreatedAt:              now,
 	}
+	s.activeTime[wfID] = &ActiveTimeLedger{
+		SchemaVersion: CurrentSchemaVersion,
+		UpdatedAt:     now,
+	}
 	cp := *receipt
 	return &cp, nil
 }
@@ -630,6 +636,13 @@ func (s *MemoryStore) ReconcileInterrupted(ctx context.Context, runID RunID) err
 		run.TerminatedAt = &now
 		s.runGen[runID]++
 	}
+	// Conservative close of open active-time segment.
+	if run.WorkflowID != "" {
+		if ledger, ok := s.activeTime[run.WorkflowID]; ok && ledger.RunningSegmentStartMs != nil {
+			ledger.RunningSegmentStartMs = nil
+			ledger.UpdatedAt = now
+		}
+	}
 	return nil
 }
 
@@ -653,6 +666,10 @@ func (s *MemoryStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) er
 	cp := *wf
 	s.workflows[wf.WorkflowID] = &cp
 	s.workflowGen[wf.WorkflowID] = cp.Generation
+	s.activeTime[wf.WorkflowID] = &ActiveTimeLedger{
+		SchemaVersion: CurrentSchemaVersion,
+		UpdatedAt:     s.now(),
+	}
 	return nil
 }
 
@@ -675,11 +692,23 @@ func (s *MemoryStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, ex
 	if s.workflowGen[wf.WorkflowID] != expectedGeneration {
 		return fmt.Errorf("%w: workflow %s", ErrCASConflict, wf.WorkflowID)
 	}
+	existing := s.workflows[wf.WorkflowID]
+	if existing == nil {
+		return fmt.Errorf("%w: workflow %s", ErrNotFound, wf.WorkflowID)
+	}
+	// Resume re-acquire concurrency under the same write lock as AdmitInvocation.
+	if !holdsConcurrencySlot(existing.Status) && holdsConcurrencySlot(wf.Status) {
+		if err := s.checkConcurrencyForResumeLocked(existing.DeploymentID); err != nil {
+			return err
+		}
+	}
+	from := existing.Status
 	wf.Generation = expectedGeneration + 1
 	wf.UpdatedAt = s.now()
 	cp := *wf
 	s.workflows[wf.WorkflowID] = &cp
 	s.workflowGen[wf.WorkflowID] = wf.Generation
+	s.syncActiveTimeOnStatusChangeLocked(wf.WorkflowID, from, wf.Status)
 	return nil
 }
 
@@ -929,6 +958,15 @@ func (s *MemoryStore) RequestControl(ctx context.Context, req *ControlRequest) e
 	_ = ctx
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Idempotency: same workflow + key returns the original ControlRequestID.
+	if req.IdempotencyKey != "" {
+		for _, cr := range s.controls {
+			if cr.WorkflowID == req.WorkflowID && cr.IdempotencyKey == req.IdempotencyKey {
+				*req = *cr
+				return nil
+			}
+		}
+	}
 	if req.ControlRequestID == "" {
 		id, err := NewControlRequestID()
 		if err != nil {
@@ -981,12 +1019,29 @@ func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID Workf
 	if !ok {
 		return fmt.Errorf("%w: workflow %s", ErrNotFound, workflowID)
 	}
+
+	// Idempotency by workflow + key before authority CAS.
+	if amendment.IdempotencyKey != "" {
+		for _, a := range s.amendments {
+			if a.WorkflowID == workflowID && a.IdempotencyKey == amendment.IdempotencyKey {
+				if amendmentPayloadEqual(a, amendment) {
+					*amendment = *a
+					return nil // IDEMPOTENT_REPLAY
+				}
+				return fmt.Errorf("%w: amendment key %s", ErrIdempotencyConflict, amendment.IdempotencyKey)
+			}
+		}
+	}
+
 	if wf.AuthorityGeneration != expectedAuthorityGeneration {
 		return fmt.Errorf("%w: authority", ErrCASConflict)
 	}
 	if amendment.NewMaxActiveDurationMs != 0 && amendment.NewMaxActiveDurationMs < wf.MaxActiveDurationMs {
 		return fmt.Errorf("%w: decrease not allowed", ErrInvalidArgument)
 	}
+	amendment.BeforeMaxActiveDurationMs = wf.MaxActiveDurationMs
+	amendment.BeforeMaxAttemptLeaseMs = wf.MaxAttemptLeaseMs
+	amendment.BeforeMaxLLMSpendDecimal = wf.MaxLLMSpendDecimal
 	if amendment.NewMaxActiveDurationMs > 0 {
 		wf.MaxActiveDurationMs = amendment.NewMaxActiveDurationMs
 	}
@@ -1005,6 +1060,16 @@ func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID Workf
 			return err
 		}
 		amendment.AmendmentID = id
+	}
+	amendment.SchemaVersion = CurrentSchemaVersion
+	amendment.WorkflowID = workflowID
+	amendment.ExpectedAuthorityGeneration = expectedAuthorityGeneration
+	amendment.NewAuthorityGeneration = wf.AuthorityGeneration
+	amendment.AfterMaxActiveDurationMs = wf.MaxActiveDurationMs
+	amendment.AfterMaxAttemptLeaseMs = wf.MaxAttemptLeaseMs
+	amendment.AfterMaxLLMSpendDecimal = wf.MaxLLMSpendDecimal
+	if amendment.CreatedAt.IsZero() {
+		amendment.CreatedAt = s.now()
 	}
 	cp := *amendment
 	s.amendments[amendment.AmendmentID] = &cp
@@ -1027,4 +1092,109 @@ func (s *MemoryStore) ApplyTransition(ctx context.Context, workflowID WorkflowID
 	wf.UpdatedAt = s.now()
 	s.workflowGen[workflowID] = wf.Generation
 	return nil
+}
+
+func (s *MemoryStore) checkConcurrencyForResumeLocked(depID DeploymentID) error {
+	if depID == "" {
+		return nil
+	}
+	dep, ok := s.deployments[depID]
+	if !ok {
+		return nil
+	}
+	holding := 0
+	for _, wf := range s.workflows {
+		if wf.DeploymentID != depID {
+			continue
+		}
+		if holdsConcurrencySlot(wf.Status) {
+			holding++
+		}
+	}
+	max := dep.MaxConcurrentRuns
+	if max <= 0 {
+		max = 1
+	}
+	if holding >= max {
+		return fmt.Errorf("%w: holding %d", ErrAlreadyRunning, holding)
+	}
+	return nil
+}
+
+// GetActiveTimeLedger loads the in-memory active-time ledger.
+func (s *MemoryStore) GetActiveTimeLedger(ctx context.Context, workflowID WorkflowID) (*ActiveTimeLedger, error) {
+	_ = ctx
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ledger, ok := s.activeTime[workflowID]
+	if !ok {
+		return nil, fmt.Errorf("%w: active time ledger %s", ErrNotFound, workflowID)
+	}
+	cp := *ledger
+	if ledger.RunningSegmentStartMs != nil {
+		v := *ledger.RunningSegmentStartMs
+		cp.RunningSegmentStartMs = &v
+	}
+	return &cp, nil
+}
+
+// PutActiveTimeLedger stores the active-time ledger.
+func (s *MemoryStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger) error {
+	_ = ctx
+	if ledger == nil {
+		return fmt.Errorf("%w: nil active time ledger", ErrInvalidArgument)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ledger.SchemaVersion == "" {
+		ledger.SchemaVersion = CurrentSchemaVersion
+	}
+	ledger.UpdatedAt = s.now()
+	cp := *ledger
+	if ledger.RunningSegmentStartMs != nil {
+		v := *ledger.RunningSegmentStartMs
+		cp.RunningSegmentStartMs = &v
+	}
+	s.activeTime[workflowID] = &cp
+	return nil
+}
+
+func (s *MemoryStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, to WorkflowStatus) {
+	if from == to {
+		return
+	}
+	ledger, ok := s.activeTime[wfID]
+	if !ok {
+		ledger = &ActiveTimeLedger{SchemaVersion: CurrentSchemaVersion}
+		s.activeTime[wfID] = ledger
+	}
+	nowMs := s.now().UnixMilli()
+	fromCharge := chargesActiveTime(from)
+	toCharge := chargesActiveTime(to)
+	if fromCharge && !toCharge {
+		if ledger.RunningSegmentStartMs != nil {
+			delta := nowMs - *ledger.RunningSegmentStartMs
+			if delta > 0 {
+				ledger.ConsumedMs += delta
+			}
+			ledger.RunningSegmentStartMs = nil
+		}
+		if to == WorkflowStatusPaused || to == WorkflowStatusNeedsReplan {
+			ledger.FrozenConsumedMs = ledger.ConsumedMs
+		}
+	}
+	if !fromCharge && toCharge {
+		ledger.RunningSegmentStartMs = &nowMs
+		ledger.FrozenConsumedMs = 0
+	}
+	if to.IsTerminal() {
+		if ledger.RunningSegmentStartMs != nil {
+			delta := nowMs - *ledger.RunningSegmentStartMs
+			if delta > 0 {
+				ledger.ConsumedMs += delta
+			}
+			ledger.RunningSegmentStartMs = nil
+		}
+	}
+	ledger.UpdatedAt = s.now()
 }

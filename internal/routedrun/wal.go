@@ -136,7 +136,11 @@ func (s *LocalStore) recoverWAL(wfID WorkflowID) error {
 			return fmt.Errorf("routedrun: corrupt wal %s: %w", path, err)
 		}
 		if !entry.Committed {
-			// Uncommitted: discard (pre-transition state is authoritative).
+			// Uncommitted: roll back any partial materialization, then discard.
+			// Pre-transition state is authoritative; never leave a half-applied mix.
+			if err := s.rollbackWALOps(WorkflowID(entry.WorkflowID), entry.Operations); err != nil {
+				return err
+			}
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 				return err
 			}
@@ -145,6 +149,38 @@ func (s *LocalStore) recoverWAL(wfID WorkflowID) error {
 		// Committed: ensure materialization is present (idempotent re-apply).
 		if err := s.materializeWALOps(WorkflowID(entry.WorkflowID), entry.Operations); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// rollbackWALOps undoes materialization from an uncommitted entry.
+// Puts are removed; deletes cannot be restored without a snapshot and are left as-is.
+func (s *LocalStore) rollbackWALOps(wfID WorkflowID, ops []WALOp) error {
+	for i := len(ops) - 1; i >= 0; i-- {
+		op := ops[i]
+		action := op.Action
+		if action == "" {
+			action = "put"
+		}
+		path, err := s.pathForWALOp(wfID, op)
+		if err != nil {
+			return err
+		}
+		switch action {
+		case "put":
+			// Never delete the workflow record itself if it already existed at a
+			// lower generation — only remove non-workflow puts that leaked.
+			if op.Kind == "workflow" {
+				continue
+			}
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		case "delete":
+			// No prior snapshot available; leave deleted.
+		default:
+			return fmt.Errorf("routedrun: unknown wal action %q during rollback", action)
 		}
 	}
 	return nil
@@ -214,9 +250,9 @@ func (s *LocalStore) pathForWALOp(wfID WorkflowID, op WALOp) (string, error) {
 }
 
 // applyTransitionLocked implements ApplyTransition under s.mu.
-// Sequence: write uncommitted WAL → fsync → materialize → commit WAL → fsync.
-// Crash before commit leaves pre-transition state; after commit, recovery
-// re-materializes.
+// Sequence: write uncommitted WAL → commit WAL → materialize → event log.
+// Crash before commit: nothing materialized (uncommitted = empty). Crash after
+// commit: recovery re-materializes committed ops idempotently.
 func (s *LocalStore) applyTransitionLocked(wfID WorkflowID, expectedGeneration int64, command string, ops []WALOp) error {
 	wf, gen, err := s.loadWorkflowCAS(wfID)
 	if err != nil {
@@ -269,12 +305,12 @@ func (s *LocalStore) applyTransitionLocked(wfID WorkflowID, expectedGeneration i
 	if err != nil {
 		return err
 	}
-	// Materialize.
-	if err := s.materializeWALOps(wfID, fullOps); err != nil {
-		// Leave uncommitted entry for recovery to discard.
+	// Commit before materialize so uncommitted never equals partial files.
+	if err := s.commitWALEntry(path, entry); err != nil {
 		return err
 	}
-	if err := s.commitWALEntry(path, entry); err != nil {
+	if err := s.materializeWALOps(wfID, fullOps); err != nil {
+		// Committed: recovery will re-apply materialization.
 		return err
 	}
 	// Append to events.jsonl for observability.

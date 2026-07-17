@@ -544,6 +544,13 @@ func (s *LocalStore) commitAdmission(req *InvocationRequest, receipt *Invocation
 	if err := s.writeJSON(s.idempotencyPath(req.CallerIdentity, req.IdempotencyKey), 1, idem); err != nil {
 		return err
 	}
+	// Initialize active-time ledger for the admitted workflow.
+	if err := s.saveActiveTimeLedgerLocked(wf.WorkflowID, &ActiveTimeLedger{
+		SchemaVersion: CurrentSchemaVersion,
+		UpdatedAt:     s.now(),
+	}); err != nil {
+		return err
+	}
 	// Index receipt by invocation for ListInvocations.
 	return nil
 }
@@ -1009,6 +1016,12 @@ func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) erro
 			return err
 		}
 	}
+	// Conservative close of open active-time segment: do not invent wall time.
+	if run.WorkflowID != "" {
+		if err := s.closeActiveTimeSegmentConservativelyLocked(run.WorkflowID); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1064,7 +1077,14 @@ func (s *LocalStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) err
 	if _, err := os.Lstat(path); err == nil {
 		return fmt.Errorf("%w: workflow %s", ErrAlreadyExists, wf.WorkflowID)
 	}
-	return s.writeJSON(path, wf.Generation, wf)
+	if err := s.writeJSON(path, wf.Generation, wf); err != nil {
+		return err
+	}
+	// Initialize active-time ledger for the workflow.
+	return s.saveActiveTimeLedgerLocked(wf.WorkflowID, &ActiveTimeLedger{
+		SchemaVersion: CurrentSchemaVersion,
+		UpdatedAt:     s.now(),
+	})
 }
 
 func (s *LocalStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*WorkflowRecord, error) {
@@ -1094,9 +1114,19 @@ func (s *LocalStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, exp
 	if gen != expectedGeneration || existing.Generation != expectedGeneration {
 		return fmt.Errorf("%w: workflow %s expected %d got %d", ErrCASConflict, wf.WorkflowID, expectedGeneration, existing.Generation)
 	}
+	// Resume / re-acquire slot: entering a slot-holding status from a
+	// non-holding status must respect deployment concurrency under the same lock.
+	if !holdsConcurrencySlot(existing.Status) && holdsConcurrencySlot(wf.Status) {
+		if err := s.checkConcurrencyForResumeLocked(existing.DeploymentID); err != nil {
+			return err
+		}
+	}
 	wf.Generation = expectedGeneration + 1
 	wf.UpdatedAt = s.now()
-	return s.writeJSON(path, wf.Generation, wf)
+	if err := s.writeJSON(path, wf.Generation, wf); err != nil {
+		return err
+	}
+	return s.syncActiveTimeOnStatusChangeLocked(wf.WorkflowID, existing.Status, wf.Status)
 }
 
 func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, error) {
@@ -1528,6 +1558,15 @@ func (s *LocalStore) RequestControl(ctx context.Context, req *ControlRequest) er
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Idempotency: same workflow + key returns the original ControlRequestID.
+	if req.IdempotencyKey != "" {
+		if existing, err := s.findControlByIdempotencyLocked(req.WorkflowID, req.IdempotencyKey); err == nil {
+			*req = *existing
+			return nil
+		} else if !errorsIsNotFound(err) {
+			return err
+		}
+	}
 	if req.ControlRequestID == "" {
 		id, err := NewControlRequestID()
 		if err != nil {
@@ -1548,13 +1587,13 @@ func (s *LocalStore) RequestControl(ctx context.Context, req *ControlRequest) er
 	}
 	// Update desired state with cancel precedence.
 	ds := &DesiredState{
-		SchemaVersion:     CurrentSchemaVersion,
-		WorkflowID:        req.WorkflowID,
-		DesiredCommand:    req.Command,
-		ControlRequestID:  req.ControlRequestID,
-		Generation:        req.ExpectedGeneration,
-		CancelPrecedence:  req.Command == ControlCancel,
-		CreatedAt:         s.now(),
+		SchemaVersion:    CurrentSchemaVersion,
+		WorkflowID:       req.WorkflowID,
+		DesiredCommand:   req.Command,
+		ControlRequestID: req.ControlRequestID,
+		Generation:       req.ExpectedGeneration,
+		CancelPrecedence: req.Command == ControlCancel,
+		CreatedAt:        s.now(),
 	}
 	// If existing desired is cancel, keep cancel.
 	dsPath := filepath.Join(s.workflowsDir(), safeID(string(req.WorkflowID)), "desired_state.json")
@@ -1566,6 +1605,30 @@ func (s *LocalStore) RequestControl(ctx context.Context, req *ControlRequest) er
 		}
 	}
 	return s.writeJSON(dsPath, ds.Generation, ds)
+}
+
+func (s *LocalStore) findControlByIdempotencyLocked(wfID WorkflowID, key string) (*ControlRequest, error) {
+	dir := filepath.Join(s.workflowsDir(), safeID(string(wfID)), "controls")
+	names, err := listJSONNames(dir)
+	if err != nil {
+		if os.IsNotExist(err) || errorsIsNotFound(err) {
+			return nil, fmt.Errorf("%w: control idempotency", ErrNotFound)
+		}
+		return nil, err
+	}
+	for _, name := range names {
+		var cr ControlRequest
+		if _, err := s.readJSON(filepath.Join(dir, name), &cr); err != nil {
+			if errorsIsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		if cr.IdempotencyKey == key {
+			return &cr, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: control idempotency", ErrNotFound)
 }
 
 func (s *LocalStore) GetDesiredState(ctx context.Context, workflowID WorkflowID) (*DesiredState, error) {
@@ -1610,6 +1673,20 @@ func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID Workfl
 	if err != nil {
 		return err
 	}
+
+	// Idempotency by workflow + key before applying authority CAS.
+	if amendment.IdempotencyKey != "" {
+		if existing, err := s.findAmendmentByIdempotencyLocked(workflowID, amendment.IdempotencyKey); err == nil {
+			if amendmentPayloadEqual(existing, amendment) {
+				*amendment = *existing
+				return nil // IDEMPOTENT_REPLAY
+			}
+			return fmt.Errorf("%w: amendment key %s", ErrIdempotencyConflict, amendment.IdempotencyKey)
+		} else if !errorsIsNotFound(err) {
+			return err
+		}
+	}
+
 	if wf.AuthorityGeneration != expectedAuthorityGeneration {
 		return fmt.Errorf("%w: authority generation expected %d got %d", ErrCASConflict, expectedAuthorityGeneration, wf.AuthorityGeneration)
 	}
@@ -1647,6 +1724,7 @@ func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID Workfl
 	}
 	amendment.SchemaVersion = CurrentSchemaVersion
 	amendment.WorkflowID = workflowID
+	amendment.ExpectedAuthorityGeneration = expectedAuthorityGeneration
 	amendment.NewAuthorityGeneration = wf.AuthorityGeneration
 	amendment.AfterMaxActiveDurationMs = wf.MaxActiveDurationMs
 	amendment.AfterMaxAttemptLeaseMs = wf.MaxAttemptLeaseMs
@@ -1660,6 +1738,38 @@ func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID Workfl
 		return err
 	}
 	return s.writeJSON(path, wf.Generation, &wf)
+}
+
+func (s *LocalStore) findAmendmentByIdempotencyLocked(wfID WorkflowID, key string) (*LimitAmendment, error) {
+	dir := filepath.Join(s.workflowsDir(), safeID(string(wfID)), "amendments")
+	names, err := listJSONNames(dir)
+	if err != nil {
+		if os.IsNotExist(err) || errorsIsNotFound(err) {
+			return nil, fmt.Errorf("%w: amendment idempotency", ErrNotFound)
+		}
+		return nil, err
+	}
+	for _, name := range names {
+		var a LimitAmendment
+		if _, err := s.readJSON(filepath.Join(dir, name), &a); err != nil {
+			if errorsIsNotFound(err) {
+				continue
+			}
+			return nil, err
+		}
+		if a.IdempotencyKey == key {
+			return &a, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: amendment idempotency", ErrNotFound)
+}
+
+func amendmentPayloadEqual(existing, incoming *LimitAmendment) bool {
+	return existing.NewMaxActiveDurationMs == incoming.NewMaxActiveDurationMs &&
+		existing.NewCurrentAttemptLeaseMs == incoming.NewCurrentAttemptLeaseMs &&
+		existing.NewMaxLLMSpendDecimal == incoming.NewMaxLLMSpendDecimal &&
+		existing.Reason == incoming.Reason &&
+		existing.ActorIdentity == incoming.ActorIdentity
 }
 
 func (s *LocalStore) ApplyTransition(ctx context.Context, workflowID WorkflowID, expectedGeneration int64, command string) error {
@@ -1918,4 +2028,157 @@ func copyStringMap(m map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// Concurrency slot helpers + active-time ledger
+// ---------------------------------------------------------------------------
+
+func holdsConcurrencySlot(st WorkflowStatus) bool {
+	switch st {
+	case WorkflowStatusPending, WorkflowStatusRunning, WorkflowStatusPauseRequested:
+		return true
+	default:
+		return false
+	}
+}
+
+func chargesActiveTime(st WorkflowStatus) bool {
+	switch st {
+	case WorkflowStatusRunning, WorkflowStatusPauseRequested:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *LocalStore) checkConcurrencyForResumeLocked(depID DeploymentID) error {
+	if depID == "" {
+		return nil
+	}
+	var dep DeploymentRecord
+	if _, err := s.readJSON(s.deploymentPath(depID), &dep); err != nil {
+		// No deployment bound (seeded workflows) — skip concurrency gate.
+		if errorsIsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	holding, err := s.countSlotHoldingLocked(depID)
+	if err != nil {
+		return err
+	}
+	max := dep.MaxConcurrentRuns
+	if max <= 0 {
+		max = 1
+	}
+	if holding >= max {
+		return fmt.Errorf("%w: deployment %s holding %d max %d", ErrAlreadyRunning, depID, holding, max)
+	}
+	return nil
+}
+
+func (s *LocalStore) activeTimePath(wfID WorkflowID) string {
+	return filepath.Join(s.workflowsDir(), safeID(string(wfID)), "active_time.json")
+}
+
+// GetActiveTimeLedger loads the workflow active-time ledger.
+func (s *LocalStore) GetActiveTimeLedger(ctx context.Context, workflowID WorkflowID) (*ActiveTimeLedger, error) {
+	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadActiveTimeLedgerLocked(workflowID)
+}
+
+// PutActiveTimeLedger persists the workflow active-time ledger.
+func (s *LocalStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger) error {
+	_ = ctx
+	if ledger == nil {
+		return fmt.Errorf("%w: nil active time ledger", ErrInvalidArgument)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ledger.SchemaVersion == "" {
+		ledger.SchemaVersion = CurrentSchemaVersion
+	}
+	ledger.UpdatedAt = s.now()
+	return s.saveActiveTimeLedgerLocked(workflowID, ledger)
+}
+
+func (s *LocalStore) loadActiveTimeLedgerLocked(wfID WorkflowID) (*ActiveTimeLedger, error) {
+	var ledger ActiveTimeLedger
+	if _, err := s.readJSON(s.activeTimePath(wfID), &ledger); err != nil {
+		return nil, err
+	}
+	return &ledger, nil
+}
+
+func (s *LocalStore) saveActiveTimeLedgerLocked(wfID WorkflowID, ledger *ActiveTimeLedger) error {
+	if ledger.SchemaVersion == "" {
+		ledger.SchemaVersion = CurrentSchemaVersion
+	}
+	return s.writeJSON(s.activeTimePath(wfID), 1, ledger)
+}
+
+func (s *LocalStore) closeActiveTimeSegmentConservativelyLocked(wfID WorkflowID) error {
+	ledger, err := s.loadActiveTimeLedgerLocked(wfID)
+	if err != nil {
+		if errorsIsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if ledger.RunningSegmentStartMs == nil {
+		return nil
+	}
+	// Conservative: clear open segment without charging unknown wall time.
+	ledger.RunningSegmentStartMs = nil
+	ledger.UpdatedAt = s.now()
+	return s.saveActiveTimeLedgerLocked(wfID, ledger)
+}
+
+func (s *LocalStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, to WorkflowStatus) error {
+	if from == to {
+		return nil
+	}
+	ledger, err := s.loadActiveTimeLedgerLocked(wfID)
+	if err != nil {
+		if errorsIsNotFound(err) {
+			ledger = &ActiveTimeLedger{SchemaVersion: CurrentSchemaVersion}
+		} else {
+			return err
+		}
+	}
+	nowMs := s.now().UnixMilli()
+	fromCharge := chargesActiveTime(from)
+	toCharge := chargesActiveTime(to)
+
+	if fromCharge && !toCharge {
+		if ledger.RunningSegmentStartMs != nil {
+			delta := nowMs - *ledger.RunningSegmentStartMs
+			if delta > 0 {
+				ledger.ConsumedMs += delta
+			}
+			ledger.RunningSegmentStartMs = nil
+		}
+		if to == WorkflowStatusPaused || to == WorkflowStatusNeedsReplan {
+			ledger.FrozenConsumedMs = ledger.ConsumedMs
+		}
+	}
+	if !fromCharge && toCharge {
+		ledger.RunningSegmentStartMs = &nowMs
+		ledger.FrozenConsumedMs = 0
+	}
+	if to.IsTerminal() {
+		// Ensure closed on terminal; if still charging, fold remaining segment.
+		if ledger.RunningSegmentStartMs != nil {
+			delta := nowMs - *ledger.RunningSegmentStartMs
+			if delta > 0 {
+				ledger.ConsumedMs += delta
+			}
+			ledger.RunningSegmentStartMs = nil
+		}
+	}
+	ledger.UpdatedAt = s.now()
+	return s.saveActiveTimeLedgerLocked(wfID, ledger)
 }

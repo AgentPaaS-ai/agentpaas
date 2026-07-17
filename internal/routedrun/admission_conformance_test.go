@@ -377,24 +377,17 @@ func runAdmissionConformanceForTopology(t *testing.T, newStore storeFactory, top
 		if r2.WorkflowID == r1.WorkflowID {
 			t.Fatal("second admit must be a new workflow")
 		}
-		// Resume first workflow: both may hold if max still 1 — first should
-		// not be re-admitted; re-acquisition is status-only. With max=1 and
-		// second holding PENDING, first becoming RUNNING does not free a slot
-		// for a third admit.
+		// Resume first while second holds the only slot: re-acquire must fail
+		// under max=1 (resume and admit share the same concurrency budget).
 		wf1, err := s.GetWorkflow(ctx, r1.WorkflowID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		wf1.Status = WorkflowStatusRunning
-		if err := s.UpdateWorkflow(ctx, wf1, wf1.Generation); err != nil {
-			t.Fatal(err)
+		if err := s.UpdateWorkflow(ctx, wf1, wf1.Generation); !errorsIs(err, ErrAlreadyRunning) {
+			t.Fatalf("resume with full slots: want ErrAlreadyRunning, got %v", err)
 		}
-		// Third admit still blocked (second holds slot; first also slot-holding now).
-		// With max=1, any non-paused holder blocks — second is still PENDING.
-		if _, err := s.AdmitInvocation(ctx, baseInvocation(dep, "pause-3", "c3", `{}`), 0); !errorsIs(err, ErrAlreadyRunning) {
-			t.Fatalf("want ALREADY_RUNNING with slots full, got %v", err)
-		}
-		// Pause second → only first holds → still max=1 blocked for third.
+		// Pause second → free the slot → first may resume.
 		wf2, err := s.GetWorkflow(ctx, r2.WorkflowID)
 		if err != nil {
 			t.Fatal(err)
@@ -402,6 +395,14 @@ func runAdmissionConformanceForTopology(t *testing.T, newStore storeFactory, top
 		wf2.Status = WorkflowStatusPaused
 		if err := s.UpdateWorkflow(ctx, wf2, wf2.Generation); err != nil {
 			t.Fatal(err)
+		}
+		wf1, err = s.GetWorkflow(ctx, r1.WorkflowID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wf1.Status = WorkflowStatusRunning
+		if err := s.UpdateWorkflow(ctx, wf1, wf1.Generation); err != nil {
+			t.Fatalf("resume after slot free: %v", err)
 		}
 		// First is RUNNING (slot-holding), third still blocked.
 		if _, err := s.AdmitInvocation(ctx, baseInvocation(dep, "pause-3", "c3", `{}`), 0); !errorsIs(err, ErrAlreadyRunning) {

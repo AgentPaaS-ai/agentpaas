@@ -112,16 +112,14 @@ func TestControl_CancelIdempotentReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Replay same logical cancel with a new request object / same key.
-	// BUG: Part A RequestControl does not key on IdempotencyKey; it issues a
-	// new ControlRequestID and overwrites desired_state with a fresh cancel.
-	// Desired command remains CANCEL (idempotent outcome), but request id changes.
+	// Must preserve original ControlRequestID (idempotent replay).
 	req2 := &ControlRequest{
 		SchemaVersion:      CurrentSchemaVersion,
 		WorkflowID:         wf.WorkflowID,
 		Command:            ControlCancel,
 		ExpectedGeneration: wf.Generation,
 		ActorIdentity:      "ops",
-		AuthorityScope:      AuthScopeControl,
+		AuthorityScope:     AuthScopeControl,
 		IdempotencyKey:     "cancel-idem",
 	}
 	if err := s.RequestControl(ctx, req2); err != nil {
@@ -135,9 +133,11 @@ func TestControl_CancelIdempotentReplay(t *testing.T) {
 		t.Fatalf("cancel replay outcome: %+v", ds2)
 	}
 	if ds2.ControlRequestID != firstID {
-		// Document non-strict request-id stability.
-		t.Logf("BUG: control cancel idempotency does not preserve ControlRequestID (first=%s second=%s desired=%s)",
+		t.Fatalf("control cancel idempotency must preserve ControlRequestID (first=%s second=%s desired=%s)",
 			firstID, req2.ControlRequestID, ds2.ControlRequestID)
+	}
+	if req2.ControlRequestID != firstID {
+		t.Fatalf("replay must fill req.ControlRequestID with original (got %s want %s)", req2.ControlRequestID, firstID)
 	}
 	if ds1.DesiredCommand != ds2.DesiredCommand {
 		t.Fatal("desired command changed across cancel replays")
@@ -235,8 +235,7 @@ func TestControl_ResumeAdmissionSlotRace(t *testing.T) {
 		}
 	}()
 	wg.Wait()
-	// Both may succeed under max=1 because resume doesn't re-check concurrency —
-	// BUG if both RUNNING/PENDING holders exist with max=1.
+	// With max=1, resume re-acquire and concurrent admit must not both hold slots.
 	wfs, err := s.ListWorkflows(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -249,8 +248,7 @@ func TestControl_ResumeAdmissionSlotRace(t *testing.T) {
 		}
 	}
 	if holders > 1 {
-		// Document: UpdateWorkflow resume does not re-acquire concurrency CAS.
-		t.Logf("BUG: resume+admit race left %d slot-holders under max_concurrent_runs=1 (resumeOK=%d admitOK=%d)",
+		t.Fatalf("resume+admit race left %d slot-holders under max_concurrent_runs=1 (resumeOK=%d admitOK=%d)",
 			holders, resumeOK, admitOK)
 	}
 	// At least one of resume or admit should have progressed.
@@ -347,7 +345,6 @@ func TestAmendment_IncreaseOnly(t *testing.T) {
 
 func TestAmendment_IdempotencyKeyBehavior(t *testing.T) {
 	// Spec: same key + same payload → IDEMPOTENT_REPLAY; changed payload → conflict.
-	// Part A does not implement amendment idempotency lookup.
 	s := openTestStore(t)
 	ctx := context.Background()
 	wf := seedWorkflowWithLimits(t, s, 1000, 500, "1.00")
@@ -360,9 +357,8 @@ func TestAmendment_IdempotencyKeyBehavior(t *testing.T) {
 	if err := s.AppendLimitAmendment(ctx, wf.WorkflowID, 1, amd); err != nil {
 		t.Fatal(err)
 	}
-	// Replay same key + same payload with next authority gen — succeeds again
-	// (second increase to same value).
-	// BUG: no IDEMPOTENT_REPLAY for amendment keys.
+	// Replay same key + same payload with next authority gen — IDEMPOTENT_REPLAY
+	// (no second authority bump).
 	err := s.AppendLimitAmendment(ctx, wf.WorkflowID, 2, &LimitAmendment{
 		NewMaxActiveDurationMs: 2000,
 		Reason:                 "first",
@@ -370,28 +366,28 @@ func TestAmendment_IdempotencyKeyBehavior(t *testing.T) {
 		IdempotencyKey:         "same-key",
 	})
 	if err != nil {
-		// if somehow rejected, still document
-		t.Logf("second same-key amendment err=%v", err)
-	} else {
-		t.Log("BUG: AppendLimitAmendment ignores IdempotencyKey; duplicate keys not IDEMPOTENT_REPLAY")
+		t.Fatalf("idempotent replay of amendment should succeed: %v", err)
 	}
-	// Changed payload same key should be IDEMPOTENCY_CONFLICT per spec.
 	got, err := s.GetWorkflow(ctx, wf.WorkflowID)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got.AuthorityGeneration != 2 {
+		t.Fatalf("idempotent replay must not bump authority generation, got %d", got.AuthorityGeneration)
+	}
+	if got.MaxActiveDurationMs != 2000 {
+		t.Fatalf("ceiling after replay=%d", got.MaxActiveDurationMs)
+	}
+	// Changed payload same key should be IDEMPOTENCY_CONFLICT per spec.
 	err = s.AppendLimitAmendment(ctx, wf.WorkflowID, got.AuthorityGeneration, &LimitAmendment{
 		NewMaxActiveDurationMs: 3000,
 		Reason:                 "changed",
 		ActorIdentity:          "admin",
 		IdempotencyKey:         "same-key",
 	})
-	if errorsIs(err, ErrIdempotencyConflict) {
-		// Ideal behavior.
-		return
+	if !errorsIs(err, ErrIdempotencyConflict) {
+		t.Fatalf("amendment same key changed payload: want ErrIdempotencyConflict, got %v", err)
 	}
-	// BUG: Part A accepts changed payload under same key.
-	t.Logf("BUG: amendment same key changed payload not rejected (err=%v)", err)
 }
 
 func TestAmendment_VsTerminalExhaustionRace(t *testing.T) {
@@ -403,18 +399,19 @@ func TestAmendment_VsTerminalExhaustionRace(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 16; i++ {
 		wg.Add(1)
-		go func() {
+		go func(i int) {
 			defer wg.Done()
 			err := s.AppendLimitAmendment(ctx, wf.WorkflowID, 1, &LimitAmendment{
 				NewMaxActiveDurationMs: 50_000,
 				Reason:                 "race",
 				ActorIdentity:          "admin",
-				IdempotencyKey:         "race-key", // not used for CAS
+				// Unique keys so authority CAS (not idempotency) serializes the race.
+				IdempotencyKey: "race-key-" + string(rune('a'+i%26)) + string(rune('0'+i/26)),
 			})
 			if err == nil {
 				atomic.AddInt32(&success, 1)
 			}
-		}()
+		}(i)
 	}
 	wg.Wait()
 	if success != 1 {
@@ -526,8 +523,8 @@ func TestActiveTime_LedgerSemanticsPausedNotCharged(t *testing.T) {
 }
 
 func TestActiveTime_CrashClosesSegmentConservatively(t *testing.T) {
-	// Simulate durable ledger on workflow via report-shaped fields and
-	// ReconcileInterrupted interaction: open segment discarded, no over-charge.
+	// Simulate durable ledger on workflow and ReconcileInterrupted interaction:
+	// open segment discarded, no over-charge.
 	ledger := ActiveTimeLedger{
 		SchemaVersion: CurrentSchemaVersion,
 		ConsumedMs:    8000,
@@ -545,13 +542,31 @@ func TestActiveTime_CrashClosesSegmentConservatively(t *testing.T) {
 		t.Fatal("segment must be cleared on crash reconcilation")
 	}
 
-	// Store-level: ReconcileInterrupted fails run/attempt but Part A does not
-	// touch ActiveTimeLedger (no field on WorkflowRecord). Document gap.
+	// Store-level: ReconcileInterrupted fails run/attempt and closes open
+	// ActiveTimeLedger segment conservatively.
 	s := openTestStore(t)
 	ctx := context.Background()
-	run := &RunRecord{
+	wf := &WorkflowRecord{
 		SchemaVersion: CurrentSchemaVersion,
 		WorkflowID:    "wf-at",
+		Status:        WorkflowStatusRunning,
+		WorkflowKind:  "standalone",
+		Generation:    1,
+	}
+	if err := s.CreateWorkflow(ctx, wf); err != nil {
+		t.Fatal(err)
+	}
+	openStartMs := int64(8000)
+	if err := s.PutActiveTimeLedger(ctx, wf.WorkflowID, &ActiveTimeLedger{
+		SchemaVersion:         CurrentSchemaVersion,
+		ConsumedMs:            8000,
+		RunningSegmentStartMs: &openStartMs,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run := &RunRecord{
+		SchemaVersion: CurrentSchemaVersion,
+		WorkflowID:    wf.WorkflowID,
 		Status:        RunStatusRunning,
 		RunKind:       "standalone",
 	}
@@ -561,7 +576,7 @@ func TestActiveTime_CrashClosesSegmentConservatively(t *testing.T) {
 	att := &AttemptRecord{
 		SchemaVersion: CurrentSchemaVersion,
 		RunID:         run.RunID,
-		WorkflowID:    "wf-at",
+		WorkflowID:    wf.WorkflowID,
 		Status:        AttemptStatusRunning,
 		AttemptNumber: 1,
 		Lease:         &AttemptLease{DurationMs: 1000, AcquiredAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour), LeaseToken: "t"},
@@ -572,8 +587,16 @@ func TestActiveTime_CrashClosesSegmentConservatively(t *testing.T) {
 	if err := s.ReconcileInterrupted(ctx, run.RunID); err != nil {
 		t.Fatal(err)
 	}
-	// BUG: no ActiveTimeLedger persistence on WorkflowRecord/RunRecord in Part A.
-	t.Log("BUG: Part A has no store API to persist/reconcile ActiveTimeLedger segments; type-level rules covered above")
+	got, err := s.GetActiveTimeLedger(ctx, wf.WorkflowID)
+	if err != nil {
+		t.Fatalf("active time ledger: %v", err)
+	}
+	if got.RunningSegmentStartMs != nil {
+		t.Fatal("ReconcileInterrupted must clear open RunningSegmentStartMs conservatively")
+	}
+	if got.ConsumedMs != 8000 {
+		t.Fatalf("conservative close must not invent wall time, consumed=%d", got.ConsumedMs)
+	}
 }
 
 func TestControl_AppendControlResult(t *testing.T) {
