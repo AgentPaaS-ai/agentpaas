@@ -606,7 +606,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, err
 	}
 
-	policyDigest, err := ComputePolicyDigest(cfg.PolicyYAML)
+	policyDigest, err := ComputePolicyDigestWithRoute(cfg.PolicyYAML, routeNameFromAgentYAML(cfg.AgentYAML))
 	if err != nil {
 		return nil, fmt.Errorf("policy validation: %w", err)
 	}
@@ -1515,11 +1515,28 @@ func agentYAMLString(agentYAML *AgentYAML, names ...string) string {
 	return ""
 }
 
+// routeNameFromAgentYAML extracts the LLM route name from agent.yaml.
+// Returns empty string when agent.yaml is nil or has no route configured
+// (legacy v1.0 path — no route validation needed).
+func routeNameFromAgentYAML(agentYAML *AgentYAML) string {
+	if agentYAML == nil {
+		return ""
+	}
+	return agentYAML.LLM.Route
+}
+
 // ComputePolicyDigest parses, validates, and computes the SHA-256 digest of
 // the policy YAML. Returns empty string if yamlBytes is nil/empty (no policy
 // in project — backward compat). Returns error if parsing fails or
 // validation finds errors.
 func ComputePolicyDigest(yamlBytes []byte) (string, error) {
+	return ComputePolicyDigestWithRoute(yamlBytes, "")
+}
+
+// ComputePolicyDigestWithRoute is like ComputePolicyDigest but also performs
+// route/candidate validation using the route name from agent.yaml.
+// When routeName is empty, route-name-dependent checks are skipped (legacy v1.0 path).
+func ComputePolicyDigestWithRoute(yamlBytes []byte, routeName string) (string, error) {
 	if len(yamlBytes) == 0 {
 		return "", nil
 	}
@@ -1527,7 +1544,13 @@ func ComputePolicyDigest(yamlBytes []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse policy.yaml: %w", err)
 	}
-	if errs := policy.ValidatePolicy(parsed); policy.HasErrors(errs) {
+	var errs []policy.ValidationError
+	if routeName != "" && parsed.IsSchema11() {
+		errs = policy.ValidatePolicyWithRoute(parsed, routeName)
+	} else {
+		errs = policy.ValidatePolicy(parsed)
+	}
+	if policy.HasErrors(errs) {
 		return "", fmt.Errorf("policy.yaml validation failed: %s", policyValidationErrorString(errs))
 	}
 	canonical, err := canonicalPolicyJSON(parsed)

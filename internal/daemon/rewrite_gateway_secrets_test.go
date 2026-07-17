@@ -87,7 +87,7 @@ func TestBuildInvokePayload_GuardrailsAndSystemPrompt(t *testing.T) {
 	})
 
 	deployedDir := pack.DeployedAgentPath(server.homePaths.Home, "policy-agent")
-	policyYAML := `version: "1"
+	policyYAML := `version: "1.0"
 agent:
   name: policy-agent
 egress:

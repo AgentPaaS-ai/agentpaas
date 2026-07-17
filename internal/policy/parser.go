@@ -58,7 +58,11 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 		return nil, fmt.Errorf("policy: invalid yaml: %w", err)
 	}
 
-	// Validate schema version.
+	// Validate schema version. Empty version defaults to "1.0" for backward
+	// compatibility with v0.2.3 policies that omit the version field.
+	if p.Version == "" {
+		p.Version = SchemaVersion10
+	}
 	if p.Version != SchemaVersion10 && p.Version != SchemaVersion11 {
 		return nil, fmt.Errorf("policy: unknown schema version %q (must be %q or %q)",
 			p.Version, SchemaVersion10, SchemaVersion11)

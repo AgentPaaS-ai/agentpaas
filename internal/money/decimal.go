@@ -180,12 +180,9 @@ func (d *Decimal) Cmp(other *Decimal) int {
 // Returns an error on overflow.
 func (d *Decimal) Add(other *Decimal) (*Decimal, error) {
 	result := d.nano + other.nano
-	// Check overflow: if both are positive and result is negative (wrapped around)
-	if (d.nano > 0 && other.nano > 0 && result < 0) || result > math.MaxInt64 || result < 0 {
-		return nil, fmt.Errorf("money: overflow adding %s + %s", d.String(), other.String())
-	}
-	// Also check if result wraps past MaxInt64
-	if result < 0 && d.nano > 0 && other.nano > 0 {
+	// Overflow detection: if both operands are positive but the result is
+	// negative, the sum wrapped around int64's positive range.
+	if d.nano > 0 && other.nano > 0 && result < 0 {
 		return nil, fmt.Errorf("money: overflow adding %s + %s", d.String(), other.String())
 	}
 	return &Decimal{nano: result}, nil

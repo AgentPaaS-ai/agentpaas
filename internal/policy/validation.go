@@ -929,6 +929,17 @@ func ValidatePolicy(p *Policy) []ValidationError {
 	return errs
 }
 
+// ValidatePolicyWithRoute performs the same validation as ValidatePolicy,
+// plus route/candidate validation that requires the agent.yaml route name.
+// This is called during pack when both policy.yaml and agent.yaml are available.
+func ValidatePolicyWithRoute(p *Policy, routeName string) []ValidationError {
+	errs := ValidatePolicy(p)
+	if p.Version == SchemaVersion11 {
+		errs = append(errs, validateRouteAndCandidateRules(p, routeName)...)
+	}
+	return errs
+}
+
 // isValidHeaderName checks whether a string is a valid HTTP header name
 // (no control characters, not empty).
 func isValidHeaderName(s string) bool {
@@ -1111,8 +1122,8 @@ func validateUpstreamProviderChars(s string) error {
 			return fmt.Errorf("upstream provider %q contains invalid character", s)
 		}
 	}
-	if strings.Contains(s, "/") || strings.Contains(s, "\\") || strings.Contains(s, "..") || strings.Contains(s, ".") {
-		return fmt.Errorf("upstream provider %q contains URL syntax or dot segments", s)
+	if strings.Contains(s, "/") || strings.Contains(s, "\\") || strings.Contains(s, ".") {
+		return fmt.Errorf("upstream provider %q contains URL syntax, backslashes, or dot segments", s)
 	}
 	return nil
 }
@@ -1492,11 +1503,10 @@ func validateCandidate(c Candidate, prefix string, route ModelRoute) []Validatio
 		})
 	}
 
-	// Custom endpoint requires allow_private in egress
-	if c.Endpoint != "" && c.Location == LocationLocal {
-		// Custom/private endpoint requires allow_private in egress.
-		// Full egress integration is B32/B35 work.
-	}
+	// Custom endpoint with local location requires allow_private in egress.
+	// Full egress integration is deferred to B32/B35; validation of
+	// allow_private in egress rules will be added when the compiler
+	// integration is implemented.
 
 	return errs
 }
