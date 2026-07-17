@@ -29,7 +29,9 @@ func TestAdversaryEmptyIdempotencyKeyAllowed(t *testing.T) {
 	req := &controlv1.RunRequest{AgentName: "test", IdempotencyKey: ""}
 	b, _ := proto.Marshal(req)
 	var req2 controlv1.RunRequest
-	proto.Unmarshal(b, &req2)
+	if err := proto.Unmarshal(b, &req2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 	if req2.IdempotencyKey != "" {
 		t.Error("unexpected non-empty")
 	}
@@ -75,7 +77,9 @@ func TestAdversaryFieldNumberStability(t *testing.T) {
 	}
 	b, _ := proto.Marshal(oldRun)
 	var newRun triggerv1.Run
-	proto.Unmarshal(b, &newRun)
+	if err := proto.Unmarshal(b, &newRun); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 	if newRun.RunId != "r1" {
 		t.Error("data loss on old binary")
 	}
@@ -119,7 +123,9 @@ func TestAdversaryNumericOverflow(t *testing.T) {
 	req := &controlv1.RunRequest{RequestedAttemptLeaseMs: 1<<63 - 1} // max int64, no overflow guard in contract
 	b, _ := proto.Marshal(req)
 	var r2 controlv1.RunRequest
-	proto.Unmarshal(b, &r2)
+	if err := proto.Unmarshal(b, &r2); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 	if r2.RequestedAttemptLeaseMs != 1<<63-1 {
 		t.Error("overflow not preserved or guarded")
 	}
