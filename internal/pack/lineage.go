@@ -135,5 +135,8 @@ func policyDeltaFromPolicy(d *policy.PolicyDelta) *PolicyDelta {
 		CredentialsRemoved: d.CredentialsRemoved,
 		MCPToolsAdded:      d.MCPToolsAdded,
 		MCPToolsRemoved:    d.MCPToolsRemoved,
+		ModelRoutesAdded:   d.ModelRoutesAdded,
+		ModelRoutesRemoved: d.ModelRoutesRemoved,
+		RoutedRunChanged:   d.RoutedRunChanged,
 	}
 }

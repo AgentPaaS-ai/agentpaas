@@ -18,7 +18,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
-const weatherPolicyYAML = `version: "1"
+const weatherPolicyYAML = `version: "1.0"
 agent:
   name: governed-weather
   description: ""

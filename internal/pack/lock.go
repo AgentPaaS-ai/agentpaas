@@ -88,6 +88,8 @@ type AgentLock struct {
 	// AgentYAML is the parsed agent.yaml (including LLM config). Stored as part
 	// of the lockfile for runtime LLM credential resolution. nil when absent.
 	AgentYAML *AgentYAML `json:"agent_yaml,omitempty"`
+	// WorkflowYAML is the parsed workflow.yaml envelope (v0.3). nil when absent.
+	WorkflowYAML *WorkflowYAML `json:"workflow_yaml,omitempty"`
 	// Publisher holds the publisher identity block (schema v2+). nil when
 	// the pack was performed without a publisher identity (local-only pack).
 	Publisher *PublisherInfo `json:"publisher,omitempty"`
@@ -182,6 +184,12 @@ type PolicyDelta struct {
 	MCPToolsAdded []string `json:"mcp_tools_added,omitempty"`
 	// MCPToolsRemoved is the list of MCP tools removed.
 	MCPToolsRemoved []string `json:"mcp_tools_removed,omitempty"`
+	// ModelRoutesAdded is the list of model route keys added.
+	ModelRoutesAdded []string `json:"model_routes_added,omitempty"`
+	// ModelRoutesRemoved is the list of model route keys removed.
+	ModelRoutesRemoved []string `json:"model_routes_removed,omitempty"`
+	// RoutedRunChanged is true when the routed_run block was added or removed.
+	RoutedRunChanged bool `json:"routed_run_changed,omitempty"`
 }
 
 // NewSignedTestLock generates an ECDSA P-256 key pair and creates a signed
@@ -598,7 +606,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, err
 	}
 
-	policyDigest, err := ComputePolicyDigest(cfg.PolicyYAML)
+	policyDigest, err := ComputePolicyDigestWithRoute(cfg.PolicyYAML, routeNameFromAgentYAML(cfg.AgentYAML))
 	if err != nil {
 		return nil, fmt.Errorf("policy validation: %w", err)
 	}
@@ -1120,6 +1128,9 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 	if lock.AgentYAML != nil {
 		m["agent_yaml"] = lock.AgentYAML
 	}
+	if lock.WorkflowYAML != nil {
+		m["workflow_yaml"] = lock.WorkflowYAML
+	}
 	return m
 }
 
@@ -1504,11 +1515,28 @@ func agentYAMLString(agentYAML *AgentYAML, names ...string) string {
 	return ""
 }
 
+// routeNameFromAgentYAML extracts the LLM route name from agent.yaml.
+// Returns empty string when agent.yaml is nil or has no route configured
+// (legacy v1.0 path — no route validation needed).
+func routeNameFromAgentYAML(agentYAML *AgentYAML) string {
+	if agentYAML == nil {
+		return ""
+	}
+	return agentYAML.LLM.Route
+}
+
 // ComputePolicyDigest parses, validates, and computes the SHA-256 digest of
 // the policy YAML. Returns empty string if yamlBytes is nil/empty (no policy
 // in project — backward compat). Returns error if parsing fails or
 // validation finds errors.
 func ComputePolicyDigest(yamlBytes []byte) (string, error) {
+	return ComputePolicyDigestWithRoute(yamlBytes, "")
+}
+
+// ComputePolicyDigestWithRoute is like ComputePolicyDigest but also performs
+// route/candidate validation using the route name from agent.yaml.
+// When routeName is empty, route-name-dependent checks are skipped (legacy v1.0 path).
+func ComputePolicyDigestWithRoute(yamlBytes []byte, routeName string) (string, error) {
 	if len(yamlBytes) == 0 {
 		return "", nil
 	}
@@ -1516,7 +1544,13 @@ func ComputePolicyDigest(yamlBytes []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse policy.yaml: %w", err)
 	}
-	if errs := policy.ValidatePolicy(parsed); policy.HasErrors(errs) {
+	var errs []policy.ValidationError
+	if routeName != "" && parsed.IsSchema11() {
+		errs = policy.ValidatePolicyWithRoute(parsed, routeName)
+	} else {
+		errs = policy.ValidatePolicy(parsed)
+	}
+	if policy.HasErrors(errs) {
 		return "", fmt.Errorf("policy.yaml validation failed: %s", policyValidationErrorString(errs))
 	}
 	canonical, err := canonicalPolicyJSON(parsed)

@@ -37,7 +37,7 @@ func TestBuildInvokePayload_PolicyCredential(t *testing.T) {
 		Version: "1.0.0",
 		// No LLM config — credential comes from policy.yaml only
 	})
-	writeDeployedPolicy(t, server.homePaths, "cred-agent", `version: "1"
+	writeDeployedPolicy(t, server.homePaths, "cred-agent", `version: "1.0"
 agent:
   name: cred-agent
   description: "Test credential from policy"
@@ -90,7 +90,7 @@ func TestBuildInvokePayload_PolicyCredentialDefaultHeader(t *testing.T) {
 		Name:    "def-header-agent",
 		Version: "1.0.0",
 	})
-	writeDeployedPolicy(t, server.homePaths, "def-header-agent", `version: "1"
+	writeDeployedPolicy(t, server.homePaths, "def-header-agent", `version: "1.0"
 agent:
   name: def-header-agent
 egress:
@@ -136,7 +136,7 @@ func TestBuildInvokePayload_BothLLMAndPolicyCreds(t *testing.T) {
 			Credential: "openrouter-key",
 		},
 	})
-	writeDeployedPolicy(t, server.homePaths, "both-agent", `version: "1"
+	writeDeployedPolicy(t, server.homePaths, "both-agent", `version: "1.0"
 agent:
   name: both-agent
 egress:
@@ -200,7 +200,7 @@ func TestBuildInvokePayload_PolicyCredNotFound(t *testing.T) {
 		Name:    "missing-cred-agent",
 		Version: "1.0.0",
 	})
-	writeDeployedPolicy(t, server.homePaths, "missing-cred-agent", `version: "1"
+	writeDeployedPolicy(t, server.homePaths, "missing-cred-agent", `version: "1.0"
 agent:
   name: missing-cred-agent
 egress:
@@ -248,7 +248,7 @@ func TestBuildInvokePayload_PolicyCredWithLLMNoDup(t *testing.T) {
 			Credential: "shared-key",
 		},
 	})
-	writeDeployedPolicy(t, server.homePaths, "shared-agent", `version: "1"
+	writeDeployedPolicy(t, server.homePaths, "shared-agent", `version: "1.0"
 agent:
   name: shared-agent
 egress:

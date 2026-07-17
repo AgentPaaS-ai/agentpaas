@@ -6,6 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/money"
 )
 
 // ValidationError represents a policy semantic validation finding.
@@ -916,6 +918,25 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		}
 	}
 
+	// ----- Version-specific validation -----
+	errs = append(errs, validateVersionSpecificRules(p)...)
+
+	// ----- Routed run validation (v1.1+) -----
+	if p.Version == SchemaVersion11 && p.RoutedRun != nil {
+		errs = append(errs, validateRoutedRun(p.RoutedRun)...)
+	}
+
+	return errs
+}
+
+// ValidatePolicyWithRoute performs the same validation as ValidatePolicy,
+// plus route/candidate validation that requires the agent.yaml route name.
+// This is called during pack when both policy.yaml and agent.yaml are available.
+func ValidatePolicyWithRoute(p *Policy, routeName string) []ValidationError {
+	errs := ValidatePolicy(p)
+	if p.Version == SchemaVersion11 {
+		errs = append(errs, validateRouteAndCandidateRules(p, routeName)...)
+	}
 	return errs
 }
 
@@ -1048,4 +1069,569 @@ func HasErrors(errs []ValidationError) bool {
 // in a string.  Exported for use by higher-level validation layers.
 func ContainsInjectionPattern(s string) bool {
 	return strings.ContainsAny(s, "\r\n\x00")
+}
+
+// validateRouteIDChars validates the route ID character grammar.
+// Must match: ^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$
+func validateRouteIDChars(id string) error {
+	if id == "" {
+		return fmt.Errorf("route ID must not be empty")
+	}
+	if len(id) > 128 {
+		return fmt.Errorf("route ID %q exceeds 128 characters", id)
+	}
+	if id[0] < 'a' || id[0] > 'z' {
+		return fmt.Errorf("route ID %q must start with a lowercase letter", id)
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if c >= 'a' && c <= 'z' {
+			continue
+		}
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		if c == '.' || c == '_' || c == '-' {
+			if i+1 >= len(id) {
+				return fmt.Errorf("route ID %q: trailing separator not allowed", id)
+			}
+			next := id[i+1]
+			if next == '.' || next == '_' || next == '-' {
+				return fmt.Errorf("route ID %q: consecutive separators not allowed", id)
+			}
+			if next < '0' || (next > '9' && next < 'a') || next > 'z' {
+				return fmt.Errorf("route ID %q: separator must be followed by alphanumeric", id)
+			}
+			continue
+		}
+		return fmt.Errorf("route ID %q: invalid character %q", id, c)
+	}
+	return nil
+}
+
+// validateUpstreamProviderChars validates safe ASCII characters for upstream providers.
+func validateUpstreamProviderChars(s string) error {
+	if s == "" {
+		return fmt.Errorf("upstream provider must not be empty")
+	}
+	if len(s) > 128 {
+		return fmt.Errorf("upstream provider %q exceeds 128 characters", s)
+	}
+	for _, r := range s {
+		if r <= 0x20 || r > 0x7e {
+			return fmt.Errorf("upstream provider %q contains invalid character", s)
+		}
+	}
+	if strings.Contains(s, "/") || strings.Contains(s, "\\") || strings.Contains(s, ".") {
+		return fmt.Errorf("upstream provider %q contains URL syntax, backslashes, or dot segments", s)
+	}
+	return nil
+}
+
+// validateVersionSpecificRules checks version-specific validation rules.
+// v1.0 policies must not have routed fields.
+// v1.1 policies must have llm_budget.max_cost_usd.
+func validateVersionSpecificRules(p *Policy) []ValidationError {
+	var errs []ValidationError
+
+	if p.Version == SchemaVersion10 && p.HasRoutedFields() {
+		errs = append(errs, ValidationError{
+			Field:    "version",
+			Message:  "v1.0 policy must not have v1.1 routed fields (routed_run, model_routes, max_cost_usd)",
+			Severity: "error",
+		})
+	}
+
+	if p.Version == SchemaVersion11 {
+		if p.LLMBudget == nil || p.LLMBudget.MaxCostUSD == "" {
+			errs = append(errs, ValidationError{
+				Field:    "llm_budget.max_cost_usd",
+				Message:  "v1.1 policy requires llm_budget.max_cost_usd to be set explicitly",
+				Severity: "error",
+			})
+		}
+		if p.LLMBudget != nil && p.LLMBudget.MaxCostUSD != "" {
+			if _, err := money.Parse(p.LLMBudget.MaxCostUSD); err != nil {
+				errs = append(errs, ValidationError{
+					Field:    "llm_budget.max_cost_usd",
+					Message:  fmt.Sprintf("invalid max_cost_usd: %v", err),
+					Severity: "error",
+				})
+			}
+		}
+	}
+
+	return errs
+}
+
+// validateRouteAndCandidateRules validates the model_routes, candidates, and
+// routed_run fields for v1.1+ policies.
+func validateRouteAndCandidateRules(p *Policy, routeName string) []ValidationError {
+	var errs []ValidationError
+
+	if p.Version != SchemaVersion11 {
+		return nil
+	}
+
+	if len(p.ModelRoutes) == 0 {
+		errs = append(errs, ValidationError{
+			Field:    "model_routes",
+			Message:  "v1.1 policy requires at least one model route",
+			Severity: "error",
+		})
+		return errs
+	}
+
+	// Validate the named route exists
+	if routeName != "" {
+		if _, ok := p.ModelRoutes[routeName]; !ok {
+			errs = append(errs, ValidationError{
+				Field:    "model_routes",
+				Message:  fmt.Sprintf("route %q named in agent.yaml does not exist in model_routes", routeName),
+				Severity: "error",
+			})
+		}
+	}
+
+	// Exactly one executable route
+	if routeName != "" {
+		for name := range p.ModelRoutes {
+			if name == routeName {
+				// Executable route: validate it
+				route := p.ModelRoutes[name]
+				errs = append(errs, validateSingleRoute(name, route, p)...)
+			} else {
+				// Extra routes: reject
+				errs = append(errs, ValidationError{
+					Field:    "model_routes",
+					Message:  fmt.Sprintf("extra route %q found; only the named route %q is allowed in v0.3", name, routeName),
+					Severity: "error",
+				})
+			}
+		}
+	}
+
+	// Validate route IDs
+	for name := range p.ModelRoutes {
+		if err := validateRouteIDChars(name); err != nil {
+			errs = append(errs, ValidationError{
+				Field:    "model_routes",
+				Message:  fmt.Sprintf("invalid route ID %q: %v", name, err),
+				Severity: "error",
+			})
+		}
+	}
+
+	// Validate RoutedRun fields
+	if p.RoutedRun != nil {
+		errs = append(errs, validateRoutedRun(p.RoutedRun)...)
+	}
+
+	return errs
+}
+
+func validateSingleRoute(name string, route ModelRoute, p *Policy) []ValidationError {
+	var errs []ValidationError
+
+	// Validate pattern
+	if route.Pattern != PatternLocalFirst && route.Pattern != PatternCloudCostFirst {
+		errs = append(errs, ValidationError{
+			Field:    fmt.Sprintf("model_routes[%s].pattern", name),
+			Message:  fmt.Sprintf("unknown pattern %q; must be %q or %q", route.Pattern, PatternLocalFirst, PatternCloudCostFirst),
+			Severity: "error",
+		})
+	}
+
+	// Validate cloud_transfer
+	if route.CloudTransfer != CloudTransferAllowed && route.CloudTransfer != CloudTransferDenied {
+		errs = append(errs, ValidationError{
+			Field:    fmt.Sprintf("model_routes[%s].cloud_transfer", name),
+			Message:  fmt.Sprintf("unknown cloud_transfer %q; must be %q or %q", route.CloudTransfer, CloudTransferAllowed, CloudTransferDenied),
+			Severity: "error",
+		})
+	}
+
+	// Candidate count: 2-64
+	if len(route.Candidates) < 2 {
+		errs = append(errs, ValidationError{
+			Field:    fmt.Sprintf("model_routes[%s].candidates", name),
+			Message:  "at least 2 candidates required (minimum 2-64)",
+			Severity: "error",
+		})
+	}
+	if len(route.Candidates) > 64 {
+		errs = append(errs, ValidationError{
+			Field:    fmt.Sprintf("model_routes[%s].candidates", name),
+			Message:  "at most 64 candidates allowed",
+			Severity: "error",
+		})
+	}
+
+	// Candidate IDs must be unique and safe
+	seenIDs := make(map[string]bool)
+	for _, c := range route.Candidates {
+		if c.ID == "" {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("model_routes[%s].candidates", name),
+				Message:  "candidate ID must not be empty",
+				Severity: "error",
+			})
+			continue
+		}
+		if len(c.ID) > 64 {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("model_routes[%s].candidates[%s]", name, c.ID),
+				Message:  "candidate ID exceeds 64 characters",
+				Severity: "error",
+			})
+		}
+		if err := validateRouteIDChars(c.ID); err != nil {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("model_routes[%s].candidates[%s]", name, c.ID),
+				Message:  fmt.Sprintf("invalid candidate ID: %v", err),
+				Severity: "error",
+			})
+		}
+		if seenIDs[c.ID] {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("model_routes[%s].candidates", name),
+				Message:  fmt.Sprintf("duplicate candidate ID %q", c.ID),
+				Severity: "error",
+			})
+		}
+		seenIDs[c.ID] = true
+	}
+
+	// Validate roles and locations
+	hasPrimary := false
+	hasRecovery := false
+
+	for _, c := range route.Candidates {
+		if c.Role == RolePrimary {
+			hasPrimary = true
+		}
+		if c.Role == RoleRecovery {
+			hasRecovery = true
+		}
+	}
+
+	// Check recovery enabled
+	maxRecoveries := 0
+	if p.RoutedRun != nil {
+		maxRecoveries = p.RoutedRun.MaxModelRecoveriesPerAttempt
+	}
+
+	if maxRecoveries > 0 && (!hasPrimary || !hasRecovery) {
+		errs = append(errs, ValidationError{
+			Field:    fmt.Sprintf("model_routes[%s].candidates", name),
+			Message:  "at least one primary and one recovery candidate required when automatic recovery is enabled",
+			Severity: "error",
+		})
+	}
+
+	// Validate each candidate
+	for _, c := range route.Candidates {
+		prefix := fmt.Sprintf("model_routes[%s].candidates[%s]", name, c.ID)
+		errs = append(errs, validateCandidate(c, prefix, route)...)
+	}
+
+	// Validate minimum requirements
+	if route.Minimum != nil {
+		if route.Minimum.CapabilityTier != "" &&
+			route.Minimum.CapabilityTier != CapabilityBasic &&
+			route.Minimum.CapabilityTier != CapabilityStandard &&
+			route.Minimum.CapabilityTier != CapabilityAdvanced {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("model_routes[%s].minimum.capability_tier", name),
+				Message:  fmt.Sprintf("unknown capability_tier %q", route.Minimum.CapabilityTier),
+				Severity: "error",
+			})
+		}
+		for _, f := range route.Minimum.Features {
+			if f != FeatureChat && f != FeatureStructuredJSON && f != FeatureReasoningEffort {
+				errs = append(errs, ValidationError{
+					Field:    fmt.Sprintf("model_routes[%s].minimum.features", name),
+					Message:  fmt.Sprintf("unknown feature %q", f),
+					Severity: "error",
+				})
+			}
+		}
+		if route.Minimum.Effort != "" && route.Minimum.Effort != EffortStandard && route.Minimum.Effort != EffortHigh {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("model_routes[%s].minimum.effort", name),
+				Message:  fmt.Sprintf("unknown effort %q", route.Minimum.Effort),
+				Severity: "error",
+			})
+		}
+	}
+
+	return errs
+}
+
+func validateCandidate(c Candidate, prefix string, route ModelRoute) []ValidationError {
+	var errs []ValidationError
+
+	// Validate role
+	if c.Role != RolePrimary && c.Role != RoleRecovery {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".role",
+			Message:  fmt.Sprintf("unknown role %q; must be %q or %q", c.Role, RolePrimary, RoleRecovery),
+			Severity: "error",
+		})
+	}
+
+	// Validate location
+	if c.Location != LocationLocal && c.Location != LocationCloud {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".location",
+			Message:  fmt.Sprintf("unknown location %q; must be %q or %q", c.Location, LocationLocal, LocationCloud),
+			Severity: "error",
+		})
+	}
+
+	// local-first pattern rules
+	if route.Pattern == PatternLocalFirst {
+		// Primary candidates must be local
+		if c.Role == RolePrimary && c.Location != LocationLocal {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".location",
+				Message:  "local-first primary candidates must be local",
+				Severity: "error",
+			})
+		}
+		// Recovery candidates must be cloud
+		if c.Role == RoleRecovery && c.Location != LocationCloud {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".location",
+				Message:  "local-first recovery candidates must be cloud",
+				Severity: "error",
+			})
+		}
+	}
+
+	// cloud-cost-first pattern rules
+	if route.Pattern == PatternCloudCostFirst {
+		// All candidates must be cloud
+		if c.Location != LocationCloud {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".location",
+				Message:  "cloud-cost-first candidates must be cloud",
+				Severity: "error",
+			})
+		}
+	}
+
+	// Cloud transfer denial
+	if route.CloudTransfer == CloudTransferDenied && c.Location == LocationCloud {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".location",
+			Message:  "cloud candidate rejected when cloud_transfer is denied",
+			Severity: "error",
+		})
+	}
+
+	// Valid provider
+	if c.Provider == "" {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".provider",
+			Message:  "provider is required",
+			Severity: "error",
+		})
+	}
+
+	// Credential reference
+	if c.Provider == "openrouter" && c.Credential == "" {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".credential",
+			Message:  "credential is required for OpenRouter provider",
+			Severity: "error",
+		})
+	}
+
+	// OpenRouter: upstream_providers is required and validated
+	if c.Provider == "openrouter" {
+		if len(c.UpstreamProviders) == 0 {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".upstream_providers",
+				Message:  "upstream_providers is required for OpenRouter candidates",
+				Severity: "error",
+			})
+		}
+		if len(c.UpstreamProviders) > 8 {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".upstream_providers",
+				Message:  "at most 8 upstream providers allowed",
+				Severity: "error",
+			})
+		}
+		// Check for duplicates and validate each
+		seen := make(map[string]bool)
+		for _, up := range c.UpstreamProviders {
+			if seen[up] {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".upstream_providers",
+					Message:  fmt.Sprintf("duplicate upstream_provider %q", up),
+					Severity: "error",
+				})
+			}
+			seen[up] = true
+			if err := validateUpstreamProviderChars(up); err != nil {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".upstream_providers",
+					Message:  fmt.Sprintf("invalid upstream_provider: %v", err),
+					Severity: "error",
+				})
+			}
+		}
+	}
+
+	// Direct/local: no upstream_providers
+	if c.Provider != "openrouter" && len(c.UpstreamProviders) > 0 {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".upstream_providers",
+			Message:  "upstream_providers only allowed for OpenRouter candidates",
+			Severity: "error",
+		})
+	}
+
+	// auth: none only for local custom endpoints
+	if c.AuthMode == AuthModeNone && c.Location != LocationLocal {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".auth_mode",
+			Message:  "auth: none only accepted for local custom endpoints",
+			Severity: "error",
+		})
+	}
+
+	// Custom endpoint with local location requires allow_private in egress.
+	// Full egress integration is deferred to B32/B35; validation of
+	// allow_private in egress rules will be added when the compiler
+	// integration is implemented.
+
+	return errs
+}
+
+func validateRoutedRun(rr *RoutedRunPolicy) []ValidationError {
+	var errs []ValidationError
+
+	// Validate durations can be parsed
+	durations := map[string]string{
+		"model_call_timeout":  rr.ModelCallTimeout,
+		"stall_timeout":       rr.StallTimeout,
+		"attempt_lease":       rr.AttemptLease,
+		"max_active_duration": rr.MaxActiveDuration,
+		"recovery_margin":     rr.RecoveryMargin,
+	}
+	durValues := make(map[string]time.Duration)
+	for field, val := range durations {
+		if val == "" {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run." + field,
+				Message:  "duration is required",
+				Severity: "error",
+			})
+			continue
+		}
+		d, err := time.ParseDuration(val)
+		if err != nil {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run." + field,
+				Message:  fmt.Sprintf("invalid duration %q: %v", val, err),
+				Severity: "error",
+			})
+			continue
+		}
+		if d <= 0 {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run." + field,
+				Message:  "duration must be positive",
+				Severity: "error",
+			})
+		}
+		durValues[field] = d
+	}
+
+	// Validate limit relationships (only if all durations parsed)
+	if len(durValues) == 5 {
+		ct := durValues["model_call_timeout"]
+		st := durValues["stall_timeout"]
+		al := durValues["attempt_lease"]
+		ma := durValues["max_active_duration"]
+		rm := durValues["recovery_margin"]
+
+		if ct > al {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run",
+				Message:  "model_call_timeout must be <= attempt_lease",
+				Severity: "error",
+			})
+		}
+		if st > al {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run",
+				Message:  "stall_timeout must be <= attempt_lease",
+				Severity: "error",
+			})
+		}
+		if al >= ma {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run",
+				Message:  "attempt_lease must be < max_active_duration",
+				Severity: "error",
+			})
+		}
+		if rm <= 0 || rm >= ma {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run",
+				Message:  "recovery_margin must be > 0 and < max_active_duration",
+				Severity: "error",
+			})
+		}
+		if al+rm > ma {
+			errs = append(errs, ValidationError{
+				Field:    "routed_run",
+				Message:  "attempt_lease + recovery_margin must be <= max_active_duration",
+				Severity: "error",
+			})
+		}
+	}
+
+	// Validate integer limits
+	if rr.MaxModelRecoveriesPerAttempt != 0 && rr.MaxModelRecoveriesPerAttempt != 1 {
+		errs = append(errs, ValidationError{
+			Field:    "routed_run.max_model_recoveries_per_attempt",
+			Message:  "must be 0 or 1",
+			Severity: "error",
+		})
+	}
+	if rr.MaxWorkerRetries != 0 && rr.MaxWorkerRetries != 1 {
+		errs = append(errs, ValidationError{
+			Field:    "routed_run.max_worker_retries",
+			Message:  "must be 0 or 1",
+			Severity: "error",
+		})
+	}
+	if rr.MaxLLMCalls < 0 {
+		errs = append(errs, ValidationError{
+			Field:    "routed_run.max_llm_calls",
+			Message:  "must be non-negative",
+			Severity: "error",
+		})
+	}
+	if rr.MaxIdenticalToolActions < 0 {
+		errs = append(errs, ValidationError{
+			Field:    "routed_run.max_identical_tool_actions",
+			Message:  "must be non-negative",
+			Severity: "error",
+		})
+	}
+	if rr.MaxActionsWithoutProgress < 0 {
+		errs = append(errs, ValidationError{
+			Field:    "routed_run.max_actions_without_progress",
+			Message:  "must be non-negative",
+			Severity: "error",
+		})
+	}
+
+	return errs
 }

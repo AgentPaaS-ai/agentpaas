@@ -92,7 +92,7 @@ func TestOperatorPathBoundaryRejectsUnicodeTraversal(t *testing.T) {
 func TestOperatorPathBoundaryRejectsAbsoluteAgentEntry(t *testing.T) {
 	passwdBefore := operatorFileSnapshot(t, "/etc/passwd")
 	projectDir := t.TempDir()
-	writeOperatorTestFile(t, projectDir, "agent.yaml", `version: "1"
+	writeOperatorTestFile(t, projectDir, "agent.yaml", `version: "1.0"
 runtime: python
 name: path-boundary-test
 entry: /etc/passwd

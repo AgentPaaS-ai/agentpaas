@@ -108,7 +108,7 @@ func writePolicyDiffTestPolicy(t *testing.T, name string, body string) string {
 }
 
 func testPolicyYAML(agentName, domain string) string {
-	return "version: v1\nagent:\n  name: " + agentName + "\negress:\n  - domain: " + domain + "\n    ports: [443]\n"
+	return "version: \"1.0\"\nagent:\n  name: " + agentName + "\negress:\n  - domain: " + domain + "\n    ports: [443]\n"
 }
 
 func requestPolicyDiffJSON(t *testing.T, server *Server, pathA, pathB string, dst interface{}) {

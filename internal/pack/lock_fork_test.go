@@ -15,7 +15,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 )
 
-const policyV1Empty = "version: \"1\"\negress: []\n"
+const policyV1Empty = "version: \"1.0\"\negress: []\n"
 
 func forkPackTestConfig(t *testing.T, projectDir string, pubKS identity.KeyStore, policyYAML []byte) LockConfig {
 	t.Helper()
@@ -149,7 +149,7 @@ func TestCreateAgentLock_ForkPack_EgressAdded(t *testing.T) {
 	dir := t.TempDir()
 	pubKS, _ := publisherTestStore(t)
 	parentPolicy := []byte(policyV1Empty)
-	childPolicy := []byte("version: \"1\"\negress:\n  - domain: api.example.com\n    ports: [443]\n")
+	childPolicy := []byte("version: \"1.0\"\negress:\n  - domain: api.example.com\n    ports: [443]\n")
 	e0, tailFP, _ := signedCreatedEntry(t, "parent", "1.0.0", "alice")
 	writeLineageFile(t, dir, parentPolicy, []ProvenanceEntry{*e0}, tailFP, "alice")
 
