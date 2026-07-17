@@ -430,15 +430,13 @@ func TestDataClassification_Ordering(t *testing.T) {
 		t.Run(tt.a.String()+"/"+tt.b.String(), func(t *testing.T) {
 			aVal := tt.a.Level()
 			bVal := tt.b.Level()
-			if tt.less && !(aVal < bVal) {
+			if tt.less && aVal >= bVal {
 				t.Errorf("expected %q < %q", tt.a.String(), tt.b.String())
 			}
 			if tt.equal && aVal != bVal {
 				t.Errorf("expected %q == %q", tt.a.String(), tt.b.String())
 			}
-			if !tt.less && !tt.equal && aVal >= bVal {
-				// expected a >= b
-			}
+			// When !tt.less && !tt.equal, a >= b satisfies the ordering invariant.
 		})
 	}
 }

@@ -112,13 +112,9 @@ func TestSecretSentinel_NotInJSON(t *testing.T) {
 			Value string `json:"value"`
 		}
 		ts := testStruct{Value: "test-" + s + "-value"}
-		data, err := json.Marshal(ts)
+		_, err := json.Marshal(ts)
 		if err != nil {
 			t.Fatal(err)
-		}
-		if strings.Contains(string(data), s+"-value") {
-			// This is fine - the value is intentionally serialized.
-			// The redaction policy would happen at the store layer.
 		}
 	}
 }
@@ -294,10 +290,7 @@ func TestArtifact_NoHostPath(t *testing.T) {
 		t.Error("ArtifactRef must not expose host/container paths")
 	}
 
-	// Verify ownership fields are present.
-	if ref.WorkflowID != "" || ref.NodeID != nil {
-		// These are optional but should not leak paths.
-	}
+	// Ownership fields (WorkflowID, NodeID) may be present but should not leak paths.
 }
 
 func TestArtifact_ClassificationNoDeclassification(t *testing.T) {
@@ -318,11 +311,9 @@ func TestArtifact_ClassificationNoDeclassification(t *testing.T) {
 		t.Error("downstream must not declassify")
 	}
 
-	// Raising is allowed.
-	raised := ClassificationRestricted
-	if raised.Level() <= handoffClass.Level() {
-		// Same level is okay.
-	}
+	// Raising is allowed (preserve or raise, never lower).
+	// This is a no-op assertion: the downstream stage may raise
+	// classification to a higher level.
 }
 
 func TestArtifact_ClassificationOrder(t *testing.T) {
@@ -462,10 +453,7 @@ func TestControlDesiredObservedState(t *testing.T) {
 		t.Errorf("command = %q, want %q", pauseDesired.DesiredCommand, ControlPause)
 	}
 
-	// Cancel wins over pause.
-	if desired.CancelPrecedence && pauseDesired.DesiredCommand == ControlPause {
-		// Cancel takes precedence.
-	}
+	// Cancel wins over pause (cancellation precedence).
 }
 
 // --- Helpers ---
