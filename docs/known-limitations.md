@@ -1,8 +1,13 @@
 # Known Limitations
 
-AgentPaaS v0.2.0 is a local-first governed runtime for macOS with secure
-agent sharing. These are accepted limitations documented during adversary
-review. They are intentional trade-offs, not bugs.
+AgentPaaS v0.2.3 is a local-first governed runtime for macOS with secure
+agent sharing. This document records both accepted trade-offs and capability
+gaps found during review. A listed gap must not be mistaken for a shipped
+feature merely because a v0.3 plan exists to close it.
+
+The Durable Routed Run work described in the roadmap targets v0.3.0 and is not
+part of the shipped product yet. A planned block or execution-ready
+specification must not be described as a current capability.
 
 For the full security posture, see [threat-model.md](threat-model.md).
 For workarounds and authoring guidance, see
@@ -15,7 +20,7 @@ Blocks are numbered per the internal execution plan. Tracked status:
 
 | Block | Description | Status |
 |---|---|---|
-| B17 | Network topology isolation, egress gateway, basic audit | ✅ Complete |
+| B17 | LLM egress auto-derivation and secure terminal secret ingestion | ✅ Complete |
 | B18 | Manual testing suite (T1-T10 lifecycle), red-team smoke | ✅ Complete |
 | B19 | AgentGateway policy integration (token budgets, rate limiting, gateway-native ingress) | ✅ Complete |
 | B20 | Security claim closure — docs truth-sync, audit integrity, credential zero-visibility | ✅ Complete |
@@ -23,8 +28,70 @@ Blocks are numbered per the internal execution plan. Tracked status:
 | B22 | Bundle format, export, inspect | ✅ Complete |
 | B23 | Verified install, consent, credential mapping, run integration | ✅ Complete |
 | B24 | Fork, modify, redistribute: provenance chains | ✅ Complete |
-| B25 | Hermes sharing UX, vulnerability closure, v0.2.1 release | 🔄 In Progress |
-| B26 | Revocation, registry, policy-narrowing overlay | ⏭️ Planned |
+| B25 | Hermes sharing UX, vulnerability closure, v0.2.x release hardening | ✅ Complete |
+| B26 | Durable deployment/invocation/run/workflow contracts and protected local state | ⏭️ Planned for v0.3.0 |
+| B27 | SDK progress, checkpoints, artifacts, and safe resume | ⏭️ Planned for v0.3.0 |
+| B28 | Long-running multi-turn execution and proof | ⏭️ Planned for v0.3.0 |
+| B29 | AgentPaaS-container MCP services | ⏭️ Planned for v0.3.0 |
+| B30 | Runtime-native sequential pipelines | ⏭️ Planned for v0.3.0 |
+| B31 | Parent/child fan-out, fan-in, and collation | ⏭️ Planned for v0.3.0 |
+| B32 | Model catalog, route compiler, and deterministic selector | ⏭️ Planned for v0.3.0 |
+| B33 | Model-call failure classification and bounded recovery | ⏭️ Planned for v0.3.0 |
+| B34 | Shared workflow LLM spend budget and cost ledger | ⏭️ Planned for v0.3.0 |
+| B35 | Integrated supervision, fencing, operator lifecycle, limit amendments, and continuation | ⏭️ Planned for v0.3.0 |
+| B36 | Hermes authoring, deployment, and operations skills/UX | ⏭️ Planned for v0.3.0 |
+| B37 | Golden proof, hardening, clean install, and v0.3.0 release | ⏭️ Planned for v0.3.0 |
+
+## Durable Routed Run is not available in v0.2.3
+
+The shipped v0.2.3 path has one configured provider/model/credential target.
+It has not proven a long-running multi-turn agent and does not currently
+provide:
+
+- A durable asynchronous invocation path. The normal daemon path waits on one
+  HTTP response and ordinarily times out at approximately 60 seconds.
+- Immutable deployment versions, audited aliases, atomic promotion/rollback,
+  deactivation, or exact-version pinning for independent cron/API invocation.
+- Durable invocation idempotency and receiver-local per-deployment top-level
+  workflow concurrency admission suitable for external schedulers.
+- One authoritative time model. Fixed 60-second, 2-minute, 5-minute, and
+  120-second layers conflict. Existing routed wall-clock/iteration request
+  fields are not a contract to wire through: the v0.3 plan supersedes them with
+  one accumulated workflow-active-time model that freezes only in fully
+  `PAUSED`/`NEEDS_REPLAN` states.
+- Policy-derived worker CPU/process limits. The worker bootstrap currently
+  applies a fixed 30-second CPU rlimit and zero child-process allowance.
+- A long-running proof. The manual test labelled “Long-Running Mixed-Egress”
+  only repeated the weather HTTP+LLM case and did not test duration, turn
+  count, restart, or resume.
+- First-class conversation/session state. Repeated `agent.llm()` calls work,
+  but the worker must explicitly carry prior context.
+- Logical route selection across an approved local/cloud model pool.
+- Automatic cross-model fallback.
+- A shared hard USD LLM spend limit across workflow stages, parents, children,
+  calls, and worker attempts.
+- `agent.progress(...)`, semantic checkpoints, or safe worker resume.
+- Explicit worker attempts, leases, fencing, or one bounded continuation.
+- Operator cancel, safe-boundary pause/resume, provenance-linked restart, or
+  active-time accounting that freezes only when fully paused/`NEEDS_REPLAN`.
+- A scoped append-only way to raise current active-time, attempt-lease, or LLM
+  spend ceilings before terminal exhaustion.
+- Deterministic repeated-action/no-progress recovery guardrails.
+- Complete cached-input/cache-write/subscription/local cost representation.
+- A real production-wired AgentPaaS-container MCP registry/router. The current
+  harness path can validate an allowlist but may return a synthetic result
+  when no router is installed.
+- A workflow controller, durable stage handoff, or a way to run a sequence of
+  agents in separate containers without Hermes relaying each transition.
+- Parent/child spawn and join. An agent cannot currently request bounded child
+  runs, await their results, collate them, and continue.
+
+Current model timeout, quota, authentication, context, or subscription
+failures can therefore fail the worker. The v0.3 B26–B37 plan closes these
+gaps as one release. B28 is the mandatory long-running foundation gate and
+routing does not begin until B31 completes the native multi-container
+patterns. No intermediate block should be presented as shipped Durable Routed
+Run support.
 
 ## Network enforcement
 
@@ -54,15 +121,15 @@ When installing an agent bundle that has no `uv.lock` file, `agentpaas install -
 fails with "missing uv.lock requires --allow-unlocked-deps in non-interactive mode".
 Pass `--allow-unlocked-deps` to allow the rebuild without locked dependencies.
 
-### LLM integration routes through gateway egress (no special-casing)
+### LLM integration uses a dedicated RPC over shared gateway egress
 
 LLM calls (`agent.llm()`) route through the gateway as credentialed HTTP
 egress to the provider's chat-completions endpoint (B15-T02, Option B).
-There is no dedicated LLM code path — it is sugar over
-`agent.http_with_credential`. The provider, model, and credential binding
-are configured in `agent.yaml`. Pre-deployment validation via
-`agentpaas secret test <name>` verifies the credential works before baking
-into a container.
+The SDK uses the harness LLM RPC and provider adapters, while network policy
+and credential application share the governed egress boundary. The provider,
+model, and credential binding are configured in `agent.yaml`.
+Pre-deployment validation via `agentpaas secret test <name>` verifies the
+credential works before runtime use.
 
 ### Trigger server uses API-key auth for --expose
 
@@ -143,7 +210,9 @@ Docker networks (internal-only + egress). At the default limit that is up to
 On memory- or CPU-constrained machines (small Colima VMs, Docker Desktop with
 low resource limits), avoid overlapping runs: start the next `agentpaas run` only
 after the previous run finishes, or keep fewer than three runs active at once.
-Configurable concurrency limits are planned for P2.
+v0.3 plans receiver-local per-deployment `max_concurrent_runs` admission
+inside the runtime-wide capacity, defaulting to one. Changing or distributing
+the runtime-wide capacity remains later work.
 
 ## Production hardening (B15-T05)
 
@@ -201,20 +270,26 @@ certified seccomp/AppArmor profiles, and Linux install paths are P2.
 
 ## Release gate
 
-### Volunteer gate (14C) not yet run
+### Golden Loop is the current lifecycle gate
 
-The Block 14C release gate requires two volunteers (not the maintainer) to
-reach a governed agent in under 15 minutes following the README/quickstart,
-with evidence committed under `docs/release/volunteer-evidence/`. This manual
-gate has not been completed for v0.1.0 until volunteer evidence is collected.
+The v0.2.3 Golden Loop covers the shipped build, modify, provenance, export,
+receive, inspect, install, and run lifecycle. It does not prove Durable Routed
+Run.
+Before v0.3.0 ships, B37 requires the Golden Loop to include a real
+long-running multi-turn worker, cross-container MCP, native sequential
+handoff, parent/child fan-out and collation, model recovery, one checkpoint
+continuation, shared workflow LLM spend, fencing, live local/cloud
+conformance, immutable deployment/alias lifecycle, Hermes-absent CLI/API
+invocation, idempotency/concurrency rejection, operator
+cancel/pause/resume/restart, limit amendment, and a fresh-install proof that
+authors through Hermes but invokes independently.
 
 ## Demo recordings
 
-### No demo video or asciinema (B15 scope)
-
-End-to-end demo video and asciinema recordings are not part of the P1 doc set.
-They are planned for Block 15 (manual testing) and will be produced during the
-assisted use-case assessment. This is a known documentation gap, not a code defect.
+Video or asciinema is not a current release guarantee. The authoritative
+evidence is the automated/manual Golden Loop and its sanitized release
+records. Any future recording must use the same fault labels and must not imply
+correctness certification or measured savings.
 
 ## Additional P1 honesty statements
 
