@@ -97,6 +97,12 @@ type InspectReport struct {
 	Requirements   *InspectRequirements     `json:"requirements,omitempty"`
 	SBOM           *SBOMSummary             `json:"sbom,omitempty"`
 	ExtraFiles     []ManifestExtraFile      `json:"extra_files,omitempty"`
+	Workflow       *WorkflowSummary         `json:"workflow,omitempty"`
+}
+
+// WorkflowSummary is the workflow.yaml summary for inspect output.
+type WorkflowSummary struct {
+	Kind string `json:"kind"`
 }
 
 // Inspect builds an offline inspect report for an opened bundle file.
@@ -161,6 +167,13 @@ func Inspect(path string, b *Bundle, verifyReport *VerifyReport) (*InspectReport
 	report.PolicyLints = append(report.PolicyLints, ComputeChainLints(report.Provenance)...)
 	report.Requirements = buildRequirements(b, pol)
 	report.SBOM = summarizeSBOM(b.SBOM)
+
+	// Workflow authority (v0.3+)
+	if b.Lock != nil && b.Lock.WorkflowYAML != nil {
+		report.Workflow = &WorkflowSummary{
+			Kind: b.Lock.WorkflowYAML.Kind,
+		}
+	}
 
 	return report, nil
 }
@@ -297,6 +310,20 @@ func renderPolicySummary(pol *policy.Policy) []PolicySummaryLine {
 			Section: "hook",
 			Detail:  fmt.Sprintf("name=%s url=%s", h.Name, h.URL),
 		})
+	}
+	// Route/candidate authority (v1.1+)
+	for name, route := range pol.ModelRoutes {
+		for _, c := range route.Candidates {
+			detail := fmt.Sprintf("route=%s candidate=%s role=%s provider=%s model=%s location=%s",
+				name, c.ID, c.Role, c.Provider, c.Model, c.Location)
+			if c.Endpoint != "" {
+				detail += fmt.Sprintf(" endpoint=%s", c.Endpoint)
+			}
+			if c.Credential != "" {
+				detail += " (credential ref)"
+			}
+			lines = append(lines, PolicySummaryLine{Section: "route", Detail: detail})
+		}
 	}
 	return lines
 }

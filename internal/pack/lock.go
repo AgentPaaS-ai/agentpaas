@@ -88,6 +88,8 @@ type AgentLock struct {
 	// AgentYAML is the parsed agent.yaml (including LLM config). Stored as part
 	// of the lockfile for runtime LLM credential resolution. nil when absent.
 	AgentYAML *AgentYAML `json:"agent_yaml,omitempty"`
+	// WorkflowYAML is the parsed workflow.yaml envelope (v0.3). nil when absent.
+	WorkflowYAML *WorkflowYAML `json:"workflow_yaml,omitempty"`
 	// Publisher holds the publisher identity block (schema v2+). nil when
 	// the pack was performed without a publisher identity (local-only pack).
 	Publisher *PublisherInfo `json:"publisher,omitempty"`
@@ -182,6 +184,12 @@ type PolicyDelta struct {
 	MCPToolsAdded []string `json:"mcp_tools_added,omitempty"`
 	// MCPToolsRemoved is the list of MCP tools removed.
 	MCPToolsRemoved []string `json:"mcp_tools_removed,omitempty"`
+	// ModelRoutesAdded is the list of model route keys added.
+	ModelRoutesAdded []string `json:"model_routes_added,omitempty"`
+	// ModelRoutesRemoved is the list of model route keys removed.
+	ModelRoutesRemoved []string `json:"model_routes_removed,omitempty"`
+	// RoutedRunChanged is true when the routed_run block was added or removed.
+	RoutedRunChanged bool `json:"routed_run_changed,omitempty"`
 }
 
 // NewSignedTestLock generates an ECDSA P-256 key pair and creates a signed
@@ -1119,6 +1127,9 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 	}
 	if lock.AgentYAML != nil {
 		m["agent_yaml"] = lock.AgentYAML
+	}
+	if lock.WorkflowYAML != nil {
+		m["workflow_yaml"] = lock.WorkflowYAML
 	}
 	return m
 }
