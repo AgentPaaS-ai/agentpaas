@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "agent_name": "openrouter-project",
+  "agent_version": "0.1.0",
+  "runtime": "python",
+  "platform": "linux/arm64",
+  "base_image_digest": "gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
+  "harness_version": "test",
+  "build_input_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "sbom_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "policy_digest": "PLACEHOLDER_DIGEST",
+  "package_aid": "",
+  "public_key_fingerprint": "",
+  "reproducibility": {
+    "source_date_epoch": "2023-11-14T23:33:20Z",
+    "base_image_pinned": true,
+    "deps_locked": true,
+    "tar_order": "sorted"
+  },
+  "lockfile_signature": "",
+  "created_at": "2023-11-14T23:33:20Z",
+  "agent_yaml": {
+    "name": "openrouter-project",
+    "version": "0.1.0",
+    "runtime": "python",
+    "entry": "main.py",
+    "description": "Legacy OpenRouter project fixture",
+    "llm": {
+      "provider": "openrouter",
+      "model": "anthropic/claude-sonnet-4",
+      "credential": "openrouter-key"
+    }
+  }
+}

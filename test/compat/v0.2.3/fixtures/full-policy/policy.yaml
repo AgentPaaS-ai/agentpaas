@@ -1,0 +1,57 @@
+version: "1.0"
+agent:
+  name: full-policy-project
+  description: "v0.2.3 policy with all features"
+egress:
+  - domain: "api.openai.com"
+    ports: [443]
+  - domain: "openrouter.ai"
+    ports: [443]
+credentials:
+  - id: "openai-key"
+    type: header
+    header: "Authorization"
+    value: "${env:OPENAI_KEY}"
+  - id: "openrouter-key"
+    type: header
+    header: "Authorization"
+    value: "${env:OPENROUTER_KEY}"
+mcp_servers:
+  - name: "code-exec"
+    url: "http://localhost:9090/mcp"
+    transport: "stdio"
+    allowed_tools: ["execute", "read"]
+hooks:
+  - name: "alert-webhook"
+    url: "https://hooks.example.com/alert"
+ingress:
+  - path: "/webhook"
+    port: 8080
+llm_budget:
+  max_tokens: 100000
+  max_tokens_per_request: 8000
+llm_rate_limit:
+  requests_per_minute: 60
+  tokens_per_minute: 100000
+llm_provider_lock:
+  allowed_endpoints:
+    - "https://api.openai.com/v1"
+    - "https://openrouter.ai/api/v1"
+guardrails:
+  - type: "content_filter"
+    pattern: "(?i)redact-sql"
+    action: "block"
+  - type: "pii"
+    provider: "openrouter"
+    credential: "openrouter-key"
+transformations:
+  request:
+    inject_headers:
+      X-Custom-Header: "custom-value"
+    inject_system_prompt: "You are a helpful assistant."
+  response:
+    remove_headers:
+      - "X-Response-Sensitive"
+observability:
+  cost_tracking: true
+  otel_endpoint: "http://localhost:4318"
