@@ -216,23 +216,25 @@ func (s *LocalStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord
 	if err != nil && !os.IsNotExist(err) && !errorsIsNotFound(err) {
 		return err
 	}
+	// Work on a copy so we never mutate the caller's struct.
+	cp := *alias
 	if gen > 0 || existing.Alias != "" {
-		// Update path: alias.Generation is the expected current generation.
-		if existing.Generation != alias.Generation {
-			return fmt.Errorf("%w: alias %s expected %d got %d", ErrCASConflict, alias.Alias, alias.Generation, existing.Generation)
+		// Update path: cp.Generation is the expected current generation.
+		if existing.Generation != cp.Generation {
+			return fmt.Errorf("%w: alias %s expected %d got %d", ErrCASConflict, cp.Alias, cp.Generation, existing.Generation)
 		}
-		alias.Generation = existing.Generation + 1
+		cp.Generation = existing.Generation + 1
 	} else {
 		// Create
-		if alias.Generation == 0 {
-			alias.Generation = 1
+		if cp.Generation == 0 {
+			cp.Generation = 1
 		}
 	}
-	if alias.SchemaVersion == "" {
-		alias.SchemaVersion = CurrentSchemaVersion
+	if cp.SchemaVersion == "" {
+		cp.SchemaVersion = CurrentSchemaVersion
 	}
-	alias.UpdatedAt = s.now()
-	return s.writeJSON(path, alias.Generation, alias)
+	cp.UpdatedAt = s.now()
+	return s.writeJSON(path, cp.Generation, &cp)
 }
 
 func (s *LocalStore) ResolveAlias(ctx context.Context, alias string) (*AliasRecord, error) {
