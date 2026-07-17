@@ -56,7 +56,19 @@ TRUSTED_CONTROL_FIELDS = frozenset({
     "category", "message", "type", "ref",
     # B26 additive trusted control fields
     "latest_reason", "latest_action", "attempt_id", "workflow_id",
-    "invocation_id", "attempt_report",
+    "invocation_id", "attempt_report", "invoke_response",
+    # B26 nested attempt-report fields (operator-authoritative metrics/IDs)
+    "reason", "failure_scope", "recovery_disposition", "resume_capability",
+    "progress", "checkpoint", "artifacts", "time", "llm_budget",
+    "route_decisions", "recommended_actions",
+    "model_calls_completed", "tool_calls_completed",
+    "actions_since_checkpoint", "actions_without_progress",
+    "checkpoint_id", "action_count", "total_model_calls",
+    "attempt_duration_ms", "run_active_time_ms",
+    "workflow_active_time_ms", "remaining_ms",
+    "total_tokens", "input_tokens", "output_tokens",
+    "total_cost_decimal", "remaining_cost_decimal", "model_calls",
+    "created_at",
 })
 
 # Untrusted evidence fields (may contain agent/log/source content)
