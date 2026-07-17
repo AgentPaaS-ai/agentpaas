@@ -68,6 +68,13 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 			p.Version, SchemaVersion10, SchemaVersion11)
 	}
 
+	// Reject v1.0 policies that contain v1.1 routed fields at parse time.
+	// This prevents invalid policies from being accepted by ParsePolicy and
+	// having their digest computed before ValidatePolicy catches the mismatch.
+	if p.Version == SchemaVersion10 && p.HasRoutedFields() {
+		return nil, fmt.Errorf("policy: v1.0 schema must not contain v1.1 routed fields (routed_run, model_routes, max_cost_usd)")
+	}
+
 	// Decode a second time to ensure there is no trailing document.
 	// yaml.v3 Decode does not return io.EOF reliably on single-document
 	// streams, so we check explicitly.
