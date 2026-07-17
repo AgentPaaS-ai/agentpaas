@@ -49,6 +49,7 @@ const (
 )
 
 // RunStatus represents the lifecycle state of an agent run.
+// New values are additive; existing numbers MUST NOT be renumbered.
 type RunStatus int32
 
 const (
@@ -59,18 +60,27 @@ const (
 	RunStatus_RUN_STATUS_FAILED          RunStatus = 4
 	RunStatus_RUN_STATUS_CANCELLED       RunStatus = 5
 	RunStatus_RUN_STATUS_BUDGET_EXCEEDED RunStatus = 6
+	// B26 routed-run states (additive; old clients ignore unknown enum values).
+	RunStatus_RUN_STATUS_PAUSE_REQUESTED RunStatus = 7
+	RunStatus_RUN_STATUS_PAUSED          RunStatus = 8
+	RunStatus_RUN_STATUS_NEEDS_REPLAN    RunStatus = 9
+	RunStatus_RUN_STATUS_EXPIRED         RunStatus = 10
 )
 
 // Enum value maps for RunStatus.
 var (
 	RunStatus_name = map[int32]string{
-		0: "RUN_STATUS_UNSPECIFIED",
-		1: "RUN_STATUS_PENDING",
-		2: "RUN_STATUS_RUNNING",
-		3: "RUN_STATUS_SUCCEEDED",
-		4: "RUN_STATUS_FAILED",
-		5: "RUN_STATUS_CANCELLED",
-		6: "RUN_STATUS_BUDGET_EXCEEDED",
+		0:  "RUN_STATUS_UNSPECIFIED",
+		1:  "RUN_STATUS_PENDING",
+		2:  "RUN_STATUS_RUNNING",
+		3:  "RUN_STATUS_SUCCEEDED",
+		4:  "RUN_STATUS_FAILED",
+		5:  "RUN_STATUS_CANCELLED",
+		6:  "RUN_STATUS_BUDGET_EXCEEDED",
+		7:  "RUN_STATUS_PAUSE_REQUESTED",
+		8:  "RUN_STATUS_PAUSED",
+		9:  "RUN_STATUS_NEEDS_REPLAN",
+		10: "RUN_STATUS_EXPIRED",
 	}
 	RunStatus_value = map[string]int32{
 		"RUN_STATUS_UNSPECIFIED":     0,
@@ -80,6 +90,10 @@ var (
 		"RUN_STATUS_FAILED":          4,
 		"RUN_STATUS_CANCELLED":       5,
 		"RUN_STATUS_BUDGET_EXCEEDED": 6,
+		"RUN_STATUS_PAUSE_REQUESTED": 7,
+		"RUN_STATUS_PAUSED":          8,
+		"RUN_STATUS_NEEDS_REPLAN":    9,
+		"RUN_STATUS_EXPIRED":         10,
 	}
 )
 
@@ -193,6 +207,14 @@ type Run struct {
 	BudgetSummary *BudgetSummary         `protobuf:"bytes,9,opt,name=budget_summary,json=budgetSummary,proto3" json:"budget_summary,omitempty"`
 	PolicyDigest  string                 `protobuf:"bytes,10,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
 	ImageDigest   string                 `protobuf:"bytes,11,opt,name=image_digest,json=imageDigest,proto3" json:"image_digest,omitempty"`
+	// B26 additive hierarchy IDs (standalone trigger runs also receive a workflow_id).
+	// Old clients ignore unknown fields; new clients may inspect hierarchy without
+	// inferring that pipeline/spawn execution is already enabled.
+	WorkflowId   string `protobuf:"bytes,12,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	InvocationId string `protobuf:"bytes,13,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	// Absent in the immediate admission receipt until the asynchronous scheduler
+	// claim creates the attempt; present in later status.
+	AttemptId     string `protobuf:"bytes,14,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -300,6 +322,27 @@ func (x *Run) GetPolicyDigest() string {
 func (x *Run) GetImageDigest() string {
 	if x != nil {
 		return x.ImageDigest
+	}
+	return ""
+}
+
+func (x *Run) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *Run) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *Run) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
 	}
 	return ""
 }
@@ -669,7 +712,7 @@ const file_trigger_v1_trigger_proto_rawDesc = "" +
 	"\rwall_clock_ms\x18\x03 \x01(\x03R\vwallClockMs\x12\x1e\n" +
 	"\n" +
 	"iterations\x18\x04 \x01(\x03R\n" +
-	"iterations\"\xf6\x03\n" +
+	"iterations\"\xdb\x04\n" +
 	"\x03Run\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1d\n" +
 	"\n" +
@@ -686,7 +729,12 @@ const file_trigger_v1_trigger_proto_rawDesc = "" +
 	"\x0ebudget_summary\x18\t \x01(\v2#.agentpaas.trigger.v1.BudgetSummaryR\rbudgetSummary\x12#\n" +
 	"\rpolicy_digest\x18\n" +
 	" \x01(\tR\fpolicyDigest\x12!\n" +
-	"\fimage_digest\x18\v \x01(\tR\vimageDigest\"\xc5\x02\n" +
+	"\fimage_digest\x18\v \x01(\tR\vimageDigest\x12\x1f\n" +
+	"\vworkflow_id\x18\f \x01(\tR\n" +
+	"workflowId\x12#\n" +
+	"\rinvocation_id\x18\r \x01(\tR\finvocationId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x0e \x01(\tR\tattemptId\"\xc5\x02\n" +
 	"\rInvokeRequest\x12\x1d\n" +
 	"\n" +
 	"agent_name\x18\x01 \x01(\tR\tagentName\x12#\n" +
@@ -714,7 +762,7 @@ const file_trigger_v1_trigger_proto_rawDesc = "" +
 	"page_token\x18\x04 \x01(\tR\tpageToken\"i\n" +
 	"\x10ListRunsResponse\x12-\n" +
 	"\x04runs\x18\x01 \x03(\v2\x19.agentpaas.trigger.v1.RunR\x04runs\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\xc2\x01\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken*\xae\x02\n" +
 	"\tRunStatus\x12\x1a\n" +
 	"\x16RUN_STATUS_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12RUN_STATUS_PENDING\x10\x01\x12\x16\n" +
@@ -722,7 +770,12 @@ const file_trigger_v1_trigger_proto_rawDesc = "" +
 	"\x14RUN_STATUS_SUCCEEDED\x10\x03\x12\x15\n" +
 	"\x11RUN_STATUS_FAILED\x10\x04\x12\x18\n" +
 	"\x14RUN_STATUS_CANCELLED\x10\x05\x12\x1e\n" +
-	"\x1aRUN_STATUS_BUDGET_EXCEEDED\x10\x062\xe7\x04\n" +
+	"\x1aRUN_STATUS_BUDGET_EXCEEDED\x10\x06\x12\x1e\n" +
+	"\x1aRUN_STATUS_PAUSE_REQUESTED\x10\a\x12\x15\n" +
+	"\x11RUN_STATUS_PAUSED\x10\b\x12\x1b\n" +
+	"\x17RUN_STATUS_NEEDS_REPLAN\x10\t\x12\x16\n" +
+	"\x12RUN_STATUS_EXPIRED\x10\n" +
+	"2\xe7\x04\n" +
 	"\x0eTriggerService\x12r\n" +
 	"\x06Invoke\x12#.agentpaas.trigger.v1.InvokeRequest\x1a$.agentpaas.trigger.v1.InvokeResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/trigger/invoke\x12\x81\x01\n" +
 	"\fInvokeStream\x12#.agentpaas.trigger.v1.InvokeRequest\x1a$.agentpaas.trigger.v1.InvokeResponse\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/trigger/invoke/stream0\x01\x12k\n" +

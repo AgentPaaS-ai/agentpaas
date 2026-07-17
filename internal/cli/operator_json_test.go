@@ -219,7 +219,7 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "validate",
 			payload: map[string]interface{}{
-				"schema_version": "1.0.0",
+				"schema_version": "1.1.0",
 				"ready":          false,
 				"project_dir":    "/tmp/test",
 				"runtime":        "python",
@@ -229,7 +229,7 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "summarize",
 			payload: map[string]interface{}{
-				"schema_version": "1.0.0",
+				"schema_version": "1.1.0",
 				"run_id":         "run_123",
 				"status":         "failed",
 				"summary":        "test",
@@ -239,7 +239,7 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "explain_failure",
 			payload: map[string]interface{}{
-				"schema_version": "1.0.0",
+				"schema_version": "1.1.0",
 				"run_id":         "run_123",
 				"error_category": "dependency_conflict",
 				"next_action":    "install_dependency",
@@ -249,7 +249,7 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "explain_denial",
 			payload: map[string]interface{}{
-				"schema_version":    "1.0.0",
+				"schema_version":    "1.1.0",
 				"blocking_rule_id":  "egress[0]",
 				"next_action":       "review_policy_patch",
 			},
@@ -258,7 +258,7 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "recommend_patch",
 			payload: map[string]interface{}{
-				"schema_version": "1.0.0",
+				"schema_version": "1.1.0",
 				"risk_level":     "medium",
 				"next_action":    "review_policy_patch",
 				"confirmation": map[string]interface{}{
@@ -271,7 +271,7 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "timeline",
 			payload: map[string]interface{}{
-				"schema_version": "1.0.0",
+				"schema_version": "1.1.0",
 				"run_id":         "run_123",
 				"events":         []interface{}{},
 			},
@@ -280,7 +280,7 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "next_action",
 			payload: map[string]interface{}{
-				"schema_version": "1.0.0",
+				"schema_version": "1.1.0",
 				"next_action":    "fix_code",
 				"rationale":      "syntax error",
 			},
@@ -316,7 +316,7 @@ func TestPrintTextOrJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err := printTextOrJSON(true, testType{SchemaVersion: "1.0.0", Ready: true}, func(v interface{}) string {
+	err := printTextOrJSON(true, testType{SchemaVersion: "1.1.0", Ready: true}, func(v interface{}) string {
 		return "text"
 	})
 	// printTextOrJSON writes to fmt.Println, not buf. We just verify no error.

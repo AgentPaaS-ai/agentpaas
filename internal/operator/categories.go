@@ -4,7 +4,7 @@ package operator
 // method responses include this version in their JSON output. Bumping the
 // major version indicates a breaking change; minor bumps add
 // backward-compatible fields.
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.1.0"
 
 // ErrorCategory is a stable, versioned enum identifying the category of an
 // operator diagnosis. Categories are part of the public contract: adding a
@@ -62,6 +62,35 @@ const (
 	// ErrDashboardUnavailable indicates the dashboard/OTel endpoint is not
 	// reachable.
 	ErrDashboardUnavailable ErrorCategory = "dashboard_unavailable"
+
+	// B26-T04 typed control / admission error categories (additive).
+	// Callers must not infer these from error strings alone.
+
+	// ErrDeploymentInactive indicates the target deployment is inactive.
+	ErrDeploymentInactive ErrorCategory = "deployment_inactive"
+
+	// ErrIdempotencyConflict indicates the same idempotency key was reused
+	// with a different payload/intent.
+	ErrIdempotencyConflict ErrorCategory = "idempotency_conflict"
+
+	// ErrConcurrencyUnavailable indicates max concurrent runs is saturated.
+	ErrConcurrencyUnavailable ErrorCategory = "concurrency_unavailable"
+
+	// ErrLimitAmendmentDenied indicates a limit amendment was rejected.
+	ErrLimitAmendmentDenied ErrorCategory = "limit_amendment_denied"
+
+	// ErrUnsafePauseBoundary indicates pause is not safe at the current boundary.
+	ErrUnsafePauseBoundary ErrorCategory = "unsafe_pause_boundary"
+
+	// ErrRunTerminal indicates control targeted a terminal run.
+	ErrRunTerminal ErrorCategory = "run_terminal"
+
+	// ErrFeatureNotEnabled indicates a representational B26 feature that
+	// depends on a later block (B28/B35) and creates no partial state.
+	ErrFeatureNotEnabled ErrorCategory = "feature_not_enabled"
+
+	// ErrMissingScope indicates a required authority scope was absent.
+	ErrMissingScope ErrorCategory = "missing_scope"
 )
 
 // AllErrorCategories returns the complete set of defined error categories.
@@ -82,6 +111,14 @@ func AllErrorCategories() []ErrorCategory {
 		ErrSecretScanFailed,
 		ErrPackageVerificationFailed,
 		ErrDashboardUnavailable,
+		ErrDeploymentInactive,
+		ErrIdempotencyConflict,
+		ErrConcurrencyUnavailable,
+		ErrLimitAmendmentDenied,
+		ErrUnsafePauseBoundary,
+		ErrRunTerminal,
+		ErrFeatureNotEnabled,
+		ErrMissingScope,
 	}
 }
 
@@ -133,6 +170,23 @@ const (
 	// ActionAskUser: the operator cannot determine a next action; ask the
 	// human user.
 	ActionAskUser NextAction = "ask_user"
+
+	// B26-T04 additive next actions for routed-run recovery recommendations.
+
+	// ActionMoreTime: extend active-time / attempt lease ceilings.
+	ActionMoreTime NextAction = "more_time"
+
+	// ActionCapabilityUp: escalate to a higher capability tier model.
+	ActionCapabilityUp NextAction = "capability_up"
+
+	// ActionLargerContext: use a model/candidate with larger context.
+	ActionLargerContext NextAction = "larger_context"
+
+	// ActionSplitTask: decompose the task into smaller units.
+	ActionSplitTask NextAction = "split_task"
+
+	// ActionStop: stop further recovery attempts.
+	ActionStop NextAction = "stop"
 )
 
 // AllNextActions returns the complete set of defined next-action values.
@@ -148,6 +202,11 @@ func AllNextActions() []NextAction {
 		ActionRerun,
 		ActionExportAudit,
 		ActionAskUser,
+		ActionMoreTime,
+		ActionCapabilityUp,
+		ActionLargerContext,
+		ActionSplitTask,
+		ActionStop,
 	}
 }
 
@@ -177,3 +236,35 @@ const (
 	// listeners, retention purges, or destructive operations.
 	RiskHigh RiskLevel = "high"
 )
+
+// AuthorityScope separates invoke authority from administrative control.
+// runs:amend_limits must not be exposed to Python/SDK or ordinary trigger credentials.
+type AuthorityScope string
+
+const (
+	// AuthScopeDefault is ordinary invoke / read authority.
+	AuthScopeDefault AuthorityScope = "default"
+	// AuthScopeRunsControl permits pause/resume/cancel/restart/desired-state.
+	AuthScopeRunsControl AuthorityScope = "runs:control"
+	// AuthScopeRunsAmendLimits permits absolute ceiling amendments.
+	AuthScopeRunsAmendLimits AuthorityScope = "runs:amend_limits"
+)
+
+// AllAuthorityScopes returns the complete set of authority scopes.
+func AllAuthorityScopes() []AuthorityScope {
+	return []AuthorityScope{
+		AuthScopeDefault,
+		AuthScopeRunsControl,
+		AuthScopeRunsAmendLimits,
+	}
+}
+
+// IsValidAuthorityScope returns true if s is a defined AuthorityScope.
+func IsValidAuthorityScope(s AuthorityScope) bool {
+	for _, v := range AllAuthorityScopes() {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}

@@ -63,6 +63,55 @@ enum SecretType {
   SECRET_TYPE_INLINE = 3;
 }
 
+// AuthorityScope separates invoke authority from administrative control.
+// runs:amend_limits must NOT be granted to Python/SDK or ordinary trigger credentials.
+enum AuthorityScope {
+  AUTHORITY_SCOPE_UNSPECIFIED = 0;
+  AUTHORITY_SCOPE_DEFAULT = 1;
+  AUTHORITY_SCOPE_RUNS_CONTROL = 2;       // "runs:control"
+  AUTHORITY_SCOPE_RUNS_AMEND_LIMITS = 3;  // "runs:amend_limits"
+}
+
+// AdmissionOutcomeCode is a typed admission result. Callers must not infer
+// these outcomes from error strings.
+enum AdmissionOutcomeCode {
+  ADMISSION_OUTCOME_UNSPECIFIED = 0;
+  ADMISSION_OUTCOME_ACCEPTED = 1;
+  ADMISSION_OUTCOME_IDEMPOTENT_REPLAY = 2;
+  ADMISSION_OUTCOME_ALREADY_RUNNING = 3;
+  ADMISSION_OUTCOME_IDEMPOTENCY_CONFLICT = 4;
+  ADMISSION_OUTCOME_DEPLOYMENT_INACTIVE = 5;
+}
+
+// TypedControlErrorCode identifies structured control-plane errors.
+// Callers must not infer these from error strings.
+enum TypedControlErrorCode {
+  TYPED_CONTROL_ERROR_UNSPECIFIED = 0;
+  TYPED_CONTROL_ERROR_IDEMPOTENT_REPLAY = 1;
+  TYPED_CONTROL_ERROR_ALREADY_RUNNING = 2;
+  TYPED_CONTROL_ERROR_IDEMPOTENCY_CONFLICT = 3;
+  TYPED_CONTROL_ERROR_DEPLOYMENT_INACTIVE = 4;
+  TYPED_CONTROL_ERROR_RUN_TERMINAL = 5;
+  TYPED_CONTROL_ERROR_UNSAFE_PAUSE_BOUNDARY = 6;
+  TYPED_CONTROL_ERROR_CONCURRENCY_UNAVAILABLE = 7;
+  TYPED_CONTROL_ERROR_LIMIT_AMENDMENT_DENIED = 8;
+  TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED = 9;
+  TYPED_CONTROL_ERROR_MISSING_SCOPE = 10;
+  TYPED_CONTROL_ERROR_NUMERIC_OVERFLOW = 11;
+  TYPED_CONTROL_ERROR_CHANGED_IDEMPOTENCY_PAYLOAD = 12;
+}
+
+// ControlCommand is an operator lifecycle command for a run/workflow.
+enum ControlCommand {
+  CONTROL_COMMAND_UNSPECIFIED = 0;
+  CONTROL_COMMAND_CANCEL = 1;
+  CONTROL_COMMAND_PAUSE = 2;
+  CONTROL_COMMAND_RESUME = 3;
+  CONTROL_COMMAND_RESTART = 4;
+  CONTROL_COMMAND_CONTINUE = 5;
+  CONTROL_COMMAND_AMEND_LIMITS = 6;
+}
+
 // ---------------------------------------------------------------------------
 // Packaging / Lifecycle
 // ---------------------------------------------------------------------------
@@ -128,6 +177,15 @@ message RunRequest {
   bytes trigger_payload = 3;
   // Budget configuration (optional).
   BudgetConfig budget = 4;
+  // B26 additive continuation / deployment invocation fields.
+  string continue_run_id = 5;
+  string recovery_action = 6;
+  // Attempt lease duration in milliseconds (checked integer, never float).
+  int64 requested_attempt_lease_ms = 7;
+  // Idempotency key for deployment invocation (required when invoking deployments).
+  string idempotency_key = 8;
+  // Optional deployment reference (alias or exact). Representational in B26.
+  string deployment_ref = 9;
 }
 
 message BudgetConfig {
@@ -144,6 +202,17 @@ message BudgetConfig {
 message RunResponse {
   // Unique identifier for the started run.
   string run_id = 1;
+  // B26 additive hierarchy and admission fields (old clients ignore).
+  string invocation_id = 2;
+  string workflow_id = 3;
+  // Absent in the immediate admission receipt until the asynchronous scheduler
+  // claim creates the attempt; present in later status.
+  string attempt_id = 4;
+  // Run status string (PENDING, RUNNING, PAUSE_REQUESTED, PAUSED, ...).
+  string status = 5;
+  string requested_deployment_ref = 6;
+  string resolved_deployment_id = 7;
+  string resolved_deployment_version = 8;
 }
 
 message StopRequest {
@@ -452,6 +521,8 @@ message SummarizeRunResponse {
   // Stable error category (set when status is "failed").
   string error_category = 18;
   repeated EvidenceRef evidence_refs = 19;
+  // B26: portable attempt report (additive).
+  AttemptReport attempt_report = 20;
 }
 
 message ExplainFailureRequest {
@@ -473,6 +544,9 @@ message ExplainFailureResponse {
   repeated EvidenceRef evidence_refs = 13;
   // Recommended next action from the fixed enum.
   string next_action = 14;
+  // B26: latest relevant failure reason / recovery action (additive).
+  string latest_reason = 15;
+  string latest_action = 16;
 }
 
 message ExplainPolicyDenialRequest {
@@ -575,6 +649,8 @@ message NextActionResponse {
   string rationale = 13;
   repeated EvidenceRef evidence_refs = 14;
   ConfirmationRequirement confirmation = 15;
+  // B26: latest relevant failure reason that motivated the action (additive).
+  string latest_reason = 16;
 }
 
 // ---------------------------------------------------------------------------
@@ -638,12 +714,595 @@ message RunInfo {
   string agent_name = 2;
   string status = 3;
   google.protobuf.Timestamp started_at = 4;
+  // B26 additive hierarchy (optional; old clients ignore).
+  string workflow_id = 5;
+  string invocation_id = 6;
 }
 
 message ListRunsRequest {}
 
 message ListRunsResponse {
   repeated RunInfo runs = 1;
+}
+
+// ---------------------------------------------------------------------------
+// B26: versioned attempt report and related summaries
+// ---------------------------------------------------------------------------
+
+// ProgressSummary describes progress within an attempt.
+message ProgressSummary {
+  string schema_version = 1;
+  int32 model_calls_completed = 2;
+  int32 tool_calls_completed = 3;
+  int32 actions_since_checkpoint = 4;
+  int32 actions_without_progress = 5;
+}
+
+// CheckpointSummary describes a checkpoint (no host paths).
+message CheckpointSummary {
+  string schema_version = 1;
+  string checkpoint_id = 2;
+  string attempt_id = 3;
+  string run_id = 4;
+  int32 action_count = 5;
+  int32 total_model_calls = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+// ArtifactRef is an immutable logical reference to an artifact.
+// It NEVER exposes a host/container path.
+message ArtifactRef {
+  string schema_version = 1;
+  string artifact_id = 2;
+  string workflow_id = 3;
+  string node_id = 4;
+  string run_id = 5;
+  string attempt_id = 6;
+  string logical_ref = 7;
+  string digest = 8;
+  int64 byte_size = 9;
+  string media_type = 10;
+  string schema = 11;
+  // Data classification string (e.g. "public", "internal", "confidential").
+  string classification = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+// TimeBudgetSummary uses checked int64 milliseconds (never float).
+message TimeBudgetSummary {
+  string schema_version = 1;
+  int64 attempt_duration_ms = 2;
+  int64 run_active_time_ms = 3;
+  int64 workflow_active_time_ms = 4;
+  int64 remaining_ms = 5;
+}
+
+// LLMBudgetSummary uses decimal strings for spend (never float).
+message LLMBudgetSummary {
+  string schema_version = 1;
+  int64 total_tokens = 2;
+  int64 input_tokens = 3;
+  int64 output_tokens = 4;
+  string total_cost_decimal = 5;
+  string remaining_cost_decimal = 6;
+  int32 model_calls = 7;
+}
+
+// RouteDecision records the routing decision for a model call.
+message RouteDecision {
+  string schema_version = 1;
+  string model_call_id = 2;
+  string attempt_id = 3;
+  string run_id = 4;
+  string candidate_id = 5;
+  string provider = 6;
+  string model = 7;
+  bool attempted_recovery = 8;
+  bool succeeded = 9;
+  string failure_reason = 10;
+  google.protobuf.Timestamp timestamp = 11;
+}
+
+// AttemptReport is the portable report for a single attempt.
+message AttemptReport {
+  string schema_version = 1;
+  string run_id = 2;
+  string attempt_id = 3;
+  string status = 4;
+  string reason = 5;
+  string failure_scope = 6;
+  string recovery_disposition = 7;
+  string resume_capability = 8;
+  ProgressSummary progress = 9;
+  CheckpointSummary checkpoint = 10;
+  repeated ArtifactRef artifacts = 11;
+  TimeBudgetSummary time = 12;
+  LLMBudgetSummary llm_budget = 13;
+  repeated RouteDecision route_decisions = 14;
+  repeated string recommended_actions = 15;
+  repeated string evidence_refs = 16;
+  google.protobuf.Timestamp created_at = 17;
+}
+
+// ---------------------------------------------------------------------------
+// B26: typed control / admission error responses
+// ---------------------------------------------------------------------------
+
+// TypedControlError is a structured error. Callers must not infer codes from strings.
+message TypedControlError {
+  TypedControlErrorCode code = 1;
+  // Stable machine-readable code string (e.g. "IDEMPOTENT_REPLAY").
+  string code_name = 2;
+  // Human-readable detail (never the sole signal for control decisions).
+  string message = 3;
+  string run_id = 4;
+  string workflow_id = 5;
+  string invocation_id = 6;
+  string deployment_id = 7;
+  // Original idempotency key when relevant.
+  string idempotency_key = 8;
+  // Required authority scope that was missing (e.g. "runs:control").
+  string required_scope = 9;
+  map<string, string> details = 10;
+}
+
+// IdempotentReplayResponse is returned when the same key+payload is replayed.
+message IdempotentReplayResponse {
+  TypedControlError error = 1;
+  RunResponse original = 2;
+}
+
+// AlreadyRunningResponse is returned when a concurrent equivalent run exists.
+message AlreadyRunningResponse {
+  TypedControlError error = 1;
+  string existing_run_id = 2;
+  string existing_workflow_id = 3;
+}
+
+// IdempotencyConflictResponse is returned for same key, different payload.
+message IdempotencyConflictResponse {
+  TypedControlError error = 1;
+  string idempotency_key = 2;
+  string original_intent_digest = 3;
+  string requested_intent_digest = 4;
+}
+
+// DeploymentInactiveResponse is returned when invoking an inactive deployment.
+message DeploymentInactiveResponse {
+  TypedControlError error = 1;
+  string deployment_id = 2;
+  string deployment_status = 3;
+}
+
+// RunTerminalResponse is returned when control targets a terminal run.
+message RunTerminalResponse {
+  TypedControlError error = 1;
+  string run_id = 2;
+  string terminal_status = 3;
+}
+
+// UnsafePauseBoundaryResponse is returned when pause is not safe at this boundary.
+message UnsafePauseBoundaryResponse {
+  TypedControlError error = 1;
+  string run_id = 2;
+  string boundary = 3;
+}
+
+// ConcurrencyUnavailableResponse is returned when max concurrent runs is saturated.
+message ConcurrencyUnavailableResponse {
+  TypedControlError error = 1;
+  string deployment_id = 2;
+  int32 max_concurrent_runs = 3;
+  int32 active_runs = 4;
+}
+
+// LimitAmendmentDeniedResponse is returned when an amendment is rejected.
+message LimitAmendmentDeniedResponse {
+  TypedControlError error = 1;
+  string workflow_id = 2;
+  int64 expected_authority_generation = 3;
+  int64 current_authority_generation = 4;
+  string reason = 5;
+}
+
+// FeatureNotEnabledResponse is returned for B26 representational RPCs that
+// depend on later blocks (B28/B35). No partial state or resources are created.
+message FeatureNotEnabledResponse {
+  TypedControlError error = 1;
+  string feature = 2;
+  string enabled_in_block = 3;
+}
+
+// ---------------------------------------------------------------------------
+// B26: deployment exact / alias contracts
+// ---------------------------------------------------------------------------
+
+message CreateDeploymentRequest {
+  string package_name = 1;
+  string package_version = 2;
+  // Exact installed artifact identity (bundle/image digests).
+  string bundle_digest = 3;
+  string policy_digest = 4;
+  string image_lock_digest = 5;
+  string provenance_digest = 6;
+  int32 max_concurrent_runs = 7;
+  map<string, string> nested_package_digests = 8;
+  string actor_identity = 9;
+}
+
+message DeploymentRecord {
+  string schema_version = 1;
+  string deployment_id = 2;
+  string package_name = 3;
+  string package_version = 4;
+  int64 generation = 5;
+  // ACTIVE or INACTIVE.
+  string status = 6;
+  int32 max_concurrent_runs = 7;
+  string bundle_digest = 8;
+  string policy_digest = 9;
+  string image_lock_digest = 10;
+  string provenance_digest = 11;
+  map<string, string> nested_package_digests = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp activated_at = 14;
+  google.protobuf.Timestamp deactivated_at = 15;
+  string created_by = 16;
+}
+
+message CreateDeploymentResponse {
+  DeploymentRecord deployment = 1;
+  // When feature not enabled, error is set and deployment is unset.
+  TypedControlError error = 2;
+}
+
+message GetDeploymentRequest {
+  string deployment_id = 1;
+}
+
+message GetDeploymentResponse {
+  DeploymentRecord deployment = 1;
+  TypedControlError error = 2;
+}
+
+message ListDeploymentsRequest {
+  string package_name = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListDeploymentsResponse {
+  repeated DeploymentRecord deployments = 1;
+  string next_page_token = 2;
+  TypedControlError error = 3;
+}
+
+message DeactivateDeploymentRequest {
+  string deployment_id = 1;
+  // Deactivate without cancelling active runs.
+  bool preserve_active_runs = 2;
+  string actor_identity = 3;
+  string idempotency_key = 4;
+  // Required scope: runs:control
+  AuthorityScope authority_scope = 5;
+}
+
+message DeactivateDeploymentResponse {
+  DeploymentRecord deployment = 1;
+  TypedControlError error = 2;
+}
+
+message CreateDeploymentAliasRequest {
+  string alias = 1;
+  string target_deployment_id = 2;
+  string actor_identity = 3;
+  string idempotency_key = 4;
+  AuthorityScope authority_scope = 5;
+}
+
+message DeploymentAliasRecord {
+  string schema_version = 1;
+  string alias = 2;
+  string target_deployment_id = 3;
+  string target_version = 4;
+  int64 generation = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  string updated_by = 7;
+}
+
+message CreateDeploymentAliasResponse {
+  DeploymentAliasRecord alias = 1;
+  TypedControlError error = 2;
+}
+
+message GetDeploymentAliasRequest {
+  string alias = 1;
+}
+
+message GetDeploymentAliasResponse {
+  DeploymentAliasRecord alias = 1;
+  TypedControlError error = 2;
+}
+
+message ListDeploymentAliasesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListDeploymentAliasesResponse {
+  repeated DeploymentAliasRecord aliases = 1;
+  string next_page_token = 2;
+  TypedControlError error = 3;
+}
+
+// Compare-and-swap deployment alias (generation-checked).
+message CasDeploymentAliasRequest {
+  string alias = 1;
+  string target_deployment_id = 2;
+  int64 expected_generation = 3;
+  string actor_identity = 4;
+  string idempotency_key = 5;
+  AuthorityScope authority_scope = 6;
+}
+
+message CasDeploymentAliasResponse {
+  DeploymentAliasRecord alias = 1;
+  TypedControlError error = 2;
+}
+
+// ---------------------------------------------------------------------------
+// B26: invocation contracts
+// ---------------------------------------------------------------------------
+
+message InvokeDeploymentRequest {
+  // Alias or exact deployment reference.
+  string deployment_ref = 1;
+  // Bounded input JSON.
+  bytes input_json = 2;
+  // Initial ceilings: duration ms are checked int64; spend is decimal string.
+  int64 initial_max_active_duration_ms = 3;
+  int64 initial_attempt_lease_ms = 4;
+  string initial_max_cost_usd_decimal = 5;
+  // Required for exactly-once admission semantics.
+  string idempotency_key = 6;
+  string caller_identity = 7;
+}
+
+// AbsoluteCeilingsSnapshot carries original/current/consumed/reserved values
+// with authority generation. Duration uses int64 ms; spend uses decimal strings.
+message AbsoluteCeilingsSnapshot {
+  int64 original_max_active_duration_ms = 1;
+  int64 current_max_active_duration_ms = 2;
+  int64 consumed_active_duration_ms = 3;
+  int64 reserved_active_duration_ms = 4;
+  int64 original_attempt_lease_ms = 5;
+  int64 current_attempt_lease_ms = 6;
+  string original_max_llm_spend_decimal = 7;
+  string current_max_llm_spend_decimal = 8;
+  string consumed_llm_spend_decimal = 9;
+  string reserved_llm_spend_decimal = 10;
+  int64 authority_generation = 11;
+}
+
+message InvokeDeploymentResponse {
+  AdmissionOutcomeCode outcome = 1;
+  string outcome_name = 2;
+  string invocation_id = 3;
+  string workflow_id = 4;
+  string run_id = 5;
+  string requested_deployment_ref = 6;
+  string resolved_deployment_id = 7;
+  string resolved_deployment_version = 8;
+  AbsoluteCeilingsSnapshot ceilings = 9;
+  TypedControlError error = 10;
+  google.protobuf.Timestamp admitted_at = 11;
+}
+
+// ---------------------------------------------------------------------------
+// B26: workflow create/get/cancel and desired-state control
+// ---------------------------------------------------------------------------
+
+message CreateWorkflowRequest {
+  string workflow_kind = 1; // standalone, pipeline, parent_child
+  string deployment_ref = 2;
+  bytes input_json = 3;
+  string idempotency_key = 4;
+  string caller_identity = 5;
+  int64 max_active_duration_ms = 6;
+  int64 max_attempt_lease_ms = 7;
+  string max_llm_spend_decimal = 8;
+}
+
+message WorkflowRecord {
+  string schema_version = 1;
+  string workflow_id = 2;
+  string workflow_kind = 3;
+  string invocation_id = 4;
+  string deployment_id = 5;
+  string status = 6;
+  int64 generation = 7;
+  string policy_digest = 8;
+  int64 max_active_duration_ms = 9;
+  int64 max_attempt_lease_ms = 10;
+  string max_llm_spend_decimal = 11;
+  int64 authority_generation = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+  google.protobuf.Timestamp terminated_at = 15;
+  string terminal_reason = 16;
+}
+
+message CreateWorkflowResponse {
+  WorkflowRecord workflow = 1;
+  TypedControlError error = 2;
+}
+
+message GetWorkflowRequest {
+  string workflow_id = 1;
+}
+
+message GetWorkflowResponse {
+  WorkflowRecord workflow = 1;
+  TypedControlError error = 2;
+}
+
+message CancelWorkflowRequest {
+  string workflow_id = 1;
+  string reason = 2;
+  string actor_identity = 3;
+  string idempotency_key = 4;
+  int64 expected_generation = 5;
+  AuthorityScope authority_scope = 6;
+}
+
+message CancelWorkflowResponse {
+  WorkflowRecord workflow = 1;
+  TypedControlError error = 2;
+}
+
+// Pause/resume workflow desired state (operator control; requires runs:control).
+message SetWorkflowDesiredStateRequest {
+  string workflow_id = 1;
+  ControlCommand desired_command = 2;
+  int64 expected_generation = 3;
+  string actor_identity = 4;
+  string idempotency_key = 5;
+  AuthorityScope authority_scope = 6;
+  // For restart: source exact deployment or explicitly requested current alias.
+  string target_deployment_ref = 7;
+  string recovery_action = 8;
+}
+
+message SetWorkflowDesiredStateResponse {
+  string control_request_id = 1;
+  string workflow_id = 2;
+  ControlCommand desired_command = 3;
+  int64 generation = 4;
+  TypedControlError error = 5;
+}
+
+// Restart as a new invocation from source exact deployment/input or alias.
+message RestartWorkflowRequest {
+  string source_workflow_id = 1;
+  // Empty = source exact deployment; set to alias name for current alias restart.
+  string target_deployment_ref = 2;
+  string actor_identity = 3;
+  string idempotency_key = 4;
+  AuthorityScope authority_scope = 5;
+}
+
+message RestartWorkflowResponse {
+  string new_invocation_id = 1;
+  string new_workflow_id = 2;
+  string new_run_id = 3;
+  string source_workflow_id = 4;
+  string source_run_id = 5;
+  TypedControlError error = 6;
+}
+
+// Amend absolute active-time/current-attempt/spend ceilings.
+// Requires runs:amend_limits (never exposed to ordinary trigger credentials).
+message AmendLimitsRequest {
+  string workflow_id = 1;
+  int64 expected_authority_generation = 2;
+  // Absolute, increase-only values (zero = unchanged). int64 ms / decimal spend.
+  int64 new_max_active_duration_ms = 3;
+  int64 new_current_attempt_lease_ms = 4;
+  string new_max_llm_spend_decimal = 5;
+  string reason = 6;
+  string idempotency_key = 7;
+  string actor_identity = 8;
+  AuthorityScope authority_scope = 9;
+}
+
+message AmendLimitsResponse {
+  string amendment_id = 1;
+  string workflow_id = 2;
+  AbsoluteCeilingsSnapshot ceilings = 3;
+  int64 new_authority_generation = 4;
+  TypedControlError error = 5;
+}
+
+// ---------------------------------------------------------------------------
+// B26: workflow node/stage, service binding, handoff, parent/child
+// ---------------------------------------------------------------------------
+
+message WorkflowNodeStatus {
+  string schema_version = 1;
+  string node_id = 2;
+  string workflow_id = 3;
+  string status = 4;
+  string run_id = 5;
+  int32 stage_order = 6;
+  string package_name = 7;
+  string package_version = 8;
+  string incoming_handoff_id = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message ServiceBindingStatus {
+  string schema_version = 1;
+  string service_id = 2;
+  string workflow_id = 3;
+  string status = 4;
+  string package_name = 5;
+  string package_version = 6;
+  string service_name = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+  // Readiness summary.
+  bool ready = 10;
+  string last_error = 11;
+}
+
+message HandoffMetadata {
+  string schema_version = 1;
+  string handoff_id = 2;
+  string workflow_id = 3;
+  string source_node_id = 4;
+  string target_node_id = 5;
+  string context_digest = 6;
+  repeated string artifact_ids = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message ChildBatchStatus {
+  string schema_version = 1;
+  string batch_id = 2;
+  string parent_workflow_id = 3;
+  string parent_run_id = 4;
+  string status = 5;
+  int32 child_count = 6;
+  int32 completed_count = 7;
+  int32 failed_count = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message ChildResult {
+  string schema_version = 1;
+  string child_run_id = 2;
+  string child_workflow_id = 3;
+  string batch_id = 4;
+  string status = 5;
+  string terminal_reason = 6;
+  string output_digest = 7;
+  google.protobuf.Timestamp finished_at = 8;
+}
+
+message GetWorkflowGraphRequest {
+  string workflow_id = 1;
+}
+
+message GetWorkflowGraphResponse {
+  WorkflowRecord workflow = 1;
+  repeated WorkflowNodeStatus nodes = 2;
+  repeated ServiceBindingStatus services = 3;
+  repeated HandoffMetadata handoffs = 4;
+  repeated ChildBatchStatus child_batches = 5;
+  repeated ChildResult child_results = 6;
+  TypedControlError error = 7;
 }
 
 // ---------------------------------------------------------------------------
@@ -840,6 +1499,114 @@ service ControlService {
   rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
     option (google.api.http) = {
       get: "/v1/control/runs"
+    };
+  }
+
+  // --- B26 representational RPCs (return FEATURE_NOT_ENABLED until B28/B35) ---
+
+  rpc CreateDeployment(CreateDeploymentRequest) returns (CreateDeploymentResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/deployments"
+      body: "*"
+    };
+  }
+
+  rpc GetDeployment(GetDeploymentRequest) returns (GetDeploymentResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/deployments/{deployment_id}"
+    };
+  }
+
+  rpc ListDeployments(ListDeploymentsRequest) returns (ListDeploymentsResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/deployments"
+    };
+  }
+
+  rpc DeactivateDeployment(DeactivateDeploymentRequest) returns (DeactivateDeploymentResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/deployments/{deployment_id}:deactivate"
+      body: "*"
+    };
+  }
+
+  rpc CreateDeploymentAlias(CreateDeploymentAliasRequest) returns (CreateDeploymentAliasResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/deployment-aliases"
+      body: "*"
+    };
+  }
+
+  rpc GetDeploymentAlias(GetDeploymentAliasRequest) returns (GetDeploymentAliasResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/deployment-aliases/{alias}"
+    };
+  }
+
+  rpc ListDeploymentAliases(ListDeploymentAliasesRequest) returns (ListDeploymentAliasesResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/deployment-aliases"
+    };
+  }
+
+  rpc CasDeploymentAlias(CasDeploymentAliasRequest) returns (CasDeploymentAliasResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/deployment-aliases/{alias}:cas"
+      body: "*"
+    };
+  }
+
+  rpc InvokeDeployment(InvokeDeploymentRequest) returns (InvokeDeploymentResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/deployments:invoke"
+      body: "*"
+    };
+  }
+
+  rpc CreateWorkflow(CreateWorkflowRequest) returns (CreateWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/workflows"
+      body: "*"
+    };
+  }
+
+  rpc GetWorkflow(GetWorkflowRequest) returns (GetWorkflowResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/workflows/{workflow_id}"
+    };
+  }
+
+  rpc CancelWorkflow(CancelWorkflowRequest) returns (CancelWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/workflows/{workflow_id}:cancel"
+      body: "*"
+    };
+  }
+
+  rpc SetWorkflowDesiredState(SetWorkflowDesiredStateRequest) returns (SetWorkflowDesiredStateResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/workflows/{workflow_id}:desired-state"
+      body: "*"
+    };
+  }
+
+  rpc RestartWorkflow(RestartWorkflowRequest) returns (RestartWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/workflows/{source_workflow_id}:restart"
+      body: "*"
+    };
+  }
+
+  rpc AmendLimits(AmendLimitsRequest) returns (AmendLimitsResponse) {
+    option (google.api.http) = {
+      post: "/v1/control/workflows/{workflow_id}:amend-limits"
+      body: "*"
+    };
+  }
+
+  rpc GetWorkflowGraph(GetWorkflowGraphRequest) returns (GetWorkflowGraphResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/workflows/{workflow_id}/graph"
     };
   }
 }
