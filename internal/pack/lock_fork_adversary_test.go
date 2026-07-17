@@ -228,7 +228,7 @@ func TestAdversary_ParentProvenanceBytePreserved_JSONEqual(t *testing.T) {
 func TestAdversary_PolicyDelta_EgressRemoved(t *testing.T) {
 	dir := t.TempDir()
 	pubKS, _ := publisherTestStore(t)
-	parentPolicy := []byte("version: \"1\"\negress:\n  - domain: api.example.com\n    ports: [443]\n")
+	parentPolicy := []byte("version: \"1.0\"\negress:\n  - domain: api.example.com\n    ports: [443]\n")
 	childPolicy := []byte(policyV1Empty)
 	e0, tailFP, _ := signedCreatedEntry(t, "parent", "1.0.0", "alice")
 	writeLineageFile(t, dir, parentPolicy, []ProvenanceEntry{*e0}, tailFP, "alice")
@@ -256,7 +256,7 @@ func TestAdversary_PolicyDelta_EgressRemoved(t *testing.T) {
 func TestAdversary_PolicyDelta_UsesLineagePolicyBytes_NotLock(t *testing.T) {
 	dir := t.TempDir()
 	pubKS, _ := publisherTestStore(t)
-	lineageParentPolicy := []byte("version: \"1\"\negress:\n  - domain: lineage-only.example.com\n    ports: [443]\n")
+	lineageParentPolicy := []byte("version: \"1.0\"\negress:\n  - domain: lineage-only.example.com\n    ports: [443]\n")
 	packPolicy := []byte(policyV1Empty)
 	e0, tailFP, _ := signedCreatedEntry(t, "parent", "1.0.0", "alice")
 	writeLineageFile(t, dir, lineageParentPolicy, []ProvenanceEntry{*e0}, tailFP, "alice")
