@@ -236,6 +236,7 @@ func TestChildBatchStatus_JSONStability(t *testing.T) {
 		{ChildBatchPaused, "PAUSED"},
 		{ChildBatchJoining, "JOINING"},
 		{ChildBatchStopping, "STOPPING"},
+		{ChildBatchStopped, "STOPPED"},
 		{ChildBatchSucceeded, "SUCCEEDED"},
 		{ChildBatchFailed, "FAILED"},
 		{ChildBatchCancelled, "CANCELLED"},
