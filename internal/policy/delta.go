@@ -21,6 +21,9 @@ type PolicyDelta struct {
 	IngressRemoved     []string `json:"ingress_removed,omitempty"`
 	HooksAdded         []string `json:"hooks_added,omitempty"`
 	HooksRemoved       []string `json:"hooks_removed,omitempty"`
+	ModelRoutesAdded   []string `json:"model_routes_added,omitempty"`
+	ModelRoutesRemoved []string `json:"model_routes_removed,omitempty"`
+	RoutedRunChanged   bool     `json:"routed_run_changed,omitempty"`
 }
 
 // ComputeDelta compares canonical forms of parent and child policy YAML.
@@ -58,6 +61,19 @@ func ComputeDelta(parentYAML, childYAML []byte) (*PolicyDelta, error) {
 		ingressLabels(childC.Ingress),
 	)
 
+	// --- ModelRoutes: compare by route key ---
+	delta.ModelRoutesAdded, delta.ModelRoutesRemoved = diffStringSets(
+		modelRouteKeys(parentC.ModelRoutes),
+		modelRouteKeys(childC.ModelRoutes),
+	)
+
+	// --- RoutedRun: compare presence ---
+	parentHasRoutedRun := parentC.RoutedRun != nil
+	childHasRoutedRun := childC.RoutedRun != nil
+	if parentHasRoutedRun != childHasRoutedRun {
+		delta.RoutedRunChanged = true
+	}
+
 	if delta.isEmpty() {
 		return nil, nil
 	}
@@ -77,7 +93,10 @@ func (d *PolicyDelta) isEmpty() bool {
 		len(d.IngressAdded) == 0 &&
 		len(d.IngressRemoved) == 0 &&
 		len(d.HooksAdded) == 0 &&
-		len(d.HooksRemoved) == 0
+		len(d.HooksRemoved) == 0 &&
+		len(d.ModelRoutesAdded) == 0 &&
+		len(d.ModelRoutesRemoved) == 0 &&
+		!d.RoutedRunChanged
 }
 
 func credentialLabels(creds []CanonicalCredential) []string {
@@ -195,4 +214,16 @@ func stringSet(items []string) map[string]bool {
 		m[s] = true
 	}
 	return m
+}
+
+func modelRouteKeys(routes map[string]CanonicalModelRoute) []string {
+	if len(routes) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(routes))
+	for k := range routes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

@@ -336,3 +336,219 @@ func TestComputeDelta_EmptyDeltaNotEmptyObject(t *testing.T) {
 		t.Fatalf("unexpected fields in no-change marshal: %s", data)
 	}
 }
+
+func TestComputeDelta_RouteAdded(t *testing.T) {
+	parent := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+`
+	child := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+model_routes:
+  primary:
+    pattern: local-first
+    cloud_transfer: denied
+    candidates:
+      - id: ollama
+        role: primary
+        provider: ollama
+        model: llama3
+        location: local
+      - id: openai
+        role: recovery
+        provider: openai
+        model: gpt-4o
+        location: cloud
+`
+	got, err := ComputeDelta([]byte(parent), []byte(child))
+	if err != nil {
+		t.Fatalf("ComputeDelta: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil delta")
+	}
+	if len(got.ModelRoutesAdded) != 1 || got.ModelRoutesAdded[0] != "primary" {
+		t.Fatalf("expected ModelRoutesAdded=[primary], got %v", got.ModelRoutesAdded)
+	}
+	if len(got.ModelRoutesRemoved) != 0 {
+		t.Fatalf("expected no ModelRoutesRemoved, got %v", got.ModelRoutesRemoved)
+	}
+}
+
+func TestComputeDelta_RouteRemoved(t *testing.T) {
+	parent := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+model_routes:
+  primary:
+    pattern: local-first
+    cloud_transfer: denied
+    candidates:
+      - id: ollama
+        role: primary
+        provider: ollama
+        model: llama3
+        location: local
+      - id: openai
+        role: recovery
+        provider: openai
+        model: gpt-4o
+        location: cloud
+`
+	child := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+`
+	got, err := ComputeDelta([]byte(parent), []byte(child))
+	if err != nil {
+		t.Fatalf("ComputeDelta: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil delta")
+	}
+	if len(got.ModelRoutesRemoved) != 1 || got.ModelRoutesRemoved[0] != "primary" {
+		t.Fatalf("expected ModelRoutesRemoved=[primary], got %v", got.ModelRoutesRemoved)
+	}
+	if len(got.ModelRoutesAdded) != 0 {
+		t.Fatalf("expected no ModelRoutesAdded, got %v", got.ModelRoutesAdded)
+	}
+}
+
+func TestComputeDelta_RoutedRunChanged(t *testing.T) {
+	parent := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+model_routes:
+  primary:
+    pattern: local-first
+    cloud_transfer: denied
+    candidates:
+      - id: ollama
+        role: primary
+        provider: ollama
+        model: llama3
+        location: local
+      - id: openai
+        role: recovery
+        provider: openai
+        model: gpt-4o
+        location: cloud
+`
+	child := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+model_routes:
+  primary:
+    pattern: local-first
+    cloud_transfer: denied
+    candidates:
+      - id: ollama
+        role: primary
+        provider: ollama
+        model: llama3
+        location: local
+      - id: openai
+        role: recovery
+        provider: openai
+        model: gpt-4o
+        location: cloud
+routed_run:
+  model_call_timeout: 30s
+  stall_timeout: 60s
+  attempt_lease: 120s
+  max_active_duration: 300s
+  recovery_margin: 30s
+  max_llm_calls: 10
+`
+	got, err := ComputeDelta([]byte(parent), []byte(child))
+	if err != nil {
+		t.Fatalf("ComputeDelta: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil delta")
+	}
+	if !got.RoutedRunChanged {
+		t.Fatal("expected RoutedRunChanged=true, got false")
+	}
+}
+
+func TestComputeDelta_NoRouteChange(t *testing.T) {
+	parent := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+model_routes:
+  primary:
+    pattern: local-first
+    cloud_transfer: denied
+    candidates:
+      - id: ollama
+        role: primary
+        provider: ollama
+        model: llama3
+        location: local
+      - id: openai
+        role: recovery
+        provider: openai
+        model: gpt-4o
+        location: cloud
+`
+	child := `version: "1.1"
+agent:
+  name: test-agent
+llm_budget:
+  max_tokens: 1000
+  max_tokens_per_request: 500
+  max_cost_usd: "1.00"
+model_routes:
+  primary:
+    pattern: local-first
+    cloud_transfer: denied
+    candidates:
+      - id: ollama
+        role: primary
+        provider: ollama
+        model: llama3
+        location: local
+      - id: openai
+        role: recovery
+        provider: openai
+        model: gpt-4o
+        location: cloud
+`
+	got, err := ComputeDelta([]byte(parent), []byte(child))
+	if err != nil {
+		t.Fatalf("ComputeDelta: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil delta for no route change, got %+v", got)
+	}
+}

@@ -245,6 +245,17 @@ func FormatProvenance(report *ProvenanceReport) string {
 				fmt.Fprintf(&b, "     policy delta (signer-claimed): -mcp_tools %s\n",
 					strings.Join(delta.MCPToolsRemoved, ", "))
 			}
+			if len(delta.ModelRoutesAdded) > 0 {
+				fmt.Fprintf(&b, "     policy delta (signer-claimed): +model_routes %s\n",
+					strings.Join(delta.ModelRoutesAdded, ", "))
+			}
+			if len(delta.ModelRoutesRemoved) > 0 {
+				fmt.Fprintf(&b, "     policy delta (signer-claimed): -model_routes %s\n",
+					strings.Join(delta.ModelRoutesRemoved, ", "))
+			}
+			if delta.RoutedRunChanged {
+				fmt.Fprintf(&b, "     policy delta (signer-claimed): routed_run changed\n")
+			}
 		}
 	}
 	return b.String()

@@ -148,6 +148,15 @@ func formatPolicyDeltaSummary(delta *pack.PolicyDelta) string {
 	if len(delta.MCPToolsRemoved) > 0 {
 		parts = append(parts, "-mcp_tools "+strings.Join(delta.MCPToolsRemoved, ", "))
 	}
+	if len(delta.ModelRoutesAdded) > 0 {
+		parts = append(parts, "+model_routes "+strings.Join(delta.ModelRoutesAdded, ", "))
+	}
+	if len(delta.ModelRoutesRemoved) > 0 {
+		parts = append(parts, "-model_routes "+strings.Join(delta.ModelRoutesRemoved, ", "))
+	}
+	if delta.RoutedRunChanged {
+		parts = append(parts, "routed_run changed")
+	}
 	if len(parts) == 0 {
 		return "no policy changes"
 	}
