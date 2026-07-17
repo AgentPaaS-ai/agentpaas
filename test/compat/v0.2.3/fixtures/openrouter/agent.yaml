@@ -1,0 +1,9 @@
+name: openrouter-project
+version: "0.1.0"
+runtime: python
+entry: main.py
+description: "Legacy OpenRouter project fixture"
+llm:
+  provider: openrouter
+  model: anthropic/claude-sonnet-4
+  credential: openrouter-key
