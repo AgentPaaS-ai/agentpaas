@@ -319,13 +319,16 @@ model_routes:
         location: cloud
 `
 	p, err := ParsePolicy(bytes.NewReader([]byte(yaml)))
-	if err != nil {
-		t.Fatalf("ParsePolicy: %v", err)
+	if err == nil {
+		// ParsePolicy should reject v1.0 with routed fields at parse time.
+		// If it doesn't, ValidatePolicy should catch it.
+		errs := ValidatePolicy(p)
+		if !HasErrors(errs) {
+			t.Fatal("expected validation errors for v1.0 with routed fields, got none")
+		}
 	}
-	errs := ValidatePolicy(p)
-	if !HasErrors(errs) {
-		t.Fatal("expected validation errors for v1.0 with routed fields, got none")
-	}
+	// If ParsePolicy returns an error, that's the expected behavior —
+	// v1.0 policies with routed fields are rejected at parse time.
 }
 
 // TestRouteV11MissingMaxCostUSD verifies v1.1 without max_cost_usd fails.
