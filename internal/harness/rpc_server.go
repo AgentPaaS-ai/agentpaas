@@ -42,6 +42,11 @@ type rpcInvokeState struct {
 	credentials map[string]rpcCredential
 	mcpAllowed  map[string]map[string]bool
 
+	// Progress journal (B27)
+	progressJournal *progressJournalWriter
+	progressIdentity progressIdentity
+	leaseExpired    bool
+
 	mu              sync.Mutex
 	failureEvidence *UpstreamEvidence
 }
@@ -179,6 +184,8 @@ func (s *harnessRPCServer) handleRequest(req rpcRequest) rpcResponse {
 		return s.handleHTTP(req, state, true)
 	case "mcp":
 		return s.handleMCP(req, state)
+	case "progress":
+		return s.handleProgress(req, state)
 	default:
 		return rpcError(req.ID, fmt.Sprintf("unknown method %q", req.Method), "unknown_method")
 	}
