@@ -2,11 +2,89 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Callable
 
-from ._rpc import BudgetExceeded, RPCClient, RPCError
+from ._rpc import (
+    ArtifactRejected,
+    BudgetExceeded,
+    CheckpointRejected,
+    LeaseExpired,
+    ProgressError,
+    RPCClient,
+    RPCError,
+)
 
 InvokeHandler = Callable[[dict[str, Any]], dict[str, Any]]
+
+# --- v0.3 safety bounds (Block 27) -------------------------------------------
+
+_PHASE_MAX = 128
+_STR_ITEM_MAX = 1024
+_LIST_MAX = 50
+_ARTIFACT_MAX = 32
+_ARTIFACT_PATH_MAX = 512
+_ARTIFACT_SEGMENTS_MAX = 8
+
+
+def _check_str_list(
+    values: list[str] | None,
+    *,
+    name: str,
+    max_items: int,
+    max_item_len: int,
+) -> list[str]:
+    """Validate a string list and return a fresh list (never a shared mutable)."""
+    if values is None:
+        return []
+    if not isinstance(values, list):
+        raise ProgressError(f"{name} must be a list", "INVALID_PROGRESS")
+    if len(values) > max_items:
+        raise ProgressError(
+            f"{name} exceeds max {max_items} entries", "INVALID_PROGRESS",
+        )
+    out: list[str] = []
+    for item in values:
+        if not isinstance(item, str):
+            raise ProgressError(
+                f"{name} entries must be strings", "INVALID_PROGRESS",
+            )
+        if len(item.encode("utf-8")) > max_item_len:
+            raise ProgressError(
+                f"{name} entry exceeds {max_item_len} bytes", "INVALID_PROGRESS",
+            )
+        out.append(item)
+    return out
+
+
+def _validate_artifact_ref(path: str) -> None:
+    """Lexical validation of a single artifact reference path."""
+    if not isinstance(path, str) or not path:
+        raise ArtifactRejected("artifact_reference cannot be empty", "ARTIFACT_REJECTED")
+    if len(path) > _ARTIFACT_PATH_MAX:
+        raise ArtifactRejected(
+            f"artifact_reference exceeds {_ARTIFACT_PATH_MAX} chars", "ARTIFACT_REJECTED",
+        )
+    if "\\" in path:
+        raise ArtifactRejected("artifact_reference cannot contain backslashes", "ARTIFACT_REJECTED")
+    if path.startswith("/"):
+        raise ArtifactRejected("artifact_reference cannot be absolute", "ARTIFACT_REJECTED")
+    segments = path.split("/")
+    if len(segments) > _ARTIFACT_SEGMENTS_MAX:
+        raise ArtifactRejected(
+            f"artifact_reference exceeds {_ARTIFACT_SEGMENTS_MAX} segments", "ARTIFACT_REJECTED",
+        )
+    import re
+    seg_re = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+    for seg in segments:
+        if not seg or seg == "." or seg == "..":
+            raise ArtifactRejected(
+                "artifact_reference has empty or dot segment", "ARTIFACT_REJECTED",
+            )
+        if not seg_re.match(seg):
+            raise ArtifactRejected(
+                f"artifact_reference segment '{seg}' is invalid", "ARTIFACT_REJECTED",
+            )
 
 
 class Agent:
@@ -60,6 +138,124 @@ class Agent:
 
     def mcp(self, server_id: str, tool: str, input: dict[str, Any]) -> dict[str, Any]:
         return self._call("mcp", {"server_id": server_id, "tool": tool, "input": input})
+
+    # ---- progress (B27) -----------------------------------------------------
+
+    def progress(
+        self,
+        phase: str,
+        *,
+        completed_work: list[str] | None = None,
+        remaining_work: list[str] | None = None,
+        artifact_references: list[str] | None = None,
+        last_committed_action: str | None = None,
+        safe_to_resume: bool = False,
+    ) -> dict[str, Any]:
+        """Report semantic progress to the runtime.
+
+        Every call is a heartbeat.  When *safe_to_resume* is True the runtime
+        creates a durable checkpoint provided *last_committed_action* is set and
+        *completed_work* is non-empty.
+
+        Example::
+
+            resume = agent.progress(phase="starting").get("resume_checkpoint")
+            if resume:
+                restore_explicit_state(resume)
+
+            agent.progress(
+                phase="themes_complete",
+                completed_work=["theme analysis"],
+                remaining_work=["write report"],
+                artifact_references=["themes.json"],
+                last_committed_action="wrote themes.json",
+                safe_to_resume=True,
+            )
+
+        Returns a dict with: ``recorded``, ``workflow_id``, ``node_id``,
+        ``run_id``, ``attempt_id``, ``checkpoint_id``, ``lease_expires_at``,
+        and optionally ``resume_checkpoint`` / ``resume_reason``.
+        """
+        # --- validate phase ---
+        if not isinstance(phase, str):
+            raise ProgressError("phase must be a string", "INVALID_PROGRESS")
+        if not phase:
+            raise ProgressError("phase must not be empty", "INVALID_PROGRESS")
+        if len(phase.encode("utf-8")) > _PHASE_MAX:
+            raise ProgressError(
+                f"phase exceeds {_PHASE_MAX} bytes", "INVALID_PROGRESS",
+            )
+
+        # --- validate collections (normalize None → empty list, fresh copy) ---
+        cw = _check_str_list(
+            completed_work, name="completed_work",
+            max_items=_LIST_MAX, max_item_len=_STR_ITEM_MAX,
+        )
+        rw = _check_str_list(
+            remaining_work, name="remaining_work",
+            max_items=_LIST_MAX, max_item_len=_STR_ITEM_MAX,
+        )
+
+        art_refs: list[str] = []
+        if artifact_references is not None:
+            if not isinstance(artifact_references, list):
+                raise ArtifactRejected(
+                    "artifact_references must be a list", "ARTIFACT_REJECTED",
+                )
+            if len(artifact_references) > _ARTIFACT_MAX:
+                raise ArtifactRejected(
+                    f"artifact_references exceeds {_ARTIFACT_MAX} entries",
+                    "ARTIFACT_REJECTED",
+                )
+            for ref in artifact_references:
+                _validate_artifact_ref(ref)
+                art_refs.append(ref)
+
+        # --- validate last_committed_action ---
+        if last_committed_action is not None:
+            if not isinstance(last_committed_action, str):
+                raise ProgressError(
+                    "last_committed_action must be a string", "INVALID_PROGRESS",
+                )
+            if len(last_committed_action.encode("utf-8")) > _STR_ITEM_MAX:
+                raise ProgressError(
+                    f"last_committed_action exceeds {_STR_ITEM_MAX} bytes",
+                    "INVALID_PROGRESS",
+                )
+
+        # --- validate safe_to_resume constraints ---
+        if safe_to_resume:
+            if not last_committed_action:
+                raise ProgressError(
+                    "safe_to_resume=True requires last_committed_action",
+                    "INVALID_PROGRESS",
+                )
+            if not cw:
+                raise ProgressError(
+                    "safe_to_resume=True requires non-empty completed_work",
+                    "INVALID_PROGRESS",
+                )
+
+        # --- validate safe_to_resume type ---
+        if not isinstance(safe_to_resume, bool):
+            raise ProgressError(
+                "safe_to_resume must be a boolean", "INVALID_PROGRESS",
+            )
+
+        # --- build RPC params ---
+        event_id = uuid.uuid4().hex
+        params: dict[str, Any] = {
+            "event_id": event_id,
+            "phase": phase,
+            "completed_work": cw,
+            "remaining_work": rw,
+            "artifact_references": art_refs,
+            "safe_to_resume": safe_to_resume,
+        }
+        if last_committed_action is not None:
+            params["last_committed_action"] = last_committed_action
+
+        return self._call("progress", params)
 
     def _call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         if self._rpc is None:

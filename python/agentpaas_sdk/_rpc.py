@@ -24,6 +24,31 @@ class BudgetExceeded(RPCError):
     """Raised when an SDK call exceeds the active harness budget."""
 
 
+class ProgressError(RPCError):
+    """Raised when the harness rejects a progress call."""
+
+
+class CheckpointRejected(RPCError):
+    """Raised when a safe_to_resume checkpoint is rejected."""
+
+
+class ArtifactRejected(RPCError):
+    """Raised when an artifact reference is rejected."""
+
+
+class LeaseExpired(RPCError):
+    """Raised when the attempt lease has expired."""
+
+
+# Maps RPC error codes to exception classes for progress-related calls.
+_PROGRESS_ERROR_MAP = {
+    "INVALID_PROGRESS": ProgressError,
+    "CHECKPOINT_REJECTED": CheckpointRejected,
+    "ARTIFACT_REJECTED": ArtifactRejected,
+    "LEASE_EXPIRED": LeaseExpired,
+}
+
+
 class RPCClient:
     def __init__(self, addr: str) -> None:
         if not addr:
@@ -60,4 +85,7 @@ class RPCClient:
         code = response.get("code") or "rpc_error"
         if code == "BUDGET_EXCEEDED":
             raise BudgetExceeded(message, code)
+        exc_cls = _PROGRESS_ERROR_MAP.get(code)
+        if exc_cls is not None:
+            raise exc_cls(message, code)
         raise RPCError(message, code)
