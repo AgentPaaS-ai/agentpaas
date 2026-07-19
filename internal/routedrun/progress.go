@@ -1,6 +1,7 @@
 package routedrun
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -11,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 )
 
 // ---------------------------------------------------------------------------
@@ -223,7 +226,7 @@ type AttemptProgress struct {
 
 	// Latest checkpoint reference.
 	LatestCheckpointID CheckpointID `json:"latest_checkpoint_id,omitempty"`
-	ResumeCapability  string        `json:"resume_capability,omitempty"`
+	ResumeCapability  *ResumeCapability `json:"resume_capability,omitempty"`
 }
 
 // path helpers
@@ -246,12 +249,13 @@ const maxCheckpointBytes = 64 * 1024
 // ProgressTailer reads authenticated journal records and persists checkpoints.
 // It verifies HMAC and sequence before updating any state.
 type ProgressTailer struct {
-	journalPath string
-	key         []byte
-	store       CheckpointStore
-	runStore    RunStore
-	attemptID   AttemptID
-	runID       RunID
+	journalPath   string
+	key           []byte
+	store         CheckpointStore
+	runStore      RunStore
+	attemptID     AttemptID
+	runID         RunID
+	auditAppender audit.AuditAppender
 
 	mu          sync.Mutex
 	lastSeq     int64
@@ -279,6 +283,14 @@ func NewProgressTailer(
 		stopCh:      make(chan struct{}),
 		done:        make(chan struct{}),
 	}
+}
+
+// SetAuditAppender attaches an audit appender for recording journal
+// validation failures (e.g. tampered/malformed journal records).
+// When set, the tailer emits a progress_journal_invalid audit event and
+// marks ResumeCapability as ResumeCapNone on the first journal error.
+func (t *ProgressTailer) SetAuditAppender(appender audit.AuditAppender) {
+	t.auditAppender = appender
 }
 
 // journalLine is a single line from the progress journal.
@@ -371,7 +383,8 @@ func (t *ProgressTailer) IngestRecord(ctx context.Context, line []byte) (string,
 		}
 		checkpointID = string(cp.CheckpointID)
 		progress.LatestCheckpointID = cp.CheckpointID
-		progress.ResumeCapability = "safe_checkpoint"
+		rc := ResumeCapSafeCheckpoint
+		progress.ResumeCapability = &rc
 	}
 
 	// Persist progress metadata.
@@ -422,15 +435,53 @@ func (t *ProgressTailer) run(ctx context.Context) {
 				continue
 			}
 			newData := data[offset:]
-			offset = int64(len(data))
 
-			lines := splitLines(newData)
+			// Only advance past complete lines (terminated by \n).
+			// Trailing fragments are held back for the next poll.
+			lastNL := bytes.LastIndex(newData, []byte("\n"))
+			if lastNL < 0 {
+				// No complete line yet; wait for more data.
+				continue
+			}
+			completeData := newData[:lastNL+1]
+			offset += int64(lastNL + 1)
+
+			lines := splitLines(completeData)
 			for _, line := range lines {
 				if len(line) == 0 {
 					continue
 				}
 				if _, err := t.IngestRecord(ctx, line); err != nil {
 					// On tampered/malformed journal, stop accepting progress.
+					// Emit audit event if an appender is configured.
+					if t.auditAppender != nil {
+						_ = t.auditAppender.Append(audit.AuditRecord{
+							Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
+							EventType: "progress_journal_invalid",
+							Actor:     "daemon",
+							Payload: map[string]interface{}{
+								"run_id":     string(t.runID),
+								"attempt_id": string(t.attemptID),
+								"error":      err.Error(),
+							},
+						})
+					}
+					// Mark resume capability as none.
+					rc := ResumeCapNone
+					progress := &AttemptProgress{
+						SchemaVersion:    CurrentSchemaVersion,
+						AttemptID:        t.attemptID,
+						RunID:            t.runID,
+						LastPhase:        "journal_invalid",
+						LastHeartbeat:    time.Now().UTC(),
+						LastSequence:     t.lastSeq,
+						ResumeCapability: &rc,
+					}
+					if t.store != nil {
+						if ls, ok := t.store.(*LocalStore); ok {
+							_ = ls.SaveAttemptProgress(ctx, t.attemptID, progress)
+						}
+					}
 					return
 				}
 			}
@@ -447,6 +498,9 @@ func (t *ProgressTailer) Stop() {
 }
 
 // splitLines splits newline-delimited JSON.
+// Only complete lines (terminated by \n) are returned. Trailing fragments
+// without a newline are held back — the caller must not advance past them
+// so the next poll picks them up after the writer flushes the complete line.
 func splitLines(data []byte) [][]byte {
 	var lines [][]byte
 	start := 0
@@ -456,9 +510,7 @@ func splitLines(data []byte) [][]byte {
 			start = i + 1
 		}
 	}
-	if start < len(data) {
-		lines = append(lines, data[start:])
-	}
+	// Do NOT include trailing fragment without a newline.
 	return lines
 }
 
