@@ -241,18 +241,25 @@ func (s *DurableInboxStore) Append(_ context.Context, msg InboxMessage) (Message
 	// Emit a wake event so a waiting worker is notified without polling.
 	// The event payload carries the message id and task id; content is NOT
 	// placed in the event (it is untrusted and the worker reads it via List).
+	//
+	// A durable message existing without a corresponding wake event is the
+	// worst failure mode of the inbox protocol: a waiting worker would
+	// never be resumed. Surface the Append error to the caller so the
+	// failure is observable and the caller can retry or reconcile.
 	wakePayload, _ := json.Marshal(inboxWakePayload{
 		MessageID: msg.MessageID,
 		TaskID:    msg.TaskID,
 		Type:      string(msg.Type),
 	})
-	_, _ = s.events.Append(context.Background(), port.Event{
+	if _, err := s.events.Append(context.Background(), port.Event{
 		TenantID:  msg.TenantID,
 		RunID:     msg.RunID,
 		Type:      wakeEventTypeInbox,
 		Payload:   wakePayload,
 		Timestamp: msg.CreatedAt,
-	})
+	}); err != nil {
+		return MessageID(msg.MessageID), fmt.Errorf("runtime: inbox append wake event: %w", err)
+	}
 	return MessageID(msg.MessageID), nil
 }
 
