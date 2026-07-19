@@ -380,6 +380,31 @@ block28-docker-tests:
 	@echo "==> Block 28 Docker integration tests (requires Docker)"
 	@AGENTPAAS_DOCKER_TESTS=1 go test -count=1 -timeout 300s ./internal/adapter/docker/...
 
+# ── Block 29: Real-Time Stream and Durable Eventing Gate ──────────────────────
+#
+# B29 proves the durable eventing, governed streaming, interactive inbox,
+# activation policy, and integrated adversary contracts.
+# Covers T01-T08: lifecycle/streaming characterization, durable event store,
+# governed streaming with guardrails/backpressure, interactive inbox/suspend-wake,
+# activation policy and zero-authority idle state, performance conformance, and
+# integrated adversary tests (slow consumer, replay, forged cursor, cross-tenant,
+# partial-stream failure, cleanup).
+
+.PHONY: block29-gate
+block29-gate: block28-gate
+	@echo "==> Running Block 29 gate"
+	@echo "  T01-T07: runtime + trigger + harness unit and race tests"
+	@go test ./internal/runtime/... -count=1 -race
+	@go test ./internal/trigger/... -count=1 -race
+	@go test ./internal/harness/... -count=1 -race
+	@echo "  T08: integrated adversary tests"
+	@go test -run TestAdversary_B29 ./... -count=1
+	@echo "  T08: lint (runtime + trigger + harness)"
+	@golangci-lint run --timeout 5m ./internal/runtime/... ./internal/trigger/... ./internal/harness/...
+	@echo "  T02/T04: Python SDK B29 streaming tests"
+	@cd python && PYTHONPATH=agentpaas_sdk python3 -m unittest discover -s agentpaas_sdk/tests -p "test_b29_*" -v
+	@echo "Block 29 gate: PASS"
+
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
 	@echo "==> Block 28 Kubernetes integration tests (requires kind cluster)"
@@ -467,6 +492,8 @@ gates: ## List all available gate targets
 	@echo "  block16-gate - Manual use-case assessment (runs AFTER B15)"
 	@echo "  block25-gate - Sharing tools, release readiness"
 	@echo "  block27-gate - SDK progress, checkpoint, artifact protocol"
+	@echo "  block28-gate - Runtime portability and managed-PaaS feasibility"
+	@echo "  block29-gate - Real-time stream, durable eventing, integrated adversary"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
