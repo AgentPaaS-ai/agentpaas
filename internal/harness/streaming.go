@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -535,23 +536,34 @@ func (a *StreamingAdapter) finishTerminal(
 		// Consumer stalled; the channel will be closed by the deferred
 		// close(out) in pump. The terminal is still persisted below.
 	}
-	a.persistTerminal(kind, payload)
+	// Persist the terminal to the durable EventStore. A lost terminal event
+	// is the worst failure mode in an audit-first system: the run would
+	// appear non-terminal forever, blocking idempotent re-invocation and
+	// corrupting replay. Surface the error via log so an operator can
+	// reconcile; the in-memory stream has already emitted the terminal.
+	if err := a.persistTerminal(kind, payload); err != nil {
+		log.Printf("harness: persistTerminal append failed for tenant=%q run=%q kind=%s: %v (run may need manual reconciliation)",
+			a.tenantID, a.runID, kind, err)
+	}
 }
 
 // persistTerminal appends a terminal event marker to the durable EventStore,
-// if one is wired. Subscribers and replay can observe the terminal.
-func (a *StreamingAdapter) persistTerminal(kind runtime.StreamEventKind, payload []byte) {
+// if one is wired. Subscribers and replay can observe the terminal. It returns
+// any Append error so the caller (finishTerminal) can surface it — a silently
+// lost terminal event is the worst failure mode in an audit-first system.
+func (a *StreamingAdapter) persistTerminal(kind runtime.StreamEventKind, payload []byte) error {
 	if a.store == nil {
-		return
+		return nil
 	}
 	eventType := streamEventTypeFromKind(kind)
-	_, _ = a.store.Append(context.Background(), port.Event{
+	_, err := a.store.Append(context.Background(), port.Event{
 		TenantID:  a.tenantID,
 		RunID:     a.runID,
 		Type:      eventType,
 		Payload:   payload,
 		Timestamp: time.Now().UTC(),
 	})
+	return err
 }
 
 // streamEventTypeFromKind maps a runtime.StreamEventKind to a durable
