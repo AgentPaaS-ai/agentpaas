@@ -396,7 +396,7 @@ func (t *ProgressTailer) verifyHMAC(rec *journalLine) bool {
 }
 
 // start begins tailing the journal file in a goroutine.
-func (t *ProgressTailer) start(ctx context.Context) {
+func (t *ProgressTailer) Start(ctx context.Context) {
 	go t.run(ctx)
 }
 
@@ -438,8 +438,8 @@ func (t *ProgressTailer) run(ctx context.Context) {
 	}
 }
 
-// stop signals the tailer to stop and waits.
-func (t *ProgressTailer) stop() {
+// Stop signals the tailer to stop and waits.
+func (t *ProgressTailer) Stop() {
 	t.stopOnce.Do(func() {
 		close(t.stopCh)
 	})

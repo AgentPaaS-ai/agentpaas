@@ -18,8 +18,12 @@ func TestArtifactWorkspace_NestedRegularFile(t *testing.T) {
 
 	// Create a nested file.
 	nested := filepath.Join(root, "charts", "themes.json")
-	os.MkdirAll(filepath.Dir(nested), 0o700)
-	os.WriteFile(nested, []byte(`{"theme":"dark"}`), 0o600)
+	if err := os.MkdirAll(filepath.Dir(nested), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(nested, []byte(`{"theme":"dark"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	meta, err := aw.ValidateAndAccept(context.Background(), "charts/themes.json", AttemptID("a1"))
 	if err != nil {
@@ -64,10 +68,16 @@ func TestArtifactWorkspace_SymlinkRejected(t *testing.T) {
 
 	// Create a real file and a symlink to it.
 	target := filepath.Join(dir, "target.txt")
-	os.WriteFile(target, []byte("secret"), 0o600)
+	if err := os.WriteFile(target, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(root, "link.json")
-	os.MkdirAll(root, 0o700)
-	os.Symlink(target, link)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := aw.ValidateAndAccept(context.Background(), "link.json", AttemptID("a1"))
 	if err == nil {
@@ -82,8 +92,12 @@ func TestArtifactWorkspace_PerFileQuota(t *testing.T) {
 
 	// Create a file exceeding 25 MiB (use small limit for test).
 	bigData := make([]byte, 26*1024*1024)
-	os.MkdirAll(root, 0o700)
-	os.WriteFile(filepath.Join(root, "big.bin"), bigData, 0o600)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "big.bin"), bigData, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	_, err := aw.ValidateAndAccept(context.Background(), "big.bin", AttemptID("a1"))
 	if err == nil {
@@ -98,12 +112,16 @@ func TestArtifactWorkspace_TotalQuota(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "artifacts")
 	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
-	os.MkdirAll(root, 0o700)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create 5 files of 24 MiB each = 120 MiB (exceeds 100 MiB total).
 	for i := 0; i < 5; i++ {
 		name := filepath.Join(root, "file"+string(rune('1'+i))+".bin")
-		os.WriteFile(name, make([]byte, 24*1024*1024), 0o600)
+		if err := os.WriteFile(name, make([]byte, 24*1024*1024), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		rel := "file" + string(rune('1'+i)) + ".bin"
 		_, err := aw.ValidateAndAccept(context.Background(), rel, AttemptID("a1"))
 		if err != nil && i < 4 {
@@ -139,10 +157,14 @@ func TestArtifactWorkspace_DigestChangesOnMutation(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "artifacts")
 	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
-	os.MkdirAll(root, 0o700)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	fpath := filepath.Join(root, "data.json")
-	os.WriteFile(fpath, []byte(`{"v":1}`), 0o600)
+	if err := os.WriteFile(fpath, []byte(`{"v":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	meta1, err := aw.ValidateAndAccept(context.Background(), "data.json", AttemptID("a1"))
 	if err != nil {
@@ -150,7 +172,9 @@ func TestArtifactWorkspace_DigestChangesOnMutation(t *testing.T) {
 	}
 
 	// Mutate file.
-	os.WriteFile(fpath, []byte(`{"v":2}`), 0o600)
+	if err := os.WriteFile(fpath, []byte(`{"v":2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	// Re-accept should produce different digest.
 	aw2, _ := NewArtifactWorkspace(root, RunID("r1"))
@@ -167,14 +191,22 @@ func TestArtifactWorkspace_RemoveUnreferenced(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "artifacts")
 	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
-	os.MkdirAll(root, 0o700)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create an accepted file.
-	os.WriteFile(filepath.Join(root, "accepted.json"), []byte("ok"), 0o600)
-	aw.ValidateAndAccept(context.Background(), "accepted.json", AttemptID("a1"))
+	if err := os.WriteFile(filepath.Join(root, "accepted.json"), []byte("ok"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := aw.ValidateAndAccept(context.Background(), "accepted.json", AttemptID("a1")); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create an unreferenced file.
-	os.WriteFile(filepath.Join(root, "unreferenced.txt"), []byte("junk"), 0o600)
+	if err := os.WriteFile(filepath.Join(root, "unreferenced.txt"), []byte("junk"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	// Run cleanup.
 	if err := aw.RemoveUnreferenced(); err != nil {
@@ -195,13 +227,23 @@ func TestArtifactWorkspace_ListMetadata(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "artifacts")
 	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
-	os.MkdirAll(filepath.Join(root, "sub"), 0o700)
+	if err := os.MkdirAll(filepath.Join(root, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
-	os.WriteFile(filepath.Join(root, "a.json"), []byte("a"), 0o600)
-	os.WriteFile(filepath.Join(root, "sub", "b.json"), []byte("b"), 0o600)
+	if err := os.WriteFile(filepath.Join(root, "a.json"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "sub", "b.json"), []byte("b"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
-	aw.ValidateAndAccept(context.Background(), "a.json", AttemptID("a1"))
-	aw.ValidateAndAccept(context.Background(), "sub/b.json", AttemptID("a1"))
+	if _, err := aw.ValidateAndAccept(context.Background(), "a.json", AttemptID("a1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := aw.ValidateAndAccept(context.Background(), "sub/b.json", AttemptID("a1")); err != nil {
+		t.Fatal(err)
+	}
 
 	list := aw.ListMetadata()
 	if len(list) != 2 {

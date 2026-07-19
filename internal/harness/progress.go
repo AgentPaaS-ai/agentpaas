@@ -182,8 +182,8 @@ func (w *progressJournalWriter) close() error {
 	return nil
 }
 
-// journalPath returns the journal file path.
-func (w *progressJournalWriter) journalFilePath() string {
+// JournalPath returns the journal file path.
+func (w *progressJournalWriter) JournalPath() string {
 	return w.journalPath
 }
 
