@@ -18,6 +18,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/port"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -379,12 +380,26 @@ type TriggerService struct {
 	maxPayload  int
 	idempotency *IdempotencyStore
 	eventBus    *EventBus
+	// eventStore is the durable EventStore used by InvokeStream when set. If
+	// nil, InvokeStream falls back to the in-memory EventBus (legacy path).
+	// T03 wires this so InvokeStream events survive reconnection; T04
+	// replaces the synthetic admission path with the real durable one.
+	eventStore port.EventStore
+	// triggerTenant is the tenant ID under which trigger-originated runs are
+	// appended to the EventStore. Defaults to defaultTriggerTenant.
+	triggerTenant string
 	runStore    *RunStore
 
 	cancelGracePeriod time.Duration
 
 	invokeFunc func(ctx context.Context, agentName string, payload []byte) (string, error)
 }
+
+// defaultTriggerTenant is the tenant ID used for runs admitted by the
+// TriggerService itself (Invoke/InvokeStream) when the caller does not
+// present a tenant-scoped identity. Events appended by InvokeStream use this
+// tenant so they are durable and replayable after restart.
+const defaultTriggerTenant = "trigger"
 
 // NewTriggerService creates the trigger service implementation.
 func NewTriggerService(a audit.AuditAppender, maxPayload int, deps ...any) *TriggerService {
@@ -393,12 +408,19 @@ func NewTriggerService(a audit.AuditAppender, maxPayload int, deps ...any) *Trig
 	}
 	var store *IdempotencyStore
 	var bus *EventBus
+	var eventStore port.EventStore
 	for _, dep := range deps {
 		switch typed := dep.(type) {
 		case *EventBus:
 			bus = typed
 		case *IdempotencyStore:
 			store = typed
+		case port.EventStore:
+			eventStore = typed
+		case *DurableEventStore:
+			// Accept the concrete type as well as the interface so callers
+			// can pass a *DurableEventStore directly.
+			eventStore = typed
 		}
 	}
 	if bus == nil {
@@ -409,9 +431,17 @@ func NewTriggerService(a audit.AuditAppender, maxPayload int, deps ...any) *Trig
 		maxPayload:        maxPayload,
 		idempotency:       store,
 		eventBus:          bus,
+		eventStore:        eventStore,
+		triggerTenant:     defaultTriggerTenant,
 		runStore:          NewRunStore(),
 		cancelGracePeriod: CancelGracePeriod,
 	}
+}
+
+// SetEventStore wires a durable EventStore. When set, InvokeStream appends
+// synthetic events to it (durable) instead of the in-memory EventBus.
+func (s *TriggerService) SetEventStore(store port.EventStore) {
+	s.eventStore = store
 }
 
 // Invoke triggers an agent run. T01 returns a pending stub run.
@@ -509,6 +539,56 @@ func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream trigg
 	}
 
 	s.runStore.Register(runID, req.GetAgentName())
+
+	// Synthetic admission path (T01 characterized this; T04 replaces it with
+	// the real durable admission). When a durable EventStore is wired, the
+	// synthetic events are appended to it so they survive reconnection and are
+	// replayable after restart. Otherwise the in-memory EventBus is used.
+	if s.eventStore != nil {
+		tenant := s.triggerTenant
+		if _, err := s.eventStore.Append(ctx, port.Event{
+			TenantID:  tenant,
+			RunID:     runID,
+			Type:      string(EventRunCreated),
+			Payload:   []byte(req.GetAgentName()),
+			Timestamp: time.Now().UTC(),
+		}); err != nil {
+			return status.Errorf(codes.Internal, "append run_created: %v", err)
+		}
+		s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_SUCCEEDED)
+		if _, err := s.eventStore.Append(ctx, port.Event{
+			TenantID:  tenant,
+			RunID:     runID,
+			Type:      string(EventRunSucceeded),
+			Payload:   []byte(req.GetAgentName()),
+			Timestamp: time.Now().UTC(),
+		}); err != nil {
+			return status.Errorf(codes.Internal, "append run_succeeded: %v", err)
+		}
+
+		ch, err := s.eventStore.Subscribe(ctx, tenant, runID, 0)
+		if err != nil {
+			return status.Errorf(codes.Internal, "subscribe durable: %v", err)
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case event, open := <-ch:
+				if !open {
+					return nil
+				}
+				run := durableEventToRun(event, runID, req.GetAgentName())
+				if err := stream.Send(&triggerv1.InvokeResponse{Run: run}); err != nil {
+					return err
+				}
+				if isTerminalEventType(event.Type) {
+					return nil
+				}
+			}
+		}
+	}
+
 	s.eventBus.RegisterRun(runID)
 	s.eventBus.Publish(runID, EventRunCreated, map[string]string{"agent": req.GetAgentName()})
 	s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_SUCCEEDED)
@@ -642,6 +722,48 @@ func eventToRun(event *RunEvent, runID, agentName string) *triggerv1.Run {
 	if event.EventID <= 1 {
 		run.CreatedAt = ts
 	} else if event.IsTerminal() {
+		run.FinishedAt = ts
+	}
+	return run
+}
+
+// isTerminalEventType reports whether a durable event type string represents a
+// terminal lifecycle transition (succeeded/failed/cancelled).
+func isTerminalEventType(eventType string) bool {
+	switch EventType(eventType) {
+	case EventRunSucceeded, EventRunFailed, EventRunCancelled:
+		return true
+	}
+	return false
+}
+
+// durableEventToRun converts a port.Event (from the durable EventStore) into a
+// triggerv1.Run for streaming to the client. Mirrors eventToRun but operates
+// on the durable event shape (Sequence instead of EventID).
+func durableEventToRun(event port.Event, runID, agentName string) *triggerv1.Run {
+	run := &triggerv1.Run{
+		RunId:     runID,
+		AgentName: agentName,
+	}
+	switch EventType(event.Type) {
+	case EventRunCreated:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_PENDING
+	case EventRunStarted:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_RUNNING
+	case EventRunSucceeded:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_SUCCEEDED
+	case EventRunFailed:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_FAILED
+	case EventRunCancelled:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_CANCELLED
+	case EventRunProgress, EventHeartbeat:
+		run.Status = triggerv1.RunStatus_RUN_STATUS_RUNNING
+	}
+
+	ts := timestamppb.New(event.Timestamp)
+	if event.Sequence <= 1 {
+		run.CreatedAt = ts
+	} else if isTerminalEventType(event.Type) {
 		run.FinishedAt = ts
 	}
 	return run
