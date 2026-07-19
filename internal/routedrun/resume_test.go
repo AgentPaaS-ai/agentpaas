@@ -75,7 +75,9 @@ func TestLoadResumeCheckpoint_DigestMismatch(t *testing.T) {
 		// Set wrong digest.
 		CheckpointDigest: "deadbeef",
 	}
-	store.SaveCheckpoint(ctx, cp)
+	if err := store.SaveCheckpoint(ctx, cp); err != nil {
+		t.Fatal(err)
+	}
 
 	loader := NewResumeCheckpointLoader(store)
 	_, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonFailureContinuation)
@@ -98,7 +100,9 @@ func TestLoadResumeCheckpoint_RunIDMismatch(t *testing.T) {
 		CreatedAt:       time.Now().UTC(),
 	}
 	cp.CheckpointDigest = recomputeCheckpointDigest(cp)
-	store.SaveCheckpoint(ctx, cp)
+	if err := store.SaveCheckpoint(ctx, cp); err != nil {
+		t.Fatal(err)
+	}
 
 	loader := NewResumeCheckpointLoader(store)
 	// Request with wrong run ID.
@@ -123,7 +127,9 @@ func TestLoadResumeCheckpoint_OperatorPauseResume(t *testing.T) {
 		CreatedAt:       time.Now().UTC(),
 	}
 	cp.CheckpointDigest = recomputeCheckpointDigest(cp)
-	store.SaveCheckpoint(ctx, cp)
+	if err := store.SaveCheckpoint(ctx, cp); err != nil {
+		t.Fatal(err)
+	}
 
 	loader := NewResumeCheckpointLoader(store)
 	data, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonOperatorPauseResume)
@@ -250,7 +256,9 @@ func TestLoadResumeCheckpoint_EmptyDigestOK(t *testing.T) {
 		CreatedAt:       time.Now().UTC(),
 		// No CheckpointDigest set — should be empty.
 	}
-	store.SaveCheckpoint(ctx, cp)
+	if err := store.SaveCheckpoint(ctx, cp); err != nil {
+		t.Fatal(err)
+	}
 
 	loader := NewResumeCheckpointLoader(store)
 	data, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonFailureContinuation)

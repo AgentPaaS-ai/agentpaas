@@ -138,7 +138,9 @@ func TestGetLatestCheckpoint_IgnoresHeartbeats(t *testing.T) {
 		Sequence:    1,
 		CreatedAt:   time.Now().UTC(),
 	}
-	store.SaveCheckpoint(ctx, cp1)
+	if err := store.SaveCheckpoint(ctx, cp1); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a heartbeat (safe_to_resume=false).
 	cp2 := &SemanticCheckpoint{
@@ -150,7 +152,9 @@ func TestGetLatestCheckpoint_IgnoresHeartbeats(t *testing.T) {
 		Sequence:    2,
 		CreatedAt:   time.Now().UTC(),
 	}
-	store.SaveCheckpoint(ctx, cp2)
+	if err := store.SaveCheckpoint(ctx, cp2); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := store.GetLatestCheckpoint(ctx, AttemptID("a1"))
 	if err != nil {
@@ -219,8 +223,12 @@ func TestProgressTailer_ValidSafeCheckpoint(t *testing.T) {
 	rec.HMAC = computeTestHMAC(rec, key)
 	line, _ := json.Marshal(rec)
 	line = append(line, '\n')
-	os.MkdirAll(filepath.Dir(journalPath), 0o700)
-	os.WriteFile(journalPath, line, 0o600)
+	if err := os.MkdirAll(filepath.Dir(journalPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(journalPath, line, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
 	cpID, err := tailer.IngestRecord(ctx, line[:len(line)-1])

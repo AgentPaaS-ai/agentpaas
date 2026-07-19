@@ -25,7 +25,7 @@ func TestProgressJournalWriter_ValidHeartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newProgressJournalWriter: %v", err)
 	}
-	defer w.close()
+	defer func() { _ = w.close() }()
 
 	cpID, err := w.append("evt1", "starting", nil, nil, nil, "", false, "", "")
 	if err != nil {
@@ -77,7 +77,7 @@ func TestProgressJournalWriter_SafeCheckpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newProgressJournalWriter: %v", err)
 	}
-	defer w.close()
+	defer func() { _ = w.close() }()
 
 	cpID, err := w.append(
 		evt1(), "phase1",
@@ -108,7 +108,7 @@ func TestProgressJournalWriter_DuplicateEventID(t *testing.T) {
 		AttemptID: "attempt1",
 	}
 	w, _ := newProgressJournalWriter(journalPath, key, identity)
-	defer w.close()
+	defer func() { _ = w.close() }()
 
 	eventID := "dup-evt-123"
 	_, err := w.append(eventID, "phase1", nil, nil, nil, "", false, "", "")
@@ -137,7 +137,7 @@ func TestProgressJournalWriter_MonotonicSequence(t *testing.T) {
 	key := []byte("test-key-32-bytes-long-enough!!")
 	identity := progressIdentity{RunID: "r1", AttemptID: "a1"}
 	w, _ := newProgressJournalWriter(journalPath, key, identity)
-	defer w.close()
+	defer func() { _ = w.close() }()
 
 	for i := 0; i < 5; i++ {
 		_, err := w.append(evtN(i), "p", nil, nil, nil, "", false, "", "")
@@ -174,7 +174,7 @@ func TestProgressJournalWriter_HMACKnownVector(t *testing.T) {
 		LeaseExpiry: time.Now().Add(time.Hour),
 	}
 	w, _ := newProgressJournalWriter(journalPath, key, identity)
-	defer w.close()
+	defer func() { _ = w.close() }()
 
 	_, err := w.append("evt-x", "phase", []string{"work"}, nil, []string{"f.json"}, "act", true, "d1", "d2")
 	if err != nil {
@@ -184,7 +184,9 @@ func TestProgressJournalWriter_HMACKnownVector(t *testing.T) {
 	data, _ := os.ReadFile(journalPath)
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	var rec progressJournalRecord
-	json.Unmarshal([]byte(lines[0]), &rec)
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 
 	// Verify HMAC with correct key.
 	if !verifyJournalRecord(&rec, key) {
@@ -204,7 +206,7 @@ func TestProgressJournalWriter_ReorderedSequence(t *testing.T) {
 	journalPath := filepath.Join(dir, "j.jsonl")
 	key := []byte("test-key-32-bytes-long-enough!!")
 	w, _ := newProgressJournalWriter(journalPath, key, progressIdentity{RunID: "r", AttemptID: "a"})
-	defer w.close()
+	defer func() { _ = w.close() }()
 
 	_, _ = w.append("e1", "p1", nil, nil, nil, "", false, "", "")
 	_, _ = w.append("e2", "p2", nil, nil, nil, "", false, "", "")
@@ -214,7 +216,9 @@ func TestProgressJournalWriter_ReorderedSequence(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	for i, line := range lines {
 		var rec progressJournalRecord
-		json.Unmarshal([]byte(line), &rec)
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
 		if rec.Sequence != int64(i+1) {
 			t.Fatalf("line %d: expected seq %d, got %d", i, i+1, rec.Sequence)
 		}
@@ -283,7 +287,7 @@ func TestProgressJournalWriter_KeyNeverInRecord(t *testing.T) {
 	journalPath := filepath.Join(dir, "j.jsonl")
 	key := []byte("super-secret-key-not-in-records!")
 	w, _ := newProgressJournalWriter(journalPath, key, progressIdentity{RunID: "r", AttemptID: "a"})
-	defer w.close()
+	defer func() { _ = w.close() }()
 
 	_, _ = w.append("e1", "p", nil, nil, nil, "", false, "", "")
 
