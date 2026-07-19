@@ -30,6 +30,7 @@ func main() {
 		JournalPath:     os.Getenv("AGENTPAAS_JOURNAL_PATH"),
 		AttemptID:       os.Getenv("AGENTPAAS_ATTEMPT_ID"),
 		LeaseID:         os.Getenv("AGENTPAAS_LEASE_ID"),
+		RunID:           os.Getenv("AGENTPAAS_RUN_ID"),
 	}
 
 	// Wire the audit appender if a path is provided. The daemon mounts

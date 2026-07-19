@@ -780,12 +780,15 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 
 	// B27: Bind-mount journal key, journal directory, and artifact workspace.
 	// Pass env vars so the harness can locate and load the key file.
+	// AGENTPAAS_RUN_ID is passed so the harness journal writer stamps
+	// records with the correct run identity — the tailer verifies this.
 	if journalKeyPath != "" && journalKey != nil {
 		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/journal-key", journalKeyPath))
 		proxyEnv = append(proxyEnv,
 			"AGENTPAAS_JOURNAL_KEY_PATH=/agentpaas/journal-key",
 			"AGENTPAAS_JOURNAL_PATH=/agentpaas/journals/"+attemptID+".jsonl",
 			"AGENTPAAS_ATTEMPT_ID="+attemptID,
+			"AGENTPAAS_RUN_ID="+runID,
 		)
 		if journalHostPath != "" {
 			journalMountDir := filepath.Dir(journalHostPath)
@@ -824,6 +827,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		_ = rt.Remove(ctx, gatewayID, true)
 		_ = rt.RemoveNetwork(ctx, egressNetID)
 		_ = rt.RemoveNetwork(ctx, netID)
+		if journalKeyPath != "" {
+			_ = os.RemoveAll(journalKeyPath)
+		}
 		return nil, status.Errorf(codes.Internal, "create container: %v", err)
 	}
 
@@ -832,6 +838,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		_ = rt.Remove(ctx, gatewayID, true)
 		_ = rt.RemoveNetwork(ctx, egressNetID)
 		_ = rt.RemoveNetwork(ctx, netID)
+		if journalKeyPath != "" {
+			_ = os.RemoveAll(journalKeyPath)
+		}
 		return nil, status.Errorf(codes.Internal, "start container: %v", err)
 	}
 
@@ -874,6 +883,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			s.localStore, s.runStore,
 			routedrun.AttemptID(attemptID), routedrun.RunID(runID),
 		)
+		if s.auditWriter != nil {
+			tailer.SetAuditAppender(s.auditWriter)
+		}
 		tailer.Start(context.Background())
 		tracked.ProgressTailer = tailer
 	}
