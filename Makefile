@@ -319,12 +319,14 @@ block25-gate: build test lint
 .PHONY: block27-gate
 block27-gate: build test race lint
 	@echo "==> Running Block 27 gate"
-	@echo "  T01: Python SDK progress contract"
-	@cd python && python3 -m pytest agentpaas_sdk/tests/ -q 2>&1 | tail -5 || echo "(python tests skipped — SDK not installed)"
+	@echo "  T01: Python SDK progress contract (unittest)"
+	@cd python && python3 -m unittest discover -s agentpaas_sdk/tests -q
 	@echo "  T02: Harness progress RPC and authenticated journal"
 	@go test -race -count=1 ./internal/harness/...
 	@echo "  T03: Daemon journal ingestion and checkpoint persistence"
 	@go test -race -count=1 ./internal/routedrun/...
+	@echo "  T03b: Daemon integration tests"
+	@go test -race -count=1 ./internal/daemon/...
 	@echo "  T04: Bounded artifact workspace and metadata"
 	@go test -race -count=1 -run 'TestArtifactWorkspace' ./internal/routedrun/...
 	@echo "  T05: Resume checkpoint delivery"
@@ -333,9 +335,20 @@ block27-gate: build test race lint
 	@go test -count=1 ./internal/routedrun/... ./internal/harness/...
 	@echo "  T07: Adversary tests (progress/journal/artifacts)"
 	@go test -race -count=1 -run 'TestAdversary_B27' ./internal/routedrun/... ./internal/harness/...
+	@echo "  T08: Hermes plugin tests"
+	@cd integrations/hermes-plugin && python3 -m unittest discover -s tests -t . 2>&1 | tail -5
 	@echo "  Cross-block: compat fixtures unaffected"
 	@go test -count=1 ./test/compat/... 2>/dev/null || echo "(no compat tests)"
+	@echo "  go vet"
+	@go vet ./...
+	@echo "  govulncheck"
+	@govulncheck ./... 2>&1 | tail -5
+	@echo "  golden-fast"
+	@$(MAKE) golden-fast 2>&1 | tail -5
 	@echo "✓ Block 27 gate: PASS"
+# NOTE: Summary T07 lists `make block26-gate` but that target does not exist
+# in the Makefile (B26 was folded into other blocks). Daemon tests are run
+# directly via `go test ./internal/daemon/...` instead. See b27-review-notes.md.
 
 # ── Golden Dataset Regression Suite ─────────────────────────────────────────
 #
