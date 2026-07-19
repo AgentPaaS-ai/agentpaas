@@ -169,6 +169,7 @@ func recomputeCheckpointDigest(cp *SemanticCheckpoint) string {
 		"remaining_work":       cp.RemainingWork,
 		"last_committed_action": cp.LastCommittedAction,
 		"safe_to_resume":       cp.SafeToResume,
+		"artifact_references":  cp.ArtifactRefs,
 	}
 	b, _ := json.Marshal(fields)
 	return hexSha256String(b)
