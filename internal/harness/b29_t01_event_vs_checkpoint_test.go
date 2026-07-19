@@ -104,11 +104,9 @@ func TestEventBusEventsDoNotSurviveRestart(t *testing.T) {
 
 	ch, cancel := bus2.Subscribe("run-event-loss", 0)
 	defer cancel()
-	select {
-	case _, open := <-ch:
-		if open {
-			t.Fatal("channel on new bus for old run should be closed immediately")
-		}
+	_, open := <-ch
+	if open {
+		t.Fatal("channel on new bus for old run should be closed immediately")
 	}
 }
 

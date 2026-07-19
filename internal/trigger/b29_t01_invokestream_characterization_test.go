@@ -189,32 +189,26 @@ func TestInvokeStreamTerminatesOnRunSucceeded(t *testing.T) {
 	bus.Publish("will-be-streamed", EventRunSucceeded, nil)
 
 	// Read first event (RunCreated)
-	select {
-	case event, open := <-ch:
-		if !open {
-			t.Fatal("channel closed before RunCreated")
-		}
-		if event.Type != EventRunCreated {
-			t.Fatalf("expected RunCreated, got %s", event.Type)
-		}
+	event, open := <-ch
+	if !open {
+		t.Fatal("channel closed before RunCreated")
+	}
+	if event.Type != EventRunCreated {
+		t.Fatalf("expected RunCreated, got %s", event.Type)
 	}
 
 	// Read second event (RunSucceeded) — should be followed by channel close
-	select {
-	case event, open := <-ch:
-		if !open {
-			t.Fatal("channel closed before RunSucceeded")
-		}
-		if event.Type != EventRunSucceeded {
-			t.Fatalf("expected RunSucceeded, got %s", event.Type)
-		}
+	event, open = <-ch
+	if !open {
+		t.Fatal("channel closed before RunSucceeded")
+	}
+	if event.Type != EventRunSucceeded {
+		t.Fatalf("expected RunSucceeded, got %s", event.Type)
 	}
 
 	// Channel must be closed now (terminal event).
-	select {
-	case _, open := <-ch:
-		if open {
-			t.Fatal("channel should be closed after terminal event")
-		}
+	_, open = <-ch
+	if open {
+		t.Fatal("channel should be closed after terminal event")
 	}
 }
