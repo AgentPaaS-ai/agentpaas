@@ -22,7 +22,6 @@ type fakeStreamProvider struct {
 	startErr    error
 	closeCalls  int
 	startedCtx  context.Context
-	cancelFn    context.CancelFunc
 	closeCh     chan struct{} // closed when Close is called
 	closedCount atomic.Int32
 }
@@ -206,7 +205,7 @@ func TestStreamingAdapter_IncrementalRelease_EmitsDeltasUncommittedUntilComplete
 	// Allow the provider goroutine to deliver deltas, then close to signal EOF.
 	// Give it a moment to push deltas into the buffered channel.
 	time.Sleep(50 * time.Millisecond)
-	provider.Close()
+	_ = provider.Close()
 	evts := drainEvents(t, ch)
 	kinds := eventKinds(evts)
 	if len(kinds) < 4 {
@@ -407,7 +406,7 @@ func TestStreamingAdapter_RawCredentialsAbsentFromEvents(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	provider.Close()
+	_ = provider.Close()
 	evts := drainEvents(t, ch)
 	// No event payload may carry the private key header.
 	for _, ev := range evts {
@@ -435,7 +434,7 @@ func TestStreamingAdapter_RawCoTAbsentFromEvents(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	provider.Close()
+	_ = provider.Close()
 	evts := drainEvents(t, ch)
 	for _, ev := range evts {
 		if strings.Contains(string(ev.Payload), "<thought>") {
@@ -462,7 +461,7 @@ func TestStreamingAdapter_PayloadBounded_RejectsOver64KB(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	provider.Close()
+	_ = provider.Close()
 	evts := drainEvents(t, ch)
 	for _, ev := range evts {
 		if len(ev.Payload) > runtime.MaxStreamPayloadBytes {
@@ -486,7 +485,7 @@ func TestStreamingAdapter_UsageUpdateEmitted(t *testing.T) {
 		t.Fatalf("Stream: %v", err)
 	}
 	time.Sleep(50 * time.Millisecond)
-	provider.Close()
+	_ = provider.Close()
 	evts := drainEvents(t, ch)
 	hasUsage := false
 	for _, ev := range evts {
