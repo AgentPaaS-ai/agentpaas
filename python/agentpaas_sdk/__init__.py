@@ -10,6 +10,7 @@ from ._rpc import (
     RPCError,
     StreamingNotSupported,
 )
+from .streaming import StreamEvent
 from .runner import run
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "LeaseExpired",
     "ProgressError",
     "RPCError",
+    "StreamEvent",
     "StreamingNotSupported",
     "agent",
     "run",
