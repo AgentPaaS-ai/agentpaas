@@ -37,6 +37,15 @@ type Config struct {
 	StderrPath      string
 	Audit           AuditAppender
 	CredentialsPath string // Path to credentials.json sidecar file (empty = none)
+
+	// Progress journal integration (B27). The daemon writes the journal key
+	// to a sidecar file and bind-mounts it into the harness container. The
+	// harness reads it, constructs a journal writer, and deletes the file
+	// before starting Python (mirrors credentials sidecar pattern).
+	JournalKeyPath string // Path to journal key sidecar file (empty = no progress)
+	JournalPath    string // Path to journal file inside container (empty = no progress)
+	AttemptID      string // Attempt ID for journal records
+	LeaseID        string // Lease ID for journal records
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.

@@ -38,6 +38,10 @@ type trackedRun struct {
 	InvokeErr     error         // written before close(InvokeDone); safe to read after channel receive
 	InvokeResponse string       // raw stdout from the invoke command (agent's response payload)
 	Tailer        *auditTailer    // real-time audit tailer (nil if not running)
+	ProgressTailer *routedrun.ProgressTailer // B27: progress journal tailer
+	JournalKeyPath string                    // host path to journal key file for cleanup
+	ArtifactDir    string                    // host path to artifact workspace dir
+	JournalHostPath string                   // host path to journal file for tailer
 	finalizeOnce  sync.Once       // ensures finalizeRun runs exactly once per run
 }
 

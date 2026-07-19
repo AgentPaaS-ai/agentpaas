@@ -638,7 +638,8 @@ func sanitizeID(s string) string {
 // persistLegacyRunAsOneAttempt writes a one-run/one-attempt record for a
 // legacy agent run so list/summarize can read from the store after restart.
 // Non-fatal: store errors are logged via return value only.
-func (s *controlServer) persistLegacyRunAsOneAttempt(ctx context.Context, runID, agentName string) (attemptID string, err error) {
+// If attemptID is non-empty, it is used as the attempt ID; otherwise an ID is generated.
+func (s *controlServer) persistLegacyRunAsOneAttempt(ctx context.Context, runID, agentName, attemptID string) (string, error) {
 	if s.runStore == nil {
 		return "", nil
 	}
@@ -670,6 +671,9 @@ func (s *controlServer) persistLegacyRunAsOneAttempt(ctx context.Context, runID,
 		WorkflowID:    wfID,
 		Status:        routedrun.AttemptStatusRunning,
 		AttemptNumber: 1,
+	}
+	if attemptID != "" {
+		att.AttemptID = routedrun.AttemptID(attemptID)
 	}
 	if err := s.runStore.CreateAttempt(ctx, att); err != nil {
 		return "", err

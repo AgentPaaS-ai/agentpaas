@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
@@ -33,6 +34,12 @@ type harnessRPCServer struct {
 	audit       AuditAppender
 	router      *mcpmanager.Router
 	credentials map[string]rpcCredential // Pre-loaded credential values (from sidecar file)
+
+	// Progress journal (B27) — pre-loaded at startup, wired into invoke state
+	// by SetInvoke. Stored on the server so LoadProgressMetadata can populate
+	// them before the first invoke.
+	progressJournal  *progressJournalWriter
+	progressIdentity progressIdentity
 }
 
 type rpcInvokeState struct {
@@ -45,7 +52,7 @@ type rpcInvokeState struct {
 	// Progress journal (B27)
 	progressJournal   *progressJournalWriter
 	progressIdentity  progressIdentity
-	leaseExpired      bool
+	leaseExpired      atomic.Bool
 	resumeCheckpoint  map[string]any // B35-provided resume data (trusted, not from trigger)
 	resumeReason      string         // trusted enum: failure_continuation|operator_pause_resume
 
@@ -113,11 +120,13 @@ func (s *harnessRPCServer) SetInvoke(payload map[string]any, budget *BudgetEnfor
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.invoke = &rpcInvokeState{
-		budget:      budget,
-		payload:     payload,
-		terminate:   terminate,
-		credentials: s.credentials, // Use pre-loaded credentials, not from payload
-		mcpAllowed:  mcpAllowlistFromPayload(payload),
+		budget:           budget,
+		payload:          payload,
+		terminate:        terminate,
+		credentials:      s.credentials, // Use pre-loaded credentials, not from payload
+		mcpAllowed:       mcpAllowlistFromPayload(payload),
+		progressJournal:  s.progressJournal,  // B27: pre-loaded journal writer
+		progressIdentity: s.progressIdentity, // B27: pre-loaded identity
 	}
 }
 
@@ -272,6 +281,35 @@ func (s *harnessRPCServer) LoadCredentials(path string) error {
 
 	s.mu.Lock()
 	s.credentials = creds
+	s.mu.Unlock()
+	return nil
+}
+
+// LoadProgressMetadata reads the journal key from the sidecar file,
+// constructs a progressJournalWriter and progressIdentity, and stores
+// them on the server for use by SetInvoke. The key file is deleted after
+// loading. If the key is missing or invalid, returns an error (fail-closed:
+// progress requires a valid key).
+func (s *harnessRPCServer) LoadProgressMetadata(cfg Config) error {
+	key, err := loadJournalKey(cfg.JournalKeyPath)
+	if err != nil {
+		return fmt.Errorf("load journal key: %w", err)
+	}
+	// Delete the key file immediately so agent code cannot read it.
+	_ = os.Remove(cfg.JournalKeyPath)
+
+	identity := progressIdentity{
+		AttemptID: cfg.AttemptID,
+		LeaseID:   cfg.LeaseID,
+	}
+
+	writer, err := newProgressJournalWriter(cfg.JournalPath, key, identity)
+	if err != nil {
+		return fmt.Errorf("create journal writer: %w", err)
+	}
+	s.mu.Lock()
+	s.progressJournal = writer
+	s.progressIdentity = identity
 	s.mu.Unlock()
 	return nil
 }

@@ -334,7 +334,7 @@ func TestPersistLegacyRun_OneRunOneAttempt(t *testing.T) {
 	s := newTestControlServer(t)
 	ctx := context.Background()
 
-	attemptID, err := s.persistLegacyRunAsOneAttempt(ctx, "run-legacydeadbeef", "demo-agent")
+	attemptID, err := s.persistLegacyRunAsOneAttempt(ctx, "run-legacydeadbeef", "demo-agent", "")
 	if err != nil {
 		t.Fatalf("persist: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestListRuns_SurvivesStoreRestart(t *testing.T) {
 	if err := s1.initRoutedStores(root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s1.persistLegacyRunAsOneAttempt(context.Background(), "run-restart1", "agent-a"); err != nil {
+	if _, err := s1.persistLegacyRunAsOneAttempt(context.Background(), "run-restart1", "agent-a", ""); err != nil {
 		t.Fatal(err)
 	}
 
