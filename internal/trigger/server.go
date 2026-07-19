@@ -416,10 +416,10 @@ func NewTriggerService(a audit.AuditAppender, maxPayload int, deps ...any) *Trig
 		case *IdempotencyStore:
 			store = typed
 		case port.EventStore:
-			eventStore = typed
-		case *DurableEventStore:
-			// Accept the concrete type as well as the interface so callers
-			// can pass a *DurableEventStore directly.
+			// *DurableEventStore satisfies port.EventStore, so this case
+			// matches both the interface and the concrete type. Do not add a
+			// separate *DurableEventStore case — SA4020 flags it as
+			// unreachable since the interface case matches first.
 			eventStore = typed
 		}
 	}

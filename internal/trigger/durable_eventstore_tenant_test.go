@@ -224,7 +224,7 @@ func TestDurableEmptyTenantRunReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read unknown: %v", err)
 	}
-	if events != nil && len(events) != 0 {
+	if len(events) != 0 {
 		t.Fatalf("Read unknown returned %d events; want 0", len(events))
 	}
 	latest, err := store.LatestSequence(ctx, "unknown-tenant", "unknown-run")
