@@ -13,6 +13,16 @@ import (
 // newTestDurableService creates a TriggerService backed by a
 // DurableEventStore rooted in a temp dir. Returns the service, the store, and
 // a cleanup.
+//
+// After the B29-arch-review fix, InvokeStream with a durable EventStore uses
+// the REAL admission path: it admits the run, subscribes to the durable store,
+// and reaches terminal via the real execution path (invokeFunc). It never
+// manufactures success. To keep the existing durable tests exercising the
+// full created -> succeeded lifecycle, we wire a test invokeFunc that
+// simulates the real execution path: it publishes run_succeeded to the
+// EventBus under a fresh runID, and the InvokeStream EventBus->store bridge
+// carries that terminal into the durable store so the client stream observes
+// it.
 func newTestDurableService(t *testing.T) (*TriggerService, *DurableEventStore, func()) {
 	t.Helper()
 	dir := t.TempDir()
@@ -22,10 +32,35 @@ func newTestDurableService(t *testing.T) (*TriggerService, *DurableEventStore, f
 		t.Fatalf("NewDurableEventStore: %v", err)
 	}
 	service := NewTriggerService(nil, DefaultMaxPayload, store)
+	// Simulate the real execution path: publish a terminal run_succeeded to
+	// the EventBus under a unique runID. The InvokeStream bridge carries it
+	// into the durable store, so the run reaches terminal via the real path
+	// (not manufactured inline).
+	service.SetInvokeFunc(simulateRealExecutionTerminal(service))
 	cleanup := func() {
 		_ = store.Close()
 	}
 	return service, store, cleanup
+}
+
+// simulateRealExecutionTerminal returns an invokeFunc that simulates the real
+// execution path for durable-path tests: it publishes a terminal
+// run_succeeded to the service's EventBus under a fresh runID. The
+// InvokeStream EventBus->store bridge carries that terminal into the durable
+// store, so the run reaches terminal via the real execution path rather than
+// being manufactured inline. This mirrors how production
+// (controlServer.Stop/finalizeRun) publishes the terminal to the EventBus
+// asynchronously after the run starts.
+func simulateRealExecutionTerminal(service *TriggerService) func(context.Context, string, []byte) (string, error) {
+	return func(ctx context.Context, _ string, _ []byte) (string, error) {
+		actualRunID, idErr := generateRunID()
+		if idErr != nil {
+			return "", idErr
+		}
+		service.eventBus.RegisterRun(actualRunID)
+		service.eventBus.Publish(actualRunID, EventRunSucceeded, map[string]string{"agent": "test-agent"})
+		return actualRunID, nil
+	}
 }
 
 // TestInvokeStreamUsesDurableEventStore verifies that InvokeStream subscribes
@@ -133,6 +168,8 @@ func TestInvokeStreamSurvivesRestart(t *testing.T) {
 		t.Fatalf("NewDurableEventStore 1: %v", err)
 	}
 	service1 := NewTriggerService(nil, DefaultMaxPayload, store1)
+	// Wire the real execution path simulation (see newTestDurableService).
+	service1.SetInvokeFunc(simulateRealExecutionTerminal(service1))
 	stream := &captureInvokeStream{ctx: context.Background()}
 	if err := service1.InvokeStream(&triggerv1.InvokeRequest{AgentName: "test-agent"}, stream); err != nil {
 		t.Fatalf("InvokeStream: %v", err)

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"sort"
@@ -505,6 +506,20 @@ func (s *TriggerService) Invoke(ctx context.Context, req *triggerv1.InvokeReques
 }
 
 // InvokeStream triggers a run and streams lifecycle updates.
+//
+// When a durable EventStore is wired (production), InvokeStream uses the REAL
+// admission path: it runs the same admission logic as Invoke (payload check,
+// runID generation, idempotency, runStore.Register), appends a durable
+// run_created event, subscribes to the durable store, and — when invokeFunc is
+// set — starts the real execution path and bridges its EventBus events into
+// the durable store so the subscription delivers them to the client. The run
+// reaches terminal via the real execution path, NOT inline: InvokeStream never
+// manufactures success when a durable store is configured.
+//
+// When no durable EventStore is configured (EventBus fallback), the legacy
+// synthetic admission path is retained for backward compatibility with
+// existing tests, with a log warning. Production always wires the durable
+// store (see daemon wiring), so the synthetic path is test-only.
 func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream triggerv1.TriggerService_InvokeStreamServer) error {
 	ctx := stream.Context()
 	if len(req.GetPayload()) > s.maxPayload {
@@ -515,6 +530,7 @@ func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream trigg
 	if err != nil {
 		return status.Errorf(codes.Internal, "generate run id: %v", err)
 	}
+	idempotencyReplay := false
 	if s.idempotency != nil && req.GetIdempotencyKey() != "" {
 		caller, _ := CallerFromContext(ctx)
 		requestHash := CanonicalRequestHash(
@@ -532,62 +548,27 @@ func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream trigg
 		switch result {
 		case IdempotencyReplayed:
 			runID = entry.RunID
+			idempotencyReplay = true
 		case IdempotencyConflict:
 			return status.Error(codes.AlreadyExists, "idempotency key conflict: different payload")
 		case IdempotencyNew:
 		}
 	}
 
-	s.runStore.Register(runID, req.GetAgentName())
-
-	// Synthetic admission path (T01 characterized this; T04 replaces it with
-	// the real durable admission). When a durable EventStore is wired, the
-	// synthetic events are appended to it so they survive reconnection and are
-	// replayable after restart. Otherwise the in-memory EventBus is used.
+	// Real durable admission path: durable EventStore is the source of truth.
+	// The run is admitted (registered + run_created appended) and the client
+	// stream is fed from the durable subscription. The terminal event is
+	// produced by the real execution path (invokeFunc -> EventBus -> bridge ->
+	// durable store), never manufactured inline by InvokeStream.
 	if s.eventStore != nil {
-		tenant := s.triggerTenant
-		if _, err := s.eventStore.Append(ctx, port.Event{
-			TenantID:  tenant,
-			RunID:     runID,
-			Type:      string(EventRunCreated),
-			Payload:   []byte(req.GetAgentName()),
-			Timestamp: time.Now().UTC(),
-		}); err != nil {
-			return status.Errorf(codes.Internal, "append run_created: %v", err)
-		}
-		s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_SUCCEEDED)
-		if _, err := s.eventStore.Append(ctx, port.Event{
-			TenantID:  tenant,
-			RunID:     runID,
-			Type:      string(EventRunSucceeded),
-			Payload:   []byte(req.GetAgentName()),
-			Timestamp: time.Now().UTC(),
-		}); err != nil {
-			return status.Errorf(codes.Internal, "append run_succeeded: %v", err)
-		}
-
-		ch, err := s.eventStore.Subscribe(ctx, tenant, runID, 0)
-		if err != nil {
-			return status.Errorf(codes.Internal, "subscribe durable: %v", err)
-		}
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case event, open := <-ch:
-				if !open {
-					return nil
-				}
-				run := durableEventToRun(event, runID, req.GetAgentName())
-				if err := stream.Send(&triggerv1.InvokeResponse{Run: run}); err != nil {
-					return err
-				}
-				if isTerminalEventType(event.Type) {
-					return nil
-				}
-			}
-		}
+		return s.invokeStreamDurable(ctx, req, stream, runID, idempotencyReplay)
 	}
+
+	// EventBus fallback: synthetic admission path. Retained for backward
+	// compatibility with tests that do not wire a durable EventStore.
+	// Production always wires the durable store, so this path is test-only.
+	log.Printf("trigger: InvokeStream using synthetic EventBus fallback (no durable EventStore wired); run will not be replayable after restart")
+	s.runStore.Register(runID, req.GetAgentName())
 
 	s.eventBus.RegisterRun(runID)
 	s.eventBus.Publish(runID, EventRunCreated, map[string]string{"agent": req.GetAgentName()})
@@ -614,6 +595,182 @@ func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream trigg
 			}
 		}
 	}
+}
+
+// invokeStreamDurable implements the real admission path backed by the durable
+// EventStore. It admits the run, subscribes to the durable store, starts the
+// real execution path (invokeFunc) when available, and bridges EventBus
+// lifecycle events into the durable store so the subscription delivers them to
+// the client. The terminal event comes from the real execution path, not
+// inline.
+func (s *TriggerService) invokeStreamDurable(
+	ctx context.Context,
+	req *triggerv1.InvokeRequest,
+	stream triggerv1.TriggerService_InvokeStreamServer,
+	runID string,
+	idempotencyReplay bool,
+) error {
+	tenant := s.triggerTenant
+	agentName := req.GetAgentName()
+
+	// Admit the run in the runStore. On idempotency replay the run was already
+	// registered by the original invocation; Register is idempotent (returns
+	// the existing entry), so this is safe to call unconditionally.
+	s.runStore.Register(runID, agentName)
+
+	// On a fresh (non-replay) admission, append the durable run_created event.
+	// On replay, the original invocation already appended it; we must NOT
+	// append a duplicate (the durable store would record two run_created
+	// events with different sequences, corrupting replay).
+	if !idempotencyReplay {
+		if _, err := s.eventStore.Append(ctx, port.Event{
+			TenantID:  tenant,
+			RunID:     runID,
+			Type:      string(EventRunCreated),
+			Payload:   []byte(agentName),
+			Timestamp: time.Now().UTC(),
+		}); err != nil {
+			return status.Errorf(codes.Internal, "append run_created: %v", err)
+		}
+	}
+
+	// Subscribe to the durable store BEFORE starting execution so no live
+	// events are missed. Existing events (including run_created, and on replay
+	// any prior terminal event) are replayed from cursor 0.
+	subCh, err := s.eventStore.Subscribe(ctx, tenant, runID, 0)
+	if err != nil {
+		return status.Errorf(codes.Internal, "subscribe durable: %v", err)
+	}
+
+	// Start the real execution path when invokeFunc is wired and this is not an
+	// idempotency replay (a replay must NOT re-execute). A bridge goroutine
+	// carries EventBus lifecycle events for the run into the durable store so
+	// the subscription delivers them to the client. The bridge exits when it
+	// observes a terminal EventBus event.
+	if !idempotencyReplay && s.invokeFunc != nil {
+		// Register the run on the EventBus so the bridge can subscribe before
+		// invokeFunc publishes. invokeFunc returns the canonical runID used by
+		// the real execution path; the EventBus events are published under it.
+		actualRunID, invokeErr := s.invokeFunc(ctx, agentName, req.GetPayload())
+		if invokeErr != nil {
+			// Real execution failed to start. Record a terminal failure in the
+			// durable store so the client stream and replay observe it; never
+			// manufacture success.
+			s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_FAILED)
+			if _, aErr := s.eventStore.Append(ctx, port.Event{
+				TenantID:  tenant,
+				RunID:     runID,
+				Type:      string(EventRunFailed),
+				Payload:   []byte(invokeErr.Error()),
+				Timestamp: time.Now().UTC(),
+			}); aErr != nil {
+				return status.Errorf(codes.Internal, "invoke failed: %v; and append run_failed: %v", invokeErr, aErr)
+			}
+			// Fall through to stream the terminal from the subscription.
+		} else {
+			// The real execution path publishes lifecycle events to the
+			// EventBus under actualRunID. Bridge them into the durable store
+			// under (tenant, runID) so the subscription delivers them.
+			s.bridgeEventBusToStore(ctx, actualRunID, runID, tenant)
+		}
+	}
+
+	// Stream events from the durable subscription to the client until a
+	// terminal event arrives (or the client context is cancelled). On
+	// idempotency replay, the subscription replays the already-committed
+	// terminal event and returns immediately.
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case event, open := <-subCh:
+			if !open {
+				return nil
+			}
+			run := durableEventToRun(event, runID, agentName)
+			if err := stream.Send(&triggerv1.InvokeResponse{Run: run}); err != nil {
+				return err
+			}
+			// Mirror the runStore terminal status from the durable event so
+			// GetRun/ListRuns observe the real terminal (not a stale PENDING).
+			switch EventType(event.Type) {
+			case EventRunSucceeded:
+				s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_SUCCEEDED)
+			case EventRunFailed:
+				s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_FAILED)
+			case EventRunCancelled:
+				s.runStore.MarkFinished(runID, triggerv1.RunStatus_RUN_STATUS_CANCELLED)
+			}
+			if isTerminalEventType(event.Type) {
+				return nil
+			}
+		}
+	}
+}
+
+// bridgeEventBusToStore subscribes to the EventBus for eventBusRunID and
+// appends each lifecycle event to the durable EventStore under (tenant,
+// storeRunID). It exits when a terminal EventBus event is observed (and after
+// appending that terminal to the store). This bridges the real execution
+// path's EventBus publications into the durable store so the InvokeStream
+// subscription — and replay after restart — observes the real lifecycle.
+//
+// The bridge runs in its own goroutine so InvokeStream can stream events to
+// the client concurrently. It is best-effort with respect to the client
+// stream: if the client disconnects (ctx cancelled), the bridge stops
+// appending; the durable store retains whatever was appended before
+// cancellation, and the real execution path's terminal (if it arrives later)
+// is appended by the execution path itself in production.
+func (s *TriggerService) bridgeEventBusToStore(ctx context.Context, eventBusRunID, storeRunID, tenant string) {
+	busCh, cancel := s.eventBus.Subscribe(eventBusRunID, 0)
+	go func() {
+		defer cancel()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case event, open := <-busCh:
+				if !open {
+					return
+				}
+				payload := eventBusPayloadToBytes(event.Data)
+				if _, err := s.eventStore.Append(ctx, port.Event{
+					TenantID:  tenant,
+					RunID:     storeRunID,
+					Type:      string(event.Type),
+					Payload:   payload,
+					Timestamp: event.Timestamp,
+				}); err != nil {
+					// A lost lifecycle event is an audit gap; log it so an
+					// operator can reconcile. The real execution path's
+					// terminal is still observable via the EventBus in
+					// production (dashboard), but the durable replay will be
+					// incomplete.
+					log.Printf("trigger: bridgeEventBusToStore append failed for tenant=%q run=%q type=%s: %v",
+						tenant, storeRunID, event.Type, err)
+				}
+				if event.IsTerminal() {
+					return
+				}
+			}
+		}
+	}()
+}
+
+// eventBusPayloadToBytes serializes an EventBus event's Data field to a byte
+// payload for the durable store. EventBus Data is a map[string]any (or nil);
+// we JSON-encode it for a stable, replayable representation. Encoding errors
+// are extremely unlikely (the data is already JSON-marshalable in practice)
+// and fall back to nil payload rather than dropping the event.
+func eventBusPayloadToBytes(data any) []byte {
+	if data == nil {
+		return nil
+	}
+	b, err := json.Marshal(data)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // GetRun retrieves a run by ID.
