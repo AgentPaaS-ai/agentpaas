@@ -61,6 +61,11 @@ type Daemon struct {
 	triggerServer *trigger.Server
 	triggerCancel context.CancelFunc
 	cronScheduler *trigger.CronScheduler
+	// durableEventStore is the durable EventStore wired into the trigger
+	// service so InvokeStream events survive reconnection and are replayable
+	// after daemon restart. nil when the store could not be constructed (the
+	// trigger service then falls back to the in-memory EventBus).
+	durableEventStore *trigger.DurableEventStore
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -392,6 +397,21 @@ func (d *Daemon) Start(ctx context.Context) error {
 			}
 			return resp.GetRunId(), nil
 		})
+		// Wire the durable EventStore so InvokeStream uses the real durable
+		// admission path (durable run_created, subscribe, bridge real
+		// execution events) instead of the in-memory EventBus fallback. The
+		// store is rooted at ~/.agentpaas/state/events/ and survives daemon
+		// restart. If construction fails, the trigger service falls back to
+		// the EventBus (with a log warning emitted by InvokeStream).
+		eventsDir := filepath.Join(d.paths.State, "events")
+		durableStore, storeErr := trigger.NewDurableEventStore(eventsDir)
+		if storeErr != nil {
+			fmt.Fprintf(os.Stderr, "daemon: durable event store init at %s: %v (InvokeStream will use EventBus fallback)\n", eventsDir, storeErr)
+		} else {
+			triggerSrv.SetEventStore(durableStore)
+			d.durableEventStore = durableStore
+			fmt.Fprintf(os.Stderr, "daemon: durable event store wired at %s (InvokeStream events are replayable after restart)\n", eventsDir)
+		}
 		triggerCtx, triggerCancel := context.WithCancel(context.Background())
 		if err := triggerSrv.Start(triggerCtx); err != nil {
 			fmt.Fprintf(os.Stderr, "daemon: trigger server start: %v\n", err)
@@ -531,6 +551,12 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	}
 	if d.triggerServer != nil {
 		d.triggerServer.Stop()
+	}
+	// Close the durable EventStore so it flushes and releases its subscriber
+	// channels cleanly. Idempotent.
+	if d.durableEventStore != nil {
+		_ = d.durableEventStore.Close()
+		d.durableEventStore = nil
 	}
 	if d.cronScheduler != nil {
 		d.cronScheduler.Stop()
