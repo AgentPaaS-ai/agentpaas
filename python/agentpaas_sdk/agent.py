@@ -13,6 +13,7 @@ from ._rpc import (
     ProgressError,
     RPCClient,
     RPCError,
+    StreamingNotSupported,
 )
 
 InvokeHandler = Callable[[dict[str, Any]], dict[str, Any]]
@@ -122,6 +123,68 @@ class Agent:
             params["model"] = model
         params.update(kwargs)
         return self._call("llm", params)
+
+    # ---- normalized envelope (B29-T02) -------------------------------------
+
+    def messages(
+        self,
+        messages: list[dict[str, Any]],
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Buffered multi-role call over the normalized model-call envelope.
+
+        ``messages`` is a list of ``{"role": ..., "content": ...}`` dicts.
+        Returns a single complete dict, like :meth:`llm`.
+        """
+        if not isinstance(messages, list) or not messages:
+            raise RPCError("messages must be a non-empty list", "INVALID_ENVELOPE")
+        params: dict[str, Any] = {"messages": list(messages)}
+        if model is not None:
+            params["model"] = model
+        params.update(kwargs)
+        return self._call("llm", params)
+
+    def llm_stream(
+        self,
+        prompt: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        **kwargs: Any,
+    ):
+        """Additive streaming method over the normalized call envelope.
+
+        Exactly one of ``prompt`` or ``messages`` must be supplied. Yields
+        versioned events. If the connected harness does not support streaming,
+        raises :class:`StreamingNotSupported`.
+
+        Event kinds (minimally):
+          response_started; output_delta; tool_call_delta; usage_update;
+          response_completed; response_failed.
+        """
+        if (prompt is None) == (messages is None):
+            raise RPCError(
+                "exactly one of prompt or messages must be supplied",
+                "INVALID_ENVELOPE",
+            )
+        params: dict[str, Any] = {}
+        if prompt is not None:
+            params["prompt"] = prompt
+        if messages is not None:
+            if not isinstance(messages, list) or not messages:
+                raise RPCError(
+                    "messages must be a non-empty list", "INVALID_ENVELOPE",
+                )
+            params["messages"] = list(messages)
+        if model is not None:
+            params["model"] = model
+        params.update(kwargs)
+        # The streaming transport is introduced in T04; until the harness
+        # advertises streaming support, fail closed with a typed error.
+        raise StreamingNotSupported(
+            "connected harness does not support streaming",
+            "streaming_not_supported",
+        )
 
     def record_iteration(self) -> dict[str, Any]:
         return self._call("record_iteration", {})
