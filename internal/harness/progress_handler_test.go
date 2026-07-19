@@ -102,7 +102,7 @@ func TestHandleProgress_JournalNotInitialized(t *testing.T) {
 func TestHandleProgress_LeaseExpired(t *testing.T) {
 	srv, state := setupProgressTestServer(t)
 
-	state.leaseExpired = true
+	state.leaseExpired.Store(true)
 
 	req := rpcRequest{
 		ID:     "5",

@@ -83,6 +83,23 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		}
 	}
 
+	// Load progress journal metadata from the sidecar key file before
+	// starting the Python worker, so the journal writer is wired into
+	// the RPC server before agent code begins executing. The daemon
+	// writes the journal key to a 0600 file and bind-mounts it into the
+	// harness container. The key file is deleted after loading to
+	// prevent agent access (mirrors the credentials sidecar pattern).
+	// If no journal key path is set, progress is disabled — handleProgress
+	// returns INVALID_PROGRESS (nil journal guard).
+	if cfg.JournalKeyPath != "" && cfg.JournalPath != "" && cfg.AttemptID != "" {
+		if err := rpcServer.LoadProgressMetadata(cfg); err != nil {
+			_ = rpcServer.Close()
+			_ = stderrCapture.Close()
+			errResp := &ErrorResponse{Status: "FAILED", Reason: "progress_metadata_load_failed", Detail: err.Error()}
+			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+		}
+	}
+
 	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
 	cmd.Env = workerEnv(os.Environ(), rpcServer.Addr())

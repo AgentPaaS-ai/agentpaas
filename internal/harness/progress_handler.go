@@ -31,7 +31,7 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 	}
 
 	// --- Reject if invoke has ended or lease expired ---
-	if state.leaseExpired {
+	if state.leaseExpired.Load() {
 		return rpcError(req.ID, "attempt lease has expired", "LEASE_EXPIRED")
 	}
 	if state.progressJournal == nil {
@@ -136,7 +136,7 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 		checkpointDigest, artifactMetaDigest,
 	)
 	if err != nil {
-		return rpcError(req.ID, fmt.Sprintf("journal write failed: %v", err), "CHECKPOINT_REJECTED")
+		return rpcError(req.ID, "journal write failed", "CHECKPOINT_REJECTED")
 	}
 
 	// --- Build response ---

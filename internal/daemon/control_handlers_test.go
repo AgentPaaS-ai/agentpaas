@@ -438,8 +438,15 @@ func TestRun_MountsAuditVolume(t *testing.T) {
 	}
 
 	wantBind := fmt.Sprintf("%s:/audit", hostAuditDir)
-	if len(capturedSpec.Binds) != 1 || capturedSpec.Binds[0] != wantBind {
-		t.Fatalf("ContainerSpec.Binds = %v, want [%q]", capturedSpec.Binds, wantBind)
+	foundAudit := false
+	for _, b := range capturedSpec.Binds {
+		if b == wantBind {
+			foundAudit = true
+			break
+		}
+	}
+	if !foundAudit {
+		t.Fatalf("ContainerSpec.Binds = %v, want to contain %q", capturedSpec.Binds, wantBind)
 	}
 
 	wantEnv := "AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl"

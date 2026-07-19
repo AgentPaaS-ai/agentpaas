@@ -31,6 +31,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
@@ -723,10 +724,77 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// is stopped and removed on failure, so the file is ephemeral.
 	credsPath, credsFileWritten := s.writeCredentialsForRun(runID, deployedDir, gatewayConfigDir, credentialMap)
 
+	// B27: Generate attempt ID early so it's available for journal key,
+	// artifact workspace, and bind mounts before the container is created.
+	attemptID := ""
+	if aid, err := routedrun.NewAttemptID(); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: generate attempt ID: %v\n", err)
+	} else {
+		attemptID = string(aid)
+	}
+
+	// Generate journal key for progress journal (B27 integration).
+	// The key is saved to a 0600 file in the per-run attempt-secrets
+	// directory and bind-mounted into the harness container. The harness
+	// reads and deletes it before starting Python (sidecar pattern).
+	var journalKey []byte
+	journalKeyPath := ""
+	if attemptID != "" {
+		journalKeyPath = filepath.Join(s.homePaths.State, "runs", runID, "attempt-secrets", attemptID+".journal-key")
+		journalKey = make([]byte, 32)
+		if _, err := rand.Read(journalKey); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: generate journal key: %v\n", err)
+			journalKeyPath = ""
+			journalKey = nil
+		} else if err := os.MkdirAll(filepath.Dir(journalKeyPath), 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: create attempt-secrets dir: %v\n", err)
+			journalKeyPath = ""
+			journalKey = nil
+		} else if err := os.WriteFile(journalKeyPath, journalKey, 0o600); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: save journal key: %v\n", err)
+			journalKeyPath = ""
+			journalKey = nil
+		}
+	}
+
+	// Create artifact workspace directory (B27 integration).
+	// Bind-mounted at /workspace/artifacts into the agent container.
+	artifactDir := filepath.Join(s.homePaths.State, "runs", runID, "artifacts")
+	if err := os.MkdirAll(artifactDir, 0o700); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: create artifact dir: %v\n", err)
+		artifactDir = ""
+	}
+
+	// Create journal host directory so tailer can observe harness writes.
+	journalHostPath := ""
+	if journalKey != nil && attemptID != "" {
+		journalHostPath = filepath.Join(s.homePaths.State, "runs", runID, "journals", attemptID+".jsonl")
+		_ = os.MkdirAll(filepath.Dir(journalHostPath), 0o700)
+	}
+
 	agentBinds := []string{fmt.Sprintf("%s:/audit", hostAuditDir)}
 	if credsFileWritten {
 		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/credentials.json", credsPath))
 		proxyEnv = append(proxyEnv, "AGENTPAAS_CREDENTIALS_PATH=/agentpaas/credentials.json")
+	}
+
+	// B27: Bind-mount journal key, journal directory, and artifact workspace.
+	// Pass env vars so the harness can locate and load the key file.
+	if journalKeyPath != "" && journalKey != nil {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/journal-key", journalKeyPath))
+		proxyEnv = append(proxyEnv,
+			"AGENTPAAS_JOURNAL_KEY_PATH=/agentpaas/journal-key",
+			"AGENTPAAS_JOURNAL_PATH=/agentpaas/journals/"+attemptID+".jsonl",
+			"AGENTPAAS_ATTEMPT_ID="+attemptID,
+		)
+		if journalHostPath != "" {
+			journalMountDir := filepath.Dir(journalHostPath)
+			agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/journals", journalMountDir))
+		}
+	}
+	if artifactDir != "" {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/workspace/artifacts", artifactDir))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_ARTIFACT_DIR=/workspace/artifacts")
 	}
 
 	agentSpec := runtime.ContainerSpec{
@@ -778,6 +846,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		StartedAt:        time.Now(),
 		Status:           "running",
 		InvokeDone:       make(chan struct{}),
+		JournalKeyPath:   journalKeyPath,
+		ArtifactDir:      artifactDir,
+		JournalHostPath:  journalHostPath,
 	}
 	s.trackRunPtr(runID, tracked)
 	if s.eventBus != nil {
@@ -794,6 +865,18 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	auditPath := filepath.Join(hostAuditDir, "harness-audit.jsonl")
 	tracked.Tailer = newAuditTailer(auditPath, runID, s.auditWriter, s.auditIndex, s.eventBus)
 	tracked.Tailer.start()
+
+	// B27: Start progress journal tailer to observe harness writes and
+	// persist checkpoints + progress metadata to the routed run store.
+	if journalKey != nil && journalHostPath != "" && s.localStore != nil {
+		tailer := routedrun.NewProgressTailer(
+			journalHostPath, journalKey,
+			s.localStore, s.runStore,
+			routedrun.AttemptID(attemptID), routedrun.RunID(runID),
+		)
+		tailer.Start(context.Background())
+		tracked.ProgressTailer = tailer
+	}
 
 	s.recordAudit("run_start", "cli", map[string]interface{}{
 		"run_id":       runID,
@@ -867,7 +950,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}(tracked)
 
 	// B26: persist legacy as one run / one attempt; return additive fields.
-	attemptID, _ := s.persistLegacyRunAsOneAttempt(ctx, runID, agentName)
+	if storedAttemptID, err := s.persistLegacyRunAsOneAttempt(ctx, runID, agentName, attemptID); err == nil {
+		attemptID = storedAttemptID
+	}
 	return &controlv1.RunResponse{
 		RunId:     runID,
 		AttemptId: attemptID,
@@ -949,6 +1034,13 @@ func (s *controlServer) finalizeRun(ctx context.Context, runID string, tr *track
 		//    to ensure the tailer has finished reading all harness records.
 		if tr.Tailer != nil {
 			tr.Tailer.stop()
+		}
+		// 1b. Stop progress tailer and remove journal key file (B27).
+		if tr.ProgressTailer != nil {
+			tr.ProgressTailer.Stop()
+		}
+		if tr.JournalKeyPath != "" {
+			_ = os.RemoveAll(tr.JournalKeyPath)
 		}
 		// 2. Ingest harness audit records into the daemon audit chain.
 		//    This reads harness-audit.jsonl, verifies the hash chain,

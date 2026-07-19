@@ -26,6 +26,10 @@ func main() {
 		StdoutPath:      envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
 		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
 		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
+		JournalKeyPath:  os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
+		JournalPath:     os.Getenv("AGENTPAAS_JOURNAL_PATH"),
+		AttemptID:       os.Getenv("AGENTPAAS_ATTEMPT_ID"),
+		LeaseID:         os.Getenv("AGENTPAAS_LEASE_ID"),
 	}
 
 	// Wire the audit appender if a path is provided. The daemon mounts
