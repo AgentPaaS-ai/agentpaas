@@ -249,6 +249,7 @@ func computeCheckpointDigest(rec *progressJournalRecord) string {
 		"remaining_work":       rec.RemainingWork,
 		"last_committed_action": rec.LastCommittedAction,
 		"safe_to_resume":       rec.SafeToResume,
+		"artifact_references":  rec.ArtifactRefs,
 	}
 	b, _ := json.Marshal(cp)
 	h := sha256.Sum256(b)

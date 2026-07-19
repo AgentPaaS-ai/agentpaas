@@ -138,6 +138,14 @@ func (aw *ArtifactWorkspace) ValidateAndAccept(
 			ErrSizeCapExceeded, ArtifactMaxTotal)
 	}
 
+	// Reject case-fold collisions so behavior is stable on the default macOS
+	// filesystem (APFS case-insensitive).
+	for existingPath := range aw.mu.metadata {
+		if existingPath != relPath && strings.EqualFold(existingPath, relPath) {
+			return nil, fmt.Errorf("%w: case-fold collision: %s conflicts with existing %s", ErrInvalidPath, relPath, existingPath)
+		}
+	}
+
 	// Hash the file.
 	digest, err := hashFile(absPath)
 	if err != nil {
@@ -160,6 +168,10 @@ func (aw *ArtifactWorkspace) ValidateAndAccept(
 		UpdatedAt:       time.Now().UTC(),
 	}
 
+	// Re-accept: subtract old size before adding new (prevents double-counting).
+	if existing, ok := aw.mu.metadata[relPath]; ok {
+		aw.totalSize -= existing.ByteSize
+	}
 	aw.mu.metadata[relPath] = meta
 	aw.totalSize += info.Size()
 
@@ -227,6 +239,13 @@ func (aw *ArtifactWorkspace) RemoveUnreferenced() error {
 		}
 		rel = filepath.ToSlash(rel)
 		if !accepted[rel] {
+			// Decrement totalSize if this was an accepted artifact (safety).
+			aw.mu.Lock()
+			if meta, ok := aw.mu.metadata[rel]; ok {
+				aw.totalSize -= meta.ByteSize
+				delete(aw.mu.metadata, rel)
+			}
+			aw.mu.Unlock()
 			_ = os.Remove(path)
 		}
 		return nil
@@ -276,8 +295,13 @@ func isBeneath(child, parent string) bool {
 	return strings.HasPrefix(cleanChild, cleanParent+string(os.PathSeparator))
 }
 
-// hashFile computes SHA-256 of a file.
+// hashFile computes SHA-256 of a file. Rejects the file if it changes during
+// hashing (TOCTOU defense).
 func hashFile(path string) (string, error) {
+	preStat, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
@@ -286,6 +310,17 @@ func hashFile(path string) (string, error) {
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
+	}
+	// Verify file didn't change during hashing (TOCTOU defense).
+	// Using f.Stat() (on the open fd) avoids a path-swap TOCTOU — if the
+	// path was swapped to a different file after open, postStat reflects
+	// the originally-opened file, not the new path target.
+	postStat, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if preStat.Size() != postStat.Size() || !preStat.ModTime().Equal(postStat.ModTime()) {
+		return "", fmt.Errorf("%w: file changed during hashing: %s", ErrInvalidPath, path)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
