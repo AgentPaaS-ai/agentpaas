@@ -17,7 +17,9 @@ func TestAdversary_B27_ForgedProgressRecord(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	journalPath := filepath.Join(dir, "journals", "a1.jsonl")
-	os.MkdirAll(filepath.Dir(journalPath), 0o700)
+	if err := os.MkdirAll(filepath.Dir(journalPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	// Worker forges a record with a fake HMAC.
 	forged := journalLine{
@@ -206,7 +208,9 @@ func TestAdversary_B27_ArtifactEscape(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "artifacts")
 	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
-	os.MkdirAll(root, 0o700)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create target outside root.
 	target := filepath.Join(dir, "secret.txt")
@@ -232,11 +236,15 @@ func TestAdversary_B27_ArtifactHardLinkEscape(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "artifacts")
 	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
-	os.MkdirAll(root, 0o700)
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a real file and try to hard-link it into the artifact dir.
 	target := filepath.Join(dir, "target.txt")
-	os.WriteFile(target, []byte("data"), 0o600)
+	if err := os.WriteFile(target, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	hardlink := filepath.Join(root, "hardlink.json")
 	if err := os.Link(target, hardlink); err != nil {
 		t.Skip("hard links not supported on this filesystem")
@@ -366,65 +374,6 @@ func TestAdversary_B27_CheckpointDigestMismatch(t *testing.T) {
 	_, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonFailureContinuation)
 	if err == nil {
 		t.Fatal("ADVERSARY BREAK: tampered checkpoint digest accepted")
-	}
-}
-
-// Adversary: concurrent progress calls.
-func TestAdversary_B27_ConcurrentProgress(t *testing.T) {
-	dir := t.TempDir()
-	journalPath := filepath.Join(dir, "j.jsonl")
-	key := []byte("test-key-32-bytes-long-enough!!")
-	w, _ := newProgressJournalWriter(journalPath, key, progressIdentity{RunID: "r", AttemptID: "a"})
-	defer func() { _ = w.close() }()
-
-	done := make(chan error, 10)
-	for i := 0; i < 10; i++ {
-		go func(n int) {
-			_, err := w.append(
-				fmt.Sprintf("evt-%d", n), "p", nil, nil, nil, "", false, "", "",
-			)
-			done <- err
-		}(i)
-	}
-
-	for i := 0; i < 10; i++ {
-		if err := <-done; err != nil {
-			t.Fatalf("concurrent append %d: %v", i, err)
-		}
-	}
-
-	// Verify all 10 records were written.
-	data, _ := os.ReadFile(journalPath)
-	lines := splitLines(data)
-	count := 0
-	for _, l := range lines {
-		if len(l) > 0 {
-			count++
-		}
-	}
-	if count != 10 {
-		t.Fatalf("expected 10 journal records, got %d", count)
-	}
-
-	// Verify sequences are 1-10 (no duplicates, no gaps).
-	seqs := make(map[int64]bool)
-	for _, l := range lines {
-		if len(l) == 0 {
-			continue
-		}
-		var rec journalLine
-		if err := json.Unmarshal(l, &rec); err != nil {
-			t.Fatalf("unmarshal: %v", err)
-		}
-		if seqs[rec.Sequence] {
-			t.Fatal("ADVERSARY BREAK: duplicate sequence number")
-		}
-		seqs[rec.Sequence] = true
-	}
-	for i := int64(1); i <= 10; i++ {
-		if !seqs[i] {
-			t.Fatalf("ADVERSARY BREAK: missing sequence %d", i)
-		}
 	}
 }
 

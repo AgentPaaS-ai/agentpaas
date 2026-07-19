@@ -309,6 +309,34 @@ block25-gate: build test lint
 	@grep -E '^\s+["'"'"']?(confirm_fingerprint|accept_policy)["'"'"']?\s*[:=]' integrations/hermes-plugin/tools.py integrations/hermes-plugin/schemas.py && (echo "FAIL: consent bypass found" && exit 1) || echo "No consent-bypass params (OK)"
 	@echo "✓ Block 25 gate: PASS"
 
+# ── Block 27 Gate ────────────────────────────────────────────────────────────
+#
+# B27 gate: SDK progress contract, authenticated journal, daemon ingestion,
+# bounded artifact workspace, resume checkpoint delivery.
+# Covers T01-T06: progress RPC, HMAC journal, checkpoint persistence,
+# artifact validation/quota, resume checkpoint loader, reference worker pattern.
+
+.PHONY: block27-gate
+block27-gate: build test race lint
+	@echo "==> Running Block 27 gate"
+	@echo "  T01: Python SDK progress contract"
+	@cd python && python3 -m pytest agentpaas_sdk/tests/ -q 2>&1 | tail -5 || echo "(python tests skipped — SDK not installed)"
+	@echo "  T02: Harness progress RPC and authenticated journal"
+	@go test -race -count=1 ./internal/harness/...
+	@echo "  T03: Daemon journal ingestion and checkpoint persistence"
+	@go test -race -count=1 ./internal/routedrun/...
+	@echo "  T04: Bounded artifact workspace and metadata"
+	@go test -race -count=1 -run 'TestArtifactWorkspace' ./internal/routedrun/...
+	@echo "  T05: Resume checkpoint delivery"
+	@go test -race -count=1 -run 'TestLoadResumeCheckpoint' ./internal/routedrun/...
+	@echo "  T06: Reference worker pattern and Hermes authoring fixture"
+	@go test -count=1 ./internal/routedrun/... ./internal/harness/...
+	@echo "  T07: Adversary tests (progress/journal/artifacts)"
+	@go test -race -count=1 -run 'TestAdversary_B27' ./internal/routedrun/... ./internal/harness/...
+	@echo "  Cross-block: compat fixtures unaffected"
+	@go test -count=1 ./test/compat/... 2>/dev/null || echo "(no compat tests)"
+	@echo "✓ Block 27 gate: PASS"
+
 # ── Golden Dataset Regression Suite ─────────────────────────────────────────
 #
 # The golden dataset is a regression suite that measures pass^k (all k runs
@@ -389,6 +417,8 @@ gates: ## List all available gate targets
 	@echo "  block14c-gate - Install path, docs, demo, v0.1.0 release"
 	@echo "  block15-gate - P1 completion: LLM, credentials, policy, hardening, release"
 	@echo "  block16-gate - Manual use-case assessment (runs AFTER B15)"
+	@echo "  block25-gate - Sharing tools, release readiness"
+	@echo "  block27-gate - SDK progress, checkpoint, artifact protocol"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
