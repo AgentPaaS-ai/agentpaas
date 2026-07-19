@@ -356,6 +356,16 @@ func (s *Server) SetInvokeFunc(fn func(ctx context.Context, agentName string, pa
 	s.triggerService.SetInvokeFunc(fn)
 }
 
+// SetEventStore wires a durable EventStore on the underlying TriggerService so
+// InvokeStream uses the real durable admission path (durable run_created,
+// subscribe, bridge real execution events) instead of the in-memory EventBus
+// fallback. Production (the daemon) wires a DurableEventStore pointing at
+// ~/.agentpaas/state/events/ so InvokeStream events survive reconnection and
+// are replayable after restart.
+func (s *Server) SetEventStore(store port.EventStore) {
+	s.triggerService.SetEventStore(store)
+}
+
 // SetInvokeFunc wires Invoke to the given run handler.
 func (s *TriggerService) SetInvokeFunc(fn func(ctx context.Context, agentName string, payload []byte) (string, error)) {
 	s.invokeFunc = fn
