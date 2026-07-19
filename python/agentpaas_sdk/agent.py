@@ -15,6 +15,7 @@ from ._rpc import (
     RPCError,
     StreamingNotSupported,
 )
+from .streaming import StreamEvent
 
 InvokeHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
@@ -154,9 +155,12 @@ class Agent:
     ):
         """Additive streaming method over the normalized call envelope.
 
-        Exactly one of ``prompt`` or ``messages`` must be supplied. Yields
-        versioned events. If the connected harness does not support streaming,
-        raises :class:`StreamingNotSupported`.
+        Exactly one of ``prompt`` or ``messages`` must be supplied. Returns an
+        iterator yielding :class:`StreamEvent` objects governed by the harness
+        streaming adapter (guardrail mode, incremental usage/budget,
+        backpressure, cancellation). If the connected harness does not support
+        streaming, raises :class:`StreamingNotSupported` eagerly (before the
+        first yield). Input validation errors also raise eagerly.
 
         Event kinds (minimally):
           response_started; output_delta; tool_call_delta; usage_update;
@@ -179,12 +183,40 @@ class Agent:
         if model is not None:
             params["model"] = model
         params.update(kwargs)
-        # The streaming transport is introduced in T04; until the harness
-        # advertises streaming support, fail closed with a typed error.
-        raise StreamingNotSupported(
-            "connected harness does not support streaming",
-            "streaming_not_supported",
-        )
+
+        if self._rpc is None:
+            # No connected harness: streaming is not supported. Fail closed
+            # with the typed error before any transport attempt.
+            raise StreamingNotSupported(
+                "connected harness does not support streaming",
+                "streaming_not_supported",
+            )
+
+        # Only RPC clients that expose call_stream can stream. A plain call()
+        # RPC (no streaming transport) is treated as not supported. This check
+        # is eager so callers see StreamingNotSupported before iterating.
+        call_stream = getattr(self._rpc, "call_stream", None)
+        if not callable(call_stream):
+            raise StreamingNotSupported(
+                "connected harness does not support streaming",
+                "streaming_not_supported",
+            )
+
+        return self._iter_stream(call_stream, params)
+
+    def _iter_stream(self, call_stream, params: dict[str, Any]):
+        """Generator backing llm_stream. Yields StreamEvent objects."""
+        try:
+            for raw in call_stream("llm_stream", params):
+                yield StreamEvent.from_rpc(raw)
+        except StreamingNotSupported:
+            raise
+        except RPCError as exc:
+            # A harness RPC error with code streaming_not_supported is surfaced
+            # as the typed StreamingNotSupported; other RPC errors propagate.
+            if exc.code == "streaming_not_supported":
+                raise StreamingNotSupported(str(exc), exc.code)
+            raise
 
     def record_iteration(self) -> dict[str, Any]:
         return self._call("record_iteration", {})
