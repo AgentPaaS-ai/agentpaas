@@ -12,9 +12,11 @@
 - **Status:** PASS
 - **Implementation:** `internal/adapter/docker/` bridges existing
   DockerRuntime, B26 stores, trigger EventBus to the 9 port interfaces.
-- **Conformance:** 10-step scenario passes against real Docker (Colima).
-  Tenant isolation, default-deny egress, ordered events, metering, and
-  cleanup all verified.
+- **Conformance:** 5 integration steps (1, 4, 7, 9, 10) pass against real Docker
+  (Colima). Tenant isolation, default-deny egress, ordered events, metering, and
+  cleanup verified. Steps 2, 3, 5, 6, 8 are not yet covered by integration tests.
+  ArtifactStore (step 5) and LeaseStore (step 8) were stubs at first review and
+  are now implemented in-memory.
 - **Compatibility:** No existing code modified. Adapter wraps, does not
   replace. B26/B27 code is unchanged.
 
@@ -23,11 +25,13 @@
 - **Status:** PASS
 - **Implementation:** `internal/adapter/k8s/` implements the same 9 port
   interfaces using Kubernetes Pods and NetworkPolicies.
-- **Conformance:** 10-step scenario passes against kind cluster
+- **Conformance:** 5 integration steps (1, 4, 7, 9, 10) pass against kind cluster
   (agentpaas-b28, k8s v1.36.1). Pod creation with security context
   (runAsNonRoot, readOnlyRootFilesystem, drop ALL capabilities),
   NetworkPolicy default-deny egress, tenant isolation, ordered events,
-  and metering all verified.
+  and metering all verified. Steps 2, 3, 5, 6, 8 remain uncovered.
+  Test image is busybox (not a signed AgentPaaS fixture); the K8s proof
+  validates substrate lifecycle, not package signing.
 - **Key finding:** Kubernetes Pods + NetworkPolicies can enforce the same
   AgentPaaS semantic contracts as Docker containers + gateway sidecar.
   The port interfaces are substrate-neutral — no K8s-specific types leak
@@ -134,6 +138,38 @@ selecting a substrate-specific activation mechanism.
   adapter tests + K8s adapter tests + cross-adapter build + vet + lint
 - `make block28-docker-tests`: Docker integration tests (requires Colima)
 - `make block28-k8s-tests`: K8s integration tests (requires kind cluster)
+
+## Frozen with known implementation gaps
+
+The port interfaces are frozen (signatures will not change in B29/B30).
+The following implementation gaps are known and have named ownership:
+
+1. **LeaseStore** — Both adapters now have in-memory implementations with
+   TTL-based expiry and fence-on-Revoke. B30's first task is bridging
+   internal/routedrun's lease machinery through the port.
+2. **ArtifactStore** — Both adapters now have in-memory implementations
+   keyed by tenant-scoped ArtifactID. B30 or a later block adds the real
+   host-dir (Docker) and PVC (K8s) backends.
+3. **Docker Fence** — Currently a no-op on Docker. B30 bridges to the
+   existing B26/B27 fencing path (lease revoke + network disconnect).
+4. **SecretBroker tenant scoping** — FIXED: both adapters now key by
+   tenantID+workloadID (architecture review finding 3.2).
+5. **MeteringSink fail-closed** — FIXED: both adapters now reject queries
+   with empty TenantID (architecture review finding 3.3).
+6. **Clock Monotonic race** — FIXED: both adapters now use atomic.Uint64
+   (architecture review finding 5.8).
+7. **IdentityIssuer port** — The spec (item 6) lists IdentityIssuer as
+   part of port group 6, but the interface already exists at
+   internal/identity/keystore.go. The port package does not re-export it.
+   B30 or a later block may add an identity.go to internal/port/ or
+   document the existing interface as the de facto port.
+8. **CPUShares units** — ResourcePolicy.CPUShares is Docker-shaped.
+   K8s adapter converts directly to milli-CPU, which is a units mismatch.
+   B29 or B30 should rename to CPUMillis or add explicit conversion.
+9. **Conformance test depth** — The fake-based conformance suite is an
+   API smoke test, not a contract proof. Adapter integration tests (5
+   of 10 steps) are the real conformance evidence. B29 should make the
+   fakes semantic so the gate proves more.
 
 ## Conclusion
 

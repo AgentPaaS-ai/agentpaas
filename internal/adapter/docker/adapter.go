@@ -2,6 +2,9 @@ package docker
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/port"
@@ -50,22 +53,82 @@ func NewDockerAdapter(deps DockerAdapterDeps) *DockerAdapter {
 }
 
 // DockerClock is the system clock used by the baseline adapter.
-type DockerClock struct{ n uint64 }
+type DockerClock struct{ n atomic.Uint64 }
 
 func (c *DockerClock) Now() time.Time    { return time.Now() }
-func (c *DockerClock) Monotonic() uint64 { c.n++; return c.n }
+func (c *DockerClock) Monotonic() uint64 { return c.n.Add(1) }
 
-// DockerLeaseStore is a baseline lease store. Production lease wiring is injected by a later adapter.
-type DockerLeaseStore struct{}
+// DockerLeaseStore is an in-memory lease store with TTL-based expiry.
+type DockerLeaseStore struct {
+	mu     sync.Mutex
+	leases map[port.LeaseID]port.LeaseStatus
+}
 
-func (*DockerLeaseStore) Acquire(context.Context, port.LeaseRequest) (port.LeaseID, error) {
-	return "", port.ErrNotFound
+var _ port.LeaseStore = (*DockerLeaseStore)(nil)
+
+func (l *DockerLeaseStore) Acquire(_ context.Context, r port.LeaseRequest) (port.LeaseID, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.leases == nil {
+		l.leases = make(map[port.LeaseID]port.LeaseStatus)
+	}
+	id := port.LeaseID(fmt.Sprintf("lease-%s-%d", r.AttemptID, time.Now().UnixNano()))
+	l.leases[id] = port.LeaseStatus{
+		ID:      id,
+		Valid:   true,
+		Expiry:  time.Now().Add(r.TTL),
+		Revoked: false,
+	}
+	return id, nil
 }
-func (*DockerLeaseStore) Renew(context.Context, port.LeaseID, time.Duration) (time.Time, error) {
-	return time.Time{}, port.ErrNotFound
+
+func (l *DockerLeaseStore) Renew(_ context.Context, id port.LeaseID, extendBy time.Duration) (time.Time, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok || !s.Valid || s.Revoked {
+		return time.Time{}, port.ErrNotFound
+	}
+	s.Expiry = s.Expiry.Add(extendBy)
+	l.leases[id] = s
+	return s.Expiry, nil
 }
-func (*DockerLeaseStore) Release(context.Context, port.LeaseID) error { return port.ErrNotFound }
-func (*DockerLeaseStore) Verify(context.Context, port.LeaseID) (port.LeaseStatus, error) {
-	return port.LeaseStatus{}, port.ErrNotFound
+
+func (l *DockerLeaseStore) Release(_ context.Context, id port.LeaseID) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok {
+		return port.ErrNotFound
+	}
+	s.Valid = false
+	l.leases[id] = s
+	return nil
 }
-func (*DockerLeaseStore) Revoke(context.Context, port.LeaseID) error { return port.ErrNotFound }
+
+func (l *DockerLeaseStore) Verify(_ context.Context, id port.LeaseID) (port.LeaseStatus, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok {
+		return port.LeaseStatus{}, port.ErrNotFound
+	}
+	if s.Revoked || time.Now().After(s.Expiry) {
+		s.Valid = false
+		l.leases[id] = s
+	}
+	return s, nil
+}
+
+func (l *DockerLeaseStore) Revoke(_ context.Context, id port.LeaseID) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok {
+		return port.ErrNotFound
+	}
+	s.Valid = false
+	s.Revoked = true
+	l.leases[id] = s
+	return nil
+}
