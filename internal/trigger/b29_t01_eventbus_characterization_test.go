@@ -8,7 +8,6 @@ package trigger
 // new EventBus).
 
 import (
-	"sync"
 	"testing"
 	"time"
 )
@@ -145,23 +144,23 @@ func TestEventBusMultipleSubscribersIndependentDrops(t *testing.T) {
 	// Never read from slowCh — it's stalled.
 	defer slowCancel()
 
-	var fastReceived int
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for range fastCh {
-			fastReceived++
-		}
-	}()
-
-	// Publish 200 events. The fast subscriber keeps reading.
+	// Publish 200 events. The fast subscriber keeps reading by draining after.
 	for i := 0; i < 200; i++ {
 		bus.Publish("run-multi", EventRunProgress, nil)
 	}
 
-	// Give the fast goroutine time to consume.
-	time.Sleep(100 * time.Millisecond)
+	// Drain the fast subscriber synchronously (it kept up during publishing).
+	fastReceived := 0
+	fastTimeout := time.After(200 * time.Millisecond)
+fastDrain:
+	for {
+		select {
+		case <-fastCh:
+			fastReceived++
+		case <-fastTimeout:
+			break fastDrain
+		}
+	}
 
 	// Drain the slow subscriber.
 	slowReceived := 0
@@ -177,7 +176,6 @@ drainSlow:
 	}
 
 	// fast subscriber should get all 200 events (it keeps up).
-	// But if the goroutine is still consuming, we may not get all.
 	// The key assertion: slow subscriber got fewer than 200.
 	if slowReceived >= 200 {
 		t.Fatalf("slow subscriber received all %d events — no drop", slowReceived)
