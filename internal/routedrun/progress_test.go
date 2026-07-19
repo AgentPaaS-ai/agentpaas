@@ -752,10 +752,10 @@ func TestProgressTailer_PartialLineNotIngested(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := f.Write(secondHalf); err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatal(err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Wait for tailer to pick up and process the completed second line.
 	deadline = time.Now().Add(3 * time.Second)
