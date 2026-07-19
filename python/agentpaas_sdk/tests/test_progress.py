@@ -207,6 +207,27 @@ class ProgressValidationTests(unittest.TestCase):
         with self.assertRaises(ProgressError):
             sdk.progress("p", last_committed_action="x" * 1025)
 
+    def test_phase_control_chars_rejected(self):
+        sdk = Agent()
+        sdk.set_rpc(FakeRPC())
+        with self.assertRaises(ProgressError) as ctx:
+            sdk.progress("ev\x00il")
+        self.assertEqual(ctx.exception.code, "INVALID_PROGRESS")
+
+    def test_last_committed_action_control_chars_rejected(self):
+        sdk = Agent()
+        sdk.set_rpc(FakeRPC())
+        with self.assertRaises(ProgressError) as ctx:
+            sdk.progress("p", last_committed_action="bad\x01action")
+        self.assertEqual(ctx.exception.code, "INVALID_PROGRESS")
+
+    def test_completed_work_control_chars_rejected(self):
+        sdk = Agent()
+        sdk.set_rpc(FakeRPC())
+        with self.assertRaises(ProgressError) as ctx:
+            sdk.progress("p", completed_work=["bad\x02entry"])
+        self.assertEqual(ctx.exception.code, "INVALID_PROGRESS")
+
 
 class SafeToResumeTests(unittest.TestCase):
     """safe_to_resume=True validation."""
@@ -223,6 +244,19 @@ class SafeToResumeTests(unittest.TestCase):
         sdk.set_rpc(FakeRPC())
         with self.assertRaises(ProgressError):
             sdk.progress("p", last_committed_action="did", safe_to_resume=True)
+
+    def test_safe_to_resume_rejects_empty_string_completed_work(self):
+        """Spec: 'at least one non-empty completed_work entry'"""
+        sdk = Agent()
+        sdk.set_rpc(FakeRPC())
+        with self.assertRaises(ProgressError) as ctx:
+            sdk.progress(
+                "p",
+                completed_work=[""],  # empty string, not non-empty
+                last_committed_action="committed",
+                safe_to_resume=True,
+            )
+        self.assertEqual(ctx.exception.code, "INVALID_PROGRESS")
 
     def test_safe_to_resume_true_with_all_fields_ok(self):
         sdk = Agent()

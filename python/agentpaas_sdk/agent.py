@@ -235,6 +235,11 @@ class Agent:
                     f"last_committed_action exceeds {_STR_ITEM_MAX} bytes",
                     "INVALID_PROGRESS",
                 )
+            if _has_control_chars(last_committed_action):
+                raise ProgressError(
+                    "last_committed_action contains control characters",
+                    "INVALID_PROGRESS",
+                )
 
         # --- validate safe_to_resume constraints ---
         if safe_to_resume:
