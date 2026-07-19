@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -113,6 +114,14 @@ func (aw *ArtifactWorkspace) ValidateAndAccept(
 	}
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%w: not a regular file", ErrInvalidPath)
+	}
+	// Reject hard links (spec: "No symlinks, devices, sockets, FIFOs, absolute
+	// paths, traversal, or hard links"). A hard link has Nlink > 1 — the file
+	// is reachable from outside the artifact root, bypassing containment.
+	if sysStat, ok := info.Sys().(*syscall.Stat_t); ok {
+		if sysStat.Nlink > 1 {
+			return nil, fmt.Errorf("%w: hard link rejected (nlink=%d)", ErrInvalidPath, sysStat.Nlink)
+		}
 	}
 
 	// Per-file size limit.

@@ -27,6 +27,11 @@ _ARTIFACT_PATH_MAX = 512
 _ARTIFACT_SEGMENTS_MAX = 8
 
 
+def _has_control_chars(s: str) -> bool:
+    """Return True if s contains ASCII control chars (U+0000-U+001F or U+007F)."""
+    return any(ord(c) < 0x20 or ord(c) == 0x7F for c in s)
+
+
 def _check_str_list(
     values: list[str] | None,
     *,
@@ -52,6 +57,10 @@ def _check_str_list(
         if len(item.encode("utf-8")) > max_item_len:
             raise ProgressError(
                 f"{name} entry exceeds {max_item_len} bytes", "INVALID_PROGRESS",
+            )
+        if _has_control_chars(item):
+            raise ProgressError(
+                f"{name} entry contains control characters", "INVALID_PROGRESS",
             )
         out.append(item)
     return out
@@ -185,6 +194,10 @@ class Agent:
             raise ProgressError(
                 f"phase exceeds {_PHASE_MAX} bytes", "INVALID_PROGRESS",
             )
+        if _has_control_chars(phase):
+            raise ProgressError(
+                "phase contains control characters", "INVALID_PROGRESS",
+            )
 
         # --- validate collections (normalize None → empty list, fresh copy) ---
         cw = _check_str_list(
@@ -230,9 +243,11 @@ class Agent:
                     "safe_to_resume=True requires last_committed_action",
                     "INVALID_PROGRESS",
                 )
-            if not cw:
+            # Spec: "at least one non-empty completed_work entry"
+            has_non_empty = any(entry != "" for entry in cw)
+            if not has_non_empty:
                 raise ProgressError(
-                    "safe_to_resume=True requires non-empty completed_work",
+                    "safe_to_resume=True requires at least one non-empty completed_work entry",
                     "INVALID_PROGRESS",
                 )
 

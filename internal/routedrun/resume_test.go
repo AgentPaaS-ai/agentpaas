@@ -2,6 +2,7 @@ package routedrun
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -241,31 +242,60 @@ func TestResumeReasonValid(t *testing.T) {
 	}
 }
 
-func TestLoadResumeCheckpoint_EmptyDigestOK(t *testing.T) {
-	// A checkpoint with empty digest should pass (backward compat).
+func TestLoadResumeCheckpoint_SafeCheckpointEmptyDigestRejected(t *testing.T) {
+	// B27 safe checkpoint (SafeToResume=true) must have a digest.
+	// An empty digest on a safe checkpoint is a missing integrity proof.
 	store := newTestStore(t)
 	ctx := context.Background()
 
 	cp := &SemanticCheckpoint{
-		CheckpointID:    CheckpointID("cp-a1-1"),
-		AttemptID:       AttemptID("a1"),
-		RunID:           RunID("r1"),
-		Phase:           "phase1",
-		SafeToResume:    true,
-		Sequence:        1,
-		CreatedAt:       time.Now().UTC(),
-		// No CheckpointDigest set — should be empty.
+		CheckpointID:  CheckpointID("cp-a1-safe"),
+		AttemptID:     AttemptID("a1"),
+		RunID:         RunID("r1"),
+		Phase:         "phase1",
+		SafeToResume:  true,
+		Sequence:      1,
+		CreatedAt:     time.Now().UTC(),
+		// No CheckpointDigest — should be rejected.
 	}
 	if err := store.SaveCheckpoint(ctx, cp); err != nil {
 		t.Fatal(err)
 	}
 
 	loader := NewResumeCheckpointLoader(store)
-	data, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonFailureContinuation)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
+	_, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonFailureContinuation)
+	if err == nil {
+		t.Fatal("expected error for safe checkpoint with empty digest")
 	}
-	if data.Phase != "phase1" {
-		t.Fatalf("expected phase1, got %s", data.Phase)
+}
+
+func TestLoadResumeCheckpoint_EmptyDigestOK(t *testing.T) {
+	// A B26-era heartbeat (SafeToResume=false) with empty digest is simply
+	// not returned by GetLatestCheckpoint (which only returns safe checkpoints).
+	// This is backward compat: old heartbeats are ignored, not errors.
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	cp := &SemanticCheckpoint{
+		CheckpointID:  CheckpointID("cp-a1-1"),
+		AttemptID:     AttemptID("a1"),
+		RunID:         RunID("r1"),
+		Phase:         "phase1",
+		SafeToResume:  false, // heartbeat, not a safe checkpoint
+		Sequence:      1,
+		CreatedAt:     time.Now().UTC(),
+	}
+	if err := store.SaveCheckpoint(ctx, cp); err != nil {
+		t.Fatal(err)
+	}
+
+	loader := NewResumeCheckpointLoader(store)
+	_, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonFailureContinuation)
+	if err == nil {
+		t.Fatal("expected error: no safe checkpoint for heartbeat-only attempt")
+	}
+	// Verify it's a "not found" error, not a digest error.
+	if !strings.Contains(err.Error(), "no safe checkpoint") {
+		t.Fatalf("expected 'no safe checkpoint' error, got: %v", err)
 	}
 }
