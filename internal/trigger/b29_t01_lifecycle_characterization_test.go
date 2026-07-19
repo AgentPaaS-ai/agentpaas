@@ -154,7 +154,7 @@ func TestActivationPolicyExistsInPortOnly(t *testing.T) {
 		if fieldType == reflect.TypeOf(port.ActivationPolicy{}) {
 			t.Fatalf("TriggerService has ActivationPolicy field — it consumes the port type")
 		}
-		if fieldType.Kind() == reflect.Ptr && fieldType.Elem() == reflect.TypeOf(port.ActivationPolicy{}) {
+		if fieldType.Kind() == reflect.Pointer && fieldType.Elem() == reflect.TypeOf(port.ActivationPolicy{}) {
 			t.Fatalf("TriggerService has *ActivationPolicy field — it consumes the port type")
 		}
 	}
