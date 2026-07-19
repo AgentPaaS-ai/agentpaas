@@ -398,7 +398,7 @@ block29-gate: block28-gate
 	@go test ./internal/trigger/... -count=1 -race
 	@go test ./internal/harness/... -count=1 -race
 	@echo "  T08: integrated adversary tests"
-	@go test -run TestAdversary_B29 ./... -count=1
+	@go test -run TestAdversary_B29 ./... -count=1 -race
 	@echo "  T08: lint (runtime + trigger + harness)"
 	@golangci-lint run --timeout 5m ./internal/runtime/... ./internal/trigger/... ./internal/harness/...
 	@echo "  T02/T04: Python SDK B29 streaming tests"
