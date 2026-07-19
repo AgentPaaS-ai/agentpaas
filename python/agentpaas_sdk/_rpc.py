@@ -93,3 +93,51 @@ class RPCClient:
         if exc_cls is not None:
             raise exc_cls(message, code)
         raise RPCError(message, code)
+
+    def call_stream(self, method: str, params: dict[str, Any] | None = None):
+        """Send an RPC request and yield successive response lines.
+
+        The harness streams one JSON response per line. The first line is the
+        handshake (ok=true with a result, or ok=false with an error). If the
+        first line is an error with code ``streaming_not_supported`` (or any
+        error), :class:`StreamingNotSupported` (or :class:`RPCError`) is raised
+        before any events are yielded.
+
+        Subsequent lines are stream events, yielded as decoded dicts, until the
+        harness closes the response stream (EOF) or a terminal event is
+        received.
+        """
+        request_id = uuid.uuid4().hex
+        payload = {
+            "id": request_id,
+            "method": method,
+            "params": params or {},
+            "stream": True,
+        }
+        data = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
+        with self._lock:
+            self._file.write(data)
+            first = self._file.readline()
+        if not first:
+            raise RPCError("harness rpc connection closed", "rpc_closed")
+        first_resp = json.loads(first.decode("utf-8"))
+        if not first_resp.get("ok"):
+            message = first_resp.get("error") or "harness rpc call failed"
+            code = first_resp.get("code") or "rpc_error"
+            if code == "streaming_not_supported":
+                raise StreamingNotSupported(message, code)
+            if code == "BUDGET_EXCEEDED":
+                raise BudgetExceeded(message, code)
+            raise RPCError(message, code)
+        # If the handshake itself carries a terminal result (no further
+        # lines), yield nothing and return.
+        yield from self._read_stream_lines()
+
+    def _read_stream_lines(self):
+        # Read subsequent JSON lines until EOF. Each line is a stream event.
+        with self._lock:
+            while True:
+                line = self._file.readline()
+                if not line:
+                    return
+                yield json.loads(line.decode("utf-8"))
