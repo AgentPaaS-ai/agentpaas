@@ -350,6 +350,41 @@ block27-gate: build test race lint
 # in the Makefile (B26 was folded into other blocks). Daemon tests are run
 # directly via `go test ./internal/daemon/...` instead. See b27-review-notes.md.
 
+# ── Block 28: Runtime Portability and Managed-PaaS Feasibility Gate ───────────
+#
+# B28 proves that B26/B27 contracts are platform contracts, not Docker-specific.
+# It defines portable port interfaces, a Docker baseline adapter, and a local
+# Kubernetes proof. Cloudflare is deferred per D66.
+# Covers T01-T07: coupling inventory, port contracts, Docker adapter, k8s proof,
+# isolation/metering, substrate decision, block gate.
+
+.PHONY: block28-gate
+block28-gate: block27-gate
+	@echo "==> Running Block 28 gate"
+	@echo "  T02: Portable port contracts (interfaces + fakes + conformance)"
+	@go test -count=1 -race ./internal/port/...
+	@echo "  T03: Docker baseline adapter (unit tests)"
+	@go test -count=1 -race ./internal/adapter/docker/...
+	@echo "  T04: Kubernetes adapter (unit tests)"
+	@go test -count=1 -race ./internal/adapter/k8s/...
+	@echo "  Cross-adapter: all port interfaces compile"
+	@go build ./internal/port/... ./internal/adapter/...
+	@echo "  go vet"
+	@go vet ./internal/port/... ./internal/adapter/...
+	@echo "  lint"
+	@golangci-lint run --timeout 120s ./internal/port/... ./internal/adapter/...
+	@echo "✓ Block 28 gate: PASS"
+
+.PHONY: block28-docker-tests
+block28-docker-tests:
+	@echo "==> Block 28 Docker integration tests (requires Docker)"
+	@AGENTPAAS_DOCKER_TESTS=1 go test -count=1 -timeout 300s ./internal/adapter/docker/...
+
+.PHONY: block28-k8s-tests
+block28-k8s-tests:
+	@echo "==> Block 28 Kubernetes integration tests (requires kind cluster)"
+	@AGENTPAAS_K8S_TESTS=1 go test -count=1 -timeout 300s ./internal/adapter/k8s/...
+
 # ── Golden Dataset Regression Suite ─────────────────────────────────────────
 #
 # The golden dataset is a regression suite that measures pass^k (all k runs
