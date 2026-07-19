@@ -4,12 +4,14 @@ replacement tasks are expected to update or fail these tests.
 Observation 1: agent.llm() is buffered. The current Agent class:
   - has exactly ONE ``_call("llm", params)`` per llm() invocation
   - returns a single complete dict, not an iterator/stream
-  - has NO ``llm_stream`` method
   - passes only ``prompt`` and optionally ``model`` in params
   - does NOT support a multi-role ``messages`` field or streaming flag
+
+B29-T02 update: ``llm_stream`` is now an additive streaming method (see
+test_b29_t02_profile.py). The characterization below preserves the
+buffered-call shape of ``agent.llm()`` only.
 """
 
-import inspect
 import unittest
 
 from agentpaas_sdk import Agent, RPCError
@@ -108,16 +110,9 @@ class B29T01CharacterizationTests(unittest.TestCase):
         agent.set_rpc(rpc)
 
         agent.llm("hi")
-
         _, params = rpc.calls[0]
         self.assertNotIn("stream", params)
         self.assertNotIn("streaming", params)
-
-    def test_no_llm_stream_method_exists(self):
-        """The Agent class does NOT have an llm_stream method."""
-        source = inspect.getsource(Agent)
-        self.assertNotIn("llm_stream", source,
-                         "Agent class must not have an llm_stream method")
 
     def test_llm_without_rpc_raises_RPCError(self):
         """llm() without set_rpc raises RPCError — proves it always hits RPC."""
