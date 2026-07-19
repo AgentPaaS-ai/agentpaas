@@ -2,6 +2,9 @@ package k8s
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/port"
@@ -32,31 +35,97 @@ type K8sAdapterDeps struct {
 // NewK8sAdapter constructs the adapter without contacting the API server.
 func NewK8sAdapter(deps K8sAdapterDeps) *K8sAdapter {
 	return &K8sAdapter{
-		Runtime: &K8sWorkloadRuntime{client: deps.Clientset, namespace: deps.Namespace, pods: make(map[port.WorkloadID]string)},
-		State:   &K8sStateStore{}, Events: &K8sEventStore{events: make(map[string][]port.Event)}, Artifacts: &K8sArtifactStore{},
-		Egress:  &K8sEgressEnforcer{policy: newK8sPolicyEnforcer(deps.Clientset, deps.Namespace, "egress")},
-		Ingress: &K8sIngressEnforcer{policy: newK8sPolicyEnforcer(deps.Clientset, deps.Namespace, "ingress")},
-		Secrets: &K8sSecretBroker{}, Packages: &K8sPackageStore{}, Metering: &K8sMeteringSink{}, Clock: &K8sClock{}, Leases: &K8sLeaseStore{},
+		Runtime:   &K8sWorkloadRuntime{client: deps.Clientset, namespace: deps.Namespace, pods: make(map[port.WorkloadID]string)},
+		State:     &K8sStateStore{},
+		Events:    &K8sEventStore{events: make(map[string][]port.Event)},
+		Artifacts: &K8sArtifactStore{},
+		Egress:    &K8sEgressEnforcer{policy: newK8sPolicyEnforcer(deps.Clientset, deps.Namespace, "egress")},
+		Ingress:   &K8sIngressEnforcer{policy: newK8sPolicyEnforcer(deps.Clientset, deps.Namespace, "ingress")},
+		Secrets:   &K8sSecretBroker{},
+		Packages:  &K8sPackageStore{},
+		Metering:  &K8sMeteringSink{},
+		Clock:     &K8sClock{},
+		Leases:    &K8sLeaseStore{},
 	}
 }
 
 // K8sClock is the system clock used by the adapter.
-type K8sClock struct{ n uint64 }
+type K8sClock struct{ n atomic.Uint64 }
 
 func (c *K8sClock) Now() time.Time    { return time.Now() }
-func (c *K8sClock) Monotonic() uint64 { c.n++; return c.n }
+func (c *K8sClock) Monotonic() uint64 { return c.n.Add(1) }
 
-// K8sLeaseStore is an in-memory lease placeholder.
-type K8sLeaseStore struct{}
+// K8sLeaseStore is an in-memory lease store with TTL-based expiry.
+type K8sLeaseStore struct {
+	mu     sync.Mutex
+	leases map[port.LeaseID]port.LeaseStatus
+}
 
-func (*K8sLeaseStore) Acquire(context.Context, port.LeaseRequest) (port.LeaseID, error) {
-	return "", port.ErrNotFound
+var _ port.LeaseStore = (*K8sLeaseStore)(nil)
+
+func (l *K8sLeaseStore) Acquire(_ context.Context, r port.LeaseRequest) (port.LeaseID, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.leases == nil {
+		l.leases = make(map[port.LeaseID]port.LeaseStatus)
+	}
+	id := port.LeaseID(fmt.Sprintf("lease-%s-%d", r.AttemptID, time.Now().UnixNano()))
+	l.leases[id] = port.LeaseStatus{
+		ID:      id,
+		Valid:   true,
+		Expiry:  time.Now().Add(r.TTL),
+		Revoked: false,
+	}
+	return id, nil
 }
-func (*K8sLeaseStore) Renew(context.Context, port.LeaseID, time.Duration) (time.Time, error) {
-	return time.Time{}, port.ErrNotFound
+
+func (l *K8sLeaseStore) Renew(_ context.Context, id port.LeaseID, extendBy time.Duration) (time.Time, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok || !s.Valid || s.Revoked {
+		return time.Time{}, port.ErrNotFound
+	}
+	s.Expiry = s.Expiry.Add(extendBy)
+	l.leases[id] = s
+	return s.Expiry, nil
 }
-func (*K8sLeaseStore) Release(context.Context, port.LeaseID) error { return port.ErrNotFound }
-func (*K8sLeaseStore) Verify(context.Context, port.LeaseID) (port.LeaseStatus, error) {
-	return port.LeaseStatus{}, port.ErrNotFound
+
+func (l *K8sLeaseStore) Release(_ context.Context, id port.LeaseID) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok {
+		return port.ErrNotFound
+	}
+	s.Valid = false
+	l.leases[id] = s
+	return nil
 }
-func (*K8sLeaseStore) Revoke(context.Context, port.LeaseID) error { return port.ErrNotFound }
+
+func (l *K8sLeaseStore) Verify(_ context.Context, id port.LeaseID) (port.LeaseStatus, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok {
+		return port.LeaseStatus{}, port.ErrNotFound
+	}
+	if s.Revoked || time.Now().After(s.Expiry) {
+		s.Valid = false
+		l.leases[id] = s
+	}
+	return s, nil
+}
+
+func (l *K8sLeaseStore) Revoke(_ context.Context, id port.LeaseID) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	s, ok := l.leases[id]
+	if !ok {
+		return port.ErrNotFound
+	}
+	s.Valid = false
+	s.Revoked = true
+	l.leases[id] = s
+	return nil
+}

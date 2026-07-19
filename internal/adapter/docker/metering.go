@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -29,11 +30,14 @@ func (m *DockerMeteringSink) Record(_ context.Context, measurement port.Measurem
 }
 
 func (m *DockerMeteringSink) Query(_ context.Context, filter port.MeasurementFilter) ([]port.Measurement, error) {
+	if filter.TenantID == "" {
+		return nil, fmt.Errorf("metering query requires a tenant ID")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var out []port.Measurement
 	for _, mm := range m.measurements {
-		if filter.TenantID != "" && mm.TenantID != filter.TenantID {
+		if mm.TenantID != filter.TenantID {
 			continue
 		}
 		if filter.RunID != "" && mm.RunID != filter.RunID {

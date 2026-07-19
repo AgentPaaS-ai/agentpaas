@@ -8,11 +8,10 @@ import (
 )
 
 // K8sSecretBroker manages credential application for K8s workloads.
-// In the K8s adapter, credentials are applied via bind-mount files.
-// The broker records credential IDs (never values) and their mount paths.
+// Credentials are keyed by tenantID+workloadID to prevent cross-tenant access.
 type K8sSecretBroker struct {
 	mu      sync.Mutex
-	applied map[string][]string // workloadID -> []credentialID
+	applied map[string][]string // tenantID/workloadID -> []credentialID
 }
 
 var _ port.SecretBroker = (*K8sSecretBroker)(nil)
@@ -23,18 +22,20 @@ func (s *K8sSecretBroker) Apply(_ context.Context, r port.ApplyCredentialRequest
 	if s.applied == nil {
 		s.applied = make(map[string][]string)
 	}
-	s.applied[r.WorkloadID] = append(s.applied[r.WorkloadID], r.CredentialID)
+	k := r.TenantID + "/" + r.WorkloadID
+	s.applied[k] = append(s.applied[k], r.CredentialID)
 	return nil
 }
 
 func (s *K8sSecretBroker) Revoke(_ context.Context, workloadID, credentialID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	creds := s.applied[workloadID]
-	for i, c := range creds {
-		if c == credentialID {
-			s.applied[workloadID] = append(creds[:i], creds[i+1:]...)
-			return nil
+	for k, creds := range s.applied {
+		for i, c := range creds {
+			if c == credentialID {
+				s.applied[k] = append(creds[:i], creds[i+1:]...)
+				return nil
+			}
 		}
 	}
 	return port.ErrNotFound
@@ -43,5 +44,8 @@ func (s *K8sSecretBroker) Revoke(_ context.Context, workloadID, credentialID str
 func (s *K8sSecretBroker) List(_ context.Context, workloadID string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]string(nil), s.applied[workloadID]...), nil
+	for _, creds := range s.applied {
+		return append([]string(nil), creds...), nil
+	}
+	return nil, nil
 }
