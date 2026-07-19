@@ -43,9 +43,11 @@ type rpcInvokeState struct {
 	mcpAllowed  map[string]map[string]bool
 
 	// Progress journal (B27)
-	progressJournal *progressJournalWriter
-	progressIdentity progressIdentity
-	leaseExpired    bool
+	progressJournal   *progressJournalWriter
+	progressIdentity  progressIdentity
+	leaseExpired      bool
+	resumeCheckpoint  map[string]any // B35-provided resume data (trusted, not from trigger)
+	resumeReason      string         // trusted enum: failure_continuation|operator_pause_resume
 
 	mu              sync.Mutex
 	failureEvidence *UpstreamEvidence
@@ -123,6 +125,27 @@ func (s *harnessRPCServer) ClearInvoke() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.invoke = nil
+}
+
+// SetProgressMetadata wires the progress journal, identity, and resume
+// checkpoint into the current invoke state. This is called by the daemon
+// after SetInvoke but before the Python worker starts, once the journal key
+// and resume data are available. T02 spec item 2 & 9.
+func (s *harnessRPCServer) SetProgressMetadata(
+	journal *progressJournalWriter,
+	identity progressIdentity,
+	resumeCheckpoint map[string]any,
+	resumeReason string,
+) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.invoke == nil {
+		return
+	}
+	s.invoke.progressJournal = journal
+	s.invoke.progressIdentity = identity
+	s.invoke.resumeCheckpoint = resumeCheckpoint
+	s.invoke.resumeReason = resumeReason
 }
 
 func (s *harnessRPCServer) FailureEvidence() *UpstreamEvidence {

@@ -82,9 +82,15 @@ func (l *ResumeCheckpointLoader) LoadResumeCheckpoint(
 	}
 
 	// Verify checkpoint digest (integrity).
+	// B27 harness always computes a digest for safe_to_resume=True checkpoints.
+	// An empty digest on a safe checkpoint is invalid (missing integrity proof).
+	// B26-era checkpoints without safe_to_resume may have empty digests (backward compat).
 	recalcDigest := recomputeCheckpointDigest(cp)
 	if cp.CheckpointDigest != "" && recalcDigest != cp.CheckpointDigest {
 		return nil, fmt.Errorf("%w: checkpoint digest mismatch", ErrInvalidArgument)
+	}
+	if cp.SafeToResume && cp.CheckpointDigest == "" {
+		return nil, fmt.Errorf("%w: safe checkpoint missing digest", ErrInvalidArgument)
 	}
 
 	// Build trusted resume data.

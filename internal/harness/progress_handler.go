@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -51,6 +52,9 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 	if len([]byte(phase)) > progressPhaseMax {
 		return rpcError(req.ID, "phase exceeds max length", "INVALID_PROGRESS")
 	}
+	if hasControlChars(phase) {
+		return rpcError(req.ID, "phase contains control characters", "INVALID_PROGRESS")
+	}
 
 	// --- Validate completed_work ---
 	cw, err := validateStringList(p["completed_work"], "completed_work", progressListMax, progressStrItemMax)
@@ -75,6 +79,9 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 	if lastCommitted != "" && len([]byte(lastCommitted)) > progressStrItemMax {
 		return rpcError(req.ID, "last_committed_action exceeds max length", "INVALID_PROGRESS")
 	}
+	if lastCommitted != "" && hasControlChars(lastCommitted) {
+		return rpcError(req.ID, "last_committed_action contains control characters", "INVALID_PROGRESS")
+	}
 
 	// --- Validate safe_to_resume ---
 	safeToResume, _ := p["safe_to_resume"].(bool)
@@ -82,9 +89,28 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 		if lastCommitted == "" {
 			return rpcError(req.ID, "safe_to_resume=true requires last_committed_action", "INVALID_PROGRESS")
 		}
-		if len(cw) == 0 {
-			return rpcError(req.ID, "safe_to_resume=true requires non-empty completed_work", "INVALID_PROGRESS")
+		// Spec: "at least one non-empty completed_work entry"
+		hasNonEmpty := false
+		for _, entry := range cw {
+			if entry != "" {
+				hasNonEmpty = true
+				break
+			}
 		}
+		if !hasNonEmpty {
+			return rpcError(req.ID, "safe_to_resume=true requires at least one non-empty completed_work entry", "INVALID_PROGRESS")
+		}
+	}
+
+	// --- Secret sentinel rejection (verifier-17) ---
+	// T02 spec item 5: "Redact or reject registered secret fingerprints and
+	// configured test sentinels before persistence; do not claim semantic
+	// secret detection." This is a lexical check only.
+	if containsSecretSentinel(phase) ||
+		containsSecretSentinel(lastCommitted) ||
+		containsSecretSentinel(strings.Join(cw, "\n")) ||
+		containsSecretSentinel(strings.Join(rw, "\n")) {
+		return rpcError(req.ID, "checkpoint content contains secret sentinel", "CHECKPOINT_REJECTED")
 	}
 
 	// --- Build checkpoint digest if safe ---
@@ -126,6 +152,13 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 		cp := checkpointID
 		resp.CheckpointID = &cp
 	}
+	// T02 spec item 9: "Return current attempt metadata and the B35-provided
+	// resume checkpoint." On a resumed attempt, resumeCheckpoint is populated
+	// by SetProgressMetadata from the daemon's trusted store.
+	if state.resumeCheckpoint != nil {
+		resp.ResumeCheckpoint = state.resumeCheckpoint
+		resp.ResumeReason = state.resumeReason
+	}
 
 	// --- Emit audit event (non-secret summary) ---
 	if s.audit != nil {
@@ -166,6 +199,9 @@ func validateStringList(v any, name string, maxItems, maxItemLen int) ([]string,
 		}
 		if len([]byte(s)) > maxItemLen {
 			return nil, fmt.Errorf("%s entry exceeds %d bytes", name, maxItemLen)
+		}
+		if hasControlChars(s) {
+			return nil, fmt.Errorf("%s entry contains control characters", name)
 		}
 		out = append(out, s)
 	}
@@ -248,6 +284,42 @@ func isValidArtifactSegment(seg string) bool {
 
 func isAlnum(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
+// hasControlChars returns true if the string contains ASCII control characters
+// (U+0000–U+001F or U+007F DEL). The spec requires these to fail with a typed
+// SDK/RPC error.
+func hasControlChars(s string) bool {
+	for _, b := range []byte(s) {
+		if b < 0x20 || b == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// containsSecretSentinel returns true if the value matches a registered secret
+// fingerprint or configured test sentinel. B27 does not claim semantic secret
+// detection — this is a lexical check against known sentinels only.
+var secretSentinels = [][]byte{
+	[]byte("sk-"),
+	[]byte("sk_or_"),
+	[]byte("sk-or-"),
+	[]byte("Bearer "),
+	[]byte("BEGIN PRIVATE KEY"),
+	[]byte("BEGIN RSA PRIVATE KEY"),
+	[]byte("BEGIN EC PRIVATE KEY"),
+	[]byte("journal-key"),
+	[]byte("journal_key"),
+}
+
+func containsSecretSentinel(s string) bool {
+	for _, sentinel := range secretSentinels {
+		if bytes.Contains([]byte(s), sentinel) {
+			return true
+		}
+	}
+	return false
 }
 
 // computeArtifactMetaDigest computes a simple SHA-256 hex of the artifact
