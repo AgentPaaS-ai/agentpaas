@@ -8,6 +8,7 @@ from ._rpc import (
     LeaseExpired,
     ProgressError,
     RPCError,
+    StreamingNotSupported,
 )
 from .runner import run
 
@@ -19,6 +20,7 @@ __all__ = [
     "LeaseExpired",
     "ProgressError",
     "RPCError",
+    "StreamingNotSupported",
     "agent",
     "run",
 ]
