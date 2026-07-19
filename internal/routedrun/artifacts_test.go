@@ -314,3 +314,66 @@ func TestDetectMediaType(t *testing.T) {
 		}
 	}
 }
+
+func TestArtifactWorkspace_QuotaReAccept(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "artifacts")
+	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a 10-byte file.
+	fpath := filepath.Join(root, "a.txt")
+	if err := os.WriteFile(fpath, []byte("1234567890"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := aw.ValidateAndAccept(context.Background(), "a.txt", AttemptID("a1"))
+	if err != nil {
+		t.Fatalf("first accept: %v", err)
+	}
+	if aw.TotalSize() != 10 {
+		t.Fatalf("after first accept: TotalSize=%d want 10", aw.TotalSize())
+	}
+
+	// Overwrite with 20 bytes.
+	if err := os.WriteFile(fpath, []byte("12345678901234567890"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = aw.ValidateAndAccept(context.Background(), "a.txt", AttemptID("a1"))
+	if err != nil {
+		t.Fatalf("re-accept: %v", err)
+	}
+	if aw.TotalSize() != 20 {
+		t.Fatalf("after re-accept: TotalSize=%d want 20", aw.TotalSize())
+	}
+}
+
+func TestArtifactWorkspace_CaseFoldCollision(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "artifacts")
+	aw, _ := NewArtifactWorkspace(root, RunID("r1"))
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Accept first file with a case-variant path.
+	fc1 := filepath.Join(root, "Report.json")
+	if err := os.WriteFile(fc1, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := aw.ValidateAndAccept(context.Background(), "Report.json", AttemptID("a1"))
+	if err != nil {
+		t.Fatalf("first accept: %v", err)
+	}
+
+	// Second file with same name but different case.
+	fc2 := filepath.Join(root, "report.json")
+	if err := os.WriteFile(fc2, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = aw.ValidateAndAccept(context.Background(), "report.json", AttemptID("a1"))
+	if err == nil {
+		t.Fatal("expected case-fold collision rejection")
+	}
+}
