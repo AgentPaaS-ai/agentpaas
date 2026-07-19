@@ -66,4 +66,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/moby/moby => github.com/docker/docker v28.5.2+incompatible
+replace github.com/docker/docker => github.com/moby/moby v28.5.2+incompatible
