@@ -5,9 +5,10 @@ agent sharing. This document records both accepted trade-offs and capability
 gaps found during review. A listed gap must not be mistaken for a shipped
 feature merely because a v0.3 plan exists to close it.
 
-The Durable Routed Run work described in the roadmap targets v0.3.0 and is not
-part of the shipped product yet. A planned block or execution-ready
-specification must not be described as a current capability.
+The Durable Routed Run work described in the roadmap targets v0.5.0 (with
+v0.3.0 and v0.4.0 as cumulative intermediate releases) and is not part of
+the shipped product yet. A planned block or execution-ready specification
+must not be described as a current capability.
 
 For the full security posture, see [threat-model.md](threat-model.md).
 For workarounds and authoring guidance, see
@@ -29,18 +30,22 @@ Blocks are numbered per the internal execution plan. Tracked status:
 | B23 | Verified install, consent, credential mapping, run integration | ✅ Complete |
 | B24 | Fork, modify, redistribute: provenance chains | ✅ Complete |
 | B25 | Hermes sharing UX, vulnerability closure, v0.2.x release hardening | ✅ Complete |
-| B26 | Durable deployment/invocation/run/workflow contracts and protected local state | ⏭️ Planned for v0.3.0 |
-| B27 | SDK progress, checkpoints, artifacts, and safe resume | ⏭️ Planned for v0.3.0 |
-| B28 | Long-running multi-turn execution and proof | ⏭️ Planned for v0.3.0 |
-| B29 | AgentPaaS-container MCP services | ⏭️ Planned for v0.3.0 |
-| B30 | Runtime-native sequential pipelines | ⏭️ Planned for v0.3.0 |
-| B31 | Parent/child fan-out, fan-in, and collation | ⏭️ Planned for v0.3.0 |
-| B32 | Model catalog, route compiler, and deterministic selector | ⏭️ Planned for v0.3.0 |
-| B33 | Model-call failure classification and bounded recovery | ⏭️ Planned for v0.3.0 |
-| B34 | Shared workflow LLM spend budget and cost ledger | ⏭️ Planned for v0.3.0 |
-| B35 | Integrated supervision, fencing, operator lifecycle, limit amendments, and continuation | ⏭️ Planned for v0.3.0 |
-| B36 | Hermes authoring, deployment, and operations skills/UX | ⏭️ Planned for v0.3.0 |
-| B37 | Golden proof, hardening, clean install, and v0.3.0 release | ⏭️ Planned for v0.3.0 |
+| B26 | Durable deployment, invocation, run, and workflow contracts/state foundation | ✅ Complete (unreleased v0.3.0) |
+| B27 | SDK progress, checkpoint, and artifact protocol | ✅ Complete (unreleased v0.3.0) |
+| B28 | Runtime portability and managed-PaaS feasibility gate | ⏭️ Planned for v0.3.0 |
+| B29 | Agent runtime profiles, durable events, streaming, and efficiency | ⏭️ Planned for v0.3.0 |
+| B30 | Long-running multi-turn execution and proof | ⏭️ Planned for v0.3.0-alpha.1 |
+| B31 | Unified component catalog and constrained capability resolution | ⏭️ Planned for v0.3.0 |
+| B32 | Secure A2A tasks, messages, events, and artifact transfer | ⏭️ Planned for v0.3.0 |
+| B33 | AgentPaaS-container MCP services | ⏭️ Planned for v0.4.0 |
+| B34 | Runtime-native sequential pipelines | ⏭️ Planned for v0.4.0 |
+| B35 | Parent/child fan-out, fan-in, and collation | ⏭️ Planned for v0.4.0 |
+| B36 | Model catalog, route compiler, and deterministic selector | ⏭️ Planned for v0.5.0 |
+| B37 | Model-call failure classification and recovery | ⏭️ Planned for v0.5.0 |
+| B38 | Shared workflow LLM spend budget and cost ledger | ⏭️ Planned for v0.5.0 |
+| B39 | Integrated supervision, leases, guardrails, and operator control | ⏭️ Planned for v0.5.0 |
+| B40 | Hermes authoring, packaging, deployment, and operations skills/UX | ⏭️ Planned for v0.5.0 |
+| B41 | Golden proofs, hardening, and release | ⏭️ Planned for v0.5.0 |
 
 ## Durable Routed Run is not available in v0.2.3
 
@@ -87,11 +92,11 @@ provide:
   runs, await their results, collate them, and continue.
 
 Current model timeout, quota, authentication, context, or subscription
-failures can therefore fail the worker. The v0.3 B26–B37 plan closes these
-gaps as one release. B28 is the mandatory long-running foundation gate and
-routing does not begin until B31 completes the native multi-container
-patterns. No intermediate block should be presented as shipped Durable Routed
-Run support.
+failures can therefore fail the worker. The v0.3–v0.5 B26–B41 plan closes
+these gaps across three cumulative releases. B30 is the mandatory
+long-running foundation gate and routing does not begin until B35 completes
+the native multi-container patterns. No intermediate block should be
+presented as shipped Durable Routed Run support.
 
 ## Network enforcement
 
@@ -275,7 +280,7 @@ certified seccomp/AppArmor profiles, and Linux install paths are P2.
 The v0.2.3 Golden Loop covers the shipped build, modify, provenance, export,
 receive, inspect, install, and run lifecycle. It does not prove Durable Routed
 Run.
-Before v0.3.0 ships, B37 requires the Golden Loop to include a real
+Before v0.5.0 ships, B41 requires the Golden Loop to include a real
 long-running multi-turn worker, cross-container MCP, native sequential
 handoff, parent/child fan-out and collation, model recovery, one checkpoint
 continuation, shared workflow LLM spend, fencing, live local/cloud
