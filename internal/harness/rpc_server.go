@@ -299,6 +299,7 @@ func (s *harnessRPCServer) LoadProgressMetadata(cfg Config) error {
 	_ = os.Remove(cfg.JournalKeyPath)
 
 	identity := progressIdentity{
+		RunID:     cfg.RunID,
 		AttemptID: cfg.AttemptID,
 		LeaseID:   cfg.LeaseID,
 	}

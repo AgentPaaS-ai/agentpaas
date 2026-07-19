@@ -147,12 +147,37 @@ incomplete fragments for the next poll.
 |---------|--------|--------|
 | F9 | Deferred | Dead `runStore` parameter on `ProgressTailer` — harmless. Will be wired or removed in B30/B39 when lease supervision is implemented. |
 | block26-gate | N/A | `make block26-gate` target does not exist in the Makefile. B26 was folded into other blocks. Daemon tests run directly instead. |
+| V4 | Deferred | ArtifactWorkspace (ValidateAndAccept, RemoveUnreferenced) is not wired into production. The daemon creates and mount-mounts the directory, but no code calls ValidateAndAccept on progress records or RemoveUnreferenced during finalization. The F8/F10a/F10b fixes are correct in isolation but unreachable outside tests. Wiring artifact validation is deferred — it requires the tailer to validate artifact references on each progress record, which is a larger integration task. |
+| V6 | Deferred | Heartbeat journal records are not fsync'd (only safe_to_resume records are). The B27 summary T02 permits this "only if a crash test proves no false checkpoint" — no crash test exists. Deferred: either add fsync for heartbeats (simple) or add the crash test and document the batching window. Low priority since heartbeats don't create checkpoints. |
+| V7 | Deferred | `leaseExpired` is atomic but never set to true in production (only in tests). The LEASE_EXPIRED rejection path is dead code. This is deferred alongside F9 — both need lease supervision from B30/B39. The atomic conversion is correct and race-free; only the producer is missing. |
+
+## Re-Review (B27.5)
+
+The agentpaas-thinker re-review found 2 BLOCKERs (V1, V2) and 5 WARNINGs
+(V3-V7) after the initial fixes. The BLOCKERs were integration gaps:
+
+- V1: The F5 tamper audit event was correct but never wired — the daemon
+  never called `SetAuditAppender` on the production tailer. Fixed: added
+  `tailer.SetAuditAppender(s.auditWriter)` in control_handlers.go.
+- V2: The F1 spine delivered an empty run identity to the harness —
+  `AGENTPAAS_RUN_ID` was not passed, so journal records had `run_id: ""`
+  and the tailer rejected them. Fixed: added `AGENTPAAS_RUN_ID` env var,
+  `RunID` field to Config, populated `progressIdentity.RunID` in
+  `LoadProgressMetadata`.
+
+V3 (key leak on failure) and V5 (gate soft-fail) were also fixed.
+V4, V6, V7 are deferred with documentation above.
+
+Re-review commit: 38541b6
 
 ## Final Status
 
-- **BLOCKERs:** 0 remaining (F1, F2, F3 fixed)
-- **WARNINGs:** 0 remaining (F4, F5, F6, F7 fixed)
-- **NOTEs:** 0 remaining (F8, F10 fixed; F9 deferred with documentation)
+- **Initial review BLOCKERs:** 0 remaining (F1, F2, F3 fixed)
+- **Initial review WARNINGs:** 0 remaining (F4, F5, F6, F7 fixed)
+- **Initial review NOTEs:** 0 remaining (F8, F10 fixed; F9 deferred)
+- **Re-review BLOCKERs:** 0 remaining (V1, V2 fixed in 38541b6)
+- **Re-review WARNINGs:** 0 remaining (V3, V5 fixed; V4, V6, V7 deferred)
+- **Re-review NOTEs:** 0 remaining (V8, V9, V10 verified correct)
 - **Build:** PASS
 - **Tests:** PASS (harness, routedrun, daemon)
 - **Go vet:** PASS

@@ -46,6 +46,7 @@ type Config struct {
 	JournalPath    string // Path to journal file inside container (empty = no progress)
 	AttemptID      string // Attempt ID for journal records
 	LeaseID        string // Lease ID for journal records
+	RunID          string // Run ID for journal records (must match tailer's run ID)
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.
