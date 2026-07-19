@@ -40,6 +40,10 @@ class LeaseExpired(RPCError):
     """Raised when the attempt lease has expired."""
 
 
+class StreamingNotSupported(RPCError):
+    """Raised when the connected harness does not support streaming."""
+
+
 # Maps RPC error codes to exception classes for progress-related calls.
 _PROGRESS_ERROR_MAP = {
     "INVALID_PROGRESS": ProgressError,
