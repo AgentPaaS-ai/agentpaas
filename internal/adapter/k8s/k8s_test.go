@@ -27,6 +27,11 @@ func TestK8sPrepareCreatesSecurePod(t *testing.T) {
 	if pod.Spec.Containers[0].SecurityContext == nil || pod.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem == nil || !*pod.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem {
 		t.Fatal("pod missing readonly root")
 	}
+	// B28-2: assert capabilities drop is applied
+	if pod.Spec.Containers[0].SecurityContext.Capabilities == nil ||
+		len(pod.Spec.Containers[0].SecurityContext.Capabilities.Drop) == 0 {
+		t.Fatal("pod missing capabilities drop")
+	}
 }
 
 func TestK8sStartWaitsForRunningPod(t *testing.T) {

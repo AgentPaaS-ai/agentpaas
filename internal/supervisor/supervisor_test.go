@@ -804,7 +804,6 @@ func TestReconcilePreservesCheckpoint(t *testing.T) {
 		CompletedWork:    []string{"a", "b"},
 		RemainingWork:    []string{"c"},
 		SafeToResume:     true,
-		CheckpointDigest: "digest-cp-1",
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
