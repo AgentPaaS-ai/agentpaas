@@ -454,7 +454,8 @@ func newPendingWorkflowRecord(wfID WorkflowID, invID InvocationID, dep *Deployme
 }
 
 func buildAdmissionNodeRuns(request *InvocationRequest, dep *DeploymentRecord, wfID WorkflowID, kind string, stageCount int, now time.Time) ([]nodeRun, RunID, error) {
-	var pairs []nodeRun
+	// Pre-size to stageCount (known for pipeline; 1 for standalone/parent_child).
+	pairs := make([]nodeRun, 0, stageCount)
 	var primaryRunID RunID
 
 	switch kind {
@@ -1013,7 +1014,7 @@ func (s *LocalStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*Ru
 		}
 		return nil, fmt.Errorf("local store list runs: %w", err)
 	}
-	out := make([]*RunRecord, 0)
+	out := make([]*RunRecord, 0, len(entries))
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -1263,7 +1264,7 @@ func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, erro
 		}
 		return nil, fmt.Errorf("local store list workflows: %w", err)
 	}
-	out := make([]*WorkflowRecord, 0)
+	out := make([]*WorkflowRecord, 0, len(entries))
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -1704,7 +1705,7 @@ func (s *LocalStore) ListChildResults(ctx context.Context, childBatchID ChildBat
 	if err != nil {
 		return nil, fmt.Errorf("local store list child results: %w", err)
 	}
-	out := make([]*ChildResult, 0)
+	out := make([]*ChildResult, 0, len(names))
 	for _, name := range names {
 		var r ChildResult
 		if _, err := s.readJSON(filepath.Join(dir, name), &r); err != nil {
@@ -2181,19 +2182,20 @@ func topologyStageCount(dep *DeploymentRecord, kind string) int {
 
 func stagePackageName(dep *DeploymentRecord, i int) string {
 	if dep.NestedPackageDigests != nil {
-		if n := dep.NestedPackageDigests[fmt.Sprintf("stage:%d:name", i)]; n != "" {
+		// strconv + concat avoids fmt.Sprintf allocs on the admission hot path.
+		if n := dep.NestedPackageDigests["stage:"+strconv.Itoa(i)+":name"]; n != "" {
 			return n
 		}
 	}
 	if i == 0 {
 		return dep.PackageName
 	}
-	return fmt.Sprintf("%s#stage-%d", dep.PackageName, i)
+	return dep.PackageName + "#stage-" + strconv.Itoa(i)
 }
 
 func stagePackageVersion(dep *DeploymentRecord, i int) string {
 	if dep.NestedPackageDigests != nil {
-		if v := dep.NestedPackageDigests[fmt.Sprintf("stage:%d:version", i)]; v != "" {
+		if v := dep.NestedPackageDigests["stage:"+strconv.Itoa(i)+":version"]; v != "" {
 			return v
 		}
 	}

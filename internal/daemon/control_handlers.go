@@ -711,12 +711,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		}
 	}
 
-	proxyEnv := []string{
+	// Pre-size for base env + firewall flag + gateway proxy vars + later binds.
+	proxyEnv := make([]string, 0, 16)
+	proxyEnv = append(proxyEnv,
 		"AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl",
 		// Project files are copied to /app/ by the pack Dockerfile. The
 		// harness default is /agent/main.py which does not exist.
 		"AGENTPAAS_AGENT_PATH=/app/main.py",
-	}
+	)
 	if egressFirewallEnabled() {
 		proxyEnv = append(proxyEnv, "AGENTPAAS_EGRESS_FIREWALL=1")
 	} else {
@@ -724,13 +726,16 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}
 	if gatewayIP != "" {
 		gatewaySubnet := gatewaySubnetFromIP(gatewayIP)
+		// Concatenation beats repeated fmt.Sprintf for simple key=value env vars
+		// on the run-start hot path; share the gateway URL string across aliases.
+		gwURL := "http://" + gatewayIP + ":7799"
 		proxyEnv = append(proxyEnv,
-			fmt.Sprintf("AGENTPAAS_GATEWAY_IP=%s", gatewayIP),
-			fmt.Sprintf("AGENTPAAS_GATEWAY_SUBNET=%s", gatewaySubnet),
+			"AGENTPAAS_GATEWAY_IP="+gatewayIP,
+			"AGENTPAAS_GATEWAY_SUBNET="+gatewaySubnet,
 			// Gateway-native HTTP routing (Bug 021): harness rewrites
 			// outbound HTTPS LLM URLs to plain HTTP against the gateway
 			// and preserves the original Host header for route matching.
-			fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP),
+			"AGENTPAAS_GATEWAY_URL="+gwURL,
 			// Forward proxy for non-LLM egress (Bug 021 regression fix):
 			// The gateway-native routing only rewrites LLM provider URLs.
 			// Agent code making direct HTTP calls to allowed egress domains
@@ -739,12 +744,12 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			// NO_PROXY includes the gateway IP so the harness's rewritten
 			// LLM calls (already pointing at gateway:7799) are not
 			// double-proxied.
-			fmt.Sprintf("HTTP_PROXY=http://%s:7799", gatewayIP),
-			fmt.Sprintf("HTTPS_PROXY=http://%s:7799", gatewayIP),
-			fmt.Sprintf("http_proxy=http://%s:7799", gatewayIP),
-			fmt.Sprintf("https_proxy=http://%s:7799", gatewayIP),
-			fmt.Sprintf("NO_PROXY=localhost,127.0.0.1,%s", gatewayIP),
-			fmt.Sprintf("no_proxy=localhost,127.0.0.1,%s", gatewayIP),
+			"HTTP_PROXY="+gwURL,
+			"HTTPS_PROXY="+gwURL,
+			"http_proxy="+gwURL,
+			"https_proxy="+gwURL,
+			"NO_PROXY=localhost,127.0.0.1,"+gatewayIP,
+			"no_proxy=localhost,127.0.0.1,"+gatewayIP,
 		)
 	}
 

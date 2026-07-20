@@ -10,6 +10,10 @@ import (
 	"sync"
 )
 
+// auditJSONLNewline is a package-level newline used by Append to avoid
+// allocating []byte{'\n'} (or converting via fmt.Fprintf) on every write.
+var auditJSONLNewline = []byte{'\n'}
+
 // AuditWriter is a daemon-owned append-only writer for the audit JSONL file.
 // It serializes all writes under a mutex, fsyncs after each line, and
 // maintains a current head anchor (seq + record_hash) for chaining.
@@ -382,9 +386,12 @@ func (w *AuditWriter) Append(record AuditRecord) error {
 		return fmt.Errorf("marshal record: %w", err)
 	}
 
-	// Write the JSONL line (append, newline-terminated)
-	if _, err := fmt.Fprintf(w.file, "%s\n", string(line)); err != nil {
+	// Write JSONL directly as bytes (avoid fmt.Fprintf + string(line) allocs on hot path).
+	if _, err := w.file.Write(line); err != nil {
 		return fmt.Errorf("write audit line: %w", err)
+	}
+	if _, err := w.file.Write(auditJSONLNewline); err != nil {
+		return fmt.Errorf("write audit line newline: %w", err)
 	}
 
 	// fsync for durability
