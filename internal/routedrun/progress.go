@@ -127,9 +127,17 @@ func (s *LocalStore) SaveCheckpoint(ctx context.Context, cp *SemanticCheckpoint)
 	}
 
 	cp.SchemaVersion = CurrentSchemaVersion
-	// Auto-compute the checkpoint digest from canonical content so that
-	// saved checkpoints always carry a verifiable integrity digest.
-	cp.CheckpointDigest = cp.ComputeDigest()
+	// B30-2 (F8): verify caller-supplied digest matches ComputeDigest().
+	// If the caller provides a digest that doesn't match, fail closed.
+	// If the caller doesn't supply a digest, compute one.
+	if cp.CheckpointDigest != "" {
+		expected := cp.ComputeDigest()
+		if cp.CheckpointDigest != expected {
+			return fmt.Errorf("%w: caller-supplied checkpoint digest does not match computed digest", ErrInvalidArgument)
+		}
+	} else {
+		cp.CheckpointDigest = cp.ComputeDigest()
+	}
 	data, err := json.Marshal(cp)
 	if err != nil {
 		return fmt.Errorf("marshal checkpoint: %w", err)
@@ -295,7 +303,6 @@ type ProgressTailer struct {
 	journalPath   string
 	key           []byte
 	store         CheckpointStore
-	runStore      RunStore
 	attemptID     AttemptID
 	runID         RunID
 	auditAppender audit.AuditAppender
@@ -312,7 +319,6 @@ func NewProgressTailer(
 	journalPath string,
 	key []byte,
 	store CheckpointStore,
-	runStore RunStore,
 	attemptID AttemptID,
 	runID RunID,
 ) *ProgressTailer {
@@ -320,7 +326,6 @@ func NewProgressTailer(
 		journalPath: journalPath,
 		key:         key,
 		store:       store,
-		runStore:    runStore,
 		attemptID:   attemptID,
 		runID:       runID,
 		stopCh:      make(chan struct{}),
@@ -413,7 +418,9 @@ func (t *ProgressTailer) IngestRecord(ctx context.Context, line []byte) (string,
 			ArtifactRefs:       rec.ArtifactRefs,
 			LastCommittedAction: rec.LastCommittedAction,
 			SafeToResume:       true,
-			CheckpointDigest:   rec.CheckpointDigest,
+			// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
+			// Do not carry rec.CheckpointDigest — the journal line may
+			// have a stale or mismatched digest.
 			ArtifactMetaDigest: rec.ArtifactMetaDigest,
 			Sequence:           rec.Sequence,
 			CreatedAt:          time.Now().UTC(),

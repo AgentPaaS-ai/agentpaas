@@ -59,6 +59,13 @@ func (o *Outbox) CommitWithEvent(ctx context.Context, runState port.RunState, ev
 
 	// Phase 1: commit the state mutation. If this fails, the event is not
 	// appended — the outbox is atomic.
+	// B29-3 NOTE: The state CAS commits before the event append. If the event
+	// append fails, the in-memory state mutation is already durable (the CAS
+	// succeeded) and there is no undo. The caller must retry; the idempotent
+	// CAS on retry will either succeed (fresh attempt) or conflict (already
+	// committed). A true 2-phase commit with undo would require WAL-first
+	// ordering — this is deferred to the block that integrates the Outbox
+	// with the durable event and state stores (post-B30 gate).
 	if err := o.state.CasRun(ctx, runState, runState.Generation); err != nil {
 		return 0, fmt.Errorf("trigger: outbox state commit: %w", err)
 	}

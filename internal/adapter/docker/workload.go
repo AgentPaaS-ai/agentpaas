@@ -73,7 +73,23 @@ func (w *DockerWorkloadRuntime) Signal(ctx context.Context, id port.WorkloadID, 
 	}
 	return nil
 }
-func (w *DockerWorkloadRuntime) Fence(context.Context, port.WorkloadID) error { return nil }
+// B28-3: Fence bridges to the B26/B27 fencing path by immediately killing
+// the container with zero grace period. This is the safest default: a fenced
+// container must not continue to consume budget or emit egress.
+func (w *DockerWorkloadRuntime) Fence(ctx context.Context, id port.WorkloadID) error {
+	c, e := w.container(id)
+	if e != nil {
+		return e
+	}
+	// Kill immediately (0s timeout); ignore "already stopped" errors.
+	if err := w.driver.Stop(ctx, c, nil); err != nil {
+		return fmt.Errorf("fence container %s: %w", id, err)
+	}
+	w.mu.Lock()
+	w.states[id] = port.WorkloadStopped
+	w.mu.Unlock()
+	return nil
+}
 func (w *DockerWorkloadRuntime) Stop(ctx context.Context, id port.WorkloadID, d *time.Duration) error {
 	c, e := w.container(id)
 	if e != nil {

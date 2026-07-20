@@ -184,10 +184,10 @@ func TestFault_RestartDuringCheckpointCommit(t *testing.T) {
 		CompletedWork:    []string{"a", "b"},
 		RemainingWork:    []string{"c"},
 		SafeToResume:     true,
-		CheckpointDigest: "digest-cp-fault",
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
+	// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
 	if err := h.store.SaveCheckpoint(ctx, cp); err != nil {
 		t.Fatalf("SaveCheckpoint: %v", err)
 	}
@@ -391,10 +391,10 @@ func TestCancel_DuringCheckpointCommit(t *testing.T) {
 		LeaseID:          h.leaseID,
 		Phase:            "phase-1",
 		SafeToResume:     true,
-		CheckpointDigest: "digest-cp-cancel",
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
+	// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
 	if err := h.store.SaveCheckpoint(ctx, cp); err != nil {
 		t.Fatalf("SaveCheckpoint: %v", err)
 	}
@@ -644,7 +644,7 @@ func TestFault_ResultCheckpointAcrossGenerations(t *testing.T) {
 }
 
 // TestFault_CheckpointDigestAutoCompute verifies that a checkpoint with an
-// empty or invalid digest has its digest auto-computed by SaveCheckpoint.
+// empty digest has its digest auto-computed by SaveCheckpoint.
 func TestFault_CheckpointDigestAutoCompute(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
@@ -726,7 +726,7 @@ func TestFault_CheckpointTamperResilience(t *testing.T) {
 		CompletedWork:       []string{"a"},
 		RemainingWork:       []string{"b"},
 		SafeToResume:        true,
-		CheckpointDigest:    "wrong-digest-that-will-be-replaced",
+		CheckpointDigest:    "", // B30-2 (F8): let SaveCheckpoint auto-compute.
 		Sequence:            1,
 		CreatedAt:           h.clock.Now(),
 	}
@@ -772,7 +772,7 @@ func TestFault_CheckpointDigestPreservedOnRestart(t *testing.T) {
 		CompletedWork:       []string{"a"},
 		RemainingWork:       []string{"b"},
 		SafeToResume:        true,
-		CheckpointDigest:    "wrong-digest",
+		CheckpointDigest:    "", // B30-2 (F8): let SaveCheckpoint auto-compute.
 		Sequence:            1,
 		CreatedAt:           h.clock.Now(),
 	}
@@ -1103,10 +1103,10 @@ func TestFault_ReconcileOnNonTerminalRunPreservesState(t *testing.T) {
 		CompletedWork:    []string{"x", "y"},
 		RemainingWork:    []string{"z"},
 		SafeToResume:     true,
-		CheckpointDigest: "digest-preserve",
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
+	// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
 	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
@@ -1375,7 +1375,7 @@ func TestFault_CheckpointBoundaryMetadata(t *testing.T) {
 		ArtifactRefs:        []string{"artifact-1.json"},
 		LastCommittedAction: "action-1",
 		SafeToResume:        true,
-		CheckpointDigest:    "digest-boundary-test", // Will be replaced by auto-computed digest.
+		CheckpointDigest:    "", // B30-2 (F8): let SaveCheckpoint auto-compute.
 		Sequence:            42,
 		CreatedAt:           h.clock.Now(),
 	}

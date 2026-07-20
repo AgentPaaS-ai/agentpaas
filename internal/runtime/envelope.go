@@ -161,6 +161,12 @@ func (e *ModelCallEnvelope) Validate() error {
 		if _, ok := validRoles[m.Role]; !ok {
 			return fmt.Errorf("model call envelope: message %d has invalid role %q", i, m.Role)
 		}
+		// B29-5: structural request-side CoT denylist.
+		// Reject any message content that contains raw chain-of-thought markers,
+		// not just the ReasoningSummary (which is validated below).
+		if containsRawCoT(m.Content) {
+			return fmt.Errorf("model call envelope: message %d content must not contain raw chain-of-thought", i)
+		}
 	}
 	if e.ReasoningEffort != "" {
 		if _, ok := validReasoningEfforts[e.ReasoningEffort]; !ok {

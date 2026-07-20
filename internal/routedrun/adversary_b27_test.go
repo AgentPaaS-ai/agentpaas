@@ -40,7 +40,7 @@ func TestAdversary_B27_ForgedProgressRecord(t *testing.T) {
 
 	// Daemon uses the real key.
 	realKey := []byte("real-daemon-key-32-bytes-ok!!!!!!!")
-	tailer := NewProgressTailer(journalPath, realKey, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, realKey, store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err == nil {
 		t.Fatal("ADVERSARY BREAK: forged progress record accepted with wrong HMAC")
@@ -61,9 +61,9 @@ func TestAdversary_B27_JournalKeyNotInCheckpoint(t *testing.T) {
 		RunID:            RunID("r1"),
 		Phase:            "phase1",
 		SafeToResume:     true,
+		// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
 		Sequence:         1,
 		CreatedAt:        time.Now().UTC(),
-		CheckpointDigest: "some-digest",
 	}
 	if err := store.SaveCheckpoint(ctx, cp); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -122,7 +122,7 @@ func TestAdversary_B27_HMACReplay(t *testing.T) {
 	rec.HMAC = computeTestHMAC(rec, key)
 	line, _ := json.Marshal(rec)
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
@@ -159,7 +159,7 @@ func TestAdversary_B27_HMACTruncation(t *testing.T) {
 	rec.HMAC = rec.HMAC[:10]
 	line, _ := json.Marshal(rec)
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err == nil {
 		t.Fatal("ADVERSARY BREAK: truncated HMAC accepted")
@@ -334,7 +334,7 @@ func TestAdversary_B27_ProgressAfterInvokeEnd(t *testing.T) {
 	line, _ := json.Marshal(rec)
 
 	// Tailer is for attempt "a1" but record is for "evil-attempt".
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err == nil {
 		t.Fatal("ADVERSARY BREAK: progress record for wrong attempt accepted")
