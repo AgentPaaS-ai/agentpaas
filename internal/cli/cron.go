@@ -17,12 +17,27 @@ func newCronCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cron",
 		Short: "Manage cron schedules for agent invocations",
+		Long: `Create, list, and remove cron schedules that invoke agents on a timer.
+
+Requires a running daemon. Schedules use standard 5-field cron expressions
+and optional timezone. agent-name may be a bare name, name@pub8, or alias.`,
+		Example: `  agentpaas cron add weather --expr "0 */6 * * *"
+  agentpaas cron add weather --expr "*/15 * * * *" --timezone America/New_York --payload '{"city":"SEA"}'
+  agentpaas cron list
+  agentpaas cron remove <schedule-id>`,
 	}
 
-	cmd.AddCommand(&cobra.Command{
+	addCmd := &cobra.Command{
 		Use:   "add <agent-name>",
 		Short: "Add a cron schedule for an agent",
-		Args:  cobra.ExactArgs(1),
+		Long: `Add a recurring schedule that invokes the named agent.
+
+--expr is required (5-field cron). Optional payload may be inline JSON
+or a file path. content-type defaults on the daemon when omitted.`,
+		Example: `  agentpaas cron add weather --expr "0 */6 * * *"
+  agentpaas cron add weather@a1b2c3d4 --expr "30 9 * * 1-5" --timezone UTC
+  agentpaas cron add weather --expr "0 0 * * *" --payload ./payload.json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			expr, _ := cmd.Flags().GetString("expr") // cobra flag default on missing
 			if expr == "" {
@@ -89,19 +104,23 @@ func newCronCmd() *cobra.Command {
 				return fmt.Sprintf("Cron schedule added: schedule_id=%s agent=%s expr=%s", r.ScheduleID, r.AgentName, r.Expr)
 			})
 		},
-	})
-
-	addCmd := cmd.Commands()[0]
-	addCmd.Flags().String("expr", "", "Cron expression (e.g. \"*/5 * * * *\")")
-	addCmd.Flags().String("version", "", "Agent version (optional)")
-	addCmd.Flags().String("timezone", "", "Timezone (optional)")
-	addCmd.Flags().String("payload", "", "Invocation payload (inline JSON or file path)")
-	addCmd.Flags().String("content-type", "", "Payload content type (default: application/json)")
+	}
+	addCmd.Flags().String("expr", "", "Cron expression in 5-field form (required; e.g. \"*/5 * * * *\")")
+	addCmd.Flags().String("version", "", "Pin a specific agent version (optional; default uses installed/current)")
+	addCmd.Flags().String("timezone", "", "IANA timezone for the schedule (optional; e.g. America/Los_Angeles)")
+	addCmd.Flags().String("payload", "", "Invocation payload as inline JSON or a file path (optional)")
+	addCmd.Flags().String("content-type", "", "Payload content type (default: application/json when payload is set)")
+	cmd.AddCommand(addCmd)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List all cron schedules",
-		Args:  cobra.NoArgs,
+		Long: `List cron schedules registered with the daemon.
+
+Shows schedule ID, expression, and agent name. Use --json for scripts.`,
+		Example: `  agentpaas cron list
+  agentpaas cron list --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -180,9 +199,15 @@ func newCronCmd() *cobra.Command {
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "remove <schedule-id>",
-		Short: "Remove a cron schedule",
-		Args:  cobra.ExactArgs(1),
+		Use:     "remove <schedule-id>",
+		Aliases: []string{"rm"},
+		Short:   "Remove a cron schedule",
+		Long: `Remove a cron schedule by ID (from 'agentpaas cron list').
+
+Stops future invocations; does not cancel in-flight runs.`,
+		Example: `  agentpaas cron remove sched_01HXYZ...
+  agentpaas cron rm sched_01HXYZ...`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {

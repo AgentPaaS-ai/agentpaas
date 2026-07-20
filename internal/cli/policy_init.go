@@ -19,7 +19,16 @@ func newPolicyInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init [project-dir]",
 		Short: "Scaffold a policy.yaml from a named template",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Write a policy.yaml into a project directory from a built-in template.
+
+Templates: deny-all, allow-http, allow-llm, allow-mcp.
+Interactive mode lists templates when --template is omitted.
+--noninteractive defaults to deny-all. Use --force to overwrite.`,
+		Example: `  agentpaas policy init ./my-agent --template deny-all
+  agentpaas policy init . --template allow-llm --provider openai
+  agentpaas policy init ./my-agent --noninteractive
+  agentpaas policy init . --template allow-http --force`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectDir := "."
 			if len(args) > 0 {
@@ -99,10 +108,10 @@ func newPolicyInitCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().String("template", "", "Policy template name: deny-all, allow-http, allow-llm, allow-mcp")
-	cmd.Flags().String("provider", "", "LLM provider for allow-llm template: openrouter, openai, anthropic, xai, nous")
-	cmd.Flags().Bool("noninteractive", false, "Skip prompt and use deny-all template (default-deny)")
-	cmd.Flags().Bool("force", false, "Overwrite existing policy.yaml")
+	cmd.Flags().String("template", "", "Policy template: deny-all, allow-http, allow-llm, or allow-mcp")
+	cmd.Flags().String("provider", "", "LLM provider domain for allow-llm only: openrouter, openai, anthropic, xai, nous")
+	cmd.Flags().Bool("noninteractive", false, "Skip template prompt and use deny-all (default-deny)")
+	cmd.Flags().Bool("force", false, "Overwrite an existing policy.yaml")
 	return cmd
 }
 

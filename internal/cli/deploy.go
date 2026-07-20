@@ -17,8 +17,13 @@ func newDeployCmd() *cobra.Command {
 		Short: "Manage exact deployments and aliases (state-only)",
 		Long: `Create and manage exact deployment identities and aliases.
 
-In B26, deploy/list/inspect/alias/deactivate are state-only operations.
-Durable routed invocation remains disabled until later blocks.`,
+In the current release, deploy/list/inspect/alias/deactivate are state-only
+operations. Durable routed invocation remains limited; prefer pack/run for
+local agent runs.`,
+		Example: `  agentpaas deploy create weather@1.0.0 --bundle-digest sha256:abc...
+  agentpaas deploy list
+  agentpaas deploy alias set prod dep_01HXYZ...
+  agentpaas deploy alias promote prod dep_01HABC... --expected-generation 1`,
 	}
 	cmd.AddCommand(newDeployCreateCmd())
 	cmd.AddCommand(newDeployListCmd())
@@ -32,6 +37,13 @@ func newDeployCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create <package-name>@<version>",
 		Short: "Create an exact deployment from installed package identity",
+		Long: `Create a deployment record pinned to package name, version, and digests.
+
+Requires a running daemon. Digests should come from install/export artifacts.
+Optional --alias creates an alias pointing at the new deployment.`,
+		Example: `  agentpaas deploy create weather@1.0.0 \
+    --bundle-digest sha256:abc... --policy-digest sha256:def...
+  agentpaas deploy create weather@1.0.0 --alias prod --max-concurrent-runs 2`,
 		// Also support: agentpaas deploy <exact-installed-ref>
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -133,13 +145,13 @@ func newDeployCreateCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().String("bundle-digest", "", "Exact bundle digest")
-	cmd.Flags().String("policy-digest", "", "Policy digest")
-	cmd.Flags().String("image-lock-digest", "", "Image lock digest")
-	cmd.Flags().String("provenance-digest", "", "Provenance digest")
-	cmd.Flags().Int32("max-concurrent-runs", 1, "Max concurrent runs for this deployment")
-	cmd.Flags().String("alias", "", "Optional alias to point at the new deployment")
-	cmd.Flags().String("actor", "cli", "Actor identity for audit")
+	cmd.Flags().String("bundle-digest", "", "Exact bundle content digest (sha256:...)")
+	cmd.Flags().String("policy-digest", "", "Policy content digest (sha256:...)")
+	cmd.Flags().String("image-lock-digest", "", "Image lock digest from pack/install (sha256:...)")
+	cmd.Flags().String("provenance-digest", "", "Provenance chain digest (sha256:...)")
+	cmd.Flags().Int32("max-concurrent-runs", 1, "Maximum concurrent runs allowed for this deployment (default 1)")
+	cmd.Flags().String("alias", "", "Optional alias name to create pointing at the new deployment")
+	cmd.Flags().String("actor", "cli", "Actor identity recorded in audit (default: cli)")
 	return cmd
 }
 
@@ -147,7 +159,12 @@ func newDeployListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List exact deployments",
-		Args:  cobra.NoArgs,
+		Long: `List deployment records known to the daemon.
+
+Shows deployment ID, package, status, and generation.`,
+		Example: `  agentpaas deploy list
+  agentpaas deploy list --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
@@ -182,7 +199,10 @@ func newDeployInspectCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "inspect <deployment-id>",
 		Short: "Inspect an exact deployment",
-		Args:  cobra.ExactArgs(1),
+		Long:  `Show digests, status, generation, and concurrency limits for one deployment.`,
+		Example: `  agentpaas deploy inspect dep_01HXYZ...
+  agentpaas deploy inspect dep_01HXYZ... --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
@@ -215,7 +235,11 @@ func newDeployDeactivateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "deactivate <deployment-id>",
 		Short: "Deactivate an exact deployment (state-only)",
-		Args:  cobra.ExactArgs(1),
+		Long: `Mark a deployment inactive so new invocations should not target it.
+
+State-only: does not tear down running containers from prior runs.`,
+		Example: `  agentpaas deploy deactivate dep_01HXYZ...`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
@@ -251,6 +275,13 @@ func newDeployAliasCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "alias",
 		Short: "Manage deployment aliases (set / promote / rollback / list)",
+		Long: `Manage mutable aliases that point at exact deployment IDs.
+
+set creates an alias. promote and rollback use compare-and-swap with
+--expected-generation to avoid lost updates.`,
+		Example: `  agentpaas deploy alias set prod dep_01HXYZ...
+  agentpaas deploy alias promote prod dep_01HABC... --expected-generation 1
+  agentpaas deploy alias list`,
 	}
 	cmd.AddCommand(newDeployAliasSetCmd())
 	cmd.AddCommand(newDeployAliasPromoteCmd())
@@ -263,7 +294,10 @@ func newDeployAliasSetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set <alias> <deployment-id>",
 		Short: "Create an alias pointing at a deployment (fails if exists)",
-		Args:  cobra.ExactArgs(2),
+		Long: `Create a new deployment alias. Fails if the alias already exists;
+use promote to move an existing alias.`,
+		Example: `  agentpaas deploy alias set prod dep_01HXYZ...`,
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
@@ -294,7 +328,12 @@ func newDeployAliasPromoteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "promote <alias> <deployment-id>",
 		Short: "CAS-promote an alias to a new deployment (requires --expected-generation)",
-		Args:  cobra.ExactArgs(2),
+		Long: `Atomically move an alias to a new deployment ID using compare-and-swap.
+
+--expected-generation must match the alias's current generation from
+'agentpaas deploy alias list' or the operation fails.`,
+		Example: `  agentpaas deploy alias promote prod dep_01HABC... --expected-generation 1`,
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			expGen, _ := cmd.Flags().GetInt64("expected-generation") // optional value; zero on miss
 			if !cmd.Flags().Changed("expected-generation") {
@@ -323,7 +362,7 @@ func newDeployAliasPromoteCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().Int64("expected-generation", 0, "Expected current alias generation (CAS)")
+	cmd.Flags().Int64("expected-generation", 0, "Expected current alias generation for CAS (required; from alias list/inspect)")
 	return cmd
 }
 
@@ -332,7 +371,11 @@ func newDeployAliasRollbackCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rollback <alias> <deployment-id>",
 		Short: "CAS-rollback an alias to a prior deployment (requires --expected-generation)",
-		Args:  cobra.ExactArgs(2),
+		Long: `Atomically point an alias back at a prior deployment ID using compare-and-swap.
+
+--expected-generation must match the alias's current generation.`,
+		Example: `  agentpaas deploy alias rollback prod dep_01HXYZ... --expected-generation 2`,
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			expGen, _ := cmd.Flags().GetInt64("expected-generation") // optional value; zero on miss
 			if !cmd.Flags().Changed("expected-generation") {
@@ -361,7 +404,7 @@ func newDeployAliasRollbackCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().Int64("expected-generation", 0, "Expected current alias generation (CAS)")
+	cmd.Flags().Int64("expected-generation", 0, "Expected current alias generation for CAS (required; from alias list/inspect)")
 	return cmd
 }
 
@@ -369,7 +412,10 @@ func newDeployAliasListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List deployment aliases",
-		Args:  cobra.NoArgs,
+		Long:  `List aliases and their target deployment IDs and generations.`,
+		Example: `  agentpaas deploy alias list
+  agentpaas deploy alias list --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {

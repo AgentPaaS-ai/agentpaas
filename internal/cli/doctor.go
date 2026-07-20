@@ -21,10 +21,15 @@ func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
 		Short: "Run system diagnostics",
-		Long: `Run system diagnostics to verify AgentPaaS is configured correctly.
+		Long: `Run local system diagnostics to verify AgentPaaS is configured correctly.
 
-Checks: version, Docker CLI, Docker daemon, macOS Keychain, Linux harness
-binary, and home directory writability.`,
+Checks include: CLI version, Docker CLI, Docker daemon, macOS Keychain
+(on Darwin), Linux harness binary, home directory writability, and optional
+skopeo. Does not require a running control daemon.
+
+Use the global --json flag for structured output suitable for scripts.`,
+		Example: `  agentpaas doctor
+  agentpaas doctor --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			checks := runDoctorChecks()
@@ -40,11 +45,11 @@ binary, and home directory writability.`,
 
 			if jsonOutput(cmd) {
 				result := struct {
-					SchemaVersion string                   `json:"schema_version"`
-					Overall       bool                     `json:"overall"`
-					ChecksPassed  int                      `json:"checks_passed"`
-					ChecksTotal   int                      `json:"checks_total"`
-					Checks        []map[string]string      `json:"checks"`
+					SchemaVersion string              `json:"schema_version"`
+					Overall       bool                `json:"overall"`
+					ChecksPassed  int                 `json:"checks_passed"`
+					ChecksTotal   int                 `json:"checks_total"`
+					Checks        []map[string]string `json:"checks"`
 				}{
 					SchemaVersion: "1.0.0",
 					Overall:       allOK,
