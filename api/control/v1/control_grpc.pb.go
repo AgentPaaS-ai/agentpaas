@@ -72,6 +72,9 @@ const (
 	ControlService_ListDeploymentAliases_FullMethodName   = "/agentpaas.control.v1.ControlService/ListDeploymentAliases"
 	ControlService_CasDeploymentAlias_FullMethodName      = "/agentpaas.control.v1.ControlService/CasDeploymentAlias"
 	ControlService_InvokeDeployment_FullMethodName        = "/agentpaas.control.v1.ControlService/InvokeDeployment"
+	ControlService_GetInvocation_FullMethodName           = "/agentpaas.control.v1.ControlService/GetInvocation"
+	ControlService_GetRunStatus_FullMethodName            = "/agentpaas.control.v1.ControlService/GetRunStatus"
+	ControlService_GetRunResult_FullMethodName            = "/agentpaas.control.v1.ControlService/GetRunResult"
 	ControlService_CreateWorkflow_FullMethodName          = "/agentpaas.control.v1.ControlService/CreateWorkflow"
 	ControlService_GetWorkflow_FullMethodName             = "/agentpaas.control.v1.ControlService/GetWorkflow"
 	ControlService_CancelWorkflow_FullMethodName          = "/agentpaas.control.v1.ControlService/CancelWorkflow"
@@ -149,6 +152,9 @@ type ControlServiceClient interface {
 	ListDeploymentAliases(ctx context.Context, in *ListDeploymentAliasesRequest, opts ...grpc.CallOption) (*ListDeploymentAliasesResponse, error)
 	CasDeploymentAlias(ctx context.Context, in *CasDeploymentAliasRequest, opts ...grpc.CallOption) (*CasDeploymentAliasResponse, error)
 	InvokeDeployment(ctx context.Context, in *InvokeDeploymentRequest, opts ...grpc.CallOption) (*InvokeDeploymentResponse, error)
+	GetInvocation(ctx context.Context, in *GetInvocationRequest, opts ...grpc.CallOption) (*GetInvocationResponse, error)
+	GetRunStatus(ctx context.Context, in *GetRunStatusRequest, opts ...grpc.CallOption) (*GetRunStatusResponse, error)
+	GetRunResult(ctx context.Context, in *GetRunResultRequest, opts ...grpc.CallOption) (*GetRunResultResponse, error)
 	CreateWorkflow(ctx context.Context, in *CreateWorkflowRequest, opts ...grpc.CallOption) (*CreateWorkflowResponse, error)
 	GetWorkflow(ctx context.Context, in *GetWorkflowRequest, opts ...grpc.CallOption) (*GetWorkflowResponse, error)
 	CancelWorkflow(ctx context.Context, in *CancelWorkflowRequest, opts ...grpc.CallOption) (*CancelWorkflowResponse, error)
@@ -505,6 +511,36 @@ func (c *controlServiceClient) InvokeDeployment(ctx context.Context, in *InvokeD
 	return out, nil
 }
 
+func (c *controlServiceClient) GetInvocation(ctx context.Context, in *GetInvocationRequest, opts ...grpc.CallOption) (*GetInvocationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetInvocationResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetInvocation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) GetRunStatus(ctx context.Context, in *GetRunStatusRequest, opts ...grpc.CallOption) (*GetRunStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetRunStatusResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetRunStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) GetRunResult(ctx context.Context, in *GetRunResultRequest, opts ...grpc.CallOption) (*GetRunResultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetRunResultResponse)
+	err := c.cc.Invoke(ctx, ControlService_GetRunResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *controlServiceClient) CreateWorkflow(ctx context.Context, in *CreateWorkflowRequest, opts ...grpc.CallOption) (*CreateWorkflowResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateWorkflowResponse)
@@ -643,6 +679,9 @@ type ControlServiceServer interface {
 	ListDeploymentAliases(context.Context, *ListDeploymentAliasesRequest) (*ListDeploymentAliasesResponse, error)
 	CasDeploymentAlias(context.Context, *CasDeploymentAliasRequest) (*CasDeploymentAliasResponse, error)
 	InvokeDeployment(context.Context, *InvokeDeploymentRequest) (*InvokeDeploymentResponse, error)
+	GetInvocation(context.Context, *GetInvocationRequest) (*GetInvocationResponse, error)
+	GetRunStatus(context.Context, *GetRunStatusRequest) (*GetRunStatusResponse, error)
+	GetRunResult(context.Context, *GetRunResultRequest) (*GetRunResultResponse, error)
 	CreateWorkflow(context.Context, *CreateWorkflowRequest) (*CreateWorkflowResponse, error)
 	GetWorkflow(context.Context, *GetWorkflowRequest) (*GetWorkflowResponse, error)
 	CancelWorkflow(context.Context, *CancelWorkflowRequest) (*CancelWorkflowResponse, error)
@@ -758,6 +797,15 @@ func (UnimplementedControlServiceServer) CasDeploymentAlias(context.Context, *Ca
 }
 func (UnimplementedControlServiceServer) InvokeDeployment(context.Context, *InvokeDeploymentRequest) (*InvokeDeploymentResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method InvokeDeployment not implemented")
+}
+func (UnimplementedControlServiceServer) GetInvocation(context.Context, *GetInvocationRequest) (*GetInvocationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetInvocation not implemented")
+}
+func (UnimplementedControlServiceServer) GetRunStatus(context.Context, *GetRunStatusRequest) (*GetRunStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRunStatus not implemented")
+}
+func (UnimplementedControlServiceServer) GetRunResult(context.Context, *GetRunResultRequest) (*GetRunResultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRunResult not implemented")
 }
 func (UnimplementedControlServiceServer) CreateWorkflow(context.Context, *CreateWorkflowRequest) (*CreateWorkflowResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateWorkflow not implemented")
@@ -1388,6 +1436,60 @@ func _ControlService_InvokeDeployment_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_GetInvocation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetInvocationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetInvocation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetInvocation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetInvocation(ctx, req.(*GetInvocationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_GetRunStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRunStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetRunStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetRunStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetRunStatus(ctx, req.(*GetRunStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_GetRunResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRunResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).GetRunResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_GetRunResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).GetRunResult(ctx, req.(*GetRunResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ControlService_CreateWorkflow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateWorkflowRequest)
 	if err := dec(in); err != nil {
@@ -1648,6 +1750,18 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "InvokeDeployment",
 			Handler:    _ControlService_InvokeDeployment_Handler,
+		},
+		{
+			MethodName: "GetInvocation",
+			Handler:    _ControlService_GetInvocation_Handler,
+		},
+		{
+			MethodName: "GetRunStatus",
+			Handler:    _ControlService_GetRunStatus_Handler,
+		},
+		{
+			MethodName: "GetRunResult",
+			Handler:    _ControlService_GetRunResult_Handler,
 		},
 		{
 			MethodName: "CreateWorkflow",

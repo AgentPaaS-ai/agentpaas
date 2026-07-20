@@ -1099,6 +1099,67 @@ message InvokeDeploymentResponse {
 }
 
 // ---------------------------------------------------------------------------
+// B30-T02: invocation / run status / run result get APIs
+// ---------------------------------------------------------------------------
+
+// InvocationRecord is the durable admission record returned by GetInvocation.
+message InvocationRecord {
+  string schema_version = 1;
+  string invocation_id = 2;
+  string workflow_id = 3;
+  string run_id = 4;
+  string resolved_deployment_id = 5;
+  string resolved_deployment_version = 6;
+  string resolved_deployment_digest = 7;
+  string requested_deployment_ref = 8;
+  string invocation_intent_digest = 9;
+  string caller_identity = 10;
+  int64 initial_max_active_duration_ms = 11;
+  int64 initial_attempt_lease_ms = 12;
+  string initial_max_cost_usd_decimal = 13;
+  google.protobuf.Timestamp admitted_at = 14;
+}
+
+message GetInvocationRequest {
+  string invocation_id = 1;
+}
+
+message GetInvocationResponse {
+  InvocationRecord invocation = 1;
+  TypedControlError error = 2;
+}
+
+message GetRunStatusRequest {
+  string run_id = 1;
+}
+
+message GetRunStatusResponse {
+  string run_id = 1;
+  string workflow_id = 2;
+  string status = 3;
+  string run_kind = 4;
+  int64 generation = 5;
+  TypedControlError error = 6;
+}
+
+message GetRunResultRequest {
+  string run_id = 1;
+}
+
+message GetRunResultResponse {
+  string run_id = 1;
+  string invocation_id = 2;
+  string workflow_id = 3;
+  string attempt_id = 4;
+  string result_digest = 5;
+  string structured_result = 6;
+  repeated string artifact_references = 7;
+  string terminal_status = 8;
+  google.protobuf.Timestamp finished_at = 9;
+  TypedControlError error = 10;
+}
+
+// ---------------------------------------------------------------------------
 // B26: workflow create/get/cancel and desired-state control
 // ---------------------------------------------------------------------------
 
@@ -1560,6 +1621,24 @@ service ControlService {
     option (google.api.http) = {
       post: "/v1/control/deployments:invoke"
       body: "*"
+    };
+  }
+
+  rpc GetInvocation(GetInvocationRequest) returns (GetInvocationResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/invocations/{invocation_id}"
+    };
+  }
+
+  rpc GetRunStatus(GetRunStatusRequest) returns (GetRunStatusResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/runs/{run_id}/status"
+    };
+  }
+
+  rpc GetRunResult(GetRunResultRequest) returns (GetRunResultResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/runs/{run_id}/result"
     };
   }
 
