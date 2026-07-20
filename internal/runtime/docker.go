@@ -187,7 +187,16 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 	}
 
 	// Resource limits (embedded Resources struct — set separately for clarity)
-	hostConfig.PidsLimit = int64Ptr(256) // Limit processes to prevent fork bombs
+	// B30-T04: PidsLimit defaults to 256 (a safe fork-bomb ceiling). When
+	// the spec carries a policy-derived MaxPIDs, override the default. -1
+	// means unlimited (not recommended for agent containers).
+	if spec.MaxPIDs > 0 {
+		hostConfig.PidsLimit = int64Ptr(spec.MaxPIDs)
+	} else if spec.MaxPIDs == -1 {
+		hostConfig.PidsLimit = nil // unlimited
+	} else {
+		hostConfig.PidsLimit = int64Ptr(256) // default: prevent fork bombs
+	}
 	hostConfig.Memory = spec.MemoryLimitBytes
 	hostConfig.NanoCPUs = spec.NanoCPUs
 

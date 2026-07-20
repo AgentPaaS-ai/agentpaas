@@ -133,32 +133,66 @@ func TestB30T01_ModelClientTimeout120s_Failing(t *testing.T) {
 
 // ----------------------------------------------------------------------------
 // Test 6: Python worker 30 CPU-second rlimit
-// Source: internal/harness/python_worker.go:477
-//   ("RLIMIT_CPU", 30)
+// Source: internal/harness/python_worker.go
+//   (B30-T04 inverted) the durable path no longer hardcodes RLIMIT_CPU=30;
+//   it reads AGENTPAAS_CPU_QUOTA_SECONDS from policy. The legacy v0.2.3 path
+//   keeps ("RLIMIT_CPU", 30) as a "legacy compat" fallback.
 // ----------------------------------------------------------------------------
 
 func TestB30T01_PythonRLimitCPU30_Failing(t *testing.T) {
 	data := sourceBytes(t, "internal/harness/python_worker.go")
-	mustContain(t, "internal/harness/python_worker.go", data, `("RLIMIT_CPU", 30)`)
-	// Passing on baseline today: RLIMIT_CPU=30 exists. Register the
-	// requirement; B30-T04 will replace RLIMIT_CPU=30 with an explicit
-	// policy-derived container CPU limit.
-	t.Skip("B30-T04 will replace RLIMIT_CPU=30 with explicit policy-derived container CPU limit")
+	// INVERTED (B30-T04): the durable path must NOT unconditionally set
+	// RLIMIT_CPU=30. The runner must read AGENTPAAS_CPU_QUOTA_SECONDS from
+	// the env (policy) and apply the policy value; the fixed 30 only
+	// survives as a "legacy compat" fallback on the legacy v0.2.3 path.
+	if !strings.Contains(string(data), "AGENTPAAS_CPU_QUOTA_SECONDS") {
+		t.Fatalf("internal/harness/python_worker.go does not read " +
+			"AGENTPAAS_CPU_QUOTA_SECONDS — the durable path does not apply " +
+			"a policy-derived CPU quota (B30-T04 regression)")
+	}
+	// The legacy fallback constant must still be present (documented as
+	// legacy compat) so the v0.2.3 synchronous path keeps RLIMIT_CPU=30.
+	if !strings.Contains(string(data), `("RLIMIT_CPU", 30)`) {
+		t.Fatalf("internal/harness/python_worker.go no longer contains " +
+			`("RLIMIT_CPU", 30)` + " - the legacy v0.2.3 compat fallback was " +
+			"silently removed (B30-T04 must keep it with a legacy-compat comment)")
+	}
+	if !strings.Contains(string(data), "legacy compat") {
+		t.Fatalf("internal/harness/python_worker.go does not document the " +
+			"RLIMIT_CPU=30 fallback as legacy compat")
+	}
 }
 
 // ----------------------------------------------------------------------------
 // Test 7: Python worker RLIMIT_NPROC=0
-// Source: internal/harness/python_worker.go:479
-//   ("RLIMIT_NPROC", 0)
+// Source: internal/harness/python_worker.go
+//   (B30-T04 inverted) the durable path no longer hardcodes RLIMIT_NPROC=0;
+//   it reads AGENTPAAS_MAX_PIDS from policy. The legacy v0.2.3 path keeps
+//   ("RLIMIT_NPROC", 0) as a "legacy compat" fallback.
 // ----------------------------------------------------------------------------
 
 func TestB30T01_PythonRLimitNPROC0_Failing(t *testing.T) {
 	data := sourceBytes(t, "internal/harness/python_worker.go")
-	mustContain(t, "internal/harness/python_worker.go", data, `("RLIMIT_NPROC", 0)`)
-	// Passing on baseline today: RLIMIT_NPROC=0 exists. Register the
-	// requirement; B30-T04 will replace RLIMIT_NPROC=0 with a policy-derived
-	// container PID limit.
-	t.Skip("B30-T04 will replace RLIMIT_NPROC=0 with policy-derived container PID limit")
+	// INVERTED (B30-T04): the durable path must NOT unconditionally set
+	// RLIMIT_NPROC=0. The runner must read AGENTPAAS_MAX_PIDS from the env
+	// (policy) and apply the policy value; the fixed 0 only survives as a
+	// "legacy compat" fallback on the legacy v0.2.3 path.
+	if !strings.Contains(string(data), "AGENTPAAS_MAX_PIDS") {
+		t.Fatalf("internal/harness/python_worker.go does not read " +
+			"AGENTPAAS_MAX_PIDS — the durable path does not apply a " +
+			"policy-derived PID limit (B30-T04 regression)")
+	}
+	// The legacy fallback constant must still be present (documented as
+	// legacy compat) so the v0.2.3 synchronous path keeps RLIMIT_NPROC=0.
+	if !strings.Contains(string(data), `("RLIMIT_NPROC", 0)`) {
+		t.Fatalf("internal/harness/python_worker.go no longer contains " +
+			`("RLIMIT_NPROC", 0)` + " - the legacy v0.2.3 compat fallback was " +
+			"silently removed (B30-T04 must keep it with a legacy-compat comment)")
+	}
+	if !strings.Contains(string(data), "legacy compat") {
+		t.Fatalf("internal/harness/python_worker.go does not document the " +
+			"RLIMIT_NPROC=0 fallback as legacy compat")
+	}
 }
 
 // ============================================================================

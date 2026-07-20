@@ -47,6 +47,34 @@ type Config struct {
 	AttemptID      string // Attempt ID for journal records
 	LeaseID        string // Lease ID for journal records
 	RunID          string // Run ID for journal records (must match tailer's run ID)
+
+	// B30-T04: policy-derived resource ceilings. On the durable path
+	// (InvokeDeployment), the daemon populates these from the deployment
+	// policy and the harness propagates them to the Python worker via
+	// AGENTPAAS_CPU_QUOTA_SECONDS / AGENTPAAS_MAX_PIDS env vars. The
+	// Python runner applies them as RLIMIT_CPU / RLIMIT_NPROC.
+	//
+	// CPUQuotaSeconds is the per-attempt CPU-time budget in seconds.
+	// 0 means unlimited CPU (bounded by the container CFS quota set by
+	// the runtime driver); RLIMIT_CPU is NOT set on the durable path.
+	// MaxPIDs is the per-attempt process-count limit (RLIMIT_NPROC).
+	// 0 means an explicit policy decision to forbid ALL subprocesses;
+	// a positive value allows that many processes for approved local
+	// tools (git, grep, awk). When unset on the legacy v0.2.3 path,
+	// the runner falls back to RLIMIT_NPROC=0 (legacy compat).
+	//
+	// On the legacy v0.2.3 path (cmd/harness), these fields are zero —
+	// the runner then applies the legacy RLIMIT_CPU=30 / RLIMIT_NPROC=0
+	// constants with "legacy compat" comments.
+	CPUQuotaSeconds int64
+	MaxPIDs         int
+
+	// DurablePath marks the harness as running on the B30-T02 durable
+	// InvokeDeployment path (vs the legacy v0.2.3 trigger path). When
+	// true, the harness propagates the policy resource env vars to the
+	// Python runner so it applies policy-derived rlimits; when false,
+	// the runner falls back to the legacy fixed constants.
+	DurablePath bool
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.

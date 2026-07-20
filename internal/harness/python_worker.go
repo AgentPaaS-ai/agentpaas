@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -102,7 +103,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 
 	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
-	cmd.Env = workerEnv(os.Environ(), rpcServer.Addr())
+	cmd.Env = appendPolicyResourceEnv(workerEnv(os.Environ(), rpcServer.Addr()), cfg.DurablePath, cfg.CPUQuotaSeconds, cfg.MaxPIDs)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
@@ -274,6 +275,14 @@ func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budge
 			_ = w.terminateWithGraceLocked(terminateGrace)
 			return nil, &ErrorResponse{Status: StatusBudgetExceeded, Reason: "budget_exceeded", Detail: budgetErr.Error()}, w.rpcFailureEvidence()
 		}
+		// B30-T04: if the worker was terminated by a resource-limit signal
+		// (SIGXCPU from RLIMIT_CPU, or fork-bomb contained by RLIMIT_NPROC),
+		// surface the signed-policy termination reason and observed value
+		// so the attempt evidence records which limit was hit.
+		if reason, detail, ok := w.resourceLimitExitReason(); ok {
+			_ = w.terminateWithGraceLocked(terminateGrace)
+			return nil, &ErrorResponse{Status: "FAILED", Reason: reason, Detail: detail}, w.rpcFailureEvidence()
+		}
 		return nil, &ErrorResponse{Status: "FAILED", Reason: "invoke_failed", Detail: err.Error()}, w.rpcFailureEvidence()
 	case msg := <-done:
 		if msg.Type != "ok" {
@@ -304,6 +313,35 @@ func (w *pythonWorker) rpcFailureEvidence() *UpstreamEvidence {
 		return nil
 	}
 	return w.rpc.FailureEvidence()
+}
+
+// resourceLimitExitReason inspects the worker process state for a
+// resource-limit-induced termination and returns (reason, detail, true)
+// when one is detected. Returns false when the worker exited normally or the
+// exit signal is not a resource-limit signal (b30-summary.md:414).
+//
+//   - SIGXCPU (CPU time limit exceeded, RLIMIT_CPU / RLIMIT_CPU_2) →
+//     "cpu_quota_exhausted" with detail "CPU quota exhausted: <N>s".
+//   - RLIMIT_NPROC exhaustion surfaces as a Python exception (caught
+//     elsewhere) or a non-resource-signal exit — reported via the normal
+//     invoke_failed path; here we only classify signal exits.
+func (w *pythonWorker) resourceLimitExitReason() (reason, detail string, ok bool) {
+	if w.cmd == nil || w.cmd.ProcessState == nil {
+		return "", "", false
+	}
+	ps := w.cmd.ProcessState
+	if !ps.Exited() {
+		return "", "", false
+	}
+	if ws, ok2 := ps.Sys().(syscall.WaitStatus); ok2 && ws.Signaled() {
+		switch ws.Signal() {
+		case syscall.SIGXCPU:
+			return "cpu_quota_exhausted", "CPU quota exhausted: worker terminated by SIGXCPU", true
+		case syscall.SIGXFSZ:
+			return "file_size_limit_exhausted", "File-size limit exhausted: worker terminated by SIGXFSZ", true
+		}
+	}
+	return "", "", false
 }
 
 func validateResultKeys(value any) error {
@@ -470,14 +508,47 @@ def send(value):
     protocol.flush()
 
 def apply_resource_limits():
-    # Full container sandboxing is deferred to a later block. These rlimits are
-    # a best-effort first layer that bounds CPU, file growth, and child process
-    # creation inherited by user agent code.
-    limits = [
-        ("RLIMIT_CPU", 30),
-        ("RLIMIT_FSIZE", 64 * 1024 * 1024),
-        ("RLIMIT_NPROC", 0),
-    ]
+    # B30-T04: the durable path (InvokeDeployment) drives CPU and PID limits
+    # from the deployment policy via AGENTPAAS_CPU_QUOTA_SECONDS and
+    # AGENTPAAS_MAX_PIDS env vars. The legacy v0.2.3 path (no policy) keeps
+    # the fixed RLIMIT_CPU=30 / RLIMIT_NPROC=0 constants with "legacy compat"
+    # comments. RLIMIT_FSIZE (64MB) is policy-independent and always applied.
+    #
+    # T04.4 design note: child-agent creation is NOT done via os/exec — it
+    # goes through the AgentPaaS control plane (B35) and separate containers.
+    # The RLIMIT_NPROC limit applies to TOOL subprocesses (git, grep, awk),
+    # NOT to child-agent creation.
+    #
+    # Full container sandboxing (memory, CFS quota, PID cgroup, disk) is
+    # applied at the runtime driver container spec (T04.5). These rlimits
+    # are a best-effort first layer inside the container.
+    limits = []
+    if "AGENTPAAS_CPU_QUOTA_SECONDS" in os.environ:
+        # Durable path: policy-derived CPU quota. 0 means unlimited CPU
+        # (bounded by the container CFS quota); do not set RLIMIT_CPU.
+        cpu_quota = int(os.environ.get("AGENTPAAS_CPU_QUOTA_SECONDS", "0") or "0")
+        if cpu_quota > 0:
+            limits.append(("RLIMIT_CPU", cpu_quota))
+        # else: unlimited CPU — no RLIMIT_CPU, CFS quota bounds the worker.
+    else:
+        # Legacy compat (v0.2.3): fixed 30s CPU ceiling.
+        limits.append(("RLIMIT_CPU", 30))
+    # RLIMIT_FSIZE is policy-independent and always applied.
+    limits.append(("RLIMIT_FSIZE", 64 * 1024 * 1024))
+    if "AGENTPAAS_MAX_PIDS" in os.environ:
+        # Durable path: policy-derived PID limit. 0 means an explicit policy
+        # decision to forbid ALL subprocesses; >0 allows that many processes
+        # (sufficient for approved local tools: git, grep, awk). Default 64
+        # is enough for approved local tools but not a fork bomb.
+        max_pids = int(os.environ.get("AGENTPAAS_MAX_PIDS", "0") or "0")
+        if max_pids > 0:
+            limits.append(("RLIMIT_NPROC", max_pids))
+        else:
+            # Explicit policy decision to forbid subprocesses.
+            limits.append(("RLIMIT_NPROC", 0))
+    else:
+        # Legacy compat (v0.2.3): forbid all subprocesses.
+        limits.append(("RLIMIT_NPROC", 0))
     for name, soft in limits:
         if not hasattr(resource, name):
             continue
@@ -550,6 +621,33 @@ func workerEnv(base []string, rpcAddr string) []string {
 		env = append(env, "PYTHONPATH="+pythonPath)
 	}
 	env = append(env, "AGENTPAAS_RPC_ADDR="+rpcAddr)
+	return env
+}
+
+// appendPolicyResourceEnv adds the B30-T04 policy-derived resource ceilings
+// to the worker env. On the durable path (durable=true), BOTH env vars are
+// always emitted so the Python runner applies policy-derived RLIMIT_CPU and
+// RLIMIT_NPROC instead of the legacy fixed constants. On the legacy v0.2.3
+// path (durable=false), neither env var is emitted and the runner falls back
+// to RLIMIT_CPU=30 / RLIMIT_NPROC=0 with "legacy compat" comments.
+//
+// Durable path semantics:
+//   - cpuQuotaSeconds > 0 → RLIMIT_CPU = cpuQuotaSeconds (explicit CPU budget).
+//   - cpuQuotaSeconds == 0 → unlimited CPU (runner does NOT set RLIMIT_CPU;
+//     bounded by the container CFS quota the runtime driver applies).
+//   - maxPIDs > 0 → RLIMIT_NPROC = maxPIDs (approved local tools can spawn).
+//   - maxPIDs == 0 → RLIMIT_NPROC = 0 (explicit policy decision to forbid all
+//     subprocesses; e.g. a pure-LLM worker with no tool subprocesses).
+//
+// Child-agent creation is NOT affected by RLIMIT_NPROC: child agents are
+// created via the AgentPaaS control plane (B35), never via os/exec. The
+// RLIMIT_NPROC limit applies to TOOL subprocesses (git, grep, awk) only.
+func appendPolicyResourceEnv(env []string, durable bool, cpuQuotaSeconds int64, maxPIDs int) []string {
+	if !durable {
+		return env
+	}
+	env = append(env, "AGENTPAAS_CPU_QUOTA_SECONDS="+strconv.FormatInt(cpuQuotaSeconds, 10))
+	env = append(env, "AGENTPAAS_MAX_PIDS="+strconv.Itoa(maxPIDs))
 	return env
 }
 
