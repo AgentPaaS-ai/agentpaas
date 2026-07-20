@@ -68,31 +68,56 @@ type eventRecord struct {
 // subscriber tracks a single live consumer of events for a run.
 type subscriber struct {
 	ch       chan port.Event
-	cursor   int64
 	closedMu sync.Mutex
 	closed   bool
+	// cursor is the highest sequence successfully delivered (or the subscribe
+	// afterSequence before any delivery). Guarded by closedMu so Append fan-out
+	// and Subscribe replay cannot race on the cursor or double-deliver.
+	cursor int64
 }
 
-// send delivers event to the subscriber. It blocks up to
+// closeLocked marks the subscriber closed and closes its channel. Caller must
+// hold closedMu.
+func (s *subscriber) closeLocked() {
+	if !s.closed {
+		s.closed = true
+		close(s.ch)
+	}
+}
+
+// close closes the subscriber channel exactly once.
+func (s *subscriber) close() {
+	s.closedMu.Lock()
+	defer s.closedMu.Unlock()
+	s.closeLocked()
+}
+
+// send delivers event to the subscriber. It is safe for concurrent callers:
+// deliveries are serialized on closedMu, and events with Sequence <= cursor
+// are treated as already-delivered (no-op success). It blocks up to
 // subscriberOverflowTimeout; if the channel is still full, the subscriber is
 // closed with ErrSubscriberOverflow and the caller learns via the returned
 // bool so it can drop the subscriber from the registry.
 func (s *subscriber) send(event port.Event) bool {
+	s.closedMu.Lock()
+	defer s.closedMu.Unlock()
+	if s.closed {
+		return false
+	}
+	if event.Sequence <= s.cursor {
+		return true
+	}
 	timer := time.NewTimer(subscriberOverflowTimeout)
 	defer timer.Stop()
 	select {
 	case s.ch <- event:
+		s.cursor = event.Sequence
 		return true
 	case <-timer.C:
 		// Subscriber stalled. Close its channel so it sees an explicit error
 		// on reconnect (NOT a silent drop). The publisher continues with other
 		// subscribers and future appends.
-		s.closedMu.Lock()
-		if !s.closed {
-			s.closed = true
-			close(s.ch)
-		}
-		s.closedMu.Unlock()
+		s.closeLocked()
 		return false
 	}
 }
@@ -160,12 +185,7 @@ func (s *DurableEventStore) Close() error {
 		r.mu.Lock()
 		r.closed = true
 		for _, sub := range r.subscribers {
-			sub.closedMu.Lock()
-			if !sub.closed {
-				sub.closed = true
-				close(sub.ch)
-			}
-			sub.closedMu.Unlock()
+			sub.close()
 		}
 		r.subscribers = make(map[int64]*subscriber)
 		r.mu.Unlock()
@@ -215,10 +235,11 @@ func (s *DurableEventStore) Append(_ context.Context, event port.Event) (int64, 
 	// WAL is durable. Now update the in-memory index.
 	r.events = append(r.events, eventRecord{event: event})
 
-	// Clone subscriber list under the mutex, then fan out asynchronously.
-	// B29-2: fan-out was previously done under r.mu which blocks concurrent
-	// appends. Cloning the subscriber list and releasing the mutex before
-	// delivery keeps the critical section short.
+	// Clone subscriber list under the mutex, then fan out outside the lock.
+	// B29-2: fan-out must not hold r.mu — send can block up to
+	// subscriberOverflowTimeout per subscriber and would stall concurrent
+	// Append/Subscribe. Cursor checks and channel ops are serialized inside
+	// subscriber.send via closedMu (fixes the prior cursor data race).
 	subs := make(map[int64]*subscriber, len(r.subscribers))
 	for id, sub := range r.subscribers {
 		subs[id] = sub
@@ -227,9 +248,6 @@ func (s *DurableEventStore) Append(_ context.Context, event port.Event) (int64, 
 
 	var overflowed []int64
 	for id, sub := range subs {
-		if event.Sequence <= sub.cursor {
-			continue
-		}
 		if !sub.send(event) {
 			overflowed = append(overflowed, id)
 		}
@@ -261,7 +279,11 @@ func (s *DurableEventStore) Append(_ context.Context, event port.Event) (int64, 
 // subscriber registered under (tenantB, runID) only receives events appended
 // to that same (tenantB, runID) key. The channel is open and blocking (never
 // an error), matching the spec's "returns empty (not error)" semantic.
-func (s *DurableEventStore) Subscribe(_ context.Context, tenantID, runID string, afterSequence int64) (<-chan port.Event, error) {
+//
+// When ctx is cancelled, the subscriber is unregistered and its channel is
+// closed so publishers stop blocking on abandoned consumers (goroutine /
+// subscriber leak prevention).
+func (s *DurableEventStore) Subscribe(ctx context.Context, tenantID, runID string, afterSequence int64) (<-chan port.Event, error) {
 	if tenantID == "" || runID == "" {
 		ch := make(chan port.Event)
 		close(ch)
@@ -276,41 +298,73 @@ func (s *DurableEventStore) Subscribe(_ context.Context, tenantID, runID string,
 		return ch, nil
 	}
 
+	// Snapshot replay under the run lock, then deliver outside it so send's
+	// overflow timeout cannot stall concurrent Append/Subscribe.
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if r.closed {
+		r.mu.Unlock()
 		ch := make(chan port.Event)
 		close(ch)
 		return ch, nil
 	}
-
+	replay := make([]port.Event, 0, len(r.events))
+	for _, rec := range r.events {
+		if rec.event.Sequence > afterSequence {
+			replay = append(replay, rec.event)
+		}
+	}
 	sub := &subscriber{
 		ch:     make(chan port.Event, subscriberBufferSize),
 		cursor: afterSequence,
 	}
-
-	// Replay existing events after the cursor. We deliver into the buffered
-	// channel synchronously; since the channel is fresh and has capacity for
-	// subscriberBufferSize events, replays beyond that capacity overflow the
-	// subscriber immediately (same path as a live publisher stall).
-	for _, rec := range r.events {
-		if rec.event.Sequence <= afterSequence {
-			continue
-		}
-		if !sub.send(rec.event) {
-			// Subscriber overflowed during replay. Its channel is closed;
-			// we do not register it.
-			return sub.ch, nil
-		}
-		sub.cursor = rec.event.Sequence
-	}
-
 	subID := r.nextSubID
 	r.nextSubID++
+	// Register before unlock so live Appends during replay are also offered
+	// to this subscriber; send() dedupes by sequence under closedMu.
 	r.subscribers[subID] = sub
+	r.mu.Unlock()
+
+	// Already-cancelled context: drop the subscriber immediately.
+	if ctx.Err() != nil {
+		s.dropSubscriber(r, subID, sub)
+		return sub.ch, nil
+	}
+
+	for _, ev := range replay {
+		if ctx.Err() != nil {
+			s.dropSubscriber(r, subID, sub)
+			return sub.ch, nil
+		}
+		if !sub.send(ev) {
+			// Overflow closed the channel; remove registry entry.
+			s.dropSubscriber(r, subID, nil)
+			return sub.ch, nil
+		}
+	}
+
+	// Unregister + close when the caller's context ends so abandoned
+	// subscribers do not stall future Append fan-out. Skip for non-cancellable
+	// contexts (Background/TODO): their Done channel is nil and a wait would
+	// leak a goroutine for the process lifetime.
+	if done := ctx.Done(); done != nil {
+		go func() {
+			<-done
+			s.dropSubscriber(r, subID, sub)
+		}()
+	}
 
 	return sub.ch, nil
+}
+
+// dropSubscriber removes subID from r and closes sub if non-nil. Safe if the
+// subscriber was already removed or closed.
+func (s *DurableEventStore) dropSubscriber(r *runState, subID int64, sub *subscriber) {
+	r.mu.Lock()
+	delete(r.subscribers, subID)
+	r.mu.Unlock()
+	if sub != nil {
+		sub.close()
+	}
 }
 
 // Read returns events for (tenantID, runID) with Sequence > afterSequence,

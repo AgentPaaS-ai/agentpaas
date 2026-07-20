@@ -234,6 +234,10 @@ func (lc *Lifecycle) startHTTP(ctx context.Context, serverID, _ string, runID st
 // CheckReadiness polls the MCP server until it is ready or timeout.
 func (lc *Lifecycle) CheckReadiness(ctx context.Context, serverID string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	// Reuse a single timer across poll iterations to avoid leaking timers
+	// created by time.After in a tight loop.
+	timer := time.NewTimer(25 * time.Millisecond)
+	defer timer.Stop()
 	for {
 		ready, err := lc.checkOnce(ctx, serverID)
 		if ready {
@@ -247,10 +251,17 @@ func (lc *Lifecycle) CheckReadiness(ctx context.Context, serverID string, timeou
 			lc.manager.setFailure(serverID, ReadinessUnhealthy, err.Error())
 			return err
 		}
+		if !timer.Stop() {
+			select {
+			case <-timer.C:
+			default:
+			}
+		}
+		timer.Reset(25 * time.Millisecond)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(25 * time.Millisecond):
+		case <-timer.C:
 		}
 	}
 }
