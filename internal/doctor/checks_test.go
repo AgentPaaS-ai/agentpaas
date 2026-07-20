@@ -623,8 +623,10 @@ func TestIdentifyProcess_NoLsof(t *testing.T) {
 	defer func() { _ = os.Setenv("PATH", oldPath) }()
 
 	proc := identifyProcess(7700)
+	// Without lsof on PATH the helper must fail closed with an empty string,
+	// not invent a process name from residual state.
 	if proc != "" {
-		t.Logf("identifyProcess returned %q even with empty PATH", proc)
+		t.Errorf("identifyProcess returned %q with empty PATH; want empty", proc)
 	}
 }
 

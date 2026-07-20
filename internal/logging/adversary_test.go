@@ -90,17 +90,27 @@ func TestAdversary_ModifiedAPIKeyFormat(t *testing.T) {
 
 // TestAdversary_AWSKeyVariants checks if AWS key variants (ASIA, etc.) are caught.
 func TestAdversary_AWSKeyVariants(t *testing.T) {
-	// AWS now uses ASIA keys for temporary credentials too
-	cases := []string{
-		"ASIAIOSFODNN7EXAMPLE",     // temporary AWS key
-		"AKIDAIOSFODNN7EXAMPLE",    // hypothetical variant
-		"AKIAIOSFODNN7EXAMPL",      // 15 chars instead of 16 after AKIA
+	// AWS temporary credentials use ASIA; permanent use AKIA (16 chars after prefix).
+	cases := []struct {
+		name      string
+		val       string
+		mustRedact bool
+	}{
+		{"ASIA_temp", "ASIAIOSFODNN7EXAMPLE", true},
+		{"AKIA_valid", "AKIAIOSFODNN7EXAMPLE", true},
+		{"AKID_not_prefix", "AKIDAIOSFODNN7EXAMPLE", false}, // not AKIA/ASIA
+		{"AKIA_too_short", "AKIAIOSFODNN7EXAMPL", false},     // 15 chars after prefix
 	}
-	for _, val := range cases {
-		t.Run(val[:8], func(t *testing.T) {
-			result := Redact(val)
-			if strings.Contains(result, val) && !strings.Contains(result, "[REDACTED]") {
-				t.Logf("AWS variant not redacted: %q -> %q", val, result)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := Redact(tc.val)
+			redacted := !strings.Contains(result, tc.val) || strings.Contains(result, "[REDACTED]")
+			if tc.mustRedact && !redacted {
+				t.Errorf("AWS key not redacted: %q -> %q", tc.val, result)
+			}
+			if !tc.mustRedact && result != tc.val && strings.Contains(result, "[REDACTED]") {
+				// Short/invalid variants should not match awsKeyPattern; if other patterns fire, log only.
+				t.Logf("non-AWS pattern redacted %q -> %q (acceptable if high-entropy)", tc.val, result)
 			}
 		})
 	}
@@ -109,11 +119,14 @@ func TestAdversary_AWSKeyVariants(t *testing.T) {
 // TestAdversary_HexWithColons checks if hex strings with colons
 // (common format for fingerprints, UUIDs) bypass the hex pattern.
 func TestAdversary_HexWithColons(t *testing.T) {
-	// SHA256 fingerprint with colons — common in TLS certs
+	// SHA256 fingerprint with colons — common in TLS certs (32 bytes = 31 colons)
 	hexWithColons := "a1:b2:c3:d4:e5:f6:a7:b8:c9:d0:e1:f2:a3:b4:c5:d6:e7:f8:a9:b0:c1:d2:e3:f4:a5:b6:c7:d8:e9:f0:a1:b2"
 	result := Redact(hexWithColons)
-	if strings.Contains(result, hexWithColons) && !strings.Contains(result, "[REDACTED]") {
-		t.Logf("Hex with colons not redacted (may be acceptable): %q", hexWithColons[:40]+"...")
+	if strings.Contains(result, hexWithColons) {
+		t.Errorf("hex-with-colons fingerprint not redacted: %q", result)
+	}
+	if !strings.Contains(result, "[REDACTED]") {
+		t.Errorf("expected [REDACTED] for colon hex fingerprint, got %q", result)
 	}
 }
 
@@ -123,8 +136,21 @@ func TestAdversary_Base64URL(t *testing.T) {
 	// Base64url uses - and _ instead of + and /
 	base64url := "dGhpcyBpcyBhIHZlcnkgbG9uZyBiYXNlNjR1cmwgc3RyaW5nX3dpdGhfZGFzaGVzX2FuZF91bmRlcnNjb3Jlcw"
 	result := Redact(base64url)
-	if strings.Contains(result, base64url) && !strings.Contains(result, "[REDACTED]") {
-		t.Logf("Base64url not redacted (potential bypass): %q", base64url[:30]+"...")
+	// Must not panic and must return something.
+	if result == "" {
+		t.Fatal("Redact returned empty for base64url input")
+	}
+	// looksLikeAPIKey may catch long alnum/-/_ strings; either redacted or preserved is
+	// a policy choice — assert the output is well-formed (no partial corruption).
+	if strings.Contains(result, "[REDACTED]") {
+		if strings.Contains(result, base64url) {
+			t.Errorf("partial redaction left original base64url intact: %q", result)
+		}
+		return
+	}
+	// Not redacted: document as known gap for pure base64url alphabet without markers.
+	if result != base64url {
+		t.Errorf("unexpected mutation without redaction marker: %q -> %q", base64url, result)
 	}
 }
 
@@ -671,9 +697,19 @@ func TestAdversary_AuthorizationHeader(t *testing.T) {
 // TestAdversary_HandlerRace checks concurrent Handle calls on the same
 // handler instance for data races.
 func TestAdversary_HandlerRace(t *testing.T) {
-	handler := NewRedactingHandler(slog.NewJSONHandler(&bytes.Buffer{}, nil))
+	var mu sync.Mutex
+	var buf bytes.Buffer
+	// Protect buf: slog handlers may write concurrently under -race.
+	w := writerFunc(func(p []byte) (int, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		return buf.Write(p)
+	})
+	handler := NewRedactingHandler(slog.NewJSONHandler(w, nil))
 
 	var wg sync.WaitGroup
+	var handleErrs int
+	var errMu sync.Mutex
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -681,39 +717,75 @@ func TestAdversary_HandlerRace(t *testing.T) {
 			record := slog.NewRecord(time.Now(), slog.LevelInfo, "test message", 0)
 			record.AddAttrs(
 				slog.String("password", "hunter2"),
-				slog.String("token", "sk-abcdefghijklmnop123456"),
+				slog.String("token", "sk-abcdefghijklmnopqrstuvwxyz"),
 				slog.Int("id", id),
 			)
-			_ = handler.Handle(context.Background(), record)
-		}(i)
-	}
-	wg.Wait()
-}
-
-// TestAdversary_RedactConcurrent checks concurrent calls to Redact function.
-func TestAdversary_RedactConcurrent(t *testing.T) {
-	var wg sync.WaitGroup
-	secrets := []string{
-		"sk-abcdefghijklmnop123456",
-		"ghp_abcdefghijklmnop123456",
-		"AKIAIOSFODNN7EXAMPLE",
-		"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNqPnd9y8a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f",
-		"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4",
-		"mySecretP@ssw0rd!",
-		"normal string",
-		"/var/log/app.log",
-	}
-
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			for _, s := range secrets {
-				_ = Redact(s)
+			if err := handler.Handle(context.Background(), record); err != nil {
+				errMu.Lock()
+				handleErrs++
+				errMu.Unlock()
 			}
 		}(i)
 	}
 	wg.Wait()
+	if handleErrs != 0 {
+		t.Errorf("Handle returned error %d times under concurrency", handleErrs)
+	}
+	mu.Lock()
+	out := buf.String()
+	mu.Unlock()
+	if strings.Contains(out, "hunter2") {
+		t.Error("password leaked under concurrent Handle")
+	}
+	if strings.Contains(out, "sk-abcdefghijklmnopqrstuvwxyz") {
+		t.Error("token leaked under concurrent Handle")
+	}
+}
+
+// writerFunc adapts a function to io.Writer for concurrent-safe test buffers.
+type writerFunc func(p []byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// TestAdversary_RedactConcurrent checks concurrent calls to Redact function.
+func TestAdversary_RedactConcurrent(t *testing.T) {
+	var wg sync.WaitGroup
+	secrets := []struct {
+		in         string
+		mustRedact bool
+	}{
+		{"sk-abcdefghijklmnopqrstuvwxyz012345", true},
+		{"ghp_abcdefghijklmnopqrstuvwxyz012345", true},
+		{"AKIAIOSFODNN7EXAMPLE", true},
+		{"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", true},
+		{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4", true},
+		{"mySecretP@ssw0rd!", true},
+		{"normal string", false},
+		{"/var/log/app.log", false},
+	}
+
+	errCh := make(chan string, 100*len(secrets))
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for _, s := range secrets {
+				got := Redact(s.in)
+				if s.mustRedact {
+					if got == s.in || !strings.Contains(got, "[REDACTED]") {
+						errCh <- "not redacted: " + s.in
+					}
+				} else if got != s.in {
+					errCh <- "false positive: " + s.in + " -> " + got
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for msg := range errCh {
+		t.Error(msg)
+	}
 }
 
 // TestAdversary_RepeatedlyParsesLogOutput checks that redacted values

@@ -136,8 +136,40 @@ func TestAdversaryT02_GatewayIPDiscovery_EmptyOnError(t *testing.T) {
 // override our injected proxy settings (no Env field in RunRequest path).
 func TestAdversaryT02_EnvOverride_ProxyVars(t *testing.T) {
 	// RunRequest has no Env field; proxyEnv is authoritative.
-	// This test documents the claim and would fail if req.Env were merged later.
-	// confirmed_safe: no user env merge path exists in Run handler.
+	// Reflect on the protobuf to ensure no Env / Environment fields appear.
+	req := &controlv1.RunRequest{AgentName: "test-agent"}
+	md := req.ProtoReflect().Descriptor()
+	for i := 0; i < md.Fields().Len(); i++ {
+		name := string(md.Fields().Get(i).Name())
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "env") || strings.Contains(lower, "environ") {
+			t.Errorf("RunRequest exposes env-like field %q — user env merge risk", name)
+		}
+	}
+	// Defense-in-depth: Run with mock must not pick up process HTTP_PROXY into agent env.
+	t.Setenv("HTTP_PROXY", "http://evil-proxy.example:8080")
+	t.Setenv("HTTPS_PROXY", "http://evil-proxy.example:8080")
+	var capturedSpec runtime.ContainerSpec
+	mock := defaultMockRuntimeDriver()
+	mock.inspectContainerIPFunc = func(_ context.Context, _ runtime.ContainerID, _ string) (string, error) {
+		return "172.18.0.2", nil
+	}
+	mock.createFunc = func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+		if spec.Image == runtime.GatewayImage {
+			return runtime.ContainerID("gateway-test"), nil
+		}
+		capturedSpec = spec
+		return runtime.ContainerID("container-test"), nil
+	}
+	server, _ := testServerWithMockRuntime(t, mock)
+	if _, err := server.Run(context.Background(), req); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, env := range capturedSpec.Env {
+		if strings.Contains(env, "evil-proxy.example") {
+			t.Fatalf("process HTTP_PROXY leaked into agent env: %q", env)
+		}
+	}
 }
 
 // End of adversary_t02_test.go — exercises proxy bypass, injection, discovery vectors.

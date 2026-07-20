@@ -98,10 +98,13 @@ func TestAdversary_B7M_T06_DeepNestingRedact(t *testing.T) {
 }
 
 func TestAdversary_B7M_T06_PartialRedactionLeak(t *testing.T) {
-	got := RedactToolOutput("sk-live-1234-extra")
-	if strings.Contains(got, "sk-") && !strings.Contains(got, "[REDACTED]") {
-		// ADVERSARY BREAK: prefix may leak if end detection fails
-		t.Logf("BREAK partial: %s", got)
+	// Real secret material must be fully redacted — no sk- prefix residue.
+	got := RedactToolOutput("sk-live-abcdefghijklmnopqrstuvwxyz012345")
+	if strings.Contains(got, "sk-live") || strings.Contains(got, "abcdefghijklmnopqrstuvwxyz") {
+		t.Fatalf("secret material leaked after redaction: %s", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") && got == "sk-live-abcdefghijklmnopqrstuvwxyz012345" {
+		t.Fatalf("expected redaction of API key, got %q", got)
 	}
 }
 
@@ -131,22 +134,37 @@ func TestAdversary_B7M_T06_ConcurrentConfirmMapRace(t *testing.T) {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
-			manager.ConfirmTool("s", "shell"+string(rune(i)))
+			manager.ConfirmTool("s", "shell"+string(rune('a'+i)))
 		}(i)
 		go func(i int) {
 			defer wg.Done()
-			_ = manager.IsToolConfirmed("s", "shell"+string(rune(i)))
+			_ = manager.IsToolConfirmed("s", "shell"+string(rune('a'+i)))
 		}(i)
 	}
 	wg.Wait()
-	// -race should detect if unprotected; protected by mutex — check run
+	// After concurrent confirm, each tool that was confirmed should report true.
+	for i := 0; i < 10; i++ {
+		name := "shell" + string(rune('a'+i))
+		if !manager.IsToolConfirmed("s", name) {
+			t.Errorf("tool %q not confirmed after concurrent ConfirmTool", name)
+		}
+	}
 }
 
 func TestAdversary_B7M_T06_PromptInjectStateChange(t *testing.T) {
-	// already covered in capability_test; confirm no Register from output
+	// Tool output cannot call Confirm/Register — router is read-only on result.
 	manager := newTestManager("r", []string{"read"})
-	// tool output cannot call Confirm/Register — router is read-only on result
-	_ = manager // SAFE per existing test
+	if manager.IsToolConfirmed("r", "shell.run") {
+		t.Fatal("read-only manager must not pre-confirm shell.run")
+	}
+	// Confirming a different tool must not auto-confirm shell.
+	manager.ConfirmTool("r", "read")
+	if manager.IsToolConfirmed("r", "shell.run") {
+		t.Fatal("confirming read must not confirm shell.run")
+	}
+	if !manager.IsToolConfirmed("r", "read") {
+		t.Fatal("confirming read should stick")
+	}
 }
 
 func TestAdversary_B7M_T06_AuditDeniedMissingFields(t *testing.T) {
@@ -186,12 +204,35 @@ func TestAdversary_B7M_T06_SentinelMutable(t *testing.T) {
 }
 
 func TestAdversary_B7M_T06_RedactTypePreservation(t *testing.T) {
-	input := map[string]any{"num": 42, "arr": []any{1, "s"}}
+	input := map[string]any{"num": 42, "arr": []any{1, "s"}, "ok": true}
 	got := redactToolOutputValue(input)
-	if m, ok := got.(map[string]any); ok {
-		if _, ok := m["num"].(float64); !ok { // json unmarshal makes numbers float64
-			t.Log("redaction changed numeric type")
-		}
+	m, ok := got.(map[string]any)
+	if !ok {
+		t.Fatalf("want map[string]any, got %T", got)
 	}
-	// downstream may expect original types — potential corruption
+	// Current implementation JSON-roundtrips values; numbers become float64.
+	// Assert structure and numeric value are preserved (even if type widens).
+	switch v := m["num"].(type) {
+	case int:
+		if v != 42 {
+			t.Fatalf("num = %d", v)
+		}
+	case int64:
+		if v != 42 {
+			t.Fatalf("num = %d", v)
+		}
+	case float64:
+		if v != 42 {
+			t.Fatalf("num = %v, want 42", v)
+		}
+	default:
+		t.Fatalf("num type %T = %v", m["num"], m["num"])
+	}
+	if m["ok"] != true {
+		t.Fatalf("bool not preserved: %v", m["ok"])
+	}
+	arr, ok := m["arr"].([]any)
+	if !ok || len(arr) != 2 {
+		t.Fatalf("arr not preserved: %T %v", m["arr"], m["arr"])
+	}
 }

@@ -88,17 +88,44 @@ func TestAdversaryFieldNumberStability(t *testing.T) {
 
 // ADVERSARY BREAK: MEDIUM - TYPED ERROR BYPASS: TypedControlErrorCode exists but callers can still use string error; no enforcement that TypedControlError is only path
 func TestAdversaryTypedErrorBypass(t *testing.T) {
-	// String error path still possible via google.rpc.Status message
-	// Typed is additive but bypass via error string remains possible
+	// String error path still possible via google.rpc.Status message.
+	// Typed is additive but bypass via error string remains possible.
+	// Assert the typed codes enum surface is non-empty so the typed path exists.
+	codes := []controlv1.TypedControlErrorCode{
+		controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_UNSPECIFIED,
+	}
+	// Probe generated enum name stability for at least UNSPECIFIED.
+	if codes[0].String() == "" {
+		t.Fatal("TypedControlErrorCode.String empty")
+	}
+	// A plain RunRequest still marshals without a typed error envelope — documents bypass.
+	req := &controlv1.RunRequest{AgentName: "test"}
+	b, err := proto.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) == 0 {
+		t.Fatal("expected non-empty marshal of minimal RunRequest")
+	}
 }
 
 // ADVERSARY BREAK: HIGH - MISSING SCOPE ENFORCEMENT: AuthorityScope not marked required in RunRequest/Control RPCs; can omit
 func TestAdversaryMissingScopeEnforcement(t *testing.T) {
 	req := &controlv1.RunRequest{AgentName: "test"} // no scope field present in message
-	b, _ := proto.Marshal(req)
+	b, err := proto.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Request omits scope; proto does not enforce presence
 	if len(b) == 0 {
 		t.Error("empty")
+	}
+	var req2 controlv1.RunRequest
+	if err := proto.Unmarshal(b, &req2); err != nil {
+		t.Fatal(err)
+	}
+	if req2.AgentName != "test" {
+		t.Errorf("AgentName = %q", req2.AgentName)
 	}
 }
 
@@ -109,13 +136,28 @@ func TestAdversaryUnknownEnumFailClosed(t *testing.T) {
 		t.Error("unknown accepted")
 	}
 	// Go strings accept any; validation is opt-in
+	unknownAction := NextAction("not_a_real_action")
+	if IsValidNextAction(unknownAction) {
+		t.Error("unknown next action accepted")
+	}
 }
 
 // ADVERSARY BREAK: MEDIUM - DEPLOYMENT INACTIVE BYPASS: AdmissionOutcomeCode has DEPLOYMENT_INACTIVE but proto contract allows invocation representionally
 func TestAdversaryDeploymentInactiveBypass(t *testing.T) {
 	// Representational: RunRequest.deployment_ref + inactive deployment still serializable
 	req := &controlv1.RunRequest{DeploymentRef: "inactive-alias"}
-	_ = req // no proto-level inactive check
+	b, err := proto.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var req2 controlv1.RunRequest
+	if err := proto.Unmarshal(b, &req2); err != nil {
+		t.Fatal(err)
+	}
+	if req2.DeploymentRef != "inactive-alias" {
+		t.Errorf("DeploymentRef = %q", req2.DeploymentRef)
+	}
+	// No proto-level inactive check — documents that admission must enforce at runtime.
 }
 
 // ADVERSARY BREAK: HIGH - NUMERIC OVERFLOW: int64 fields like max_active_duration_ms / attempt_lease_ms (RunRequest.requested_attempt_lease_ms=7) have no max validation in proto or schema
