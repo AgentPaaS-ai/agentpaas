@@ -50,6 +50,14 @@ func newIdentityCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "identity",
 		Short: "Manage publisher identity (init, show, export, import)",
+		Long: `Manage the local publisher identity used to sign exported bundles.
+
+init creates an ECDSA keypair in the platform keychain. export/import
+back up and restore an encrypted identity file. No daemon required.`,
+		Example: `  agentpaas identity init --name my-org
+  agentpaas identity show
+  agentpaas identity export --out ./identity.backup
+  agentpaas identity import ./identity.backup`,
 	}
 
 	cmd.AddCommand(newIdentityInitCmd())
@@ -68,7 +76,14 @@ func newIdentityInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Create a new publisher identity",
-		Args:  cobra.NoArgs,
+		Long: `Create a new publisher identity (ECDSA P-256) in the platform keystore.
+
+On a TTY, prompts for --name when omitted. Non-interactive mode requires
+--name. Fails if an identity already exists unless --force-rotate is set
+(which replaces the key and warns receivers who pinned the old fingerprint).`,
+		Example: `  agentpaas identity init --name my-org
+  agentpaas identity init --name my-org --force-rotate`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { // intentionally ignored (reviewed)
 			name, _ := cmd.Flags().GetString("name")              // cobra flag default on missing
 			forceRotate, _ := cmd.Flags().GetBool("force-rotate") // cobra flag default on missing
@@ -106,8 +121,8 @@ func newIdentityInitCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("name", "", "Publisher name (GitHub-style slug, 1-39 chars)")
-	cmd.Flags().Bool("force-rotate", false, "Replace existing identity with a new keypair")
+	cmd.Flags().String("name", "", "Publisher name as a GitHub-style slug, 1-39 chars (required non-interactively)")
+	cmd.Flags().Bool("force-rotate", false, "Replace an existing identity with a new keypair (breaks prior pins)")
 
 	return cmd
 }
@@ -207,7 +222,12 @@ func newIdentityShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
 		Short: "Display publisher identity information",
-		Args:  cobra.NoArgs,
+		Long: `Display the local publisher name, fingerprint, and creation time.
+
+Does not print the private key. Use the global --json flag for scripts.`,
+		Example: `  agentpaas identity show
+  agentpaas identity show --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { // intentionally ignored (reviewed)
 			ks, err := openIdentityStore(cmd)
 			if err != nil {
@@ -274,7 +294,12 @@ func newIdentityExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export an encrypted backup of the publisher identity",
-		Args:  cobra.NoArgs,
+		Long: `Export the publisher private key and name as an encrypted backup file.
+
+Prompts for a passphrase (min 12 characters, confirmed). Never accept
+passphrases via argv. Writes atomically with mode 0600. --out is required.`,
+		Example: `  agentpaas identity export --out ./publisher.identity.backup`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { // intentionally ignored (reviewed)
 			outPath, _ := cmd.Flags().GetString("out") // cobra flag default on missing
 			if outPath == "" {
@@ -345,7 +370,7 @@ func newIdentityExportCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().String("out", "", "Output file path (required)")
+	cmd.Flags().String("out", "", "Output file path for the encrypted backup (required)")
 	_ = cmd.MarkFlagRequired("out") // flag registration; failure surfaces at Execute
 
 	return cmd
@@ -535,7 +560,12 @@ func newIdentityImportCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "import <file>",
 		Short: "Import an encrypted publisher identity backup",
-		Args:  cobra.ExactArgs(1),
+		Long: `Decrypt and restore a publisher identity from an export backup file.
+
+Prompts for the export passphrase. Fails if an identity already exists
+(export/rotate first if replacing).`,
+		Example: `  agentpaas identity import ./publisher.identity.backup`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filePath := args[0]
 

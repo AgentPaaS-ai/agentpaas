@@ -21,7 +21,18 @@ func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init [project-dir]",
 		Short: "Initialize a new agent project",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Scaffold a new agent project directory with agent.yaml and runtime stubs.
+
+If project-dir is omitted, uses the current directory. When --runtime is
+omitted, auto-detects from existing files or defaults to python.
+
+Use --noninteractive to skip prompts and write a default-deny policy.yaml.
+Use --from-code with --noninteractive to reconcile agent.yaml from source.`,
+		Example: `  agentpaas init ./my-agent
+  agentpaas init ./my-agent --runtime python --noninteractive
+  agentpaas init . --from-code --noninteractive
+  agentpaas init ./my-agent --runtime langgraph`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectDir := "."
 			if len(args) > 0 {
@@ -79,9 +90,9 @@ func newInitCmd() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().String("runtime", "", "Agent runtime: python, langgraph, or crewai (default: auto-detect or python)")
-	cmd.Flags().Bool("from-code", false, "Reconcile agent.yaml from existing source files")
-	cmd.Flags().Bool("noninteractive", false, "Initialize without prompts using a default-deny policy")
+	cmd.Flags().String("runtime", "", "Agent runtime: python, langgraph, or crewai (default: auto-detect from project files, else python)")
+	cmd.Flags().Bool("from-code", false, "Reconcile agent.yaml from existing source files (requires --noninteractive)")
+	cmd.Flags().Bool("noninteractive", false, "Skip prompts and write a default-deny policy.yaml")
 
 	return cmd
 }

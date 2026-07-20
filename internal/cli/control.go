@@ -32,7 +32,14 @@ func newPackCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pack [project-dir]",
 		Short: "Build an agent image from a project directory",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Build a container image from an agent project via the control daemon.
+
+Requires a running daemon. project-dir defaults to the current directory.
+Refuses wildcard egress policies unless --allow-wildcard is set.`,
+		Example: `  agentpaas pack ./my-agent
+  agentpaas pack . --name weather --version 1.0.0
+  agentpaas pack ./my-agent --allow-wildcard`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectDir := "."
 			if len(args) > 0 {
@@ -106,9 +113,9 @@ func newPackCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().String("name", "", "Agent name (overrides agent.yaml)")
-	cmd.Flags().String("version", "", "Agent version (overrides agent.yaml)")
-	cmd.Flags().Bool("allow-wildcard", false, "Allow packing with wildcard egress policy (suppresses warning)")
+	cmd.Flags().String("name", "", "Override agent name from agent.yaml for this pack")
+	cmd.Flags().String("version", "", "Override agent version from agent.yaml for this pack")
+	cmd.Flags().Bool("allow-wildcard", false, "Allow packing when policy.yaml has domain: '*' egress (prints warning)")
 	return cmd
 }
 
@@ -241,7 +248,17 @@ func newRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [image-or-project]",
 		Short: "Start a new agent run",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Start a new agent run through the control daemon.
+
+Target may be a project path, deployed agent name, name@pub8, alias, or
+sha256: image digest. Omitting the target is only valid with deployment
+invocation flags. Requires a running daemon and a prior pack/install.`,
+		Example: `  agentpaas run ./my-agent
+  agentpaas run weather
+  agentpaas run weather@a1b2c3d4
+  agentpaas run list
+  agentpaas run --deployment-ref prod --input '{"q":"hi"}'`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := ""
 			if len(args) > 0 {
@@ -397,12 +414,12 @@ func newRunCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().String("continue", "", "Continue a prior run (not enabled until B35)")
-	cmd.Flags().String("action", "", "Recovery action: more_time|capability_up|larger_context (not enabled until B35)")
-	cmd.Flags().Duration("attempt-lease", 0, "Requested attempt lease duration (not enabled until B35)")
-	cmd.Flags().String("input", "", "Input JSON string or @file for deployment invocation")
-	cmd.Flags().String("idempotency-key", "", "Idempotency key (CLI generates one when omitted for deploy invoke)")
-	cmd.Flags().String("deployment-ref", "", "Deployment alias or exact ID to invoke (not enabled until B28)")
+	cmd.Flags().String("continue", "", "Continue a prior run by run ID (reserved; not fully enabled yet)")
+	cmd.Flags().String("action", "", "Recovery action: more_time, capability_up, or larger_context (reserved)")
+	cmd.Flags().Duration("attempt-lease", 0, "Requested attempt lease duration (reserved; e.g. 30m)")
+	cmd.Flags().String("input", "", "Deployment input as JSON string or @path/to/file.json")
+	cmd.Flags().String("idempotency-key", "", "Idempotency key for deployment invoke (auto-generated when omitted)")
+	cmd.Flags().String("deployment-ref", "", "Deployment alias or exact deployment ID to invoke")
 
 	cmd.AddCommand(newListRunsCmd())
 	cmd.AddCommand(newRunCancelCmd())
@@ -415,45 +432,58 @@ func newRunCmd() *cobra.Command {
 
 func newRunCancelCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "cancel <run-id>",
-		Short: "Cancel a run/workflow (not enabled until B35)",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runControlNotEnabled("cancel"),
+		Use:     "cancel <run-id>",
+		Short:   "Cancel a run/workflow (not fully enabled yet)",
+		Long:    `Request cancellation of a run or workflow. Surface is reserved; daemon may reject.`,
+		Example: `  agentpaas run cancel run-01HXYZ...`,
+		Args:    cobra.ExactArgs(1),
+		RunE:    runControlNotEnabled("cancel"),
 	}
 }
 
 func newRunPauseCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "pause <run-id>",
-		Short: "Pause a run/workflow (not enabled until B35)",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runControlNotEnabled("pause"),
+		Use:     "pause <run-id>",
+		Short:   "Pause a run/workflow (not fully enabled yet)",
+		Long:    `Request pause of a run or workflow. Surface is reserved; daemon may reject.`,
+		Example: `  agentpaas run pause run-01HXYZ...`,
+		Args:    cobra.ExactArgs(1),
+		RunE:    runControlNotEnabled("pause"),
 	}
 }
 
 func newRunResumeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "resume <run-id>",
-		Short: "Resume a run/workflow (not enabled until B35)",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runControlNotEnabled("resume"),
+		Use:     "resume <run-id>",
+		Short:   "Resume a run/workflow (not fully enabled yet)",
+		Long:    `Request resume of a paused run or workflow. Surface is reserved; daemon may reject.`,
+		Example: `  agentpaas run resume run-01HXYZ...`,
+		Args:    cobra.ExactArgs(1),
+		RunE:    runControlNotEnabled("resume"),
 	}
 }
 
 func newRunRestartCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "restart <run-id>",
-		Short: "Restart a run/workflow (not enabled until B35)",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runControlNotEnabled("restart"),
+		Use:     "restart <run-id>",
+		Short:   "Restart a run/workflow (not fully enabled yet)",
+		Long:    `Request restart of a run or workflow. Surface is reserved; daemon may reject.`,
+		Example: `  agentpaas run restart run-01HXYZ...`,
+		Args:    cobra.ExactArgs(1),
+		RunE:    runControlNotEnabled("restart"),
 	}
 }
 
 func newRunExtendCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "extend <run-id>",
-		Short: "Amend run limits (not enabled until B35)",
-		Args:  cobra.ExactArgs(1),
+		Short: "Amend run limits (not fully enabled yet)",
+		Long: `Amend absolute run limits (max active time, max LLM spend).
+
+Requires --reason and --idempotency-key. Surface is reserved; daemon may reject.`,
+		Example: `  agentpaas run extend run-01HXYZ... --reason "need more time" \
+    --idempotency-key ext-1 --max-active-time 2h`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			reason, _ := cmd.Flags().GetString("reason") // cobra flag default on missing
 			if strings.TrimSpace(reason) == "" {
@@ -498,11 +528,11 @@ func newRunExtendCmd() *cobra.Command {
 			return fmt.Errorf("extend unexpectedly succeeded (not enabled in B26)")
 		},
 	}
-	cmd.Flags().Duration("max-active-time", 0, "New absolute max active time")
-	cmd.Flags().String("max-llm-spend-usd", "", "New absolute max LLM spend (decimal string)")
-	cmd.Flags().Bool("extend-current-attempt", false, "Also extend current attempt lease")
-	cmd.Flags().String("reason", "", "Required reason for the amendment")
-	cmd.Flags().String("idempotency-key", "", "Required idempotency key")
+	cmd.Flags().Duration("max-active-time", 0, "New absolute maximum active duration (e.g. 2h)")
+	cmd.Flags().String("max-llm-spend-usd", "", "New absolute maximum LLM spend as a decimal USD string")
+	cmd.Flags().Bool("extend-current-attempt", false, "Also extend the current attempt lease (reserved)")
+	cmd.Flags().String("reason", "", "Human-readable reason for the limit amendment (required)")
+	cmd.Flags().String("idempotency-key", "", "Idempotency key for safe retries (required)")
 	return cmd
 }
 
@@ -603,7 +633,12 @@ func newListRunsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all active and recent agent runs",
-		Args:  cobra.NoArgs,
+		Long: `List active and recent runs known to the daemon.
+
+Shows run ID, agent, and status. Use global --json for scripts.`,
+		Example: `  agentpaas run list
+  agentpaas run list --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -651,7 +686,12 @@ func newStopCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "stop <run-id>",
 		Short: "Terminate a running agent",
-		Args:  cobra.ExactArgs(1),
+		Long: `Stop a running agent by run ID via the control daemon.
+
+Sends a stop request; the daemon terminates the container/process.`,
+		Example: `  agentpaas stop run-01HXYZ...
+  agentpaas stop run-01HXYZ... --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
 			sock, err := socketPath(cmd)
@@ -693,7 +733,14 @@ func newConfirmCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "confirm <confirmation-id>",
 		Short: "Approve or decline a pending trust-boundary change",
-		Args:  cobra.ExactArgs(1),
+		Long: `Resolve a pending trust-boundary confirmation from policy proposals.
+
+Exactly one of --approve or --decline is required. List pending IDs with
+'agentpaas confirmations'.`,
+		Example: `  agentpaas confirmations
+  agentpaas confirm conf-01HXYZ... --approve
+  agentpaas confirm conf-01HXYZ... --decline`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			approve, _ := cmd.Flags().GetBool("approve") // cobra flag default on missing
 			decline, _ := cmd.Flags().GetBool("decline") // cobra flag default on missing
@@ -745,8 +792,8 @@ func newConfirmCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().Bool("approve", false, "Approve the proposed change")
-	cmd.Flags().Bool("decline", false, "Decline the proposed change")
+	cmd.Flags().Bool("approve", false, "Approve the proposed trust-boundary change (mutually exclusive with --decline)")
+	cmd.Flags().Bool("decline", false, "Decline the proposed trust-boundary change (mutually exclusive with --approve)")
 	return cmd
 }
 
@@ -768,7 +815,12 @@ func newConfirmationsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "confirmations",
 		Short: "List pending trust-boundary confirmations",
-		Args:  cobra.NoArgs,
+		Long: `List pending trust-boundary confirmations awaiting operator decision.
+
+Use 'agentpaas confirm <id> --approve|--decline' to resolve each item.`,
+		Example: `  agentpaas confirmations
+  agentpaas confirmations --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -817,7 +869,16 @@ func newLogsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "logs <run-id>",
 		Short: "Follow or query agent logs",
-		Args:  cobra.ExactArgs(1),
+		Long: `Stream or fetch log entries for a run from the control daemon.
+
+By default prints the last --tail entries. Use -f/--follow to stream.
+Command-local --json emits a single document with an entries array;
+global --json emits one JSON object per line while streaming.`,
+		Example: `  agentpaas logs run-01HXYZ...
+  agentpaas logs run-01HXYZ... --tail 50
+  agentpaas logs run-01HXYZ... -f
+  agentpaas logs run-01HXYZ... --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
 			follow, _ := cmd.Flags().GetBool("follow") // cobra flag default on missing
@@ -893,9 +954,9 @@ func newLogsCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolP("follow", "f", false, "Follow log output in real-time")
-	cmd.Flags().Int32("tail", 100, "Number of historical log entries to return")
-	cmd.Flags().Bool("json", false, "Output logs as a single JSON document with an entries array")
+	cmd.Flags().BoolP("follow", "f", false, "Follow log output until the stream ends or is interrupted")
+	cmd.Flags().Int32("tail", 100, "Number of historical log entries to return before following (default 100)")
+	cmd.Flags().Bool("json", false, "Emit one JSON document {run_id, entries} instead of line-oriented output")
 	return cmd
 }
 
@@ -904,6 +965,14 @@ func newPolicyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "policy",
 		Short: "Manage agent policies",
+		Long: `Manage agent network/credential policies (policy.yaml).
+
+init scaffolds templates; apply validates/applies YAML; show reads the
+project policy; explain/propose help debug denials.`,
+		Example: `  agentpaas policy init ./my-agent --template deny-all
+  agentpaas policy show ./my-agent
+  agentpaas policy apply ./my-agent/policy.yaml --dry-run
+  agentpaas policy explain api.example.com`,
 	}
 	cmd.AddCommand(newPolicyApplyCmd())
 	cmd.AddCommand(newPolicyShowCmd())
@@ -914,10 +983,16 @@ func newPolicyCmd() *cobra.Command {
 }
 
 func newPolicyApplyCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "apply <policy-file>",
 		Short: "Apply or validate a policy file",
-		Args:  cobra.ExactArgs(1),
+		Long: `Apply a policy.yaml through the daemon, or validate with --dry-run.
+
+Requires a running daemon. Prints the resulting policy digest and rule count.`,
+		Example: `  agentpaas policy apply ./policy.yaml
+  agentpaas policy apply ./policy.yaml --dry-run
+  agentpaas policy apply ./policy.yaml --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			policyFile := args[0]
 			data, err := os.ReadFile(policyFile)
@@ -973,13 +1048,22 @@ func newPolicyApplyCmd() *cobra.Command {
 			})
 		},
 	}
+	cmd.Flags().Bool("dry-run", false, "Validate and report the policy digest without applying it")
+	return cmd
 }
 
 func newPolicyShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show [run-id]",
 		Short: "Show the active policy for a run or project",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Show policy.yaml for a project directory, or (future) the policy for a run ID.
+
+When the argument is omitted, uses the current directory. Arguments starting
+with run- query by run ID (not yet fully implemented).`,
+		Example: `  agentpaas policy show
+  agentpaas policy show ./my-agent
+  agentpaas policy show ./my-agent --json`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := ""
 			if len(args) > 0 {
@@ -1039,7 +1123,12 @@ func newPolicyExplainCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "explain <run-id|destination>",
 		Short: "Explain why a destination was denied by policy",
-		Args:  cobra.ExactArgs(1),
+		Long: `Ask the daemon why a destination (or run) was denied by policy.
+
+Requires a running daemon. Prefer a hostname/URL destination string.`,
+		Example: `  agentpaas policy explain api.openai.com
+  agentpaas policy explain https://api.example.com/v1`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
 			sock, err := socketPath(cmd)
@@ -1086,7 +1175,12 @@ func newPolicyProposeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "propose <desired-behavior>",
 		Short: "Suggest a policy patch for a desired behavior",
-		Args:  cobra.ExactArgs(1),
+		Long: `Suggest a policy patch that would allow a desired egress/behavior.
+
+Requires a running daemon. High-risk patches may require confirmation.`,
+		Example: `  agentpaas policy propose "allow HTTPS to api.openai.com"
+  agentpaas policy propose "allow MCP server at localhost:3000"`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			behavior := args[0]
 			sock, err := socketPath(cmd)
@@ -1142,15 +1236,30 @@ var secretStoreFactory = newDefaultSecretStore
 // newSecretCmd creates the `agent secret` command.
 func newSecretCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "secret",
-		Short: "Manage local profile secrets",
+		Use:     "secret",
+		Aliases: []string{"secrets"},
+		Short:   "Manage local profile secrets",
+		Long: `Manage local secrets in the platform keychain (values never printed).
+
+add/set and rotate read the secret value from stdin (or a TTY prompt).
+Use with installed map-credential to wire agents to local credentials.`,
+		Example: `  printf '%s' "$OPENAI_API_KEY" | agentpaas secret add openai-key
+  agentpaas secret list
+  agentpaas secret test openai-key --provider openai
+  agentpaas secret remove openai-key`,
 	}
 
 	cmd.AddCommand(&cobra.Command{
 		Use:     "add <name>",
 		Aliases: []string{"set"},
 		Short:   "Create or update a secret from stdin",
-		Args:    cobra.ExactArgs(1),
+		Long: `Store a secret value under name in the local keychain.
+
+Reads the value from stdin when piped; prompts on a TTY. Values are never
+echoed back by list or show commands.`,
+		Example: `  printf '%s' "$OPENAI_API_KEY" | agentpaas secret add openai-key
+  agentpaas secret set openai-key < ./key.txt`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
@@ -1173,9 +1282,11 @@ func newSecretCmd() *cobra.Command {
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "rotate <name>",
-		Short: "Replace a secret with a new value from stdin (atomic)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "rotate <name>",
+		Short:   "Replace a secret with a new value from stdin (atomic)",
+		Long:    `Replace an existing secret value atomically from stdin or a TTY prompt.`,
+		Example: `  printf '%s' "$NEW_KEY" | agentpaas secret rotate openai-key`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
@@ -1200,7 +1311,10 @@ func newSecretCmd() *cobra.Command {
 	cmd.AddCommand(&cobra.Command{
 		Use:   "list",
 		Short: "List secret metadata",
-		Args:  cobra.NoArgs,
+		Long:  `List secret names and timestamps without revealing values.`,
+		Example: `  agentpaas secret list
+  agentpaas secret list --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
@@ -1218,7 +1332,10 @@ func newSecretCmd() *cobra.Command {
 		Use:     "remove <name>",
 		Aliases: []string{"rm"},
 		Short:   "Remove a secret",
-		Args:    cobra.ExactArgs(1),
+		Long:    `Delete a secret from the local keychain by name.`,
+		Example: `  agentpaas secret remove openai-key
+  agentpaas secret rm openai-key`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
@@ -1238,8 +1355,14 @@ func newSecretCmd() *cobra.Command {
 
 	testCmd := &cobra.Command{
 		Use:   "test <name>",
-		Short: "Validate a credential by making a trivial authenticated call to the provider",
-		Args:  cobra.ExactArgs(1),
+		Short: "Validate a credential with a trivial provider API call",
+		Long: `Load the secret and make a lightweight authenticated call to the provider.
+
+Provider is auto-detected from the secret name when --provider is omitted
+(openai, anthropic, xai, nous, openrouter).`,
+		Example: `  agentpaas secret test openai-key
+  agentpaas secret test my-key --provider anthropic`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
@@ -1267,7 +1390,7 @@ func newSecretCmd() *cobra.Command {
 			return nil
 		},
 	}
-	testCmd.Flags().String("provider", "", "credential provider: openai|anthropic|xai|nous (auto-detected from name if omitted)")
+	testCmd.Flags().String("provider", "", "Credential provider: openai, anthropic, xai, nous, or openrouter (auto-detected from name if omitted)")
 	cmd.AddCommand(testCmd)
 
 	return cmd
@@ -1401,6 +1524,13 @@ func newAuditCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "audit",
 		Short: "Query and export audit logs",
+		Long: `Query, export, and verify the local audit log hash chain.
+
+query/export talk to the daemon. verify reads local audit files under
+<home>/state and does not require a daemon.`,
+		Example: `  agentpaas audit query --run-id run-01HXYZ...
+  agentpaas audit export -o ./audit.json --format json
+  agentpaas audit verify`,
 	}
 	cmd.AddCommand(newAuditQueryCmd())
 	cmd.AddCommand(newAuditExportCmd())
@@ -1412,7 +1542,13 @@ func newAuditVerifyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Verify the audit hash chain and checkpoints",
-		Args:  cobra.NoArgs,
+		Long: `Verify integrity of the local audit JSONL and checkpoint files.
+
+Defaults to <home>/state/audit.jsonl and audit.jsonl.checkpoints.
+Does not require a running daemon.`,
+		Example: `  agentpaas audit verify
+  agentpaas audit verify --audit /path/audit.jsonl --checkpoints /path/audit.jsonl.checkpoints`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			auditPath, _ := cmd.Flags().GetString("audit")             // cobra flag default on missing
 			checkpointsPath, _ := cmd.Flags().GetString("checkpoints") // cobra flag default on missing
@@ -1452,8 +1588,8 @@ func newAuditVerifyCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("audit", "", "Audit JSONL path")
-	cmd.Flags().String("checkpoints", "", "Audit checkpoints JSONL path")
+	cmd.Flags().String("audit", "", "Path to audit JSONL (default: <home>/state/audit.jsonl)")
+	cmd.Flags().String("checkpoints", "", "Path to checkpoints JSONL (default: <home>/state/audit.jsonl.checkpoints)")
 	return cmd
 }
 
@@ -1461,7 +1597,13 @@ func newAuditQueryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "query",
 		Short: "Query audit log entries",
-		Args:  cobra.NoArgs,
+		Long: `Query audit events from the daemon with optional run or agent filters.
+
+Requires a running daemon. --limit is an alias for --page-size.`,
+		Example: `  agentpaas audit query
+  agentpaas audit query --run-id run-01HXYZ...
+  agentpaas audit query --agent-name weather --limit 20`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID, _ := cmd.Flags().GetString("run-id")           // cobra flag default on missing
 			agentFilter, _ := cmd.Flags().GetString("agent-name") // cobra flag default on missing
@@ -1539,10 +1681,10 @@ func newAuditQueryCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().String("run-id", "", "Filter by run ID")
-	cmd.Flags().String("agent-name", "", "Filter by agent name, name@pub8, or alias")
-	cmd.Flags().Int32("page-size", 50, "Maximum number of results (alias: --limit)")
-	cmd.Flags().Int32("limit", 50, "Maximum number of results (alias of --page-size)")
+	cmd.Flags().String("run-id", "", "Return only events for this run ID")
+	cmd.Flags().String("agent-name", "", "Filter by agent name, name@pub8, or display alias")
+	cmd.Flags().Int32("page-size", 50, "Maximum number of results to return (default 50; alias: --limit)")
+	cmd.Flags().Int32("limit", 50, "Maximum number of results (alias of --page-size; default 50)")
 	return cmd
 }
 
@@ -1550,7 +1692,13 @@ func newAuditExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "Export audit log entries",
-		Args:  cobra.NoArgs,
+		Long: `Export audit log entries from the daemon to stdout or a file.
+
+Requires a running daemon. Formats: json (default), csv, ndjson.`,
+		Example: `  agentpaas audit export
+  agentpaas audit export --format ndjson -o ./audit.ndjson
+  agentpaas audit export --format csv -o ./audit.csv`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format, _ := cmd.Flags().GetString("format") // cobra flag default on missing
 			output, _ := cmd.Flags().GetString("output") // cobra flag default on missing
@@ -1599,8 +1747,8 @@ func newAuditExportCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("format", "json", "Output format: json, csv, ndjson")
-	cmd.Flags().StringP("output", "o", "", "Write to file instead of stdout")
+	cmd.Flags().String("format", "json", "Export format: json, csv, or ndjson (default json)")
+	cmd.Flags().StringP("output", "o", "", "Write export to this file path instead of stdout")
 	return cmd
 }
 
@@ -1609,7 +1757,12 @@ func newValidateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "validate <project-path>",
 		Short: "Validate an agent project directory structure",
-		Args:  cobra.ExactArgs(1),
+		Long: `Validate that a project directory is ready to pack/run.
+
+Requires a running daemon. Reports readiness, runtime, and issues.`,
+		Example: `  agentpaas validate ./my-agent
+  agentpaas validate ./my-agent --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectPath, err := resolveCLIProjectPath(args[0])
 			if err != nil {
@@ -1671,7 +1824,12 @@ func newSummarizeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "summarize <run-id>",
 		Short: "Generate a summary of a completed run",
-		Args:  cobra.ExactArgs(1),
+		Long: `Summarize a run's status, duration, denials, and invoke response if present.
+
+Requires a running daemon.`,
+		Example: `  agentpaas summarize run-01HXYZ...
+  agentpaas summarize run-01HXYZ... --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
 			sock, err := socketPath(cmd)
@@ -1735,7 +1893,12 @@ func newExplainFailureCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "explain-failure <run-id>",
 		Short: "Analyze a failed run and return root cause",
-		Args:  cobra.ExactArgs(1),
+		Long: `Analyze a failed run and return categorized root cause with redacted excerpts.
+
+Requires a running daemon.`,
+		Example: `  agentpaas explain-failure run-01HXYZ...
+  agentpaas explain-failure run-01HXYZ... --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
 			sock, err := socketPath(cmd)
@@ -1790,7 +1953,12 @@ func newExplainDenialCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "explain-denial <destination>",
 		Short: "Explain why a destination was denied by policy",
-		Args:  cobra.ExactArgs(1),
+		Long: `Explain a policy denial for a destination hostname or URL.
+
+Requires a running daemon. Similar to 'agentpaas policy explain'.`,
+		Example: `  agentpaas explain-denial api.openai.com
+  agentpaas explain-denial https://example.com/v1`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
 			sock, err := socketPath(cmd)
@@ -1836,7 +2004,11 @@ func newRecommendPatchCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "recommend-patch <desired-behavior>",
 		Short: "Suggest a policy patch for a desired behavior",
-		Args:  cobra.ExactArgs(1),
+		Long: `Suggest a policy patch for a desired behavior (top-level alias of policy propose).
+
+Requires a running daemon.`,
+		Example: `  agentpaas recommend-patch "allow HTTPS to api.openai.com"`,
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			behavior := args[0]
 			sock, err := socketPath(cmd)
@@ -1891,7 +2063,10 @@ func newTimelineCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "timeline <run-id>",
 		Short: "Show chronological timeline of events for a run",
-		Args:  cobra.ExactArgs(1),
+		Long:  `Show a chronological event timeline for a run from the daemon.`,
+		Example: `  agentpaas timeline run-01HXYZ...
+  agentpaas timeline run-01HXYZ... --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
 			sock, err := socketPath(cmd)
@@ -1948,7 +2123,12 @@ func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status [run-id]",
 		Short: "Show daemon status or a specific run's status",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `With no arguments, shows daemon readiness (same as daemon status).
+With a run ID, shows that run's status summary.`,
+		Example: `  agentpaas status
+  agentpaas status run-01HXYZ...
+  agentpaas status --json`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// No run-id: delegate to daemon status
@@ -1992,7 +2172,13 @@ func newNextActionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "next-action [run-id]",
 		Short: "Recommend the next action based on current context",
-		Args:  cobra.MaximumNArgs(1),
+		Long: `Ask the daemon for the recommended next operator action.
+
+Optional run-id scopes the recommendation to that run.`,
+		Example: `  agentpaas next-action
+  agentpaas next-action run-01HXYZ...
+  agentpaas next-action --json`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := ""
 			if len(args) > 0 {

@@ -212,8 +212,8 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 	// We verify the operator package types produce the expected JSON keys
 	// by marshaling a representative instance of each.
 	tests := []struct {
-		name    string
-		payload interface{}
+		name     string
+		payload  interface{}
 		wantKeys []string
 	}{
 		{
@@ -249,9 +249,9 @@ func TestOperatorJSONOutputShape(t *testing.T) {
 		{
 			name: "explain_denial",
 			payload: map[string]interface{}{
-				"schema_version":    "1.1.0",
-				"blocking_rule_id":  "egress[0]",
-				"next_action":       "review_policy_patch",
+				"schema_version":   "1.1.0",
+				"blocking_rule_id": "egress[0]",
+				"next_action":      "review_policy_patch",
 			},
 			wantKeys: []string{"schema_version", "blocking_rule_id", "next_action"},
 		},

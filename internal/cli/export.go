@@ -16,8 +16,18 @@ import (
 func newExportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "export [project-dir]",
-		Short: "Export a signed .agentpaas bundle from a deployed agent",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Export a signed .agentpaas bundle from a project",
+		Long: `Export a signed .agentpaas bundle from a packed agent project.
+
+Requires a running daemon and a publisher identity (agentpaas identity init).
+Shows an export preview, then prompts for confirmation unless --yes is set.
+On non-TTY stdin, --yes is required.
+
+Default output path is <agent-name>.agentpaas in the current directory.`,
+		Example: `  agentpaas export ./my-agent --yes
+  agentpaas export . -o ./dist/weather.agentpaas --yes
+  agentpaas export ./my-agent --with-image --include README.md --yes`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectDir := "."
 			if len(args) > 0 {
@@ -118,10 +128,10 @@ func newExportCmd() *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringP("output", "o", "", "Output .agentpaas path (default: <agent>.agentpaas)")
-	cmd.Flags().Bool("with-image", false, "Include locked OCI image layout in bundle")
-	cmd.Flags().StringSlice("include", nil, "Additional files to include (digest-pinned as extra_files)")
-	cmd.Flags().Bool("yes", false, "Skip interactive confirmation")
+	cmd.Flags().StringP("output", "o", "", "Output .agentpaas path (default: <agent-name>.agentpaas in the current directory)")
+	cmd.Flags().Bool("with-image", false, "Include the locked OCI image layout in the bundle (larger; needs skopeo)")
+	cmd.Flags().StringSlice("include", nil, "Additional project-relative files to pin as extra_files (repeatable)")
+	cmd.Flags().Bool("yes", false, "Skip interactive confirmation (required on non-TTY)")
 	return cmd
 }
 

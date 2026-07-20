@@ -25,8 +25,14 @@ func newDaemonCmd() *cobra.Command {
 		Long: `Control the lifecycle of the AgentPaaS daemon (agentpaasd).
 
 Start, stop, restart the daemon process, or query its status.
-Install and uninstall are stubs — real service installation comes
-in a future release.`,
+Install and uninstall as a system service are stubs — real service
+installation comes in a future release.
+
+Most other agentpaas commands require a running daemon.`,
+		Example: `  agentpaas daemon start
+  agentpaas daemon status
+  agentpaas daemon restart
+  agentpaas daemon stop`,
 	}
 
 	cmd.AddCommand(newDaemonStatusCmd())
@@ -48,7 +54,9 @@ func newDaemonStatusCmd() *cobra.Command {
 Docker context, and readiness state.
 
 If the daemon is not running, a clear error is printed with
-a hint to start it first.`,
+a hint to start it first. Use the global --json flag for scripts.`,
+		Example: `  agentpaas daemon status
+  agentpaas daemon status --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDaemonStatus(cmd)
@@ -182,10 +190,13 @@ func newDaemonStartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "start",
 		Short: "Start the control daemon",
-		Long: `Start the agentpaasd daemon as a subprocess.
+		Long: `Start the agentpaasd daemon as a detached subprocess.
 
 The daemon binary must be built and available. It is expected
-to be in the same directory as the agent CLI binary.`,
+to be next to the agentpaas CLI binary, or on PATH. Logs are
+appended to <home>/logs/daemon.log.`,
+		Example: `  agentpaas daemon start
+  agentpaas --home /tmp/ap-home daemon start`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDaemonStart(cmd)
@@ -338,8 +349,10 @@ func newDaemonStopCmd() *cobra.Command {
 		Long: `Send SIGTERM to the running daemon process.
 
 Uses the PID file in the home directory to locate the process.
+If the process does not exit within 10 seconds, sends SIGKILL.
 If the daemon is not running, returns a clear error.`,
-		Args: cobra.NoArgs,
+		Example: `  agentpaas daemon stop`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDaemonStop(cmd)
 		},
@@ -407,10 +420,11 @@ func runDaemonStop(cmd *cobra.Command) error {
 // newDaemonRestartCmd creates the `agent daemon restart` command.
 func newDaemonRestartCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "restart",
-		Short: "Restart the control daemon",
-		Long:  `Stop then start the control daemon.`,
-		Args:  cobra.NoArgs,
+		Use:     "restart",
+		Short:   "Restart the control daemon",
+		Long:    `Stop then start the control daemon. Ignores "not running" errors from stop.`,
+		Example: `  agentpaas daemon restart`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Stop — ignore "not running" errors.
 			_ = runDaemonStop(cmd) // best-effort cleanup
@@ -424,8 +438,11 @@ func newDaemonInstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install",
 		Short: "Install the daemon as a system service (not yet implemented)",
-		Long:  `Register the daemon as a system service (launchd on macOS, systemd on Linux).`,
-		Args:  cobra.NoArgs,
+		Long: `Register the daemon as a system service (launchd on macOS, systemd on Linux).
+
+Not yet implemented — use 'agentpaas daemon start' for a user-session process.`,
+		Example: `  agentpaas daemon install`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Service installation not yet implemented")
 			return nil
@@ -438,8 +455,11 @@ func newDaemonUninstallCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninstall",
 		Short: "Remove the daemon from system services (not yet implemented)",
-		Long:  `Unregister the daemon from system services.`,
-		Args:  cobra.NoArgs,
+		Long: `Unregister the daemon from system services.
+
+Not yet implemented — use 'agentpaas daemon stop' for a user-session process.`,
+		Example: `  agentpaas daemon uninstall`,
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Service uninstallation not yet implemented")
 			return nil

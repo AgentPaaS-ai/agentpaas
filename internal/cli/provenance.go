@@ -15,6 +15,13 @@ func newProvenanceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "provenance",
 		Short: "Show provenance chains for installed agents or bundles",
+		Long: `Inspect provenance chains that record how an agent was built and forked.
+
+Works offline for .agentpaas files and against installed agent state.
+No daemon required.`,
+		Example: `  agentpaas provenance show weather@a1b2c3d4
+  agentpaas provenance show ./weather-agent.agentpaas
+  agentpaas provenance show weather --json`,
 	}
 	cmd.AddCommand(newProvenanceShowCmd())
 	return cmd
@@ -24,8 +31,14 @@ func newProvenanceShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show <installed-ref-or-bundle-path>",
 		Short: "Render provenance report from an installed lock or bundle file",
-		Long: `Shows the B21 provenance report for a materialized install (name@pub8, alias,
-or Phase-1 bare name) or for a .agentpaas bundle file (inspect provenance section).`,
+		Long: `Show the provenance report for a materialized install (name@pub8, alias,
+or Phase-1 bare name) or for a .agentpaas bundle file.
+
+For bundles, integrity is verified first. Exits non-zero if the provenance
+chain is missing or invalid.`,
+		Example: `  agentpaas provenance show weather@a1b2c3d4
+  agentpaas provenance show ./weather-agent.agentpaas
+  agentpaas provenance show weather --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: runProvenanceShow,
 	}

@@ -30,7 +30,13 @@ func newForkCmd() *cobra.Command {
 		Use:   "fork <installed-ref> <target-dir>",
 		Short: "Fork an installed agent into an editable project",
 		Long: `Fork copies the verified installed agent source tree and policy into a new
-project directory and writes lineage.json for fork-aware pack/export.`,
+project directory and writes lineage.json for fork-aware pack/export.
+
+installed-ref may be name@pub8, a display alias, or a Phase-1 bare name.
+After forking, edit the project, then pack and export as usual.`,
+		Example: `  agentpaas fork weather@a1b2c3d4 ./my-weather-fork
+  agentpaas fork my-weather-alias ./forks/weather
+  cd ./my-weather-fork && agentpaas pack && agentpaas export --yes`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			homeDir, err := homeDirPath(cmd)
