@@ -329,10 +329,12 @@ func (s *Supervisor) reconcileActiveTime(ctx context.Context, workflowID routedr
 	}
 	// PAUSED and NEEDS_REPLAN are frozen: close the open segment WITHOUT
 	// charging wall time. The consumed total is preserved (the time already
-	// charged before the freeze remains).
+	// charged before the freeze remains). Record FrozenConsumedMs for
+	// consistency with the store's syncActiveTimeOnStatusChangeLocked (F21).
 	if wf.Status == routedrun.WorkflowStatusPaused || wf.Status == routedrun.WorkflowStatusNeedsReplan {
 		ledger.RunningSegmentStartMs = nil
 		ledger.SegmentStartWallMs = nil
+		ledger.FrozenConsumedMs = ledger.ConsumedMs
 		gen, err := s.store.GetActiveTimeLedgerGeneration(ctx, workflowID)
 		if err != nil {
 			return err
