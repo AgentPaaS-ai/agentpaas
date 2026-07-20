@@ -2,10 +2,11 @@ package docker
 
 import (
 	"context"
-	"github.com/AgentPaaS-ai/agentpaas/internal/port"
-	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 	"sync"
 	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/port"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 )
 
 // DockerEventStore adapts EventBus and keeps an ordered local event journal.
@@ -34,21 +35,46 @@ func (e *DockerEventStore) Append(_ context.Context, v port.Event) (int64, error
 	}
 	return v.Sequence, nil
 }
+
 // DockerEventStore.Subscribe subscribes docker event store.
 //
 // It returns an error if the operation fails or inputs are invalid.
+//
+// Historical events are snapshotted under the mutex and delivered outside it
+// so a full subscriber buffer cannot deadlock the store. Delivery also
+// respects ctx cancellation to avoid blocking forever or racing close.
 func (e *DockerEventStore) Subscribe(ctx context.Context, t, r string, from int64) (<-chan port.Event, error) {
-	ch := make(chan port.Event, 64)
 	e.mu.Lock()
-	for _, v := range e.events[t+"/"+r] {
+	src := e.events[t+"/"+r]
+	snap := make([]port.Event, 0, len(src))
+	for _, v := range src {
 		if v.Sequence > from {
-			ch <- v
+			snap = append(snap, v)
 		}
 	}
 	e.mu.Unlock()
-	go func() { <-ctx.Done(); close(ch) }()
+
+	// Buffer at least the snapshot so the deliver goroutine cannot block on
+	// a slow consumer while still holding no locks; extra room for fairness.
+	buf := 64
+	if len(snap) > buf {
+		buf = len(snap)
+	}
+	ch := make(chan port.Event, buf)
+	go func() {
+		defer close(ch)
+		for _, v := range snap {
+			select {
+			case ch <- v:
+			case <-ctx.Done():
+				return
+			}
+		}
+		<-ctx.Done()
+	}()
 	return ch, nil
 }
+
 // DockerEventStore.Read reads docker event store.
 //
 // It returns an error if the operation fails or inputs are invalid.
@@ -64,6 +90,7 @@ func (e *DockerEventStore) Read(_ context.Context, t, r string, from int64, n in
 	}
 	return out, nil
 }
+
 // DockerEventStore.LatestSequence latest sequence.
 //
 // It returns an error if the operation fails or inputs are invalid.
