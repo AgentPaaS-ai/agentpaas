@@ -1872,7 +1872,7 @@ func (s *LocalStore) readJSON(path string, v any) (int64, error) {
 	if err := rejectSymlinkInRoot(s.root, path); err != nil {
 		if errors.Is(err, ErrSymlinkRejected) || errors.Is(err, ErrInvalidPath) {
 			// If path does not exist yet, Rel still works; missing components
-			// return nil from rejectSymlinkLeaf. InvalidPath is hard fail.
+			// return nil from RejectSymlinkLeaf. InvalidPath is hard fail.
 			if errors.Is(err, ErrInvalidPath) {
 				return 0, err
 			}
