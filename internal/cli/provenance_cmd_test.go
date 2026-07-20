@@ -128,8 +128,8 @@ credentials:
 	}
 	defer func() { _ = b.Close() }()
 	res, err := install.MaterializeInstall(context.Background(), install.MaterializeOpts{
-		StateRoot:         stateRoot,
-		Bundle:            b,
+		StateRoot: stateRoot,
+		Bundle:    b,
 		Manifest: install.InstallManifest{
 			PublisherFingerprint: fp,
 			PublisherName:        "weather-publisher",

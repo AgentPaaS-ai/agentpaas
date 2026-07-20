@@ -64,13 +64,27 @@ func AgentCmd() *cobra.Command {
 	}
 
 	rootCmd = &cobra.Command{
-		Use:   "agent",
-		Short: "AgentPaaS CLI — control and manage AgentPaaS agents",
+		Use:   "agentpaas",
+		Short: "Control and manage AgentPaaS agents",
 		Long: `AgentPaaS CLI provides operational control over the AgentPaaS daemon,
 agent lifecycle, policy, secrets, audit, and diagnostics.
 
-Start the daemon first with 'agent daemon start', then use subcommands
-to pack, run, and manage agents.`,
+Start the daemon first with 'agentpaas daemon start', then use subcommands
+to pack, run, and manage agents.
+
+Global flags apply to every subcommand. Use --json for machine-readable
+output, and --home / --socket to override local paths.`,
+		Example: `  # Start the control daemon
+  agentpaas daemon start
+
+  # Scaffold a project, pack it, and run
+  agentpaas init ./my-agent --noninteractive
+  agentpaas pack ./my-agent
+  agentpaas run ./my-agent
+
+  # Install a signed bundle and list installed agents
+  agentpaas install ./weather.agentpaas --yes
+  agentpaas installed list`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Validate home path if --home was explicitly provided.
 			if cmd.Root().PersistentFlags().Changed("home") {
@@ -94,9 +108,9 @@ to pack, run, and manage agents.`,
 	}
 
 	// Global persistent flags.
-	rootCmd.PersistentFlags().Bool("json", false, "Output JSON instead of human-readable text")
-	rootCmd.PersistentFlags().String("socket", "", "Daemon Unix socket path (default: AGENTPAAS_SOCKET or <home>/daemon.sock)")
-	rootCmd.PersistentFlags().String("home", "", "AgentPaaS home directory (default: AGENTPAAS_HOME or ~/.agentpaas)")
+	rootCmd.PersistentFlags().Bool("json", false, "Emit machine-readable JSON instead of human-readable text")
+	rootCmd.PersistentFlags().String("socket", "", "Daemon Unix socket path (default: $AGENTPAAS_SOCKET, else <home>/daemon.sock)")
+	rootCmd.PersistentFlags().String("home", "", "AgentPaaS home directory (default: $AGENTPAAS_HOME, else ~/.agentpaas)")
 
 	// Register subcommands.
 	rootCmd.AddCommand(newVersionCmd())

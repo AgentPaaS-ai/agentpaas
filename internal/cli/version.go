@@ -15,7 +15,10 @@ func newVersionCmd() *cobra.Command {
 		Long: `Print the CLI version, protocol version, git commit, OS/architecture,
 Docker context, and Docker API version.
 
-Use --json for structured JSON output.`,
+Does not require a running daemon. Use the global --json flag for
+structured JSON output.`,
+		Example: `  agentpaas version
+  agentpaas version --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			v := daemon.CurrentVersion()

@@ -957,4 +957,3 @@ func TestSecretTest_NeverPrintsValue(t *testing.T) {
 		t.Fatalf("stderr leaked secret value:\n%s", stderr)
 	}
 }
-
