@@ -431,7 +431,9 @@ func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName
 			ArtifactRefs:       []string{artifactRef},
 			LastCommittedAction: fmt.Sprintf("phase_%d", phase),
 			SafeToResume:       true,
-			CheckpointDigest:   cpDigest,
+			// B30-2: CheckpointDigest is auto-computed by SaveCheckpoint.
+			// The reference worker's own content digest is tracked separately
+			// in phaseDigests for cross-reference within the worker.
 			Sequence:           cpSeq,
 		}
 		if err := w.supervisor.HandleCheckpoint(ctx, w.attemptID, w.signCheckpoint(CheckpointEvent{

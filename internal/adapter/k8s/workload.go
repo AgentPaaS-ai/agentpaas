@@ -88,8 +88,19 @@ func (w *K8sWorkloadRuntime) Start(ctx context.Context, id port.WorkloadID) erro
 	w.mu.Unlock()
 	return nil
 }
-func (w *K8sWorkloadRuntime) Signal(ctx context.Context, id port.WorkloadID, _ port.WorkloadSignal) error {
-	return w.Stop(ctx, id, nil)
+// B28-4: Signal implements signal-type-aware stopping.
+// SIGTERM stops with a grace period; SIGKILL stops immediately.
+// Other signals (e.g. HUP) are mapped to Stop with default grace.
+func (w *K8sWorkloadRuntime) Signal(ctx context.Context, id port.WorkloadID, sig port.WorkloadSignal) error {
+	switch sig {
+	case port.SignalTERM, port.SignalINT:
+		d := 30 * time.Second
+		return w.Stop(ctx, id, &d)
+	case port.SignalKILL:
+		return w.Stop(ctx, id, nil) // zero grace = immediate
+	default:
+		return w.Stop(ctx, id, nil)
+	}
 }
 func (w *K8sWorkloadRuntime) Fence(ctx context.Context, id port.WorkloadID) error {
 	return (&K8sEgressEnforcer{policy: newK8sPolicyEnforcer(w.client, w.namespace, "egress")}).Apply(ctx, string(id), port.CommSnapshot{Default: port.CommDeny})
