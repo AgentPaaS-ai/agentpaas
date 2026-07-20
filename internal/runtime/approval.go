@@ -258,18 +258,20 @@ func (a *ApprovalStore) Resolve(ctx context.Context, tenantID, requestID, resolu
 	}
 
 	foundState.mu.Lock()
-	defer foundState.mu.Unlock()
 	if found.Status != ApprovalPending {
+		foundState.mu.Unlock()
 		return fmt.Errorf("%w: %s status=%s", ErrApprovalAlreadyResolved, requestID, found.Status)
 	}
 	if !found.ExpiresAt.After(time.Now()) {
 		found.Status = ApprovalExpired2
+		foundState.mu.Unlock()
 		return fmt.Errorf("%w: %s", ErrApprovalExpired, requestID)
 	}
 	// Authority boundary: the resolution must be one of the originally
 	// declared options. Input content cannot expand the set of permitted
 	// outcomes.
 	if !approvalOptionInSet(resolution, found.Options) {
+		foundState.mu.Unlock()
 		return fmt.Errorf("%w: %q not in %v", ErrApprovalResolutionNotInOptions, resolution, found.Options)
 	}
 	// Determine approved vs denied. By convention an option named "no" or
@@ -292,20 +294,27 @@ func (a *ApprovalStore) Resolve(ctx context.Context, tenantID, requestID, resolu
 			ExpiresAt:     found.ExpiresAt,
 			CreatedAt:     found.CreatedAt,
 		}); err != nil {
+			foundState.mu.Unlock()
 			return fmt.Errorf("runtime: approval resolve wal: %w", err)
 		}
 	}
+	// Snapshot fields needed after unlock so wake fan-out does not hold
+	// foundState.mu (EventStore delivery can block).
+	wakeRunID := found.RunID
+	wakeTaskID := found.TaskID
+	wakeRequestID := found.RequestID
+	foundState.mu.Unlock()
 	_ = foundRun // intentionally ignored (reviewed)
 
 	// Emit a wake event so a waiting worker is notified.
 	payload, _ := json.Marshal(inboxWakePayload{ // best-effort marshal
-		MessageID: found.RequestID,
-		TaskID:    found.TaskID,
+		MessageID: wakeRequestID,
+		TaskID:    wakeTaskID,
 		Type:      string(WakeReasonApproval),
 	})
 	_, err := a.events.Append(ctx, port.Event{
 		TenantID: tenantID,
-		RunID:    found.RunID,
+		RunID:    wakeRunID,
 		Type:     wakeEventTypeApproval,
 		Payload:  payload,
 	})

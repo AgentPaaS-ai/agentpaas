@@ -65,6 +65,10 @@ type CronScheduler struct {
 	stopCh     chan struct{}
 	stopOnce   sync.Once
 	lastFire   map[string]time.Time
+	// fireCtx is cancelled by Stop so in-flight invoke goroutines can exit
+	// when their downstream calls respect context cancellation.
+	fireCtx    context.Context
+	fireCancel context.CancelFunc
 }
 
 // NewCronScheduler creates a new cron scheduler.
@@ -98,6 +102,7 @@ func NewCronScheduler(cfg CronConfig) *CronScheduler {
 		lastFire:   make(map[string]time.Time),
 		stopCh:     make(chan struct{}),
 	}
+	cs.fireCtx, cs.fireCancel = context.WithCancel(context.Background())
 
 	if cfg.StatePath != "" {
 		if loaded, err := cs.loadSchedules(); err != nil || !loaded {
@@ -125,6 +130,9 @@ func (cs *CronScheduler) Stop() {
 
 	cs.stopOnce.Do(func() {
 		close(cs.stopCh)
+		if cs.fireCancel != nil {
+			cs.fireCancel()
+		}
 	})
 }
 
@@ -210,7 +218,11 @@ func (cs *CronScheduler) fire(schedule *CronSchedule, now time.Time) {
 		}()
 
 		callerID := CallerID("system:cron:" + schedule.AgentName)
-		ctx := context.WithValue(context.Background(), callerKey{}, callerID)
+		base := context.Background()
+		if cs.fireCtx != nil {
+			base = cs.fireCtx
+		}
+		ctx := context.WithValue(base, callerKey{}, callerID)
 		req := &triggerv1.InvokeRequest{
 			AgentName:      schedule.AgentName,
 			AgentVersion:   schedule.AgentVersion,
