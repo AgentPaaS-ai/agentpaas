@@ -405,6 +405,47 @@ block29-gate: block28-gate
 	@cd python && PYTHONPATH=agentpaas_sdk python3 -m unittest discover -s agentpaas_sdk/tests -p "test_b29_*" -v
 	@echo "Block 29 gate: PASS"
 
+# ── Block 30: Durable Runtime ────────────────────────────────────────────────
+#
+# B30 ships the durable supervisor, liveness reconciliation, multi-turn
+# reference worker, fault injection, and longevity proofs.
+
+.PHONY: block28-ci
+block28-ci:
+	@echo "==> Block 28 CI (fake-clock + short boundary tests)"
+	@go test ./internal/supervisor/... -count=1 -race -run 'TestLongevity_FakeClock'
+	@echo "Block 28 CI: PASS"
+
+.PHONY: block28-long
+block28-long:
+	@echo "==> Block 28 long proofs (requires Docker)"
+	@if [ "$$AGENTPAAS_DOCKER_TESTS" != "1" ]; then \
+		echo "ERROR: AGENTPAAS_DOCKER_TESTS=1 required for block28-long"; \
+		exit 1; \
+	fi
+	@go test ./internal/supervisor/... -count=1 -race -run 'TestLongevity_RealTime' -timeout 40m
+	@echo "Block 28 long: PASS"
+
+.PHONY: block30-gate
+block30-gate: block29-gate block28-ci
+	@echo "==> Running Block 30 gate"
+	@echo "  T05-T08: supervisor + routedrun + harness + daemon tests with race"
+	@go test ./internal/supervisor/... ./internal/routedrun/... ./internal/harness/... ./internal/daemon/... -count=1 -race
+	@echo "  T05-T08: runtime + trigger + operator + CLI tests with race"
+	@go test ./internal/runtime/... ./internal/trigger/... ./internal/operator/... ./internal/cli/... -count=1 -race
+	@echo "  T09: adversary tests for B30"
+	@go test -run TestAdversary_B30 ./... -count=1 -race
+	@echo "  T09: compat v0.2.3 regression"
+	@go test ./test/compat/v0.2.3/... -count=1 -race
+	@echo "  T09: Python SDK tests"
+	@cd python && PYTHONPATH=agentpaas_sdk python3 -m unittest discover -s agentpaas_sdk/tests -v
+	@echo "  T09: vet + lint"
+	@go vet ./...
+	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m
+	@echo "  T09: golden-fast"
+	@$(MAKE) golden-fast
+	@echo "Block 30 gate: PASS"
+
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
 	@echo "==> Block 28 Kubernetes integration tests (requires kind cluster)"
@@ -494,6 +535,7 @@ gates: ## List all available gate targets
 	@echo "  block27-gate - SDK progress, checkpoint, artifact protocol"
 	@echo "  block28-gate - Runtime portability and managed-PaaS feasibility"
 	@echo "  block29-gate - Real-time stream, durable eventing, integrated adversary"
+	@echo "  block30-gate - Durable runtime: supervisor, liveness, reference worker, longevity"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
