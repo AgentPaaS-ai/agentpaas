@@ -886,6 +886,15 @@ type TimeBudgetSummary struct {
 	RunActiveTimeMs   int64 `json:"run_active_time_ms"`
 	WorkflowActiveTimeMs int64 `json:"workflow_active_time_ms"`
 	RemainingMs       int64 `json:"remaining_ms"`
+
+	// CPUSeconds (B30-T04) is the consumed CPU time for this attempt,
+	// reported SEPARATELY from accumulated workflow active time
+	// (AttemptDurationMs / RunActiveTimeMs / WorkflowActiveTimeMs).
+	// Active time accrues only while the workflow is RUNNING; CPU time
+	// accrues while the worker is using a CPU core regardless of
+	// pause/resume state. When a CPU quota is signed by policy
+	// (InvokeJob.CPUQuotaSeconds), CPUSeconds is bounded by that quota.
+	CPUSeconds int64 `json:"cpu_seconds,omitempty"`
 }
 
 // LLMBudgetSummary describes LLM budget usage.
@@ -1052,6 +1061,16 @@ type InvokeJob struct {
 	InitialMaxActiveDurationMs int64  `json:"initial_max_active_duration_ms"`
 	InitialAttemptLeaseMs      int64  `json:"initial_attempt_lease_ms"`
 	InitialMaxCostUsdDecimal   string `json:"initial_max_cost_usd_decimal"`
+
+	// B30-T04 policy-derived resource ceilings. CPUQuotaSeconds is the
+	// per-attempt CPU-time budget (RLIMIT_CPU); 0 means unlimited CPU
+	// (bounded by the container CFS quota). MaxPIDs is the per-attempt
+	// process-count limit (RLIMIT_NPROC); 0 means an explicit policy
+	// decision to forbid ALL subprocesses. These are applied by the
+	// harness Python runner (see apply_resource_limits) and the runtime
+	// driver container spec (MemoryLimitBytes / NanoCPUs / PidsLimit).
+	CPUQuotaSeconds int64 `json:"cpu_quota_seconds,omitempty"`
+	MaxPIDs         int   `json:"max_pids,omitempty"`
 
 	// Progress journal configuration: root of the per-attempt control
 	// journal directory (0700) under the run state dir.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -31,6 +32,18 @@ func main() {
 		AttemptID:       os.Getenv("AGENTPAAS_ATTEMPT_ID"),
 		LeaseID:         os.Getenv("AGENTPAAS_LEASE_ID"),
 		RunID:           os.Getenv("AGENTPAAS_RUN_ID"),
+	}
+
+	// B30-T04: durable-path resource ceilings. On the durable
+	// (InvokeDeployment) path, the daemon sets AGENTPAAS_DURABLE_PATH=1 and
+	// the policy-derived CPU/PID limits. On the legacy v0.2.3 path, these
+	// env vars are absent and the Python runner falls back to the fixed
+	// RLIMIT_CPU=30 / RLIMIT_NPROC=0 constants with "legacy compat"
+	// comments.
+	if v := os.Getenv("AGENTPAAS_DURABLE_PATH"); v == "1" || v == "true" {
+		cfg.DurablePath = true
+		cfg.CPUQuotaSeconds = envInt64("AGENTPAAS_CPU_QUOTA_SECONDS", 0)
+		cfg.MaxPIDs = envInt("AGENTPAAS_MAX_PIDS", 0)
 	}
 
 	// Wire the audit appender if a path is provided. The daemon mounts
@@ -89,6 +102,24 @@ func envDuration(key string, defaultVal time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			return d
+		}
+	}
+	return defaultVal
+}
+
+func envInt64(key string, defaultVal int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return defaultVal
+}
+
+func envInt(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
 		}
 	}
 	return defaultVal
