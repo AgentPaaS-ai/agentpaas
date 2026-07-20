@@ -27,6 +27,16 @@ see [known-limitations.md](known-limitations.md).
 | Dashboard exposure | accidental 0.0.0.0 bind | loopback default; `--expose` refuses to start without API key + warns; CSRF tokens; strict CSP, no inline JS |
 | Domain fronting | SNI ≠ Host | gateway cross-checks SNI/Host/DNS answer; mismatch = deny + audit |
 
+## 3.1a Architecture invariant: one gateway per run
+
+Every agent run receives its own dedicated gateway sidecar (D68). A shared
+gateway across agents or runs is prohibited. The per-run gateway keeps
+isolation topological: agent containers on separate runs have no network
+path to each other, to each other's gateways, or to each other's brokered
+credentials. Cross-agent traffic uses workflow-scoped internal networks
+between the relevant gateways with per-binding capabilities; it never
+uses a shared gateway.
+
 ## 3.2 Hard security actions (all are execution-plan blocks)
 1. P1 applies macOS Docker Desktop/Colima container hardening by default
    (non-root, read-only rootfs, no shell, dropped capabilities, seccomp where

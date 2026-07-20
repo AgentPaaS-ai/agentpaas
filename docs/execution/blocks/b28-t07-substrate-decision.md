@@ -39,26 +39,21 @@
 
 ### Cloudflare feasibility (T05)
 
-- **Status:** DEFERRED per D66
-- **Rationale:** Founder decision to proceed Kubernetes-first and defer
-  Cloudflare until port contracts are frozen and Kubernetes conformance
-  is recorded. This satisfies the B28 exit-gate "founder narrows" clause.
-- **Open questions for Cloudflare re-evaluation:**
-  1. Can Cloudflare Workers support immutable agent images at the required
-     isolation boundary?
-  2. Is there a workable composition for durable execution and
-     multi-tenant platform code?
-  3. Can gateway-only ingress/egress enforce AgentPaaS semantic policy?
-  4. What are the cold/warm/resident latency characteristics?
-  5. Is the unit economics model viable?
-- **Re-open trigger:** A later block re-opens the Cloudflare proof before
-  any managed-service release decision claims parity.
+- **Status:** REJECTED per D67 (2026-07-19)
+- **Rationale:** Founder decision to freeze the substrate surface:
+  Kubernetes is the sole managed-substrate candidate for the v0.3–v0.5
+  train. Cloudflare is rejected, not deferred; this proof will not be
+  re-opened. D66's deferral is superseded.
+- **Open questions:** closed unanswered. A managed-service substrate
+  decision requires a paying design partner, not more feasibility evidence.
+- **Re-open trigger:** none. A future founder decision after a paying
+  design partner exists may revisit substrate choice as a new evaluation.
 
 ## Substrate comparison
 
 | Dimension | Docker | Kubernetes | Cloudflare |
 |---|---|---|---|
-| Port interface conformance | PASS | PASS | DEFERRED |
+|| Port interface conformance | PASS | PASS | REJECTED (D67) |
 | Default-deny egress | Gateway sidecar | NetworkPolicy | TBD |
 | Workload isolation | Container + seccomp | Pod + security context | TBD |
 | Durable state | Host filesystem | etcd/CRDs (simulated) | TBD |
@@ -71,11 +66,12 @@
 
 ## Selected direction
 
-**Kubernetes is the primary managed-substrate candidate.** Docker remains
-the only shipped v0.3 production runtime. The Kubernetes proof validates
-that the port contracts are substrate-neutral and that a production K8s
-adapter is feasible. Cloudflare remains a candidate under D38 and is
-deferred, not rejected.
+**Kubernetes is the sole managed-substrate candidate.** Docker remains the
+only shipped v0.3 production runtime. The Kubernetes proof validates that
+the port contracts are substrate-neutral and that a production K8s adapter
+is feasible. Cloudflare is rejected per D67 (2026-07-19); no production
+Kubernetes or other substrate adapter ships before a paying managed-PaaS
+design partner exists.
 
 ## Remaining local-only assumptions
 
@@ -175,6 +171,9 @@ The following implementation gaps are known and have named ownership:
 
 B28 proves that B26/B27 contracts are platform contracts, not Docker
 accidents. The 9 portable port interfaces are frozen. Docker and
-Kubernetes both pass the conformance scenario. Cloudflare is deferred
-per D66. B29 and B30 may proceed using the port contracts without
-selecting a substrate-specific API.
+Kubernetes both pass the conformance scenario. The substrate surface is
+frozen per D67 (2026-07-19): Kubernetes is the sole managed-substrate
+candidate, Cloudflare is rejected, and no second substrate adapter ships
+before a paying managed-PaaS design partner exists. B29 and B30 may
+proceed using the port contracts without selecting a substrate-specific
+API.
