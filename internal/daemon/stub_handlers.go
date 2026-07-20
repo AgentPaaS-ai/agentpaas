@@ -42,6 +42,14 @@ type trackedRun struct {
 	JournalKeyPath string                    // host path to journal key file for cleanup
 	ArtifactDir    string                    // host path to artifact workspace dir
 	JournalHostPath string                   // host path to journal file for tailer
+
+	// TimeEnvelope is the authoritative active-time envelope (B30-T03 Part B,
+	// ceiling 1). When present (set by the durable admission path after
+	// InvokeDeployment), the daemon's invoke-context timeout is derived from
+	// env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs). When nil
+	// (legacy v0.2.3 trigger path), the legacy 2-minute fallback applies.
+	TimeEnvelope *routedrun.TimeEnvelope
+
 	finalizeOnce  sync.Once       // ensures finalizeRun runs exactly once per run
 }
 
