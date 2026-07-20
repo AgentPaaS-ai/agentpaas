@@ -1,50 +1,43 @@
 package trigger
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strings"
-	"unicode"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
 )
 
 // eventRejectSymlinkPath ensures path (if it exists) is not a symlink and that
 // its immediate parent is not a symlink. It mirrors routedrun.rejectSymlinkPath
-// but is scoped to the event store to keep the trigger package self-contained.
+// but is scoped to the event store to keep package-local sentinel errors.
 func eventRejectSymlinkPath(path string) error {
 	if path == "" {
 		return fmt.Errorf("%w: empty path", ErrEventStoreInvalidPath)
 	}
-	cleaned := filepath.Clean(path)
-	if err := eventRejectSymlinkLeaf(cleaned); err != nil {
-		return err
+	err := fsutil.RejectSymlinkPathAndParent(path)
+	if err == nil {
+		return nil
 	}
-	parent := filepath.Dir(cleaned)
-	if parent != cleaned {
-		if err := eventRejectSymlinkLeaf(parent); err != nil {
-			return err
-		}
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("%w: %s", ErrEventStoreSymlink, se.Path)
 	}
-	return nil
+	return err
 }
 
 // eventRejectSymlinkLeaf fails if path exists and is a symlink.
 func eventRejectSymlinkLeaf(path string) error {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+	err := fsutil.RejectSymlinkLeaf(path)
+	if err == nil {
+		return nil
 	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("%w: %s", ErrEventStoreSymlink, path)
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("%w: %s", ErrEventStoreSymlink, se.Path)
 	}
-	return nil
+	return err
 }
 
 // eventMkdirProtected creates dir with 0700 and rejects symlinks, mirroring
@@ -131,22 +124,5 @@ func eventReadFileStrict(path string, maxBytes int64) ([]byte, error) {
 // empty, traversal, separators, and control characters by hashing the input
 // into a stable, safe component. Mirrors routedrun.safeID.
 func eventSafeID(id string) string {
-	if id == "" || id == "." || id == ".." {
-		return "_invalid"
-	}
-	if strings.ContainsAny(id, `/\\`) {
-		sum := sha256.Sum256([]byte(id))
-		return "h-" + hex.EncodeToString(sum[:16])
-	}
-	for _, r := range id {
-		if r < 32 || r == 127 || !unicode.IsPrint(r) {
-			sum := sha256.Sum256([]byte(id))
-			return "h-" + hex.EncodeToString(sum[:16])
-		}
-	}
-	if len(id) > 200 {
-		sum := sha256.Sum256([]byte(id))
-		return "h-" + hex.EncodeToString(sum[:16])
-	}
-	return id
+	return fsutil.SafeID(id)
 }

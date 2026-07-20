@@ -2,7 +2,9 @@ package secrets
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,7 +45,14 @@ func NewKeychainStore(service string) (*KeychainStore, error) {
 	return &KeychainStore{service: service, timeout: defaultKeychainTimeout}, nil
 }
 
-// KeychainStore.Set sets keychain store.
+// KeychainServiceName derives a deterministic macOS Keychain service name from
+// the home directory path. Shared by CLI and daemon control paths.
+func KeychainServiceName(homeDir string) string {
+	sum := sha256.Sum256([]byte(homeDir))
+	return "ai.agentpaas.secrets." + hex.EncodeToString(sum[:8])
+}
+
+// KeychainStore.Set stores a secret value in the macOS Keychain.
 //
 // It returns an error if the operation fails or inputs are invalid.
 func (k *KeychainStore) Set(ctx context.Context, name string, value []byte) error {

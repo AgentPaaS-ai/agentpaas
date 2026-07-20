@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -22,6 +21,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
+	"github.com/AgentPaaS-ai/agentpaas/internal/strutil"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -1297,12 +1297,7 @@ func newDefaultSecretStore(cmd *cobra.Command) (secrets.SecretStore, error) {
 	if err != nil {
 		return nil, err
 	}
-	return secrets.NewKeychainStore(secretServiceName(homeDir))
-}
-
-func secretServiceName(homeDir string) string {
-	sum := sha256.Sum256([]byte(homeDir))
-	return "ai.agentpaas.secrets." + hex.EncodeToString(sum[:8])
+	return secrets.NewKeychainStore(secrets.KeychainServiceName(homeDir))
 }
 
 func readSecretValue(cmd *cobra.Command) ([]byte, error) {
@@ -2083,18 +2078,7 @@ func hasWildcardEgress(data []byte) bool {
 }
 
 func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i, c := range s {
-		if c == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
+	return strutil.SplitLines(s)
 }
 
 // contextWithTimeout is a helper that creates a context with the given timeout.

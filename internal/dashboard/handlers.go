@@ -1,8 +1,9 @@
 package dashboard
 
 import (
-	"encoding/json"
 	"net/http"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/httpjson"
 )
 
 type resourcesResponse struct {
@@ -112,9 +113,7 @@ func (s *Server) listMCPServers(r *http.Request) ([]MCPServerResource, error) {
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v) // best-effort encode to client
+	httpjson.Write(w, status, v)
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {

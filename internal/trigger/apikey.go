@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
 )
 
 const (
@@ -462,30 +463,19 @@ func rejectSymlinkPath(path string, mustExist bool) error {
 		return fmt.Errorf("api key path is not allowed: %s", cleanPath)
 	}
 
-	volume := filepath.VolumeName(cleanPath)
-	remainder := strings.TrimPrefix(cleanPath, volume)
-	parts := strings.Split(strings.TrimPrefix(remainder, string(os.PathSeparator)), string(os.PathSeparator))
-	current := volume + string(os.PathSeparator)
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if errors.Is(err, os.ErrNotExist) {
-			if mustExist || i < len(parts)-1 {
-				return err
-			}
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("api key path contains symlink: %s", current)
-		}
+	missing := fsutil.MissingAllowLeaf
+	if mustExist {
+		missing = fsutil.MissingFail
 	}
-	return nil
+	err := fsutil.RejectSymlinkWalk(cleanPath, fsutil.WalkOptions{Missing: missing})
+	if err == nil {
+		return nil
+	}
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("api key path contains symlink: %s", se.Path)
+	}
+	return err
 }
 
 func isSystemPath(path string) bool {

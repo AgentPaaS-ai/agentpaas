@@ -10,7 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
 )
 
 // Store errors (sentinel).
@@ -248,87 +249,39 @@ func rejectSymlinkPath(path string) error {
 	if path == "" {
 		return fmt.Errorf("%w: empty path", ErrInvalidPath)
 	}
-	cleaned := filepath.Clean(path)
-	if err := rejectSymlinkLeaf(cleaned); err != nil {
-		return err
+	err := fsutil.RejectSymlinkPathAndParent(path)
+	if err == nil {
+		return nil
 	}
-	parent := filepath.Dir(cleaned)
-	if parent != cleaned {
-		if err := rejectSymlinkLeaf(parent); err != nil {
-			return err
-		}
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("%w: %s", ErrSymlinkRejected, se.Path)
 	}
-	return nil
-}
-
-// rejectSymlinkLeaf fails if path exists and is a symlink.
-func rejectSymlinkLeaf(path string) error {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	if fi.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("%w: %s", ErrSymlinkRejected, path)
-	}
-	return nil
+	return err
 }
 
 // rejectSymlinkInRoot walks every path component from root to path (inclusive)
 // and fails if any is a symlink. path must be under root.
 func rejectSymlinkInRoot(root, path string) error {
-	root = filepath.Clean(root)
-	path = filepath.Clean(path)
-	rel, err := filepath.Rel(root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("%w: path %s escapes root %s", ErrInvalidPath, path, root)
-	}
-	if err := rejectSymlinkLeaf(root); err != nil {
-		return err
-	}
-	if rel == "." {
+	err := fsutil.RejectSymlinkInRoot(root, path)
+	if err == nil {
 		return nil
 	}
-	cur := root
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
-		if part == "" || part == "." {
-			continue
-		}
-		if part == ".." {
-			return fmt.Errorf("%w: path %s escapes root %s", ErrInvalidPath, path, root)
-		}
-		cur = filepath.Join(cur, part)
-		if err := rejectSymlinkLeaf(cur); err != nil {
-			return err
-		}
+	var pe *fsutil.PathEscapesError
+	if errors.As(err, &pe) {
+		return fmt.Errorf("%w: path %s escapes root %s", ErrInvalidPath, pe.Path, pe.Root)
 	}
-	return nil
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("%w: %s", ErrSymlinkRejected, se.Path)
+	}
+	return err
 }
 
 // safeID sanitizes an ID for use as a single path component.
 // Rejects empty, traversal, separators, and control characters.
 func safeID(id string) string {
-	if id == "" || id == "." || id == ".." {
-		return "_invalid"
-	}
-	if strings.ContainsAny(id, `/\`) {
-		// Hash unsafe IDs so they remain addressable without path injection.
-		sum := sha256.Sum256([]byte(id))
-		return "h-" + hex.EncodeToString(sum[:16])
-	}
-	for _, r := range id {
-		if r < 32 || r == 127 || !unicode.IsPrint(r) {
-			sum := sha256.Sum256([]byte(id))
-			return "h-" + hex.EncodeToString(sum[:16])
-		}
-	}
-	if len(id) > 200 {
-		sum := sha256.Sum256([]byte(id))
-		return "h-" + hex.EncodeToString(sum[:16])
-	}
-	return id
+	return fsutil.SafeID(id)
 }
 
 // escapeAlias converts an alias string into a safe path component.
