@@ -61,9 +61,9 @@ func TestAdversary_B27_JournalKeyNotInCheckpoint(t *testing.T) {
 		RunID:            RunID("r1"),
 		Phase:            "phase1",
 		SafeToResume:     true,
+		// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
 		Sequence:         1,
 		CreatedAt:        time.Now().UTC(),
-		CheckpointDigest: "some-digest",
 	}
 	if err := store.SaveCheckpoint(ctx, cp); err != nil {
 		t.Fatalf("Save: %v", err)
