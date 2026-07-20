@@ -370,11 +370,11 @@ func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName
 			CheckpointDigest:   cpDigest,
 			Sequence:           cpSeq,
 		}
-		if err := w.supervisor.HandleCheckpoint(ctx, w.attemptID, CheckpointEvent{
+		if err := w.supervisor.HandleCheckpoint(ctx, w.attemptID, w.signCheckpoint(CheckpointEvent{
 			AttemptID:  w.attemptID,
 			LeaseID:    w.leaseID,
 			Checkpoint: cp,
-		}); err != nil {
+		})); err != nil {
 			return fmt.Errorf("checkpoint phase %d: %w", phase, err)
 		}
 		w.mu.Lock()
@@ -896,6 +896,14 @@ func (w *ReferenceWorker) signResult(r ResultEvent) ResultEvent {
 	mac.Write(canonicalResultBytes(r))
 	r.HMAC = hex.EncodeToString(mac.Sum(nil))
 	return r
+}
+
+// signCheckpoint signs a CheckpointEvent with the HMAC key.
+func (w *ReferenceWorker) signCheckpoint(c CheckpointEvent) CheckpointEvent {
+	mac := hmac.New(sha256.New, w.controlKey)
+	mac.Write(canonicalCheckpointBytes(c))
+	c.HMAC = hex.EncodeToString(mac.Sum(nil))
+	return c
 }
 
 // computeDigest returns a deterministic hex digest for a string.

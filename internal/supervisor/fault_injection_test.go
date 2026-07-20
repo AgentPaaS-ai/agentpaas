@@ -661,11 +661,7 @@ func TestCheckpointDigestTamper(t *testing.T) {
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
-	if err := h.supervisor.HandleCheckpoint(ctx, attID, CheckpointEvent{
-		AttemptID:  attID,
-		LeaseID:    h.leaseID,
-		Checkpoint: cp,
-	}); err != nil {
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 
@@ -1132,11 +1128,7 @@ func TestFault_CheckpointOrderingPreserved(t *testing.T) {
 			Sequence:         int64(i),
 			CreatedAt:        h.clock.Now(),
 		}
-		if err := h.supervisor.HandleCheckpoint(ctx, attID, CheckpointEvent{
-			AttemptID:  attID,
-			LeaseID:    h.leaseID,
-			Checkpoint: cp,
-		}); err != nil {
+		if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 			t.Fatalf("HandleCheckpoint %d: %v", i, err)
 		}
 	}
@@ -1363,11 +1355,7 @@ func TestFault_CheckpointSurvivesReconcileCommitBoundary(t *testing.T) {
 		Sequence:            42,
 		CreatedAt:           h.clock.Now(),
 	}
-	if err := h.supervisor.HandleCheckpoint(ctx, attID, CheckpointEvent{
-		AttemptID:  attID,
-		LeaseID:    h.leaseID,
-		Checkpoint: cp,
-	}); err != nil {
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 
