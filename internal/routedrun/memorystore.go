@@ -103,6 +103,9 @@ var (
 
 func memKey(caller, key string) string { return caller + "\x00" + key }
 
+// MemoryStore.CreateDeployment creates the deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CreateDeployment(ctx context.Context, dep *DeploymentRecord) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -137,6 +140,9 @@ func (s *MemoryStore) CreateDeployment(ctx context.Context, dep *DeploymentRecor
 	return nil
 }
 
+// MemoryStore.GetDeployment returns the deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetDeployment(ctx context.Context, deploymentID DeploymentID) (*DeploymentRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -149,6 +155,9 @@ func (s *MemoryStore) GetDeployment(ctx context.Context, deploymentID Deployment
 	return &cp, nil
 }
 
+// MemoryStore.ListDeployments lists the deployments.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -161,6 +170,9 @@ func (s *MemoryStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord,
 	return out, nil
 }
 
+// MemoryStore.SetDeploymentStatus sets the deployment status.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) SetDeploymentStatus(ctx context.Context, deploymentID DeploymentID, status DeploymentStatus, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -183,6 +195,9 @@ func (s *MemoryStore) SetDeploymentStatus(ctx context.Context, deploymentID Depl
 	return nil
 }
 
+// MemoryStore.CompareAndSwapAlias compares and swap alias.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -209,6 +224,9 @@ func (s *MemoryStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecor
 	return nil
 }
 
+// MemoryStore.ResolveAlias resolves the alias.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ResolveAlias(ctx context.Context, alias string) (*AliasRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -221,6 +239,9 @@ func (s *MemoryStore) ResolveAlias(ctx context.Context, alias string) (*AliasRec
 	return &cp, nil
 }
 
+// MemoryStore.ListAliases lists the aliases.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -233,6 +254,9 @@ func (s *MemoryStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 	return out, nil
 }
 
+// MemoryStore.AdmitInvocation admits invocation.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRequest, expectedDeploymentGeneration int64) (*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
 	if request == nil {
@@ -428,6 +452,9 @@ func (s *MemoryStore) resolveDepLocked(ref string) (*DeploymentRecord, error) {
 	return nil, fmt.Errorf("%w: deployment ref %s", ErrNotFound, ref)
 }
 
+// MemoryStore.GetInvocationByIdempotency returns the invocation by idempotency.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetInvocationByIdempotency(ctx context.Context, callerIdentity, idempotencyKey string) (*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -440,6 +467,9 @@ func (s *MemoryStore) GetInvocationByIdempotency(ctx context.Context, callerIden
 	return &r, nil
 }
 
+// MemoryStore.ListInvocations lists the invocations.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -452,6 +482,9 @@ func (s *MemoryStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt
 	return out, nil
 }
 
+// MemoryStore.CreateRun creates the run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CreateRun(ctx context.Context, run *RunRecord) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -475,6 +508,9 @@ func (s *MemoryStore) CreateRun(ctx context.Context, run *RunRecord) error {
 	return nil
 }
 
+// MemoryStore.GetRun returns the run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -487,6 +523,9 @@ func (s *MemoryStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, erro
 	return &cp, nil
 }
 
+// MemoryStore.UpdateRun updates the run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -501,6 +540,9 @@ func (s *MemoryStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGen
 	return nil
 }
 
+// MemoryStore.CreateAttempt creates the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -536,6 +578,9 @@ func (s *MemoryStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord)
 	return nil
 }
 
+// MemoryStore.GetAttempt returns the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetAttempt(ctx context.Context, attemptID AttemptID) (*AttemptRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -548,6 +593,9 @@ func (s *MemoryStore) GetAttempt(ctx context.Context, attemptID AttemptID) (*Att
 	return &cp, nil
 }
 
+// MemoryStore.UpdateAttempt updates the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -568,6 +616,9 @@ func (s *MemoryStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord,
 	return nil
 }
 
+// MemoryStore.ListRuns lists the runs.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*RunRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -583,6 +634,9 @@ func (s *MemoryStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*R
 	return out, nil
 }
 
+// MemoryStore.ListAttempts lists the attempts.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListAttempts(ctx context.Context, runID RunID) ([]*AttemptRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -598,6 +652,9 @@ func (s *MemoryStore) ListAttempts(ctx context.Context, runID RunID) ([]*Attempt
 	return out, nil
 }
 
+// MemoryStore.AppendLedger appends ledger.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) AppendLedger(ctx context.Context, runID RunID, entry string) error {
 	_ = ctx // interface compliance; store ops are local
 	if len(entry) > maxLedgerLineBytes {
@@ -609,6 +666,9 @@ func (s *MemoryStore) AppendLedger(ctx context.Context, runID RunID, entry strin
 	return nil
 }
 
+// MemoryStore.ReconcileInterrupted reconciles interrupted.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ReconcileInterrupted(ctx context.Context, runID RunID) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -649,6 +709,9 @@ func (s *MemoryStore) ReconcileInterrupted(ctx context.Context, runID RunID) err
 	return nil
 }
 
+// MemoryStore.CreateWorkflow creates the workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -676,6 +739,9 @@ func (s *MemoryStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) er
 	return nil
 }
 
+// MemoryStore.GetWorkflow returns the workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*WorkflowRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -688,6 +754,9 @@ func (s *MemoryStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*
 	return &cp, nil
 }
 
+// MemoryStore.UpdateWorkflow updates the workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -715,6 +784,9 @@ func (s *MemoryStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, ex
 	return nil
 }
 
+// MemoryStore.ListWorkflows lists the workflows.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -727,6 +799,9 @@ func (s *MemoryStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, err
 	return out, nil
 }
 
+// MemoryStore.CreateNode creates the node.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CreateNode(ctx context.Context, node *PipelineNode) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -744,6 +819,9 @@ func (s *MemoryStore) CreateNode(ctx context.Context, node *PipelineNode) error 
 	return nil
 }
 
+// MemoryStore.GetNode returns the node.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetNode(ctx context.Context, nodeID NodeID) (*PipelineNode, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -756,6 +834,9 @@ func (s *MemoryStore) GetNode(ctx context.Context, nodeID NodeID) (*PipelineNode
 	return &cp, nil
 }
 
+// MemoryStore.UpdateNode updates the node.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) UpdateNode(ctx context.Context, node *PipelineNode, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -769,6 +850,9 @@ func (s *MemoryStore) UpdateNode(ctx context.Context, node *PipelineNode, expect
 	return nil
 }
 
+// MemoryStore.ListNodes lists the nodes.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*PipelineNode, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -784,6 +868,9 @@ func (s *MemoryStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*
 	return out, nil
 }
 
+// MemoryStore.RegisterService registers service.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) RegisterService(ctx context.Context, svc *MCPServiceBinding) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -801,6 +888,9 @@ func (s *MemoryStore) RegisterService(ctx context.Context, svc *MCPServiceBindin
 	return nil
 }
 
+// MemoryStore.UpdateService updates the service.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) UpdateService(ctx context.Context, svc *MCPServiceBinding, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -814,6 +904,9 @@ func (s *MemoryStore) UpdateService(ctx context.Context, svc *MCPServiceBinding,
 	return nil
 }
 
+// MemoryStore.ListServices lists the services.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListServices(ctx context.Context, workflowID WorkflowID) ([]*MCPServiceBinding, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -829,6 +922,9 @@ func (s *MemoryStore) ListServices(ctx context.Context, workflowID WorkflowID) (
 	return out, nil
 }
 
+// MemoryStore.CommitHandoff commits handoff.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelope) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -848,6 +944,9 @@ func (s *MemoryStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelop
 	return nil
 }
 
+// MemoryStore.GetHandoff returns the handoff.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*HandoffEnvelope, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -860,6 +959,9 @@ func (s *MemoryStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*Han
 	return &cp, nil
 }
 
+// MemoryStore.ListHandoffs lists the handoffs.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) ([]*HandoffEnvelope, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -875,6 +977,9 @@ func (s *MemoryStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) (
 	return out, nil
 }
 
+// MemoryStore.CreateChildBatch creates the child batch.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -892,6 +997,9 @@ func (s *MemoryStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) e
 	return nil
 }
 
+// MemoryStore.UpdateChildBatch updates the child batch.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -905,6 +1013,9 @@ func (s *MemoryStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, e
 	return nil
 }
 
+// MemoryStore.ListChildBatches lists the child batches.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListChildBatches(ctx context.Context, workflowID WorkflowID) ([]*ChildBatch, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -920,6 +1031,9 @@ func (s *MemoryStore) ListChildBatches(ctx context.Context, workflowID WorkflowI
 	return out, nil
 }
 
+// MemoryStore.CommitChildResult commits child result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) CommitChildResult(ctx context.Context, result *ChildResult) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -942,6 +1056,9 @@ func (s *MemoryStore) CommitChildResult(ctx context.Context, result *ChildResult
 	return nil
 }
 
+// MemoryStore.ListChildResults lists the child results.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ListChildResults(ctx context.Context, childBatchID ChildBatchID) ([]*ChildResult, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -957,6 +1074,9 @@ func (s *MemoryStore) ListChildResults(ctx context.Context, childBatchID ChildBa
 	return out, nil
 }
 
+// MemoryStore.RequestControl requests control.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) RequestControl(ctx context.Context, req *ControlRequest) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -994,6 +1114,9 @@ func (s *MemoryStore) RequestControl(ctx context.Context, req *ControlRequest) e
 	return nil
 }
 
+// MemoryStore.GetDesiredState returns the desired state.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) GetDesiredState(ctx context.Context, workflowID WorkflowID) (*DesiredState, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
@@ -1006,6 +1129,9 @@ func (s *MemoryStore) GetDesiredState(ctx context.Context, workflowID WorkflowID
 	return &cp, nil
 }
 
+// MemoryStore.AppendControlResult appends control result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) AppendControlResult(ctx context.Context, req *ControlRequest, result interface{}) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1014,6 +1140,9 @@ func (s *MemoryStore) AppendControlResult(ctx context.Context, req *ControlReque
 	return nil
 }
 
+// MemoryStore.AppendLimitAmendment appends limit amendment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID WorkflowID, expectedAuthorityGeneration int64, amendment *LimitAmendment) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1079,6 +1208,9 @@ func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID Workf
 	return nil
 }
 
+// MemoryStore.ApplyTransition applies transition.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *MemoryStore) ApplyTransition(ctx context.Context, workflowID WorkflowID, expectedGeneration int64, command string) error {
 	_ = ctx // interface compliance; store ops are local
 	_ = command // interface compliance; memory store is no-op command

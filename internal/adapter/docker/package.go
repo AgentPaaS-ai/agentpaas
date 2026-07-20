@@ -17,6 +17,9 @@ type DockerPackageStore struct {
 
 var _ port.PackageStore = (*DockerPackageStore)(nil)
 
+// DockerPackageStore.Resolve resolves docker package store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (p *DockerPackageStore) Resolve(_ context.Context, tenantID, ref string) (*port.PackageResolution, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -32,6 +35,9 @@ func (p *DockerPackageStore) Resolve(_ context.Context, tenantID, ref string) (*
 	return nil, port.ErrNotFound
 }
 
+// DockerPackageStore.Verify verifies docker package store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (p *DockerPackageStore) Verify(_ context.Context, digest string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -43,6 +49,9 @@ func (p *DockerPackageStore) Verify(_ context.Context, digest string) error {
 	return port.ErrNotFound
 }
 
+// DockerPackageStore.List lists docker package store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (p *DockerPackageStore) List(_ context.Context, tenantID string) ([]port.PackageMetadata, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

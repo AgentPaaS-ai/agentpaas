@@ -43,10 +43,12 @@ type RunStore struct {
 	runs map[string]*RunEntry
 }
 
+// NewRunStore creates and returns a new run store.
 func NewRunStore() *RunStore {
 	return &RunStore{runs: make(map[string]*RunEntry)}
 }
 
+// RunStore.Register registers run store.
 func (rs *RunStore) Register(runID, agentName string) *RunEntry {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
@@ -63,6 +65,7 @@ func (rs *RunStore) Register(runID, agentName string) *RunEntry {
 	return entry
 }
 
+// RunStore.Get returns run store.
 func (rs *RunStore) Get(runID string) (*RunEntry, bool) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
@@ -70,6 +73,7 @@ func (rs *RunStore) Get(runID string) (*RunEntry, bool) {
 	return entry, ok
 }
 
+// RunStore.List lists run store.
 func (rs *RunStore) List() []*RunEntry {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
@@ -80,6 +84,7 @@ func (rs *RunStore) List() []*RunEntry {
 	return entries
 }
 
+// RunStore.MarkStarted marks started.
 func (rs *RunStore) MarkStarted(runID string) {
 	entry, ok := rs.Get(runID)
 	if !ok {
@@ -94,6 +99,7 @@ func (rs *RunStore) MarkStarted(runID string) {
 	entry.StartedAt = time.Now().UTC()
 }
 
+// RunStore.MarkFinished marks finished.
 func (rs *RunStore) MarkFinished(runID string, runStatus triggerv1.RunStatus) {
 	entry, ok := rs.Get(runID)
 	if !ok {
@@ -108,6 +114,7 @@ func (rs *RunStore) MarkFinished(runID string, runStatus triggerv1.RunStatus) {
 	entry.FinishedAt = time.Now().UTC()
 }
 
+// RunStore.SetCancelFunc sets the cancel func.
 func (rs *RunStore) SetCancelFunc(runID string, cancel context.CancelFunc) {
 	entry, ok := rs.Get(runID)
 	if !ok {
@@ -118,6 +125,9 @@ func (rs *RunStore) SetCancelFunc(runID string, cancel context.CancelFunc) {
 	entry.CancelCtx = cancel
 }
 
+// TriggerService.CancelRun cancels run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *TriggerService) CancelRun(ctx context.Context, req *triggerv1.CancelRunRequest) (*triggerv1.Run, error) {
 	runID := strings.TrimSpace(req.GetRunId())
 	if runID == "" {

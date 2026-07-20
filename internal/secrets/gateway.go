@@ -23,6 +23,7 @@ type GatewayRequest struct {
 	Body         io.Reader
 }
 
+// NewGateway creates and returns a new gateway.
 func NewGateway(broker *Broker, client *http.Client) *Gateway {
 	if client == nil {
 		client = http.DefaultClient
@@ -34,6 +35,9 @@ func NewGateway(broker *Broker, client *http.Client) *Gateway {
 	return &Gateway{broker: broker, client: &copyClient}
 }
 
+// Gateway.Do do.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Response, error) {
 	method := request.Method
 	if method == "" {

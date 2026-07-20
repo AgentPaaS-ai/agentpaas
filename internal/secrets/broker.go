@@ -54,18 +54,24 @@ type CredentialInjection struct {
 	HeaderValue string `json:"-"`
 }
 
+// CredentialInjection.String returns the string representation.
 func (c CredentialInjection) String() string {
 	return fmt.Sprintf("CredentialInjection{HeaderName:%q HeaderValue:[REDACTED]}", c.HeaderName)
 }
 
+// CredentialInjection.GoString returns the Go-syntax representation.
 func (c CredentialInjection) GoString() string {
 	return c.String()
 }
 
+// CredentialInjection.Format formats credential injection.
 func (c CredentialInjection) Format(s fmt.State, _ rune) { // intentionally ignored (reviewed)
 	_, _ = fmt.Fprint(s, c.String()) // best-effort write
 }
 
+// NewBroker creates and returns a new broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func NewBroker(cfg BrokerConfig) (*Broker, error) {
 	if cfg.Store == nil {
 		return nil, errors.New("secrets broker requires a secret store")
@@ -115,6 +121,9 @@ func NewBroker(cfg BrokerConfig) (*Broker, error) {
 	}, nil
 }
 
+// Broker.RequestCredential requests credential.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, destination, method string) (CredentialInjection, error) {
 	dest, err := parseDestination(destination)
 	if err != nil {
@@ -197,6 +206,9 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 	return CredentialInjection{HeaderName: headerName, HeaderValue: string(value)}, nil
 }
 
+// Broker.Revoke revokes broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (b *Broker) Revoke(_ context.Context, credentialID string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -205,6 +217,7 @@ func (b *Broker) Revoke(_ context.Context, credentialID string) error {
 	return nil
 }
 
+// Broker.IsRevoked reports whether revoked.
 func (b *Broker) IsRevoked(credentialID string) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -233,6 +246,9 @@ func (b *Broker) RestartAffectedAgents(_ context.Context, credentialID string) (
 	return runIDs, nil
 }
 
+// Broker.ValidateEgress validates egress.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (b *Broker) ValidateEgress(ctx context.Context, runID, destination, method string) error {
 	dest, err := parseDestination(destination)
 	if err != nil {
@@ -256,6 +272,9 @@ func (b *Broker) ValidateEgress(ctx context.Context, runID, destination, method 
 	return fmt.Errorf("destination %s method %s is not allowed by policy", dest.String(), strings.ToUpper(method))
 }
 
+// Broker.DenyCredentialedRedirect denies credentialed redirect.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (b *Broker) DenyCredentialedRedirect(ctx context.Context, runID, policyRuleID, destination, method string) error {
 	dest, err := parseDestination(destination)
 	if err != nil {
@@ -372,6 +391,7 @@ type brokerDestination struct {
 	port   int
 }
 
+// brokerDestination.String returns the string representation.
 func (d brokerDestination) String() string {
 	return net.JoinHostPort(d.domain, strconv.Itoa(d.port))
 }

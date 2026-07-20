@@ -26,6 +26,9 @@ type k8sArtifactEntry struct {
 
 var _ port.ArtifactStore = (*K8sArtifactStore)(nil)
 
+// K8sArtifactStore.Commit commits k8s artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *K8sArtifactStore) Commit(_ context.Context, r port.CommitArtifactRequest) (port.ArtifactID, string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -43,6 +46,9 @@ func (a *K8sArtifactStore) Commit(_ context.Context, r port.CommitArtifactReques
 	return id, digest, nil
 }
 
+// K8sArtifactStore.Authorize authorizes k8s artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *K8sArtifactStore) Authorize(_ context.Context, id port.ArtifactID, _ string) error { // intentionally ignored (reviewed)
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -52,6 +58,9 @@ func (a *K8sArtifactStore) Authorize(_ context.Context, id port.ArtifactID, _ st
 	return nil
 }
 
+// K8sArtifactStore.Stream streams k8s artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *K8sArtifactStore) Stream(_ context.Context, id port.ArtifactID) (io.ReadCloser, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -62,6 +71,9 @@ func (a *K8sArtifactStore) Stream(_ context.Context, id port.ArtifactID) (io.Rea
 	return io.NopCloser(bytes.NewReader(e.data)), nil
 }
 
+// K8sArtifactStore.RangeRead range read.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *K8sArtifactStore) RangeRead(_ context.Context, id port.ArtifactID, offset, length int64) ([]byte, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -79,6 +91,9 @@ func (a *K8sArtifactStore) RangeRead(_ context.Context, id port.ArtifactID, offs
 	return e.data[offset:end], nil
 }
 
+// K8sArtifactStore.Verify verifies k8s artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *K8sArtifactStore) Verify(_ context.Context, id port.ArtifactID, expectedDigest string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -92,10 +107,16 @@ func (a *K8sArtifactStore) Verify(_ context.Context, id port.ArtifactID, expecte
 	return nil
 }
 
+// K8sArtifactStore.Retain retain.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *K8sArtifactStore) Retain(_ context.Context, _ port.ArtifactID, _ port.RetentionPolicy) error { // intentionally ignored (reviewed)
 	return nil
 }
 
+// K8sArtifactStore.Delete deletes k8s artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *K8sArtifactStore) Delete(_ context.Context, id port.ArtifactID) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

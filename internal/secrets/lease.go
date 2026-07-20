@@ -45,6 +45,9 @@ type LeaseHandle struct {
 	valid        bool
 }
 
+// NewDirectLease creates and returns a new direct lease.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func NewDirectLease(cfg DirectLeaseConfig) (*DirectLease, error) {
 	if cfg.Store == nil {
 		return nil, errors.New("direct lease requires a secret store")
@@ -92,6 +95,9 @@ func NewDirectLease(cfg DirectLeaseConfig) (*DirectLease, error) {
 	}, nil
 }
 
+// DirectLease.Lease leases direct lease.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *DirectLease) Lease(ctx context.Context, runID, credentialID, policyRuleID string) (LeaseHandle, error) {
 	if err := l.validateActiveRun(runID); err != nil {
 		return LeaseHandle{}, err
@@ -148,6 +154,9 @@ func (l *DirectLease) Lease(ctx context.Context, runID, credentialID, policyRule
 	return handle, nil
 }
 
+// ReadLease reads lease.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func ReadLease(_ context.Context, handle LeaseHandle) ([]byte, error) {
 	if !handle.valid || handle.FilePath == "" {
 		return nil, errors.New("not a valid lease handle")
@@ -172,6 +181,9 @@ func ReadLease(_ context.Context, handle LeaseHandle) ([]byte, error) {
 	return data, nil
 }
 
+// LeaseHandle.Cleanup cleans up lease handle.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (h LeaseHandle) Cleanup() error {
 	if h.FilePath == "" {
 		return nil
@@ -186,18 +198,24 @@ func (h LeaseHandle) Cleanup() error {
 	return nil
 }
 
+// LeaseHandle.String returns the string representation.
 func (h LeaseHandle) String() string {
 	return "LeaseHandle{FilePath:[REDACTED]}"
 }
 
+// LeaseHandle.GoString returns the Go-syntax representation.
 func (h LeaseHandle) GoString() string {
 	return h.String()
 }
 
+// LeaseHandle.Format formats lease handle.
 func (h LeaseHandle) Format(s fmt.State, _ rune) { // intentionally ignored (reviewed)
 	_, _ = fmt.Fprint(s, h.String()) // best-effort write
 }
 
+// LeaseHandle.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (h LeaseHandle) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		FilePath string `json:"file_path"`

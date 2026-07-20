@@ -18,6 +18,9 @@ var _ port.SecretBroker = (*DockerSecretBroker)(nil)
 
 func key(tenantID, workloadID string) string { return tenantID + "/" + workloadID }
 
+// DockerSecretBroker.Apply applies docker secret broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerSecretBroker) Apply(_ context.Context, r port.ApplyCredentialRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -29,6 +32,9 @@ func (s *DockerSecretBroker) Apply(_ context.Context, r port.ApplyCredentialRequ
 	return nil
 }
 
+// DockerSecretBroker.Revoke revokes docker secret broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerSecretBroker) Revoke(_ context.Context, workloadID, credentialID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -43,6 +49,9 @@ func (s *DockerSecretBroker) Revoke(_ context.Context, workloadID, credentialID 
 	return port.ErrNotFound
 }
 
+// DockerSecretBroker.List lists docker secret broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerSecretBroker) List(_ context.Context, workloadID string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

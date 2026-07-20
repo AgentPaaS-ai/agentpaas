@@ -12,6 +12,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// controlServer.ExportPreview previews which project files would be included in an export bundle.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) ExportPreview(ctx context.Context, req *controlv1.ExportPreviewRequest) (*controlv1.ExportPreviewResponse, error) {
 	projectDir := req.GetAgentProjectPath()
 	if projectDir == "" {
@@ -53,6 +56,9 @@ func (s *controlServer) ExportPreview(ctx context.Context, req *controlv1.Export
 	}, nil
 }
 
+// controlServer.Export creates a signed export bundle for an agent project after confirmation.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) Export(ctx context.Context, req *controlv1.ExportRequest) (*controlv1.ExportResponse, error) {
 	projectDir := req.GetAgentProjectPath()
 	if projectDir == "" {
@@ -104,6 +110,9 @@ type exportAuditSink struct {
 	server *controlServer
 }
 
+// exportAuditSink.Append forwards an audit record to the control server audit writer when configured.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *exportAuditSink) Append(record audit.AuditRecord) error {
 	if e.server.auditWriter == nil {
 		return nil

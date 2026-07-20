@@ -19,6 +19,9 @@ type DockerMeteringSink struct {
 
 var _ port.MeteringSink = (*DockerMeteringSink)(nil)
 
+// DockerMeteringSink.Record records docker metering sink.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *DockerMeteringSink) Record(_ context.Context, measurement port.Measurement) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -29,6 +32,9 @@ func (m *DockerMeteringSink) Record(_ context.Context, measurement port.Measurem
 	return nil
 }
 
+// DockerMeteringSink.Query queries docker metering sink.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *DockerMeteringSink) Query(_ context.Context, filter port.MeasurementFilter) ([]port.Measurement, error) {
 	if filter.TenantID == "" {
 		return nil, fmt.Errorf("metering query requires a tenant ID")
@@ -57,6 +63,9 @@ func (m *DockerMeteringSink) Query(_ context.Context, filter port.MeasurementFil
 	return out, nil
 }
 
+// DockerMeteringSink.Summary summary.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *DockerMeteringSink) Summary(_ context.Context, tenantID string, since, until time.Time) (*port.UsageSummary, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
