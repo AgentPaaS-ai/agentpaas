@@ -270,7 +270,6 @@ func (s *controlServer) CasDeploymentAlias(ctx context.Context, req *controlv1.C
 // ---------------------------------------------------------------------------
 
 func (s *controlServer) InvokeDeployment(ctx context.Context, req *controlv1.InvokeDeploymentRequest) (*controlv1.InvokeDeploymentResponse, error) {
-	_ = ctx
 	// Validate inputs without mutating state.
 	if req.GetDeploymentRef() == "" {
 		return nil, status.Error(codes.InvalidArgument, "deployment_ref is required")
@@ -278,13 +277,294 @@ func (s *controlServer) InvokeDeployment(ctx context.Context, req *controlv1.Inv
 	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
 	}
-	// No admission, no resources, no audit success.
-	return &controlv1.InvokeDeploymentResponse{
-		Outcome:                controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_UNSPECIFIED,
-		OutcomeName:            "FEATURE_NOT_ENABLED",
+	if strings.TrimSpace(req.GetCallerIdentity()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "caller_identity is required")
+	}
+	// The routed admission store must be initialized; fail closed otherwise.
+	if s.localStore == nil {
+		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
+	}
+
+	// Snapshot the set of invocation IDs that exist for this caller+key
+	// BEFORE the admission call. This lets us distinguish a fresh ACCEPTED
+	// (new invocation ID) from an IDEMPOTENT_REPLAY (the store returned the
+	// prior receipt because the caller+key+intent matched exactly). We do
+	// NOT short-circuit on a prior record, because the store must also
+	// detect a CHANGED intent (same key, different digest) and return
+	// ErrIdempotencyConflict — short-circuiting would mask that.
+	priorIDs := s.invocationIDsForCaller(ctx, req.GetCallerIdentity(), req.GetIdempotencyKey())
+
+	// Build the durable InvocationRequest from the proto request. The store
+	// computes the canonical intent digest and the input digest (when not
+	// supplied) internally.
+	admitReq := &routedrun.InvocationRequest{
+		SchemaVersion:              routedrun.CurrentSchemaVersion,
+		RequestedDeploymentRef:     req.GetDeploymentRef(),
+		InputJSON:                  string(req.GetInputJson()),
+		InputDigest:                "", // store computes from InputJSON when empty
+		InitialMaxActiveDurationMs: req.GetInitialMaxActiveDurationMs(),
+		InitialAttemptLeaseMs:      req.GetInitialAttemptLeaseMs(),
+		InitialMaxCostUsdDecimal:   req.GetInitialMaxCostUsdDecimal(),
+		CreationOptionsDigest:      "opts-default",
+		IdempotencyKey:             req.GetIdempotencyKey(),
+		CallerIdentity:             req.GetCallerIdentity(),
+	}
+
+	receipt, err := s.localStore.AdmitInvocation(ctx, admitReq, 0)
+	if err != nil {
+		// Map the typed store error to a typed control response. We never
+		// return a gRPC error for admission outcomes — the caller receives
+		// a structured InvokeDeploymentResponse with the typed error so it
+		// can branch on the AdmissionOutcomeCode without string matching.
+		return s.invokeDeploymentErrorResponse(req, err), nil
+	}
+
+	outcome := controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED
+	if _, exists := priorIDs[string(receipt.InvocationID)]; exists {
+		// The returned invocation pre-existed this call → exact replay.
+		outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_IDEMPOTENT_REPLAY
+	}
+
+	return s.invokeDeploymentReceiptResponse(req, receipt, outcome), nil
+}
+
+// invocationIDsForCaller returns the set of invocation IDs already admitted
+// for the given caller (scoped by idempotency key when the store supports
+// it). Used to distinguish a fresh ACCEPTED from an IDEMPOTENT_REPLAY without
+// short-circuiting the store's changed-intent conflict detection.
+func (s *controlServer) invocationIDsForCaller(ctx context.Context, callerIdentity, idempotencyKey string) map[string]struct{} {
+	out := make(map[string]struct{})
+	if s.localStore == nil {
+		return out
+	}
+	// The store's GetInvocationByIdempotency returns the prior receipt for
+	// exact caller+key, or a not-found error. A hit means a prior admission
+	// exists; record its invocation ID.
+	if prior, err := s.localStore.GetInvocationByIdempotency(ctx, callerIdentity, idempotencyKey); err == nil && prior != nil {
+		out[string(prior.InvocationID)] = struct{}{}
+	}
+	return out
+}
+
+// invokeDeploymentReceiptResponse builds a successful InvokeDeploymentResponse
+// from an admitted receipt. The response carries invocation/workflow/run IDs
+// only; the attempt ID is empty until the T05 supervisor claim creates it
+// (spec line 274-276).
+func (s *controlServer) invokeDeploymentReceiptResponse(req *controlv1.InvokeDeploymentRequest, receipt *routedrun.InvocationReceipt, outcome controlv1.AdmissionOutcomeCode) *controlv1.InvokeDeploymentResponse {
+	resp := &controlv1.InvokeDeploymentResponse{
+		Outcome:                outcome,
+		OutcomeName:            outcome.String(),
+		InvocationId:           string(receipt.InvocationID),
+		WorkflowId:             string(receipt.WorkflowID),
+		RunId:                  string(receipt.RunID),
 		RequestedDeploymentRef: req.GetDeploymentRef(),
-		Error:                  featureNotEnabled("deployment_invocation", "B28", "routed_run_invocation_not_enabled"),
+		ResolvedDeploymentId:   string(receipt.ResolvedDeploymentID),
+		ResolvedDeploymentVersion: receipt.ResolvedDeploymentVersion,
+		Ceilings: &controlv1.AbsoluteCeilingsSnapshot{
+			OriginalMaxActiveDurationMs: receipt.InitialMaxActiveDurationMs,
+			CurrentMaxActiveDurationMs:  receipt.InitialMaxActiveDurationMs,
+			OriginalAttemptLeaseMs:      receipt.InitialAttemptLeaseMs,
+			CurrentAttemptLeaseMs:       receipt.InitialAttemptLeaseMs,
+			OriginalMaxLlmSpendDecimal:  receipt.InitialMaxCostUsdDecimal,
+			CurrentMaxLlmSpendDecimal:   receipt.InitialMaxCostUsdDecimal,
+			AuthorityGeneration:         1,
+		},
+	}
+	if !receipt.AdmittedAt.IsZero() {
+		resp.AdmittedAt = timestamppb.New(receipt.AdmittedAt)
+	}
+	return resp
+}
+
+// invokeDeploymentErrorResponse maps a typed admission-store error to a typed
+// InvokeDeploymentResponse (never a gRPC error). The caller branches on the
+// AdmissionOutcomeCode / TypedControlErrorCode.
+func (s *controlServer) invokeDeploymentErrorResponse(req *controlv1.InvokeDeploymentRequest, err error) *controlv1.InvokeDeploymentResponse {
+	resp := &controlv1.InvokeDeploymentResponse{
+		RequestedDeploymentRef: req.GetDeploymentRef(),
+	}
+	switch {
+	case errors.Is(err, routedrun.ErrAlreadyRunning):
+		resp.Outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ALREADY_RUNNING
+		resp.OutcomeName = resp.Outcome.String()
+		// Attach the original receipt if the store can still resolve it.
+		if prior, perr := s.localStore.GetInvocationByIdempotency(context.Background(), req.GetCallerIdentity(), req.GetIdempotencyKey()); perr == nil && prior != nil {
+			resp.InvocationId = string(prior.InvocationID)
+			resp.WorkflowId = string(prior.WorkflowID)
+			resp.RunId = string(prior.RunID)
+			resp.ResolvedDeploymentId = string(prior.ResolvedDeploymentID)
+			resp.ResolvedDeploymentVersion = prior.ResolvedDeploymentVersion
+		}
+		resp.Error = &controlv1.TypedControlError{
+			Code:     controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_ALREADY_RUNNING,
+			CodeName: "ALREADY_RUNNING",
+			Message:  err.Error(),
+		}
+	case errors.Is(err, routedrun.ErrIdempotencyConflict):
+		resp.Outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_IDEMPOTENCY_CONFLICT
+		resp.OutcomeName = resp.Outcome.String()
+		resp.Error = &controlv1.TypedControlError{
+			Code:     controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_CHANGED_IDEMPOTENCY_PAYLOAD,
+			CodeName: "CHANGED_IDEMPOTENCY_PAYLOAD",
+			Message:  err.Error(),
+		}
+	case errors.Is(err, routedrun.ErrDeploymentInactive):
+		resp.Outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_DEPLOYMENT_INACTIVE
+		resp.OutcomeName = resp.Outcome.String()
+		resp.Error = &controlv1.TypedControlError{
+			Code:     controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_DEPLOYMENT_INACTIVE,
+			CodeName: "DEPLOYMENT_INACTIVE",
+			Message:  err.Error(),
+		}
+	case errors.Is(err, routedrun.ErrNotFound):
+		resp.Outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_UNSPECIFIED
+		resp.OutcomeName = "DEPLOYMENT_NOT_FOUND"
+		resp.Error = &controlv1.TypedControlError{
+			Code:     controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_DEPLOYMENT_INACTIVE,
+			CodeName: "DEPLOYMENT_NOT_FOUND",
+			Message:  err.Error(),
+		}
+	case errors.Is(err, routedrun.ErrInvalidArgument), errors.Is(err, routedrun.ErrSizeCapExceeded):
+		resp.Outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_UNSPECIFIED
+		resp.OutcomeName = "INVALID_ARGUMENT"
+		resp.Error = &controlv1.TypedControlError{
+			Code:     controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_UNSPECIFIED,
+			CodeName: "INVALID_ARGUMENT",
+			Message:  err.Error(),
+		}
+	default:
+		resp.Outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_UNSPECIFIED
+		resp.OutcomeName = "INTERNAL"
+		resp.Error = &controlv1.TypedControlError{
+			Code:     controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_UNSPECIFIED,
+			CodeName: "INTERNAL",
+			Message:  err.Error(),
+		}
+	}
+	return resp
+}
+
+// ---------------------------------------------------------------------------
+// B30-T02 Part A: invocation / run status / run result get APIs
+//
+// These are thin pass-throughs to the durable RunStore / InvocationStore.
+// For Part A:
+//   - GetInvocation reads the invocation record (admission receipt) by ID.
+//   - GetRunStatus reads the run record.
+//   - GetRunResult returns empty/not-found until T05/T08 write results.
+// The real implementations (supervisor claim, result store) come with T05.
+// ---------------------------------------------------------------------------
+
+// GetInvocation returns the durable admission record (receipt) for an
+// invocation by ID. Thin pass-through to the admission store's
+// ListInvocations (no direct by-ID lookup exists on the interface yet).
+func (s *controlServer) GetInvocation(ctx context.Context, req *controlv1.GetInvocationRequest) (*controlv1.GetInvocationResponse, error) {
+	if req.GetInvocationId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "invocation_id is required")
+	}
+	if s.localStore == nil {
+		return &controlv1.GetInvocationResponse{
+			Error: featureNotEnabled("invocation_lookup", "B30", "routed_store_not_initialized"),
+		}, nil
+	}
+	invs, err := s.localStore.ListInvocations(ctx)
+	if err != nil {
+		return nil, mapRoutedStoreError(err)
+	}
+	for _, r := range invs {
+		if string(r.InvocationID) == req.GetInvocationId() {
+			return &controlv1.GetInvocationResponse{
+				Invocation: invocationReceiptToProto(r),
+			}, nil
+		}
+	}
+	return nil, status.Errorf(codes.NotFound, "invocation %q not found", req.GetInvocationId())
+}
+
+// GetRunStatus returns the durable run record status. Thin pass-through to
+// RunStore.GetRun.
+func (s *controlServer) GetRunStatus(ctx context.Context, req *controlv1.GetRunStatusRequest) (*controlv1.GetRunStatusResponse, error) {
+	if req.GetRunId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "run_id is required")
+	}
+	if s.runStore == nil {
+		return &controlv1.GetRunStatusResponse{
+			Error: featureNotEnabled("run_status", "B30", "routed_store_not_initialized"),
+		}, nil
+	}
+	run, err := s.runStore.GetRun(ctx, routedrun.RunID(req.GetRunId()))
+	if err != nil {
+		if errors.Is(err, routedrun.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "run %q not found", req.GetRunId())
+		}
+		return nil, mapRoutedStoreError(err)
+	}
+	return &controlv1.GetRunStatusResponse{
+		RunId:       string(run.RunID),
+		WorkflowId:  string(run.WorkflowID),
+		Status:      run.Status.String(),
+		RunKind:     run.RunKind,
+		Generation:  1,
 	}, nil
+}
+
+// GetRunResult returns the terminal result for a run. For T02 Part A this
+// returns not-found until T05/T08 write results to the protected result
+// store. The pass-through reads the run; if the run is terminal, an empty
+// result envelope is returned (result content lands with T05).
+func (s *controlServer) GetRunResult(ctx context.Context, req *controlv1.GetRunResultRequest) (*controlv1.GetRunResultResponse, error) {
+	if req.GetRunId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "run_id is required")
+	}
+	if s.runStore == nil {
+		return &controlv1.GetRunResultResponse{
+			Error: featureNotEnabled("run_result", "B30", "routed_store_not_initialized"),
+		}, nil
+	}
+	run, err := s.runStore.GetRun(ctx, routedrun.RunID(req.GetRunId()))
+	if err != nil {
+		if errors.Is(err, routedrun.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "run %q not found", req.GetRunId())
+		}
+		return nil, mapRoutedStoreError(err)
+	}
+	resp := &controlv1.GetRunResultResponse{
+		RunId:        string(run.RunID),
+		WorkflowId:   string(run.WorkflowID),
+		// AttemptID empty until T05; result content empty until T05/T08.
+		TerminalStatus: run.Status.String(),
+	}
+	if run.TerminatedAt != nil && !run.TerminatedAt.IsZero() {
+		resp.FinishedAt = timestamppb.New(*run.TerminatedAt)
+	}
+	return resp, nil
+}
+
+// invocationReceiptToProto maps a routedrun.InvocationReceipt to the proto
+// InvocationRecord.
+func invocationReceiptToProto(r *routedrun.InvocationReceipt) *controlv1.InvocationRecord {
+	if r == nil {
+		return nil
+	}
+	out := &controlv1.InvocationRecord{
+		SchemaVersion:              r.SchemaVersion,
+		InvocationId:              string(r.InvocationID),
+		WorkflowId:                string(r.WorkflowID),
+		RunId:                     string(r.RunID),
+		ResolvedDeploymentId:      string(r.ResolvedDeploymentID),
+		ResolvedDeploymentVersion: r.ResolvedDeploymentVersion,
+		ResolvedDeploymentDigest:  r.ResolvedDeploymentDigest,
+		RequestedDeploymentRef:    r.RequestedDeploymentRef,
+		InvocationIntentDigest:    r.InvocationIntentDigest,
+		CallerIdentity:            r.CallerIdentity,
+		InitialMaxActiveDurationMs: r.InitialMaxActiveDurationMs,
+		InitialAttemptLeaseMs:     r.InitialAttemptLeaseMs,
+		InitialMaxCostUsdDecimal:  r.InitialMaxCostUsdDecimal,
+	}
+	if !r.AdmittedAt.IsZero() {
+		out.AdmittedAt = timestamppb.New(r.AdmittedAt)
+	}
+	return out
 }
 
 func (s *controlServer) CreateWorkflow(ctx context.Context, req *controlv1.CreateWorkflowRequest) (*controlv1.CreateWorkflowResponse, error) {
