@@ -829,3 +829,198 @@ func fmtState(s interface{}) string {
 	}
 	return "UNKNOWN"
 }
+
+// ---------------------------------------------------------------------------
+// B30-T02: durable invoke job protocol types
+// ---------------------------------------------------------------------------
+
+// invokeJobSchemaVersionV1 is the schema version for InvokeJob,
+// InvokeJobEvent, and InvokeJobResult records. These records carry the
+// durable per-attempt invocation envelope materialised from the B26
+// admission contract (InvocationReceipt) by the daemon for the standalone
+// durable-worker topology.
+const invokeJobSchemaVersionV1 = "1.0"
+
+// InvokeJob is the durable per-attempt invocation envelope passed from the
+// daemon into a standalone durable worker. It is materialised from an
+// admitted InvocationReceipt at the supervisor claim transition (T05) and
+// persisted under the per-run state directory.
+//
+// SECURITY: InvokeJob deliberately carries NO raw credential value. Identity
+// keys and gateway secrets are never embedded in the job envelope, the
+// returned material, or the control journal (spec b30-summary.md line 114).
+// Credentials are injected out-of-band via the protected secret-grant path.
+type InvokeJob struct {
+	SchemaVersion string `json:"schema_version"`
+
+	// Identity chain. AttemptID is empty until the T05 supervisor claim
+	// creates the attempt; the daemon writes the job envelope with an empty
+	// attempt at the READY launch-intent transaction and fills it on claim.
+	InvocationID InvocationID `json:"invocation_id"`
+	WorkflowID   WorkflowID   `json:"workflow_id"`
+	RunID        RunID        `json:"run_id"`
+	AttemptID    AttemptID    `json:"attempt_id,omitempty"`
+
+	// Resolved exact deployment identity at admission time.
+	ResolvedDeploymentID      DeploymentID `json:"resolved_deployment_id"`
+	ResolvedDeploymentVersion string        `json:"resolved_deployment_version"`
+	ResolvedDeploymentDigest  string        `json:"resolved_deployment_digest"`
+
+	// Nested package identities captured at admission (workflow deployments).
+	NestedPackageDigests map[string]string `json:"nested_package_digests,omitempty"`
+
+	// Bounded input. InputPayload is the bounded input JSON (subject to the
+	// same size cap as InvocationRequest.InputJSON); InputDigest is its
+	// canonical digest for tamper detection.
+	InputDigest  string `json:"input_digest"`
+	InputPayload string `json:"input_payload,omitempty"`
+
+	// Initial ceilings narrowed from the workflow-level authority.
+	InitialMaxActiveDurationMs int64  `json:"initial_max_active_duration_ms"`
+	InitialAttemptLeaseMs      int64  `json:"initial_attempt_lease_ms"`
+	InitialMaxCostUsdDecimal   string `json:"initial_max_cost_usd_decimal"`
+
+	// Progress journal configuration: root of the per-attempt control
+	// journal directory (0700) under the run state dir.
+	ProgressJournalRoot string `json:"progress_journal_root,omitempty"`
+
+	// Artifact root for this run's durable artifact store.
+	ArtifactRoot string `json:"artifact_root,omitempty"`
+
+	// Compatibility-safe SDK configuration (JSON). Contains only
+	// compatibility/version hints — never credentials.
+	SDKConfig string `json:"sdk_config,omitempty"`
+
+	// CredentialValue is intentionally empty and exists ONLY as a compile-
+	// time guard: any code that attempts to set a credential on the job will
+	// be caught by the TestInvokeJob_TypeFields assertion. Do not remove.
+	CredentialValue string `json:"-"`
+
+	// CreationOptionsDigest mirrors the invocation request's
+	// creation-options digest for authority comparison on replay.
+	CreationOptionsDigest string `json:"creation_options_digest,omitempty"`
+
+	// CallerIdentity scopes idempotency lookup at the job level.
+	CallerIdentity string `json:"caller_identity,omitempty"`
+
+	// IdempotencyKey is the caller-supplied exactly-once key.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+
+	// CreatedAt is when the daemon materialised the job envelope.
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// InvokeJobEventKind enumerates control-journal event kinds. These are
+// stable string values; callers must not infer them from error strings.
+type InvokeJobEventKind int
+
+const (
+	InvokeJobEventUnspecified InvokeJobEventKind = iota
+	InvokeJobEventAccepted     // durable admission committed, before container start
+	InvokeJobEventStarted      // container started, before Python handler entry
+	InvokeJobEventProgressRef  // progress checkpoint reference written
+	InvokeJobEventSucceeded    // terminal: result committed to protected store
+	InvokeJobEventFailed       // terminal: failure recorded
+	InvokeJobEventCancelled   // terminal: cancel precedence won
+)
+
+// invokeJobEventKindNames maps event kinds to their stable string names.
+var invokeJobEventKindNames = map[InvokeJobEventKind]string{
+	InvokeJobEventUnspecified: "UNSPECIFIED",
+	InvokeJobEventAccepted:    "ACCEPTED",
+	InvokeJobEventStarted:     "STARTED",
+	InvokeJobEventProgressRef: "PROGRESS_REF",
+	InvokeJobEventSucceeded:   "SUCCEEDED",
+	InvokeJobEventFailed:      "FAILED",
+	InvokeJobEventCancelled:   "CANCELLED",
+}
+
+// String returns the stable name for an event kind.
+func (k InvokeJobEventKind) String() string {
+	if s, ok := invokeJobEventKindNames[k]; ok {
+		return s
+	}
+	return "UNKNOWN"
+}
+
+// InvokeJobEvent is a single append-only control-journal event for one
+// attempt. The journal is symlink-safe, HMAC'd per attempt, and bounded
+// (no event > 64KB). Sequence numbers are monotonic with no gaps.
+type InvokeJobEvent struct {
+	SchemaVersion string `json:"schema_version"`
+
+	// Sequence is the 1-based monotonic event sequence; gaps are rejected.
+	Sequence int64 `json:"sequence"`
+
+	// Timestamp of the event.
+	Timestamp time.Time `json:"timestamp"`
+
+	// EventKind classifies the event.
+	EventKind InvokeJobEventKind `json:"event_kind"`
+
+	// HMAC over (sequence || timestamp || event_kind || payload) using the
+	// per-attempt control key. Verified on read-back.
+	HMAC string `json:"hmac"`
+
+	// Payload is the bounded event payload JSON. Must be <= 64KB.
+	Payload string `json:"payload,omitempty"`
+}
+
+// InvokeJobResultStatus is the terminal status of an invoke job.
+type InvokeJobResultStatus int
+
+const (
+	InvokeJobResultUnspecified InvokeJobResultStatus = iota
+	InvokeJobResultSucceeded
+	InvokeJobResultFailed
+	InvokeJobResultCancelled
+)
+
+// invokeJobResultStatusNames maps result statuses to stable names.
+var invokeJobResultStatusNames = map[InvokeJobResultStatus]string{
+	InvokeJobResultUnspecified: "UNSPECIFIED",
+	InvokeJobResultSucceeded:   "SUCCEEDED",
+	InvokeJobResultFailed:      "FAILED",
+	InvokeJobResultCancelled:   "CANCELLED",
+}
+
+// String returns the stable name for a result status.
+func (s InvokeJobResultStatus) String() string {
+	if v, ok := invokeJobResultStatusNames[s]; ok {
+		return v
+	}
+	return "UNKNOWN"
+}
+
+// InvokeJobResult is the terminal result of a durable invoke job. Written
+// to the protected result store by the supervisor (T05/T08) on terminal
+// transition. For T02 Part A, GetRunResult returns empty/not-found until
+// T05 writes results.
+type InvokeJobResult struct {
+	SchemaVersion string `json:"schema_version"`
+
+	InvocationID InvocationID `json:"invocation_id"`
+	WorkflowID   WorkflowID   `json:"workflow_id"`
+	RunID        RunID        `json:"run_id"`
+	AttemptID    AttemptID    `json:"attempt_id,omitempty"`
+
+	// ResultDigest is the canonical digest of StructuredResult.
+	ResultDigest string `json:"result_digest"`
+
+	// ArtifactReferences are relative paths under the run artifact root.
+	ArtifactReferences []string `json:"artifact_references,omitempty"`
+
+	// StructuredResult is the bounded structured result JSON.
+	StructuredResult string `json:"structured_result,omitempty"`
+
+	// TerminalStatus is the terminal outcome.
+	TerminalStatus InvokeJobResultStatus `json:"terminal_status"`
+
+	// Timing.
+	StartedAt   time.Time  `json:"started_at,omitempty"`
+	FinishedAt  time.Time  `json:"finished_at,omitempty"`
+	DurationMs  int64      `json:"duration_ms,omitempty"`
+
+	// FailureReason is set when TerminalStatus is Failed.
+	FailureReason string `json:"failure_reason,omitempty"`
+}
