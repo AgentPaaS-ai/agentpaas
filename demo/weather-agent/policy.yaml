@@ -1,4 +1,4 @@
-version: "1"
+version: "1.0"
 agent:
   name: weather-agent
   description: LLM-powered weather assistant — extracts city from natural language, fetches weather, summarizes with LLM
