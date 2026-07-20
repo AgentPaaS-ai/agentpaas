@@ -92,7 +92,7 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 		return "", fmt.Errorf("append accepted event: %w", err)
 	}
 	// Audit AFTER durable commit (the attempt record + journal event).
-	s.audit.Append(audit.AuditRecord{
+	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_claimed",
 		DeploymentMode: "local",
@@ -213,7 +213,7 @@ func (s *Supervisor) HandleCheckpoint(ctx context.Context, attemptID routedrun.A
 	}
 	trk.acceptActivity(s.nowMonotonicMs())
 	trk.mu.Unlock()
-	s.audit.Append(audit.AuditRecord{
+	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_checkpoint_committed",
 		DeploymentMode: "local",
@@ -360,7 +360,7 @@ func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, e
 	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventSucceeded, "{}")
 	_ = s.casRunTo(ctx, trk.runID, routedrun.RunStatusSucceeded)
 	s.markTerminal(trk, routedrun.InvokeJobResultSucceeded)
-	s.audit.Append(audit.AuditRecord{
+	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_succeeded",
 		DeploymentMode: "local",
@@ -395,7 +395,7 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventFailed, "{}")
 	_ = s.casRunTo(ctx, trk.runID, routedrun.RunStatusFailed)
 	s.markTerminal(trk, routedrun.InvokeJobResultFailed)
-	s.audit.Append(audit.AuditRecord{
+	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_failed",
 		DeploymentMode: "local",
@@ -416,7 +416,7 @@ func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) err
 	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventCancelled, "{}")
 	_ = s.casRunTo(ctx, trk.runID, routedrun.RunStatusCancelled)
 	s.markTerminal(trk, routedrun.InvokeJobResultCancelled)
-	s.audit.Append(audit.AuditRecord{
+	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_cancelled",
 		DeploymentMode: "local",

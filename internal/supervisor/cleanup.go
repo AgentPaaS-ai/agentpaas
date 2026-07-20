@@ -58,7 +58,7 @@ func (s *Supervisor) Cleanup(ctx context.Context, runID routedrun.RunID) error {
 			_ = err
 		}
 	}
-	s.audit.Append(audit.AuditRecord{
+	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_cleanup",
 		DeploymentMode: "local",
