@@ -47,7 +47,7 @@ const controlKeyFileName = "control-key"
 // and inbox state. The B27 journal is the authoritative source for attempt
 // state (pre- and post-B30). B29 WALs augment with event/inbox payloads
 // but never override B27 journal assertions about attempt state/leases.
-// Recovery precedence: B27 control journal > B29 event WAL > B29 inbox WAL. 
+// Recovery precedence: B27 control journal > B29 event WAL > B29 inbox WAL.
 //
 // SECURITY MODEL:
 //   - The journal directory is 0700, created under the run state dir.
@@ -97,18 +97,18 @@ func NewControlJournal(stateRoot, runID, attemptID string) (*ControlJournal, err
 	keyPath := filepath.Join(runDir, controlKeyFileName)
 
 	if err := mkdirProtected(attemptDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new control journal: %w", err)
 	}
 	if err := rejectSymlinkInRoot(runDir, attemptDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new control journal: %w", err)
 	}
 	if err := rejectSymlinkInRoot(runDir, keyPath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new control journal: %w", err)
 	}
 
 	key, err := loadOrCreateControlKey(keyPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new control journal: %w", err)
 	}
 
 	cj := &ControlJournal{
@@ -131,7 +131,7 @@ func NewControlJournal(stateRoot, runID, attemptID string) (*ControlJournal, err
 // the key.
 func loadOrCreateControlKey(keyPath string) ([]byte, error) {
 	if err := mkdirProtected(filepath.Dir(keyPath)); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load or create control key: %w", err)
 	}
 	// If the key already exists, read it strictly (symlink + perm checks).
 	if data, err := readFileStrict(keyPath, 64); err == nil {
@@ -139,7 +139,7 @@ func loadOrCreateControlKey(keyPath string) ([]byte, error) {
 			return nil, fmt.Errorf("%w: control-key length %d want 32", ErrInvalidArgument, len(data))
 		}
 		return data, nil
-	} else if !errors.Is(err, ErrNotFound) && !os.IsNotExist(err) {
+	} else if !errors.Is(err, ErrNotFound) && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
 	// Generate a fresh key.
@@ -148,7 +148,7 @@ func loadOrCreateControlKey(keyPath string) ([]byte, error) {
 		return nil, fmt.Errorf("routedrun: generate control key: %w", err)
 	}
 	if err := atomicWriteFile(keyPath, key, filePerm); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load or create control key: %w", err)
 	}
 	return key, nil
 }
@@ -158,10 +158,10 @@ func loadOrCreateControlKey(keyPath string) ([]byte, error) {
 func (cj *ControlJournal) loadLastSeq() error {
 	names, err := listJSONNames(cj.dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("control journal load last seq: %w", err)
 	}
 	var maxSeq int64
 	for _, name := range names {
@@ -249,11 +249,11 @@ func (cj *ControlJournal) Append(event InvokeJobEvent) error {
 	// Symlink-safe write: atomicWriteFile refuses symlink paths and checks
 	// the parent dir; additionally verify the target is under the run dir.
 	if err := rejectSymlinkInRoot(cj.runDir(), path); err != nil {
-		return err
+		return fmt.Errorf("control journal append: %w", err)
 	}
 	if err := atomicWriteFile(path, data, filePerm); err != nil {
 		// atomicWriteFile returns ErrSymlinkRejected for symlink targets.
-		return err
+		return fmt.Errorf("control journal append: %w", err)
 	}
 	cj.lastSeq = event.Sequence
 	return nil
@@ -273,10 +273,10 @@ func (cj *ControlJournal) Read(fromSeq int64) ([]InvokeJobEvent, error) {
 	}
 	names, err := listJSONNames(cj.dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("control journal read: %w", err)
 	}
 	type seqName struct {
 		seq  int64
@@ -298,11 +298,11 @@ func (cj *ControlJournal) Read(fromSeq int64) ([]InvokeJobEvent, error) {
 	for _, e := range entries {
 		path := filepath.Join(cj.dir, e.name)
 		if err := rejectSymlinkInRoot(cj.runDir(), path); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("control journal read: %w", err)
 		}
 		data, err := readFileStrict(path, maxControlJournalEventBytes+4096)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("control journal read: %w", err)
 		}
 		var ev InvokeJobEvent
 		if err := json.Unmarshal(data, &ev); err != nil {

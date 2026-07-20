@@ -38,7 +38,7 @@ func CheckDeniedProjectFiles(projectDir string) error {
 		}
 		rel, err := filepath.Rel(projectDir, pathname)
 		if err != nil {
-			return err
+			return fmt.Errorf("check denied project files: %w", err)
 		}
 		if denied, reason := IsDeniedExportPath(rel); denied {
 			return fmt.Errorf("export blocked: %s (%s)", filepath.ToSlash(rel), reason)

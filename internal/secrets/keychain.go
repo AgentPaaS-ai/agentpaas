@@ -42,10 +42,10 @@ func NewKeychainStore(service string) (*KeychainStore, error) {
 
 func (k *KeychainStore) Set(ctx context.Context, name string, value []byte) error {
 	if err := ValidateSecretName(name); err != nil {
-		return err
+		return fmt.Errorf("keychain store set: %w", err)
 	}
 	if err := validateSecretValue(value); err != nil {
-		return err
+		return fmt.Errorf("keychain store set: %w", err)
 	}
 
 	now := time.Now().UTC()
@@ -68,18 +68,18 @@ func (k *KeychainStore) Set(ctx context.Context, name string, value []byte) erro
 		return fmt.Errorf("marshal keychain secret: %w", err)
 	}
 	if _, err := k.securityCall(ctx, "add-generic-password", "-a", name, "-s", k.service, "-w", string(data), "-U"); err != nil {
-		return err
+		return fmt.Errorf("keychain store set: %w", err)
 	}
 	return k.addToManifest(ctx, name)
 }
 
 func (k *KeychainStore) Get(ctx context.Context, name string) ([]byte, error) {
 	if err := ValidateSecretName(name); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("keychain store get: %w", err)
 	}
 	entry, err := k.getEntry(ctx, name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("keychain store get: %w", err)
 	}
 	value, err := base64.StdEncoding.DecodeString(entry.ValueB64)
 	if err != nil {
@@ -91,7 +91,7 @@ func (k *KeychainStore) Get(ctx context.Context, name string) ([]byte, error) {
 func (k *KeychainStore) List(ctx context.Context) ([]SecretMeta, error) {
 	names, err := k.loadManifest(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("keychain store list: %w", err)
 	}
 	result := make([]SecretMeta, 0, len(names))
 	for _, name := range names {
@@ -100,7 +100,7 @@ func (k *KeychainStore) List(ctx context.Context) ([]SecretMeta, error) {
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("keychain store list: %w", err)
 		}
 		result = append(result, SecretMeta{
 			Name:       name,
@@ -117,21 +117,21 @@ func (k *KeychainStore) List(ctx context.Context) ([]SecretMeta, error) {
 
 func (k *KeychainStore) Delete(ctx context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
-		return err
+		return fmt.Errorf("keychain store delete: %w", err)
 	}
 	if _, err := k.securityCall(ctx, "delete-generic-password", "-a", name, "-s", k.service); err != nil {
-		return err
+		return fmt.Errorf("keychain store delete: %w", err)
 	}
 	return k.removeFromManifest(ctx, name)
 }
 
 func (k *KeychainStore) TouchLastUsed(ctx context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
-		return err
+		return fmt.Errorf("keychain store touch last used: %w", err)
 	}
 	entry, err := k.getEntry(ctx, name)
 	if err != nil {
-		return err
+		return fmt.Errorf("keychain store touch last used: %w", err)
 	}
 	entry.LastUsedAt = time.Now().UTC()
 	data, err := json.Marshal(entry)
@@ -139,7 +139,7 @@ func (k *KeychainStore) TouchLastUsed(ctx context.Context, name string) error {
 		return fmt.Errorf("marshal keychain secret: %w", err)
 	}
 	if _, err := k.securityCall(ctx, "add-generic-password", "-a", name, "-s", k.service, "-w", string(data), "-U"); err != nil {
-		return err
+		return fmt.Errorf("keychain store touch last used: %w", err)
 	}
 	return nil
 }
@@ -147,7 +147,7 @@ func (k *KeychainStore) TouchLastUsed(ctx context.Context, name string) error {
 func (k *KeychainStore) getEntry(ctx context.Context, name string) (keychainEntry, error) {
 	out, err := k.securityCall(ctx, "find-generic-password", "-a", name, "-s", k.service, "-w")
 	if err != nil {
-		return keychainEntry{}, err
+		return keychainEntry{}, fmt.Errorf("keychain store get entry: %w", err)
 	}
 	var entry keychainEntry
 	if err := json.Unmarshal([]byte(out), &entry); err != nil {
@@ -162,7 +162,7 @@ func (k *KeychainStore) loadManifest(ctx context.Context) ([]string, error) {
 		return []string{}, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("keychain store load manifest: %w", err)
 	}
 	var names []string
 	if err := json.Unmarshal([]byte(out), &names); err != nil {
@@ -184,7 +184,7 @@ func (k *KeychainStore) saveManifest(ctx context.Context, names []string) error 
 func (k *KeychainStore) addToManifest(ctx context.Context, name string) error {
 	names, err := k.loadManifest(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("keychain store add to manifest: %w", err)
 	}
 	for _, existing := range names {
 		if existing == name {
@@ -198,7 +198,7 @@ func (k *KeychainStore) addToManifest(ctx context.Context, name string) error {
 func (k *KeychainStore) removeFromManifest(ctx context.Context, name string) error {
 	names, err := k.loadManifest(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("keychain store remove from manifest: %w", err)
 	}
 	filtered := names[:0]
 	for _, existing := range names {

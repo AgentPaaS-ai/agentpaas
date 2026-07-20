@@ -25,24 +25,24 @@ func newExportCmd() *cobra.Command {
 			}
 			absPath, err := resolveCLIProjectPath(projectDir)
 			if err != nil {
-				return err
+				return fmt.Errorf("new export cmd: %w", err)
 			}
 
 			outPath, _ := cmd.Flags().GetString("output") // cobra flag default on missing
 			if outPath == "" {
 				agentYAML, err := readAgentYAMLName(absPath)
 				if err != nil {
-					return err
+					return fmt.Errorf("new export cmd: %w", err)
 				}
 				outPath = agentYAML + ".agentpaas"
 			}
 			outPath, err = filepath.Abs(outPath)
 			if err != nil {
-				return err
+				return fmt.Errorf("new export cmd: %w", err)
 			}
 
-			withImage, _ := cmd.Flags().GetBool("with-image") // cobra flag default on missing
-			yes, _ := cmd.Flags().GetBool("yes") // cobra flag default on missing
+			withImage, _ := cmd.Flags().GetBool("with-image")      // cobra flag default on missing
+			yes, _ := cmd.Flags().GetBool("yes")                   // cobra flag default on missing
 			includeRaw, _ := cmd.Flags().GetStringSlice("include") // optional value; zero on miss
 			var includes []string
 			for _, g := range includeRaw {
@@ -54,11 +54,11 @@ func newExportCmd() *cobra.Command {
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new export cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new export cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -74,7 +74,7 @@ func newExportCmd() *cobra.Command {
 			}
 
 			if err := printExportManifest(os.Stdout, prev); err != nil {
-				return err
+				return fmt.Errorf("new export cmd: %w", err)
 			}
 
 			if !yes {
@@ -128,10 +128,10 @@ func newExportCmd() *cobra.Command {
 func printExportManifest(w *os.File, prev *controlv1.ExportPreviewResponse) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	if _, err := fmt.Fprintf(tw, "Agent:\t%s@%s\n", prev.GetAgentName(), prev.GetAgentVersion()); err != nil {
-		return err
+		return fmt.Errorf("print export manifest: %w", err)
 	}
 	if _, err := fmt.Fprintf(tw, "Files:\n"); err != nil {
-		return err
+		return fmt.Errorf("print export manifest: %w", err)
 	}
 	for _, f := range prev.GetFiles() {
 		tag := ""
@@ -139,7 +139,7 @@ func printExportManifest(w *os.File, prev *controlv1.ExportPreviewResponse) erro
 			tag = " (extra)"
 		}
 		if _, err := fmt.Fprintf(tw, "  %s\t%s\t%d%s\n", f.GetPath(), f.GetDigest(), f.GetBytes(), tag); err != nil {
-			return err
+			return fmt.Errorf("print export manifest: %w", err)
 		}
 	}
 	return tw.Flush()

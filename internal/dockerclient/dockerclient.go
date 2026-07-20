@@ -41,11 +41,11 @@ type contextMeta struct {
 	Name      string `json:"Name"`
 	Endpoints struct {
 		Docker struct {
-			Host           string `json:"Host"`
-			SkipTLSVerify  bool   `json:"SkipTLSVerify"`
-			CACertPath     string `json:"CACertPath"`
-			CertPath       string `json:"CertPath"`
-			KeyPath        string `json:"KeyPath"`
+			Host          string `json:"Host"`
+			SkipTLSVerify bool   `json:"SkipTLSVerify"`
+			CACertPath    string `json:"CACertPath"`
+			CertPath      string `json:"CertPath"`
+			KeyPath       string `json:"KeyPath"`
 		} `json:"docker"`
 	} `json:"Endpoints"`
 }
@@ -72,13 +72,13 @@ func resolveHost() (host string, source string, err error) {
 func fromContextStore() (host string, contextName string, err error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("from context store: %w", err)
 	}
 
 	cfgPath := filepath.Join(home, ".docker", "config.json")
 	cfgBytes, err := os.ReadFile(cfgPath)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("from context store: %w", err)
 	}
 
 	var cfg struct {
@@ -98,7 +98,7 @@ func fromContextStore() (host string, contextName string, err error) {
 	metaDir := filepath.Join(home, ".docker", "contexts", "meta")
 	entries, err := os.ReadDir(metaDir)
 	if err != nil {
-		return "", cfg.CurrentContext, err
+		return "", cfg.CurrentContext, fmt.Errorf("from context store: %w", err)
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -181,7 +181,7 @@ func New() (*client.Client, error) {
 func Ping(timeout time.Duration) error {
 	cli, err := New()
 	if err != nil {
-		return err
+		return fmt.Errorf("ping: %w", err)
 	}
 	defer func() { _ = cli.Close() }() // best-effort close
 
@@ -225,7 +225,7 @@ var ErrDaemonUnreachable = errors.New("docker daemon unreachable")
 func ExportHostToEnv() error {
 	host, source, err := resolveHost()
 	if err != nil {
-		return err
+		return fmt.Errorf("export host to env: %w", err)
 	}
 	// Only export if we resolved via context store — avoid clobbering an
 	// explicit DOCKER_HOST or redundantly setting the default.

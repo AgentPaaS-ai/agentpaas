@@ -61,37 +61,37 @@ const (
 // ApprovalRequest is a durable approval request. The Options slice is the
 // closed set of permitted resolutions; a sender cannot choose outside it.
 type ApprovalRequest struct {
-	RequestID  string          `json:"request_id"`
-	RunID      string          `json:"run_id"`
-	TaskID     string          `json:"task_id"`
-	Question   string          `json:"question"`
-	Options    []string        `json:"options"`
-	Status     ApprovalStatus  `json:"status"`
-	Resolution string          `json:"resolution,omitempty"`
-	ExpiresAt  time.Time        `json:"expires_at"`
-	CreatedAt  time.Time        `json:"created_at"`
+	RequestID  string         `json:"request_id"`
+	RunID      string         `json:"run_id"`
+	TaskID     string         `json:"task_id"`
+	Question   string         `json:"question"`
+	Options    []string       `json:"options"`
+	Status     ApprovalStatus `json:"status"`
+	Resolution string         `json:"resolution,omitempty"`
+	ExpiresAt  time.Time      `json:"expires_at"`
+	CreatedAt  time.Time      `json:"created_at"`
 }
 
 // approvalWALRecord is one JSON-encoded line in the per-run approval WAL.
 type approvalWALRecord struct {
-	SchemaVersion string           `json:"schema_version"`
-	RequestID     string           `json:"request_id"`
-	TenantID      string           `json:"tenant_id"`
-	RunID         string           `json:"run_id"`
-	TaskID        string           `json:"task_id"`
-	Question      string           `json:"question"`
-	Options       []string         `json:"options"`
-	Status        ApprovalStatus   `json:"status"`
-	Resolution    string           `json:"resolution,omitempty"`
-	ExpiresAt     time.Time         `json:"expires_at"`
-	CreatedAt     time.Time         `json:"created_at"`
+	SchemaVersion string         `json:"schema_version"`
+	RequestID     string         `json:"request_id"`
+	TenantID      string         `json:"tenant_id"`
+	RunID         string         `json:"run_id"`
+	TaskID        string         `json:"task_id"`
+	Question      string         `json:"question"`
+	Options       []string       `json:"options"`
+	Status        ApprovalStatus `json:"status"`
+	Resolution    string         `json:"resolution,omitempty"`
+	ExpiresAt     time.Time      `json:"expires_at"`
+	CreatedAt     time.Time      `json:"created_at"`
 }
 
 // approvalRunState holds the per-run approval index.
 type approvalRunState struct {
-	mu        sync.Mutex
-	requests  map[string]*ApprovalRequest
-	closed    bool
+	mu       sync.Mutex
+	requests map[string]*ApprovalRequest
+	closed   bool
 }
 
 // ApprovalStore durably records approval requests and their resolutions. It
@@ -133,7 +133,7 @@ func NewDurableApprovalStore(stateDir string, events port.EventStore) (*Approval
 	}
 	cleaned := filepathClean(stateDir)
 	if err := inboxRejectSymlinkPath(cleaned); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new durable approval store: %w", err)
 	}
 	if err := inboxMkdirProtected(cleaned); err != nil {
 		return nil, fmt.Errorf("runtime: create approval state dir %s: %w", cleaned, err)
@@ -154,7 +154,7 @@ func NewDurableApprovalStore(stateDir string, events port.EventStore) (*Approval
 func defaultApprovalRandID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("default approval rand id: %w", err)
 	}
 	return "apr-" + hex.EncodeToString(b), nil
 }
@@ -194,7 +194,7 @@ func (a *ApprovalStore) Request(ctx context.Context, tenantID string, req Approv
 
 	r, err := a.runState(tenantID, req.RunID, true)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("approval store request: %w", err)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -363,29 +363,29 @@ func (a *ApprovalStore) appendWAL(tenantID, runID string, rec approvalWALRecord)
 	path := a.walPath(tenantID, runID)
 	dir := filepath.Dir(path)
 	if err := inboxMkdirProtected(dir); err != nil {
-		return err
+		return fmt.Errorf("approval store append wal: %w", err)
 	}
 	if err := inboxRejectSymlinkPath(path); err != nil {
-		return err
+		return fmt.Errorf("approval store append wal: %w", err)
 	}
 	line, err := json.Marshal(rec)
 	if err != nil {
-		return err
+		return fmt.Errorf("approval store append wal: %w", err)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, inboxFilePerm)
 	if err != nil {
-		return err
+		return fmt.Errorf("approval store append wal: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	fi, err := f.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("approval store append wal: %w", err)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: %s mode %#o", ErrInboxUnsafePerm, path, fi.Mode().Perm())
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		return err
+		return fmt.Errorf("approval store append wal: %w", err)
 	}
 	return f.Sync()
 }
@@ -402,10 +402,10 @@ func (a *ApprovalStore) recover() error {
 	}
 	entries, err := os.ReadDir(a.stateDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("approval store recover: %w", err)
 	}
 	for _, tenantEntry := range entries {
 		if !tenantEntry.IsDir() {
@@ -414,7 +414,7 @@ func (a *ApprovalStore) recover() error {
 		tenantPath := filepath.Join(a.stateDir, tenantEntry.Name())
 		runEntries, err := os.ReadDir(tenantPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("approval store recover: %w", err)
 		}
 		for _, runEntry := range runEntries {
 			if runEntry.IsDir() || !strings.HasSuffix(runEntry.Name(), inboxWALSuffix) {
@@ -422,7 +422,7 @@ func (a *ApprovalStore) recover() error {
 			}
 			path := filepath.Join(tenantPath, runEntry.Name())
 			if err := a.recoverWALFile(path); err != nil {
-				return err
+				return fmt.Errorf("approval store recover: %w", err)
 			}
 		}
 	}
@@ -433,10 +433,10 @@ func (a *ApprovalStore) recover() error {
 func (a *ApprovalStore) recoverWALFile(path string) error {
 	data, err := inboxReadFileStrict(path, maxInboxWALFileBytes)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("approval store recover walfile: %w", err)
 	}
 	for _, line := range splitInboxWALLines(data) {
 		if len(line) == 0 {
@@ -448,19 +448,19 @@ func (a *ApprovalStore) recoverWALFile(path string) error {
 		}
 		r, err := a.runState(rec.TenantID, rec.RunID, true)
 		if err != nil {
-			return err
+			return fmt.Errorf("approval store recover walfile: %w", err)
 		}
 		r.mu.Lock()
 		r.requests[rec.RequestID] = &ApprovalRequest{
 			RequestID:  rec.RequestID,
-			RunID:       rec.RunID,
-			TaskID:      rec.TaskID,
-			Question:    rec.Question,
-			Options:     rec.Options,
-			Status:      rec.Status,
-			Resolution:  rec.Resolution,
-			ExpiresAt:   rec.ExpiresAt,
-			CreatedAt:   rec.CreatedAt,
+			RunID:      rec.RunID,
+			TaskID:     rec.TaskID,
+			Question:   rec.Question,
+			Options:    rec.Options,
+			Status:     rec.Status,
+			Resolution: rec.Resolution,
+			ExpiresAt:  rec.ExpiresAt,
+			CreatedAt:  rec.CreatedAt,
 		}
 		r.mu.Unlock()
 	}

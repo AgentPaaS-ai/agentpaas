@@ -3,6 +3,7 @@ package install
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,10 +39,10 @@ func ListInstalledAgents(stateRoot string) ([]InstalledAgentEntry, error) {
 	agentsDir := filepath.Join(stateRoot, installedAgentsDirName)
 	entries, err := os.ReadDir(agentsDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("list installed agents: %w", err)
 	}
 	var out []InstalledAgentEntry
 	for _, ent := range entries {
@@ -83,7 +84,7 @@ func ListInstalledAgents(stateRoot string) ([]InstalledAgentEntry, error) {
 func RemoveInstalledAgent(ctx context.Context, stateRoot, ref string, stopper ContainerStopper, emitAudit func(eventType string, payload map[string]string)) error {
 	resolvedRef, dir, err := resolveInstalledRef(stateRoot, ref)
 	if err != nil {
-		return err
+		return fmt.Errorf("remove installed agent: %w", err)
 	}
 	if dir == "" {
 		return fmt.Errorf("no installed agent for reference %q", ref)
@@ -117,14 +118,14 @@ func resolveInstalledRef(stateRoot, ref string) (resolvedRef, dir string, err er
 		}
 		dir, err = findInstalledDirByRef(stateRoot, name, pub8)
 		if err != nil {
-			return "", "", err
+			return "", "", fmt.Errorf("resolve installed ref: %w", err)
 		}
 		return name + "@" + pub8, dir, nil
 	}
 	// Alias lookup
 	list, err := ListInstalledAgents(stateRoot)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("resolve installed ref: %w", err)
 	}
 	var matches []InstalledAgentEntry
 	for _, e := range list {
@@ -148,10 +149,10 @@ func findInstalledDirByRef(stateRoot, name, pub8 string) (string, error) {
 	dir := filepath.Join(stateRoot, installedAgentsDirName, want)
 	info, err := os.Stat(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return "", nil
 		}
-		return "", err
+		return "", fmt.Errorf("find installed dir by ref: %w", err)
 	}
 	if !info.IsDir() {
 		return "", nil
@@ -177,18 +178,18 @@ func findInstalledDirByRef(stateRoot, name, pub8 string) (string, error) {
 func LoadManifestByRef(stateRoot, ref string) (*InstallManifest, error) {
 	name, pub8, err := naming.ParseAgentRef(ref)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load manifest by ref: %w", err)
 	}
 	dir, err := findInstalledDirByRef(stateRoot, name, pub8)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load manifest by ref: %w", err)
 	}
 	if dir == "" {
 		return nil, fmt.Errorf("no installed agent for reference %q", ref)
 	}
 	m, err := loadInstalledManifest(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load manifest by ref: %w", err)
 	}
 	return &m, nil
 }

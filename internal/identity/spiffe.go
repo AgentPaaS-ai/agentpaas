@@ -51,13 +51,13 @@ func ValidateURIComponent(component, name string) error {
 // ("..") or path separators ("/").
 func (td *TrustDomain) BuildURI(agentName, agentVersion, runID string) (string, error) {
 	if err := ValidateURIComponent(agentName, "agentName"); err != nil {
-		return "", err
+		return "", fmt.Errorf("trust domain build uri: %w", err)
 	}
 	if err := ValidateURIComponent(agentVersion, "agentVersion"); err != nil {
-		return "", err
+		return "", fmt.Errorf("trust domain build uri: %w", err)
 	}
 	if err := ValidateURIComponent(runID, "runID"); err != nil {
-		return "", err
+		return "", fmt.Errorf("trust domain build uri: %w", err)
 	}
 	if td.IsHosted {
 		return fmt.Sprintf("spiffe://%s/%s/agent/%s/%s/run/%s",

@@ -63,15 +63,15 @@ type MessageID string
 // it is stored and delivered verbatim and must never be interpreted as
 // authority (e.g. it cannot grant new credentials or expand scope).
 type InboxMessage struct {
-	MessageID  string            `json:"message_id"`
-	TenantID   string            `json:"tenant_id"`
-	RunID      string            `json:"run_id"`
-	TaskID     string            `json:"task_id"`
-	SenderID   string            `json:"sender_id"`
-	Type       InboxMessageType  `json:"type"`
-	Content    []byte            `json:"content"`
-	CreatedAt  time.Time         `json:"created_at"`
-	Delivered  bool              `json:"delivered"`
+	MessageID string           `json:"message_id"`
+	TenantID  string           `json:"tenant_id"`
+	RunID     string           `json:"run_id"`
+	TaskID    string           `json:"task_id"`
+	SenderID  string           `json:"sender_id"`
+	Type      InboxMessageType `json:"type"`
+	Content   []byte           `json:"content"`
+	CreatedAt time.Time        `json:"created_at"`
+	Delivered bool             `json:"delivered"`
 }
 
 // InboxStore is the durable inbox interface. Implementations must be
@@ -107,15 +107,15 @@ const (
 // inboxWALRecord is one JSON-encoded line in the per-run inbox WAL.
 type inboxWALRecord struct {
 	SchemaVersion string           `json:"schema_version"`
-	MessageID    string           `json:"message_id"`
-	TenantID     string           `json:"tenant_id"`
-	RunID        string           `json:"run_id"`
-	TaskID       string           `json:"task_id"`
-	SenderID     string           `json:"sender_id"`
-	Type         InboxMessageType `json:"type"`
-	Content      []byte           `json:"content"`
-	CreatedAt    time.Time         `json:"created_at"`
-	Delivered    bool             `json:"delivered"`
+	MessageID     string           `json:"message_id"`
+	TenantID      string           `json:"tenant_id"`
+	RunID         string           `json:"run_id"`
+	TaskID        string           `json:"task_id"`
+	SenderID      string           `json:"sender_id"`
+	Type          InboxMessageType `json:"type"`
+	Content       []byte           `json:"content"`
+	CreatedAt     time.Time        `json:"created_at"`
+	Delivered     bool             `json:"delivered"`
 }
 
 // inboxRunState holds the per-run in-memory index reconstructed from the WAL.
@@ -151,7 +151,7 @@ func NewDurableInboxStore(stateDir string, events port.EventStore) (*DurableInbo
 	}
 	cleaned := filepath.Clean(stateDir)
 	if err := inboxRejectSymlinkPath(cleaned); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new durable inbox store: %w", err)
 	}
 	if err := inboxMkdirProtected(cleaned); err != nil {
 		return nil, fmt.Errorf("runtime: create inbox state dir %s: %w", cleaned, err)
@@ -172,7 +172,7 @@ func NewDurableInboxStore(stateDir string, events port.EventStore) (*DurableInbo
 func defaultInboxRandID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("default inbox rand id: %w", err)
 	}
 	return "msg-" + hex.EncodeToString(b), nil
 }
@@ -214,7 +214,7 @@ func (s *DurableInboxStore) Append(_ context.Context, msg InboxMessage) (Message
 
 	r, err := s.runState(msg.TenantID, msg.RunID, true)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("durable inbox store append: %w", err)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -223,15 +223,15 @@ func (s *DurableInboxStore) Append(_ context.Context, msg InboxMessage) (Message
 	}
 	rec := inboxWALRecord{
 		SchemaVersion: "1.0",
-		MessageID:    msg.MessageID,
-		TenantID:     msg.TenantID,
-		RunID:        msg.RunID,
-		TaskID:       msg.TaskID,
-		SenderID:     msg.SenderID,
-		Type:         msg.Type,
-		Content:      msg.Content,
-		CreatedAt:    msg.CreatedAt,
-		Delivered:    false,
+		MessageID:     msg.MessageID,
+		TenantID:      msg.TenantID,
+		RunID:         msg.RunID,
+		TaskID:        msg.TaskID,
+		SenderID:      msg.SenderID,
+		Type:          msg.Type,
+		Content:       msg.Content,
+		CreatedAt:     msg.CreatedAt,
+		Delivered:     false,
 	}
 	if err := s.appendWAL(msg.TenantID, msg.RunID, rec); err != nil {
 		return "", fmt.Errorf("runtime: inbox append wal: %w", err)
@@ -364,7 +364,7 @@ func (s *DurableInboxStore) Purge(_ context.Context, tenantID, runID string) err
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	path := s.walPath(tenantID, runID)
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("runtime: purge inbox %s: %w", path, err)
 	}
 	return nil
@@ -412,32 +412,32 @@ func (s *DurableInboxStore) appendWAL(tenantID, runID string, rec inboxWALRecord
 	path := s.walPath(tenantID, runID)
 	dir := filepath.Dir(path)
 	if err := inboxMkdirProtected(dir); err != nil {
-		return err
+		return fmt.Errorf("durable inbox store append wal: %w", err)
 	}
 	if err := inboxRejectSymlinkPath(path); err != nil {
-		return err
+		return fmt.Errorf("durable inbox store append wal: %w", err)
 	}
 	line, err := json.Marshal(rec)
 	if err != nil {
-		return err
+		return fmt.Errorf("durable inbox store append wal: %w", err)
 	}
 	if int64(len(line)) > maxInboxPayloadBytes+1024 {
 		return fmt.Errorf("%w: encoded record %d bytes", ErrInboxTooLarge, len(line))
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, inboxFilePerm)
 	if err != nil {
-		return err
+		return fmt.Errorf("durable inbox store append wal: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	fi, err := f.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("durable inbox store append wal: %w", err)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: %s mode %#o", ErrInboxUnsafePerm, path, fi.Mode().Perm())
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		return err
+		return fmt.Errorf("durable inbox store append wal: %w", err)
 	}
 	return f.Sync()
 }
@@ -457,55 +457,55 @@ func (s *DurableInboxStore) rewriteMessagesLocked(r *inboxRunState, msgs []Inbox
 	path := s.walPath(tenantID, runID)
 	dir := filepath.Dir(path)
 	if err := inboxMkdirProtected(dir); err != nil {
-		return err
+		return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 	}
 	if err := inboxRejectSymlinkPath(path); err != nil {
-		return err
+		return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 	}
 	tmp := path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, inboxFilePerm)
 	if err != nil {
-		return err
+		return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 	}
 	w := newBufioWriter(f)
 	for _, m := range msgs {
 		rec := inboxWALRecord{
 			SchemaVersion: "1.0",
-			MessageID:    m.MessageID,
-			TenantID:     m.TenantID,
-			RunID:        m.RunID,
-			TaskID:       m.TaskID,
-			SenderID:     m.SenderID,
-			Type:         m.Type,
-			Content:      m.Content,
-			CreatedAt:    m.CreatedAt,
-			Delivered:    m.Delivered,
+			MessageID:     m.MessageID,
+			TenantID:      m.TenantID,
+			RunID:         m.RunID,
+			TaskID:        m.TaskID,
+			SenderID:      m.SenderID,
+			Type:          m.Type,
+			Content:       m.Content,
+			CreatedAt:     m.CreatedAt,
+			Delivered:     m.Delivered,
 		}
 		line, err := json.Marshal(rec)
 		if err != nil {
-			_ = f.Close() // best-effort close
+			_ = f.Close()      // best-effort close
 			_ = os.Remove(tmp) // best-effort remove
-			return err
+			return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 		}
 		if _, err := w.Write(append(line, '\n')); err != nil {
-			_ = f.Close() // best-effort close
+			_ = f.Close()      // best-effort close
 			_ = os.Remove(tmp) // best-effort remove
-			return err
+			return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 		}
 	}
 	if err := w.Flush(); err != nil {
-		_ = f.Close() // best-effort close
+		_ = f.Close()      // best-effort close
 		_ = os.Remove(tmp) // best-effort remove
-		return err
+		return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close() // best-effort close
+		_ = f.Close()      // best-effort close
 		_ = os.Remove(tmp) // best-effort remove
-		return err
+		return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmp) // best-effort remove
-		return err
+		return fmt.Errorf("durable inbox store rewrite messages locked: %w", err)
 	}
 	return os.Rename(tmp, path)
 }
@@ -515,22 +515,22 @@ func (s *DurableInboxStore) rewriteMessagesLocked(r *inboxRunState, msgs []Inbox
 func (s *DurableInboxStore) recover() error {
 	entries, err := os.ReadDir(s.stateDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("durable inbox store recover: %w", err)
 	}
 	for _, tenantEntry := range entries {
 		if !tenantEntry.IsDir() {
 			continue
 		}
 		if err := inboxRejectSymlinkLeaf(filepath.Join(s.stateDir, tenantEntry.Name())); err != nil {
-			return err
+			return fmt.Errorf("durable inbox store recover: %w", err)
 		}
 		tenantPath := filepath.Join(s.stateDir, tenantEntry.Name())
 		runEntries, err := os.ReadDir(tenantPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("durable inbox store recover: %w", err)
 		}
 		for _, runEntry := range runEntries {
 			if runEntry.IsDir() || !strings.HasSuffix(runEntry.Name(), inboxWALSuffix) {
@@ -538,7 +538,7 @@ func (s *DurableInboxStore) recover() error {
 			}
 			path := filepath.Join(tenantPath, runEntry.Name())
 			if err := s.recoverWALFile(path); err != nil {
-				return err
+				return fmt.Errorf("durable inbox store recover: %w", err)
 			}
 		}
 	}
@@ -549,10 +549,10 @@ func (s *DurableInboxStore) recover() error {
 func (s *DurableInboxStore) recoverWALFile(path string) error {
 	data, err := inboxReadFileStrict(path, maxInboxWALFileBytes)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("durable inbox store recover walfile: %w", err)
 	}
 	for _, line := range splitInboxWALLines(data) {
 		if len(line) == 0 {
@@ -564,7 +564,7 @@ func (s *DurableInboxStore) recoverWALFile(path string) error {
 		}
 		r, err := s.runState(rec.TenantID, rec.RunID, true)
 		if err != nil {
-			return err
+			return fmt.Errorf("durable inbox store recover walfile: %w", err)
 		}
 		r.mu.Lock()
 		r.messages = append(r.messages, InboxMessage{

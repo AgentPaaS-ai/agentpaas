@@ -29,30 +29,30 @@ type PolicyLint struct {
 }
 
 const (
-	LintWildcardDomain       = "wildcard_domain"
-	LintRawIPEgress          = "raw_ip_egress"
-	LintNonTLSPort           = "non_tls_port"
-	LintManyEgressDomains    = "many_egress_domains"
-	LintCredWildcardDest     = "credential_wildcard_destination"
+	LintWildcardDomain    = "wildcard_domain"
+	LintRawIPEgress       = "raw_ip_egress"
+	LintNonTLSPort        = "non_tls_port"
+	LintManyEgressDomains = "many_egress_domains"
+	LintCredWildcardDest  = "credential_wildcard_destination"
 )
 
 // InspectHeader is section 1 of the inspect report.
 type InspectHeader struct {
-	File                 string `json:"file"`
-	SizeBytes            int64  `json:"size_bytes"`
-	BundleDigest         string `json:"bundle_digest"`
-	BundleSchemaVersion  int    `json:"bundle_schema_version"`
-	LockSchemaVersion    int    `json:"lock_schema_version"`
-	AgentName            string `json:"agent_name"`
-	AgentVersion         string `json:"agent_version"`
+	File                string `json:"file"`
+	SizeBytes           int64  `json:"size_bytes"`
+	BundleDigest        string `json:"bundle_digest"`
+	BundleSchemaVersion int    `json:"bundle_schema_version"`
+	LockSchemaVersion   int    `json:"lock_schema_version"`
+	AgentName           string `json:"agent_name"`
+	AgentVersion        string `json:"agent_version"`
 }
 
 // InspectPublisher is section 3 (only when verified).
 type InspectPublisher struct {
-	Name                 string `json:"name"`
-	Fingerprint          string `json:"fingerprint"`
-	FingerprintDisplay   string `json:"fingerprint_display"`
-	TrustDisclaimer      string `json:"trust_disclaimer"`
+	Name               string `json:"name"`
+	Fingerprint        string `json:"fingerprint"`
+	FingerprintDisplay string `json:"fingerprint_display"`
+	TrustDisclaimer    string `json:"trust_disclaimer"`
 }
 
 // PolicySummaryLine is one rendered policy row for inspect output.
@@ -63,10 +63,10 @@ type PolicySummaryLine struct {
 
 // InspectRequirements is section 7.
 type InspectRequirements struct {
-	Credentials      []CredentialRequirement `json:"credentials"`
-	LLMProvider      string                  `json:"llm_provider"`
-	Image            string                  `json:"image"`
-	Platform         string                  `json:"platform"`
+	Credentials []CredentialRequirement `json:"credentials"`
+	LLMProvider string                  `json:"llm_provider"`
+	Image       string                  `json:"image"`
+	Platform    string                  `json:"platform"`
 }
 
 // CredentialRequirement is a credential the receiver must map at install.
@@ -79,25 +79,25 @@ type CredentialRequirement struct {
 
 // SBOMSummary is section 8.
 type SBOMSummary struct {
-	PackageCount   int      `json:"package_count"`
-	TopLevelDeps   []string `json:"top_level_deps"`
-	ParseWarning   string   `json:"parse_warning,omitempty"`
+	PackageCount int      `json:"package_count"`
+	TopLevelDeps []string `json:"top_level_deps"`
+	ParseWarning string   `json:"parse_warning,omitempty"`
 }
 
 // InspectReport is the full structured bundle inspect report (B25 consumes --json).
 type InspectReport struct {
-	Header         InspectHeader            `json:"header"`
-	Integrity      *VerifyReport            `json:"integrity"`
-	Verified       bool                     `json:"verified"`
-	Publisher      *InspectPublisher        `json:"publisher,omitempty"`
-	Provenance     *pack.ProvenanceReport   `json:"provenance,omitempty"`
-	ProvenanceText string                   `json:"provenance_text,omitempty"`
-	PolicySummary  []PolicySummaryLine      `json:"policy_summary,omitempty"`
-	PolicyLints    []PolicyLint             `json:"policy_lints,omitempty"`
-	Requirements   *InspectRequirements     `json:"requirements,omitempty"`
-	SBOM           *SBOMSummary             `json:"sbom,omitempty"`
-	ExtraFiles     []ManifestExtraFile      `json:"extra_files,omitempty"`
-	Workflow       *WorkflowSummary         `json:"workflow,omitempty"`
+	Header         InspectHeader          `json:"header"`
+	Integrity      *VerifyReport          `json:"integrity"`
+	Verified       bool                   `json:"verified"`
+	Publisher      *InspectPublisher      `json:"publisher,omitempty"`
+	Provenance     *pack.ProvenanceReport `json:"provenance,omitempty"`
+	ProvenanceText string                 `json:"provenance_text,omitempty"`
+	PolicySummary  []PolicySummaryLine    `json:"policy_summary,omitempty"`
+	PolicyLints    []PolicyLint           `json:"policy_lints,omitempty"`
+	Requirements   *InspectRequirements   `json:"requirements,omitempty"`
+	SBOM           *SBOMSummary           `json:"sbom,omitempty"`
+	ExtraFiles     []ManifestExtraFile    `json:"extra_files,omitempty"`
+	Workflow       *WorkflowSummary       `json:"workflow,omitempty"`
 }
 
 // WorkflowSummary is the workflow.yaml summary for inspect output.
@@ -120,7 +120,7 @@ func Inspect(path string, b *Bundle, verifyReport *VerifyReport) (*InspectReport
 	}
 	digest, err := FileBundleDigest(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inspect: %w", err)
 	}
 
 	report := &InspectReport{
@@ -129,8 +129,8 @@ func Inspect(path string, b *Bundle, verifyReport *VerifyReport) (*InspectReport
 			SizeBytes:    fi.Size(),
 			BundleDigest: digest,
 		},
-		Integrity: verifyReport,
-		Verified:  verifyReport.Verified,
+		Integrity:  verifyReport,
+		Verified:   verifyReport.Verified,
 		ExtraFiles: append([]ManifestExtraFile(nil), b.Manifest.ExtraFiles...),
 	}
 
@@ -423,8 +423,8 @@ type spdxInspect struct {
 }
 
 type spdxPackage struct {
-	Name    string `json:"name"`
-	SPDXID  string `json:"SPDXID"`
+	Name   string `json:"name"`
+	SPDXID string `json:"SPDXID"`
 }
 
 type spdxRelationship struct {

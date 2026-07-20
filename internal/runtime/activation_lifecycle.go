@@ -119,7 +119,7 @@ func (l *ActivationLifecycle) Transition(
 		if err := ZeroAuthorityInvariant(stripped); err != nil {
 			// stripAuthority should make this impossible; surface it as
 			// an authority leak if it ever happens.
-			return err
+			return fmt.Errorf("activation lifecycle transition: %w", err)
 		}
 		l.stripped = stripped
 		l.current = target

@@ -71,7 +71,7 @@ func (s RunStatus) MarshalJSON() ([]byte, error) {
 func (s *RunStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("run status unmarshal json: %w", err)
 	}
 	v, ok := runStatusValues[str]
 	if !ok {
@@ -164,7 +164,7 @@ func (s WorkflowStatus) MarshalJSON() ([]byte, error) {
 func (s *WorkflowStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("workflow status unmarshal json: %w", err)
 	}
 	v, ok := workflowStatusValues[str]
 	if !ok {
@@ -259,7 +259,7 @@ func (s NodeStatus) MarshalJSON() ([]byte, error) {
 func (s *NodeStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("node status unmarshal json: %w", err)
 	}
 	v, ok := nodeStatusValues[str]
 	if !ok {
@@ -338,7 +338,7 @@ func (s ServiceStatus) MarshalJSON() ([]byte, error) {
 func (s *ServiceStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("service status unmarshal json: %w", err)
 	}
 	v, ok := serviceStatusValues[str]
 	if !ok {
@@ -422,7 +422,7 @@ func (s ChildBatchStatus) MarshalJSON() ([]byte, error) {
 func (s *ChildBatchStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("child batch status unmarshal json: %w", err)
 	}
 	v, ok := childBatchStatusValues[str]
 	if !ok {
@@ -450,23 +450,23 @@ func AllChildBatchStatuses() []ChildBatchStatus {
 type AttemptStatus int
 
 const (
-	AttemptStatusPending        AttemptStatus = iota // 0
-	AttemptStatusRunning                             // 1
-	AttemptStatusNeedsReplan                         // 2
-	AttemptStatusSucceeded                           // 3
-	AttemptStatusFailed                              // 4
-	AttemptStatusFenced                              // 5
-	AttemptStatusCancelled                           // 6
+	AttemptStatusPending     AttemptStatus = iota // 0
+	AttemptStatusRunning                          // 1
+	AttemptStatusNeedsReplan                      // 2
+	AttemptStatusSucceeded                        // 3
+	AttemptStatusFailed                           // 4
+	AttemptStatusFenced                           // 5
+	AttemptStatusCancelled                        // 6
 )
 
 var attemptStatusNames = map[AttemptStatus]string{
-	AttemptStatusPending:        "PENDING",
-	AttemptStatusRunning:        "RUNNING",
-	AttemptStatusNeedsReplan:    "NEEDS_REPLAN",
-	AttemptStatusSucceeded:      "SUCCEEDED",
-	AttemptStatusFailed:         "FAILED",
-	AttemptStatusFenced:         "FENCED",
-	AttemptStatusCancelled:      "CANCELLED",
+	AttemptStatusPending:     "PENDING",
+	AttemptStatusRunning:     "RUNNING",
+	AttemptStatusNeedsReplan: "NEEDS_REPLAN",
+	AttemptStatusSucceeded:   "SUCCEEDED",
+	AttemptStatusFailed:      "FAILED",
+	AttemptStatusFenced:      "FENCED",
+	AttemptStatusCancelled:   "CANCELLED",
 }
 
 var attemptStatusValues = func() map[string]AttemptStatus {
@@ -499,7 +499,7 @@ func (s AttemptStatus) MarshalJSON() ([]byte, error) {
 func (s *AttemptStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("attempt status unmarshal json: %w", err)
 	}
 	v, ok := attemptStatusValues[str]
 	if !ok {
@@ -566,7 +566,7 @@ const (
 	FailureChildSpawnDenied                               // 27
 	FailureChildBatchFailed                               // 28
 	FailureWorkflowResourceExhausted                      // 29
-	FailurePauseBoundaryUnavailable                        // 30
+	FailurePauseBoundaryUnavailable                       // 30
 )
 
 var failureReasonNames = map[FailureReason]string{
@@ -633,7 +633,7 @@ func (r FailureReason) MarshalJSON() ([]byte, error) {
 func (r *FailureReason) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("failure reason unmarshal json: %w", err)
 	}
 	v, ok := failureReasonValues[str]
 	if !ok {
@@ -673,31 +673,31 @@ func AllFailureReasons() []FailureReason {
 type FailureScope int
 
 const (
-	FailureScopeModelCall   FailureScope = iota // 0
-	FailureScopeWorker                           // 1
-	FailureScopeBudget                           // 2
-	FailureScopePolicy                           // 3
-	FailureScopeCredential                       // 4
-	FailureScopeExternal                         // 5
-	FailureScopePlatform                         // 6
-	FailureScopeWorkflow                         // 7
-	FailureScopeMCPService                       // 8
-	FailureScopeHandoff                          // 9
-	FailureScopeChildBatch                       // 10
+	FailureScopeModelCall  FailureScope = iota // 0
+	FailureScopeWorker                         // 1
+	FailureScopeBudget                         // 2
+	FailureScopePolicy                         // 3
+	FailureScopeCredential                     // 4
+	FailureScopeExternal                       // 5
+	FailureScopePlatform                       // 6
+	FailureScopeWorkflow                       // 7
+	FailureScopeMCPService                     // 8
+	FailureScopeHandoff                        // 9
+	FailureScopeChildBatch                     // 10
 )
 
 var failureScopeNames = map[FailureScope]string{
-	FailureScopeModelCall:   "model_call",
-	FailureScopeWorker:      "worker",
-	FailureScopeBudget:      "budget",
-	FailureScopePolicy:      "policy",
-	FailureScopeCredential:  "credential",
-	FailureScopeExternal:    "external",
-	FailureScopePlatform:    "platform",
-	FailureScopeWorkflow:    "workflow",
-	FailureScopeMCPService:  "mcp_service",
-	FailureScopeHandoff:     "handoff",
-	FailureScopeChildBatch:  "child_batch",
+	FailureScopeModelCall:  "model_call",
+	FailureScopeWorker:     "worker",
+	FailureScopeBudget:     "budget",
+	FailureScopePolicy:     "policy",
+	FailureScopeCredential: "credential",
+	FailureScopeExternal:   "external",
+	FailureScopePlatform:   "platform",
+	FailureScopeWorkflow:   "workflow",
+	FailureScopeMCPService: "mcp_service",
+	FailureScopeHandoff:    "handoff",
+	FailureScopeChildBatch: "child_batch",
 }
 
 var failureScopeValues = func() map[string]FailureScope {
@@ -730,7 +730,7 @@ func (s FailureScope) MarshalJSON() ([]byte, error) {
 func (s *FailureScope) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("failure scope unmarshal json: %w", err)
 	}
 	v, ok := failureScopeValues[str]
 	if !ok {
@@ -759,9 +759,9 @@ type RecoveryDisposition int
 
 const (
 	RecoveryNotNeeded     RecoveryDisposition = iota // 0
-	RecoveryAutoRecovered                             // 1
-	RecoveryNeedsReplan                               // 2
-	RecoveryTerminal                                  // 3
+	RecoveryAutoRecovered                            // 1
+	RecoveryNeedsReplan                              // 2
+	RecoveryTerminal                                 // 3
 )
 
 var recoveryDispositionNames = map[RecoveryDisposition]string{
@@ -801,7 +801,7 @@ func (d RecoveryDisposition) MarshalJSON() ([]byte, error) {
 func (d *RecoveryDisposition) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("recovery disposition unmarshal json: %w", err)
 	}
 	v, ok := recoveryDispositionValues[str]
 	if !ok {
@@ -884,7 +884,7 @@ func (c DataClassification) MarshalJSON() ([]byte, error) {
 func (c *DataClassification) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+		return fmt.Errorf("data classification unmarshal json: %w", err)
 	}
 	dc := DataClassification(s)
 	if !dc.Valid() {
@@ -943,7 +943,7 @@ func (rc ResumeCapability) MarshalJSON() ([]byte, error) {
 func (rc *ResumeCapability) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("resume capability unmarshal json: %w", err)
 	}
 	v, ok := resumeCapabilityValues[str]
 	if !ok {
@@ -1000,7 +1000,7 @@ func (s DeploymentStatus) MarshalJSON() ([]byte, error) {
 func (s *DeploymentStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("deployment status unmarshal json: %w", err)
 	}
 	v, ok := deploymentStatusValues[str]
 	if !ok {
@@ -1018,19 +1018,19 @@ func (s *DeploymentStatus) UnmarshalJSON(data []byte) error {
 type AdmissionOutcome int
 
 const (
-	AdmissionAccepted           AdmissionOutcome = iota // 0
-	AdmissionIdempotentReplay                           // 1
-	AdmissionAlreadyRunning                             // 2
-	AdmissionIdempotencyConflict                        // 3
-	AdmissionDeploymentInactive                         // 4
+	AdmissionAccepted            AdmissionOutcome = iota // 0
+	AdmissionIdempotentReplay                            // 1
+	AdmissionAlreadyRunning                              // 2
+	AdmissionIdempotencyConflict                         // 3
+	AdmissionDeploymentInactive                          // 4
 )
 
 var admissionOutcomeNames = map[AdmissionOutcome]string{
-	AdmissionAccepted:           "ACCEPTED",
-	AdmissionIdempotentReplay:   "IDEMPOTENT_REPLAY",
-	AdmissionAlreadyRunning:     "ALREADY_RUNNING",
+	AdmissionAccepted:            "ACCEPTED",
+	AdmissionIdempotentReplay:    "IDEMPOTENT_REPLAY",
+	AdmissionAlreadyRunning:      "ALREADY_RUNNING",
 	AdmissionIdempotencyConflict: "IDEMPOTENCY_CONFLICT",
-	AdmissionDeploymentInactive: "DEPLOYMENT_INACTIVE",
+	AdmissionDeploymentInactive:  "DEPLOYMENT_INACTIVE",
 }
 
 var admissionOutcomeValues = func() map[string]AdmissionOutcome {
@@ -1063,7 +1063,7 @@ func (o AdmissionOutcome) MarshalJSON() ([]byte, error) {
 func (o *AdmissionOutcome) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("admission outcome unmarshal json: %w", err)
 	}
 	v, ok := admissionOutcomeValues[str]
 	if !ok {
@@ -1081,20 +1081,20 @@ func (o *AdmissionOutcome) UnmarshalJSON(data []byte) error {
 type ControlCommand int
 
 const (
-	ControlCancel     ControlCommand = iota // 0
-	ControlPause                            // 1
-	ControlResume                           // 2
-	ControlRestart                          // 3
-	ControlContinue                         // 4
-	ControlAmendLimits                      // 5
+	ControlCancel      ControlCommand = iota // 0
+	ControlPause                             // 1
+	ControlResume                            // 2
+	ControlRestart                           // 3
+	ControlContinue                          // 4
+	ControlAmendLimits                       // 5
 )
 
 var controlCommandNames = map[ControlCommand]string{
-	ControlCancel:     "CANCEL",
-	ControlPause:      "PAUSE",
-	ControlResume:     "RESUME",
-	ControlRestart:    "RESTART",
-	ControlContinue:   "CONTINUE",
+	ControlCancel:      "CANCEL",
+	ControlPause:       "PAUSE",
+	ControlResume:      "RESUME",
+	ControlRestart:     "RESTART",
+	ControlContinue:    "CONTINUE",
 	ControlAmendLimits: "AMEND_LIMITS",
 }
 
@@ -1128,7 +1128,7 @@ func (c ControlCommand) MarshalJSON() ([]byte, error) {
 func (c *ControlCommand) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("control command unmarshal json: %w", err)
 	}
 	v, ok := controlCommandValues[str]
 	if !ok {
@@ -1146,8 +1146,8 @@ func (c *ControlCommand) UnmarshalJSON(data []byte) error {
 type AuthorityScope string
 
 const (
-	AuthScopeDefault    AuthorityScope = "default"
-	AuthScopeControl    AuthorityScope = "runs:control"
+	AuthScopeDefault     AuthorityScope = "default"
+	AuthScopeControl     AuthorityScope = "runs:control"
 	AuthScopeAmendLimits AuthorityScope = "runs:amend_limits"
 )
 
@@ -1173,7 +1173,7 @@ func (s AuthorityScope) MarshalJSON() ([]byte, error) {
 func (s *AuthorityScope) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
-		return err
+		return fmt.Errorf("authority scope unmarshal json: %w", err)
 	}
 	as := AuthorityScope(str)
 	if !as.Valid() {

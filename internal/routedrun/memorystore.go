@@ -21,21 +21,21 @@ type MemoryStore struct {
 	idempotency map[string]*DurableIdempotencyRecord
 	receipts    map[InvocationID]*InvocationReceipt
 
-	workflows     map[WorkflowID]*WorkflowRecord
-	workflowGen   map[WorkflowID]int64 // mirrors record.Generation
-	nodes         map[NodeID]*PipelineNode
-	nodeGen       map[NodeID]int64
-	services      map[ServiceID]*MCPServiceBinding
-	serviceGen    map[ServiceID]int64
-	handoffs      map[HandoffID]*HandoffEnvelope
-	childBatches  map[ChildBatchID]*ChildBatch
-	childBatchGen map[ChildBatchID]int64
-	childResults  map[ChildResultID]*ChildResult
-	desired       map[WorkflowID]*DesiredState
-	amendments    map[LimitAmendmentID]*LimitAmendment
-	controls      map[ControlRequestID]*ControlRequest
+	workflows      map[WorkflowID]*WorkflowRecord
+	workflowGen    map[WorkflowID]int64 // mirrors record.Generation
+	nodes          map[NodeID]*PipelineNode
+	nodeGen        map[NodeID]int64
+	services       map[ServiceID]*MCPServiceBinding
+	serviceGen     map[ServiceID]int64
+	handoffs       map[HandoffID]*HandoffEnvelope
+	childBatches   map[ChildBatchID]*ChildBatch
+	childBatchGen  map[ChildBatchID]int64
+	childResults   map[ChildResultID]*ChildResult
+	desired        map[WorkflowID]*DesiredState
+	amendments     map[LimitAmendmentID]*LimitAmendment
+	controls       map[ControlRequestID]*ControlRequest
 	controlResults []controlResultEntry
-	activeTime    map[WorkflowID]*ActiveTimeLedger
+	activeTime     map[WorkflowID]*ActiveTimeLedger
 
 	runs       map[RunID]*RunRecord
 	runGen     map[RunID]int64
@@ -113,7 +113,7 @@ func (s *MemoryStore) CreateDeployment(ctx context.Context, dep *DeploymentRecor
 	if dep.DeploymentID == "" {
 		id, err := NewDeploymentID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store create deployment: %w", err)
 		}
 		dep.DeploymentID = id
 	}
@@ -256,7 +256,7 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 
 	dep, err := s.resolveDepLocked(request.RequestedDeploymentRef)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("memory store admit invocation: %w", err)
 	}
 	if expectedDeploymentGeneration != 0 && dep.Generation != expectedDeploymentGeneration {
 		return nil, fmt.Errorf("%w: deployment generation", ErrCASConflict)
@@ -284,11 +284,11 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 
 	invID, err := NewInvocationID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("memory store admit invocation: %w", err)
 	}
 	wfID, err := NewWorkflowID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("memory store admit invocation: %w", err)
 	}
 	now := s.now()
 	kind := topologyKind(dep)
@@ -317,11 +317,11 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 	mk := func(stage int, runKind string, status NodeStatus, pkg, ver string) error {
 		nodeID, err := NewNodeID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store admit invocation: %w", err)
 		}
 		runID, err := NewRunID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store admit invocation: %w", err)
 		}
 		if stage == 0 {
 			primaryRunID = runID
@@ -366,16 +366,16 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 				st = NodeStatusReady
 			}
 			if err := mk(i, "pipeline_stage", st, stagePackageName(dep, i), stagePackageVersion(dep, i)); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("memory store admit invocation: %w", err)
 			}
 		}
 	case "parent_child":
 		if err := mk(0, "parent", NodeStatusReady, dep.PackageName, dep.PackageVersion); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("memory store admit invocation: %w", err)
 		}
 	default:
 		if err := mk(0, "standalone", NodeStatusReady, dep.PackageName, dep.PackageVersion); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("memory store admit invocation: %w", err)
 		}
 	}
 
@@ -459,7 +459,7 @@ func (s *MemoryStore) CreateRun(ctx context.Context, run *RunRecord) error {
 	if run.RunID == "" {
 		id, err := NewRunID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store create run: %w", err)
 		}
 		run.RunID = id
 	}
@@ -508,20 +508,20 @@ func (s *MemoryStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord)
 	if attempt.AttemptID == "" {
 		id, err := NewAttemptID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store create attempt: %w", err)
 		}
 		attempt.AttemptID = id
 	}
 	if attempt.Lease != nil {
 		lid, err := NewLeaseID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store create attempt: %w", err)
 		}
 		attempt.Lease.LeaseID = lid
 		if attempt.Lease.LeaseToken == "" {
 			tok, err := generateID("tok-")
 			if err != nil {
-				return err
+				return fmt.Errorf("memory store create attempt: %w", err)
 			}
 			attempt.Lease.LeaseToken = tok
 		}
@@ -558,7 +558,7 @@ func (s *MemoryStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord,
 	if attempt.Lease != nil && attempt.Lease.LeaseID == "" {
 		lid, err := NewLeaseID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store update attempt: %w", err)
 		}
 		attempt.Lease.LeaseID = lid
 	}
@@ -656,7 +656,7 @@ func (s *MemoryStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) er
 	if wf.WorkflowID == "" {
 		id, err := NewWorkflowID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store create workflow: %w", err)
 		}
 		wf.WorkflowID = id
 	}
@@ -702,7 +702,7 @@ func (s *MemoryStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, ex
 	// Resume re-acquire concurrency under the same write lock as AdmitInvocation.
 	if !holdsConcurrencySlot(existing.Status) && holdsConcurrencySlot(wf.Status) {
 		if err := s.checkConcurrencyForResumeLocked(existing.DeploymentID); err != nil {
-			return err
+			return fmt.Errorf("memory store update workflow: %w", err)
 		}
 	}
 	from := existing.Status
@@ -734,7 +734,7 @@ func (s *MemoryStore) CreateNode(ctx context.Context, node *PipelineNode) error 
 	if node.NodeID == "" {
 		id, err := NewNodeID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store create node: %w", err)
 		}
 		node.NodeID = id
 	}
@@ -791,7 +791,7 @@ func (s *MemoryStore) RegisterService(ctx context.Context, svc *MCPServiceBindin
 	if svc.ServiceID == "" {
 		id, err := NewServiceID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store register service: %w", err)
 		}
 		svc.ServiceID = id
 	}
@@ -836,7 +836,7 @@ func (s *MemoryStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelop
 	if handoff.HandoffID == "" {
 		id, err := NewHandoffID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store commit handoff: %w", err)
 		}
 		handoff.HandoffID = id
 	}
@@ -882,7 +882,7 @@ func (s *MemoryStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) e
 	if batch.ChildBatchID == "" {
 		id, err := NewChildBatchID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store create child batch: %w", err)
 		}
 		batch.ChildBatchID = id
 	}
@@ -927,7 +927,7 @@ func (s *MemoryStore) CommitChildResult(ctx context.Context, result *ChildResult
 	if result.ChildResultID == "" {
 		id, err := NewChildResultID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store commit child result: %w", err)
 		}
 		result.ChildResultID = id
 	}
@@ -973,7 +973,7 @@ func (s *MemoryStore) RequestControl(ctx context.Context, req *ControlRequest) e
 	if req.ControlRequestID == "" {
 		id, err := NewControlRequestID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store request control: %w", err)
 		}
 		req.ControlRequestID = id
 	}
@@ -1060,7 +1060,7 @@ func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID Workf
 	if amendment.AmendmentID == "" {
 		id, err := NewLimitAmendmentID()
 		if err != nil {
-			return err
+			return fmt.Errorf("memory store append limit amendment: %w", err)
 		}
 		amendment.AmendmentID = id
 	}
@@ -1080,7 +1080,7 @@ func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID Workf
 }
 
 func (s *MemoryStore) ApplyTransition(ctx context.Context, workflowID WorkflowID, expectedGeneration int64, command string) error {
-	_ = ctx // interface compliance; store ops are local
+	_ = ctx     // interface compliance; store ops are local
 	_ = command // interface compliance; memory store is no-op command
 	s.mu.Lock()
 	defer s.mu.Unlock()

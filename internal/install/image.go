@@ -40,8 +40,8 @@ type PackImageBuilder struct {
 // Build implements ImageBuilder using pack.BuildImage.
 func (b *PackImageBuilder) Build(ctx context.Context, sourceDir, agentName string) (string, error) {
 	cfg := pack.BuildConfig{
-		ProjectDir: sourceDir,
-		ImageTag:   b.ImageTag,
+		ProjectDir:  sourceDir,
+		ImageTag:    b.ImageTag,
 		HarnessPath: b.HarnessPath,
 		SDKDir:      b.SDKDir,
 	}
@@ -50,7 +50,7 @@ func (b *PackImageBuilder) Build(ctx context.Context, sourceDir, agentName strin
 	}
 	res, err := pack.BuildImage(ctx, cfg)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("pack image builder build: %w", err)
 	}
 	return normalizeImageDigest(res.ImageDigest), nil
 }
@@ -61,7 +61,7 @@ type SkopeoImageLoader struct{}
 // Load implements ImageLoader.
 func (SkopeoImageLoader) Load(ctx context.Context, ociLayoutDir, expectedDigest string) (string, error) {
 	if err := pack.ValidateOCILayout(ociLayoutDir); err != nil {
-		return "", err
+		return "", fmt.Errorf("skopeo image loader load: %w", err)
 	}
 	want := normalizeImageDigest(expectedDigest)
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -77,7 +77,7 @@ func (SkopeoImageLoader) Load(ctx context.Context, ociLayoutDir, expectedDigest 
 	}
 	got, err := dockerImageID(ctx, ref)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("skopeo image loader load: %w", err)
 	}
 	got = normalizeImageDigest(got)
 	if got != want && !digestMatches(got, want) {

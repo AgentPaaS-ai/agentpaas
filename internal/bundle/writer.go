@@ -25,13 +25,16 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 )
 
+// ErrNilLock is a package-level sentinel for repeated validation failures.
+var ErrNilLock = errors.New("lock must not be nil")
+
 // Write creates a deterministic .agentpaas bundle and writes it to out.
 // The bundle is a gzipped tar with lexicographically sorted entries.
 // All tar headers use mtime=SourceDateEpoch, uid/gid=0, uname/gname="" .
 // The manifest is signed with PublisherKey and written first in tar order.
 func Write(cfg BundleConfig, out io.Writer) (*BundleResult, error) {
 	if err := validateBundleConfig(&cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write: %w", err)
 	}
 
 	// Canonical lock JSON (stable field order for determinism).
@@ -106,14 +109,14 @@ func Write(cfg BundleConfig, out io.Writer) (*BundleResult, error) {
 	fileCount, err := writeBundleTar(&buf, manifestJSON, lockJSON, cfg.PolicyYAML, cfg.SBOM,
 		sourceFiles, cfg.ExtraFiles, imageFiles, cfg.SourceDateEpoch)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write: %w", err)
 	}
 	tarBytes := buf.Bytes()
 
 	// Gzip the tar deterministically.
 	gzBuf := new(bytes.Buffer)
 	if err := writeDeterministicGzip(gzBuf, tarBytes); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write: %w", err)
 	}
 	finalBytes := gzBuf.Bytes()
 
@@ -142,7 +145,7 @@ func WriteToFile(cfg BundleConfig, path string) (*BundleResult, error) {
 	}
 	writeErr := func() error {
 		if _, err := Write(cfg, tmp); err != nil {
-			return err
+			return fmt.Errorf("write to file: %w", err)
 		}
 		return tmp.Close()
 	}()
@@ -156,7 +159,7 @@ func WriteToFile(cfg BundleConfig, path string) (*BundleResult, error) {
 	}
 	result, err := computeResultFromFile(cfg, path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("write to file: %w", err)
 	}
 	return result, nil
 }
@@ -182,7 +185,7 @@ func computeResultFromFile(cfg BundleConfig, path string) (*BundleResult, error)
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("compute result from file: %w", err)
 		}
 		fileCount++
 	}
@@ -205,7 +208,7 @@ func validateBundleConfig(cfg *BundleConfig) error {
 		return errors.New("manifest must not be nil")
 	}
 	if cfg.Lock == nil {
-		return errors.New("lock must not be nil")
+		return ErrNilLock
 	}
 	if cfg.PublisherKey == nil {
 		return errors.New("publisher key must not be nil")
@@ -357,7 +360,7 @@ func writeBundleTar(w io.Writer, manifestJSON, lockJSON, policyYAML, sbomJSON []
 func writeDeterministicGzip(w io.Writer, data []byte) error {
 	gw, err := gzip.NewWriterLevel(w, gzip.HuffmanOnly)
 	if err != nil {
-		return err
+		return fmt.Errorf("write deterministic gzip: %w", err)
 	}
 	// Zero MTime and set OS to 0xff for determinism.
 	gw.Header = gzip.Header{
@@ -366,7 +369,7 @@ func writeDeterministicGzip(w io.Writer, data []byte) error {
 	}
 	if _, err := gw.Write(data); err != nil {
 		_ = gw.Close() // best-effort close
-		return err
+		return fmt.Errorf("write deterministic gzip: %w", err)
 	}
 	return gw.Close()
 }
@@ -513,18 +516,18 @@ func collectImageFiles(imageDir string) ([]imageFileEntry, error) {
 	var files []imageFileEntry
 	err := filepath.WalkDir(imageDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("collect image files: %w", err)
 		}
 		if d.IsDir() {
 			return nil
 		}
 		info, err := d.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("collect image files: %w", err)
 		}
 		rel, err := filepath.Rel(imageDir, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("collect image files: %w", err)
 		}
 		files = append(files, imageFileEntry{
 			RelPath: filepath.ToSlash(rel),
@@ -534,7 +537,7 @@ func collectImageFiles(imageDir string) ([]imageFileEntry, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collect image files: %w", err)
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].RelPath < files[j].RelPath

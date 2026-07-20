@@ -26,7 +26,7 @@ func ValidateReferenceInput(s string) error {
 // ValidateAlias checks install alias strings (publisher display names).
 func ValidateAlias(alias string) error {
 	if err := ValidateReferenceInput(alias); err != nil {
-		return err
+		return fmt.Errorf("validate alias: %w", err)
 	}
 	if strings.ContainsAny(alias, ";|&$`<>") {
 		return fmt.Errorf("invalid alias: shell metacharacters")
@@ -45,11 +45,11 @@ func CheckAliasUnique(stateRoot, alias, excludeRef string) error {
 		return nil
 	}
 	if err := ValidateAlias(alias); err != nil {
-		return err
+		return fmt.Errorf("check alias unique: %w", err)
 	}
 	list, err := ListInstalledAgents(stateRoot)
 	if err != nil {
-		return err
+		return fmt.Errorf("check alias unique: %w", err)
 	}
 	for _, e := range list {
 		if e.Alias != alias {
@@ -68,18 +68,18 @@ func SetInstalledAlias(stateRoot, ref, newAlias string, emitAudit func(eventType
 	newAlias = strings.TrimSpace(newAlias)
 	if newAlias != "" {
 		if err := ValidateAlias(newAlias); err != nil {
-			return err
+			return fmt.Errorf("set installed alias: %w", err)
 		}
 	}
 	resolvedRef, dir, err := resolveInstalledRef(stateRoot, ref)
 	if err != nil {
-		return err
+		return fmt.Errorf("set installed alias: %w", err)
 	}
 	if dir == "" {
 		return fmt.Errorf("no installed agent for reference %q", ref)
 	}
 	if err := CheckAliasUnique(stateRoot, newAlias, resolvedRef); err != nil {
-		return err
+		return fmt.Errorf("set installed alias: %w", err)
 	}
 	manifestPath := filepath.Join(dir, installedManifestName)
 	raw, err := os.ReadFile(manifestPath)
@@ -94,10 +94,10 @@ func SetInstalledAlias(stateRoot, ref, newAlias string, emitAudit func(eventType
 	m.Alias = newAlias
 	out, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("set installed alias: %w", err)
 	}
 	if err := os.WriteFile(manifestPath, out, 0o600); err != nil {
-		return err
+		return fmt.Errorf("set installed alias: %w", err)
 	}
 	if emitAudit != nil {
 		emitAudit(audit.EventTypeInstallAliasChanged, map[string]string{

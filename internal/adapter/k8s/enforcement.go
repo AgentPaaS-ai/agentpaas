@@ -41,7 +41,7 @@ func (p *k8sPolicyEnforcer) apply(ctx context.Context, id string, s port.CommSna
 	}
 	_, err := p.client.NetworkingV1().NetworkPolicies(p.namespace).Create(ctx, policy, metav1.CreateOptions{})
 	if err != nil {
-		return err
+		return fmt.Errorf("k8s policy enforcer apply: %w", err)
 	}
 	p.mu.Lock()
 	p.rules[id] = s

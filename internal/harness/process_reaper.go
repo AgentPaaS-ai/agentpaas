@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
@@ -136,7 +137,7 @@ func (r *childReaper) isTracked(pid int) bool {
 func procPPID(pid int) (int, error) {
 	data, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/status")
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("proc ppid: %w", err)
 	}
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.HasPrefix(line, "PPid:") {

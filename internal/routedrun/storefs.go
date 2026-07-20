@@ -15,19 +15,19 @@ import (
 
 // Store errors (sentinel).
 var (
-	ErrNotFound              = errors.New("routedrun: not found")
-	ErrAlreadyExists         = errors.New("routedrun: already exists")
-	ErrCASConflict           = errors.New("routedrun: generation conflict")
-	ErrIdempotencyConflict   = errors.New("routedrun: idempotency conflict")
-	ErrAlreadyRunning        = errors.New("routedrun: already running")
-	ErrDeploymentInactive    = errors.New("routedrun: deployment inactive")
-	ErrSymlinkRejected       = errors.New("routedrun: symlink rejected")
-	ErrUnsafePermissions     = errors.New("routedrun: unsafe permissions")
-	ErrSizeCapExceeded       = errors.New("routedrun: size cap exceeded")
-	ErrInvalidPath           = errors.New("routedrun: invalid path component")
-	ErrUnknownSchemaVersion  = errors.New("routedrun: unknown or unsupported schema version")
-	ErrInvalidArgument       = errors.New("routedrun: invalid argument")
-	ErrLeaseCallerSelected   = errors.New("routedrun: caller-selected lease id rejected")
+	ErrNotFound                = errors.New("routedrun: not found")
+	ErrAlreadyExists           = errors.New("routedrun: already exists")
+	ErrCASConflict             = errors.New("routedrun: generation conflict")
+	ErrIdempotencyConflict     = errors.New("routedrun: idempotency conflict")
+	ErrAlreadyRunning          = errors.New("routedrun: already running")
+	ErrDeploymentInactive      = errors.New("routedrun: deployment inactive")
+	ErrSymlinkRejected         = errors.New("routedrun: symlink rejected")
+	ErrUnsafePermissions       = errors.New("routedrun: unsafe permissions")
+	ErrSizeCapExceeded         = errors.New("routedrun: size cap exceeded")
+	ErrInvalidPath             = errors.New("routedrun: invalid path component")
+	ErrUnknownSchemaVersion    = errors.New("routedrun: unknown or unsupported schema version")
+	ErrInvalidArgument         = errors.New("routedrun: invalid argument")
+	ErrLeaseCallerSelected     = errors.New("routedrun: caller-selected lease id rejected")
 	ErrJournalSequenceConflict = errors.New("routedrun: journal sequence conflict")
 )
 
@@ -53,7 +53,7 @@ type persisted struct {
 func marshalPersisted(gen int64, v any) ([]byte, error) {
 	body, err := json.Marshal(v)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal persisted: %w", err)
 	}
 	env := persisted{
 		SchemaVersion: CurrentSchemaVersion,
@@ -66,7 +66,7 @@ func marshalPersisted(gen int64, v any) ([]byte, error) {
 func unmarshalPersisted(data []byte, v any) (int64, error) {
 	var env persisted
 	if err := json.Unmarshal(data, &env); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("unmarshal persisted: %w", err)
 	}
 	if env.SchemaVersion == "" {
 		return 0, fmt.Errorf("routedrun: missing schema_version in envelope")
@@ -78,7 +78,7 @@ func unmarshalPersisted(data []byte, v any) (int64, error) {
 		}
 	}
 	if err := json.Unmarshal(env.Record, v); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("unmarshal persisted: %w", err)
 	}
 	return env.Generation, nil
 }
@@ -89,12 +89,12 @@ func isKnownSchema(v string) bool {
 
 // mkdirProtected creates dir with 0700 and rejects symlinks.
 func mkdirProtected(dir string) error {
-	if err := rejectSymlinkPath(dir); err != nil && !os.IsNotExist(err) {
+	if err := rejectSymlinkPath(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		// rejectSymlinkPath returns ErrSymlinkRejected or path errors.
 		// For non-existent intermediate components, continue.
 		if !errors.Is(err, ErrSymlinkRejected) {
 			// Check parent chain; if leaf does not exist that's fine.
-			if _, e := os.Lstat(dir); e != nil && !os.IsNotExist(e) {
+			if _, e := os.Lstat(dir); e != nil && !errors.Is(e, os.ErrNotExist) {
 				return err
 			}
 		} else {
@@ -107,7 +107,7 @@ func mkdirProtected(dir string) error {
 	// Re-check after create (TOCTOU): ensure not a symlink and mode is tight.
 	fi, err := os.Lstat(dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("mkdir protected: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: %s", ErrSymlinkRejected, dir)
@@ -122,7 +122,7 @@ func mkdirProtected(dir string) error {
 		}
 		fi, err = os.Lstat(dir)
 		if err != nil {
-			return err
+			return fmt.Errorf("mkdir protected: %w", err)
 		}
 		if fi.Mode().Perm()&0o077 != 0 {
 			return fmt.Errorf("%w: %s mode %#o", ErrUnsafePermissions, dir, fi.Mode().Perm())
@@ -138,17 +138,17 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	}
 	dir := filepath.Dir(path)
 	if err := mkdirProtected(dir); err != nil {
-		return err
+		return fmt.Errorf("atomic write file: %w", err)
 	}
 	if err := rejectSymlinkPath(dir); err != nil {
-		return err
+		return fmt.Errorf("atomic write file: %w", err)
 	}
 	// Refuse to replace a symlink path.
 	if fi, err := os.Lstat(path); err == nil {
 		if fi.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%w: %s", ErrSymlinkRejected, path)
 		}
-	} else if !os.IsNotExist(err) {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 
@@ -183,7 +183,7 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	}
 	cleanup = false
 	if err := fsyncDir(dir); err != nil {
-		return err
+		return fmt.Errorf("atomic write file: %w", err)
 	}
 	return nil
 }
@@ -203,11 +203,11 @@ func fsyncDir(dir string) error {
 // readFileStrict reads a file after symlink and permission checks.
 func readFileStrict(path string, maxBytes int64) ([]byte, error) {
 	if err := rejectSymlinkPath(path); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read file strict: %w", err)
 	}
 	fi, err := os.Lstat(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read file strict: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("%w: %s", ErrSymlinkRejected, path)
@@ -223,13 +223,13 @@ func readFileStrict(path string, maxBytes int64) ([]byte, error) {
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read file strict: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	// Cap read.
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read file strict: %w", err)
 	}
 	if int64(len(data)) > maxBytes {
 		return nil, fmt.Errorf("%w: %s", ErrSizeCapExceeded, path)
@@ -250,12 +250,12 @@ func rejectSymlinkPath(path string) error {
 	}
 	cleaned := filepath.Clean(path)
 	if err := rejectSymlinkLeaf(cleaned); err != nil {
-		return err
+		return fmt.Errorf("reject symlink path: %w", err)
 	}
 	parent := filepath.Dir(cleaned)
 	if parent != cleaned {
 		if err := rejectSymlinkLeaf(parent); err != nil {
-			return err
+			return fmt.Errorf("reject symlink path: %w", err)
 		}
 	}
 	return nil
@@ -265,10 +265,10 @@ func rejectSymlinkPath(path string) error {
 func rejectSymlinkLeaf(path string) error {
 	fi, err := os.Lstat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("reject symlink leaf: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: %s", ErrSymlinkRejected, path)
@@ -286,7 +286,7 @@ func rejectSymlinkInRoot(root, path string) error {
 		return fmt.Errorf("%w: path %s escapes root %s", ErrInvalidPath, path, root)
 	}
 	if err := rejectSymlinkLeaf(root); err != nil {
-		return err
+		return fmt.Errorf("reject symlink in root: %w", err)
 	}
 	if rel == "." {
 		return nil
@@ -301,7 +301,7 @@ func rejectSymlinkInRoot(root, path string) error {
 		}
 		cur = filepath.Join(cur, part)
 		if err := rejectSymlinkLeaf(cur); err != nil {
-			return err
+			return fmt.Errorf("reject symlink in root: %w", err)
 		}
 	}
 	return nil
@@ -369,36 +369,36 @@ func appendJSONL(path string, line []byte) error {
 	if len(line) > maxLedgerLineBytes {
 		return fmt.Errorf("%w: line length %d", ErrSizeCapExceeded, len(line))
 	}
-	if err := rejectSymlinkPath(path); err != nil && !os.IsNotExist(err) {
+	if err := rejectSymlinkPath(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		if errors.Is(err, ErrSymlinkRejected) {
 			return err
 		}
 	}
 	dir := filepath.Dir(path)
 	if err := mkdirProtected(dir); err != nil {
-		return err
+		return fmt.Errorf("append jsonl: %w", err)
 	}
 	// Append with O_APPEND; fsync after write. Not fully atomic multi-line,
 	// but each line is durable after Sync.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, filePerm)
 	if err != nil {
-		return err
+		return fmt.Errorf("append jsonl: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	// Enforce permissions on open.
 	fi, err := f.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("append jsonl: %w", err)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		_ = f.Close() // best-effort close
 		return fmt.Errorf("%w: %s mode %#o", ErrUnsafePermissions, path, fi.Mode().Perm())
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		return err
+		return fmt.Errorf("append jsonl: %w", err)
 	}
 	if err := f.Sync(); err != nil {
-		return err
+		return fmt.Errorf("append jsonl: %w", err)
 	}
 	return nil
 }
@@ -407,10 +407,10 @@ func appendJSONL(path string, line []byte) error {
 func cleanupOrphanTemps(root string) error {
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, os.ErrNotExist) {
 				return nil
 			}
-			return err
+			return fmt.Errorf("cleanup orphan temps: %w", err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%w: %s", ErrSymlinkRejected, path)

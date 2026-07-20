@@ -108,10 +108,10 @@ func ToPortState(s WorkloadState) port.WorkloadState {
 // warm-mode activation policy. All fields must be set: tenant, package
 // digest, a positive bounded pool size, and an explicit resource charge.
 type WarmPoolConfig struct {
-	TenantID        string
-	PackageDigest   string
-	MaxPoolSize     int
-	ResourceCharge  port.ResourcePolicy
+	TenantID       string
+	PackageDigest  string
+	MaxPoolSize    int
+	ResourceCharge port.ResourcePolicy
 }
 
 // ResidentAuthorization records the explicit authorization that permits a
@@ -175,13 +175,13 @@ func ValidateActivation(
 			)
 		}
 		if err := validateWarmPool(warm); err != nil {
-			return err
+			return fmt.Errorf("validate activation: %w", err)
 		}
 		return nil
 
 	case port.ActivationResident:
 		if err := validateResident(resident); err != nil {
-			return err
+			return fmt.Errorf("validate activation: %w", err)
 		}
 		return nil
 

@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -13,19 +14,19 @@ import (
 // tracker pointer to callers). The durable truth lives in the store; the
 // tracker is a cache of the liveness signals the supervisor has accepted.
 type attemptTracker struct {
-	attemptID routedrun.AttemptID
-	runID     routedrun.RunID
+	attemptID  routedrun.AttemptID
+	runID      routedrun.RunID
 	workflowID routedrun.WorkflowID
-	leaseID   routedrun.LeaseID
+	leaseID    routedrun.LeaseID
 
 	// controlKey is the per-attempt HMAC key, loaded from the control journal.
 	// The supervisor verifies progress/result/checkpoint HMACs against it.
 	controlKey []byte
 
 	// Stall / operation ceilings (from ClaimOptions, defaulted).
-	stallTimeoutMs    int64
+	stallTimeoutMs     int64
 	modelCallTimeoutMs int64
-	attemptLeaseMs    int64
+	attemptLeaseMs     int64
 
 	// lastActivityMonotonicMs is the monotonic-ms timestamp of the last
 	// ACCEPTED activity (authenticated progress, governed-op start/end,
@@ -81,16 +82,16 @@ func newAttemptTracker(
 		model = routedrun.DefaultModelCallTimeoutMs
 	}
 	return &attemptTracker{
-		attemptID:            attemptID,
-		runID:                runID,
-		workflowID:           workflowID,
-		leaseID:              leaseID,
-		controlKey:           controlKey,
-		stallTimeoutMs:       stall,
-		modelCallTimeoutMs:   model,
-		attemptLeaseMs:       opts.AttemptLeaseMs,
+		attemptID:               attemptID,
+		runID:                   runID,
+		workflowID:              workflowID,
+		leaseID:                 leaseID,
+		controlKey:              controlKey,
+		stallTimeoutMs:          stall,
+		modelCallTimeoutMs:      model,
+		attemptLeaseMs:          opts.AttemptLeaseMs,
 		lastActivityMonotonicMs: nowMs,
-		inFlight:             make(map[GovernedOperationKind]int),
+		inFlight:                make(map[GovernedOperationKind]int),
 	}
 }
 
@@ -255,7 +256,7 @@ func (s *Supervisor) ActiveTimeRemainingFor(ctx context.Context, attemptID route
 	}
 	ledger, err := s.store.GetActiveTimeLedger(ctx, t.workflowID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("supervisor active time remaining for: %w", err)
 	}
 	if ledger == nil {
 		return 0, nil

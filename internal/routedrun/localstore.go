@@ -69,7 +69,7 @@ func OpenLocalStore(root string, opts ...LocalStoreOption) (*LocalStore, error) 
 		o(s)
 	}
 	if err := mkdirProtected(root); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open local store: %w", err)
 	}
 	for _, sub := range []string{
 		filepath.Join(root, "deployments", "deployments"),
@@ -80,11 +80,11 @@ func OpenLocalStore(root string, opts ...LocalStoreOption) (*LocalStore, error) 
 		filepath.Join(root, "workflows"),
 	} {
 		if err := mkdirProtected(sub); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("open local store: %w", err)
 		}
 	}
 	if err := cleanupOrphanTemps(root); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open local store: %w", err)
 	}
 	return s, nil
 }
@@ -126,7 +126,7 @@ func (s *LocalStore) CreateDeployment(ctx context.Context, dep *DeploymentRecord
 	if dep.DeploymentID == "" {
 		id, err := NewDeploymentID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store create deployment: %w", err)
 		}
 		dep.DeploymentID = id
 	}
@@ -155,7 +155,7 @@ func (s *LocalStore) GetDeployment(ctx context.Context, deploymentID DeploymentI
 	defer s.mu.Unlock()
 	var dep DeploymentRecord
 	if _, err := s.readJSON(s.deploymentPath(deploymentID), &dep); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store get deployment: %w", err)
 	}
 	return &dep, nil
 }
@@ -167,13 +167,13 @@ func (s *LocalStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord, 
 	dir := s.deploymentsDir()
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list deployments: %w", err)
 	}
 	out := make([]*DeploymentRecord, 0, len(names))
 	for _, name := range names {
 		var dep DeploymentRecord
 		if _, err := s.readJSON(filepath.Join(dir, name), &dep); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list deployments: %w", err)
 		}
 		out = append(out, &dep)
 	}
@@ -188,7 +188,7 @@ func (s *LocalStore) SetDeploymentStatus(ctx context.Context, deploymentID Deplo
 	var dep DeploymentRecord
 	gen, err := s.readJSON(path, &dep)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store set deployment status: %w", err)
 	}
 	if gen != expectedGeneration {
 		return fmt.Errorf("%w: deployment %s expected %d got %d", ErrCASConflict, deploymentID, expectedGeneration, gen)
@@ -215,7 +215,7 @@ func (s *LocalStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord
 	path := s.aliasPath(alias.Alias)
 	var existing AliasRecord
 	gen, err := s.readJSON(path, &existing)
-	if err != nil && !os.IsNotExist(err) && !errorsIsNotFound(err) {
+	if err != nil && !errors.Is(err, os.ErrNotExist) && !errorsIsNotFound(err) {
 		return err
 	}
 	// Work on a copy so we never mutate the caller's struct.
@@ -245,7 +245,7 @@ func (s *LocalStore) ResolveAlias(ctx context.Context, alias string) (*AliasReco
 	defer s.mu.Unlock()
 	var rec AliasRecord
 	if _, err := s.readJSON(s.aliasPath(alias), &rec); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store resolve alias: %w", err)
 	}
 	return &rec, nil
 }
@@ -257,13 +257,13 @@ func (s *LocalStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 	dir := s.aliasesDir()
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list aliases: %w", err)
 	}
 	out := make([]*AliasRecord, 0, len(names))
 	for _, name := range names {
 		var rec AliasRecord
 		if _, err := s.readJSON(filepath.Join(dir, name), &rec); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list aliases: %w", err)
 		}
 		out = append(out, &rec)
 	}
@@ -279,7 +279,7 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 		return nil, fmt.Errorf("%w: idempotency_key and caller_identity required", ErrInvalidArgument)
 	}
 	if err := checkStringCap("input_json", request.InputJSON); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store admit invocation: %w", err)
 	}
 	if len(request.InputJSON) > maxInputJSONBytes {
 		return nil, fmt.Errorf("%w: input_json", ErrSizeCapExceeded)
@@ -304,7 +304,7 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 	// 2. Resolve deployment (alias or exact).
 	dep, err := s.resolveDeploymentRefLocked(request.RequestedDeploymentRef)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store admit invocation: %w", err)
 	}
 	if expectedDeploymentGeneration != 0 && dep.Generation != expectedDeploymentGeneration {
 		return nil, fmt.Errorf("%w: deployment generation expected %d got %d", ErrCASConflict, expectedDeploymentGeneration, dep.Generation)
@@ -316,7 +316,7 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 	// 3. Concurrency check — slot-holding workflows for this deployment.
 	holding, err := s.countSlotHoldingLocked(dep.DeploymentID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store admit invocation: %w", err)
 	}
 	max := dep.MaxConcurrentRuns
 	if max <= 0 {
@@ -330,31 +330,31 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 	// 4. Allocate identities and topology records.
 	invID, err := NewInvocationID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store admit invocation: %w", err)
 	}
 	wfID, err := NewWorkflowID()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store admit invocation: %w", err)
 	}
 	now := s.now()
 	kind := topologyKind(dep)
 	stageCount := topologyStageCount(dep, kind)
 
 	wf := &WorkflowRecord{
-		SchemaVersion:      CurrentSchemaVersion,
-		WorkflowID:         wfID,
-		WorkflowKind:       kind,
-		InvocationID:       invID,
-		DeploymentID:       dep.DeploymentID,
-		Status:             WorkflowStatusPending,
-		Generation:         1,
-		PolicyDigest:       dep.PolicyDigest,
+		SchemaVersion:       CurrentSchemaVersion,
+		WorkflowID:          wfID,
+		WorkflowKind:        kind,
+		InvocationID:        invID,
+		DeploymentID:        dep.DeploymentID,
+		Status:              WorkflowStatusPending,
+		Generation:          1,
+		PolicyDigest:        dep.PolicyDigest,
 		MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-		MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-		MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
+		MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
+		MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
 		AuthorityGeneration: 1,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 
 	var pairs []nodeRun
@@ -365,11 +365,11 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 		for i := 0; i < stageCount; i++ {
 			nodeID, err := NewNodeID()
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("local store admit invocation: %w", err)
 			}
 			runID, err := NewRunID()
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("local store admit invocation: %w", err)
 			}
 			if i == 0 {
 				primaryRunID = runID
@@ -381,129 +381,129 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 			nid := nodeID
 			pairs = append(pairs, nodeRun{
 				node: &PipelineNode{
-					SchemaVersion: CurrentSchemaVersion,
-					NodeID:        nodeID,
-					WorkflowID:    wfID,
-					Status:        st,
-					RunID:         runID,
-					StageOrder:    i,
-					PackageName:   stagePackageName(dep, i),
+					SchemaVersion:  CurrentSchemaVersion,
+					NodeID:         nodeID,
+					WorkflowID:     wfID,
+					Status:         st,
+					RunID:          runID,
+					StageOrder:     i,
+					PackageName:    stagePackageName(dep, i),
 					PackageVersion: stagePackageVersion(dep, i),
-					CreatedAt:     now,
-					UpdatedAt:     now,
+					CreatedAt:      now,
+					UpdatedAt:      now,
 				},
 				run: &RunRecord{
-					SchemaVersion:      CurrentSchemaVersion,
-					RunID:              runID,
-					WorkflowID:         wfID,
-					Status:             RunStatusPending,
-					RunKind:            "pipeline_stage",
-					PolicyDigest:       dep.PolicyDigest,
-					NodeID:             &nid,
+					SchemaVersion:       CurrentSchemaVersion,
+					RunID:               runID,
+					WorkflowID:          wfID,
+					Status:              RunStatusPending,
+					RunKind:             "pipeline_stage",
+					PolicyDigest:        dep.PolicyDigest,
+					NodeID:              &nid,
 					MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-					MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-					MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
-					CreatedAt:          now,
-					UpdatedAt:          now,
+					MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
+					MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
+					CreatedAt:           now,
+					UpdatedAt:           now,
 				},
 			})
 		}
 	case "parent_child":
 		nodeID, err := NewNodeID()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store admit invocation: %w", err)
 		}
 		runID, err := NewRunID()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store admit invocation: %w", err)
 		}
 		primaryRunID = runID
 		nid := nodeID
 		pairs = append(pairs, nodeRun{
 			node: &PipelineNode{
-				SchemaVersion: CurrentSchemaVersion,
-				NodeID:        nodeID,
-				WorkflowID:    wfID,
-				Status:        NodeStatusReady,
-				RunID:         runID,
-				StageOrder:    0,
-				PackageName:   dep.PackageName,
+				SchemaVersion:  CurrentSchemaVersion,
+				NodeID:         nodeID,
+				WorkflowID:     wfID,
+				Status:         NodeStatusReady,
+				RunID:          runID,
+				StageOrder:     0,
+				PackageName:    dep.PackageName,
 				PackageVersion: dep.PackageVersion,
-				CreatedAt:     now,
-				UpdatedAt:     now,
+				CreatedAt:      now,
+				UpdatedAt:      now,
 			},
 			run: &RunRecord{
-				SchemaVersion:      CurrentSchemaVersion,
-				RunID:              runID,
-				WorkflowID:         wfID,
-				Status:             RunStatusPending,
-				RunKind:            "parent",
-				PolicyDigest:       dep.PolicyDigest,
-				NodeID:             &nid,
+				SchemaVersion:       CurrentSchemaVersion,
+				RunID:               runID,
+				WorkflowID:          wfID,
+				Status:              RunStatusPending,
+				RunKind:             "parent",
+				PolicyDigest:        dep.PolicyDigest,
+				NodeID:              &nid,
 				MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-				MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-				MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
-				CreatedAt:          now,
-				UpdatedAt:          now,
+				MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
+				MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
+				CreatedAt:           now,
+				UpdatedAt:           now,
 			},
 		})
 	default: // standalone
 		nodeID, err := NewNodeID()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store admit invocation: %w", err)
 		}
 		runID, err := NewRunID()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store admit invocation: %w", err)
 		}
 		primaryRunID = runID
 		nid := nodeID
 		pairs = append(pairs, nodeRun{
 			node: &PipelineNode{
-				SchemaVersion: CurrentSchemaVersion,
-				NodeID:        nodeID,
-				WorkflowID:    wfID,
-				Status:        NodeStatusReady,
-				RunID:         runID,
-				StageOrder:    0,
-				PackageName:   dep.PackageName,
+				SchemaVersion:  CurrentSchemaVersion,
+				NodeID:         nodeID,
+				WorkflowID:     wfID,
+				Status:         NodeStatusReady,
+				RunID:          runID,
+				StageOrder:     0,
+				PackageName:    dep.PackageName,
 				PackageVersion: dep.PackageVersion,
-				CreatedAt:     now,
-				UpdatedAt:     now,
+				CreatedAt:      now,
+				UpdatedAt:      now,
 			},
 			run: &RunRecord{
-				SchemaVersion:      CurrentSchemaVersion,
-				RunID:              runID,
-				WorkflowID:         wfID,
-				Status:             RunStatusPending,
-				RunKind:            "standalone",
-				PolicyDigest:       dep.PolicyDigest,
-				NodeID:             &nid,
+				SchemaVersion:       CurrentSchemaVersion,
+				RunID:               runID,
+				WorkflowID:          wfID,
+				Status:              RunStatusPending,
+				RunKind:             "standalone",
+				PolicyDigest:        dep.PolicyDigest,
+				NodeID:              &nid,
 				MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-				MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-				MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
-				CreatedAt:          now,
-				UpdatedAt:          now,
+				MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
+				MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
+				CreatedAt:           now,
+				UpdatedAt:           now,
 			},
 		})
 	}
 
 	receipt := &InvocationReceipt{
-		SchemaVersion:             CurrentSchemaVersion,
-		InvocationID:              invID,
-		WorkflowID:                wfID,
-		RunID:                     primaryRunID,
-		ResolvedDeploymentID:      dep.DeploymentID,
-		ResolvedDeploymentVersion: dep.PackageVersion,
-		ResolvedDeploymentDigest:  dep.BundleDigest,
-		NestedPackageDigests:      copyStringMap(dep.NestedPackageDigests),
-		RequestedDeploymentRef:    request.RequestedDeploymentRef,
-		InvocationIntentDigest:    intent,
-		CallerIdentity:            request.CallerIdentity,
+		SchemaVersion:              CurrentSchemaVersion,
+		InvocationID:               invID,
+		WorkflowID:                 wfID,
+		RunID:                      primaryRunID,
+		ResolvedDeploymentID:       dep.DeploymentID,
+		ResolvedDeploymentVersion:  dep.PackageVersion,
+		ResolvedDeploymentDigest:   dep.BundleDigest,
+		NestedPackageDigests:       copyStringMap(dep.NestedPackageDigests),
+		RequestedDeploymentRef:     request.RequestedDeploymentRef,
+		InvocationIntentDigest:     intent,
+		CallerIdentity:             request.CallerIdentity,
 		InitialMaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-		InitialAttemptLeaseMs:     request.InitialAttemptLeaseMs,
-		InitialMaxCostUsdDecimal:  request.InitialMaxCostUsdDecimal,
-		AdmittedAt:                now,
+		InitialAttemptLeaseMs:      request.InitialAttemptLeaseMs,
+		InitialMaxCostUsdDecimal:   request.InitialMaxCostUsdDecimal,
+		AdmittedAt:                 now,
 	}
 
 	idem := &DurableIdempotencyRecord{
@@ -518,7 +518,7 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 
 	// 5. Persist atomically via admission transaction record + materialization.
 	if err := s.commitAdmission(request, receipt, idem, wf, pairs); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store admit invocation: %w", err)
 	}
 	return receipt, nil
 }
@@ -529,24 +529,24 @@ func (s *LocalStore) commitAdmission(req *InvocationRequest, receipt *Invocation
 	// first, then receipt+idempotency. Replay of partial admission without
 	// idempotency record allows retry; with idempotency, replay returns receipt.
 	if err := s.writeJSON(s.workflowPath(wf.WorkflowID), wf.Generation, wf); err != nil {
-		return err
+		return fmt.Errorf("local store commit admission: %w", err)
 	}
 	for _, p := range pairs {
 		if err := s.writeJSON(s.nodePath(wf.WorkflowID, p.node.NodeID), 1, p.node); err != nil {
-			return err
+			return fmt.Errorf("local store commit admission: %w", err)
 		}
 		if err := mkdirProtected(filepath.Join(s.runsDir(), safeID(string(p.run.RunID)))); err != nil {
-			return err
+			return fmt.Errorf("local store commit admission: %w", err)
 		}
 		if err := s.writeJSON(s.runPath(p.run.RunID), 1, p.run); err != nil {
-			return err
+			return fmt.Errorf("local store commit admission: %w", err)
 		}
 	}
 	if err := s.writeJSON(s.receiptPath(receipt.InvocationID), 1, receipt); err != nil {
-		return err
+		return fmt.Errorf("local store commit admission: %w", err)
 	}
 	if err := s.writeJSON(s.idempotencyPath(req.CallerIdentity, req.IdempotencyKey), 1, idem); err != nil {
-		return err
+		return fmt.Errorf("local store commit admission: %w", err)
 	}
 	// Initialize active-time ledger for the admitted workflow.
 	if err := s.saveActiveTimeLedgerLocked(wf.WorkflowID, &ActiveTimeLedger{
@@ -580,7 +580,7 @@ func (s *LocalStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt,
 	dir := filepath.Join(s.invocationsDir(), "_receipts")
 	names, err := listJSONNames(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return []*InvocationReceipt{}, nil
 		}
 		// listJSONNames returns empty on missing
@@ -593,18 +593,18 @@ func (s *LocalStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt,
 		_ = dir // retained for interface/debug symmetry
 	}
 	// Receipts stored under invocations/_receipts/<inv_id>.json
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return []*InvocationReceipt{}, nil
 	}
 	names, err = listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list invocations: %w", err)
 	}
 	out := make([]*InvocationReceipt, 0, len(names))
 	for _, name := range names {
 		var r InvocationReceipt
 		if _, err := s.readJSON(filepath.Join(dir, name), &r); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list invocations: %w", err)
 		}
 		out = append(out, &r)
 	}
@@ -618,11 +618,11 @@ func (s *LocalStore) receiptPath(id InvocationID) string {
 func (s *LocalStore) loadIdempotency(caller, key string) (*InvocationReceipt, *DurableIdempotencyRecord, error) {
 	var rec DurableIdempotencyRecord
 	if _, err := s.readJSON(s.idempotencyPath(caller, key), &rec); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("local store load idempotency: %w", err)
 	}
 	var receipt InvocationReceipt
 	if _, err := s.readJSON(s.receiptPath(rec.InvocationID), &receipt); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("local store load idempotency: %w", err)
 	}
 	return &receipt, &rec, nil
 }
@@ -632,18 +632,18 @@ func (s *LocalStore) resolveDeploymentRefLocked(ref string) (*DeploymentRecord, 
 	if strings.HasPrefix(ref, PrefixDeployment) {
 		var dep DeploymentRecord
 		if _, err := s.readJSON(s.deploymentPath(DeploymentID(ref)), &dep); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store resolve deployment ref locked: %w", err)
 		}
 		return &dep, nil
 	}
 	// Alias
 	var alias AliasRecord
 	if _, err := s.readJSON(s.aliasPath(ref), &alias); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store resolve deployment ref locked: %w", err)
 	}
 	var dep DeploymentRecord
 	if _, err := s.readJSON(s.deploymentPath(alias.TargetDeploymentID), &dep); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store resolve deployment ref locked: %w", err)
 	}
 	return &dep, nil
 }
@@ -652,10 +652,10 @@ func (s *LocalStore) countSlotHoldingLocked(depID DeploymentID) (int, error) {
 	dir := s.workflowsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return 0, nil
 		}
-		return 0, err
+		return 0, fmt.Errorf("local store count slot holding locked: %w", err)
 	}
 	n := 0
 	for _, e := range entries {
@@ -665,10 +665,10 @@ func (s *LocalStore) countSlotHoldingLocked(depID DeploymentID) (int, error) {
 		var wf WorkflowRecord
 		path := filepath.Join(dir, e.Name(), "workflow.json")
 		if _, err := s.readJSON(path, &wf); err != nil {
-			if errorsIsNotFound(err) || os.IsNotExist(err) {
+			if errorsIsNotFound(err) || errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return 0, err
+			return 0, fmt.Errorf("local store count slot holding locked: %w", err)
 		}
 		if wf.DeploymentID != depID {
 			continue
@@ -723,7 +723,7 @@ func (s *LocalStore) CreateRun(ctx context.Context, run *RunRecord) error {
 	if run.RunID == "" {
 		id, err := NewRunID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store create run: %w", err)
 		}
 		run.RunID = id
 	}
@@ -747,7 +747,7 @@ func (s *LocalStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, error
 	defer s.mu.Unlock()
 	var run RunRecord
 	if _, err := s.readJSON(s.runPath(runID), &run); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store get run: %w", err)
 	}
 	return &run, nil
 }
@@ -762,7 +762,7 @@ func (s *LocalStore) GetRunGeneration(ctx context.Context, runID RunID) (int64, 
 	var run RunRecord
 	gen, err := s.readJSON(s.runPath(runID), &run)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("local store get run generation: %w", err)
 	}
 	return gen, nil
 }
@@ -777,13 +777,13 @@ func (s *LocalStore) GetAttemptGeneration(ctx context.Context, attemptID Attempt
 	defer s.mu.Unlock()
 	att, err := s.findAttemptLocked(attemptID)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("local store get attempt generation: %w", err)
 	}
 	path := s.attemptPath(att.RunID, att.AttemptID)
 	var rec AttemptRecord
 	gen, err := s.readJSON(path, &rec)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("local store get attempt generation: %w", err)
 	}
 	return gen, nil
 }
@@ -799,7 +799,7 @@ func (s *LocalStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGene
 	var existing RunRecord
 	gen, err := s.readJSON(path, &existing)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store update run: %w", err)
 	}
 	if gen != expectedGeneration {
 		return fmt.Errorf("%w: run %s expected %d got %d", ErrCASConflict, run.RunID, expectedGeneration, gen)
@@ -821,7 +821,7 @@ func (s *LocalStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) 
 	if attempt.AttemptID == "" {
 		id, err := NewAttemptID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store create attempt: %w", err)
 		}
 		attempt.AttemptID = id
 	}
@@ -831,20 +831,20 @@ func (s *LocalStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) 
 			// Reject caller-selected values by overwriting with store-generated token.
 			lid, err := NewLeaseID()
 			if err != nil {
-				return err
+				return fmt.Errorf("local store create attempt: %w", err)
 			}
 			attempt.Lease.LeaseID = lid
 		} else {
 			lid, err := NewLeaseID()
 			if err != nil {
-				return err
+				return fmt.Errorf("local store create attempt: %w", err)
 			}
 			attempt.Lease.LeaseID = lid
 		}
 		if attempt.Lease.LeaseToken == "" {
 			tok, err := generateID("tok-")
 			if err != nil {
-				return err
+				return fmt.Errorf("local store create attempt: %w", err)
 			}
 			attempt.Lease.LeaseToken = tok
 		}
@@ -873,7 +873,7 @@ func (s *LocalStore) GetAttempt(ctx context.Context, attemptID AttemptID) (*Atte
 	// Attempts live under run dirs; scan if needed. Prefer index by walking runs.
 	att, err := s.findAttemptLocked(attemptID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store get attempt: %w", err)
 	}
 	return att, nil
 }
@@ -882,10 +882,10 @@ func (s *LocalStore) findAttemptLocked(attemptID AttemptID) (*AttemptRecord, err
 	dir := s.runsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%w: attempt %s", ErrNotFound, attemptID)
 		}
-		return nil, err
+		return nil, fmt.Errorf("local store find attempt locked: %w", err)
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -911,7 +911,7 @@ func (s *LocalStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, 
 	var existing AttemptRecord
 	gen, err := s.readJSON(path, &existing)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store update attempt: %w", err)
 	}
 	if gen != expectedGeneration {
 		return fmt.Errorf("%w: attempt %s expected %d got %d", ErrCASConflict, attempt.AttemptID, expectedGeneration, gen)
@@ -922,14 +922,14 @@ func (s *LocalStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, 
 			// New lease must be store-generated — if caller changed it, regenerate.
 			lid, err := NewLeaseID()
 			if err != nil {
-				return err
+				return fmt.Errorf("local store update attempt: %w", err)
 			}
 			attempt.Lease.LeaseID = lid
 		}
 	} else if attempt.Lease != nil && attempt.Lease.LeaseID == "" {
 		lid, err := NewLeaseID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store update attempt: %w", err)
 		}
 		attempt.Lease.LeaseID = lid
 	}
@@ -944,10 +944,10 @@ func (s *LocalStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*Ru
 	dir := s.runsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return []*RunRecord{}, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("local store list runs: %w", err)
 	}
 	out := make([]*RunRecord, 0)
 	for _, e := range entries {
@@ -956,10 +956,10 @@ func (s *LocalStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*Ru
 		}
 		var run RunRecord
 		if _, err := s.readJSON(filepath.Join(dir, e.Name(), "run.json"), &run); err != nil {
-			if errorsIsNotFound(err) || os.IsNotExist(err) {
+			if errorsIsNotFound(err) || errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return nil, err
+			return nil, fmt.Errorf("local store list runs: %w", err)
 		}
 		if workflowID != "" && run.WorkflowID != workflowID {
 			continue
@@ -979,20 +979,20 @@ func (s *LocalStore) ListAttempts(ctx context.Context, runID RunID) ([]*AttemptR
 	dir := filepath.Join(s.runsDir(), safeID(string(runID)), "attempts")
 	names, err := listJSONNames(dir)
 	if err != nil {
-		if os.IsNotExist(err) || errorsIsNotFound(err) {
+		if errors.Is(err, os.ErrNotExist) || errorsIsNotFound(err) {
 			return []*AttemptRecord{}, nil
 		}
 		// missing dir
-		if _, e := os.Lstat(dir); os.IsNotExist(e) {
+		if _, e := os.Lstat(dir); errors.Is(e, os.ErrNotExist) {
 			return []*AttemptRecord{}, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("local store list attempts: %w", err)
 	}
 	out := make([]*AttemptRecord, 0, len(names))
 	for _, name := range names {
 		var att AttemptRecord
 		if _, err := s.readJSON(filepath.Join(dir, name), &att); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list attempts: %w", err)
 		}
 		out = append(out, &att)
 	}
@@ -1017,12 +1017,12 @@ func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) erro
 	var run RunRecord
 	gen, err := s.readJSON(s.runPath(runID), &run)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store reconcile interrupted: %w", err)
 	}
 	// Fail non-terminal attempts with DAEMON_RESTARTED; revoke leases.
 	atts, err := s.listAttemptsLocked(runID)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store reconcile interrupted: %w", err)
 	}
 	now := s.now()
 	reason := FailureDaemonRestarted
@@ -1033,7 +1033,7 @@ func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) erro
 		attPath := s.attemptPath(runID, att.AttemptID)
 		agen, err := s.readJSON(attPath, att)
 		if err != nil {
-			return err
+			return fmt.Errorf("local store reconcile interrupted: %w", err)
 		}
 		att.Status = AttemptStatusFailed
 		att.FailureReason = &reason
@@ -1045,7 +1045,7 @@ func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) erro
 		att.UpdatedAt = now
 		att.TerminatedAt = &now
 		if err := s.writeJSON(attPath, agen+1, att); err != nil {
-			return err
+			return fmt.Errorf("local store reconcile interrupted: %w", err)
 		}
 	}
 	if !run.Status.IsTerminal() {
@@ -1053,13 +1053,13 @@ func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) erro
 		run.UpdatedAt = now
 		run.TerminatedAt = &now
 		if err := s.writeJSON(s.runPath(runID), gen+1, &run); err != nil {
-			return err
+			return fmt.Errorf("local store reconcile interrupted: %w", err)
 		}
 	}
 	// Conservative close of open active-time segment: do not invent wall time.
 	if run.WorkflowID != "" {
 		if err := s.closeActiveTimeSegmentConservativelyLocked(run.WorkflowID); err != nil {
-			return err
+			return fmt.Errorf("local store reconcile interrupted: %w", err)
 		}
 	}
 	return nil
@@ -1067,18 +1067,18 @@ func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) erro
 
 func (s *LocalStore) listAttemptsLocked(runID RunID) ([]*AttemptRecord, error) {
 	dir := filepath.Join(s.runsDir(), safeID(string(runID)), "attempts")
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list attempts locked: %w", err)
 	}
 	out := make([]*AttemptRecord, 0, len(names))
 	for _, name := range names {
 		var att AttemptRecord
 		if _, err := s.readJSON(filepath.Join(dir, name), &att); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list attempts locked: %w", err)
 		}
 		out = append(out, &att)
 	}
@@ -1099,7 +1099,7 @@ func (s *LocalStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) err
 	if wf.WorkflowID == "" {
 		id, err := NewWorkflowID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store create workflow: %w", err)
 		}
 		wf.WorkflowID = id
 	}
@@ -1118,7 +1118,7 @@ func (s *LocalStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) err
 		return fmt.Errorf("%w: workflow %s", ErrAlreadyExists, wf.WorkflowID)
 	}
 	if err := s.writeJSON(path, wf.Generation, wf); err != nil {
-		return err
+		return fmt.Errorf("local store create workflow: %w", err)
 	}
 	// Initialize active-time ledger for the workflow.
 	return s.saveActiveTimeLedgerLocked(wf.WorkflowID, &ActiveTimeLedger{
@@ -1133,7 +1133,7 @@ func (s *LocalStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*W
 	defer s.mu.Unlock()
 	var wf WorkflowRecord
 	if _, err := s.readJSON(s.workflowPath(workflowID), &wf); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store get workflow: %w", err)
 	}
 	return &wf, nil
 }
@@ -1149,7 +1149,7 @@ func (s *LocalStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, exp
 	var existing WorkflowRecord
 	gen, err := s.readJSON(path, &existing)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store update workflow: %w", err)
 	}
 	if gen != expectedGeneration || existing.Generation != expectedGeneration {
 		return fmt.Errorf("%w: workflow %s expected %d got %d", ErrCASConflict, wf.WorkflowID, expectedGeneration, existing.Generation)
@@ -1158,13 +1158,13 @@ func (s *LocalStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, exp
 	// non-holding status must respect deployment concurrency under the same lock.
 	if !holdsConcurrencySlot(existing.Status) && holdsConcurrencySlot(wf.Status) {
 		if err := s.checkConcurrencyForResumeLocked(existing.DeploymentID); err != nil {
-			return err
+			return fmt.Errorf("local store update workflow: %w", err)
 		}
 	}
 	wf.Generation = expectedGeneration + 1
 	wf.UpdatedAt = s.now()
 	if err := s.writeJSON(path, wf.Generation, wf); err != nil {
-		return err
+		return fmt.Errorf("local store update workflow: %w", err)
 	}
 	return s.syncActiveTimeOnStatusChangeLocked(wf.WorkflowID, existing.Status, wf.Status)
 }
@@ -1176,10 +1176,10 @@ func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, erro
 	dir := s.workflowsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return []*WorkflowRecord{}, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("local store list workflows: %w", err)
 	}
 	out := make([]*WorkflowRecord, 0)
 	for _, e := range entries {
@@ -1188,10 +1188,10 @@ func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, erro
 		}
 		var wf WorkflowRecord
 		if _, err := s.readJSON(filepath.Join(dir, e.Name(), "workflow.json"), &wf); err != nil {
-			if errorsIsNotFound(err) || os.IsNotExist(err) {
+			if errorsIsNotFound(err) || errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return nil, err
+			return nil, fmt.Errorf("local store list workflows: %w", err)
 		}
 		out = append(out, &wf)
 	}
@@ -1208,7 +1208,7 @@ func (s *LocalStore) CreateNode(ctx context.Context, node *PipelineNode) error {
 	if node.NodeID == "" {
 		id, err := NewNodeID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store create node: %w", err)
 		}
 		node.NodeID = id
 	}
@@ -1237,10 +1237,10 @@ func (s *LocalStore) findNodeLocked(nodeID NodeID) (*PipelineNode, error) {
 	dir := s.workflowsDir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%w: node %s", ErrNotFound, nodeID)
 		}
-		return nil, err
+		return nil, fmt.Errorf("local store find node locked: %w", err)
 	}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -1266,7 +1266,7 @@ func (s *LocalStore) UpdateNode(ctx context.Context, node *PipelineNode, expecte
 	var existing PipelineNode
 	gen, err := s.readJSON(path, &existing)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store update node: %w", err)
 	}
 	if gen != expectedGeneration {
 		return fmt.Errorf("%w: node %s expected %d got %d", ErrCASConflict, node.NodeID, expectedGeneration, gen)
@@ -1280,18 +1280,18 @@ func (s *LocalStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*P
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "nodes")
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return []*PipelineNode{}, nil
 	}
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list nodes: %w", err)
 	}
 	out := make([]*PipelineNode, 0, len(names))
 	for _, name := range names {
 		var n PipelineNode
 		if _, err := s.readJSON(filepath.Join(dir, name), &n); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list nodes: %w", err)
 		}
 		out = append(out, &n)
 	}
@@ -1309,7 +1309,7 @@ func (s *LocalStore) RegisterService(ctx context.Context, svc *MCPServiceBinding
 	if svc.ServiceID == "" {
 		id, err := NewServiceID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store register service: %w", err)
 		}
 		svc.ServiceID = id
 	}
@@ -1335,7 +1335,7 @@ func (s *LocalStore) UpdateService(ctx context.Context, svc *MCPServiceBinding, 
 	var existing MCPServiceBinding
 	gen, err := s.readJSON(path, &existing)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store update service: %w", err)
 	}
 	if gen != expectedGeneration {
 		return fmt.Errorf("%w: service %s", ErrCASConflict, svc.ServiceID)
@@ -1349,18 +1349,18 @@ func (s *LocalStore) ListServices(ctx context.Context, workflowID WorkflowID) ([
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "services")
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return []*MCPServiceBinding{}, nil
 	}
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list services: %w", err)
 	}
 	out := make([]*MCPServiceBinding, 0, len(names))
 	for _, name := range names {
 		var svc MCPServiceBinding
 		if _, err := s.readJSON(filepath.Join(dir, name), &svc); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list services: %w", err)
 		}
 		out = append(out, &svc)
 	}
@@ -1377,7 +1377,7 @@ func (s *LocalStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelope
 	if handoff.HandoffID == "" {
 		id, err := NewHandoffID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store commit handoff: %w", err)
 		}
 		handoff.HandoffID = id
 	}
@@ -1422,18 +1422,18 @@ func (s *LocalStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) ([
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "handoffs")
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return []*HandoffEnvelope{}, nil
 	}
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list handoffs: %w", err)
 	}
 	out := make([]*HandoffEnvelope, 0, len(names))
 	for _, name := range names {
 		var h HandoffEnvelope
 		if _, err := s.readJSON(filepath.Join(dir, name), &h); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list handoffs: %w", err)
 		}
 		out = append(out, &h)
 	}
@@ -1450,7 +1450,7 @@ func (s *LocalStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) er
 	if batch.ChildBatchID == "" {
 		id, err := NewChildBatchID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store create child batch: %w", err)
 		}
 		batch.ChildBatchID = id
 	}
@@ -1476,7 +1476,7 @@ func (s *LocalStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, ex
 	var existing ChildBatch
 	gen, err := s.readJSON(path, &existing)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store update child batch: %w", err)
 	}
 	if gen != expectedGeneration {
 		return fmt.Errorf("%w: child batch %s", ErrCASConflict, batch.ChildBatchID)
@@ -1490,18 +1490,18 @@ func (s *LocalStore) ListChildBatches(ctx context.Context, workflowID WorkflowID
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "child-batches")
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return []*ChildBatch{}, nil
 	}
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list child batches: %w", err)
 	}
 	out := make([]*ChildBatch, 0, len(names))
 	for _, name := range names {
 		var b ChildBatch
 		if _, err := s.readJSON(filepath.Join(dir, name), &b); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list child batches: %w", err)
 		}
 		out = append(out, &b)
 	}
@@ -1518,7 +1518,7 @@ func (s *LocalStore) CommitChildResult(ctx context.Context, result *ChildResult)
 	if result.ChildResultID == "" {
 		id, err := NewChildResultID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store commit child result: %w", err)
 		}
 		result.ChildResultID = id
 	}
@@ -1532,7 +1532,7 @@ func (s *LocalStore) CommitChildResult(ctx context.Context, result *ChildResult)
 	// Locate batch by scanning workflows.
 	wfID, err := s.findBatchWorkflowLocked(result.ChildBatchID)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store commit child result: %w", err)
 	}
 	path := filepath.Join(s.workflowsDir(), safeID(string(wfID)), "child-results", safeID(string(result.ChildResultID))+".json")
 	if _, err := os.Lstat(path); err == nil {
@@ -1567,21 +1567,21 @@ func (s *LocalStore) ListChildResults(ctx context.Context, childBatchID ChildBat
 	defer s.mu.Unlock()
 	wfID, err := s.findBatchWorkflowLocked(childBatchID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list child results: %w", err)
 	}
 	dir := filepath.Join(s.workflowsDir(), safeID(string(wfID)), "child-results")
-	if _, err := os.Lstat(dir); os.IsNotExist(err) {
+	if _, err := os.Lstat(dir); errors.Is(err, os.ErrNotExist) {
 		return []*ChildResult{}, nil
 	}
 	names, err := listJSONNames(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store list child results: %w", err)
 	}
 	out := make([]*ChildResult, 0)
 	for _, name := range names {
 		var r ChildResult
 		if _, err := s.readJSON(filepath.Join(dir, name), &r); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("local store list child results: %w", err)
 		}
 		if r.ChildBatchID != childBatchID {
 			continue
@@ -1610,7 +1610,7 @@ func (s *LocalStore) RequestControl(ctx context.Context, req *ControlRequest) er
 	if req.ControlRequestID == "" {
 		id, err := NewControlRequestID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store request control: %w", err)
 		}
 		req.ControlRequestID = id
 	}
@@ -1623,7 +1623,7 @@ func (s *LocalStore) RequestControl(ctx context.Context, req *ControlRequest) er
 	// Persist control request.
 	path := filepath.Join(s.workflowsDir(), safeID(string(req.WorkflowID)), "controls", safeID(string(req.ControlRequestID))+".json")
 	if err := s.writeJSON(path, 1, req); err != nil {
-		return err
+		return fmt.Errorf("local store request control: %w", err)
 	}
 	// Update desired state with cancel precedence.
 	ds := &DesiredState{
@@ -1651,10 +1651,10 @@ func (s *LocalStore) findControlByIdempotencyLocked(wfID WorkflowID, key string)
 	dir := filepath.Join(s.workflowsDir(), safeID(string(wfID)), "controls")
 	names, err := listJSONNames(dir)
 	if err != nil {
-		if os.IsNotExist(err) || errorsIsNotFound(err) {
+		if errors.Is(err, os.ErrNotExist) || errorsIsNotFound(err) {
 			return nil, fmt.Errorf("%w: control idempotency", ErrNotFound)
 		}
-		return nil, err
+		return nil, fmt.Errorf("local store find control by idempotency locked: %w", err)
 	}
 	for _, name := range names {
 		var cr ControlRequest
@@ -1662,7 +1662,7 @@ func (s *LocalStore) findControlByIdempotencyLocked(wfID WorkflowID, key string)
 			if errorsIsNotFound(err) {
 				continue
 			}
-			return nil, err
+			return nil, fmt.Errorf("local store find control by idempotency locked: %w", err)
 		}
 		if cr.IdempotencyKey == key {
 			return &cr, nil
@@ -1677,7 +1677,7 @@ func (s *LocalStore) GetDesiredState(ctx context.Context, workflowID WorkflowID)
 	defer s.mu.Unlock()
 	var ds DesiredState
 	if _, err := s.readJSON(filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "desired_state.json"), &ds); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("local store get desired state: %w", err)
 	}
 	return &ds, nil
 }
@@ -1695,7 +1695,7 @@ func (s *LocalStore) AppendControlResult(ctx context.Context, req *ControlReques
 	}
 	line, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store append control result: %w", err)
 	}
 	return appendJSONL(path, line)
 }
@@ -1711,7 +1711,7 @@ func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID Workfl
 	var wf WorkflowRecord
 	gen, err := s.readJSON(path, &wf)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store append limit amendment: %w", err)
 	}
 
 	// Idempotency by workflow + key before applying authority CAS.
@@ -1758,7 +1758,7 @@ func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID Workfl
 	if amendment.AmendmentID == "" {
 		id, err := NewLimitAmendmentID()
 		if err != nil {
-			return err
+			return fmt.Errorf("local store append limit amendment: %w", err)
 		}
 		amendment.AmendmentID = id
 	}
@@ -1775,7 +1775,7 @@ func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID Workfl
 
 	apath := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "amendments", safeID(string(amendment.AmendmentID))+".json")
 	if err := s.writeJSON(apath, 1, amendment); err != nil {
-		return err
+		return fmt.Errorf("local store append limit amendment: %w", err)
 	}
 	return s.writeJSON(path, wf.Generation, &wf)
 }
@@ -1784,10 +1784,10 @@ func (s *LocalStore) findAmendmentByIdempotencyLocked(wfID WorkflowID, key strin
 	dir := filepath.Join(s.workflowsDir(), safeID(string(wfID)), "amendments")
 	names, err := listJSONNames(dir)
 	if err != nil {
-		if os.IsNotExist(err) || errorsIsNotFound(err) {
+		if errors.Is(err, os.ErrNotExist) || errorsIsNotFound(err) {
 			return nil, fmt.Errorf("%w: amendment idempotency", ErrNotFound)
 		}
-		return nil, err
+		return nil, fmt.Errorf("local store find amendment by idempotency locked: %w", err)
 	}
 	for _, name := range names {
 		var a LimitAmendment
@@ -1795,7 +1795,7 @@ func (s *LocalStore) findAmendmentByIdempotencyLocked(wfID WorkflowID, key strin
 			if errorsIsNotFound(err) {
 				continue
 			}
-			return nil, err
+			return nil, fmt.Errorf("local store find amendment by idempotency locked: %w", err)
 		}
 		if a.IdempotencyKey == key {
 			return &a, nil
@@ -1831,7 +1831,7 @@ func (s *LocalStore) loadWorkflowCAS(wfID WorkflowID) (*WorkflowRecord, int64, e
 	var wf WorkflowRecord
 	gen, err := s.readJSON(s.workflowPath(wfID), &wf)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("local store load workflow cas: %w", err)
 	}
 	// Prefer record generation if present.
 	if wf.Generation != 0 {
@@ -1850,20 +1850,20 @@ func (s *LocalStore) writeJSON(path string, gen int64, v any) error {
 		if !errors.Is(err, ErrSymlinkRejected) && !errors.Is(err, ErrInvalidPath) {
 			// fall through to write with leaf checks
 		} else if errors.Is(err, ErrSymlinkRejected) {
-			return err
+			return fmt.Errorf("local store write json: %w", err)
 		} else if errors.Is(err, ErrInvalidPath) {
-			return err
+			return fmt.Errorf("local store write json: %w", err)
 		}
 	}
 	// Re-check leaf/parent always.
-	if err := rejectSymlinkPath(path); err != nil && !os.IsNotExist(err) {
+	if err := rejectSymlinkPath(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		if errors.Is(err, ErrSymlinkRejected) {
 			return err
 		}
 	}
 	data, err := marshalPersisted(gen, v)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store write json: %w", err)
 	}
 	return atomicWriteFile(path, data, filePerm)
 }
@@ -1874,19 +1874,19 @@ func (s *LocalStore) readJSON(path string, v any) (int64, error) {
 			// If path does not exist yet, Rel still works; missing components
 			// return nil from rejectSymlinkLeaf. InvalidPath is hard fail.
 			if errors.Is(err, ErrInvalidPath) {
-				return 0, err
+				return 0, fmt.Errorf("local store read json: %w", err)
 			}
 			if errors.Is(err, ErrSymlinkRejected) {
-				return 0, err
+				return 0, fmt.Errorf("local store read json: %w", err)
 			}
 		}
 	}
 	data, err := readFileStrict(path, maxStateFileBytes)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return 0, fmt.Errorf("%w: %s", ErrNotFound, path)
 		}
-		return 0, err
+		return 0, fmt.Errorf("local store read json: %w", err)
 	}
 	// Optional migrate-on-read for known older versions.
 	ver, verr := extractSchemaVersion(data)
@@ -1896,11 +1896,11 @@ func (s *LocalStore) readJSON(path string, v any) (int64, error) {
 		}
 		// Fail closed on read path for unknown; for supported old, migrate file first.
 		if err := s.reg.MigrateFile(path); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("local store read json: %w", err)
 		}
 		data, err = readFileStrict(path, maxStateFileBytes)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("local store read json: %w", err)
 		}
 	}
 	gen, err := unmarshalPersisted(data, v)
@@ -1909,30 +1909,30 @@ func (s *LocalStore) readJSON(path string, v any) (int64, error) {
 		if jerr := json.Unmarshal(data, v); jerr == nil {
 			return 1, nil
 		}
-		return 0, err
+		return 0, fmt.Errorf("local store read json: %w", err)
 	}
 	return gen, nil
 }
 
 func listJSONNames(dir string) ([]string, error) {
 	if err := rejectSymlinkPath(dir); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
 		// If dir missing
-		if _, e := os.Lstat(dir); os.IsNotExist(e) {
+		if _, e := os.Lstat(dir); errors.Is(e, os.ErrNotExist) {
 			return nil, nil
 		}
 		if errorsIs(err, ErrSymlinkRejected) {
-			return nil, err
+			return nil, fmt.Errorf("list jsonnames: %w", err)
 		}
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("list jsonnames: %w", err)
 	}
 	var names []string
 	for _, e := range entries {
@@ -1948,7 +1948,7 @@ func listJSONNames(dir string) ([]string, error) {
 		}
 		// Symlink check per entry.
 		if err := rejectSymlinkPath(filepath.Join(dir, name)); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list jsonnames: %w", err)
 		}
 		names = append(names, name)
 		if len(names) >= maxRecordsPerList {
@@ -1960,7 +1960,7 @@ func listJSONNames(dir string) ([]string, error) {
 }
 
 func errorsIsNotFound(err error) bool {
-	return err != nil && (errorsIs(err, ErrNotFound) || os.IsNotExist(err))
+	return err != nil && (errorsIs(err, ErrNotFound) || errors.Is(err, os.ErrNotExist))
 }
 
 func errorsIs(err, target error) bool {
@@ -2102,11 +2102,11 @@ func (s *LocalStore) checkConcurrencyForResumeLocked(depID DeploymentID) error {
 		if errorsIsNotFound(err) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("local store check concurrency for resume locked: %w", err)
 	}
 	holding, err := s.countSlotHoldingLocked(depID)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store check concurrency for resume locked: %w", err)
 	}
 	max := dep.MaxConcurrentRuns
 	if max <= 0 {
@@ -2161,7 +2161,7 @@ func (s *LocalStore) loadActiveTimeLedgerLocked(wfID WorkflowID) (*ActiveTimeLed
 	var ledger ActiveTimeLedger
 	gen, err := s.readJSON(s.activeTimePath(wfID), &ledger)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("local store load active time ledger locked: %w", err)
 	}
 	return &ledger, gen, nil
 }
@@ -2179,7 +2179,7 @@ func (s *LocalStore) closeActiveTimeSegmentConservativelyLocked(wfID WorkflowID)
 		if errorsIsNotFound(err) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("local store close active time segment conservatively locked: %w", err)
 	}
 	if ledger.RunningSegmentStartMs == nil {
 		return nil
@@ -2200,7 +2200,7 @@ func (s *LocalStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, t
 			ledger = &ActiveTimeLedger{SchemaVersion: CurrentSchemaVersion}
 			gen = 0
 		} else {
-			return err
+			return fmt.Errorf("local store sync active time on status change locked: %w", err)
 		}
 	}
 	nowMs := s.now().UnixMilli()

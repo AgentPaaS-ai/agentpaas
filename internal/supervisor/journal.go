@@ -67,7 +67,9 @@ func (s *Supervisor) loadOrCreateControlKey(runID routedrun.RunID, attemptID rou
 	// has provisioned it. Ask the factory for a journal and read its key. We
 	// cannot read the key directly from the interface, so we use a type
 	// assertion to a key-exposing interface when available.
-	if k, ok := s.journals.(interface{ KeyFor(runID routedrun.RunID, attemptID routedrun.AttemptID) ([]byte, error) }); ok {
+	if k, ok := s.journals.(interface {
+		KeyFor(runID routedrun.RunID, attemptID routedrun.AttemptID) ([]byte, error)
+	}); ok {
 		return k.KeyFor(runID, attemptID)
 	}
 	// Real path: read or create the control-key file under the state root.
@@ -87,12 +89,12 @@ func (s *Supervisor) loadOrCreateControlKey(runID routedrun.RunID, attemptID rou
 			return nil, fmt.Errorf("%w: control-key length %d want 32", ErrInvalidArgument, len(data))
 		}
 		return data, nil
-	} else if !os.IsNotExist(err) && !errors.Is(err, routedrun.ErrNotFound) {
+	} else if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, routedrun.ErrNotFound) {
 		return nil, err
 	}
 	key, err := ephemeralKey()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("supervisor load or create control key: %w", err)
 	}
 	if err := os.WriteFile(keyPath, key, 0o600); err != nil {
 		return nil, fmt.Errorf("write control key: %w", err)

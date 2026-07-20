@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -302,7 +303,7 @@ func VerifyAuditBundle(bundleDir string, expectedFingerprint string, verifySigna
 
 	// Phase 4: Check that all required bundle files exist before chain verification
 	for _, path := range []string{bp.AuditPath, bp.CheckpointsPath} {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("required bundle file missing: %s", path)
 		}
 	}

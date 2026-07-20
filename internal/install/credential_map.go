@@ -83,17 +83,17 @@ func ResolveCredentialMapping(opts CredentialMapOpts) (*CredentialMapResult, err
 	ctx := context.Background()
 	names, err := listSecretNames(ctx, opts.Store)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve credential mapping: %w", err)
 	}
 
 	result := &CredentialMapResult{Map: make(map[string]string)}
 	if opts.IsTTY {
 		if err := mapCredentialsTTY(opts, ids, names, ref, result); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve credential mapping: %w", err)
 		}
 	} else {
 		if err := mapCredentialsNonTTY(opts, ids, names, result); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve credential mapping: %w", err)
 		}
 	}
 
@@ -109,10 +109,10 @@ func ResolveCredentialMapping(opts CredentialMapOpts) (*CredentialMapResult, err
 
 	for declared, local := range result.Map {
 		emitAudit(opts.EmitAudit, audit.EventTypeInstallCredentialMapped, map[string]string{
-			"agent_ref":      ref,
-			"declared_id":    declared,
-			"local_name":     local,
-			"policy_agent":   opts.Policy.Agent.Name,
+			"agent_ref":    ref,
+			"declared_id":  declared,
+			"local_name":   local,
+			"policy_agent": opts.Policy.Agent.Name,
 		})
 	}
 
@@ -126,11 +126,11 @@ func ApplyMapCredential(opts MapCredentialOpts) error {
 	}
 	declared, local, err := parseCredentialMapping(opts.Mapping)
 	if err != nil {
-		return err
+		return fmt.Errorf("apply map credential: %w", err)
 	}
 	prior, err := opts.State.GetInstallByRef(opts.Ref)
 	if err != nil {
-		return err
+		return fmt.Errorf("apply map credential: %w", err)
 	}
 	if prior == nil {
 		return fmt.Errorf("no install found for reference %q", opts.Ref)
@@ -157,7 +157,7 @@ func ApplyMapCredential(opts MapCredentialOpts) error {
 	}
 	m.CredentialMap[declared] = local
 	if err := opts.State.SaveApprovedInstall(m, prior.PolicyYAML); err != nil {
-		return err
+		return fmt.Errorf("apply map credential: %w", err)
 	}
 	emitAudit(opts.EmitAudit, audit.EventTypeInstallCredentialMapped, map[string]string{
 		"agent_ref":   opts.Ref,
@@ -232,7 +232,7 @@ func mapCredentialsNonTTY(opts CredentialMapOpts, ids []string, names map[string
 	for _, raw := range opts.MapCredentials {
 		declared, local, err := parseCredentialMapping(raw)
 		if err != nil {
-			return err
+			return fmt.Errorf("map credentials non tty: %w", err)
 		}
 		if _, ok := declaredSet[declared]; !ok {
 			return fmt.Errorf("%w: credential %q is not declared in the signed policy", ErrCredentialMapInvalid, declared)
@@ -329,18 +329,18 @@ func FormatInstallRef(agentName, publisherFingerprint string) string {
 func SignedLLMCredentialID(stateRoot, ref string) (string, error) {
 	name, pub8, err := naming.ParseAgentRef(ref)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("signed llmcredential id: %w", err)
 	}
 	dir, err := findInstalledDirByRef(stateRoot, name, pub8)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("signed llmcredential id: %w", err)
 	}
 	if dir == "" {
 		return "", nil
 	}
 	lock, err := pack.ReadAgentLock(filepath.Join(dir, installedLockName))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("signed llmcredential id: %w", err)
 	}
 	if lock == nil || lock.AgentYAML == nil {
 		return "", nil

@@ -113,7 +113,7 @@ var fileLocks sync.Map // map[string]*sync.Mutex
 // is keyed by the absolute path so that two stores pointing at the same file
 // (via different relative paths) share the same lock.
 func getFileLock(path string) *sync.Mutex {
-	abs, _ := filepath.Abs(path) // best-effort abs; fallback to path
+	abs, _ := filepath.Abs(path)                      // best-effort abs; fallback to path
 	v, _ := fileLocks.LoadOrStore(abs, &sync.Mutex{}) // sync.Map always ok
 	return v.(*sync.Mutex)
 }
@@ -163,7 +163,7 @@ func NewFileKeyStore(dir, passphrase string) (*FileKeyStore, error) {
 
 	if _, err := os.Stat(fp); err == nil {
 		if err := s.loadFromDisk(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("new file key store: %w", err)
 		}
 	}
 
@@ -193,7 +193,7 @@ func (f *FileKeyStore) loadFromDisk() error {
 	// Check file permissions. Since Lstat confirmed this is not a symlink,
 	// the Mode from Lstat reflects the actual file's permission bits.
 	if err := checkPermissions(fi.Mode()); err != nil {
-		return err
+		return fmt.Errorf("file key store load from disk: %w", err)
 	}
 
 	data, err := os.ReadFile(f.filePath)
@@ -276,7 +276,7 @@ func (f *FileKeyStore) saveToDisk() error {
 		}
 		// Existing regular file — verify permissions before overwriting.
 		if err := checkPermissions(fi.Mode()); err != nil {
-			return err
+			return fmt.Errorf("file key store save to disk: %w", err)
 		}
 		outFile, err := os.OpenFile(f.filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
@@ -287,7 +287,7 @@ func (f *FileKeyStore) saveToDisk() error {
 			return fmt.Errorf("write keystore file: %w", err)
 		}
 		return outFile.Close()
-	} else if os.IsNotExist(err) {
+	} else if errors.Is(err, os.ErrNotExist) {
 		// File doesn't exist — create with O_EXCL to prevent symlink race.
 		outFile, err := os.OpenFile(f.filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 		if err != nil {
@@ -314,11 +314,11 @@ func deriveKey(passphrase string, salt []byte) ([]byte, error) {
 func encryptAESGCM(key, nonce, plaintext []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt aesgcm: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt aesgcm: %w", err)
 	}
 	// Sealed output: nonce || ciphertext || tag (tag appended by GCM).
 	return gcm.Seal(nil, nonce, plaintext, nil), nil
@@ -330,11 +330,11 @@ func encryptAESGCM(key, nonce, plaintext []byte) ([]byte, error) {
 func decryptAESGCM(key, nonce, ciphertext []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt aesgcm: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt aesgcm: %w", err)
 	}
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
@@ -360,7 +360,7 @@ func checkPermissions(mode os.FileMode) error {
 // ErrInvalidKeyID if the ID fails validation.
 func (f *FileKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error {
 	if err := ValidateKeyID(id); err != nil {
-		return err
+		return fmt.Errorf("file key store create: %w", err)
 	}
 
 	// Encode key material as base64 for storage.
@@ -381,7 +381,7 @@ func (f *FileKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error 
 	// and saveToDisk would overwrite other instances' additions.
 	if _, err := os.Stat(f.filePath); err == nil {
 		if err := f.loadFromDisk(); err != nil {
-			return err
+			return fmt.Errorf("file key store create: %w", err)
 		}
 	}
 
@@ -402,7 +402,7 @@ func (f *FileKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error 
 // key does not exist, or ErrInvalidKeyID if the ID fails validation.
 func (f *FileKeyStore) Load(id KeyID) (KeyMaterial, error) {
 	if err := ValidateKeyID(id); err != nil {
-		return KeyMaterial{}, err
+		return KeyMaterial{}, fmt.Errorf("file key store load: %w", err)
 	}
 
 	f.mu.RLock()
@@ -426,7 +426,7 @@ func (f *FileKeyStore) Load(id KeyID) (KeyMaterial, error) {
 // PackageIdentity) are supported; Workload keys return ErrWrongKeyType.
 func (f *FileKeyStore) Sign(id KeyID, digest []byte) ([]byte, error) {
 	if err := ValidateKeyID(id); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("file key store sign: %w", err)
 	}
 
 	f.mu.RLock()
@@ -449,7 +449,7 @@ func (f *FileKeyStore) Sign(id KeyID, digest []byte) ([]byte, error) {
 
 	key, err := parseECDSAPrivateKey(bytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("file key store sign: %w", err)
 	}
 
 	return ecdsaSign(key, digest)
@@ -493,7 +493,7 @@ func (f *FileKeyStore) Verify(id KeyID, digest []byte, signature []byte) bool {
 // does not exist, or ErrInvalidKeyID if the ID fails validation.
 func (f *FileKeyStore) Delete(id KeyID) error {
 	if err := ValidateKeyID(id); err != nil {
-		return err
+		return fmt.Errorf("file key store delete: %w", err)
 	}
 
 	// Acquire file lock before f.mu to prevent cross-instance data loss.
@@ -507,7 +507,7 @@ func (f *FileKeyStore) Delete(id KeyID) error {
 	// Reload from disk to pick up changes from other instances.
 	if _, err := os.Stat(f.filePath); err == nil {
 		if err := f.loadFromDisk(); err != nil {
-			return err
+			return fmt.Errorf("file key store delete: %w", err)
 		}
 	}
 

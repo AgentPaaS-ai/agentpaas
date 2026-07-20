@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/ecdsa"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 )
@@ -11,12 +12,12 @@ import (
 // VerificationResult holds the outcome of verifying an audit chain against
 // its checkpoints. A result passes when Issues is empty.
 type VerificationResult struct {
-	AuditRecordCount int64             `json:"audit_record_count"`
-	AuditHeadSeq     int64             `json:"audit_head_seq"`
-	AuditHeadHash    string            `json:"audit_head_hash"`
-	CheckpointCount  int               `json:"checkpoint_count"`
-	LatestAnchorSeq  int64             `json:"latest_anchor_seq"`
-	LatestAnchorHash string            `json:"latest_anchor_hash"`
+	AuditRecordCount int64              `json:"audit_record_count"`
+	AuditHeadSeq     int64              `json:"audit_head_seq"`
+	AuditHeadHash    string             `json:"audit_head_hash"`
+	CheckpointCount  int                `json:"checkpoint_count"`
+	LatestAnchorSeq  int64              `json:"latest_anchor_seq"`
+	LatestAnchorHash string             `json:"latest_anchor_hash"`
 	Issues           []*CheckpointError `json:"issues,omitempty"`
 
 	// Replayed records if the caller wants them (nil if chain is broken).
@@ -56,7 +57,7 @@ func VerifyAuditChain(auditPath, checkpointsPath string, pubKey *ecdsa.PublicKey
 	checkpoints, err := readCheckpoints(checkpointsPath)
 	if err != nil {
 		// If no checkpoints file exists, no verification is possible
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			result.Issues = append(result.Issues, &CheckpointError{
 				Type:    ErrTypeMissingCheckpoint,
 				Message: "no checkpoints file found",
@@ -137,7 +138,7 @@ func VerifyAuditChain(auditPath, checkpointsPath string, pubKey *ecdsa.PublicKey
 			if idx < len(records) && records[idx].Seq == latestCp.HeadAnchorSeq {
 				if records[idx].RecordHash != latestCp.HeadAnchorHash {
 					result.Issues = append(result.Issues, &CheckpointError{
-						Type:    ErrTypeTamperMiddle,
+						Type: ErrTypeTamperMiddle,
 						Message: fmt.Sprintf("middle tamper at line %d (seq=%d): record_hash %q does not match checkpoint anchor %q",
 							idx+1, records[idx].Seq, records[idx].RecordHash, latestCp.HeadAnchorHash),
 						Line: idx + 1,
@@ -147,7 +148,7 @@ func VerifyAuditChain(auditPath, checkpointsPath string, pubKey *ecdsa.PublicKey
 			} else {
 				// Seq exists in checkpoint but can't find matching record
 				result.Issues = append(result.Issues, &CheckpointError{
-					Type:    ErrTypeTamperMiddle,
+					Type: ErrTypeTamperMiddle,
 					Message: fmt.Sprintf("checkpoint seq=%d anchors seq=%d but audit chain has no matching record at that position",
 						latestCp.Seq, latestCp.HeadAnchorSeq),
 					Seq: latestCp.HeadAnchorSeq,
@@ -156,7 +157,7 @@ func VerifyAuditChain(auditPath, checkpointsPath string, pubKey *ecdsa.PublicKey
 		} else if latestCp.HeadAnchorSeq > result.AuditHeadSeq {
 			// Checkpoint refers to a seq beyond what's in the file = tail truncation
 			result.Issues = append(result.Issues, &CheckpointError{
-				Type:    ErrTypeTailTruncation,
+				Type: ErrTypeTailTruncation,
 				Message: fmt.Sprintf("tail truncation: checkpoint seq=%d anchors head anchor seq=%d but audit chain only has %d records (last seq=%d)",
 					latestCp.Seq, latestCp.HeadAnchorSeq, len(records), result.AuditHeadSeq),
 				Seq: latestCp.HeadAnchorSeq,
@@ -168,7 +169,7 @@ func VerifyAuditChain(auditPath, checkpointsPath string, pubKey *ecdsa.PublicKey
 	for i := 1; i < len(checkpoints); i++ {
 		if checkpoints[i].Seq != checkpoints[i-1].Seq+1 {
 			result.Issues = append(result.Issues, &CheckpointError{
-				Type:    ErrTypeMissingCheckpoint,
+				Type: ErrTypeMissingCheckpoint,
 				Message: fmt.Sprintf("missing checkpoint: seq gap between checkpoint %d (seq=%d) and checkpoint %d (seq=%d)",
 					i, checkpoints[i-1].Seq, i+1, checkpoints[i].Seq),
 				Seq: checkpoints[i].Seq,
@@ -252,7 +253,7 @@ func readAuditChain(path string) ([]AuditRecord, error) {
 func readCheckpoints(path string) ([]*CheckpointRecord, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read checkpoints: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 

@@ -2,6 +2,7 @@ package otel
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/logging"
 )
@@ -16,7 +17,7 @@ func redactString(s string) string {
 func redactJSON(v any) (string, error) {
 	data, err := json.Marshal(redactValue(v))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("redact json: %w", err)
 	}
 	return string(data), nil
 }

@@ -79,51 +79,51 @@ type gitleaksFinding struct {
 // Returns ScanResult with findings. Does NOT fail itself — caller checks findings.
 func ScanSecrets(ctx context.Context, cfg ScanConfig) (*ScanResult, error) {
 	if err := validateProjectDir(cfg.ProjectDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 	if !filepath.IsAbs(cfg.ProjectDir) {
 		return nil, fmt.Errorf("project directory must be absolute: %s", cfg.ProjectDir)
 	}
 	if err := rejectSymlinkPath(cfg.ProjectDir, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 	ignore := cfg.Ignore
 	if ignore == nil {
 		var err error
 		ignore, err = LoadIgnore(cfg.ProjectDir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan secrets: %w", err)
 		}
 	}
 
 	sourceFindings, err := runGitleaks(ctx, cfg.ProjectDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 	contextDir, cleanup, err := materializeBuildContext(cfg.ProjectDir, ignore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 	defer cleanup()
 
 	contextFindings, err := runGitleaks(ctx, contextDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 	contextFindings = rewriteFindingFiles(contextFindings, contextDir, cfg.ProjectDir)
 
 	contextSize, err := computeContextSize(cfg.ProjectDir, ignore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 
 	sourceFindings, err = applyAllowPatterns(sourceFindings, cfg.AllowPatterns, cfg.AuditAppend)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 	contextFindings, err = applyAllowPatterns(contextFindings, cfg.AllowPatterns, cfg.AuditAppend)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan secrets: %w", err)
 	}
 
 	return &ScanResult{
@@ -150,7 +150,7 @@ func ContainsExportSentinel(data []byte) bool {
 // Returns empty list if gitleaks finds nothing.
 func runGitleaks(ctx context.Context, dir string) ([]SecretFinding, error) {
 	if err := rejectSymlinkPath(dir, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run gitleaks: %w", err)
 	}
 
 	scanCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -199,7 +199,7 @@ func maskSecret(s string) string {
 func computeContextSize(projectDir string, ignore *IgnoreMatcher) (int64, error) {
 	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("compute context size: %w", err)
 	}
 
 	var size int64
@@ -272,7 +272,7 @@ func parseGitleaksOutput(output []byte, baseDir string) ([]SecretFinding, error)
 		if filepath.IsAbs(item.File) {
 			rel, err := safeRelPath(baseDir, item.File)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("parse gitleaks output: %w", err)
 			}
 			file = rel
 		}
@@ -294,7 +294,7 @@ func parseGitleaksOutput(output []byte, baseDir string) ([]SecretFinding, error)
 func materializeBuildContext(projectDir string, ignore *IgnoreMatcher) (string, func(), error) {
 	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("materialize build context: %w", err)
 	}
 
 	dir, err := os.MkdirTemp("", "agentpaas-build-context-*")
@@ -308,7 +308,7 @@ func materializeBuildContext(projectDir string, ignore *IgnoreMatcher) (string, 
 		rel, err := safeRelPath(dir, dst)
 		if err != nil {
 			cleanup()
-			return "", nil, err
+			return "", nil, fmt.Errorf("materialize build context: %w", err)
 		}
 		if rel != file.RelPath {
 			cleanup()
@@ -321,7 +321,7 @@ func materializeBuildContext(projectDir string, ignore *IgnoreMatcher) (string, 
 		data, err := readProjectFile(file.AbsPath)
 		if err != nil {
 			cleanup()
-			return "", nil, err
+			return "", nil, fmt.Errorf("materialize build context: %w", err)
 		}
 		if err := os.WriteFile(dst, data, file.Info.Mode().Perm()); err != nil {
 			cleanup()

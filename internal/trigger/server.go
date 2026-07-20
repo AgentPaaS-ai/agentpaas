@@ -16,10 +16,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	triggerv1 "github.com/AgentPaaS-ai/agentpaas/api/trigger/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/port"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -222,7 +222,7 @@ func (m *lineNumberJSONMarshaler) NewDecoder(r io.Reader) runtime.Decoder {
 	return runtime.DecoderFunc(func(v interface{}) error {
 		data, err := io.ReadAll(r)
 		if err != nil {
-			return err
+			return fmt.Errorf("line number jsonmarshaler new decoder: %w", err)
 		}
 
 		var raw json.RawMessage
@@ -399,7 +399,7 @@ type TriggerService struct {
 	// triggerTenant is the tenant ID under which trigger-originated runs are
 	// appended to the EventStore. Defaults to defaultTriggerTenant.
 	triggerTenant string
-	runStore    *RunStore
+	runStore      *RunStore
 
 	cancelGracePeriod time.Duration
 
@@ -846,7 +846,7 @@ func (s *TriggerService) ListRuns(_ context.Context, req *triggerv1.ListRunsRequ
 func generateRunID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
+		return "", fmt.Errorf("generate run id: %w", err)
 	}
 	return "run-" + hex.EncodeToString(b[:]), nil
 }

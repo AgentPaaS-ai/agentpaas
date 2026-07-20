@@ -2,6 +2,7 @@ package pack
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"path"
 	"path/filepath"
@@ -32,7 +33,7 @@ type ignorePattern struct {
 // .agentpaasignore doesn't list them.
 func LoadIgnore(projectDir string) (*IgnoreMatcher, error) {
 	if err := validateProjectDir(projectDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load ignore: %w", err)
 	}
 
 	data, err := readProjectFile(filepath.Join(projectDir, ".agentpaasignore"))
@@ -40,7 +41,7 @@ func LoadIgnore(projectDir string) (*IgnoreMatcher, error) {
 		return NewIgnoreMatcher(strings.Join(DefaultIgnorePatterns(), "\n")), nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load ignore: %w", err)
 	}
 
 	// Merge: defaults first, then user patterns. User patterns can

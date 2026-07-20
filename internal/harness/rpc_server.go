@@ -63,11 +63,11 @@ type rpcInvokeState struct {
 	timeEnvelope *routedrun.TimeEnvelope
 
 	// Progress journal (B27)
-	progressJournal   *progressJournalWriter
-	progressIdentity  progressIdentity
-	leaseExpired      atomic.Bool
-	resumeCheckpoint  map[string]any // B35-provided resume data (trusted, not from trigger)
-	resumeReason      string         // trusted enum: failure_continuation|operator_pause_resume
+	progressJournal  *progressJournalWriter
+	progressIdentity progressIdentity
+	leaseExpired     atomic.Bool
+	resumeCheckpoint map[string]any // B35-provided resume data (trusted, not from trigger)
+	resumeReason     string         // trusted enum: failure_continuation|operator_pause_resume
 
 	mu              sync.Mutex
 	failureEvidence *UpstreamEvidence
@@ -95,18 +95,18 @@ type rpcResponse struct {
 func startHarnessRPCServer(appender AuditAppender) (*harnessRPCServer, error) {
 	dir, err := os.MkdirTemp("", "agentpaas-rpc-*")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start harness rpcserver: %w", err)
 	}
 	socket := filepath.Join(dir, "rpc.sock")
 	addr, err := net.ResolveUnixAddr("unix", socket)
 	if err != nil {
 		_ = os.RemoveAll(dir) // best-effort temp cleanup on error path
-		return nil, err
+		return nil, fmt.Errorf("start harness rpcserver: %w", err)
 	}
 	listener, err := net.ListenUnix("unix", addr)
 	if err != nil {
 		_ = os.RemoveAll(dir) // best-effort temp cleanup on error path
-		return nil, err
+		return nil, fmt.Errorf("start harness rpcserver: %w", err)
 	}
 	s := &harnessRPCServer{
 		listener: listener,
@@ -307,7 +307,7 @@ func (s *harnessRPCServer) LoadCredentials(path string) error {
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("harness rpcserver load credentials: %w", err)
 	}
 	// NOTE: File is mounted read-only (BB-1); daemon cleans up after run.
 
@@ -349,7 +349,7 @@ func (s *harnessRPCServer) LoadProgressMetadata(cfg Config) error {
 		return fmt.Errorf("load journal key: %w", err)
 	}
 	// Delete the key file immediately so agent code cannot read it.
-	if err := os.Remove(cfg.JournalKeyPath); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(cfg.JournalKeyPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 		log.Printf("harness: failed to remove journal key file %s: %v (key may remain readable by agent)", cfg.JournalKeyPath, err)
 	}
 
@@ -1135,11 +1135,11 @@ func rewriteURLForGateway(rawURL, gatewayURL string) (string, error) {
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("rewrite urlfor gateway: %w", err)
 	}
 	gw, err := url.Parse(gatewayURL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("rewrite urlfor gateway: %w", err)
 	}
 	// https://openrouter.ai/v1/chat/completions
 	//   → http://gateway:7799/v1/chat/completions

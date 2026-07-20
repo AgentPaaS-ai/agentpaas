@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -16,7 +17,6 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
-	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 )
 
 const (
@@ -75,7 +75,7 @@ func EnsureLocalRegistry(ctx context.Context) (string, error) {
 	defer func() { _ = cli.Close() }() // best-effort close
 
 	if err := ensureRegistryContainer(ctx, cli); err != nil {
-		return "", err
+		return "", fmt.Errorf("ensure local registry: %w", err)
 	}
 	return localRegistryURL(), nil
 }
@@ -123,7 +123,7 @@ func CleanupLocalRegistry(ctx context.Context) error {
 func PushImageToLocalRegistry(ctx context.Context, sourceTag, agentName, agentVersion string) (string, error) {
 	registryURL, err := EnsureLocalRegistry(ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("push image to local registry: %w", err)
 	}
 
 	targetTag := fmt.Sprintf("%s/agentpaas/%s:%s", registryURL, agentName, agentVersion)

@@ -60,7 +60,7 @@ func NewIdempotencyStore(filePath string, ttl time.Duration, auditAppender audit
 		ttl = DefaultIdempotencyTTL
 	}
 	if err := validateIdempotencyPath(filePath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new idempotency store: %w", err)
 	}
 	s := &IdempotencyStore{
 		filePath: filePath,
@@ -125,14 +125,14 @@ func (s *IdempotencyStore) CheckOrReserve(ctx context.Context, key, runID, reque
 // CanonicalRequestHash computes the SHA-256 hash over the canonical request fields.
 func CanonicalRequestHash(callerID, agentName, lockDigest string, payload []byte, contentType, apiVersion string) string {
 	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "caller=%s\n", callerID) // best-effort write
-	_, _ = fmt.Fprintf(h, "agent=%s\n", agentName) // best-effort write
-	_, _ = fmt.Fprintf(h, "lock_digest=%s\n", lockDigest) // best-effort write
+	_, _ = fmt.Fprintf(h, "caller=%s\n", callerID)          // best-effort write
+	_, _ = fmt.Fprintf(h, "agent=%s\n", agentName)          // best-effort write
+	_, _ = fmt.Fprintf(h, "lock_digest=%s\n", lockDigest)   // best-effort write
 	_, _ = fmt.Fprintf(h, "payload_len=%d\n", len(payload)) // best-effort write
-	_, _ = h.Write(payload) // hash.Hash.Write never errors
-	_, _ = h.Write([]byte("\n")) // hash.Hash.Write never errors
+	_, _ = h.Write(payload)                                 // hash.Hash.Write never errors
+	_, _ = h.Write([]byte("\n"))                            // hash.Hash.Write never errors
 	_, _ = fmt.Fprintf(h, "content_type=%s\n", contentType) // best-effort write
-	_, _ = fmt.Fprintf(h, "api_version=%s\n", apiVersion) // best-effort write
+	_, _ = fmt.Fprintf(h, "api_version=%s\n", apiVersion)   // best-effort write
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -163,14 +163,14 @@ func (s *IdempotencyStore) EntryCount() int {
 
 func (s *IdempotencyStore) load() error {
 	if err := validateIdempotencyPath(s.filePath); err != nil {
-		return err
+		return fmt.Errorf("idempotency store load: %w", err)
 	}
 	data, err := os.ReadFile(s.filePath)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("idempotency store load: %w", err)
 	}
 	var entries []*IdempotencyEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
@@ -189,24 +189,24 @@ func (s *IdempotencyStore) save() error {
 	}
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("idempotency store save: %w", err)
 	}
 	dir := filepath.Dir(s.filePath)
 	if err := validateParentPath(dir); err != nil {
-		return err
+		return fmt.Errorf("idempotency store save: %w", err)
 	}
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
+		return fmt.Errorf("idempotency store save: %w", err)
 	}
 	if err := validateIdempotencyPath(s.filePath); err != nil {
-		return err
+		return fmt.Errorf("idempotency store save: %w", err)
 	}
 	tmp := s.filePath + ".tmp"
 	if err := validateIdempotencyPath(tmp); err != nil {
-		return err
+		return fmt.Errorf("idempotency store save: %w", err)
 	}
 	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return err
+		return fmt.Errorf("idempotency store save: %w", err)
 	}
 	return os.Rename(tmp, s.filePath)
 }
@@ -241,14 +241,14 @@ func validateIdempotencyPath(filePath string) error {
 		return fmt.Errorf("idempotency path must not be in a system directory")
 	}
 	if err := validateParentPath(filepath.Dir(clean)); err != nil {
-		return err
+		return fmt.Errorf("validate idempotency path: %w", err)
 	}
 	info, err := os.Lstat(clean)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("validate idempotency path: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("idempotency path must not be a symlink")
@@ -287,7 +287,7 @@ func validateParentPath(dir string) error {
 			return nil
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("validate parent path: %w", err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("idempotency directory component must not be a symlink: %s", current)
