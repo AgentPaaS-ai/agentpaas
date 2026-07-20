@@ -906,9 +906,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	tracked.CancelInvoke = cancel
 	go func(tr *trackedRun) {
 		defer close(tr.InvokeDone)
-		timeoutCtx, timeoutCancel := context.WithTimeout(invokeCtx, 2*time.Minute)
+		// B30-T03 Part B (ceiling 1): derive the invoke-context timeout from
+		// the TimeEnvelope when present (durable admission path); otherwise
+		// fall back to the legacy v0.2.3 2-minute timeout. The envelope is
+		// set on the trackedRun by the durable path after admission
+		// (InvokeDeployment → setRunTimeEnvelope).
+		timeoutCtx, timeoutCancel := context.WithTimeout(invokeCtx, s.invokeContextTimeout(tr))
 		defer timeoutCancel()
-		if stdout, err := s.invokeAgent(timeoutCtx, containerID, agentName, req.GetTriggerPayload()); err != nil {
+		if stdout, err := s.invokeAgent(timeoutCtx, containerID, agentName, req.GetTriggerPayload(), tr.TimeEnvelope); err != nil {
 			// Write directly to the pointer under the lock. This works
 			// whether the run is still in s.runs or has been claimed by
 			// Stop (claimRun deletes from the map but the pointer is
@@ -1452,7 +1457,7 @@ func (s *controlServer) recordAudit(eventType, actor string, payload map[string]
 	}
 }
 
-func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID, agentName string, triggerPayload []byte) (string, error) {
+func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.ContainerID, agentName string, triggerPayload []byte, timeEnvelope *routedrun.TimeEnvelope) (string, error) {
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return "", fmt.Errorf("runtime: %w", err)
@@ -1482,6 +1487,15 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 	payload, err := s.buildInvokePayload(ctx, agentName, triggerPayload)
 	if err != nil {
 		return "", fmt.Errorf("build invoke payload: %w", err)
+	}
+
+	// B30-T03 Part B (ceilings 3/4/5): inject the TimeEnvelope into the
+	// payload so the harness derives the /invoke context timeout, the
+	// wall-clock budget, and the model-client HTTP timeout from the envelope
+	// rather than the legacy v0.2.3 fixed constants. When nil (legacy trigger
+	// path), the harness falls back to its documented legacy defaults.
+	if timeEnvelope != nil {
+		payload["time_envelope"] = timeEnvelope.MarshalForPayload()
 	}
 
 	payloadJSON, err := json.Marshal(payload)
@@ -1535,7 +1549,7 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		if err := json.Unmarshal(triggerPayload, &userPayload); err != nil {
 			return nil, fmt.Errorf("invalid trigger payload JSON: %w", err)
 		}
-		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true, "budget": true, "guardrails": true, "inject_system_prompt": true}
+		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true, "budget": true, "guardrails": true, "inject_system_prompt": true, "time_envelope": true}
 		for k, v := range userPayload {
 			if reserved[k] {
 				continue
@@ -1910,6 +1924,52 @@ func (s *controlServer) trackRunPtr(runID string, tr *trackedRun) {
 		s.runs = make(map[string]*trackedRun)
 	}
 	s.runs[runID] = tr
+}
+
+// setRunTimeEnvelope is the B30-T03 Part B seam for ceiling 1: the durable
+// admission path (InvokeDeployment → T05 supervisor claim) calls this to
+// attach the TimeEnvelope built from the admission receipt to the tracked
+// run, so the daemon's invoke-context timeout is derived from the envelope
+// rather than the legacy 2-minute fallback. Returns false if no tracked run
+// exists for runID (the durable path must have started the run first).
+func (s *controlServer) setRunTimeEnvelope(runID string, env routedrun.TimeEnvelope) bool {
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if s.runs == nil {
+		return false
+	}
+	tr, ok := s.runs[runID]
+	if !ok {
+		return false
+	}
+	tr.TimeEnvelope = &env
+	return true
+}
+
+// legacyInvokeContextTimeout is the v0.2.3 fixed timeout for the daemon's
+// auto-invoke goroutine. It is used ONLY when no TimeEnvelope is available
+// (legacy trigger path) — the durable path derives the timeout from the
+// envelope (B30-T03 Part B, ceiling 1).
+const legacyInvokeContextTimeout = 2 * time.Minute
+
+// invokeContextTimeout returns the timeout for the daemon's auto-invoke
+// goroutine. When the tracked run carries a TimeEnvelope (durable path), the
+// timeout is env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs) —
+// the min of the stall timeout, the attempt-lease remaining, and the active
+// time remaining. When nil (legacy v0.2.3 trigger path), it falls back to
+// legacyInvokeContextTimeout (2 minutes).
+func (s *controlServer) invokeContextTimeout(tr *trackedRun) time.Duration {
+	if tr != nil && tr.TimeEnvelope != nil {
+		nowMs := routedrun.NowMonotonicMs(nil)
+		deadlineMs := tr.TimeEnvelope.EffectiveOperationDeadlineMs(nowMs, tr.TimeEnvelope.StallTimeoutMs)
+		if deadlineMs <= 0 {
+			// Envelope exhausted: tiny grace so the invoke surfaces a failure
+			// rather than a zero-timeout panic.
+			return 1 * time.Millisecond
+		}
+		return time.Duration(deadlineMs) * time.Millisecond
+	}
+	return legacyInvokeContextTimeout
 }
 
 func (s *controlServer) claimRun(runID string) (*trackedRun, bool) {

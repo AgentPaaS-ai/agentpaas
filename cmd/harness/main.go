@@ -21,9 +21,14 @@ func main() {
 		Addr:            envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
 		AgentPath:       envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
 		Python:          detectPython(),
-		ImportTimeout:   envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),
-		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second),
-		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second),
+		ImportTimeout: envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second), // legacy compat: import phase timeout (not a lifetime ceiling)
+		// InvokeTimeout is the LEGACY v0.2.3 compat default for the /invoke
+		// context timeout. On the durable path (B30-T03 Part B), the timeout
+		// is derived from the TimeEnvelope carried in the invoke payload
+		// (see Server.invokeTimeoutForPayload). AGENTPAAS_INVOKE_TIMEOUT
+		// remains as a legacy compat override for the non-envelope path.
+		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy compat: durable path uses invokeTimeoutForPayload
+		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy compat: SIGTERM grace (not a lifetime ceiling)
 		StdoutPath:      envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
 		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
 		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
