@@ -53,6 +53,9 @@ type packKeyStoreAdapter struct {
 	store identity.KeyStore
 }
 
+// packKeyStoreAdapter.Load loads a key by ID from the underlying identity.KeyStore, coercing id to KeyID when needed.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *packKeyStoreAdapter) Load(id interface{}) (interface{}, error) {
 	keyID, ok := id.(identity.KeyID)
 	if !ok {
@@ -61,6 +64,9 @@ func (a *packKeyStoreAdapter) Load(id interface{}) (interface{}, error) {
 	return a.store.Load(keyID)
 }
 
+// packKeyStoreAdapter.Sign signs digest with the key identified by id via the underlying identity.KeyStore.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *packKeyStoreAdapter) Sign(id interface{}, digest []byte) ([]byte, error) {
 	keyID, ok := id.(identity.KeyID)
 	if !ok {
@@ -69,6 +75,9 @@ func (a *packKeyStoreAdapter) Sign(id interface{}, digest []byte) ([]byte, error
 	return a.store.Sign(keyID, digest)
 }
 
+// controlServer.Pack builds and packs an agent project into a deployable image and returns pack metadata.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*controlv1.PackResponse, error) {
 	projectDir := req.GetAgentProjectPath()
 	if projectDir == "" {
@@ -419,6 +428,9 @@ func validateCredentialsExist(s *controlServer, agentName string, isInstalled bo
 	return nil
 }
 
+// controlServer.Run starts an agent run from the given request and returns the run identity.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*controlv1.RunResponse, error) {
 	agentName := req.GetAgentName()
 	if agentName == "" {
@@ -1108,6 +1120,9 @@ func (s *controlServer) finalizeRun(ctx context.Context, runID string, tr *track
 	})
 }
 
+// controlServer.Stop stops a running agent by run_id and returns the stop outcome.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*controlv1.StopResponse, error) {
 	runID := req.GetRunId()
 	if runID == "" {
@@ -1205,6 +1220,9 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 	return &controlv1.StopResponse{Acknowledged: true}, nil
 }
 
+// controlServer.Logs streams container logs for the given run_id to the gRPC client.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) Logs(req *controlv1.LogsRequest, stream controlv1.ControlService_LogsServer) error {
 	runID := req.GetRunId()
 	if runID == "" {
@@ -1249,6 +1267,9 @@ func (s *controlServer) Logs(req *controlv1.LogsRequest, stream controlv1.Contro
 	return scanner.Err()
 }
 
+// controlServer.PolicyApply validates and optionally persists a policy YAML document, supporting dry-run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) PolicyApply(ctx context.Context, req *controlv1.PolicyApplyRequest) (*controlv1.PolicyApplyResponse, error) {
 	yamlContent := req.GetPolicyYaml()
 	if yamlContent == "" {
@@ -1302,6 +1323,9 @@ func (s *controlServer) PolicyApply(ctx context.Context, req *controlv1.PolicyAp
 	}, nil
 }
 
+// controlServer.SecretSet stores a named secret in the configured secret backend.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) SecretSet(ctx context.Context, req *controlv1.SecretSetRequest) (*controlv1.SecretSetResponse, error) {
 	name := req.GetName()
 	if name == "" {
@@ -1322,6 +1346,9 @@ func (s *controlServer) SecretSet(ctx context.Context, req *controlv1.SecretSetR
 	return &controlv1.SecretSetResponse{Created: created}, nil
 }
 
+// controlServer.SecretGrant grants a named secret to a run so the agent may access it.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) SecretGrant(ctx context.Context, req *controlv1.SecretGrantRequest) (*controlv1.SecretGrantResponse, error) {
 	runID := req.GetRunId()
 	secretName := req.GetSecretName()
@@ -1344,6 +1371,9 @@ func (s *controlServer) SecretGrant(ctx context.Context, req *controlv1.SecretGr
 	return &controlv1.SecretGrantResponse{Acknowledged: true}, nil
 }
 
+// controlServer.SecretRevoke revokes a previously granted secret from a run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) SecretRevoke(ctx context.Context, req *controlv1.SecretRevokeRequest) (*controlv1.SecretRevokeResponse, error) {
 	runID := req.GetRunId()
 	secretName := req.GetSecretName()
@@ -1362,6 +1392,9 @@ func (s *controlServer) SecretRevoke(ctx context.Context, req *controlv1.SecretR
 	return &controlv1.SecretRevokeResponse{Acknowledged: true}, nil
 }
 
+// controlServer.AuditQuery queries the audit index with optional filters and pagination.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) AuditQuery(ctx context.Context, req *controlv1.AuditQueryRequest) (*controlv1.AuditQueryResponse, error) {
 	if s.auditIndex == nil {
 		return nil, status.Error(codes.Unavailable, "audit index not initialized")
@@ -1439,6 +1472,9 @@ func (s *controlServer) AuditQuery(ctx context.Context, req *controlv1.AuditQuer
 	}, nil
 }
 
+// controlServer.AuditExport exports audit log records in the requested format.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) AuditExport(ctx context.Context, req *controlv1.AuditExportRequest) (*controlv1.AuditExportResponse, error) {
 	if s.homePaths == nil {
 		return nil, status.Error(codes.FailedPrecondition, "daemon home paths not configured")

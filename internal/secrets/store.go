@@ -36,6 +36,9 @@ type SecretMeta struct {
 	LastUsedAt time.Time
 }
 
+// ValidateSecretName validates secret name.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func ValidateSecretName(name string) error {
 	if name == "" {
 		return fmt.Errorf("%w: name must not be empty", ErrInvalidSecretName)
@@ -66,6 +69,7 @@ type fakeEntry struct {
 	meta  SecretMeta
 }
 
+// NewFakeKeyStore creates and returns a new fake key store.
 func NewFakeKeyStore() *FakeKeyStore {
 	return &FakeKeyStore{
 		entries: make(map[string]fakeEntry),
@@ -73,6 +77,9 @@ func NewFakeKeyStore() *FakeKeyStore {
 	}
 }
 
+// FakeKeyStore.Set sets fake key store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (f *FakeKeyStore) Set(_ context.Context, name string, value []byte) error {
 	if err := ValidateSecretName(name); err != nil {
 		return err
@@ -95,6 +102,9 @@ func (f *FakeKeyStore) Set(_ context.Context, name string, value []byte) error {
 	return nil
 }
 
+// FakeKeyStore.Get returns fake key store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (f *FakeKeyStore) Get(_ context.Context, name string) ([]byte, error) {
 	if err := ValidateSecretName(name); err != nil {
 		return nil, err
@@ -110,6 +120,9 @@ func (f *FakeKeyStore) Get(_ context.Context, name string) ([]byte, error) {
 	return append([]byte(nil), entry.value...), nil
 }
 
+// FakeKeyStore.List lists fake key store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (f *FakeKeyStore) List(_ context.Context) ([]SecretMeta, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -124,6 +137,9 @@ func (f *FakeKeyStore) List(_ context.Context) ([]SecretMeta, error) {
 	return result, nil
 }
 
+// FakeKeyStore.Delete deletes fake key store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (f *FakeKeyStore) Delete(_ context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
 		return err
@@ -139,6 +155,9 @@ func (f *FakeKeyStore) Delete(_ context.Context, name string) error {
 	return nil
 }
 
+// FakeKeyStore.TouchLastUsed touch last used.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (f *FakeKeyStore) TouchLastUsed(_ context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
 		return err

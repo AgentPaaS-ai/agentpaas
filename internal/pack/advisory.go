@@ -327,12 +327,15 @@ type OCILayoutError struct {
 	Cause  error
 }
 
+// OCILayoutError.Error returns the error message.
 func (e *OCILayoutError) Error() string {
 	return fmt.Sprintf("oci layout %s: %s - %s (cause: %v)", e.Path, e.Reason, e.Hint, e.Cause)
 }
 
+// OCILayoutError.Unwrap returns the underlying wrapped error.
 func (e *OCILayoutError) Unwrap() error { return e.Cause }
 
+// OCILayoutError.Is reports whether target matches this error.
 func (e *OCILayoutError) Is(target error) bool {
 	return target == ErrOCILayoutCorrupt
 }

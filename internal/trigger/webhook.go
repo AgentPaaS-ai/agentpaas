@@ -73,6 +73,7 @@ type defaultEgressChecker struct {
 	allowedDomains []string
 }
 
+// defaultEgressChecker.IsURLAllowed reports whether url allowed.
 func (d *defaultEgressChecker) IsURLAllowed(rawURL string) bool {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {

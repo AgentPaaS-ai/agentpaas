@@ -19,6 +19,9 @@ type K8sMeteringSink struct {
 
 var _ port.MeteringSink = (*K8sMeteringSink)(nil)
 
+// K8sMeteringSink.Record records k8s metering sink.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *K8sMeteringSink) Record(_ context.Context, measurement port.Measurement) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -29,6 +32,9 @@ func (m *K8sMeteringSink) Record(_ context.Context, measurement port.Measurement
 	return nil
 }
 
+// K8sMeteringSink.Query queries k8s metering sink.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *K8sMeteringSink) Query(_ context.Context, filter port.MeasurementFilter) ([]port.Measurement, error) {
 	if filter.TenantID == "" {
 		return nil, fmt.Errorf("metering query requires a tenant ID")
@@ -57,6 +63,9 @@ func (m *K8sMeteringSink) Query(_ context.Context, filter port.MeasurementFilter
 	return out, nil
 }
 
+// K8sMeteringSink.Summary summary.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *K8sMeteringSink) Summary(_ context.Context, tenantID string, since, until time.Time) (*port.UsageSummary, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

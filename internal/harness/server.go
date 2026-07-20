@@ -158,6 +158,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	}
 }
 
+// Server.ServeHTTP serves http.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }

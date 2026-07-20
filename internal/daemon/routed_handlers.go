@@ -101,6 +101,9 @@ func (s *controlServer) CreateDeployment(ctx context.Context, req *controlv1.Cre
 	}, nil
 }
 
+// controlServer.GetDeployment returns a deployment record by deployment_id.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) GetDeployment(ctx context.Context, req *controlv1.GetDeploymentRequest) (*controlv1.GetDeploymentResponse, error) {
 	if s.deploymentStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
@@ -115,6 +118,9 @@ func (s *controlServer) GetDeployment(ctx context.Context, req *controlv1.GetDep
 	return &controlv1.GetDeploymentResponse{Deployment: deploymentToProto(dep)}, nil
 }
 
+// controlServer.ListDeployments lists deployment records, optionally filtered by package name.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) ListDeployments(ctx context.Context, req *controlv1.ListDeploymentsRequest) (*controlv1.ListDeploymentsResponse, error) {
 	if s.deploymentStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
@@ -134,6 +140,9 @@ func (s *controlServer) ListDeployments(ctx context.Context, req *controlv1.List
 	return &controlv1.ListDeploymentsResponse{Deployments: out}, nil
 }
 
+// controlServer.DeactivateDeployment marks a deployment inactive if it is not already inactive.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) DeactivateDeployment(ctx context.Context, req *controlv1.DeactivateDeploymentRequest) (*controlv1.DeactivateDeploymentResponse, error) {
 	if s.deploymentStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
@@ -159,6 +168,9 @@ func (s *controlServer) DeactivateDeployment(ctx context.Context, req *controlv1
 	return &controlv1.DeactivateDeploymentResponse{Deployment: deploymentToProto(updated)}, nil
 }
 
+// controlServer.CreateDeploymentAlias creates a new deployment alias pointing at a target deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) CreateDeploymentAlias(ctx context.Context, req *controlv1.CreateDeploymentAliasRequest) (*controlv1.CreateDeploymentAliasResponse, error) {
 	if s.deploymentStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
@@ -201,6 +213,9 @@ func (s *controlServer) CreateDeploymentAlias(ctx context.Context, req *controlv
 	return &controlv1.CreateDeploymentAliasResponse{Alias: aliasToProto(got)}, nil
 }
 
+// controlServer.GetDeploymentAlias resolves and returns a deployment alias by name.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) GetDeploymentAlias(ctx context.Context, req *controlv1.GetDeploymentAliasRequest) (*controlv1.GetDeploymentAliasResponse, error) {
 	if s.deploymentStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
@@ -215,6 +230,9 @@ func (s *controlServer) GetDeploymentAlias(ctx context.Context, req *controlv1.G
 	return &controlv1.GetDeploymentAliasResponse{Alias: aliasToProto(got)}, nil
 }
 
+// controlServer.ListDeploymentAliases lists all deployment alias records.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) ListDeploymentAliases(ctx context.Context, req *controlv1.ListDeploymentAliasesRequest) (*controlv1.ListDeploymentAliasesResponse, error) {
 	if s.deploymentStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
@@ -230,6 +248,9 @@ func (s *controlServer) ListDeploymentAliases(ctx context.Context, req *controlv
 	return &controlv1.ListDeploymentAliasesResponse{Aliases: out}, nil
 }
 
+// controlServer.CasDeploymentAlias compare-and-swaps a deployment alias to a new target deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) CasDeploymentAlias(ctx context.Context, req *controlv1.CasDeploymentAliasRequest) (*controlv1.CasDeploymentAliasResponse, error) {
 	if s.deploymentStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "routed store not initialized")
@@ -568,6 +589,9 @@ func invocationReceiptToProto(r *routedrun.InvocationReceipt) *controlv1.Invocat
 	return out
 }
 
+// controlServer.CreateWorkflow creates a workflow or reports that workflow creation is not enabled.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) CreateWorkflow(ctx context.Context, req *controlv1.CreateWorkflowRequest) (*controlv1.CreateWorkflowResponse, error) {
 	_ = ctx // unused context; interface compliance
 	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
@@ -579,6 +603,9 @@ func (s *controlServer) CreateWorkflow(ctx context.Context, req *controlv1.Creat
 	}, nil
 }
 
+// controlServer.GetWorkflow returns workflow state by workflow_id when the workflow store is available.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) GetWorkflow(ctx context.Context, req *controlv1.GetWorkflowRequest) (*controlv1.GetWorkflowResponse, error) {
 	if req.GetWorkflowId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow_id is required")
@@ -598,6 +625,9 @@ func (s *controlServer) GetWorkflow(ctx context.Context, req *controlv1.GetWorkf
 	return &controlv1.GetWorkflowResponse{Workflow: workflowToProto(wf)}, nil
 }
 
+// controlServer.CancelWorkflow requests workflow cancellation or reports the control feature is not enabled.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) CancelWorkflow(ctx context.Context, req *controlv1.CancelWorkflowRequest) (*controlv1.CancelWorkflowResponse, error) {
 	_ = ctx // unused context; interface compliance
 	if req.GetWorkflowId() == "" {
@@ -611,6 +641,9 @@ func (s *controlServer) CancelWorkflow(ctx context.Context, req *controlv1.Cance
 	}, nil
 }
 
+// controlServer.SetWorkflowDesiredState sets desired workflow state or reports the control feature is not enabled.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) SetWorkflowDesiredState(ctx context.Context, req *controlv1.SetWorkflowDesiredStateRequest) (*controlv1.SetWorkflowDesiredStateResponse, error) {
 	_ = ctx // unused context; interface compliance
 	if req.GetWorkflowId() == "" {
@@ -626,6 +659,9 @@ func (s *controlServer) SetWorkflowDesiredState(ctx context.Context, req *contro
 	}, nil
 }
 
+// controlServer.RestartWorkflow restarts a workflow from a source id or reports the feature is not enabled.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) RestartWorkflow(ctx context.Context, req *controlv1.RestartWorkflowRequest) (*controlv1.RestartWorkflowResponse, error) {
 	_ = ctx // unused context; interface compliance
 	if req.GetSourceWorkflowId() == "" {
@@ -640,6 +676,9 @@ func (s *controlServer) RestartWorkflow(ctx context.Context, req *controlv1.Rest
 	}, nil
 }
 
+// controlServer.AmendLimits amends workflow limits with a required reason or reports the feature is not enabled.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) AmendLimits(ctx context.Context, req *controlv1.AmendLimitsRequest) (*controlv1.AmendLimitsResponse, error) {
 	_ = ctx // unused context; interface compliance
 	if req.GetWorkflowId() == "" {
@@ -657,6 +696,9 @@ func (s *controlServer) AmendLimits(ctx context.Context, req *controlv1.AmendLim
 	}, nil
 }
 
+// controlServer.GetWorkflowGraph returns the workflow graph for a workflow_id when available.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *controlServer) GetWorkflowGraph(ctx context.Context, req *controlv1.GetWorkflowGraphRequest) (*controlv1.GetWorkflowGraphResponse, error) {
 	if req.GetWorkflowId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow_id is required")

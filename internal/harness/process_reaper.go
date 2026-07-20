@@ -40,6 +40,7 @@ func startChildReaper() *childReaper {
 	return r
 }
 
+// childReaper.Track tracks child reaper.
 func (r *childReaper) Track(pid int) {
 	if r == nil || pid <= 0 {
 		return
@@ -49,6 +50,7 @@ func (r *childReaper) Track(pid int) {
 	r.tracked[pid] = struct{}{}
 }
 
+// childReaper.Untrack untrack.
 func (r *childReaper) Untrack(pid int) {
 	if r == nil || pid <= 0 {
 		return
@@ -58,6 +60,7 @@ func (r *childReaper) Untrack(pid int) {
 	delete(r.tracked, pid)
 }
 
+// childReaper.Stop stops child reaper.
 func (r *childReaper) Stop() {
 	if r == nil {
 		return

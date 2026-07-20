@@ -119,16 +119,21 @@ func startHarnessRPCServer(appender AuditAppender) (*harnessRPCServer, error) {
 	return s, nil
 }
 
+// harnessRPCServer.Addr returns the address for harness rpc server.
 func (s *harnessRPCServer) Addr() string {
 	return s.addr
 }
 
+// harnessRPCServer.Close closes harness rpc server.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *harnessRPCServer) Close() error {
 	err := s.listener.Close()
 	<-s.done
 	return errors.Join(err, os.RemoveAll(filepath.Dir(s.socket)))
 }
 
+// harnessRPCServer.SetInvoke sets the invoke.
 func (s *harnessRPCServer) SetInvoke(payload map[string]any, budget *BudgetEnforcer, terminate func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -151,6 +156,7 @@ func (s *harnessRPCServer) SetInvoke(payload map[string]any, budget *BudgetEnfor
 	}
 }
 
+// harnessRPCServer.ClearInvoke clears invoke.
 func (s *harnessRPCServer) ClearInvoke() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -207,6 +213,7 @@ func (s *harnessRPCServer) SetProgressMetadata(
 	s.invoke.resumeReason = resumeReason
 }
 
+// harnessRPCServer.FailureEvidence failure evidence.
 func (s *harnessRPCServer) FailureEvidence() *UpstreamEvidence {
 	state := s.currentInvoke()
 	if state == nil {
@@ -283,6 +290,7 @@ func (s *harnessRPCServer) currentInvoke() *rpcInvokeState {
 	return s.invoke
 }
 
+// harnessRPCServer.SetRouter sets the router.
 func (s *harnessRPCServer) SetRouter(router *mcpmanager.Router) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

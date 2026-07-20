@@ -30,6 +30,9 @@ type keychainEntry struct {
 	LastUsedAt time.Time `json:"last_used_at"`
 }
 
+// NewKeychainStore creates and returns a new keychain store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func NewKeychainStore(service string) (*KeychainStore, error) {
 	if runtime.GOOS != "darwin" {
 		return nil, fmt.Errorf("%w: keychain is available only on macOS; no plaintext fallback is available", ErrKeychainUnavailable)
@@ -40,6 +43,9 @@ func NewKeychainStore(service string) (*KeychainStore, error) {
 	return &KeychainStore{service: service, timeout: defaultKeychainTimeout}, nil
 }
 
+// KeychainStore.Set sets keychain store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (k *KeychainStore) Set(ctx context.Context, name string, value []byte) error {
 	if err := ValidateSecretName(name); err != nil {
 		return err
@@ -73,6 +79,9 @@ func (k *KeychainStore) Set(ctx context.Context, name string, value []byte) erro
 	return k.addToManifest(ctx, name)
 }
 
+// KeychainStore.Get returns keychain store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (k *KeychainStore) Get(ctx context.Context, name string) ([]byte, error) {
 	if err := ValidateSecretName(name); err != nil {
 		return nil, err
@@ -88,6 +97,9 @@ func (k *KeychainStore) Get(ctx context.Context, name string) ([]byte, error) {
 	return value, nil
 }
 
+// KeychainStore.List lists keychain store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (k *KeychainStore) List(ctx context.Context) ([]SecretMeta, error) {
 	names, err := k.loadManifest(ctx)
 	if err != nil {
@@ -115,6 +127,9 @@ func (k *KeychainStore) List(ctx context.Context) ([]SecretMeta, error) {
 	return result, nil
 }
 
+// KeychainStore.Delete deletes keychain store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (k *KeychainStore) Delete(ctx context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
 		return err
@@ -125,6 +140,9 @@ func (k *KeychainStore) Delete(ctx context.Context, name string) error {
 	return k.removeFromManifest(ctx, name)
 }
 
+// KeychainStore.TouchLastUsed touch last used.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (k *KeychainStore) TouchLastUsed(ctx context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
 		return err

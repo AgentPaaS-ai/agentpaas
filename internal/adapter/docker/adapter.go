@@ -55,7 +55,9 @@ func NewDockerAdapter(deps DockerAdapterDeps) *DockerAdapter {
 // DockerClock is the system clock used by the baseline adapter.
 type DockerClock struct{ n atomic.Uint64 }
 
+// DockerClock.Now now.
 func (c *DockerClock) Now() time.Time    { return time.Now() }
+// DockerClock.Monotonic monotonic.
 func (c *DockerClock) Monotonic() uint64 { return c.n.Add(1) }
 
 // DockerLeaseStore is an in-memory lease store with TTL-based expiry.
@@ -66,6 +68,9 @@ type DockerLeaseStore struct {
 
 var _ port.LeaseStore = (*DockerLeaseStore)(nil)
 
+// DockerLeaseStore.Acquire acquires docker lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *DockerLeaseStore) Acquire(_ context.Context, r port.LeaseRequest) (port.LeaseID, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -82,6 +87,9 @@ func (l *DockerLeaseStore) Acquire(_ context.Context, r port.LeaseRequest) (port
 	return id, nil
 }
 
+// DockerLeaseStore.Renew renews docker lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *DockerLeaseStore) Renew(_ context.Context, id port.LeaseID, extendBy time.Duration) (time.Time, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -94,6 +102,9 @@ func (l *DockerLeaseStore) Renew(_ context.Context, id port.LeaseID, extendBy ti
 	return s.Expiry, nil
 }
 
+// DockerLeaseStore.Release releases docker lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *DockerLeaseStore) Release(_ context.Context, id port.LeaseID) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -106,6 +117,9 @@ func (l *DockerLeaseStore) Release(_ context.Context, id port.LeaseID) error {
 	return nil
 }
 
+// DockerLeaseStore.Verify verifies docker lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *DockerLeaseStore) Verify(_ context.Context, id port.LeaseID) (port.LeaseStatus, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -120,6 +134,9 @@ func (l *DockerLeaseStore) Verify(_ context.Context, id port.LeaseID) (port.Leas
 	return s, nil
 }
 
+// DockerLeaseStore.Revoke revokes docker lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *DockerLeaseStore) Revoke(_ context.Context, id port.LeaseID) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()

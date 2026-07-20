@@ -175,6 +175,7 @@ type wrappedStream struct {
 	ctx context.Context
 }
 
+// wrappedStream.Context context.
 func (w *wrappedStream) Context() context.Context { return w.ctx }
 
 // CORSMiddleware wraps an HTTP handler with deny-by-default CORS.

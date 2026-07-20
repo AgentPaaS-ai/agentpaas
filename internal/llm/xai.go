@@ -12,10 +12,16 @@ const defaultXAIModel = "grok-3-mini"
 
 type xAIAdapter struct{}
 
+// xAIAdapter.Name returns the provider or component name.
 func (a *xAIAdapter) Name() string       { return "xiai" }
+// xAIAdapter.Endpoint returns the API endpoint URL.
 func (a *xAIAdapter) Endpoint() string   { return xaiEndpoint }
+// xAIAdapter.AuthHeader returns the HTTP authorization header name and value prefix.
 func (a *xAIAdapter) AuthHeader() string { return "Authorization" }
 
+// xAIAdapter.BuildRequest builds the provider-specific request payload and headers.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *xAIAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string, maxTokens ...int) (*http.Request, error) {
 	if model == "" {
 		model = defaultXAIModel
@@ -42,6 +48,9 @@ func (a *xAIAdapter) BuildRequest(ctx context.Context, model, prompt, credential
 	return req, nil
 }
 
+// xAIAdapter.ParseResponse parses the provider-specific response into a normalized result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *xAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
 		return nil, formatHTTPError("xai", statusCode, body)

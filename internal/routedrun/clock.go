@@ -80,8 +80,11 @@ type systemTimerHandle struct {
 	t *time.Timer
 }
 
+// systemTimerHandle.Stop stops system timer handle.
 func (h systemTimerHandle) Stop() bool                  { return h.t.Stop() }
+// systemTimerHandle.Reset resets system timer handle.
 func (h systemTimerHandle) Reset(d time.Duration) bool   { return h.t.Reset(d) }
+// systemTimerHandle.C c.
 func (h systemTimerHandle) C() <-chan time.Time          { return h.t.C }
 
 // ---------------------------------------------------------------------------
@@ -227,8 +230,10 @@ type fakeTimerHandle struct {
 	t     *fakeTimer
 }
 
+// fakeTimerHandle.C c.
 func (h fakeTimerHandle) C() <-chan time.Time { return h.t.c }
 
+// fakeTimerHandle.Stop stops fake timer handle.
 func (h fakeTimerHandle) Stop() bool {
 	h.clock.mu.Lock()
 	defer h.clock.mu.Unlock()
@@ -239,6 +244,7 @@ func (h fakeTimerHandle) Stop() bool {
 	return true
 }
 
+// fakeTimerHandle.Reset resets the fake timer to fire after d.
 func (h fakeTimerHandle) Reset(d time.Duration) bool {
 	h.clock.mu.Lock()
 	defer h.clock.mu.Unlock()

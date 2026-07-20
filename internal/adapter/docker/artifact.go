@@ -26,6 +26,9 @@ type artifactEntry struct {
 
 var _ port.ArtifactStore = (*DockerArtifactStore)(nil)
 
+// DockerArtifactStore.Commit commits docker artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *DockerArtifactStore) Commit(_ context.Context, r port.CommitArtifactRequest) (port.ArtifactID, string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -45,6 +48,9 @@ func (a *DockerArtifactStore) Commit(_ context.Context, r port.CommitArtifactReq
 	return id, digest, nil
 }
 
+// DockerArtifactStore.Authorize authorizes docker artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *DockerArtifactStore) Authorize(_ context.Context, id port.ArtifactID, accessor string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -56,6 +62,9 @@ func (a *DockerArtifactStore) Authorize(_ context.Context, id port.ArtifactID, a
 	return nil
 }
 
+// DockerArtifactStore.Stream streams docker artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *DockerArtifactStore) Stream(_ context.Context, id port.ArtifactID) (io.ReadCloser, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -66,6 +75,9 @@ func (a *DockerArtifactStore) Stream(_ context.Context, id port.ArtifactID) (io.
 	return io.NopCloser(bytes.NewReader(e.data)), nil
 }
 
+// DockerArtifactStore.RangeRead range read.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *DockerArtifactStore) RangeRead(_ context.Context, id port.ArtifactID, offset, length int64) ([]byte, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -83,6 +95,9 @@ func (a *DockerArtifactStore) RangeRead(_ context.Context, id port.ArtifactID, o
 	return e.data[offset:end], nil
 }
 
+// DockerArtifactStore.Verify verifies docker artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *DockerArtifactStore) Verify(_ context.Context, id port.ArtifactID, expectedDigest string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -96,10 +111,16 @@ func (a *DockerArtifactStore) Verify(_ context.Context, id port.ArtifactID, expe
 	return nil
 }
 
+// DockerArtifactStore.Retain retain.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *DockerArtifactStore) Retain(_ context.Context, id port.ArtifactID, _ port.RetentionPolicy) error { // intentionally ignored (reviewed)
 	return nil
 }
 
+// DockerArtifactStore.Delete deletes docker artifact store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *DockerArtifactStore) Delete(_ context.Context, id port.ArtifactID) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()

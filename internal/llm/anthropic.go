@@ -12,10 +12,16 @@ const defaultAnthropicModel = "claude-3-5-sonnet-20241022"
 
 type anthropicAdapter struct{}
 
+// anthropicAdapter.Name returns the provider or component name.
 func (a *anthropicAdapter) Name() string       { return "anthropic" }
+// anthropicAdapter.Endpoint returns the API endpoint URL.
 func (a *anthropicAdapter) Endpoint() string   { return anthropicEndpoint }
+// anthropicAdapter.AuthHeader returns the HTTP authorization header name and value prefix.
 func (a *anthropicAdapter) AuthHeader() string { return "x-api-key" }
 
+// anthropicAdapter.BuildRequest builds the provider-specific request payload and headers.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *anthropicAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string, maxTokens ...int) (*http.Request, error) {
 	if model == "" {
 		model = defaultAnthropicModel
@@ -44,6 +50,9 @@ func (a *anthropicAdapter) BuildRequest(ctx context.Context, model, prompt, cred
 	return req, nil
 }
 
+// anthropicAdapter.ParseResponse parses the provider-specific response into a normalized result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *anthropicAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
 		return nil, formatHTTPError("anthropic", statusCode, body)

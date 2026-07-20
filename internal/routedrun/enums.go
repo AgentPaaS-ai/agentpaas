@@ -46,6 +46,7 @@ var runStatusValues = func() map[string]RunStatus {
 	return m
 }()
 
+// RunStatus.String returns the string representation.
 func (s RunStatus) String() string {
 	if name, ok := runStatusNames[s]; ok {
 		return name
@@ -142,6 +143,7 @@ var workflowStatusValues = func() map[string]WorkflowStatus {
 	return m
 }()
 
+// WorkflowStatus.String returns the string representation.
 func (s WorkflowStatus) String() string {
 	if name, ok := workflowStatusNames[s]; ok {
 		return name
@@ -149,11 +151,15 @@ func (s WorkflowStatus) String() string {
 	return "UNKNOWN"
 }
 
+// WorkflowStatus.Valid reports whether the workflow status value is valid.
 func (s WorkflowStatus) Valid() bool {
 	_, ok := workflowStatusNames[s]
 	return ok
 }
 
+// WorkflowStatus.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s WorkflowStatus) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid WorkflowStatus: %d", s)
@@ -161,6 +167,9 @@ func (s WorkflowStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+// WorkflowStatus.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *WorkflowStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -237,6 +246,7 @@ var nodeStatusValues = func() map[string]NodeStatus {
 	return m
 }()
 
+// NodeStatus.String returns the string representation.
 func (s NodeStatus) String() string {
 	if name, ok := nodeStatusNames[s]; ok {
 		return name
@@ -244,11 +254,15 @@ func (s NodeStatus) String() string {
 	return "UNKNOWN"
 }
 
+// NodeStatus.Valid reports whether the node status value is valid.
 func (s NodeStatus) Valid() bool {
 	_, ok := nodeStatusNames[s]
 	return ok
 }
 
+// NodeStatus.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s NodeStatus) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid NodeStatus: %d", s)
@@ -256,6 +270,9 @@ func (s NodeStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+// NodeStatus.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *NodeStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -316,6 +333,7 @@ var serviceStatusValues = func() map[string]ServiceStatus {
 	return m
 }()
 
+// ServiceStatus.String returns the string representation.
 func (s ServiceStatus) String() string {
 	if name, ok := serviceStatusNames[s]; ok {
 		return name
@@ -323,11 +341,15 @@ func (s ServiceStatus) String() string {
 	return "UNKNOWN"
 }
 
+// ServiceStatus.Valid reports whether the service status value is valid.
 func (s ServiceStatus) Valid() bool {
 	_, ok := serviceStatusNames[s]
 	return ok
 }
 
+// ServiceStatus.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s ServiceStatus) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid ServiceStatus: %d", s)
@@ -335,6 +357,9 @@ func (s ServiceStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+// ServiceStatus.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *ServiceStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -400,6 +425,7 @@ var childBatchStatusValues = func() map[string]ChildBatchStatus {
 	return m
 }()
 
+// ChildBatchStatus.String returns the string representation.
 func (s ChildBatchStatus) String() string {
 	if name, ok := childBatchStatusNames[s]; ok {
 		return name
@@ -407,11 +433,15 @@ func (s ChildBatchStatus) String() string {
 	return "UNKNOWN"
 }
 
+// ChildBatchStatus.Valid reports whether the child batch status value is valid.
 func (s ChildBatchStatus) Valid() bool {
 	_, ok := childBatchStatusNames[s]
 	return ok
 }
 
+// ChildBatchStatus.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s ChildBatchStatus) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid ChildBatchStatus: %d", s)
@@ -419,6 +449,9 @@ func (s ChildBatchStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+// ChildBatchStatus.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *ChildBatchStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -477,6 +510,7 @@ var attemptStatusValues = func() map[string]AttemptStatus {
 	return m
 }()
 
+// AttemptStatus.String returns the string representation.
 func (s AttemptStatus) String() string {
 	if name, ok := attemptStatusNames[s]; ok {
 		return name
@@ -484,11 +518,15 @@ func (s AttemptStatus) String() string {
 	return "UNKNOWN"
 }
 
+// AttemptStatus.Valid reports whether the attempt status value is valid.
 func (s AttemptStatus) Valid() bool {
 	_, ok := attemptStatusNames[s]
 	return ok
 }
 
+// AttemptStatus.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s AttemptStatus) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid AttemptStatus: %d", s)
@@ -496,6 +534,9 @@ func (s AttemptStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+// AttemptStatus.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *AttemptStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -611,6 +652,7 @@ var failureReasonValues = func() map[string]FailureReason {
 	return m
 }()
 
+// FailureReason.String returns the string representation.
 func (r FailureReason) String() string {
 	if name, ok := failureReasonNames[r]; ok {
 		return name
@@ -618,11 +660,15 @@ func (r FailureReason) String() string {
 	return "UNKNOWN"
 }
 
+// FailureReason.Valid reports whether the failure reason value is valid.
 func (r FailureReason) Valid() bool {
 	_, ok := failureReasonNames[r]
 	return ok
 }
 
+// FailureReason.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (r FailureReason) MarshalJSON() ([]byte, error) {
 	if !r.Valid() {
 		return nil, fmt.Errorf("invalid FailureReason: %d", r)
@@ -630,6 +676,9 @@ func (r FailureReason) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.String())
 }
 
+// FailureReason.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (r *FailureReason) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -708,6 +757,7 @@ var failureScopeValues = func() map[string]FailureScope {
 	return m
 }()
 
+// FailureScope.String returns the string representation.
 func (s FailureScope) String() string {
 	if name, ok := failureScopeNames[s]; ok {
 		return name
@@ -715,11 +765,15 @@ func (s FailureScope) String() string {
 	return "UNKNOWN"
 }
 
+// FailureScope.Valid reports whether the failure scope value is valid.
 func (s FailureScope) Valid() bool {
 	_, ok := failureScopeNames[s]
 	return ok
 }
 
+// FailureScope.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s FailureScope) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid FailureScope: %d", s)
@@ -727,6 +781,9 @@ func (s FailureScope) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+// FailureScope.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *FailureScope) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -779,6 +836,7 @@ var recoveryDispositionValues = func() map[string]RecoveryDisposition {
 	return m
 }()
 
+// RecoveryDisposition.String returns the string representation.
 func (d RecoveryDisposition) String() string {
 	if name, ok := recoveryDispositionNames[d]; ok {
 		return name
@@ -786,11 +844,15 @@ func (d RecoveryDisposition) String() string {
 	return "UNKNOWN"
 }
 
+// RecoveryDisposition.Valid reports whether the recovery disposition value is valid.
 func (d RecoveryDisposition) Valid() bool {
 	_, ok := recoveryDispositionNames[d]
 	return ok
 }
 
+// RecoveryDisposition.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (d RecoveryDisposition) MarshalJSON() ([]byte, error) {
 	if !d.Valid() {
 		return nil, fmt.Errorf("invalid RecoveryDisposition: %d", d)
@@ -798,6 +860,9 @@ func (d RecoveryDisposition) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
+// RecoveryDisposition.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (d *RecoveryDisposition) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -835,6 +900,7 @@ func AllDataClassifications() []DataClassification {
 	}
 }
 
+// DataClassification.String returns the string representation.
 func (c DataClassification) String() string {
 	return string(c)
 }
@@ -874,6 +940,9 @@ func MaxClassification(a, b DataClassification) DataClassification {
 	return b
 }
 
+// DataClassification.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (c DataClassification) MarshalJSON() ([]byte, error) {
 	if !c.Valid() {
 		return nil, fmt.Errorf("invalid DataClassification: %q", string(c))
@@ -881,6 +950,9 @@ func (c DataClassification) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(c))
 }
 
+// DataClassification.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (c *DataClassification) UnmarshalJSON(data []byte) error {
 	var s string
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -921,6 +993,7 @@ var resumeCapabilityValues = func() map[string]ResumeCapability {
 	return m
 }()
 
+// ResumeCapability.String returns the string representation.
 func (rc ResumeCapability) String() string {
 	if name, ok := resumeCapabilityNames[rc]; ok {
 		return name
@@ -928,11 +1001,15 @@ func (rc ResumeCapability) String() string {
 	return "UNKNOWN"
 }
 
+// ResumeCapability.Valid reports whether the resume capability value is valid.
 func (rc ResumeCapability) Valid() bool {
 	_, ok := resumeCapabilityNames[rc]
 	return ok
 }
 
+// ResumeCapability.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (rc ResumeCapability) MarshalJSON() ([]byte, error) {
 	if !rc.Valid() {
 		return nil, fmt.Errorf("invalid ResumeCapability: %d", rc)
@@ -940,6 +1017,9 @@ func (rc ResumeCapability) MarshalJSON() ([]byte, error) {
 	return json.Marshal(rc.String())
 }
 
+// ResumeCapability.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (rc *ResumeCapability) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -978,6 +1058,7 @@ var deploymentStatusValues = func() map[string]DeploymentStatus {
 	return m
 }()
 
+// DeploymentStatus.String returns the string representation.
 func (s DeploymentStatus) String() string {
 	if name, ok := deploymentStatusNames[s]; ok {
 		return name
@@ -985,11 +1066,15 @@ func (s DeploymentStatus) String() string {
 	return "UNKNOWN"
 }
 
+// DeploymentStatus.Valid reports whether the deployment status value is valid.
 func (s DeploymentStatus) Valid() bool {
 	_, ok := deploymentStatusNames[s]
 	return ok
 }
 
+// DeploymentStatus.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s DeploymentStatus) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid DeploymentStatus: %d", s)
@@ -997,6 +1082,9 @@ func (s DeploymentStatus) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.String())
 }
 
+// DeploymentStatus.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DeploymentStatus) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -1041,6 +1129,7 @@ var admissionOutcomeValues = func() map[string]AdmissionOutcome {
 	return m
 }()
 
+// AdmissionOutcome.String returns the string representation.
 func (o AdmissionOutcome) String() string {
 	if name, ok := admissionOutcomeNames[o]; ok {
 		return name
@@ -1048,11 +1137,15 @@ func (o AdmissionOutcome) String() string {
 	return "UNKNOWN"
 }
 
+// AdmissionOutcome.Valid reports whether the admission outcome value is valid.
 func (o AdmissionOutcome) Valid() bool {
 	_, ok := admissionOutcomeNames[o]
 	return ok
 }
 
+// AdmissionOutcome.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (o AdmissionOutcome) MarshalJSON() ([]byte, error) {
 	if !o.Valid() {
 		return nil, fmt.Errorf("invalid AdmissionOutcome: %d", o)
@@ -1060,6 +1153,9 @@ func (o AdmissionOutcome) MarshalJSON() ([]byte, error) {
 	return json.Marshal(o.String())
 }
 
+// AdmissionOutcome.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (o *AdmissionOutcome) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -1106,6 +1202,7 @@ var controlCommandValues = func() map[string]ControlCommand {
 	return m
 }()
 
+// ControlCommand.String returns the string representation.
 func (c ControlCommand) String() string {
 	if name, ok := controlCommandNames[c]; ok {
 		return name
@@ -1113,11 +1210,15 @@ func (c ControlCommand) String() string {
 	return "UNKNOWN"
 }
 
+// ControlCommand.Valid reports whether the control command value is valid.
 func (c ControlCommand) Valid() bool {
 	_, ok := controlCommandNames[c]
 	return ok
 }
 
+// ControlCommand.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (c ControlCommand) MarshalJSON() ([]byte, error) {
 	if !c.Valid() {
 		return nil, fmt.Errorf("invalid ControlCommand: %d", c)
@@ -1125,6 +1226,9 @@ func (c ControlCommand) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c.String())
 }
 
+// ControlCommand.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (c *ControlCommand) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
@@ -1151,10 +1255,12 @@ const (
 	AuthScopeAmendLimits AuthorityScope = "runs:amend_limits"
 )
 
+// AuthorityScope.String returns the string representation.
 func (s AuthorityScope) String() string {
 	return string(s)
 }
 
+// AuthorityScope.Valid reports whether the authority scope value is valid.
 func (s AuthorityScope) Valid() bool {
 	switch s {
 	case AuthScopeDefault, AuthScopeControl, AuthScopeAmendLimits:
@@ -1163,6 +1269,9 @@ func (s AuthorityScope) Valid() bool {
 	return false
 }
 
+// AuthorityScope.MarshalJSON marshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s AuthorityScope) MarshalJSON() ([]byte, error) {
 	if !s.Valid() {
 		return nil, fmt.Errorf("invalid AuthorityScope: %q", string(s))
@@ -1170,6 +1279,9 @@ func (s AuthorityScope) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(s))
 }
 
+// AuthorityScope.UnmarshalJSON unmarshals the value as JSON.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *AuthorityScope) UnmarshalJSON(data []byte) error {
 	var str string
 	if err := json.Unmarshal(data, &str); err != nil {
