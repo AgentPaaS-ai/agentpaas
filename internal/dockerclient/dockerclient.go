@@ -14,16 +14,13 @@
 package dockerclient
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/docker/docker/client"
 )
@@ -173,42 +170,6 @@ func New() (*client.Client, error) {
 		return nil, fmt.Errorf("create Docker client (host=%s): %w", host, err)
 	}
 	return cli, nil
-}
-
-// Ping verifies that the Docker daemon at the resolved endpoint is reachable
-// within the given timeout. Returns a descriptive error if not. Used by the
-// daemon startup and `agent doctor` to give the user actionable feedback.
-func Ping(timeout time.Duration) error {
-	cli, err := New()
-	if err != nil {
-		return fmt.Errorf("ping: %w", err)
-	}
-	defer func() { _ = cli.Close() }() // best-effort close
-
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	// If the host is a unix socket, check it's actually present and
-	// reachable at the filesystem level first — gives a much clearer
-	// error than a raw dial timeout.
-	host, _, _ := resolveHost() // best-effort host resolve
-	if u, err := url.Parse(host); err == nil && u.Scheme == "unix" {
-		sockPath := u.Path
-		if _, err := os.Stat(sockPath); err != nil {
-			return fmt.Errorf("docker socket not found at %s (context/colima/Docker Desktop may not be running): %w", sockPath, err)
-		}
-		// Quick dial to confirm it's a live socket.
-		c, err := net.DialTimeout("unix", sockPath, 2*time.Second)
-		if err != nil {
-			return fmt.Errorf("cannot connect to docker socket %s: %w", sockPath, err)
-		}
-		_ = c.Close() // best-effort close
-	}
-
-	if _, err := cli.Ping(ctx); err != nil {
-		return fmt.Errorf("docker daemon ping failed: %w", err)
-	}
-	return nil
 }
 
 // ErrDaemonUnreachable is returned when the Docker daemon cannot be reached.

@@ -442,30 +442,6 @@ func (e *CronExpr) Match(t time.Time) bool {
 		e.DayOfWeek.Match(int(t.Weekday()))
 }
 
-// IsDSTNonexistentTime checks if a time falls in a DST gap.
-func IsDSTNonexistentTime(t time.Time) bool {
-	loc := t.Location()
-	if loc == nil {
-		return false
-	}
-
-	before := t.Add(-time.Minute).In(loc)
-	after := t.Add(time.Minute).In(loc)
-	return after.Sub(before) > 2*time.Minute
-}
-
-// IsDSTRepeatedTime checks if a time falls in a DST overlap.
-func IsDSTRepeatedTime(t time.Time) bool {
-	loc := t.Location()
-	if loc == nil {
-		return false
-	}
-
-	_, offset := t.Zone()
-	_, offsetHourLater := t.Add(time.Hour).In(loc).Zone()
-	return offsetHourLater < offset
-}
-
 func scheduleKey(schedule *CronSchedule) string {
 	if schedule.ScheduleID != "" {
 		return schedule.ScheduleID

@@ -178,17 +178,6 @@ func (aw *ArtifactWorkspace) ValidateAndAccept(
 	return meta, nil
 }
 
-// GetMetadata returns the metadata for an accepted artifact.
-func (aw *ArtifactWorkspace) GetMetadata(relPath string) (*ArtifactMetadata, error) {
-	aw.mu.Lock()
-	defer aw.mu.Unlock()
-	meta, ok := aw.mu.metadata[relPath]
-	if !ok {
-		return nil, fmt.Errorf("%w: artifact %s", ErrNotFound, relPath)
-	}
-	return meta, nil
-}
-
 // ListMetadata returns all accepted artifact metadata.
 func (aw *ArtifactWorkspace) ListMetadata() []*ArtifactMetadata {
 	aw.mu.Lock()

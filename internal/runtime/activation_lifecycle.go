@@ -34,9 +34,6 @@ func NewActivationLifecycle() *ActivationLifecycle {
 	return &ActivationLifecycle{current: ""}
 }
 
-// Current returns the most recent state the lifecycle transitioned into.
-func (l *ActivationLifecycle) Current() WorkloadState { return l.current }
-
 // StrippedIdle returns the authority-stripped IdleState produced by the
 // most recent running→idle transition under warm. It is the empty IdleState
 // if no such transition has occurred.

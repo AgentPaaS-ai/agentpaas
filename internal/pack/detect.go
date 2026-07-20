@@ -33,66 +33,6 @@ type LLMConfig struct {
 	Route      string `yaml:"route"`      // v0.3: logical model route (mutually exclusive with provider/model/credential)
 }
 
-// ValidateLLMConfig validates the LLMConfig for v0.3 rules.
-// Route is mutually exclusive with provider, model, and credential.
-// When Route is set, it must match the route ID grammar.
-func ValidateLLMConfig(cfg *LLMConfig) error {
-	if cfg == nil {
-		return nil
-	}
-	if cfg.Route != "" && (cfg.Provider != "" || cfg.Model != "" || cfg.Credential != "") {
-		return fmt.Errorf("llm.route is mutually exclusive with provider, model, and credential")
-	}
-	if cfg.Route != "" {
-		if err := ValidateRouteID(cfg.Route); err != nil {
-			return fmt.Errorf("llm.route: %w", err)
-		}
-	}
-	return nil
-}
-
-// ValidateRouteID validates a route ID against the v0.3 grammar:
-// ^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$
-// Allowed: lowercase letters, digits, single separators (dot, underscore, hyphen)
-// Length: 1-128 characters
-func ValidateRouteID(id string) error {
-	if id == "" {
-		return fmt.Errorf("route ID must not be empty")
-	}
-	if len(id) > 128 {
-		return fmt.Errorf("route ID %q exceeds 128 characters", id)
-	}
-	// Must start with a lowercase letter
-	if id[0] < 'a' || id[0] > 'z' {
-		return fmt.Errorf("route ID %q must start with a lowercase letter", id)
-	}
-	// Check each character
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		if c >= 'a' && c <= 'z' {
-			continue
-		}
-		if c >= '0' && c <= '9' {
-			continue
-		}
-		if c == '.' || c == '_' || c == '-' {
-			// Check next char is not a separator and not end
-			if i+1 >= len(id) {
-				return fmt.Errorf("route ID %q: trailing separator not allowed", id)
-			}
-			next := id[i+1]
-			if next == '.' || next == '_' || next == '-' || next < 'a' || next > 'z' {
-				if next < '0' || next > '9' {
-					return fmt.Errorf("route ID %q: separator must be followed by alphanumeric", id)
-				}
-			}
-			continue
-		}
-		return fmt.Errorf("route ID %q: invalid character %q (only lowercase letters, digits, and solitary separators are allowed)", id, c)
-	}
-	return nil
-}
-
 // AgentYAML is a minimal subset of agent.yaml fields needed for detection
 // and packaging. The runtime field overrides auto-detection.
 // Both flat fields and the v1 metadata/spec schema are supported.
