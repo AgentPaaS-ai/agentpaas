@@ -51,6 +51,38 @@ type SemanticCheckpoint struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ComputeDigest returns SHA-256 hex of the canonical checkpoint content
+// (Phase, CompletedWork, RemainingWork, LastCommittedAction, SafeToResume,
+// ArtifactRefs). This is used to verify checkpoint integrity on read-back.
+// An empty digest for a safe-to-resume checkpoint is invalid per pitfall #149.
+func (cp *SemanticCheckpoint) ComputeDigest() string {
+	canonical := map[string]any{
+		"phase":                 cp.Phase,
+		"completed_work":        cp.CompletedWork,
+		"remaining_work":        cp.RemainingWork,
+		"last_committed_action": cp.LastCommittedAction,
+		"safe_to_resume":        cp.SafeToResume,
+		"artifact_references":   cp.ArtifactRefs,
+	}
+	b, _ := json.Marshal(canonical)
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
+// VerifyDigest checks that the checkpoint's digest is non-empty and matches
+// the SHA-256 of the canonical checkpoint content. Returns nil if valid, or
+// an error describing the mismatch.
+func (cp *SemanticCheckpoint) VerifyDigest() error {
+	if cp.CheckpointDigest == "" {
+		return fmt.Errorf("checkpoint digest is empty (pitfall #149)")
+	}
+	expected := cp.ComputeDigest()
+	if cp.CheckpointDigest != expected {
+		return fmt.Errorf("checkpoint digest mismatch: stored=%s computed=%s", cp.CheckpointDigest, expected)
+	}
+	return nil
+}
+
 // CheckpointStore defines persistence operations for semantic checkpoints.
 type CheckpointStore interface {
 	// SaveCheckpoint atomically persists a semantic checkpoint.
@@ -95,6 +127,9 @@ func (s *LocalStore) SaveCheckpoint(ctx context.Context, cp *SemanticCheckpoint)
 	}
 
 	cp.SchemaVersion = CurrentSchemaVersion
+	// Auto-compute the checkpoint digest from canonical content so that
+	// saved checkpoints always carry a verifiable integrity digest.
+	cp.CheckpointDigest = cp.ComputeDigest()
 	data, err := json.Marshal(cp)
 	if err != nil {
 		return fmt.Errorf("marshal checkpoint: %w", err)
@@ -124,6 +159,10 @@ func (s *LocalStore) GetCheckpoint(ctx context.Context, checkpointID CheckpointI
 	var cp SemanticCheckpoint
 	if err := json.Unmarshal(data, &cp); err != nil {
 		return nil, fmt.Errorf("unmarshal checkpoint: %w", err)
+	}
+	// Verify integrity digest.
+	if err := cp.VerifyDigest(); err != nil {
+		return nil, fmt.Errorf("checkpoint digest verification failed: %w", err)
 	}
 	return &cp, nil
 }
@@ -161,6 +200,10 @@ func (s *LocalStore) GetLatestCheckpoint(ctx context.Context, attemptID AttemptI
 			continue
 		}
 		if !cp.SafeToResume {
+			continue
+		}
+		// Verify integrity digest; skip checkpoints that fail verification.
+		if err := cp.VerifyDigest(); err != nil {
 			continue
 		}
 		if latest == nil || cp.Sequence > latest.Sequence {

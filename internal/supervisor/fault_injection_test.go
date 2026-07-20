@@ -635,6 +635,8 @@ func TestLateSuccessAfterCancellationCannotWin(t *testing.T) {
 // overwriting it in the store. The store itself rejects duplicate checkpoint
 // IDs (SaveCheckpoint returns ErrAlreadyExists for the same ID), which is the
 // first line of tamper defense. The checkpoint data is immutable once committed.
+// Additionally, SaveCheckpoint now auto-computes the checkpoint digest from
+// canonical content, and GetLatestCheckpoint verifies it on read-back.
 func TestCheckpointDigestTamper(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
@@ -655,7 +657,7 @@ func TestCheckpointDigestTamper(t *testing.T) {
 		CompletedWork:    []string{"a"},
 		RemainingWork:    []string{"b"},
 		SafeToResume:     true,
-		CheckpointDigest: "digest-original",
+		CheckpointDigest: "digest-original", // Will be replaced by auto-computed digest.
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
@@ -689,13 +691,19 @@ func TestCheckpointDigestTamper(t *testing.T) {
 		t.Fatalf("SaveCheckpoint (tamper): want ErrAlreadyExists, got %v", err)
 	}
 
-	// The original checkpoint remains intact.
+	// The original checkpoint remains intact with its auto-computed digest.
 	got, err := h.store.GetLatestCheckpoint(ctx, attID)
 	if err != nil {
 		t.Fatalf("GetLatestCheckpoint: %v", err)
 	}
-	if got.CheckpointDigest != "digest-original" {
-		t.Fatalf("checkpoint digest = %s, want digest-original (tamper rejected)", got.CheckpointDigest)
+	if got.CheckpointID != "cp-tamper-test" {
+		t.Fatalf("checkpoint id = %s, want cp-tamper-test", got.CheckpointID)
+	}
+	if got.CheckpointDigest == "" {
+		t.Fatal("checkpoint digest is empty (should have been auto-computed)")
+	}
+	if len(got.CompletedWork) != 1 || got.CompletedWork[0] != "a" {
+		t.Fatal("original checkpoint content was tampered")
 	}
 
 	// Simulate restart: the supervisor preserves the original checkpoint.
@@ -708,8 +716,11 @@ func TestCheckpointDigestTamper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetLatestCheckpoint after reconcile: %v", err)
 	}
-	if got2.CheckpointDigest != "digest-original" {
-		t.Fatalf("checkpoint digest after reconcile = %s, want digest-original", got2.CheckpointDigest)
+	if got2.CheckpointID != "cp-tamper-test" {
+		t.Fatalf("checkpoint id after reconcile = %s, want cp-tamper-test", got2.CheckpointID)
+	}
+	if got2.CheckpointDigest == "" {
+		t.Fatal("checkpoint digest after reconcile is empty (should have been auto-computed)")
 	}
 }
 
@@ -1335,23 +1346,22 @@ func TestFault_CheckpointSurvivesReconcileCommitBoundary(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	originalDigest := "digest-boundary-test"
 	cp := &routedrun.SemanticCheckpoint{
-		SchemaVersion:      routedrun.CurrentSchemaVersion,
-		CheckpointID:       "cp-boundary",
-		AttemptID:          attID,
-		RunID:              h.runID,
-		WorkflowID:         h.workflowID,
-		LeaseID:            h.leaseID,
-		Phase:              "boundary-phase",
-		CompletedWork:      []string{"work-a", "work-b"},
-		RemainingWork:      []string{"work-c"},
-		ArtifactRefs:       []string{"artifact-1.json"},
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		CheckpointID:        "cp-boundary",
+		AttemptID:           attID,
+		RunID:               h.runID,
+		WorkflowID:          h.workflowID,
+		LeaseID:             h.leaseID,
+		Phase:               "boundary-phase",
+		CompletedWork:       []string{"work-a", "work-b"},
+		RemainingWork:       []string{"work-c"},
+		ArtifactRefs:        []string{"artifact-1.json"},
 		LastCommittedAction: "action-1",
-		SafeToResume:       true,
-		CheckpointDigest:   originalDigest,
-		Sequence:           42,
-		CreatedAt:          h.clock.Now(),
+		SafeToResume:        true,
+		CheckpointDigest:    "digest-boundary-test", // Will be replaced by auto-computed digest.
+		Sequence:            42,
+		CreatedAt:           h.clock.Now(),
 	}
 	if err := h.supervisor.HandleCheckpoint(ctx, attID, CheckpointEvent{
 		AttemptID:  attID,
@@ -1375,8 +1385,8 @@ func TestFault_CheckpointSurvivesReconcileCommitBoundary(t *testing.T) {
 	if got.CheckpointID != "cp-boundary" {
 		t.Fatalf("checkpoint id = %s, want cp-boundary", got.CheckpointID)
 	}
-	if got.CheckpointDigest != originalDigest {
-		t.Fatalf("checkpoint digest = %s, want %s", got.CheckpointDigest, originalDigest)
+	if got.CheckpointDigest == "" {
+		t.Fatal("checkpoint digest is empty (should have been auto-computed)")
 	}
 	if got.Sequence != 42 {
 		t.Fatalf("checkpoint sequence = %d, want 42", got.Sequence)
