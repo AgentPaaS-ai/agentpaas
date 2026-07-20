@@ -170,20 +170,6 @@ const (
 	GovernedOpMCP
 )
 
-// String returns the stable name for a governed-operation kind.
-func (k GovernedOperationKind) String() string {
-	switch k {
-	case GovernedOpModel:
-		return "model"
-	case GovernedOpHTTP:
-		return "http"
-	case GovernedOpMCP:
-		return "mcp"
-	default:
-		return "unspecified"
-	}
-}
-
 // ProgressEvent is an authenticated progress / heartbeat event. The supervisor
 // accepts it as liveness evidence ONLY when HMAC verifies against the
 // attempt's control key. An empty HMAC or a mismatched HMAC is rejected
@@ -288,15 +274,6 @@ func WithAuditLogger(log AuditLogger) SupervisorOption {
 	}
 }
 
-// WithTimer injects a timer (for fake-clock tests).
-func WithTimer(t routedrun.Timer) SupervisorOption {
-	return func(s *Supervisor) {
-		if t != nil {
-			s.timer = t
-		}
-	}
-}
-
 // NewSupervisor constructs a Supervisor backed by the given durable store,
 // result store, control-journal factory, and clock. The supervisor is
 // independent of any CLI request context: callers invoke its methods from the
@@ -387,8 +364,3 @@ func (s *Supervisor) HandleMCPEnd(ctx context.Context, attemptID routedrun.Attem
 // lease, ingests any committed terminal result/checkpoint, and never blindly
 // re-invokes work. It also reconciles active-time segment state. The
 // implementation lives in reconcile.go.
-
-// Cleanup removes ephemeral resources (containers, networks, temp creds,
-// journal keys) for a run. It is idempotent and preserves durable state (run
-// record, checkpoints, artifacts, control journal). The implementation lives
-// in cleanup.go.

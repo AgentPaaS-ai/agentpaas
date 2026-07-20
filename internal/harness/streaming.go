@@ -614,18 +614,6 @@ func usageToPayload(u *runtime.Usage) []byte {
 	))
 }
 
-// AcceptDelta is the trusted entry point for a provider to push a delta into a
-// running stream after the delta channel has been drained (e.g. for
-// out-of-band providers). It rejects late deltas after the stream is closed.
-// This is exported for adapters that integrate via a push model rather than a
-// delta channel; the default pump path does not call it.
-func (a *StreamingAdapter) AcceptDelta(state *streamState, _ ModelStreamDelta) error { // intentionally ignored (reviewed)
-	if state.isClosed() {
-		return ErrStreamClosed
-	}
-	return nil
-}
-
 // newStreamCallIDs allocates stable, non-empty call and request IDs. It uses
 // crypto/rand via newFailureID so IDs are not predictable.
 func newStreamCallIDs() (callID, requestID string, err error) {

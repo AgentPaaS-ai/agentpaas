@@ -64,46 +64,6 @@ const (
 	StateCleaned  WorkloadState = "cleaned"
 )
 
-// FromPortState converts a frozen port.WorkloadState to the runtime
-// WorkloadState. Unknown values map to the empty string.
-func FromPortState(s port.WorkloadState) WorkloadState {
-	switch s {
-	case port.WorkloadPrepared:
-		return StatePrepared
-	case port.WorkloadRunning:
-		return StateRunning
-	case port.WorkloadFenced:
-		return StateFenced
-	case port.WorkloadStopped:
-		return StateStopped
-	case port.WorkloadCleaned:
-		return StateCleaned
-	default:
-		return ""
-	}
-}
-
-// ToPortState converts a runtime WorkloadState back to the frozen
-// port.WorkloadState. StateIdle has no port equivalent and maps to the
-// empty string; callers must ensure they do not hand StateIdle to code
-// that expects a port state.
-func ToPortState(s WorkloadState) port.WorkloadState {
-	switch s {
-	case StatePrepared:
-		return port.WorkloadPrepared
-	case StateRunning:
-		return port.WorkloadRunning
-	case StateFenced:
-		return port.WorkloadFenced
-	case StateStopped:
-		return port.WorkloadStopped
-	case StateCleaned:
-		return port.WorkloadCleaned
-	default:
-		return ""
-	}
-}
-
 // WarmPoolConfig describes the bounded warm pool parameters required by a
 // warm-mode activation policy. All fields must be set: tenant, package
 // digest, a positive bounded pool size, and an explicit resource charge.

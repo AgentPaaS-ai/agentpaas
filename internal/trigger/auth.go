@@ -165,12 +165,6 @@ func CallerFromContext(parent context.Context) (CallerID, bool) {
 	return c, ok
 }
 
-// CallerMethodFromContext returns the auth method, if any.
-func CallerMethodFromContext(parent context.Context) (AuthMethod, bool) {
-	m, ok := parent.Value(callerMethodKey{}).(AuthMethod)
-	return m, ok
-}
-
 type wrappedStream struct {
 	grpc.ServerStream
 	ctx context.Context

@@ -1,9 +1,7 @@
 package identity
 
 import (
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -157,22 +155,4 @@ func VerifyWorkloadCert(cert *x509.Certificate) error {
 		return fmt.Errorf("certificate expired at %v", cert.NotAfter)
 	}
 	return nil
-}
-
-// FingerprintPublicKey computes a SHA-256 fingerprint of the DER-encoded
-// public key bytes and returns it as a hex-encoded string with colons
-// every two characters (similar to SSH key fingerprint format).
-func FingerprintPublicKey(pub *x509.Certificate) string {
-	der, err := x509.MarshalPKIXPublicKey(pub.PublicKey)
-	if err != nil {
-		return ""
-	}
-	hash := sha256.Sum256(der)
-	// Format as hex with colons: xx:xx:xx...
-	hexStr := hex.EncodeToString(hash[:])
-	parts := make([]string, 0, len(hexStr)/2)
-	for i := 0; i < len(hexStr); i += 2 {
-		parts = append(parts, hexStr[i:i+2])
-	}
-	return strings.Join(parts, ":")
 }

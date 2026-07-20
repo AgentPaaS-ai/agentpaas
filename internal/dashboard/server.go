@@ -111,11 +111,6 @@ func NewServerWithAudit(addr, apiKey string, store *otel.Store, mgr ResourceMana
 	return s
 }
 
-// SetAuditIndexer sets the audit SQLite indexer used by audit search routes.
-func (s *Server) SetAuditIndexer(indexer *audit.SQLiteIndexer) {
-	s.auditIndexer = indexer
-}
-
 // SetPolicyDir sets the base directory used to resolve relative policy paths.
 func (s *Server) SetPolicyDir(policyDir string) {
 	s.policyDir = policyDir
