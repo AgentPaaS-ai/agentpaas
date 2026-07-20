@@ -4,20 +4,18 @@
 //
 //	agent [--json] [--socket <path>] [--home <dir>]
 //	  version              — Print CLI version information
-//	  daemon               — Daemon lifecycle commands
-//	    status             — Query daemon version and readiness
-//	    start              — Start the control daemon
-//	    stop               — Stop the control daemon
-//	    restart            — Restart the control daemon
-//	    install            — Install as a system service (not yet implemented)
-//	    uninstall          — Remove from system services (not yet implemented)
-//	  doctor               — Run system diagnostics (v0 stub)
-//	  pack                 — Build an agent image
-//	  run                  — Start a new agent run
+//	  daemon               — Daemon lifecycle (status/start/stop/restart/install)
+//	  doctor               — System diagnostics
+//	  init                 — Scaffold a new agent project
+//	  pack                 — Build an agent image / lock
+//	  export               — Export bundle artifacts
+//	  bundle               — Offline bundle inspect
+//	  install              — Install a bundle
+//	  run                  — Start or control runs
 //	  stop                 — Terminate a running agent
 //	  logs                 — Follow agent logs
-//	  policy               — Policy management commands
-//	  secrets              — Secret management commands
+//	  policy               — Policy management
+//	  secrets              — Secret management
 //	  audit                — Audit log commands
 //	  validate             — Validate an agent project
 //	  summarize            — Summarize a completed run
@@ -26,6 +24,16 @@
 //	  recommend-patch      — Suggest a policy patch
 //	  timeline             — Show run timeline
 //	  next-action          — Recommend next action
+//	  status               — Run/agent status
+//	  trigger              — Trigger API helpers
+//	  cron                 — Cron schedule management
+//	  trust                — Trust store commands
+//	  identity             — Publisher/local identity
+//	  installed            — List installed agents
+//	  fork                 — Fork an agent project
+//	  provenance           — Show provenance
+//	  deploy               — Deployment and alias CAS surface
+//	  confirm(ations)      — Trust-boundary confirmations
 //
 // Global flags:
 //
@@ -37,5 +45,7 @@
 //
 // Commands that interact with a running daemon use gRPC over a Unix domain
 // socket. The connection helper in connection.go handles dialing and presents
-// a clear error when the daemon is not running.
+// a clear error when the daemon is not running. Paths passed to the daemon are
+// resolved to absolute form; --home/--socket values are validated via
+// home.ValidatePath when explicitly set.
 package cli
