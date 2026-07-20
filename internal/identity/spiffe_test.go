@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -227,4 +228,36 @@ func createSelfSignedCert(key *ecdsa.PrivateKey, notBefore, notAfter time.Time) 
 		return nil, err
 	}
 	return x509.ParseCertificate(certDER)
+}
+
+func TestValidateURIComponent(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		component string
+		wantErr   bool
+	}{
+		{"ok", "agent-1", false},
+		{"ok_version", "1.2.3", false},
+		{"dotdot", "..", true},
+		{"embedded_dotdot", "a..b", true}, // contains ".."
+		{"slash", "a/b", true},
+		{"leading_slash", "/a", true},
+		{"empty_ok", "", false}, // empty is not traversal
+		{"unicode_ok", "エージェント", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateURIComponent(tc.component, "field")
+			if tc.wantErr && err == nil {
+				t.Fatalf("ValidateURIComponent(%q) expected error", tc.component)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("ValidateURIComponent(%q) unexpected: %v", tc.component, err)
+			}
+			if tc.wantErr && err != nil && !errors.Is(err, ErrInvalidComponent) {
+				t.Fatalf("want ErrInvalidComponent, got %v", err)
+			}
+		})
+	}
 }

@@ -55,6 +55,9 @@ func TestEmbeddedFirewallScript_Content(t *testing.T) {
 
 func TestInitEgressFirewall_SkipsWhenDisabled(t *testing.T) {
 	t.Setenv("AGENTPAAS_EGRESS_FIREWALL", "0")
+	if EgressFirewallEnabled() {
+		t.Fatal("firewall must report disabled when AGENTPAAS_EGRESS_FIREWALL=0")
+	}
 	// Must not panic on macOS / without iptables.
 	InitEgressFirewall()
 }
@@ -64,11 +67,16 @@ func TestInitEgressFirewall_SkipsWhenDisabled(t *testing.T) {
 // abort harness startup (defense-in-depth, not fail-closed).
 func TestInitEgressFirewall_WarnsButContinuesWhenIptablesMissing(t *testing.T) {
 	t.Setenv("AGENTPAAS_EGRESS_FIREWALL", "1")
+	if !EgressFirewallEnabled() {
+		t.Fatal("firewall must report enabled when AGENTPAAS_EGRESS_FIREWALL=1")
+	}
 
 	// On macOS and most non-Linux dev environments, iptables won't be available.
 	// The harness must NOT panic or call os.Exit — it should log and continue.
 	InitEgressFirewall()
 	// If we reach here, the harness did not abort.
+	// Re-entrant call must also be safe (no double-init panic).
+	InitEgressFirewall()
 }
 
 // TestInitEgressFirewallDefenseInDepthMessage verifies the defense-in-depth

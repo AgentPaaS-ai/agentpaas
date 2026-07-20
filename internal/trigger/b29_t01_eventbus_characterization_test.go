@@ -83,7 +83,7 @@ drainLoop:
 	}
 	// The expected behavior: exactly 64 buffered, 1 dropped.
 	if received != 64 {
-		t.Logf("received %d events (expected 64 buffered, %d dropped)", received, 65-received)
+		t.Errorf("received %d events (expected 64 buffered, %d dropped)", received, 65-received)
 	}
 }
 

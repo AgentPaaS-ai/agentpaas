@@ -64,7 +64,7 @@ func TestB30T02PartB_DuplicateJobEnvelope_OneHandler(t *testing.T) {
 		Payload:       `{"envelope":"job-1-dup"}`,
 	}
 	if err := cj.Append(dup); err == nil {
-		t.Logf("BUG: ControlJournal accepted a duplicate-sequence accepted event (duplicate envelope not rejected)")
+		t.Error("ControlJournal accepted a duplicate-sequence accepted event (duplicate envelope not rejected)")
 	}
 
 	// Read back: exactly one accepted event must be present — no second
@@ -144,7 +144,7 @@ func TestB30T02PartB_DuplicateJobEnvelope_AfterCrashReopensJournal(t *testing.T)
 		Payload:       `{"envelope":"job-crash-dup"}`,
 	}
 	if err := cj2.Append(dup); err == nil {
-		t.Logf("BUG: ControlJournal accepted a duplicate-sequence event after reopen (envelope re-consumed)")
+		t.Error("ControlJournal accepted a duplicate-sequence event after reopen (envelope re-consumed)")
 	}
 	got, _ := cj2.Read(1)
 	if len(got) != 1 {
