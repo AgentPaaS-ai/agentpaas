@@ -400,7 +400,7 @@ See [docs/sharing.md](docs/sharing.md) for the full guide.
 - [Threat model](docs/threat-model.md)
 - [Bundle format](docs/bundle-format.md)
 - [Audit export](docs/audit-export.md) — Export signed audit trail for verification on a second machine
-- [Golden loop test](docs/execution/golden-loop-test.md) — 12-phase release gate test
+- [Golden loop test](docs/execution/reference/e2e-test-plan.md) — end-to-end release gate test
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
 - [Known limitations](docs/known-limitations.md)
 
