@@ -134,11 +134,10 @@ func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Append STARTED: %v", err)
 	}
-	// Legitimate third event (seq 3) to create gap awareness.
-	// The journal's lastSeq is now 1; we'll place the forged event at seq 2.
+	// Legitimate second event (seq 2).
 	if err := cj.Append(routedrun.InvokeJobEvent{
 		SchemaVersion: "1.0",
-		Sequence:      3,
+		Sequence:      2,
 		Timestamp:     time.Now().UTC(),
 		EventKind:     routedrun.InvokeJobEventProgressRef,
 		Payload:       `{"phase":"test"}`,
@@ -147,10 +146,10 @@ func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 	}
 	_ = cj.Close()
 
-	// Attacker forges ACCEPTED at sequence 2 with a bogus HMAC (no key).
+	// Attacker forges ACCEPTED at sequence 3 with a bogus HMAC (no key).
 	forged := routedrun.InvokeJobEvent{
 		SchemaVersion: "1.0",
-		Sequence:      2,
+		Sequence:      3,
 		Timestamp:     time.Now().UTC(),
 		EventKind:     routedrun.InvokeJobEventAccepted,
 		Payload:       `{"forged":true,"result":"evil"}`,
@@ -160,7 +159,7 @@ func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal forged: %v", err)
 	}
-	forgedPath := filepath.Join(stateRoot, "runs", runID, "control", attemptID, "event-0000000002.json")
+	forgedPath := filepath.Join(stateRoot, "runs", runID, "control", attemptID, "event-0000000003.json")
 	if err := os.WriteFile(forgedPath, data, 0o600); err != nil {
 		t.Fatalf("write forged event: %v", err)
 	}
@@ -186,14 +185,14 @@ func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 			t.Fatal("ADVERSARY BREAK: forged ACCEPTED control-journal event accepted without valid HMAC")
 		}
 	}
-	// Verify the legitimate events are present (seq 1 STARTED, seq 3 PROGRESS).
+	// Verify the legitimate events are present (seq 1 STARTED, seq 2 PROGRESS).
 	foundStarted := false
 	foundProgress := false
 	for _, ev := range events {
 		if ev.Sequence == 1 && ev.EventKind == routedrun.InvokeJobEventStarted {
 			foundStarted = true
 		}
-		if ev.Sequence == 3 && ev.EventKind == routedrun.InvokeJobEventProgress {
+		if ev.Sequence == 2 && ev.EventKind == routedrun.InvokeJobEventProgressRef {
 			foundProgress = true
 		}
 	}

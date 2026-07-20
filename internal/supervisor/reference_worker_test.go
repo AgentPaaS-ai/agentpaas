@@ -3,6 +3,7 @@ package supervisor
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,6 +58,7 @@ type refWorkerHarness struct {
 	attemptID   routedrun.AttemptID
 	leaseID     routedrun.LeaseID
 	controlKey  []byte
+	invocationID routedrun.InvocationID // F28: stored from claim
 }
 
 func newRefWorkerHarness(t *testing.T) *refWorkerHarness {
@@ -134,7 +136,11 @@ func newRefWorkerHarness(t *testing.T) *refWorkerHarness {
 func (h *refWorkerHarness) claimAndBuildWorker() {
 	h.t.Helper()
 	ctx := context.Background()
-	attID, err := h.supervisor.ClaimForRun(ctx, h.runID, "inv-ref-worker")
+
+	// Generate a unique invocation ID (F28).
+	h.invocationID = routedrun.InvocationID(fmt.Sprintf("inv-%s-%d", h.t.Name(), time.Now().UnixNano()))
+
+	attID, err := h.supervisor.ClaimForRun(ctx, h.runID, h.invocationID)
 	if err != nil {
 		h.t.Fatalf("ClaimForRun: %v", err)
 	}
@@ -167,6 +173,9 @@ func (h *refWorkerHarness) claimAndBuildWorker() {
 		LeaseID:      h.leaseID,
 		ControlKey:   h.controlKey,
 		ArtifactRoot: artifactRoot,
+		RunID:        h.runID,
+		WorkflowID:   h.workflowID,
+		InvocationID: h.invocationID,
 	})
 	h.worker = w
 }
@@ -452,6 +461,9 @@ func TestReferenceWorker_ResumeSkipsCommitted(t *testing.T) {
 		LeaseID:      h.leaseID,
 		ControlKey:   h.controlKey,
 		ArtifactRoot: artifactRoot,
+		RunID:        h.runID,
+		WorkflowID:   h.workflowID,
+		InvocationID: h.invocationID,
 	})
 
 	// Run with ResumeFrom set to the checkpoint sequence after phase 2.
@@ -472,5 +484,68 @@ func TestReferenceWorker_ResumeSkipsCommitted(t *testing.T) {
 	}
 	if len(completed) < 11 {
 		t.Fatalf("resumed worker only executed %d turns, want at least 11", len(completed))
+	}
+}
+
+// TestReferenceWorker_ContextBoundExceeded verifies that the worker returns
+// ErrContextBoundExceeded when accumulated tokens exceed the configured bound (F27).
+func TestReferenceWorker_ContextBoundExceeded(t *testing.T) {
+	h := newRefWorkerHarness(t)
+	h.claimAndBuildWorker()
+
+	// Override the worker's context bound to force an overflow after a few turns.
+	// Each fixture document is ~100-150 bytes, each model response is ~150-300 bytes.
+	// A bound of 500 ensures we hit it well before 21 turns.
+	h.worker.contextBound = 500
+
+	err := h.runWorker(RunOptions{})
+	if err == nil {
+		t.Fatal("expected context bound exceeded error, got nil")
+	}
+	if !errors.Is(err, ErrContextBoundExceeded) {
+		t.Fatalf("expected ErrContextBoundExceeded, got: %v", err)
+	}
+}
+
+// TestReferenceWorker_UsesConfiguredIDs verifies the worker uses the RunID,
+// WorkflowID, and InvocationID from the config rather than hardcoded literals (F28).
+func TestReferenceWorker_UsesConfiguredIDs(t *testing.T) {
+	h := newRefWorkerHarness(t)
+	h.claimAndBuildWorker()
+
+	if err := h.runWorker(RunOptions{}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Verify the worker stores the configured IDs (not hardcoded literals).
+	gotRun := h.worker.GetRunID()
+	if gotRun != h.runID {
+		t.Fatalf("worker RunID = %q, want %q", gotRun, h.runID)
+	}
+	gotWF := h.worker.GetWorkflowID()
+	if gotWF != h.workflowID {
+		t.Fatalf("worker WorkflowID = %q, want %q", gotWF, h.workflowID)
+	}
+	gotInv := h.worker.GetInvocationID()
+	if gotInv != h.invocationID {
+		t.Fatalf("worker InvocationID = %q, want %q", gotInv, h.invocationID)
+	}
+
+	// Also verify the stored checkpoint has the real RunID and WorkflowID.
+	// The first checkpoint should be in the store.
+	cpPhase1ID := h.worker.CurrentCheckpointID()
+	if cpPhase1ID == "" {
+		t.Fatal("no checkpoint ID recorded")
+	}
+	ctx := context.Background()
+	cp, err := h.store.GetCheckpoint(ctx, routedrun.CheckpointID(cpPhase1ID))
+	if err != nil {
+		t.Fatalf("GetCheckpoint %s: %v", cpPhase1ID, err)
+	}
+	if cp.RunID != h.runID {
+		t.Fatalf("stored checkpoint RunID = %q, want %q", cp.RunID, h.runID)
+	}
+	if cp.WorkflowID != h.workflowID {
+		t.Fatalf("stored checkpoint WorkflowID = %q, want %q", cp.WorkflowID, h.workflowID)
 	}
 }

@@ -79,6 +79,9 @@ var (
 	// ErrDigestMismatch is returned when a ResultEvent's ResultDigest does not
 	// match the SHA-256 of its StructuredResult.
 	ErrDigestMismatch = errors.New("supervisor: result digest mismatch")
+	// ErrContextBoundExceeded is returned when a durable worker exceeds its
+	// configured context bound (F27).
+	ErrContextBoundExceeded = errors.New("supervisor: context bound exceeded")
 )
 
 // DurableStore is the subset of routedrun.LocalStore the supervisor drives
