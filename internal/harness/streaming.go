@@ -42,6 +42,10 @@ const (
 	// adapter blocks (does not drop) when the channel is full, up to
 	// BackpressureTimeout.
 	StreamChannelBufferSize = 128
+	// maxBufferSize caps the total buffered output bytes under
+	// buffered_release. When exceeded, the adapter closes the stream with
+	// response_failed to prevent unbounded memory growth (B29-1).
+	maxBufferSize = 10 * 1024 * 1024 // 10 MiB
 )
 
 // BackpressureTimeout is how long the adapter blocks trying to deliver an
@@ -368,7 +372,14 @@ func (a *StreamingAdapter) handleOutputDelta(
 		// chunk; partial output remains uncommitted.
 		state.seqMu.Lock()
 		state.buffered = append(state.buffered, []byte(delta.Text)...)
+		overflowed := len(state.buffered) > maxBufferSize
 		state.seqMu.Unlock()
+		if overflowed {
+			// B29-1: cap total buffered bytes to prevent unbounded memory growth.
+			a.finishTerminal(out, state, runtime.StreamEventResponseFailed,
+				fmt.Errorf("%w: buffered output exceeded %d bytes", ErrStreamClosed, maxBufferSize))
+			return false
+		}
 		return true
 	}
 	// incremental_release: emit output_delta or tool_call_delta. Partial

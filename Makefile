@@ -155,6 +155,8 @@ block6-gate: build test race lint osv
 block7-gate: build test race lint osv
 	@echo "==> Running Block 7 gate: secret store"
 	go test -race -count=1 ./internal/secrets/...
+	# BB-3: add credential/invisibility/brokered/direct-lease tests to gate scope
+	go test -race -count=1 -run 'Credential|Invisibility|Brokered|DirectLease' ./internal/harness/... ./internal/daemon/...
 	@echo "Block 7 gate: PASS"
 
 block8-gate: build test race lint osv

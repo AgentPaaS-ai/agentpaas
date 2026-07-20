@@ -294,8 +294,8 @@ func (s *harnessRPCServer) SetCredentialsForTest(creds map[string]rpcCredential)
 
 // LoadCredentials reads credential values from a JSON file at the given path.
 // The file contains an array of {id, header, value} objects. After loading,
-// the credentials are stored in memory and are never exposed to agent code.
-// The file is deleted after successful loading to prevent agent access.
+// the credentials are stored in memory and never exposed to agent code.
+// The file is mounted read-only; the daemon removes it after the run.
 func (s *harnessRPCServer) LoadCredentials(path string) error {
 	if path == "" {
 		return nil
@@ -304,8 +304,7 @@ func (s *harnessRPCServer) LoadCredentials(path string) error {
 	if err != nil {
 		return err
 	}
-	// Delete the file immediately so agent code cannot read it.
-	_ = os.Remove(path)
+	// NOTE: File is mounted read-only (BB-1); daemon cleans up after run.
 
 	type credEntry struct {
 		ID     string `json:"id"`

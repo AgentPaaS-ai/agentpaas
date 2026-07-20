@@ -110,6 +110,11 @@ func (l *ActivationLifecycle) Transition(
 		}
 		// Strip all authority on entry to idle: the warm sandbox keeps no
 		// task lease, route capability, or applied credentials.
+		// B29-7 TODO: Add egress fencing at sandbox level on warm->idle.
+		// Currently this is zero-authority bookkeeping-only — the idle
+		// sandbox retains network access. When the sandbox/egress gateway
+		// interface supports per-sandbox egress controls, fence the idle
+		// sandbox's network access alongside stripping authority.
 		stripped := stripAuthority(targetState)
 		if err := ZeroAuthorityInvariant(stripped); err != nil {
 			// stripAuthority should make this impossible; surface it as

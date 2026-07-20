@@ -296,6 +296,8 @@ func (s *DurableInboxStore) List(_ context.Context, tenantID, runID, taskID stri
 }
 
 // MarkDelivered marks the given messages as consumed.
+// B29-4: persist to WAL first, then update in-memory state.
+// If WAL fails, the in-memory state is not modified (fail-closed).
 func (s *DurableInboxStore) MarkDelivered(_ context.Context, ids []MessageID) error {
 	if len(ids) == 0 {
 		return nil
@@ -315,22 +317,30 @@ func (s *DurableInboxStore) MarkDelivered(_ context.Context, ids []MessageID) er
 	s.mu.Unlock()
 
 	for _, r := range runs {
+		// Build the to-be-persisted message list with deliveries applied.
+		// Write WAL first; only update in-memory on success (B29-4).
 		r.mu.Lock()
 		changed := false
-		for i := range r.messages {
-			if want[r.messages[i].MessageID] {
-				if !r.messages[i].Delivered {
-					r.messages[i].Delivered = true
-					changed = true
-				}
+		updated := make([]InboxMessage, 0, len(r.messages))
+		for _, m := range r.messages {
+			mCopy := m
+			if want[mCopy.MessageID] && !mCopy.Delivered {
+				mCopy.Delivered = true
+				changed = true
 			}
+			updated = append(updated, mCopy)
 		}
-		if changed {
-			if err := s.rewriteWALLocked(r); err != nil {
-				r.mu.Unlock()
-				return fmt.Errorf("runtime: inbox rewrite wal: %w", err)
-			}
+		if !changed {
+			r.mu.Unlock()
+			continue
 		}
+		// Write WAL with the updated messages first.
+		if err := s.rewriteMessagesLocked(r, updated); err != nil {
+			r.mu.Unlock()
+			return fmt.Errorf("runtime: inbox rewrite wal: %w", err)
+		}
+		// WAL durable — now update in-memory.
+		r.messages = updated
 		r.mu.Unlock()
 	}
 	return nil
@@ -435,14 +445,15 @@ func (s *DurableInboxStore) appendWAL(tenantID, runID string, rec inboxWALRecord
 // rewriteWALLocked rewrites the entire WAL for the run from the in-memory
 // index. Called after MarkDelivered mutates the in-memory state. The caller
 // holds r.mu.
-func (s *DurableInboxStore) rewriteWALLocked(r *inboxRunState) error {
-	// We need the tenant/run for this run state; scan messages for the first
-	// non-empty pair (all messages in a run share tenant/run).
-	if len(r.messages) == 0 {
+// rewriteMessagesLocked writes a pre-built message list to the WAL.
+// Used by MarkDelivered to persist before updating in-memory (B29-4).
+// The caller holds r.mu.
+func (s *DurableInboxStore) rewriteMessagesLocked(r *inboxRunState, msgs []InboxMessage) error {
+	if len(msgs) == 0 {
 		return nil
 	}
-	tenantID := r.messages[0].TenantID
-	runID := r.messages[0].RunID
+	tenantID := msgs[0].TenantID
+	runID := msgs[0].RunID
 	path := s.walPath(tenantID, runID)
 	dir := filepath.Dir(path)
 	if err := inboxMkdirProtected(dir); err != nil {
@@ -451,14 +462,13 @@ func (s *DurableInboxStore) rewriteWALLocked(r *inboxRunState) error {
 	if err := inboxRejectSymlinkPath(path); err != nil {
 		return err
 	}
-	// Write to a temp file then atomically rename.
 	tmp := path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, inboxFilePerm)
 	if err != nil {
 		return err
 	}
 	w := newBufioWriter(f)
-	for _, m := range r.messages {
+	for _, m := range msgs {
 		rec := inboxWALRecord{
 			SchemaVersion: "1.0",
 			MessageID:    m.MessageID,
