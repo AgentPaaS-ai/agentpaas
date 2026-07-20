@@ -33,6 +33,22 @@ func Verify(b *Bundle) (*VerifyReport, error) {
 		}
 	}
 
+	checkManifestParse(b, add)
+	checkManifestSignature(b, add)
+	checkPublisherMatch(b, add)
+	checkLockProvenance(b, add)
+	checkContentSHA256(b, add)
+	checkPolicyDigest(b, add)
+	checkSBOMDigest(b, add)
+	checkSourceDigest(b, add)
+	checkImageDigest(b, add)
+
+	return report, nil
+}
+
+type verifyAdder func(name string, passed bool, detail string)
+
+func checkManifestParse(b *Bundle, add verifyAdder) {
 	// 1. manifest_parse
 	if b.Manifest == nil {
 		add(CheckManifestParse, false, "manifest is nil")
@@ -45,7 +61,9 @@ func Verify(b *Bundle) (*VerifyReport, error) {
 	} else {
 		add(CheckManifestParse, true, "manifest parsed")
 	}
+}
 
+func checkManifestSignature(b *Bundle, add verifyAdder) {
 	// 2. manifest_signature
 	if b.Manifest != nil {
 		if err := verifyManifestSignature(b.Manifest); err != nil {
@@ -56,7 +74,9 @@ func Verify(b *Bundle) (*VerifyReport, error) {
 	} else {
 		add(CheckManifestSignature, false, "manifest missing")
 	}
+}
 
+func checkPublisherMatch(b *Bundle, add verifyAdder) {
 	// 3. publisher_match (manifest publisher vs lock publisher when lock has publisher block)
 	if b.Manifest == nil || b.Lock == nil {
 		add(CheckPublisherMatch, false, "manifest or lock missing")
@@ -74,126 +94,138 @@ func Verify(b *Bundle) (*VerifyReport, error) {
 			add(CheckPublisherMatch, true, "manifest and lock publisher match")
 		}
 	}
+}
 
+func checkLockProvenance(b *Bundle, add verifyAdder) {
 	// 4. lock_provenance
 	if b.Lock == nil {
 		add(CheckLockProvenance, false, "lock missing")
-	} else {
-		var provDetail strings.Builder
-		ok := true
-		if err := pack.VerifyLockfileSignature(b.Lock); err != nil {
-			ok = false
-			provDetail.WriteString("lockfile signature: " + err.Error())
-		}
-		if b.Lock.SchemaVersion >= 2 && b.Lock.Publisher != nil {
-			if err := pack.VerifyPublisherSignature(b.Lock); err != nil {
-				ok = false
-				if provDetail.Len() > 0 {
-					provDetail.WriteString("; ")
-				}
-				provDetail.WriteString("publisher signature: " + err.Error())
-			}
-			if err := pack.VerifyProvenanceSignatures(b.Lock); err != nil {
-				ok = false
-				if provDetail.Len() > 0 {
-					provDetail.WriteString("; ")
-				}
-				provDetail.WriteString("provenance signatures: " + err.Error())
-			}
-		}
-		provReport, err := pack.VerifyProvenance(b.Lock)
-		if err != nil {
+		return
+	}
+	var provDetail strings.Builder
+	ok := true
+	if err := pack.VerifyLockfileSignature(b.Lock); err != nil {
+		ok = false
+		provDetail.WriteString("lockfile signature: " + err.Error())
+	}
+	if b.Lock.SchemaVersion >= 2 && b.Lock.Publisher != nil {
+		if err := pack.VerifyPublisherSignature(b.Lock); err != nil {
 			ok = false
 			if provDetail.Len() > 0 {
 				provDetail.WriteString("; ")
 			}
-			provDetail.WriteString("provenance: " + err.Error())
-		} else if provReport != nil && !provReport.Verified {
+			provDetail.WriteString("publisher signature: " + err.Error())
+		}
+		if err := pack.VerifyProvenanceSignatures(b.Lock); err != nil {
 			ok = false
 			if provDetail.Len() > 0 {
 				provDetail.WriteString("; ")
 			}
-			provDetail.WriteString("provenance chain invalid")
-		}
-		if ok {
-			add(CheckLockProvenance, true, "lock and provenance verified")
-		} else {
-			add(CheckLockProvenance, false, provDetail.String())
+			provDetail.WriteString("provenance signatures: " + err.Error())
 		}
 	}
+	provReport, err := pack.VerifyProvenance(b.Lock)
+	if err != nil {
+		ok = false
+		if provDetail.Len() > 0 {
+			provDetail.WriteString("; ")
+		}
+		provDetail.WriteString("provenance: " + err.Error())
+	} else if provReport != nil && !provReport.Verified {
+		ok = false
+		if provDetail.Len() > 0 {
+			provDetail.WriteString("; ")
+		}
+		provDetail.WriteString("provenance chain invalid")
+	}
+	if ok {
+		add(CheckLockProvenance, true, "lock and provenance verified")
+	} else {
+		add(CheckLockProvenance, false, provDetail.String())
+	}
+}
 
+func checkContentSHA256(b *Bundle, add verifyAdder) {
 	// 5. content_sha256 (manifest content digests vs raw bundle bytes)
 	if b.Manifest == nil {
 		add(CheckContentSHA256, false, "manifest missing")
-	} else {
-		contentOK := true
-		var detail strings.Builder
-		checkEntry := func(label string, want string, got string) {
-			if want != got {
-				contentOK = false
-				if detail.Len() > 0 {
-					detail.WriteString("; ")
-				}
-				detail.WriteString(label + " digest mismatch")
-			}
-		}
-		if len(b.LockJSON) == 0 {
+		return
+	}
+	contentOK := true
+	var detail strings.Builder
+	checkEntry := func(label string, want string, got string) {
+		if want != got {
 			contentOK = false
-			detail.WriteString("lock bytes missing")
-		} else {
-			checkEntry("lock", b.Manifest.Contents.Lock.Digest, sha256Hex(b.LockJSON))
-		}
-		checkEntry("policy", b.Manifest.Contents.Policy.Digest, sha256Hex(b.PolicyYAML))
-		checkEntry("sbom", b.Manifest.Contents.SBOM.Digest, sha256Hex(b.SBOM))
-		if contentOK {
-			add(CheckContentSHA256, true, "lock, policy, and sbom digests match manifest")
-		} else {
-			add(CheckContentSHA256, false, detail.String())
+			if detail.Len() > 0 {
+				detail.WriteString("; ")
+			}
+			detail.WriteString(label + " digest mismatch")
 		}
 	}
+	if len(b.LockJSON) == 0 {
+		contentOK = false
+		detail.WriteString("lock bytes missing")
+	} else {
+		checkEntry("lock", b.Manifest.Contents.Lock.Digest, sha256Hex(b.LockJSON))
+	}
+	checkEntry("policy", b.Manifest.Contents.Policy.Digest, sha256Hex(b.PolicyYAML))
+	checkEntry("sbom", b.Manifest.Contents.SBOM.Digest, sha256Hex(b.SBOM))
+	if contentOK {
+		add(CheckContentSHA256, true, "lock, policy, and sbom digests match manifest")
+	} else {
+		add(CheckContentSHA256, false, detail.String())
+	}
+}
 
+func checkPolicyDigest(b *Bundle, add verifyAdder) {
 	// 6. policy_digest (lock policy_digest vs canonical policy digest of sidecar bytes)
 	if b.Lock == nil {
 		add(CheckPolicyDigest, false, "lock missing")
-	} else {
-		computed, err := pack.ComputePolicyDigest(b.PolicyYAML)
-		if err != nil {
-			add(CheckPolicyDigest, false, err.Error())
-		} else if computed != b.Lock.PolicyDigest {
-			add(CheckPolicyDigest, false, fmt.Sprintf("lock policy_digest %q != computed %q", b.Lock.PolicyDigest, computed))
-		} else {
-			add(CheckPolicyDigest, true, "policy digest matches lock")
-		}
+		return
 	}
+	computed, err := pack.ComputePolicyDigest(b.PolicyYAML)
+	if err != nil {
+		add(CheckPolicyDigest, false, err.Error())
+	} else if computed != b.Lock.PolicyDigest {
+		add(CheckPolicyDigest, false, fmt.Sprintf("lock policy_digest %q != computed %q", b.Lock.PolicyDigest, computed))
+	} else {
+		add(CheckPolicyDigest, true, "policy digest matches lock")
+	}
+}
 
+func checkSBOMDigest(b *Bundle, add verifyAdder) {
 	// 7. sbom_digest (lock sbom_digest vs SHA-256 of sbom bytes)
 	if b.Lock == nil {
 		add(CheckSBOMDigest, false, "lock missing")
-	} else {
-		got := sha256Hex(b.SBOM)
-		if b.Lock.SBOMDigest != got {
-			add(CheckSBOMDigest, false, fmt.Sprintf("lock sbom_digest %q != content %q", b.Lock.SBOMDigest, got))
-		} else {
-			add(CheckSBOMDigest, true, "sbom digest matches lock")
-		}
+		return
 	}
+	got := sha256Hex(b.SBOM)
+	if b.Lock.SBOMDigest != got {
+		add(CheckSBOMDigest, false, fmt.Sprintf("lock sbom_digest %q != content %q", b.Lock.SBOMDigest, got))
+	} else {
+		add(CheckSBOMDigest, true, "sbom digest matches lock")
+	}
+}
 
+func checkSourceDigest(b *Bundle, add verifyAdder) {
 	// 8. source_digest (manifest source digest vs build-context digest from source/ tree)
 	if b.Manifest == nil {
 		add(CheckSourceDigest, false, "manifest missing")
-	} else {
-		computed, err := computeSourceDigestFromBundle(b)
-		if err != nil {
-			add(CheckSourceDigest, false, err.Error())
-		} else if computed != b.Manifest.Contents.Source.Digest {
-			add(CheckSourceDigest, false, fmt.Sprintf("manifest source digest %q != computed %q", b.Manifest.Contents.Source.Digest, computed))
-		} else if b.Lock != nil && b.Lock.BuildInputDigest != computed {
-			add(CheckSourceDigest, false, fmt.Sprintf("lock build_input_digest %q != computed %q", b.Lock.BuildInputDigest, computed))
-		} else {
-			add(CheckSourceDigest, true, "source digest matches manifest and lock")
-		}
+		return
 	}
+	computed, err := computeSourceDigestFromBundle(b)
+	if err != nil {
+		add(CheckSourceDigest, false, err.Error())
+	} else if computed != b.Manifest.Contents.Source.Digest {
+		add(CheckSourceDigest, false, fmt.Sprintf("manifest source digest %q != computed %q", b.Manifest.Contents.Source.Digest, computed))
+	} else if b.Lock != nil && b.Lock.BuildInputDigest != computed {
+		add(CheckSourceDigest, false, fmt.Sprintf("lock build_input_digest %q != computed %q", b.Lock.BuildInputDigest, computed))
+	} else {
+		add(CheckSourceDigest, true, "source digest matches manifest and lock")
+	}
+}
 
+func checkImageDigest(b *Bundle, add verifyAdder) {
 	// 9. image_digest (optional OCI image/index.json)
 	if b.Manifest == nil {
 		add(CheckImageDigest, false, "manifest missing")
@@ -209,8 +241,6 @@ func Verify(b *Bundle) (*VerifyReport, error) {
 			add(CheckImageDigest, true, "image digest matches manifest")
 		}
 	}
-
-	return report, nil
 }
 
 func verifyManifestSignature(m *Manifest) error {
