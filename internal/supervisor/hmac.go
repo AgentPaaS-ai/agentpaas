@@ -11,7 +11,7 @@ import (
 // compares it to the supplied HMAC. The canonical form is the JSON of the
 // ProgressEvent with the HMAC field cleared.
 func verifyProgressHMAC(p ProgressEvent, key []byte) bool {
-	if key == nil || len(key) == 0 {
+	if len(key) == 0 {
 		return false
 	}
 	want := p.HMAC
@@ -34,7 +34,7 @@ func canonicalProgressBytes(p ProgressEvent) []byte {
 // verifyResultHMAC recomputes the HMAC over the canonical result event and
 // compares it to the supplied HMAC.
 func verifyResultHMAC(r ResultEvent, key []byte) bool {
-	if key == nil || len(key) == 0 {
+	if len(key) == 0 {
 		return false
 	}
 	want := r.HMAC

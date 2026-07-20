@@ -163,13 +163,6 @@ func (s *Supervisor) nowWall() time.Time {
 	return s.clock.Now()
 }
 
-// trackerLocked returns the tracker for an attempt, or nil. Caller must hold
-// s.mu OR be operating on a tracker pointer obtained under s.mu. The tracker's
-// own mu guards its mutable fields.
-func (s *Supervisor) trackerLocked(attemptID routedrun.AttemptID) *attemptTracker {
-	return s.trackers[attemptID]
-}
-
 // handleGovernedStart records the start of an in-flight governed operation.
 // It accepts the event as liveness activity (resets the stall timer) and
 // enables the operation-deadline exemption.

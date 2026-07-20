@@ -138,21 +138,9 @@ func (j *fakeControlJournal) Close() error {
 
 func (j *fakeControlJournal) computeHMAC(ev routedrun.InvokeJobEvent) string {
 	mac := hmac.New(sha256.New, j.key)
-	fmt.Fprintf(mac, "%d|%s|%d|", ev.Sequence, ev.Timestamp.UTC().Format(time.RFC3339Nano), int(ev.EventKind))
+	_, _ = fmt.Fprintf(mac, "%d|%s|%d|", ev.Sequence, ev.Timestamp.UTC().Format(time.RFC3339Nano), int(ev.EventKind))
 	mac.Write([]byte(ev.Payload))
 	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func (j *fakeControlJournal) eventsOfKind(kind routedrun.InvokeJobEventKind) []routedrun.InvokeJobEvent {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	var out []routedrun.InvokeJobEvent
-	for _, ev := range j.events {
-		if ev.EventKind == kind {
-			out = append(out, ev)
-		}
-	}
-	return out
 }
 
 // fakeControlJournalFactory creates in-memory journals keyed by (run,attempt).
@@ -188,12 +176,6 @@ func (f *fakeControlJournalFactory) OpenControlJournal(runID routedrun.RunID, at
 	j := newFakeControlJournal(key)
 	f.journals[k] = j
 	return j, nil
-}
-
-func (f *fakeControlJournalFactory) setKey(runID routedrun.RunID, attemptID routedrun.AttemptID, key []byte) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.keys[keyFor(runID, attemptID)] = key
 }
 
 func (f *fakeControlJournalFactory) get(runID routedrun.RunID, attemptID routedrun.AttemptID) *fakeControlJournal {
@@ -424,14 +406,6 @@ func (h *testHarness) attemptStatus() routedrun.AttemptStatus {
 		h.t.Fatalf("GetAttempt: %v", err)
 	}
 	return att.Status
-}
-
-func (h *testHarness) runStatus() routedrun.RunStatus {
-	run, err := h.store.GetRun(context.Background(), h.runID)
-	if err != nil {
-		h.t.Fatalf("GetRun: %v", err)
-	}
-	return run.Status
 }
 
 func (h *testHarness) ledger() *routedrun.ActiveTimeLedger {
