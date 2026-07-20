@@ -149,6 +149,9 @@ func (s *LocalStore) CreateDeployment(ctx context.Context, dep *DeploymentRecord
 	return s.writeJSON(path, dep.Generation, dep)
 }
 
+// LocalStore.GetDeployment returns the deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetDeployment(ctx context.Context, deploymentID DeploymentID) (*DeploymentRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -160,6 +163,9 @@ func (s *LocalStore) GetDeployment(ctx context.Context, deploymentID DeploymentI
 	return &dep, nil
 }
 
+// LocalStore.ListDeployments lists the deployments.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -180,6 +186,9 @@ func (s *LocalStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord, 
 	return out, nil
 }
 
+// LocalStore.SetDeploymentStatus sets the deployment status.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) SetDeploymentStatus(ctx context.Context, deploymentID DeploymentID, status DeploymentStatus, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -205,6 +214,9 @@ func (s *LocalStore) SetDeploymentStatus(ctx context.Context, deploymentID Deplo
 	return s.writeJSON(path, dep.Generation, &dep)
 }
 
+// LocalStore.CompareAndSwapAlias compares and swap alias.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord) error {
 	_ = ctx // interface compliance; store ops are local
 	if alias == nil || alias.Alias == "" {
@@ -239,6 +251,9 @@ func (s *LocalStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord
 	return s.writeJSON(path, cp.Generation, &cp)
 }
 
+// LocalStore.ResolveAlias resolves the alias.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ResolveAlias(ctx context.Context, alias string) (*AliasRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -250,6 +265,9 @@ func (s *LocalStore) ResolveAlias(ctx context.Context, alias string) (*AliasReco
 	return &rec, nil
 }
 
+// LocalStore.ListAliases lists the aliases.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -270,6 +288,9 @@ func (s *LocalStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 	return out, nil
 }
 
+// LocalStore.AdmitInvocation admits invocation.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationRequest, expectedDeploymentGeneration int64) (*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
 	if request == nil {
@@ -565,6 +586,9 @@ type nodeRun struct {
 	run  *RunRecord
 }
 
+// LocalStore.GetInvocationByIdempotency returns the invocation by idempotency.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetInvocationByIdempotency(ctx context.Context, callerIdentity, idempotencyKey string) (*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -573,6 +597,9 @@ func (s *LocalStore) GetInvocationByIdempotency(ctx context.Context, callerIdent
 	return receipt, err
 }
 
+// LocalStore.ListInvocations lists the invocations.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -741,6 +768,9 @@ func (s *LocalStore) CreateRun(ctx context.Context, run *RunRecord) error {
 	return s.writeJSON(path, 1, run)
 }
 
+// LocalStore.GetRun returns the run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -788,6 +818,9 @@ func (s *LocalStore) GetAttemptGeneration(ctx context.Context, attemptID Attempt
 	return gen, nil
 }
 
+// LocalStore.UpdateRun updates the run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	if run == nil {
@@ -811,6 +844,9 @@ func (s *LocalStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGene
 	return s.writeJSON(path, expectedGeneration+1, run)
 }
 
+// LocalStore.CreateAttempt creates the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) error {
 	_ = ctx // interface compliance; store ops are local
 	if attempt == nil {
@@ -866,6 +902,9 @@ func (s *LocalStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) 
 	return s.writeJSON(path, 1, attempt)
 }
 
+// LocalStore.GetAttempt returns the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetAttempt(ctx context.Context, attemptID AttemptID) (*AttemptRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -900,6 +939,9 @@ func (s *LocalStore) findAttemptLocked(attemptID AttemptID) (*AttemptRecord, err
 	return nil, fmt.Errorf("%w: attempt %s", ErrNotFound, attemptID)
 }
 
+// LocalStore.UpdateAttempt updates the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	if attempt == nil {
@@ -937,6 +979,9 @@ func (s *LocalStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, 
 	return s.writeJSON(path, expectedGeneration+1, attempt)
 }
 
+// LocalStore.ListRuns lists the runs.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*RunRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -972,6 +1017,9 @@ func (s *LocalStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*Ru
 	return out, nil
 }
 
+// LocalStore.ListAttempts lists the attempts.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListAttempts(ctx context.Context, runID RunID) ([]*AttemptRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -999,6 +1047,9 @@ func (s *LocalStore) ListAttempts(ctx context.Context, runID RunID) ([]*AttemptR
 	return out, nil
 }
 
+// LocalStore.AppendLedger appends ledger.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) AppendLedger(ctx context.Context, runID RunID, entry string) error {
 	_ = ctx // interface compliance; store ops are local
 	if len(entry) > maxLedgerLineBytes {
@@ -1010,6 +1061,9 @@ func (s *LocalStore) AppendLedger(ctx context.Context, runID RunID, entry string
 	return appendJSONL(path, []byte(entry))
 }
 
+// LocalStore.ReconcileInterrupted reconciles interrupted.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1127,6 +1181,9 @@ func (s *LocalStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) err
 	}, 1)
 }
 
+// LocalStore.GetWorkflow returns the workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*WorkflowRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1138,6 +1195,9 @@ func (s *LocalStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*W
 	return &wf, nil
 }
 
+// LocalStore.UpdateWorkflow updates the workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	if wf == nil {
@@ -1169,6 +1229,9 @@ func (s *LocalStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, exp
 	return s.syncActiveTimeOnStatusChangeLocked(wf.WorkflowID, existing.Status, wf.Status)
 }
 
+// LocalStore.ListWorkflows lists the workflows.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1198,6 +1261,9 @@ func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, erro
 	return out, nil
 }
 
+// LocalStore.CreateNode creates the node.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) CreateNode(ctx context.Context, node *PipelineNode) error {
 	_ = ctx // interface compliance; store ops are local
 	if node == nil {
@@ -1226,6 +1292,9 @@ func (s *LocalStore) CreateNode(ctx context.Context, node *PipelineNode) error {
 	return s.writeJSON(path, 1, node)
 }
 
+// LocalStore.GetNode returns the node.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetNode(ctx context.Context, nodeID NodeID) (*PipelineNode, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1255,6 +1324,9 @@ func (s *LocalStore) findNodeLocked(nodeID NodeID) (*PipelineNode, error) {
 	return nil, fmt.Errorf("%w: node %s", ErrNotFound, nodeID)
 }
 
+// LocalStore.UpdateNode updates the node.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) UpdateNode(ctx context.Context, node *PipelineNode, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	if node == nil {
@@ -1275,6 +1347,9 @@ func (s *LocalStore) UpdateNode(ctx context.Context, node *PipelineNode, expecte
 	return s.writeJSON(path, expectedGeneration+1, node)
 }
 
+// LocalStore.ListNodes lists the nodes.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*PipelineNode, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1299,6 +1374,9 @@ func (s *LocalStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*P
 	return out, nil
 }
 
+// LocalStore.RegisterService registers service.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) RegisterService(ctx context.Context, svc *MCPServiceBinding) error {
 	_ = ctx // interface compliance; store ops are local
 	if svc == nil {
@@ -1324,6 +1402,9 @@ func (s *LocalStore) RegisterService(ctx context.Context, svc *MCPServiceBinding
 	return s.writeJSON(path, 1, svc)
 }
 
+// LocalStore.UpdateService updates the service.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) UpdateService(ctx context.Context, svc *MCPServiceBinding, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	if svc == nil {
@@ -1344,6 +1425,9 @@ func (s *LocalStore) UpdateService(ctx context.Context, svc *MCPServiceBinding, 
 	return s.writeJSON(path, expectedGeneration+1, svc)
 }
 
+// LocalStore.ListServices lists the services.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListServices(ctx context.Context, workflowID WorkflowID) ([]*MCPServiceBinding, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1367,6 +1451,9 @@ func (s *LocalStore) ListServices(ctx context.Context, workflowID WorkflowID) ([
 	return out, nil
 }
 
+// LocalStore.CommitHandoff commits handoff.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelope) error {
 	_ = ctx // interface compliance; store ops are local
 	if handoff == nil {
@@ -1395,6 +1482,9 @@ func (s *LocalStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelope
 	return s.writeJSON(path, 1, handoff)
 }
 
+// LocalStore.GetHandoff returns the handoff.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*HandoffEnvelope, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1417,6 +1507,9 @@ func (s *LocalStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*Hand
 	return nil, fmt.Errorf("%w: handoff %s", ErrNotFound, handoffID)
 }
 
+// LocalStore.ListHandoffs lists the handoffs.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) ([]*HandoffEnvelope, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1440,6 +1533,9 @@ func (s *LocalStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) ([
 	return out, nil
 }
 
+// LocalStore.CreateChildBatch creates the child batch.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) error {
 	_ = ctx // interface compliance; store ops are local
 	if batch == nil {
@@ -1465,6 +1561,9 @@ func (s *LocalStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) er
 	return s.writeJSON(path, 1, batch)
 }
 
+// LocalStore.UpdateChildBatch updates the child batch.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, expectedGeneration int64) error {
 	_ = ctx // interface compliance; store ops are local
 	if batch == nil {
@@ -1485,6 +1584,9 @@ func (s *LocalStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, ex
 	return s.writeJSON(path, expectedGeneration+1, batch)
 }
 
+// LocalStore.ListChildBatches lists the child batches.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListChildBatches(ctx context.Context, workflowID WorkflowID) ([]*ChildBatch, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1508,6 +1610,9 @@ func (s *LocalStore) ListChildBatches(ctx context.Context, workflowID WorkflowID
 	return out, nil
 }
 
+// LocalStore.CommitChildResult commits child result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) CommitChildResult(ctx context.Context, result *ChildResult) error {
 	_ = ctx // interface compliance; store ops are local
 	if result == nil {
@@ -1561,6 +1666,9 @@ func (s *LocalStore) findBatchWorkflowLocked(batchID ChildBatchID) (WorkflowID, 
 	return "", fmt.Errorf("%w: child batch %s", ErrNotFound, batchID)
 }
 
+// LocalStore.ListChildResults lists the child results.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ListChildResults(ctx context.Context, childBatchID ChildBatchID) ([]*ChildResult, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1591,6 +1699,9 @@ func (s *LocalStore) ListChildResults(ctx context.Context, childBatchID ChildBat
 	return out, nil
 }
 
+// LocalStore.RequestControl requests control.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) RequestControl(ctx context.Context, req *ControlRequest) error {
 	_ = ctx // interface compliance; store ops are local
 	if req == nil {
@@ -1671,6 +1782,9 @@ func (s *LocalStore) findControlByIdempotencyLocked(wfID WorkflowID, key string)
 	return nil, fmt.Errorf("%w: control idempotency", ErrNotFound)
 }
 
+// LocalStore.GetDesiredState returns the desired state.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) GetDesiredState(ctx context.Context, workflowID WorkflowID) (*DesiredState, error) {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1682,6 +1796,9 @@ func (s *LocalStore) GetDesiredState(ctx context.Context, workflowID WorkflowID)
 	return &ds, nil
 }
 
+// LocalStore.AppendControlResult appends control result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) AppendControlResult(ctx context.Context, req *ControlRequest, result interface{}) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
@@ -1700,6 +1817,9 @@ func (s *LocalStore) AppendControlResult(ctx context.Context, req *ControlReques
 	return appendJSONL(path, line)
 }
 
+// LocalStore.AppendLimitAmendment appends limit amendment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID WorkflowID, expectedAuthorityGeneration int64, amendment *LimitAmendment) error {
 	_ = ctx // interface compliance; store ops are local
 	if amendment == nil {
@@ -1812,6 +1932,9 @@ func amendmentPayloadEqual(existing, incoming *LimitAmendment) bool {
 		existing.ActorIdentity == incoming.ActorIdentity
 }
 
+// LocalStore.ApplyTransition applies transition.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *LocalStore) ApplyTransition(ctx context.Context, workflowID WorkflowID, expectedGeneration int64, command string) error {
 	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()

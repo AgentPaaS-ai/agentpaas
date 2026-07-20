@@ -29,6 +29,9 @@ func (s *K8sStateStore) init() {
 		s.ws = map[string]*port.WorkflowState{}
 	}
 }
+// K8sStateStore.CasDeployment compare-and-swaps deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) CasDeployment(_ context.Context, v port.DeploymentState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -40,6 +43,9 @@ func (s *K8sStateStore) CasDeployment(_ context.Context, v port.DeploymentState,
 	s.ds[v.TenantID+"/"+v.DeploymentID] = &v
 	return nil
 }
+// K8sStateStore.GetDeployment returns the deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) GetDeployment(_ context.Context, t, id string) (*port.DeploymentState, error) {
 	s.init()
 	s.mu.RLock()
@@ -51,6 +57,9 @@ func (s *K8sStateStore) GetDeployment(_ context.Context, t, id string) (*port.De
 	x := *v
 	return &x, nil
 }
+// K8sStateStore.ListDeployments lists the deployments.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) ListDeployments(_ context.Context, t string) ([]*port.DeploymentState, error) {
 	s.init()
 	s.mu.RLock()
@@ -64,6 +73,9 @@ func (s *K8sStateStore) ListDeployments(_ context.Context, t string) ([]*port.De
 	}
 	return out, nil
 }
+// K8sStateStore.CasRun compare-and-swaps run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) CasRun(_ context.Context, v port.RunState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -76,6 +88,9 @@ func (s *K8sStateStore) CasRun(_ context.Context, v port.RunState, g int64) erro
 	s.rs[k] = &v
 	return nil
 }
+// K8sStateStore.GetRun returns the run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) GetRun(_ context.Context, t, id string) (*port.RunState, error) {
 	s.init()
 	s.mu.RLock()
@@ -87,6 +102,9 @@ func (s *K8sStateStore) GetRun(_ context.Context, t, id string) (*port.RunState,
 	x := *v
 	return &x, nil
 }
+// K8sStateStore.ListRuns lists the runs.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) ListRuns(_ context.Context, t, w string) ([]*port.RunState, error) {
 	s.init()
 	s.mu.RLock()
@@ -100,6 +118,9 @@ func (s *K8sStateStore) ListRuns(_ context.Context, t, w string) ([]*port.RunSta
 	}
 	return out, nil
 }
+// K8sStateStore.CasAttempt compare-and-swaps attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) CasAttempt(_ context.Context, v port.AttemptState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -112,6 +133,9 @@ func (s *K8sStateStore) CasAttempt(_ context.Context, v port.AttemptState, g int
 	s.as[k] = &v
 	return nil
 }
+// K8sStateStore.GetAttempt returns the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) GetAttempt(_ context.Context, t, id string) (*port.AttemptState, error) {
 	s.init()
 	s.mu.RLock()
@@ -123,6 +147,9 @@ func (s *K8sStateStore) GetAttempt(_ context.Context, t, id string) (*port.Attem
 	x := *v
 	return &x, nil
 }
+// K8sStateStore.CasWorkflow compare-and-swaps workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) CasWorkflow(_ context.Context, v port.WorkflowState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -135,6 +162,9 @@ func (s *K8sStateStore) CasWorkflow(_ context.Context, v port.WorkflowState, g i
 	s.ws[k] = &v
 	return nil
 }
+// K8sStateStore.GetWorkflow returns the workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sStateStore) GetWorkflow(_ context.Context, t, id string) (*port.WorkflowState, error) {
 	s.init()
 	s.mu.RLock()

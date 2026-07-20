@@ -17,6 +17,9 @@ type K8sPackageStore struct {
 
 var _ port.PackageStore = (*K8sPackageStore)(nil)
 
+// K8sPackageStore.Resolve resolves k8s package store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (p *K8sPackageStore) Resolve(_ context.Context, tenantID, ref string) (*port.PackageResolution, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -32,6 +35,9 @@ func (p *K8sPackageStore) Resolve(_ context.Context, tenantID, ref string) (*por
 	return nil, port.ErrNotFound
 }
 
+// K8sPackageStore.Verify verifies k8s package store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (p *K8sPackageStore) Verify(_ context.Context, digest string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -43,6 +49,9 @@ func (p *K8sPackageStore) Verify(_ context.Context, digest string) error {
 	return port.ErrNotFound
 }
 
+// K8sPackageStore.List lists k8s package store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (p *K8sPackageStore) List(_ context.Context, tenantID string) ([]port.PackageMetadata, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

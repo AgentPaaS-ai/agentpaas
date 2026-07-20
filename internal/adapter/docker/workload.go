@@ -19,6 +19,9 @@ type DockerWorkloadRuntime struct {
 
 var _ port.WorkloadRuntime = (*DockerWorkloadRuntime)(nil)
 
+// DockerWorkloadRuntime.Prepare prepares docker workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *DockerWorkloadRuntime) Prepare(ctx context.Context, r port.PrepareRequest) (port.WorkloadID, error) {
 	if w.driver == nil {
 		return "", fmt.Errorf("runtime unavailable")
@@ -46,6 +49,9 @@ func (w *DockerWorkloadRuntime) container(id port.WorkloadID) (runtime.Container
 	}
 	return c, nil
 }
+// DockerWorkloadRuntime.Start starts docker workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *DockerWorkloadRuntime) Start(ctx context.Context, id port.WorkloadID) error {
 	c, e := w.container(id)
 	if e != nil {
@@ -59,6 +65,9 @@ func (w *DockerWorkloadRuntime) Start(ctx context.Context, id port.WorkloadID) e
 	}
 	return e
 }
+// DockerWorkloadRuntime.Signal signals docker workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *DockerWorkloadRuntime) Signal(ctx context.Context, id port.WorkloadID, s port.WorkloadSignal) error {
 	c, e := w.container(id)
 	if e != nil {
@@ -90,6 +99,9 @@ func (w *DockerWorkloadRuntime) Fence(ctx context.Context, id port.WorkloadID) e
 	w.mu.Unlock()
 	return nil
 }
+// DockerWorkloadRuntime.Stop stops docker workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *DockerWorkloadRuntime) Stop(ctx context.Context, id port.WorkloadID, d *time.Duration) error {
 	c, e := w.container(id)
 	if e != nil {
@@ -103,6 +115,9 @@ func (w *DockerWorkloadRuntime) Stop(ctx context.Context, id port.WorkloadID, d 
 	}
 	return e
 }
+// DockerWorkloadRuntime.Inspect inspects docker workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *DockerWorkloadRuntime) Inspect(ctx context.Context, id port.WorkloadID) (port.WorkloadStatus, error) {
 	c, e := w.container(id)
 	if e != nil {
@@ -123,6 +138,9 @@ func (w *DockerWorkloadRuntime) Inspect(ctx context.Context, id port.WorkloadID)
 	w.mu.Unlock()
 	return port.WorkloadStatus{ID: id, State: state}, nil
 }
+// DockerWorkloadRuntime.Cleanup cleans up docker workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *DockerWorkloadRuntime) Cleanup(ctx context.Context, id port.WorkloadID) error {
 	c, e := w.container(id)
 	if e != nil {

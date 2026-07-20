@@ -25,7 +25,9 @@ type PolicyRefusedError struct {
 	Digest string
 }
 
+// PolicyRefusedError.Error returns the error message.
 func (e *PolicyRefusedError) Error() string  { return ErrPolicyRefused.Error() }
+// PolicyRefusedError.Unwrap returns the underlying wrapped error.
 func (e *PolicyRefusedError) Unwrap() error { return ErrPolicyRefused }
 
 // DisplayMessage returns instructions for the operator.
@@ -48,7 +50,9 @@ type PolicyMismatchError struct {
 	Expected string
 }
 
+// PolicyMismatchError.Error returns the error message.
 func (e *PolicyMismatchError) Error() string  { return ErrPolicyMismatch.Error() }
+// PolicyMismatchError.Unwrap returns the underlying wrapped error.
 func (e *PolicyMismatchError) Unwrap() error   { return ErrPolicyMismatch }
 
 // DisplayMessage returns mismatch details for the operator.
@@ -67,9 +71,12 @@ type DowngradeRefusedError struct {
 	NewVersion   string
 }
 
+// DowngradeRefusedError.Error returns the error message.
 func (e *DowngradeRefusedError) Error() string  { return ErrDowngradeRefused.Error() }
+// DowngradeRefusedError.Unwrap returns the underlying wrapped error.
 func (e *DowngradeRefusedError) Unwrap() error   { return ErrDowngradeRefused }
 
+// DowngradeRefusedError.DisplayMessage display message.
 func (e *DowngradeRefusedError) DisplayMessage() string {
 	return fmt.Sprintf(
 		"Refusing install: version %s is older than installed %s.\n"+

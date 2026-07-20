@@ -57,10 +57,12 @@ type budgetExceededError struct {
 	observed int64
 }
 
+// budgetExceededError.Error returns the error message.
 func (e *budgetExceededError) Error() string {
 	return fmt.Sprintf("%s budget exceeded: observed %d over limit %d", e.category, e.observed, e.limit)
 }
 
+// budgetExceededError.Is reports whether target matches this error.
 func (e *budgetExceededError) Is(target error) bool {
 	return target == ErrBudgetExceeded
 }
@@ -81,6 +83,7 @@ type BudgetEnforcer struct {
 	tokens     int64
 }
 
+// NewBudgetEnforcer creates and returns a new budget enforcer.
 func NewBudgetEnforcer(cfg BudgetConfig) *BudgetEnforcer {
 	return newBudgetEnforcer(cfg, "", "", nil, time.Now)
 }
@@ -120,6 +123,7 @@ func normalizeBudgetConfig(cfg BudgetConfig) BudgetConfig {
 	return cfg
 }
 
+// BudgetEnforcer.Start starts budget enforcer.
 func (b *BudgetEnforcer) Start() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -127,6 +131,7 @@ func (b *BudgetEnforcer) Start() {
 	b.startedAt = b.now()
 }
 
+// BudgetEnforcer.WallClockBudget wall clock budget.
 func (b *BudgetEnforcer) WallClockBudget() time.Duration {
 	return time.Duration(b.WallClockBudgetMs()) * time.Millisecond
 }
@@ -143,6 +148,7 @@ func (b *BudgetEnforcer) WallClockBudgetMs() int64 {
 	return b.cfg.WallClockSeconds * int64(time.Second/time.Millisecond)
 }
 
+// BudgetEnforcer.Elapsed elapsed.
 func (b *BudgetEnforcer) Elapsed() time.Duration {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -153,6 +159,9 @@ func (b *BudgetEnforcer) Elapsed() time.Duration {
 	return b.now().Sub(b.startedAt)
 }
 
+// BudgetEnforcer.RecordIteration records iteration.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (b *BudgetEnforcer) RecordIteration() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -167,6 +176,9 @@ func (b *BudgetEnforcer) RecordIteration() error {
 	return nil
 }
 
+// BudgetEnforcer.RecordTokens records tokens.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (b *BudgetEnforcer) RecordTokens(count int64) error {
 	if count < 0 {
 		return fmt.Errorf("token count must be non-negative")
@@ -188,6 +200,9 @@ func (b *BudgetEnforcer) RecordTokens(count int64) error {
 	return nil
 }
 
+// BudgetEnforcer.MarkWallClockExceeded marks wall clock exceeded.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (b *BudgetEnforcer) MarkWallClockExceeded(observed time.Duration) error {
 	observedMS := max(int64(observed/time.Millisecond), int64(0))
 	limitMS := int64(b.WallClockBudget() / time.Millisecond)

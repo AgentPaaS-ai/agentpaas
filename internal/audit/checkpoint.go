@@ -152,6 +152,7 @@ type CheckpointError struct {
 	Seq     int64              `json:"seq,omitempty"`
 }
 
+// CheckpointError.Error returns the error message.
 func (e *CheckpointError) Error() string {
 	return e.Message
 }

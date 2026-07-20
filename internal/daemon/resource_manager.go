@@ -21,6 +21,9 @@ func NewDockerResourceManager(rt *runtime.DockerRuntime) *dockerResourceManager 
 	return &dockerResourceManager{rt: rt}
 }
 
+// dockerResourceManager.ListAgents lists AgentPaaS agent containers as dashboard agent resources.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *dockerResourceManager) ListAgents(ctx context.Context) ([]dashboard.AgentResource, error) {
 	if m.rt == nil {
 		return []dashboard.AgentResource{}, nil
@@ -52,6 +55,9 @@ func (m *dockerResourceManager) ListAgents(ctx context.Context) ([]dashboard.Age
 	return agents, nil
 }
 
+// dockerResourceManager.ListGateways lists AgentPaaS gateway containers as dashboard gateway resources.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *dockerResourceManager) ListGateways(ctx context.Context) ([]dashboard.GatewayResource, error) {
 	if m.rt == nil {
 		return []dashboard.GatewayResource{}, nil
@@ -78,6 +84,9 @@ func (m *dockerResourceManager) ListGateways(ctx context.Context) ([]dashboard.G
 	return gateways, nil
 }
 
+// dockerResourceManager.ListMCPServers lists AgentPaaS MCP server containers as dashboard MCP resources.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (m *dockerResourceManager) ListMCPServers(ctx context.Context) ([]dashboard.MCPServerResource, error) {
 	if m.rt == nil {
 		return []dashboard.MCPServerResource{}, nil

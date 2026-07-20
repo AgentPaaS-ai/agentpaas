@@ -24,6 +24,9 @@ type K8sWorkloadRuntime struct {
 
 var _ port.WorkloadRuntime = (*K8sWorkloadRuntime)(nil)
 
+// K8sWorkloadRuntime.Prepare prepares k8s workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *K8sWorkloadRuntime) Prepare(ctx context.Context, r port.PrepareRequest) (port.WorkloadID, error) {
 	if w.client == nil {
 		return "", fmt.Errorf("kubernetes client unavailable")
@@ -61,6 +64,9 @@ func (w *K8sWorkloadRuntime) pod(id port.WorkloadID) (string, error) {
 	}
 	return n, nil
 }
+// K8sWorkloadRuntime.Start starts k8s workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *K8sWorkloadRuntime) Start(ctx context.Context, id port.WorkloadID) error {
 	n, e := w.pod(id)
 	if e != nil {
@@ -102,9 +108,15 @@ func (w *K8sWorkloadRuntime) Signal(ctx context.Context, id port.WorkloadID, sig
 		return w.Stop(ctx, id, nil)
 	}
 }
+// K8sWorkloadRuntime.Fence fence.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *K8sWorkloadRuntime) Fence(ctx context.Context, id port.WorkloadID) error {
 	return (&K8sEgressEnforcer{policy: newK8sPolicyEnforcer(w.client, w.namespace, "egress")}).Apply(ctx, string(id), port.CommSnapshot{Default: port.CommDeny})
 }
+// K8sWorkloadRuntime.Stop stops k8s workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *K8sWorkloadRuntime) Stop(ctx context.Context, id port.WorkloadID, d *time.Duration) error {
 	n, e := w.pod(id)
 	if e != nil {
@@ -123,6 +135,9 @@ func (w *K8sWorkloadRuntime) Stop(ctx context.Context, id port.WorkloadID, d *ti
 	}
 	return e
 }
+// K8sWorkloadRuntime.Inspect inspects k8s workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *K8sWorkloadRuntime) Inspect(ctx context.Context, id port.WorkloadID) (port.WorkloadStatus, error) {
 	n, e := w.pod(id)
 	if e != nil {
@@ -143,6 +158,9 @@ func (w *K8sWorkloadRuntime) Inspect(ctx context.Context, id port.WorkloadID) (p
 	w.mu.Unlock()
 	return port.WorkloadStatus{ID: id, State: state, IP: p.Status.PodIP}, nil
 }
+// K8sWorkloadRuntime.Cleanup cleans up k8s workload runtime.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *K8sWorkloadRuntime) Cleanup(ctx context.Context, id port.WorkloadID) error {
 	n, e := w.pod(id)
 	if e != nil {

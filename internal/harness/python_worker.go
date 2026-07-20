@@ -215,6 +215,7 @@ func waitForImport(cmd *exec.Cmd, reaper *childReaper, cancel context.CancelFunc
 
 const defaultTerminateGrace = 10 * time.Second
 
+// pythonWorker.Invoke invokes python worker.
 func (w *pythonWorker) Invoke(ctx context.Context, payload map[string]any, budget *BudgetEnforcer, terminateGrace time.Duration) (*InvokeResponse, *ErrorResponse, *UpstreamEvidence) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -370,6 +371,9 @@ func validateResultKeys(value any) error {
 	return nil
 }
 
+// pythonWorker.Close closes python worker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (w *pythonWorker) Close() error {
 	w.mu.Lock()
 	if w.closed {

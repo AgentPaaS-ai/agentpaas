@@ -17,6 +17,9 @@ type DockerEventStore struct {
 
 var _ port.EventStore = (*DockerEventStore)(nil)
 
+// DockerEventStore.Append appends docker event store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *DockerEventStore) Append(_ context.Context, v port.Event) (int64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -31,6 +34,9 @@ func (e *DockerEventStore) Append(_ context.Context, v port.Event) (int64, error
 	}
 	return v.Sequence, nil
 }
+// DockerEventStore.Subscribe subscribes docker event store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *DockerEventStore) Subscribe(ctx context.Context, t, r string, from int64) (<-chan port.Event, error) {
 	ch := make(chan port.Event, 64)
 	e.mu.Lock()
@@ -43,6 +49,9 @@ func (e *DockerEventStore) Subscribe(ctx context.Context, t, r string, from int6
 	go func() { <-ctx.Done(); close(ch) }()
 	return ch, nil
 }
+// DockerEventStore.Read reads docker event store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *DockerEventStore) Read(_ context.Context, t, r string, from int64, n int) ([]port.Event, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -55,6 +64,9 @@ func (e *DockerEventStore) Read(_ context.Context, t, r string, from int64, n in
 	}
 	return out, nil
 }
+// DockerEventStore.LatestSequence latest sequence.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *DockerEventStore) LatestSequence(_ context.Context, t, r string) (int64, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

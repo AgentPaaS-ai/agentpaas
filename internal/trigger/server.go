@@ -218,6 +218,7 @@ type lineNumberJSONMarshaler struct {
 	*runtime.JSONPb
 }
 
+// lineNumberJSONMarshaler.NewDecoder creates and returns a new decoder.
 func (m *lineNumberJSONMarshaler) NewDecoder(r io.Reader) runtime.Decoder {
 	return runtime.DecoderFunc(func(v interface{}) error {
 		data, err := io.ReadAll(r)

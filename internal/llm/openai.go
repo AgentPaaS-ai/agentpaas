@@ -12,10 +12,16 @@ const defaultOpenAIModel = "gpt-4o-mini"
 
 type openAIAdapter struct{}
 
+// openAIAdapter.Name returns the provider or component name.
 func (a *openAIAdapter) Name() string       { return "openai" }
+// openAIAdapter.Endpoint returns the API endpoint URL.
 func (a *openAIAdapter) Endpoint() string   { return openAIEndpoint }
+// openAIAdapter.AuthHeader returns the HTTP authorization header name and value prefix.
 func (a *openAIAdapter) AuthHeader() string { return "Authorization" }
 
+// openAIAdapter.BuildRequest builds the provider-specific request payload and headers.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *openAIAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string, maxTokens ...int) (*http.Request, error) {
 	if model == "" {
 		model = defaultOpenAIModel
@@ -42,6 +48,9 @@ func (a *openAIAdapter) BuildRequest(ctx context.Context, model, prompt, credent
 	return req, nil
 }
 
+// openAIAdapter.ParseResponse parses the provider-specific response into a normalized result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *openAIAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
 		return nil, formatHTTPError("openai", statusCode, body)

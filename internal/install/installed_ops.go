@@ -33,7 +33,7 @@ type ContainerStopper interface {
 	StopByAgentRef(ctx context.Context, agentRef string) error
 }
 
-// ListInstalledAgents scans StateRoot/agents/<name>@<pub8>/ only (not Phase-1 bare names).
+// ListInstalledAgents scans a database value into StateRoot/agents/<name>@<pub8>/ only (not Phase-1 bare names).
 func ListInstalledAgents(stateRoot string) ([]InstalledAgentEntry, error) {
 	agentsDir := filepath.Join(stateRoot, installedAgentsDirName)
 	entries, err := os.ReadDir(agentsDir)

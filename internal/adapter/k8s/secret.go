@@ -16,6 +16,9 @@ type K8sSecretBroker struct {
 
 var _ port.SecretBroker = (*K8sSecretBroker)(nil)
 
+// K8sSecretBroker.Apply applies k8s secret broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sSecretBroker) Apply(_ context.Context, r port.ApplyCredentialRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -27,6 +30,9 @@ func (s *K8sSecretBroker) Apply(_ context.Context, r port.ApplyCredentialRequest
 	return nil
 }
 
+// K8sSecretBroker.Revoke revokes k8s secret broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sSecretBroker) Revoke(_ context.Context, workloadID, credentialID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -41,6 +47,9 @@ func (s *K8sSecretBroker) Revoke(_ context.Context, workloadID, credentialID str
 	return port.ErrNotFound
 }
 
+// K8sSecretBroker.List lists k8s secret broker.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *K8sSecretBroker) List(_ context.Context, workloadID string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

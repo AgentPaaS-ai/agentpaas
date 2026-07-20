@@ -264,6 +264,7 @@ func (cs *CronScheduler) auditCronSkipped(schedule *CronSchedule, reason string)
 
 type noOpCronAuditAppender struct{}
 
+// noOpCronAuditAppender.Append discards the audit record and always succeeds.
 func (noOpCronAuditAppender) Append(audit.AuditRecord) error {
 	return nil
 }

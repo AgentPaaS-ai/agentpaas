@@ -205,6 +205,7 @@ var errCollectorRunning = errString("resource collector already running")
 // keeps the resource metrics file self-contained.
 type errString string
 
+// errString.Error returns the error message.
 func (e errString) Error() string { return string(e) }
 
 // DefaultSampler is the default Sampler used when none is supplied. It

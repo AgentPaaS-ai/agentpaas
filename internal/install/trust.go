@@ -43,7 +43,9 @@ type KeyConflictError struct {
 	ReceivedFP    string // fingerprint from the incoming bundle
 }
 
+// KeyConflictError.Error returns the error message.
 func (e *KeyConflictError) Error() string  { return ErrKeyConflict.Error() }
+// KeyConflictError.Unwrap returns the underlying wrapped error.
 func (e *KeyConflictError) Unwrap() error   { return ErrKeyConflict }
 
 // DisplayMessage returns the SSH-style hard warning for the operator.
@@ -68,7 +70,9 @@ type TrustRefusedError struct {
 	Fingerprint string // display-form fingerprint (non-TTY missing-flag)
 }
 
+// TrustRefusedError.Error returns the error message.
 func (e *TrustRefusedError) Error() string  { return ErrTrustRefused.Error() }
+// TrustRefusedError.Unwrap returns the underlying wrapped error.
 func (e *TrustRefusedError) Unwrap() error   { return ErrTrustRefused }
 
 // DisplayMessage returns instructions for the operator.
@@ -91,7 +95,9 @@ type ConfirmMismatchError struct {
 	Expected string // display-form fingerprint from the bundle
 }
 
+// ConfirmMismatchError.Error returns the error message.
 func (e *ConfirmMismatchError) Error() string  { return ErrConfirmMismatch.Error() }
+// ConfirmMismatchError.Unwrap returns the underlying wrapped error.
 func (e *ConfirmMismatchError) Unwrap() error   { return ErrConfirmMismatch }
 
 // DisplayMessage returns the mismatch details for the operator.
