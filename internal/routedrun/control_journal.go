@@ -327,7 +327,12 @@ func (cj *ControlJournal) runDir() string {
 // content (sequence, timestamp, event kind, payload).
 func (cj *ControlJournal) computeHMAC(ev InvokeJobEvent) string {
 	mac := hmac.New(sha256.New, cj.key)
-	fmt.Fprintf(mac, "%d|%s|%d|", ev.Sequence, ev.Timestamp.UTC().Format(time.RFC3339Nano), int(ev.EventKind))
-	mac.Write([]byte(ev.Payload))
+	if _, err := fmt.Fprintf(mac, "%d|%s|%d|", ev.Sequence, ev.Timestamp.UTC().Format(time.RFC3339Nano), int(ev.EventKind)); err != nil {
+		// hash.Hash.Write never returns an error, but satisfy errcheck.
+		panic(fmt.Sprintf("routedrun: hmac write failed: %v", err))
+	}
+	if _, err := mac.Write([]byte(ev.Payload)); err != nil {
+		panic(fmt.Sprintf("routedrun: hmac payload write failed: %v", err))
+	}
 	return hex.EncodeToString(mac.Sum(nil))
 }
