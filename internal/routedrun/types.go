@@ -2,6 +2,7 @@ package routedrun
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
 
@@ -216,6 +217,178 @@ type ActiveTimeLedger struct {
 	FrozenConsumedMs int64 `json:"frozen_consumed_ms,omitempty"`
 
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ---------------------------------------------------------------------------
+// Time envelope (B30-T03)
+// ---------------------------------------------------------------------------
+
+// timeEnvelopeSchemaVersionV1 is the schema version for TimeEnvelope v1.
+const timeEnvelopeSchemaVersionV1 = "1.0"
+
+// TimeEnvelope is the authoritative active-time / operation-deadline /
+// cancellation envelope for a workflow. It wraps and extends the B26
+// ActiveTimeLedger: the ledger tracks consumed active time, the envelope
+// adds per-operation timeouts, the attempt lease, the stall / model-call
+// timeouts, and the lifecycle / cancellation generations used by B39
+// amendments and user cancellation respectively.
+//
+// Per b30-summary.md:337-340, the envelope is the single authoritative
+// source for:
+//   - current maximum active duration (may be amended by B39; T03 stores
+//     the initial value and reserves the amendment seam but does not
+//     activate amendment behavior).
+//   - accumulated active time (mirrors ActiveTimeLedger.ConsumedMs).
+//   - optional running-segment start (nil when frozen/paused).
+//   - attempt lease remaining (nil if no active lease).
+//   - stall timeout and model-call timeout (per-operation ceilings).
+//   - lifecycle/authority generation (incremented on amendments; starts at 1).
+//   - cancellation generation (incremented on each cancellation request;
+//     starts at 0).
+//
+// All segment-accounting operations (StartActiveSegment, CloseActiveSegment,
+// FreezeActiveSegment, UnfreezeActiveSegment, WithAmendedCeiling) return a
+// NEW TimeEnvelope and never mutate the caller's struct (pitfall #134 CAS
+// lesson). Callers must treat the envelope as immutable between updates.
+type TimeEnvelope struct {
+	SchemaVersion string `json:"schema_version"`
+
+	// CurrentMaxActiveDurationMs is the current maximum active duration
+	// (may be amended by B39; T03 stores the initial value).
+	CurrentMaxActiveDurationMs int64 `json:"current_max_active_duration_ms"`
+
+	// ConsumedActiveDurationMs is the accumulated active time.
+	ConsumedActiveDurationMs int64 `json:"consumed_active_duration_ms"`
+
+	// RunningSegmentStartMs is the optional running-segment start (nil
+	// when frozen/paused). Monotonic millisecond timestamp.
+	RunningSegmentStartMs *int64 `json:"running_segment_start_ms,omitempty"`
+
+	// AttemptLeaseRemainingMs is the attempt lease remaining (nil if no
+	// active lease).
+	AttemptLeaseRemainingMs *int64 `json:"attempt_lease_remaining_ms,omitempty"`
+
+	// StallTimeoutMs is the stall timeout (per-operation ceiling for
+	// stall detection).
+	StallTimeoutMs int64 `json:"stall_timeout_ms,omitempty"`
+
+	// ModelCallTimeoutMs is the model-call timeout (per-operation ceiling
+	// for model calls).
+	ModelCallTimeoutMs int64 `json:"model_call_timeout_ms,omitempty"`
+
+	// LifecycleAuthorityGeneration is the lifecycle/authority generation,
+	// incremented on amendments. T03 starts at 1.
+	LifecycleAuthorityGeneration int64 `json:"lifecycle_authority_generation"`
+
+	// CancellationGeneration is the cancellation generation, incremented
+	// on each cancellation request. T03 starts at 0.
+	CancellationGeneration int64 `json:"cancellation_generation"`
+
+	// FrozenConsumedMs mirrors ActiveTimeLedger.FrozenConsumedMs: when
+	// PAUSED or NEEDS_REPLAN, the consumed time at freeze. Does not
+	// accrue while frozen.
+	FrozenConsumedMs int64 `json:"frozen_consumed_ms,omitempty"`
+}
+
+// NewTimeEnvelope constructs a fresh TimeEnvelope with the given ceilings
+// and lifecycle/authority generation = 1 and cancellation generation = 0.
+// StallTimeoutMs and ModelCallTimeoutMs are the per-operation ceilings.
+func NewTimeEnvelope(maxActiveMs, attemptLeaseMs, stallTimeoutMs, modelCallTimeoutMs int64) TimeEnvelope {
+	var lease *int64
+	if attemptLeaseMs > 0 {
+		v := attemptLeaseMs
+		lease = &v
+	}
+	return TimeEnvelope{
+		SchemaVersion:                timeEnvelopeSchemaVersionV1,
+		CurrentMaxActiveDurationMs:    maxActiveMs,
+		ConsumedActiveDurationMs:     0,
+		AttemptLeaseRemainingMs:      lease,
+		StallTimeoutMs:               stallTimeoutMs,
+		ModelCallTimeoutMs:           modelCallTimeoutMs,
+		LifecycleAuthorityGeneration: 1,
+		CancellationGeneration:       0,
+	}
+}
+
+// ActiveTimeRemainingMs returns the remaining active time in milliseconds.
+// When a segment is running (RunningSegmentStartMs != nil), the elapsed
+// time since start is added to ConsumedActiveDurationMs before subtraction.
+// nowMs is a monotonic millisecond timestamp (see Clock.NowMonotonic).
+//
+// The arithmetic is overflow-safe: if the running-segment elapsed would
+// push consumed past CurrentMaxActiveDurationMs, the result clamps to 0
+// rather than wrapping negative (b30-summary.md:380-381).
+func (e TimeEnvelope) ActiveTimeRemainingMs(nowMs int64) int64 {
+	consumed := e.ConsumedActiveDurationMs
+	if e.RunningSegmentStartMs != nil {
+		elapsed := nowMs - *e.RunningSegmentStartMs
+		if elapsed < 0 {
+			elapsed = 0
+		}
+		// Overflow-safe addition: clamp at math.MaxInt64.
+		if consumed > math.MaxInt64-elapsed {
+			consumed = math.MaxInt64
+		} else {
+			consumed += elapsed
+		}
+	}
+	remaining := e.CurrentMaxActiveDurationMs - consumed
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+// IsExpired returns true if active time is exhausted (remaining <= 0) or
+// the attempt lease has expired (remaining <= 0). nowMs is a monotonic
+// millisecond timestamp.
+func (e TimeEnvelope) IsExpired(nowMs int64) bool {
+	if e.ActiveTimeRemainingMs(nowMs) <= 0 {
+		return true
+	}
+	if e.AttemptLeaseRemainingMs != nil && *e.AttemptLeaseRemainingMs <= 0 {
+		return true
+	}
+	return false
+}
+
+// EffectiveOperationDeadlineMs returns the effective per-operation deadline
+// in milliseconds: the minimum of operationTimeoutMs, the attempt lease
+// remaining, and the active time remaining (b30-summary.md:342-345).
+//
+//   effective_operation_deadline = min(operation_timeout,
+//                                       attempt_lease_remaining,
+//                                       active_time_remaining)
+//
+// operationTimeoutMs is the per-operation timeout from policy: StallTimeoutMs
+// for stall detection, ModelCallTimeoutMs for model calls. The caller selects
+// which one to pass.
+//
+// If any of the three is zero or negative, the deadline is now (expired) and
+// the method returns 0.
+func (e TimeEnvelope) EffectiveOperationDeadlineMs(nowMs, operationTimeoutMs int64) int64 {
+	deadline := operationTimeoutMs
+	if deadline <= 0 {
+		return 0
+	}
+	if e.AttemptLeaseRemainingMs != nil {
+		lease := *e.AttemptLeaseRemainingMs
+		if lease <= 0 {
+			return 0
+		}
+		if lease < deadline {
+			deadline = lease
+		}
+	}
+	active := e.ActiveTimeRemainingMs(nowMs)
+	if active <= 0 {
+		return 0
+	}
+	if active < deadline {
+		deadline = active
+	}
+	return deadline
 }
 
 // ---------------------------------------------------------------------------
