@@ -339,7 +339,7 @@ func parseCronField(field string, minValue, maxValue int) (CronField, error) {
 	for _, part := range strings.Split(field, ",") {
 		parsed, err := parseCronPart(part, minValue, maxValue)
 		if err != nil {
-			return CronField{}, err
+			return CronField{}, fmt.Errorf("parse cron field: %w", err)
 		}
 		values = append(values, parsed...)
 	}
@@ -384,7 +384,7 @@ func parseCronPart(part string, minValue, maxValue int) ([]int, error) {
 
 	start, end, err := parseCronBounds(part, minValue, maxValue)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse cron part: %w", err)
 	}
 
 	values := make([]int, 0, ((end-start)/step)+1)

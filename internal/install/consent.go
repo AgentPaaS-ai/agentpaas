@@ -107,7 +107,7 @@ type PolicyConsentOpts struct {
 	AcceptPolicyDigest string
 	AllowDowngrade     bool
 
-	Prompt func(prompt string) (string, error)
+	Prompt    func(prompt string) (string, error)
 	EmitAudit func(eventType string, payload map[string]string)
 }
 
@@ -135,7 +135,7 @@ func ResolvePolicyConsent(opts PolicyConsentOpts) (*PolicyConsentResult, error) 
 
 	prior, err := opts.State.GetPriorInstall(opts.PublisherFingerprint, opts.AgentName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve policy consent: %w", err)
 	}
 
 	downgrade := prior != nil && isVersionDecrease(prior.Manifest.AgentVersion, opts.AgentVersion)
@@ -168,11 +168,11 @@ func ResolvePolicyConsent(opts PolicyConsentOpts) (*PolicyConsentResult, error) 
 
 	if opts.IsTTY {
 		if err := approvePolicyTTY(card, opts); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve policy consent: %w", err)
 		}
 	} else {
 		if err := approvePolicyNonTTY(opts); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve policy consent: %w", err)
 		}
 	}
 
@@ -184,26 +184,26 @@ func ResolvePolicyConsent(opts PolicyConsentOpts) (*PolicyConsentResult, error) 
 		AcceptedPolicyDigest: opts.PolicyDigest,
 	}
 	if err := opts.State.SaveApprovedInstall(manifest, opts.PolicyYAML); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve policy consent: %w", err)
 	}
 
 	emitAudit(opts.EmitAudit, audit.EventTypeInstallPolicyApproved, map[string]string{
-		"agent":              opts.AgentName,
+		"agent":                 opts.AgentName,
 		"publisher_fingerprint": manifest.PublisherFingerprint,
-		"policy_digest":      opts.PolicyDigest,
+		"policy_digest":         opts.PolicyDigest,
 	})
 	if downgrade && opts.AllowDowngrade {
 		emitAudit(opts.EmitAudit, audit.EventTypeInstallDowngradeAllowed, map[string]string{
-			"agent":           opts.AgentName,
-			"prior_version":   prior.Manifest.AgentVersion,
-			"new_version":     opts.AgentVersion,
-			"policy_digest":   opts.PolicyDigest,
+			"agent":         opts.AgentName,
+			"prior_version": prior.Manifest.AgentVersion,
+			"new_version":   opts.AgentVersion,
+			"policy_digest": opts.PolicyDigest,
 		})
 	}
 
 	return &PolicyConsentResult{
-		Manifest: manifest,
-		CardText: card,
+		Manifest:     manifest,
+		CardText:     card,
 		DisplayLines: []string{card},
 	}, nil
 }

@@ -88,6 +88,8 @@ func (r *Router) CallTool(ctx context.Context, serverID, tool string, input any,
 		err = fmt.Errorf("mcp server %q has unsupported transport %q", serverID, server.Transport)
 	}
 	if err != nil {
+		// Bare return preserves exact MCP error strings asserted by tests
+		// (e.g. "mcp error N: ...", "mcp server/tool not allowed").
 		return nil, err
 	}
 	AuditToolCall(r.audit, serverID, tool, agentID, runID, "allowed", "", "", hashRouterJSON(input), RedactToolOutputHash(result), time.Since(start).Milliseconds())
@@ -107,11 +109,11 @@ func (r *Router) routeStdio(ctx context.Context, serverID, tool string, input an
 	}
 	stdin, stdoutLines, err := r.lifecycle.StdioPipes(serverID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("router route stdio: %w", err)
 	}
 	request, err := buildMCPRequest(tool, input, r.nextRequestID())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("router route stdio: %w", err)
 	}
 
 	stdioLock := r.stdioLock(serverID)
@@ -136,7 +138,7 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 	}
 	request, err := buildMCPRequest(tool, input, r.nextRequestID())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("router route http: %w", err)
 	}
 	body, err := json.Marshal(request)
 	if err != nil {
@@ -170,7 +172,7 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 func readLimitedHTTPResponseBody(body io.Reader) ([]byte, error) {
 	responseBody, err := io.ReadAll(io.LimitReader(body, maxBodySize))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read limited httpresponse body: %w", err)
 	}
 	if int64(len(responseBody)) < maxBodySize {
 		return responseBody, nil
@@ -211,7 +213,7 @@ func (r *Router) nextRequestID() int64 {
 func buildMCPRequest(tool string, input any, id int64) (mcpRequest, error) {
 	arguments, err := mcpArguments(input)
 	if err != nil {
-		return mcpRequest{}, err
+		return mcpRequest{}, fmt.Errorf("build mcprequest: %w", err)
 	}
 	request := mcpRequest{
 		JSONRPC: "2.0",
@@ -262,7 +264,7 @@ func decodeMCPResponse(ctx context.Context, lines <-chan stdioLine, expectedID i
 		}
 		var response mcpResponse
 		if err := json.Unmarshal(line.data, &response); err != nil {
-			return mcpResponse{}, err
+			return mcpResponse{}, fmt.Errorf("decode mcpresponse: %w", err)
 		}
 		if response.ID != expectedID {
 			continue

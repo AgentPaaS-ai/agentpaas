@@ -177,7 +177,7 @@ func (k *KeychainKeyStore) removeFromManifest(keyID string) error {
 // ErrInvalidKeyID if the ID fails validation.
 func (k *KeychainKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error {
 	if err := ValidateKeyID(id); err != nil {
-		return err
+		return fmt.Errorf("keychain key store create: %w", err)
 	}
 
 	// Check manifest first to give a clean ErrKeyAlreadyExists.
@@ -208,7 +208,7 @@ func (k *KeychainKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) er
 	// this with a Security framework integration via CGo or a helper
 	// binary that reads from stdin, eliminating argv exposure entirely.
 	if _, err := k.securityCall("add-generic-password", "-a", string(id), "-s", k.service, "-w", string(data)); err != nil {
-		return err
+		return fmt.Errorf("keychain key store create: %w", err)
 	}
 
 	return k.addToManifest(string(id))
@@ -218,12 +218,12 @@ func (k *KeychainKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) er
 // the key does not exist, or ErrInvalidKeyID if the ID fails validation.
 func (k *KeychainKeyStore) Load(id KeyID) (KeyMaterial, error) {
 	if err := ValidateKeyID(id); err != nil {
-		return KeyMaterial{}, err
+		return KeyMaterial{}, fmt.Errorf("keychain key store load: %w", err)
 	}
 
 	out, err := k.securityCall("find-generic-password", "-a", string(id), "-s", k.service, "-w")
 	if err != nil {
-		return KeyMaterial{}, err
+		return KeyMaterial{}, fmt.Errorf("keychain key store load: %w", err)
 	}
 
 	var entry keychainEntry
@@ -245,14 +245,14 @@ func (k *KeychainKeyStore) Load(id KeyID) (KeyMaterial, error) {
 func (k *KeychainKeyStore) Sign(id KeyID, digest []byte) ([]byte, error) {
 	mat, err := k.Load(id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("keychain key store sign: %w", err)
 	}
 	if !signingKeyTypes(mat.Type) {
 		return nil, ErrWrongKeyType
 	}
 	key, err := parseECDSAPrivateKey(mat.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("keychain key store sign: %w", err)
 	}
 	return ecdsaSign(key, digest)
 }
@@ -279,11 +279,11 @@ func (k *KeychainKeyStore) Verify(id KeyID, digest []byte, signature []byte) boo
 // key does not exist, or ErrInvalidKeyID if the ID fails validation.
 func (k *KeychainKeyStore) Delete(id KeyID) error {
 	if err := ValidateKeyID(id); err != nil {
-		return err
+		return fmt.Errorf("keychain key store delete: %w", err)
 	}
 
 	if _, err := k.securityCall("delete-generic-password", "-a", string(id), "-s", k.service); err != nil {
-		return err
+		return fmt.Errorf("keychain key store delete: %w", err)
 	}
 
 	return k.removeFromManifest(string(id))

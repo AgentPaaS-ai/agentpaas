@@ -2,6 +2,7 @@ package install
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,15 +33,15 @@ type FileInstallState struct {
 func (s *FileInstallState) GetPriorInstall(publisherFingerprint, agentName string) (*PriorInstallRecord, error) {
 	dir, err := s.installDir(publisherFingerprint, agentName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("file install state get prior install: %w", err)
 	}
 	manifestPath := filepath.Join(dir, "manifest.json")
 	policyPath := filepath.Join(dir, "policy.yaml")
 	if _, err := os.Stat(manifestPath); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("file install state get prior install: %w", err)
 	}
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -51,7 +52,7 @@ func (s *FileInstallState) GetPriorInstall(publisherFingerprint, agentName strin
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
 	pol, err := os.ReadFile(policyPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("read policy: %w", err)
 	}
 	return &PriorInstallRecord{Manifest: m, PolicyYAML: pol}, nil
@@ -61,7 +62,7 @@ func (s *FileInstallState) GetPriorInstall(publisherFingerprint, agentName strin
 func (s *FileInstallState) SaveApprovedInstall(manifest InstallManifest, policyYAML []byte) error {
 	dir, err := s.installDir(manifest.PublisherFingerprint, manifest.AgentName)
 	if err != nil {
-		return err
+		return fmt.Errorf("file install state save approved install: %w", err)
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("mkdir install state: %w", err)
@@ -93,10 +94,10 @@ func (s *FileInstallState) GetInstallByRef(ref string) (*PriorInstallRecord, err
 	installsRoot := filepath.Join(s.StateRoot, "installs")
 	entries, err := os.ReadDir(installsRoot)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("file install state get install by ref: %w", err)
 	}
 	for _, fpEnt := range entries {
 		if !fpEnt.IsDir() {
@@ -105,10 +106,10 @@ func (s *FileInstallState) GetInstallByRef(ref string) (*PriorInstallRecord, err
 		agentDir := filepath.Join(installsRoot, fpEnt.Name(), sanitizePathSegment(name))
 		manifestPath := filepath.Join(agentDir, "manifest.json")
 		if _, err := os.Stat(manifestPath); err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return nil, err
+			return nil, fmt.Errorf("file install state get install by ref: %w", err)
 		}
 		raw, err := os.ReadFile(manifestPath)
 		if err != nil {
@@ -125,7 +126,7 @@ func (s *FileInstallState) GetInstallByRef(ref string) (*PriorInstallRecord, err
 			continue
 		}
 		pol, err := os.ReadFile(filepath.Join(agentDir, "policy.yaml"))
-		if err != nil && !os.IsNotExist(err) {
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("read policy: %w", err)
 		}
 		return &PriorInstallRecord{Manifest: m, PolicyYAML: pol}, nil

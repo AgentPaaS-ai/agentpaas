@@ -13,6 +13,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -26,9 +27,9 @@ import (
 // once. The callbacks must be deterministic: same inputs ⇒ same outputs and
 // roughly the same wall-clock time, so the baseline is reproducible.
 type PerfFixture struct {
-	Name    string
-	Setup   func(ctx context.Context, rec *TimingRecorder) error
-	Run     func(ctx context.Context, rec *TimingRecorder) error
+	Name     string
+	Setup    func(ctx context.Context, rec *TimingRecorder) error
+	Run      func(ctx context.Context, rec *TimingRecorder) error
 	Teardown func(ctx context.Context, rec *TimingRecorder) error
 }
 
@@ -39,16 +40,16 @@ type PerfFixture struct {
 // expected to be true per run; the flags are kept explicit so the baseline
 // report JSON reads clearly without needing to decode the ActivationMode.
 type PerfReport struct {
-	FixtureName string         `json:"fixture_name"`
+	FixtureName string              `json:"fixture_name"`
 	Mode        port.ActivationMode `json:"mode"`
-	Timings     TimingSummary  `json:"timings"`
-	Resources   ResourceSummary `json:"resources"`
-	ColdStart   bool           `json:"cold_start"`
-	CachedCold  bool           `json:"cached_cold"`
-	Warm        bool           `json:"warm"`
-	Resident    bool           `json:"resident"`
-	Duration    time.Duration  `json:"duration_ns"`
-	Err         string         `json:"err,omitempty"`
+	Timings     TimingSummary       `json:"timings"`
+	Resources   ResourceSummary     `json:"resources"`
+	ColdStart   bool                `json:"cold_start"`
+	CachedCold  bool                `json:"cached_cold"`
+	Warm        bool                `json:"warm"`
+	Resident    bool                `json:"resident"`
+	Duration    time.Duration       `json:"duration_ns"`
+	Err         string              `json:"err,omitempty"`
 }
 
 // PerfHarness orchestrates timing + resource capture for a fixture run. It
@@ -121,7 +122,7 @@ func (h *PerfHarness) RunFixture(
 
 	if err := collector.Start(ctx); err != nil {
 		report.Err = err.Error()
-		return report, err
+		return report, fmt.Errorf("perf harness run fixture: %w", err)
 	}
 	runStart := h.now()
 	runEnd := runStart

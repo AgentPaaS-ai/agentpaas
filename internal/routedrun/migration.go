@@ -2,6 +2,7 @@ package routedrun
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,7 +64,7 @@ func NewMigrationRegistry(current string, migrations []Migration) (*MigrationReg
 		// or equal to current; every FromVersion should eventually reach current.
 		for _, m := range r.migrations {
 			if err := reachability(m.FromVersion, current, next); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("new migration registry: %w", err)
 			}
 		}
 	}
@@ -170,18 +171,18 @@ func (r *MigrationRegistry) MigrateFile(path string) error {
 		return nil
 	}
 	if err := rejectSymlinkPath(path); err != nil {
-		return err
+		return fmt.Errorf("migration registry migrate file: %w", err)
 	}
 	data, err := readFileStrict(path, maxStateFileBytes)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("migration registry migrate file: %w", err)
 	}
 	ver, err := extractSchemaVersion(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("migration registry migrate file: %w", err)
 	}
 	if ver == r.current {
 		return nil
@@ -192,7 +193,7 @@ func (r *MigrationRegistry) MigrateFile(path string) error {
 
 	toVer, migrated, err := r.Migrate(ver, data)
 	if err != nil {
-		return err
+		return fmt.Errorf("migration registry migrate file: %w", err)
 	}
 	if toVer != r.current {
 		return fmt.Errorf("routedrun: migration of %s stopped at %s", path, toVer)
@@ -218,9 +219,9 @@ func (r *MigrationRegistry) MigrateFile(path string) error {
 		return fmt.Errorf("routedrun: write migration commit: %w", err)
 	}
 	// Safe to drop backup and commit marker after success (retain optional; remove for cleanliness).
-	_ = os.Remove(backup) // best-effort remove
+	_ = os.Remove(backup)     // best-effort remove
 	_ = os.Remove(commitPath) // best-effort remove
-	_ = fsyncDir(dir) // intentionally ignored (reviewed)
+	_ = fsyncDir(dir)         // intentionally ignored (reviewed)
 	return nil
 }
 
@@ -232,12 +233,12 @@ func (r *MigrationRegistry) MigrateTree(root string) error {
 		return nil
 	}
 	if err := rejectSymlinkPath(root); err != nil {
-		return err
+		return fmt.Errorf("migration registry migrate tree: %w", err)
 	}
 	var paths []string
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("migration registry migrate tree: %w", err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("%w: %s", ErrSymlinkRejected, path)
@@ -263,12 +264,12 @@ func (r *MigrationRegistry) MigrateTree(root string) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("migration registry migrate tree: %w", err)
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
 		if err := r.MigrateFile(p); err != nil {
-			return err
+			return fmt.Errorf("migration registry migrate tree: %w", err)
 		}
 	}
 	return nil

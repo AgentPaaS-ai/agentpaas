@@ -23,7 +23,7 @@ const (
 // InstalledAgentRefDirName returns the state directory segment name@pub8.
 func InstalledAgentRefDirName(agentName, publisherFingerprint string) (string, error) {
 	if err := naming.ValidateName(agentName); err != nil {
-		return "", err
+		return "", fmt.Errorf("installed agent ref dir name: %w", err)
 	}
 	fp := trust.NormalizeFingerprint(publisherFingerprint)
 	if len(fp) < 8 {
@@ -37,7 +37,7 @@ func InstalledAgentRefDirName(agentName, publisherFingerprint string) (string, e
 func InstalledAgentPath(stateRoot, agentName, publisherFingerprint string) (string, error) {
 	refDir, err := InstalledAgentRefDirName(agentName, publisherFingerprint)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("installed agent path: %w", err)
 	}
 	if stateRoot == "" {
 		return "", fmt.Errorf("install: empty StateRoot")

@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -56,7 +57,7 @@ func encryptCheckpointKeyDER(der []byte, passphrase string) ([]byte, error) {
 	}
 	key, err := deriveCheckpointKey(passphrase, salt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt checkpoint key der: %w", err)
 	}
 	nonce := make([]byte, checkpointKeyNonceLen)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -64,11 +65,11 @@ func encryptCheckpointKeyDER(der []byte, passphrase string) ([]byte, error) {
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt checkpoint key der: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt checkpoint key der: %w", err)
 	}
 	ciphertext := gcm.Seal(nil, nonce, der, nil)
 	envelope := encryptedKeyFormat{
@@ -104,15 +105,15 @@ func decryptCheckpointKeyJSON(data []byte, passphrase string) ([]byte, error) {
 	}
 	key, err := deriveCheckpointKey(passphrase, salt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt checkpoint key json: %w", err)
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt checkpoint key json: %w", err)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt checkpoint key json: %w", err)
 	}
 	der, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
@@ -193,18 +194,18 @@ func LoadOrGenerateCheckpointKey(path string) (privateKeyDER []byte, publicKey *
 	stateDir := filepath.Dir(path)
 	passphrase, err := resolveCheckpointKeyPassphrase(stateDir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("load or generate checkpoint key: %w", err)
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if !os.IsNotExist(err) {
+		if !errors.Is(err, os.ErrNotExist) {
 			return nil, nil, fmt.Errorf("read checkpoint key: %w", err)
 		}
 		// Generate new key
 		privateKeyDER, publicKey, err = GenerateCheckpointKey()
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("load or generate checkpoint key: %w", err)
 		}
 		if writeErr := writeCheckpointKeyEncrypted(path, privateKeyDER, passphrase); writeErr != nil {
 			return nil, nil, writeErr
@@ -217,7 +218,7 @@ func LoadOrGenerateCheckpointKey(path string) (privateKeyDER []byte, publicKey *
 		privateKeyDER = data
 		publicKey, err = PublicKeyFromCheckpointKeyDER(privateKeyDER)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("load or generate checkpoint key: %w", err)
 		}
 		if writeErr := writeCheckpointKeyEncrypted(path, privateKeyDER, passphrase); writeErr != nil {
 			log.Printf("audit: failed to migrate legacy unencrypted checkpoint key to encrypted format: %v", writeErr)
@@ -228,11 +229,11 @@ func LoadOrGenerateCheckpointKey(path string) (privateKeyDER []byte, publicKey *
 	// Encrypted JSON envelope
 	privateKeyDER, err = decryptCheckpointKeyJSON(data, passphrase)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("load or generate checkpoint key: %w", err)
 	}
 	publicKey, err = PublicKeyFromCheckpointKeyDER(privateKeyDER)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("load or generate checkpoint key: %w", err)
 	}
 	return privateKeyDER, publicKey, nil
 }

@@ -37,7 +37,7 @@ func socketPath(cmd *cobra.Command) (string, error) {
 	// Fall back to home-based default.
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("socket path: %w", err)
 	}
 	paths := home.NewHomePaths(homeDir)
 	return paths.Socket, nil
@@ -49,7 +49,7 @@ func homeDirPath(cmd *cobra.Command) (string, error) {
 	if cmd.Root().PersistentFlags().Changed("home") {
 		val, err := cmd.Root().PersistentFlags().GetString("home")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("home dir path: %w", err)
 		}
 		return val, nil
 	}

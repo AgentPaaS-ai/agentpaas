@@ -716,7 +716,7 @@ func (s *controlServer) policyDenialEvidence(destination string) ([]operator.Evi
 	}
 	records, err := s.auditIndex.QueryByEventType("policy_denied", 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("control server policy denial evidence: %w", err)
 	}
 	start := 0
 	if len(records) > 20 {
@@ -827,7 +827,7 @@ func timelineDetail(payload map[string]interface{}) (string, error) {
 	}
 	data, err := json.Marshal(plainPayload)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("timeline detail: %w", err)
 	}
 	return logging.Redact(string(data)), nil
 }
@@ -941,7 +941,7 @@ func (s *controlServer) auditRecords() ([]audit.AuditRecord, error) {
 	}
 	count, err := s.auditIndex.RecordCount()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("control server audit records: %w", err)
 	}
 	records := make([]audit.AuditRecord, 0, count)
 	for seq := int64(1); seq <= int64(count); seq++ {
@@ -957,7 +957,7 @@ func (s *controlServer) auditRecords() ([]audit.AuditRecord, error) {
 func (s *controlServer) auditRecordsForRun(runID string) ([]audit.AuditRecord, error) {
 	records, err := s.auditRecords()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("control server audit records for run: %w", err)
 	}
 	filtered := make([]audit.AuditRecord, 0, len(records))
 	for _, record := range records {

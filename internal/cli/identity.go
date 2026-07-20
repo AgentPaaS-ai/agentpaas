@@ -70,14 +70,14 @@ func newIdentityInitCmd() *cobra.Command {
 		Short: "Create a new publisher identity",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { // intentionally ignored (reviewed)
-			name, _ := cmd.Flags().GetString("name") // cobra flag default on missing
+			name, _ := cmd.Flags().GetString("name")              // cobra flag default on missing
 			forceRotate, _ := cmd.Flags().GetBool("force-rotate") // cobra flag default on missing
 
 			// Resolve name: from flag or interactive prompt.
 			if name == "" {
 				if isTerminal(cmd.InOrStdin()) {
 					if _, err := fmt.Fprint(cmd.ErrOrStderr(), "Publisher name (GitHub-style slug, 1-39 chars): "); err != nil {
-						return err
+						return fmt.Errorf("new identity init cmd: %w", err)
 					}
 					input, err := readLine(cmd.InOrStdin())
 					if err != nil {
@@ -90,7 +90,7 @@ func newIdentityInitCmd() *cobra.Command {
 			}
 
 			if err := identity.ValidatePublisherName(name); err != nil {
-				return err
+				return fmt.Errorf("new identity init cmd: %w", err)
 			}
 
 			ks, err := openIdentityStore(cmd)
@@ -118,7 +118,7 @@ func runIdentityInit(cmd *cobra.Command, ks identity.KeyStore, name string) erro
 		if errors.Is(err, identity.ErrPublisherIdentityExists) {
 			return fmt.Errorf("publisher identity already exists — use --force-rotate to replace it")
 		}
-		return err
+		return fmt.Errorf("run identity init: %w", err)
 	}
 
 	emitAudit(cmd, audit.EventTypePublisherIdentityCreated, map[string]string{
@@ -137,24 +137,24 @@ func runIdentityForceRotate(cmd *cobra.Command, ks identity.KeyStore, name strin
 		if errors.Is(err, identity.ErrNoPublisherIdentity) {
 			return fmt.Errorf("no existing publisher identity to rotate — use init without --force-rotate first")
 		}
-		return err
+		return fmt.Errorf("run identity force rotate: %w", err)
 	}
 	oldFP := existing.Fingerprint
 
 	// Delete existing entries from keystore.
-	_ = ks.Delete(identity.KeyID("publisher_identity")) // best-effort key delete on replace
+	_ = ks.Delete(identity.KeyID("publisher_identity"))      // best-effort key delete on replace
 	_ = ks.Delete(identity.KeyID("publisher_identity_name")) // best-effort key delete on replace
 
 	// Create new identity.
 	pi, err := identity.CreatePublisherIdentity(ks, name)
 	if err != nil {
-		return err
+		return fmt.Errorf("run identity force rotate: %w", err)
 	}
 
 	// Loud warning about key change.
-	fmt.Fprintf(cmd.ErrOrStderr(), "\n⚠ WARNING: Publisher identity has been rotated.\n") //nolint:errcheck
-	fmt.Fprintf(cmd.ErrOrStderr(), "Receivers who pinned the old key will hard-fail and must re-verify.\n") //nolint:errcheck
-	fmt.Fprintf(cmd.ErrOrStderr(), "Old fingerprint: %s\n", identity.FormatFingerprintDisplay(oldFP)) //nolint:errcheck
+	fmt.Fprintf(cmd.ErrOrStderr(), "\n⚠ WARNING: Publisher identity has been rotated.\n")                        //nolint:errcheck
+	fmt.Fprintf(cmd.ErrOrStderr(), "Receivers who pinned the old key will hard-fail and must re-verify.\n")      //nolint:errcheck
+	fmt.Fprintf(cmd.ErrOrStderr(), "Old fingerprint: %s\n", identity.FormatFingerprintDisplay(oldFP))            //nolint:errcheck
 	fmt.Fprintf(cmd.ErrOrStderr(), "New fingerprint: %s\n\n", identity.FormatFingerprintDisplay(pi.Fingerprint)) //nolint:errcheck
 
 	emitAudit(cmd, audit.EventTypePublisherIdentityRotated, map[string]string{
@@ -183,12 +183,12 @@ func printIdentityInitResult(cmd *cobra.Command, pi *identity.PublisherIdentity)
 	}
 
 	out := cmd.OutOrStdout()
-	fmt.Fprintf(out, "Publisher identity created.\n")          //nolint:errcheck
-	fmt.Fprintf(out, "Name:        %s\n", pi.Name)               //nolint:errcheck
+	fmt.Fprintf(out, "Publisher identity created.\n")                                        //nolint:errcheck
+	fmt.Fprintf(out, "Name:        %s\n", pi.Name)                                           //nolint:errcheck
 	fmt.Fprintf(out, "Fingerprint: %s\n", identity.FormatFingerprintDisplay(pi.Fingerprint)) //nolint:errcheck
-	fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339)) //nolint:errcheck
+	fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339))                 //nolint:errcheck
 	fmt.Fprintf(out, "\nShare this fingerprint with people who will receive your agents.\n") //nolint:errcheck
-	fmt.Fprintf(out, "They verify it out-of-band to ensure authenticity.\n")               //nolint:errcheck
+	fmt.Fprintf(out, "They verify it out-of-band to ensure authenticity.\n")                 //nolint:errcheck
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ func newIdentityShowCmd() *cobra.Command {
 				if errors.Is(err, identity.ErrNoPublisherIdentity) {
 					return fmt.Errorf("no publisher identity — run 'agent identity init' first")
 				}
-				return err
+				return fmt.Errorf("new identity show cmd: %w", err)
 			}
 
 			jsonOut := jsonOutput(cmd)
@@ -235,9 +235,9 @@ func newIdentityShowCmd() *cobra.Command {
 			}
 
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "Name:        %s\n", pi.Name)                               //nolint:errcheck
+			fmt.Fprintf(out, "Name:        %s\n", pi.Name)                                           //nolint:errcheck
 			fmt.Fprintf(out, "Fingerprint: %s\n", identity.FormatFingerprintDisplay(pi.Fingerprint)) //nolint:errcheck
-			fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339))      //nolint:errcheck
+			fmt.Fprintf(out, "Created:     %s\n", pi.CreatedAt.Format(time.RFC3339))                 //nolint:errcheck
 			return nil
 		},
 	}
@@ -315,18 +315,18 @@ func newIdentityExportCmd() *cobra.Command {
 			// Get passphrase interactively.
 			passphrase, err := readExportPassphrase(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new identity export cmd: %w", err)
 			}
 
 			// Encrypt.
 			envelope, err := encryptIdentityExport(payloadJSON, passphrase)
 			if err != nil {
-				return err
+				return fmt.Errorf("new identity export cmd: %w", err)
 			}
 
 			// Atomically write to file with mode 0600.
 			if err := writeEnvelopeAtomic(outPath, 0600, envelope); err != nil {
-				return err
+				return fmt.Errorf("new identity export cmd: %w", err)
 			}
 
 			// Load identity for audit fingerprint.
@@ -384,7 +384,7 @@ func readPassword(cmd *cobra.Command) (string, error) {
 	if ok && isTerminal(f) {
 		pw, err := term.ReadPassword(int(f.Fd()))
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("read password: %w", err)
 		}
 		return string(pw), nil
 	}
@@ -392,7 +392,7 @@ func readPassword(cmd *cobra.Command) (string, error) {
 	// Non-TTY fallback: read from stdin.
 	data, err := io.ReadAll(cmd.InOrStdin())
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read password: %w", err)
 	}
 	return strings.TrimSpace(string(data)), nil
 }
@@ -417,12 +417,12 @@ func encryptIdentityExport(plaintext []byte, passphrase string) ([]byte, error) 
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt identity export: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt identity export: %w", err)
 	}
 
 	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
@@ -468,12 +468,12 @@ func decryptIdentityExport(data []byte, passphrase string) ([]byte, error) {
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt identity export: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decrypt identity export: %w", err)
 	}
 
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
@@ -548,13 +548,13 @@ func newIdentityImportCmd() *cobra.Command {
 			// Get passphrase.
 			passphrase, err := readImportPassphrase(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new identity import cmd: %w", err)
 			}
 
 			// Decrypt.
 			plaintext, err := decryptIdentityExport(envelopeData, passphrase)
 			if err != nil {
-				return err
+				return fmt.Errorf("new identity import cmd: %w", err)
 			}
 
 			// Parse the payload.
@@ -627,8 +627,8 @@ func newIdentityImportCmd() *cobra.Command {
 				"name":        name,
 			})
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Identity imported.\n")                               //nolint:errcheck
-			fmt.Fprintf(cmd.OutOrStdout(), "Name:        %s\n", name)                        //nolint:errcheck
+			fmt.Fprintf(cmd.OutOrStdout(), "Identity imported.\n")                                             //nolint:errcheck
+			fmt.Fprintf(cmd.OutOrStdout(), "Name:        %s\n", name)                                          //nolint:errcheck
 			fmt.Fprintf(cmd.OutOrStdout(), "Fingerprint: %s\n", identity.FormatFingerprintDisplay(importedFP)) //nolint:errcheck
 			return nil
 		},
@@ -655,7 +655,7 @@ func fingerprintFromPEM(pemStr string) (string, error) {
 	}
 	key, err := x509.ParseECPrivateKey(block.Bytes)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("fingerprint from pem: %w", err)
 	}
 	return identity.PublisherFingerprint(&key.PublicKey), nil
 }
@@ -700,7 +700,7 @@ func logAuditLocal(cmd *cobra.Command, eventType string, payload map[string]stri
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Payload:   payload,
 	}
-	eventJSON, _ := json.Marshal(event) // best-effort marshal
+	eventJSON, _ := json.Marshal(event)                              // best-effort marshal
 	fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s\n", string(eventJSON)) //nolint:errcheck
 }
 
@@ -716,7 +716,7 @@ func readLine(r io.Reader) (string, error) {
 		if err == io.EOF && n > 0 {
 			return string(buf[:n]), nil
 		}
-		return "", err
+		return "", fmt.Errorf("read line: %w", err)
 	}
 	s := string(buf[:n])
 	s = strings.TrimRight(s, "\r\n")
@@ -725,4 +725,4 @@ func readLine(r io.Reader) (string, error) {
 
 // Compile-time check that the key constants are known.
 var _ = identity.KeyID("publisher_identity") // compile-time interface/import assertion
-var _ = identity.KeyTypePublisher // compile-time interface/import assertion
+var _ = identity.KeyTypePublisher            // compile-time interface/import assertion

@@ -100,7 +100,7 @@ func NewAuditWriterRecoverable(path string) (*AuditWriter, error) {
 func NewAuditWriterWithCheckpoints(path string, checkpointPath string, cadence int64, keyDER []byte) (*AuditWriter, error) {
 	w, err := NewAuditWriterRecoverable(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new audit writer with checkpoints: %w", err)
 	}
 	if cadence <= 0 {
 		cadence = DefaultCheckpointCadence
@@ -221,13 +221,13 @@ func (w *AuditWriter) replay() error {
 // truncating the file at the last valid record and re-replaying.
 //
 // Strategy:
-// 1. Seek to the beginning of the file.
-// 2. Read line by line, tracking the byte offset of the START of each
-//    line and validating the chain as we go.
-// 3. When we hit the broken record (the one that caused the replay
-//    error), truncate the file at the byte offset of that record —
-//    effectively discarding the broken tail.
-// 4. Re-replay the truncated file to set the head anchor.
+//  1. Seek to the beginning of the file.
+//  2. Read line by line, tracking the byte offset of the START of each
+//     line and validating the chain as we go.
+//  3. When we hit the broken record (the one that caused the replay
+//     error), truncate the file at the byte offset of that record —
+//     effectively discarding the broken tail.
+//  4. Re-replay the truncated file to set the head anchor.
 //
 // If recovery succeeds, the writer is ready for new Append calls with
 // the head set to the last valid record. The corrupted tail is lost.
@@ -241,9 +241,9 @@ func (w *AuditWriter) recoverFromCorruption(replayErr error) error {
 
 	var prev AuditRecord
 	var hasRecords bool
-	var validBytes int64  // byte offset of the end of the last valid line
-	var truncateAt int64  // byte offset where the broken line starts
-	var lineStart int64   // byte offset of the start of the current line
+	var validBytes int64 // byte offset of the end of the last valid line
+	var truncateAt int64 // byte offset where the broken line starts
+	var lineStart int64  // byte offset of the start of the current line
 	foundBreak := false
 
 	for scanner.Scan() {

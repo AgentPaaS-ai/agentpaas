@@ -38,7 +38,7 @@ func newTriggerCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resolved, err := resolveCLIAgentRef(cmd, args[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("new trigger cmd: %w", err)
 			}
 			agentName := resolved.DaemonKey
 
@@ -47,7 +47,7 @@ func newTriggerCmd() *cobra.Command {
 				addr = "127.0.0.1:7717"
 			}
 
-			payloadPath, _ := cmd.Flags().GetString("payload") // cobra flag default on missing
+			payloadPath, _ := cmd.Flags().GetString("payload")      // cobra flag default on missing
 			contentType, _ := cmd.Flags().GetString("content-type") // cobra flag default on missing
 
 			// Build request body.

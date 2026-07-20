@@ -20,7 +20,7 @@ import (
 // ---------------------------------------------------------------------------
 
 const (
-	ArtifactMaxPerFile   = int64(25 * 1024 * 1024) // 25 MiB
+	ArtifactMaxPerFile  = int64(25 * 1024 * 1024)  // 25 MiB
 	ArtifactMaxTotal    = int64(100 * 1024 * 1024) // 100 MiB
 	ArtifactMaxPathLen  = 512
 	ArtifactMaxSegments = 8
@@ -32,10 +32,10 @@ var artifactSegRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 // ArtifactMetadata records the durable metadata for an accepted artifact.
 type ArtifactMetadata struct {
-	SchemaVersion    string `json:"schema_version"`
-	ArtifactID       ArtifactID `json:"artifact_id"`
-	RunID            RunID      `json:"run_id"`
-	AttemptID        AttemptID  `json:"attempt_id"`
+	SchemaVersion string     `json:"schema_version"`
+	ArtifactID    ArtifactID `json:"artifact_id"`
+	RunID         RunID      `json:"run_id"`
+	AttemptID     AttemptID  `json:"attempt_id"`
 
 	// Relative path beneath the artifact root (POSIX).
 	RelativePath string `json:"relative_path"`
@@ -93,7 +93,7 @@ func (aw *ArtifactWorkspace) ValidateAndAccept(
 	attemptID AttemptID,
 ) (*ArtifactMetadata, error) {
 	if err := validateArtifactRelPath(relPath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("artifact workspace validate and accept: %w", err)
 	}
 
 	// Resolve absolute path beneath root.
@@ -300,16 +300,16 @@ func isBeneath(child, parent string) bool {
 func hashFile(path string) (string, error) {
 	preStat, err := os.Stat(path)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hash file: %w", err)
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hash file: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+		return "", fmt.Errorf("hash file: %w", err)
 	}
 	// Verify file didn't change during hashing (TOCTOU defense).
 	// Using f.Stat() (on the open fd) avoids a path-swap TOCTOU — if the
@@ -317,7 +317,7 @@ func hashFile(path string) (string, error) {
 	// the originally-opened file, not the new path target.
 	postStat, err := f.Stat()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("hash file: %w", err)
 	}
 	if preStat.Size() != postStat.Size() || !preStat.ModTime().Equal(postStat.ModTime()) {
 		return "", fmt.Errorf("%w: file changed during hashing: %s", ErrInvalidPath, path)

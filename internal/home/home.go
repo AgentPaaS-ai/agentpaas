@@ -1,6 +1,7 @@
 package home
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -134,7 +135,7 @@ func ValidatePath(path string) error {
 func DiscoverHome() (string, error) {
 	if h := os.Getenv("AGENTPAAS_HOME"); h != "" {
 		if err := ValidatePath(h); err != nil {
-			return "", err
+			return "", fmt.Errorf("discover home: %w", err)
 		}
 		return h, nil
 	}
@@ -185,10 +186,10 @@ func NewHomePaths(homeDir string) *HomePaths {
 func isSymlink(path string) (bool, error) {
 	fi, err := os.Lstat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("is symlink: %w", err)
 	}
 	return fi.Mode()&os.ModeSymlink != 0, nil
 }
@@ -337,7 +338,7 @@ func ValidatePermissions(paths *HomePaths) error {
 	// Check home directory.
 	fi, err := os.Lstat(paths.Home)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("home directory %s does not exist — run 'agentpaasd init' or 'Ensure()'", paths.Home)
 		}
 		return fmt.Errorf("home: cannot stat home directory %s: %w", paths.Home, err)
@@ -411,7 +412,7 @@ func isAgentPaasProcess(pid int) bool {
 func IsStalePid(pidFile string) (bool, error) {
 	data, err := os.ReadFile(pidFile)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
 		return false, fmt.Errorf("home: cannot read PID file %s: %w", pidFile, err)
@@ -461,7 +462,7 @@ func IsStalePid(pidFile string) (bool, error) {
 // succeeds, something is listening and the socket is live. If the
 // connection fails, the socket is considered stale.
 func IsStaleSocket(sockFile string) (bool, error) {
-	if _, err := os.Stat(sockFile); os.IsNotExist(err) {
+	if _, err := os.Stat(sockFile); errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 
@@ -482,7 +483,7 @@ func IsStaleSocket(sockFile string) (bool, error) {
 // other process holds it, so the file is stale. If EWOULDBLOCK is
 // returned, a live process holds the lock, so the file is not stale.
 func IsStaleLock(lockFile string) (bool, error) {
-	if _, err := os.Stat(lockFile); os.IsNotExist(err) {
+	if _, err := os.Stat(lockFile); errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 
@@ -525,7 +526,7 @@ func CleanStale(paths *HomePaths) error {
 		return fmt.Errorf("home: cannot check PID file staleness: %w", err)
 	}
 	if stale {
-		if err := os.Remove(paths.PID); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(paths.PID); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("home: cannot remove stale PID file %s: %w", paths.PID, err)
 		}
 	}
@@ -536,7 +537,7 @@ func CleanStale(paths *HomePaths) error {
 		return fmt.Errorf("home: cannot check socket file staleness: %w", err)
 	}
 	if stale {
-		if err := os.Remove(paths.Socket); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(paths.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("home: cannot remove stale socket file %s: %w", paths.Socket, err)
 		}
 	} else {
@@ -558,7 +559,7 @@ func CleanStale(paths *HomePaths) error {
 		return fmt.Errorf("home: cannot check lock file staleness: %w", err)
 	}
 	if stale {
-		if err := os.Remove(paths.Lock); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(paths.Lock); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("home: cannot remove stale lock file %s: %w", paths.Lock, err)
 		}
 	}

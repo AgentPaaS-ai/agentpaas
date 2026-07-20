@@ -55,7 +55,7 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 		if credentialed {
 			injection, err = g.broker.RequestCredential(ctx, request.RunID, request.PolicyRuleID, currentURL, method)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("gateway do: %w", err)
 			}
 			req.Header.Set(injection.HeaderName, injection.HeaderValue)
 		} else if err := g.broker.ValidateEgress(ctx, request.RunID, currentURL, method); err != nil {
@@ -69,7 +69,7 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 		if !isRedirect(resp.StatusCode) {
 			if credentialed && injection.HeaderValue != "" {
 				if err := redactCredentialFromResponse(resp, injection.HeaderValue); err != nil {
-					return nil, err
+					return nil, fmt.Errorf("gateway do: %w", err)
 				}
 			}
 			return resp, nil
@@ -82,12 +82,12 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 		_ = resp.Body.Close() // best-effort close
 		nextURL, err := resolveRedirect(currentURL, location)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("gateway do: %w", err)
 		}
 		if credentialed {
 			err := g.broker.DenyCredentialedRedirect(ctx, request.RunID, request.PolicyRuleID, nextURL, method)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("gateway do: %w", err)
 			}
 			return nil, fmt.Errorf("credentialed redirect denied before injection to %s", nextURL)
 		}

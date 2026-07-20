@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -46,7 +46,7 @@ type ForkLineageParent struct {
 func ForkInstalled(stateRoot, ref, targetDir string, auditAppender audit.AuditAppender) error {
 	resolved, err := ResolveAgentRef(ResolveRefOpts{StateRoot: stateRoot, Input: ref})
 	if err != nil {
-		return err
+		return fmt.Errorf("fork installed: %w", err)
 	}
 	if resolved == nil || !resolved.Installed {
 		return fmt.Errorf("%w: no installed agent at %q", ErrForkRefused, ref)
@@ -54,7 +54,7 @@ func ForkInstalled(stateRoot, ref, targetDir string, auditAppender audit.AuditAp
 	parentRef := resolved.Ref
 
 	if err := VerifyInstalledAgent(stateRoot, parentRef, auditAppender); err != nil {
-		return err
+		return fmt.Errorf("fork installed: %w", err)
 	}
 
 	targetAbs, err := filepath.Abs(targetDir)
@@ -62,16 +62,16 @@ func ForkInstalled(stateRoot, ref, targetDir string, auditAppender audit.AuditAp
 		return fmt.Errorf("%w: target dir: %w", ErrForkRefused, err)
 	}
 	if err := assertForkTargetEmpty(targetAbs); err != nil {
-		return err
+		return fmt.Errorf("fork installed: %w", err)
 	}
 
 	name, pub8, err := naming.ParseAgentRef(parentRef)
 	if err != nil {
-		return err
+		return fmt.Errorf("fork installed: %w", err)
 	}
 	installedDir, err := findInstalledDirByRef(stateRoot, name, pub8)
 	if err != nil {
-		return err
+		return fmt.Errorf("fork installed: %w", err)
 	}
 	if installedDir == "" {
 		return fmt.Errorf("%w: no installed agent at %q", ErrForkRefused, ref)
@@ -102,13 +102,13 @@ func ForkInstalled(stateRoot, ref, targetDir string, auditAppender audit.AuditAp
 	lineage := ForkLineage{
 		Version: 1,
 		Parent: ForkLineageParent{
-			AgentName:            lock.AgentName,
-			AgentVersion:         lock.AgentVersion,
-			LockDigest:           pack.LockDigest(lock),
-			BundleDigest:         parentBundle.Digest,
-			PolicyDigest:         lock.PolicyDigest,
-			PolicyYAMLB64:        base64.StdEncoding.EncodeToString(policyYAML),
-			Provenance:           append([]pack.ProvenanceEntry(nil), lock.Provenance...),
+			AgentName:     lock.AgentName,
+			AgentVersion:  lock.AgentVersion,
+			LockDigest:    pack.LockDigest(lock),
+			BundleDigest:  parentBundle.Digest,
+			PolicyDigest:  lock.PolicyDigest,
+			PolicyYAMLB64: base64.StdEncoding.EncodeToString(policyYAML),
+			Provenance:    append([]pack.ProvenanceEntry(nil), lock.Provenance...),
 		},
 		ForkedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
@@ -162,7 +162,7 @@ func ForkInstalled(stateRoot, ref, targetDir string, auditAppender audit.AuditAp
 func assertForkTargetEmpty(targetAbs string) error {
 	info, err := os.Lstat(targetAbs)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("%w: target dir: %w", ErrForkRefused, err)
@@ -187,7 +187,7 @@ func copyForkSourceTree(sourceRoot, targetRoot string) error {
 		}
 		rel, err := filepath.Rel(sourceRoot, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("copy fork source tree: %w", err)
 		}
 		if rel == "." {
 			return nil
@@ -201,21 +201,21 @@ func copyForkSourceTree(sourceRoot, targetRoot string) error {
 		}
 		info, err := os.Lstat(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("copy fork source tree: %w", err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink not allowed: %s", path)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return err
+			return fmt.Errorf("copy fork source tree: %w", err)
 		}
 		mode := info.Mode().Perm()
 		if mode&0o077 != 0 {
 			mode = 0o600
 		}
 		if err := os.WriteFile(dest, data, mode); err != nil {
-			return err
+			return fmt.Errorf("copy fork source tree: %w", err)
 		}
 		return nil
 	})
@@ -225,11 +225,11 @@ func copyForkSourceTree(sourceRoot, targetRoot string) error {
 func ReadForkLineage(projectDir string) (*ForkLineage, error) {
 	raw, err := os.ReadFile(filepath.Join(projectDir, forkLineageFileName))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read fork lineage: %w", err)
 	}
 	var lineage ForkLineage
 	if err := json.Unmarshal(raw, &lineage); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read fork lineage: %w", err)
 	}
 	if lineage.Version != 1 {
 		return nil, fmt.Errorf("unsupported lineage version %d", lineage.Version)
@@ -263,7 +263,7 @@ func ForkAgentNameFromRef(ref string) (string, error) {
 	name, _, err := naming.ParseAgentRef(ref) // intentionally ignored (reviewed)
 	if err != nil {
 		if strings.Contains(ref, "@") {
-			return "", err
+			return "", fmt.Errorf("fork agent name from ref: %w", err)
 		}
 		return strings.TrimSpace(ref), nil
 	}

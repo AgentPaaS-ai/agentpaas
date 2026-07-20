@@ -148,7 +148,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			return err
+			return fmt.Errorf("server listen and serve: %w", err)
 		}
 		return ctx.Err()
 	case err := <-errCh:
@@ -369,14 +369,14 @@ func readLimitedBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 				Reason: "payload_too_large",
 				Detail: fmt.Sprintf("request body exceeds %d bytes", MaxPayloadBytes),
 			})
-			return nil, err
+			return nil, fmt.Errorf("read limited body: %w", err)
 		}
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{
 			Status: "FAILED",
 			Reason: "read_failed",
 			Detail: err.Error(),
 		})
-		return nil, err
+		return nil, fmt.Errorf("read limited body: %w", err)
 	}
 	return body, nil
 }

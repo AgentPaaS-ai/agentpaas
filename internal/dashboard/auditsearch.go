@@ -166,13 +166,13 @@ func (s *Server) queryAuditRecords(eventType string) ([]audit.AuditRecord, error
 	if eventType != "" {
 		records, err := s.auditIndexer.QueryByEventType(eventType, 0)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("server query audit records: %w", err)
 		}
 		return records, nil
 	}
 	count, err := s.auditIndexer.RecordCount()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("server query audit records: %w", err)
 	}
 	records := make([]audit.AuditRecord, 0, count)
 	for seq := int64(1); seq <= int64(count); seq++ {
@@ -339,10 +339,10 @@ func isHexDigest(value string) bool {
 func resolveDashboardReadPath(rawPath string, baseDir string) (string, error) {
 	path, err := cleanDashboardPath(rawPath, baseDir)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve dashboard read path: %w", err)
 	}
 	if err := rejectSymlinkPath(path, false); err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve dashboard read path: %w", err)
 	}
 	return path, nil
 }
@@ -350,10 +350,10 @@ func resolveDashboardReadPath(rawPath string, baseDir string) (string, error) {
 func resolveDashboardWriteDir(rawPath string) (string, error) {
 	path, err := cleanDashboardPath(rawPath, "")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve dashboard write dir: %w", err)
 	}
 	if err := rejectSymlinkPath(path, true); err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve dashboard write dir: %w", err)
 	}
 	return path, nil
 }

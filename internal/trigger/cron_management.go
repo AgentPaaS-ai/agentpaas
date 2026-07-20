@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -169,7 +170,7 @@ func (cs *CronScheduler) persistSchedules() error {
 func (cs *CronScheduler) loadSchedules() (bool, error) {
 	data, err := os.ReadFile(cs.statePath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return false, nil
 		}
 		return false, fmt.Errorf("read cron state: %w", err)
@@ -193,7 +194,7 @@ func (cs *CronScheduler) loadSchedules() (bool, error) {
 func generateScheduleID() (string, error) {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		return "", err
+		return "", fmt.Errorf("generate schedule id: %w", err)
 	}
 	return hex.EncodeToString(b), nil
 }

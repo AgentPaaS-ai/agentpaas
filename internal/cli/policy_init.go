@@ -26,10 +26,10 @@ func newPolicyInitCmd() *cobra.Command {
 				projectDir = args[0]
 			}
 
-			templateName, _ := cmd.Flags().GetString("template") // cobra flag default on missing
-			providerName, _ := cmd.Flags().GetString("provider") // cobra flag default on missing
+			templateName, _ := cmd.Flags().GetString("template")       // cobra flag default on missing
+			providerName, _ := cmd.Flags().GetString("provider")       // cobra flag default on missing
 			noninteractive, _ := cmd.Flags().GetBool("noninteractive") // cobra flag default on missing
-			force, _ := cmd.Flags().GetBool("force") // cobra flag default on missing
+			force, _ := cmd.Flags().GetBool("force")                   // cobra flag default on missing
 
 			// Resolve the project directory to an absolute path.
 			resolvedDir, err := filepath.Abs(projectDir)
@@ -55,7 +55,7 @@ func newPolicyInitCmd() *cobra.Command {
 				// Interactive selection.
 				templateName, err = promptPolicyTemplate(cmd)
 				if err != nil {
-					return err
+					return fmt.Errorf("new policy init cmd: %w", err)
 				}
 			}
 
@@ -75,7 +75,7 @@ func newPolicyInitCmd() *cobra.Command {
 			// Write the policy file.
 			policyPath := filepath.Join(projectDir, "policy.yaml")
 			if err := writePolicyFile(policyPath, content, force); err != nil {
-				return err
+				return fmt.Errorf("new policy init cmd: %w", err)
 			}
 
 			absPath, err := filepath.Abs(policyPath)

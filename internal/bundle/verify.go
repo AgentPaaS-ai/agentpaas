@@ -263,7 +263,7 @@ func verifyManifestSignature(m *Manifest) error {
 	}
 	canonical, err := manifestCanonicalJSON(m, false)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify manifest signature: %w", err)
 	}
 	digest := sha256.Sum256(canonical)
 	if !ecdsa.VerifyASN1(pub, digest[:], sig) {
@@ -330,7 +330,7 @@ func readBundleTarFile(b *Bundle, name string) ([]byte, error) {
 		if hdr.Name != name {
 			if hdr.Size > 0 {
 				if _, err := io.CopyN(io.Discard, tr, hdr.Size); err != nil {
-					return nil, err
+					return nil, fmt.Errorf("read bundle tar file: %w", err)
 				}
 			}
 			continue

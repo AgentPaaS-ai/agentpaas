@@ -28,16 +28,16 @@ func newInstallBundleCmd() *cobra.Command {
 			path := args[0]
 			b, err := bundle.Open(path)
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			defer func() { _ = b.Close() }() // best-effort close
 			vr, err := bundle.Verify(b)
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			report, err := bundle.Inspect(path, b, vr)
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			if !report.Verified {
 				return errors.New("bundle integrity verification failed")
@@ -49,11 +49,11 @@ func newInstallBundleCmd() *cobra.Command {
 
 			homeDir, err := getAgentpaasHome(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			trustStore, err := trust.Load(filepath.Join(homeDir, "trust", "publishers.json"))
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			isTTY := isTerminal(os.Stdin) && !yes
 			trustResult, err := installpkg.ResolveTrust(installpkg.TrustResolveOpts{
@@ -86,13 +86,13 @@ func newInstallBundleCmd() *cobra.Command {
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), consent.CardText) // best-effort write
 			digest, err := bundle.FileBundleDigest(path)
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			preferImage := mustBool(cmd.Flags().GetBool("prefer-image"))
 			allowUnlocked := mustBool(cmd.Flags().GetBool("allow-unlocked-deps"))
 			builder, cleanup, err := installBuilder()
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			if cleanup != nil {
 				defer cleanup()
@@ -103,7 +103,7 @@ func newInstallBundleCmd() *cobra.Command {
 				IsTTY: isTTY, PromptUnlocked: promptReader(), Builder: builder,
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("new install bundle cmd: %w", err)
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Installed: %s\n", result.AgentRef) // best-effort write
 			return nil

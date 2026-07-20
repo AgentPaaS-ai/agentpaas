@@ -19,7 +19,7 @@ func (s *controlServer) resolveDaemonAgentRef(input string) (daemonKey string, a
 		},
 	})
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("control server resolve daemon agent ref: %w", err)
 	}
 	label := ""
 	if _, _, ok := install.ParseInstalledAgentDir(resolved.DaemonKey); ok { // intentionally ignored (reviewed)

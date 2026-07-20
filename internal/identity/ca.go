@@ -238,7 +238,7 @@ func (ca *LocalCA) VerifyWorkloadCert(cert *x509.Certificate) error {
 	}
 	// Verify the certificate is currently valid.
 	if err := VerifyWorkloadCert(cert); err != nil {
-		return err
+		return fmt.Errorf("local ca verify workload cert: %w", err)
 	}
 	// Get the CA certificate and verify the signature chain.
 	caCert, err := ca.getCACertificate()

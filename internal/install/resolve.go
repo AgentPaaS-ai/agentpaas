@@ -40,7 +40,7 @@ func ResolveAgentRef(opts ResolveRefOpts) (*ResolvedAgent, error) {
 		return nil, fmt.Errorf("empty agent reference")
 	}
 	if err := ValidateReferenceInput(input); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve agent ref: %w", err)
 	}
 	if opts.StateRoot == "" {
 		return nil, fmt.Errorf("install: empty StateRoot")
@@ -49,18 +49,18 @@ func ResolveAgentRef(opts ResolveRefOpts) (*ResolvedAgent, error) {
 	if strings.Contains(input, "@") {
 		name, pub8, err := naming.ParseAgentRef(input)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve agent ref: %w", err)
 		}
 		dir, err := findInstalledDirByRef(opts.StateRoot, name, pub8)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve agent ref: %w", err)
 		}
 		if dir == "" {
 			return nil, fmt.Errorf("no installed agent for reference %q", name+"@"+pub8)
 		}
 		m, err := loadInstalledManifest(dir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("resolve agent ref: %w", err)
 		}
 		ref := name + "@" + strings.ToLower(pub8)
 		return &ResolvedAgent{
@@ -72,7 +72,7 @@ func ResolveAgentRef(opts ResolveRefOpts) (*ResolvedAgent, error) {
 	}
 
 	if aliasRes, err := resolveByAlias(opts.StateRoot, input); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve agent ref: %w", err)
 	} else if aliasRes != nil {
 		return aliasRes, nil
 	}
@@ -87,7 +87,7 @@ func ResolveAgentRef(opts ResolveRefOpts) (*ResolvedAgent, error) {
 
 	matches, err := listInstalledByAgentName(opts.StateRoot, input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve agent ref: %w", err)
 	}
 	switch len(matches) {
 	case 0:
@@ -114,11 +114,11 @@ func ResolveAgentRef(opts ResolveRefOpts) (*ResolvedAgent, error) {
 
 func resolveByAlias(stateRoot, alias string) (*ResolvedAgent, error) {
 	if err := ValidateAlias(alias); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve by alias: %w", err)
 	}
 	list, err := ListInstalledAgents(stateRoot)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve by alias: %w", err)
 	}
 	var matches []InstalledAgentEntry
 	for _, e := range list {
@@ -143,11 +143,11 @@ func resolveByAlias(stateRoot, alias string) (*ResolvedAgent, error) {
 
 func listInstalledByAgentName(stateRoot, bareName string) ([]InstalledAgentEntry, error) {
 	if err := naming.ValidateName(bareName); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list installed by agent name: %w", err)
 	}
 	list, err := ListInstalledAgents(stateRoot)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list installed by agent name: %w", err)
 	}
 	var out []InstalledAgentEntry
 	for _, e := range list {
@@ -225,7 +225,7 @@ func loadInstalledManifest(dir string) (InstallManifest, error) {
 	}
 	var m InstallManifest
 	if err := json.Unmarshal(raw, &m); err != nil {
-		return InstallManifest{}, err
+		return InstallManifest{}, fmt.Errorf("load installed manifest: %w", err)
 	}
 	return m, nil
 }

@@ -38,15 +38,15 @@ func newDeployCreateCmd() *cobra.Command {
 			ref := args[0]
 			pkgName, pkgVersion, err := splitPackageRef(ref)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy create cmd: %w", err)
 			}
-			bundleDigest, _ := cmd.Flags().GetString("bundle-digest") // cobra flag default on missing
-			policyDigest, _ := cmd.Flags().GetString("policy-digest") // cobra flag default on missing
-			imageLock, _ := cmd.Flags().GetString("image-lock-digest") // cobra flag default on missing
-			provenance, _ := cmd.Flags().GetString("provenance-digest") // cobra flag default on missing
+			bundleDigest, _ := cmd.Flags().GetString("bundle-digest")       // cobra flag default on missing
+			policyDigest, _ := cmd.Flags().GetString("policy-digest")       // cobra flag default on missing
+			imageLock, _ := cmd.Flags().GetString("image-lock-digest")      // cobra flag default on missing
+			provenance, _ := cmd.Flags().GetString("provenance-digest")     // cobra flag default on missing
 			maxConcurrent, _ := cmd.Flags().GetInt32("max-concurrent-runs") // cobra flag default on missing
-			alias, _ := cmd.Flags().GetString("alias") // cobra flag default on missing
-			actor, _ := cmd.Flags().GetString("actor") // cobra flag default on missing
+			alias, _ := cmd.Flags().GetString("alias")                      // cobra flag default on missing
+			actor, _ := cmd.Flags().GetString("actor")                      // cobra flag default on missing
 
 			if bundleDigest == "" {
 				// Allow create with placeholder digests for state-only tests;
@@ -62,7 +62,7 @@ func newDeployCreateCmd() *cobra.Command {
 
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy create cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -151,7 +151,7 @@ func newDeployListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy list cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -186,7 +186,7 @@ func newDeployInspectCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy inspect cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -219,7 +219,7 @@ func newDeployDeactivateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy deactivate cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -267,7 +267,7 @@ func newDeployAliasSetCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy alias set cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -302,7 +302,7 @@ func newDeployAliasPromoteCmd() *cobra.Command {
 			}
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy alias promote cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -340,7 +340,7 @@ func newDeployAliasRollbackCmd() *cobra.Command {
 			}
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy alias rollback cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -373,7 +373,7 @@ func newDeployAliasListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			client, conn, err := dialControl(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new deploy alias list cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -402,11 +402,11 @@ func newDeployAliasListCmd() *cobra.Command {
 func dialControl(cmd *cobra.Command) (controlv1.ControlServiceClient, interface{ Close() error }, error) {
 	sock, err := socketPath(cmd)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("dial control: %w", err)
 	}
 	client, conn, err := ConnectToDaemon(sock)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("dial control: %w", err)
 	}
 	return client, conn, nil
 }

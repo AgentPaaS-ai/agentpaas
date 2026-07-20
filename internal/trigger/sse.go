@@ -78,10 +78,10 @@ func (h *SSEHandler) ServeSSE(w http.ResponseWriter, r *http.Request, runID stri
 func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event *RunEvent) error {
 	data, err := json.Marshal(event)
 	if err != nil {
-		return err
+		return fmt.Errorf("write sseevent: %w", err)
 	}
 	if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.EventID, event.Type, data); err != nil {
-		return err
+		return fmt.Errorf("write sseevent: %w", err)
 	}
 	flusher.Flush()
 	return nil
@@ -89,7 +89,7 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event *RunEvent)
 
 func writeSSEHeartbeat(w http.ResponseWriter, flusher http.Flusher) error {
 	if _, err := fmt.Fprint(w, ": heartbeat\n\n"); err != nil {
-		return err
+		return fmt.Errorf("write sseheartbeat: %w", err)
 	}
 	flusher.Flush()
 	return nil

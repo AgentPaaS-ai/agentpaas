@@ -6,11 +6,13 @@ package routedrun
 
 // RunTransitions defines legal RunStatus transitions.
 // Key: from state, Value: set of allowed to states.
+import "fmt"
+
 var RunTransitions = map[RunStatus]map[RunStatus]bool{
 	RunStatusPending: {
-		RunStatusRunning: true,
+		RunStatusRunning:   true,
 		RunStatusCancelled: true,
-		RunStatusFailed: true,
+		RunStatusFailed:    true,
 	},
 	RunStatusRunning: {
 		RunStatusPauseRequested: true,
@@ -21,25 +23,25 @@ var RunTransitions = map[RunStatus]map[RunStatus]bool{
 		RunStatusExpired:        true,
 	},
 	RunStatusPauseRequested: {
-		RunStatusPaused:        true,
-		RunStatusRunning:       true,
-		RunStatusCancelled:     true,
-		RunStatusFailed:        true,
+		RunStatusPaused:         true,
+		RunStatusRunning:        true,
+		RunStatusCancelled:      true,
+		RunStatusFailed:         true,
 		RunStatusBudgetExceeded: true,
-		RunStatusExpired:       true,
+		RunStatusExpired:        true,
 	},
 	RunStatusPaused: {
-		RunStatusRunning:       true,
-		RunStatusNeedsReplan:   true,
-		RunStatusCancelled:     true,
-		RunStatusFailed:        true,
-		RunStatusExpired:       true,
+		RunStatusRunning:     true,
+		RunStatusNeedsReplan: true,
+		RunStatusCancelled:   true,
+		RunStatusFailed:      true,
+		RunStatusExpired:     true,
 	},
 	RunStatusNeedsReplan: {
-		RunStatusRunning:       true,
-		RunStatusCancelled:     true,
-		RunStatusFailed:        true,
-		RunStatusExpired:       true,
+		RunStatusRunning:   true,
+		RunStatusCancelled: true,
+		RunStatusFailed:    true,
+		RunStatusExpired:   true,
 	},
 	// Terminal states: no outgoing transitions
 	RunStatusSucceeded:      {},
@@ -65,25 +67,25 @@ var WorkflowTransitions = map[WorkflowStatus]map[WorkflowStatus]bool{
 		WorkflowStatusExpired:        true,
 	},
 	WorkflowStatusPauseRequested: {
-		WorkflowStatusPaused:        true,
-		WorkflowStatusRunning:       true,
-		WorkflowStatusCancelled:     true,
-		WorkflowStatusFailed:        true,
+		WorkflowStatusPaused:         true,
+		WorkflowStatusRunning:        true,
+		WorkflowStatusCancelled:      true,
+		WorkflowStatusFailed:         true,
 		WorkflowStatusBudgetExceeded: true,
-		WorkflowStatusExpired:       true,
+		WorkflowStatusExpired:        true,
 	},
 	WorkflowStatusPaused: {
-		WorkflowStatusRunning:       true,
-		WorkflowStatusNeedsReplan:   true,
-		WorkflowStatusCancelled:     true,
-		WorkflowStatusFailed:        true,
-		WorkflowStatusExpired:       true,
+		WorkflowStatusRunning:     true,
+		WorkflowStatusNeedsReplan: true,
+		WorkflowStatusCancelled:   true,
+		WorkflowStatusFailed:      true,
+		WorkflowStatusExpired:     true,
 	},
 	WorkflowStatusNeedsReplan: {
-		WorkflowStatusRunning:       true,
-		WorkflowStatusCancelled:     true,
-		WorkflowStatusFailed:        true,
-		WorkflowStatusExpired:       true,
+		WorkflowStatusRunning:   true,
+		WorkflowStatusCancelled: true,
+		WorkflowStatusFailed:    true,
+		WorkflowStatusExpired:   true,
 	},
 	WorkflowStatusSucceeded:      {},
 	WorkflowStatusFailed:         {},
@@ -100,14 +102,14 @@ var NodeTransitions = map[NodeStatus]map[NodeStatus]bool{
 		NodeStatusSkipped:   true,
 	},
 	NodeStatusReady: {
-		NodeStatusLaunching:    true,
-		NodeStatusCancelled:    true,
-		NodeStatusSkipped:      true,
+		NodeStatusLaunching: true,
+		NodeStatusCancelled: true,
+		NodeStatusSkipped:   true,
 	},
 	NodeStatusLaunching: {
-		NodeStatusRunning:      true,
-		NodeStatusFailed:       true,
-		NodeStatusCancelled:    true,
+		NodeStatusRunning:   true,
+		NodeStatusFailed:    true,
+		NodeStatusCancelled: true,
 	},
 	NodeStatusRunning: {
 		NodeStatusPauseRequested: true,
@@ -116,19 +118,19 @@ var NodeTransitions = map[NodeStatus]map[NodeStatus]bool{
 		NodeStatusCancelled:      true,
 	},
 	NodeStatusPauseRequested: {
-		NodeStatusPaused:        true,
-		NodeStatusRunning:       true,
-		NodeStatusCancelled:     true,
-		NodeStatusFailed:        true,
+		NodeStatusPaused:    true,
+		NodeStatusRunning:   true,
+		NodeStatusCancelled: true,
+		NodeStatusFailed:    true,
 	},
 	NodeStatusPaused: {
-		NodeStatusRunning:       true,
-		NodeStatusNeedsReplan:   true,
-		NodeStatusCancelled:     true,
+		NodeStatusRunning:     true,
+		NodeStatusNeedsReplan: true,
+		NodeStatusCancelled:   true,
 	},
 	NodeStatusNeedsReplan: {
-		NodeStatusRunning:       true,
-		NodeStatusCancelled:     true,
+		NodeStatusRunning:   true,
+		NodeStatusCancelled: true,
 	},
 	NodeStatusSucceeded: {},
 	NodeStatusFailed:    {},
@@ -173,18 +175,18 @@ var ServiceTransitions = map[ServiceStatus]map[ServiceStatus]bool{
 // ChildBatchTransitions defines legal ChildBatchStatus transitions.
 var ChildBatchTransitions = map[ChildBatchStatus]map[ChildBatchStatus]bool{
 	ChildBatchIntent: {
-		ChildBatchAllocated:  true,
-		ChildBatchCancelled:  true,
+		ChildBatchAllocated: true,
+		ChildBatchCancelled: true,
 	},
 	ChildBatchAllocated: {
-		ChildBatchRunning:    true,
-		ChildBatchCancelled:  true,
+		ChildBatchRunning:   true,
+		ChildBatchCancelled: true,
 	},
 	ChildBatchRunning: {
 		ChildBatchPauseRequested: true,
-		ChildBatchJoining:   true,
-		ChildBatchFailed:    true,
-		ChildBatchCancelled: true,
+		ChildBatchJoining:        true,
+		ChildBatchFailed:         true,
+		ChildBatchCancelled:      true,
 	},
 	ChildBatchPauseRequested: {
 		ChildBatchPaused:    true,
@@ -203,8 +205,8 @@ var ChildBatchTransitions = map[ChildBatchStatus]map[ChildBatchStatus]bool{
 		ChildBatchCancelled: true,
 	},
 	ChildBatchStopping: {
-		ChildBatchStopped:  true,
-		ChildBatchFailed:   true,
+		ChildBatchStopped:   true,
+		ChildBatchFailed:    true,
 		ChildBatchCancelled: true,
 	},
 	ChildBatchSucceeded: {},
@@ -306,7 +308,7 @@ func ValidateAttemptTransition(from, to AttemptStatus) error {
 // Returns the new status on success, or the original status and a *TransitionError.
 func ApplyRunTransition(current RunStatus, target RunStatus) (RunStatus, error) {
 	if err := ValidateRunTransition(current, target); err != nil {
-		return current, err
+		return current, fmt.Errorf("apply run transition: %w", err)
 	}
 	return target, nil
 }
@@ -314,7 +316,7 @@ func ApplyRunTransition(current RunStatus, target RunStatus) (RunStatus, error) 
 // ApplyWorkflowTransition validates and applies a WorkflowStatus transition.
 func ApplyWorkflowTransition(current WorkflowStatus, target WorkflowStatus) (WorkflowStatus, error) {
 	if err := ValidateWorkflowTransition(current, target); err != nil {
-		return current, err
+		return current, fmt.Errorf("apply workflow transition: %w", err)
 	}
 	return target, nil
 }
@@ -322,7 +324,7 @@ func ApplyWorkflowTransition(current WorkflowStatus, target WorkflowStatus) (Wor
 // ApplyNodeTransition validates and applies a NodeStatus transition.
 func ApplyNodeTransition(current NodeStatus, target NodeStatus) (NodeStatus, error) {
 	if err := ValidateNodeTransition(current, target); err != nil {
-		return current, err
+		return current, fmt.Errorf("apply node transition: %w", err)
 	}
 	return target, nil
 }
@@ -330,7 +332,7 @@ func ApplyNodeTransition(current NodeStatus, target NodeStatus) (NodeStatus, err
 // ApplyServiceTransition validates and applies a ServiceStatus transition.
 func ApplyServiceTransition(current ServiceStatus, target ServiceStatus) (ServiceStatus, error) {
 	if err := ValidateServiceTransition(current, target); err != nil {
-		return current, err
+		return current, fmt.Errorf("apply service transition: %w", err)
 	}
 	return target, nil
 }
@@ -338,7 +340,7 @@ func ApplyServiceTransition(current ServiceStatus, target ServiceStatus) (Servic
 // ApplyChildBatchTransition validates and applies a ChildBatchStatus transition.
 func ApplyChildBatchTransition(current ChildBatchStatus, target ChildBatchStatus) (ChildBatchStatus, error) {
 	if err := ValidateChildBatchTransition(current, target); err != nil {
-		return current, err
+		return current, fmt.Errorf("apply child batch transition: %w", err)
 	}
 	return target, nil
 }
@@ -346,7 +348,7 @@ func ApplyChildBatchTransition(current ChildBatchStatus, target ChildBatchStatus
 // ApplyAttemptTransition validates and applies an AttemptStatus transition.
 func ApplyAttemptTransition(current AttemptStatus, target AttemptStatus) (AttemptStatus, error) {
 	if err := ValidateAttemptTransition(current, target); err != nil {
-		return current, err
+		return current, fmt.Errorf("apply attempt transition: %w", err)
 	}
 	return target, nil
 }

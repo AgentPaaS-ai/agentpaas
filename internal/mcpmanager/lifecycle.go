@@ -17,6 +17,9 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
+// ErrHTTPRequiresDocker is a package-level sentinel for repeated validation failures.
+var ErrHTTPRequiresDocker = errors.New("http MCP server requires Docker runtime")
+
 const minimalPATH = "PATH=/usr/local/bin:/usr/bin:/bin"
 
 // Lifecycle manages the start/stop/readiness of declared MCP servers.
@@ -197,7 +200,7 @@ func (lc *Lifecycle) waitForStdio(serverID string, cmd *exec.Cmd, state *stdioSt
 
 func (lc *Lifecycle) startHTTP(ctx context.Context, serverID, _ string, runID string, server policy.MCPServer) error { // intentionally ignored (reviewed)
 	if lc.driver == nil {
-		return errors.New("http MCP server requires Docker runtime")
+		return ErrHTTPRequiresDocker
 	}
 	if lc.netID == "" || lc.netID == "host" {
 		return fmt.Errorf("http MCP server %q requires non-host Docker network", serverID)
@@ -270,7 +273,7 @@ func (lc *Lifecycle) checkOnce(ctx context.Context, serverID string) (bool, erro
 	}
 	if hasContainer {
 		if lc.driver == nil {
-			return false, errors.New("http MCP server requires Docker runtime")
+			return false, ErrHTTPRequiresDocker
 		}
 		status, err := lc.driver.Status(ctx, containerID)
 		if err != nil {
@@ -340,7 +343,7 @@ func (lc *Lifecycle) stopHTTP(ctx context.Context, serverID string) error {
 		return fmt.Errorf("http MCP server %q is not running", serverID)
 	}
 	if lc.driver == nil {
-		return errors.New("http MCP server requires Docker runtime")
+		return ErrHTTPRequiresDocker
 	}
 
 	if err := lc.driver.Stop(ctx, containerID, nil); err != nil {

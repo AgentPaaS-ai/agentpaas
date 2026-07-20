@@ -64,7 +64,7 @@ func GenerateStatusReport(ctx context.Context, manager *Manager, lifecycle *Life
 
 	sidecars, err := collectSidecars(ctx, resources, driver)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate status report: %w", err)
 	}
 	if len(sidecars) > 0 {
 		report.Sidecars = sidecars
@@ -76,7 +76,7 @@ func GenerateStatusReport(ctx context.Context, manager *Manager, lifecycle *Life
 func MCPStatusJSON(ctx context.Context, manager *Manager, lifecycle *Lifecycle, driver runtime.RuntimeDriver) ([]byte, error) {
 	report, err := GenerateStatusReport(ctx, manager, lifecycle, driver)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("mcpstatus json: %w", err)
 	}
 	return json.Marshal(report)
 }

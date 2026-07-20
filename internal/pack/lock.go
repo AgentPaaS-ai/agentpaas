@@ -28,6 +28,12 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
+// ErrNilPrivateKey is a package-level sentinel for repeated validation failures.
+var ErrNilPrivateKey = errors.New("private key must not be nil")
+
+// ErrNilLock is a package-level sentinel for repeated validation failures.
+var ErrNilLock = errors.New("lock must not be nil")
+
 const noTlogSigningConfigJSON = `{"mediaType":"application/vnd.dev.sigstore.signingconfig.v0.2+json","rekorTlogConfig":{},"tsaConfig":{}}`
 
 // LockSchemaVersion is the current agent.lock schema version.
@@ -270,7 +276,7 @@ func NewSignedTestLock(agentName string, policyYAML []byte) (*AgentLock, error) 
 func NewSignedTestLockWithLLM(agentName string, policyYAML []byte, llmCredentialName string) (*AgentLock, error) {
 	lock, err := NewSignedTestLock(agentName, policyYAML)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new signed test lock with llm: %w", err)
 	}
 	lock.AgentYAML = &AgentYAML{
 		Name:    agentName,
@@ -311,10 +317,10 @@ func NewSignedTestLockWithLLM(agentName string, policyYAML []byte, llmCredential
 // Intended for tests and bundle fixtures that mutate lock fields after creation.
 func SignLockfileWithKey(lock *AgentLock, key *ecdsa.PrivateKey) error {
 	if lock == nil {
-		return errors.New("lock must not be nil")
+		return ErrNilLock
 	}
 	if key == nil {
-		return errors.New("private key must not be nil")
+		return ErrNilPrivateKey
 	}
 	lock.LockfileSignature = ""
 	lock.PackageAID = ""
@@ -345,12 +351,12 @@ func SignProvenanceEntryWithKey(e *ProvenanceEntry, key *ecdsa.PrivateKey) error
 		return errors.New("provenance entry must not be nil")
 	}
 	if key == nil {
-		return errors.New("private key must not be nil")
+		return ErrNilPrivateKey
 	}
 	e.EntrySignature = ""
 	canonical, err := provenanceEntryCanonical(e)
 	if err != nil {
-		return err
+		return fmt.Errorf("sign provenance entry with key: %w", err)
 	}
 	digest := sha256.Sum256(canonical)
 	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
@@ -366,10 +372,10 @@ func SignProvenanceEntryWithKey(e *ProvenanceEntry, key *ecdsa.PrivateKey) error
 // bundle fixtures.
 func SignPublisherWithKey(lock *AgentLock, key *ecdsa.PrivateKey) error {
 	if lock == nil {
-		return errors.New("lock must not be nil")
+		return ErrNilLock
 	}
 	if key == nil {
-		return errors.New("private key must not be nil")
+		return ErrNilPrivateKey
 	}
 	if lock.Publisher == nil {
 		return errors.New("lock has no publisher block")
@@ -377,7 +383,7 @@ func SignPublisherWithKey(lock *AgentLock, key *ecdsa.PrivateKey) error {
 	lock.PublisherSignature = ""
 	canonical, err := canonicalJSON(lock)
 	if err != nil {
-		return err
+		return fmt.Errorf("sign publisher with key: %w", err)
 	}
 	digest := sha256.Sum256(canonical)
 	sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
@@ -470,7 +476,7 @@ func SignImage(ctx context.Context, imageRef string, keyPath string) (referrer s
 		return "", errors.New("key path must not be empty")
 	}
 	if err := validateSecurePath(keyPath, true); err != nil {
-		return "", err
+		return "", fmt.Errorf("sign image: %w", err)
 	}
 
 	localRef := isLocalRegistryRef(imageRef)
@@ -510,7 +516,7 @@ func signImageOnce(ctx context.Context, imageRef, keyPath string) (string, error
 
 	signArgs, cleanupConfig, err := buildCosignSignArgs(imageRef, keyPath)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("sign image once: %w", err)
 	}
 	defer cleanupConfig()
 	signArgs = append(signArgs, imageRef)
@@ -572,28 +578,28 @@ var retryableSignErrorPatterns = []string{
 // CreateAgentLock creates the canonical, signed agent.lock manifest.
 func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	if err := validateLockConfig(cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
 
 	sbom, sbomDigest, err := GenerateSBOM(ctx, cfg.BuildResult.ImageRef)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
 
 	privateKey, keyFile, cleanup, err := preparePackageSigningMaterial(cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
 	defer cleanup()
 
 	signatureReferrer, err := SignImage(ctx, cfg.BuildResult.ImageRef, keyFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
 
 	publicKeyPEM, err := publicKeyPEM(&privateKey.PublicKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
 
 	policyDigest, err := ComputePolicyDigestWithRoute(cfg.PolicyYAML, routeNameFromAgentYAML(cfg.AgentYAML))
@@ -827,7 +833,7 @@ func signAgentLock(lock *AgentLock, cfg LockConfig) error {
 // and publisher_signature are excluded.
 func canonicalJSON(lock *AgentLock) ([]byte, error) {
 	if lock == nil {
-		return nil, errors.New("lock must not be nil")
+		return nil, ErrNilLock
 	}
 	return json.Marshal(lockCanonicalMap(lock, false))
 }
@@ -836,7 +842,7 @@ func canonicalJSON(lock *AgentLock) ([]byte, error) {
 // WITH both signatures included. Used by LockDigest.
 func canonicalJSONFull(lock *AgentLock) ([]byte, error) {
 	if lock == nil {
-		return nil, errors.New("lock must not be nil")
+		return nil, ErrNilLock
 	}
 	return json.Marshal(lockCanonicalMap(lock, true))
 }
@@ -849,7 +855,7 @@ func LockfileCanonicalJSON(lock *AgentLock) ([]byte, error) {
 // VerifyAgentLock verifies an agent.lock manifest.
 func VerifyAgentLock(lock *AgentLock, imageRef string) error {
 	if lock == nil {
-		return errors.New("lock must not be nil")
+		return ErrNilLock
 	}
 	if lock.SchemaVersion != LockSchemaVersion && lock.SchemaVersion != 1 {
 		return fmt.Errorf("unsupported lock schema version %d", lock.SchemaVersion)
@@ -857,7 +863,7 @@ func VerifyAgentLock(lock *AgentLock, imageRef string) error {
 	// v1 lock: verify AID signature only.
 	// v2 lock: verify both AID signature and (if present) publisher signature.
 	if err := VerifyLockfileSignature(lock); err != nil {
-		return err
+		return fmt.Errorf("verify agent lock: %w", err)
 	}
 	if lock.SchemaVersion >= 2 && lock.Publisher != nil {
 		if err := VerifyPublisherSignature(lock); err != nil {
@@ -878,17 +884,17 @@ func VerifyAgentLock(lock *AgentLock, imageRef string) error {
 		}
 	}
 	if err := verifyRequiredDigest("sbom_digest", lock.SBOMDigest); err != nil {
-		return err
+		return fmt.Errorf("verify agent lock: %w", err)
 	}
 	if err := verifyRequiredDigest("build_input_digest", lock.BuildInputDigest); err != nil {
-		return err
+		return fmt.Errorf("verify agent lock: %w", err)
 	}
 	if err := verifySBOMReferrer(lock); err != nil {
-		return err
+		return fmt.Errorf("verify agent lock: %w", err)
 	}
 	if strings.TrimSpace(imageRef) != "" {
 		if err := verifyImageSignature(lock.PackageAID, imageRef); err != nil {
-			return err
+			return fmt.Errorf("verify agent lock: %w", err)
 		}
 	}
 	return nil
@@ -898,11 +904,11 @@ func VerifyAgentLock(lock *AgentLock, imageRef string) error {
 // against the AID public key embedded in the lockfile.
 func VerifyLockfileSignature(lock *AgentLock) error {
 	if lock == nil {
-		return errors.New("lock must not be nil")
+		return ErrNilLock
 	}
 	pub, err := PublicKeyFromPEM([]byte(lock.PackageAID))
 	if err != nil {
-		return err
+		return fmt.Errorf("verify lockfile signature: %w", err)
 	}
 	signature, err := base64.StdEncoding.DecodeString(lock.LockfileSignature)
 	if err != nil {
@@ -910,7 +916,7 @@ func VerifyLockfileSignature(lock *AgentLock) error {
 	}
 	canonical, err := canonicalJSON(lock)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify lockfile signature: %w", err)
 	}
 	digest := sha256.Sum256(canonical)
 	if !ecdsa.VerifyASN1(pub, digest[:], signature) {
@@ -924,7 +930,7 @@ func VerifyLockfileSignature(lock *AgentLock) error {
 // lockfile_signature and publisher_signature) using the publisher's public key.
 func VerifyPublisherSignature(lock *AgentLock) error {
 	if lock == nil {
-		return errors.New("lock must not be nil")
+		return ErrNilLock
 	}
 	if lock.Publisher == nil {
 		return nil // no publisher block, nothing to verify
@@ -944,7 +950,7 @@ func VerifyPublisherSignature(lock *AgentLock) error {
 	// canonicalJSON (lockCanonicalMap with includeSignatures=false).
 	canonical, err := canonicalJSON(lock)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify publisher signature: %w", err)
 	}
 	digest := sha256.Sum256(canonical)
 	if !ecdsa.VerifyASN1(pub, digest[:], signature) {
@@ -958,7 +964,7 @@ func VerifyPublisherSignature(lock *AgentLock) error {
 // the integrity of each provenance entry independently.
 func VerifyProvenanceSignatures(lock *AgentLock) error {
 	if lock == nil {
-		return errors.New("lock must not be nil")
+		return ErrNilLock
 	}
 	for i, e := range lock.Provenance {
 		if e.EntrySignature == "" {
@@ -1056,7 +1062,7 @@ func PublicKeyFingerprint(pub *ecdsa.PublicKey) string {
 // WriteAgentLock writes the agent.lock manifest as canonical JSON to a file.
 func WriteAgentLock(lock *AgentLock, path string) error {
 	if err := validateSecurePath(path, false); err != nil {
-		return err
+		return fmt.Errorf("write agent lock: %w", err)
 	}
 	content, err := json.Marshal(lockCanonicalMap(lock, true))
 	if err != nil {
@@ -1068,7 +1074,7 @@ func WriteAgentLock(lock *AgentLock, path string) error {
 // ReadAgentLock reads and parses an agent.lock file.
 func ReadAgentLock(path string) (*AgentLock, error) {
 	if err := validateSecurePath(path, true); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read agent lock: %w", err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -1192,11 +1198,11 @@ func privateKeyFromMaterial(material interface{}) (*ecdsa.PrivateKey, []byte, er
 	case []byte:
 		key, err := parsePrivateKeyPEM(v)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("private key from material: %w", err)
 		}
 		pkcs8PEM, err := privateKeyPEM(key)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("private key from material: %w", err)
 		}
 		return key, pkcs8PEM, nil
 	default:
@@ -1206,11 +1212,11 @@ func privateKeyFromMaterial(material interface{}) (*ecdsa.PrivateKey, []byte, er
 		}
 		key, err := parsePrivateKeyPEM(bytes)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("private key from material: %w", err)
 		}
 		pkcs8PEM, err := privateKeyPEM(key)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("private key from material: %w", err)
 		}
 		return key, pkcs8PEM, nil
 	}
@@ -1402,7 +1408,7 @@ func verifySBOMReferrer(lock *AgentLock) error {
 		return nil
 	}
 	if err := validateSecurePath(lock.SBOMReferrer, true); err != nil {
-		return err
+		return fmt.Errorf("verify sbomreferrer: %w", err)
 	}
 	content, err := os.ReadFile(lock.SBOMReferrer)
 	if err != nil {
@@ -1418,7 +1424,7 @@ func verifySBOMReferrer(lock *AgentLock) error {
 func verifyImageSignature(packageAID string, imageRef string) error {
 	pubFile, cleanup, err := writeTempPublicKey([]byte(packageAID))
 	if err != nil {
-		return err
+		return fmt.Errorf("verify image signature: %w", err)
 	}
 	defer cleanup()
 
@@ -1438,7 +1444,7 @@ func verifyImageSignature(packageAID string, imageRef string) error {
 
 func writeTempPublicKey(keyPEM []byte) (string, func(), error) {
 	if _, err := PublicKeyFromPEM(keyPEM); err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("write temp public key: %w", err)
 	}
 	f, err := os.CreateTemp("", "agentpaas-package-pub-*.pem")
 	if err != nil {
@@ -1478,7 +1484,7 @@ func validateSecurePath(path string, mustExist bool) error {
 	}
 	resolved, err := resolvePathSymlinks(clean, mustExist)
 	if err != nil {
-		return err
+		return fmt.Errorf("validate secure path: %w", err)
 	}
 	resolved = filepath.Clean(resolved)
 	for _, protected := range []string{"/etc", "/usr", "/bin", "/sbin"} {
@@ -1490,7 +1496,7 @@ func validateSecurePath(path string, mustExist bool) error {
 	// resolvePathSymlinks() resolves symlinks away, so checking the resolved
 	// path would never find them (security bug caught by adversary test).
 	if err := rejectSymlinkComponents(clean, mustExist); err != nil {
-		return err
+		return fmt.Errorf("validate secure path: %w", err)
 	}
 	return nil
 }
@@ -1500,7 +1506,7 @@ func resolvePathSymlinks(path string, mustExist bool) (string, error) {
 	if err == nil {
 		return resolved, nil
 	}
-	if !os.IsNotExist(err) {
+	if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("resolve symlinks in %s: %w", path, err)
 	}
 	if mustExist {
@@ -1509,7 +1515,7 @@ func resolvePathSymlinks(path string, mustExist bool) (string, error) {
 	parent := filepath.Dir(path)
 	resolvedParent, err := filepath.EvalSymlinks(parent)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return path, nil
 		}
 		return "", fmt.Errorf("resolve parent symlinks in %s: %w", parent, err)
@@ -1530,7 +1536,7 @@ func rejectSymlinkComponents(path string, mustExist bool) error {
 		current = filepath.Join(current, part)
 		info, err := os.Lstat(current)
 		if err != nil {
-			if os.IsNotExist(err) && !mustExist && i == len(parts)-1 {
+			if errors.Is(err, os.ErrNotExist) && !mustExist && i == len(parts)-1 {
 				return nil
 			}
 			return fmt.Errorf("lstat %s: %w", current, err)

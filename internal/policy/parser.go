@@ -114,7 +114,7 @@ func validateCredentialTypes(doc *yaml.Node) error {
 			}
 			for _, cred := range seq.Content {
 				if err := validateCredentialEntry(cred); err != nil {
-					return err
+					return fmt.Errorf("validate credential types: %w", err)
 				}
 			}
 		}

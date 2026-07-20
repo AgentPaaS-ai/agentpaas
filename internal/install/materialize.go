@@ -24,11 +24,11 @@ var ErrDepsUnlockedRefused = errors.New("this agent has no uv.lock file (depende
 
 // MaterializeOpts configures state materialization + image acquisition.
 type MaterializeOpts struct {
-	StateRoot string
-	Bundle    *bundle.Bundle
-	BundlePath string
+	StateRoot    string
+	Bundle       *bundle.Bundle
+	BundlePath   string
 	BundleDigest string
-	Manifest  InstallManifest
+	Manifest     InstallManifest
 
 	PreferImage       bool
 	AllowUnlockedDeps bool
@@ -71,18 +71,18 @@ func MaterializeInstall(ctx context.Context, opts MaterializeOpts) (*Materialize
 	}
 	ref, err := InstalledAgentRefDirName(manifest.AgentName, manifest.PublisherFingerprint)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("materialize install: %w", err)
 	}
 	if err := CheckAliasUnique(opts.StateRoot, manifest.Alias, ref); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("materialize install: %w", err)
 	}
 	finalDir, err := InstalledAgentPath(opts.StateRoot, manifest.AgentName, manifest.PublisherFingerprint)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("materialize install: %w", err)
 	}
 	agentsParent, err := ensureAgentsParent(opts.StateRoot)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("materialize install: %w", err)
 	}
 
 	stagingDir, err := os.MkdirTemp(agentsParent, ".tmp-"+ref+"-*")
@@ -97,7 +97,7 @@ func MaterializeInstall(ctx context.Context, opts MaterializeOpts) (*Materialize
 	}()
 
 	if err := writeInstalledTree(ctx, stagingDir, opts, lock, &manifest); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("materialize install: %w", err)
 	}
 	if opts.PostWriteHook != nil {
 		if err := opts.PostWriteHook(stagingDir); err != nil {
@@ -111,7 +111,7 @@ func MaterializeInstall(ctx context.Context, opts MaterializeOpts) (*Materialize
 		return nil, fmt.Errorf("%w: %v — please file a bug report at https://github.com/AgentPaaS-ai/agentpaas/issues", ErrMaterializeFailed, verr)
 	}
 	if err := atomicReplaceInstalledDir(stagingDir, finalDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("materialize install: %w", err)
 	}
 	stagingActive = false
 	return &MaterializeResult{
@@ -123,7 +123,7 @@ func MaterializeInstall(ctx context.Context, opts MaterializeOpts) (*Materialize
 
 func writeInstalledTree(ctx context.Context, stagingDir string, opts MaterializeOpts, lock *pack.AgentLock, manifest *InstallManifest) error {
 	if err := os.MkdirAll(stagingDir, 0o700); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	lockBytes := opts.Bundle.LockJSON
 	if len(lockBytes) == 0 {
@@ -134,17 +134,17 @@ func writeInstalledTree(ctx context.Context, stagingDir string, opts Materialize
 		}
 	}
 	if err := writeInstalledFile(stagingDir, installedLockName, lockBytes, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	if err := writeInstalledFile(stagingDir, installedPolicyName, opts.Bundle.PolicyYAML, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	if err := writeInstalledFile(stagingDir, installedSBOMName, opts.Bundle.SBOM, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	sourceDir := filepath.Join(stagingDir, installedSourceDir)
 	if err := os.MkdirAll(sourceDir, 0o700); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	if err := opts.Bundle.ExtractSource(sourceDir); err != nil {
 		return fmt.Errorf("extract source: %w", err)
@@ -152,14 +152,14 @@ func writeInstalledTree(ctx context.Context, stagingDir string, opts Materialize
 	parent := ParentBundleRef{Digest: opts.BundleDigest, Path: opts.BundlePath}
 	parentRaw, _ := json.MarshalIndent(parent, "", "  ") // intentionally ignored (reviewed)
 	if err := writeInstalledFile(stagingDir, installedParentBundleRef, parentRaw, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	manifest.ParentBundleRef = &parent
 	manifest.InstalledAt = time.Now().UTC()
 
 	digest, mode, depsUnlocked, err := acquireImage(ctx, stagingDir, opts, lock)
 	if err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	manifest.InstallMode = mode
 	manifest.LocalImageDigest = digest
@@ -167,14 +167,14 @@ func writeInstalledTree(ctx context.Context, stagingDir string, opts Materialize
 
 	manifestRaw, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	if err := writeInstalledFile(stagingDir, installedManifestName, manifestRaw, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	digestLine := []byte(normalizeImageDigest(digest) + "\n")
 	if err := writeInstalledFile(stagingDir, installedLocalImageDigestFile, digestLine, 0o600); err != nil {
-		return err
+		return fmt.Errorf("write installed tree: %w", err)
 	}
 	return enforceInstalledPerms(stagingDir)
 }
@@ -187,14 +187,14 @@ func acquireImage(ctx context.Context, stagingDir string, opts MaterializeOpts, 
 		}
 		img := opts.Bundle.Manifest.Contents.Image
 		if err := CheckPrebuiltPlatform(img.Platform); err != nil {
-			return "", "", false, err
+			return "", "", false, fmt.Errorf("acquire image: %w", err)
 		}
 		if opts.Loader == nil {
 			return "", "", false, fmt.Errorf("image loader not configured")
 		}
 		tmpOCI, err := os.MkdirTemp("", "agentpaas-bundle-image-*")
 		if err != nil {
-			return "", "", false, err
+			return "", "", false, fmt.Errorf("acquire image: %w", err)
 		}
 		defer func() { _ = os.RemoveAll(tmpOCI) }() // best-effort remove
 		if err := opts.Bundle.ExtractImage(tmpOCI); err != nil {
@@ -206,14 +206,14 @@ func acquireImage(ctx context.Context, stagingDir string, opts MaterializeOpts, 
 		}
 		got, err := opts.Loader.Load(ctx, tmpOCI, want)
 		if err != nil {
-			return "", "", false, err
+			return "", "", false, fmt.Errorf("acquire image: %w", err)
 		}
 		return normalizeImageDigest(got), "prebuilt-image", false, nil
 	}
 	if !SourceHasUVLock(sourceDir) {
 		depsUnlocked = true
 		if err := warnMissingUVLock(opts); err != nil {
-			return "", "", false, err
+			return "", "", false, fmt.Errorf("acquire image: %w", err)
 		}
 	}
 	if opts.Builder == nil {
@@ -237,7 +237,7 @@ func warnMissingUVLock(opts MaterializeOpts) error {
 		}
 		resp, err := opts.PromptUnlocked(msg + "\nContinue without locked deps? [type 'yes']: ")
 		if err != nil {
-			return err
+			return fmt.Errorf("warn missing uvlock: %w", err)
 		}
 		if !strings.EqualFold(strings.TrimSpace(resp), "yes") {
 			return ErrDepsUnlockedRefused
@@ -261,7 +261,7 @@ func writeInstalledFile(dir, name string, data []byte, mode os.FileMode) error {
 func enforceInstalledPerms(root string) error {
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("enforce installed perms: %w", err)
 		}
 		if d.IsDir() {
 			return os.Chmod(path, 0o700)
@@ -271,7 +271,7 @@ func enforceInstalledPerms(root string) error {
 }
 
 func atomicReplaceInstalledDir(stagingDir, finalDir string) error {
-	if err := os.RemoveAll(finalDir); err != nil && !os.IsNotExist(err) {
+	if err := os.RemoveAll(finalDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		trash := finalDir + ".trash-" + fmt.Sprintf("%d", time.Now().UnixNano())
 		if rerr := os.Rename(finalDir, trash); rerr == nil {
 			_ = os.RemoveAll(trash) // best-effort remove
@@ -287,7 +287,6 @@ func atomicReplaceInstalledDir(stagingDir, finalDir string) error {
 
 func rollbackInstalled(finalDir, stagingDir string) error {
 	_ = os.RemoveAll(stagingDir) // best-effort remove
-	_ = os.RemoveAll(finalDir) // best-effort remove
+	_ = os.RemoveAll(finalDir)   // best-effort remove
 	return nil
 }
-

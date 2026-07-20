@@ -35,7 +35,7 @@ project directory and writes lineage.json for fork-aware pack/export.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			homeDir, err := homeDirPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new fork cmd: %w", err)
 			}
 			paths := home.NewHomePaths(homeDir)
 
@@ -44,7 +44,7 @@ project directory and writes lineage.json for fork-aware pack/export.`,
 				Input:     args[0],
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("new fork cmd: %w", err)
 			}
 			if resolved == nil || !resolved.Installed {
 				return fmt.Errorf("no installed agent at %q", args[0])
@@ -54,7 +54,7 @@ project directory and writes lineage.json for fork-aware pack/export.`,
 			}
 
 			if err := forkInstalledFunc(cmd, paths.State, args[0], args[1]); err != nil {
-				return err
+				return fmt.Errorf("new fork cmd: %w", err)
 			}
 
 			agentName, err := install.ForkAgentNameFromRef(resolved.Ref)

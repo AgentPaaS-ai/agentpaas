@@ -67,7 +67,7 @@ type Result struct {
 func Preview(ctx context.Context, cfg Config) (*PreviewResult, error) {
 	st, err := prepareExportState(ctx, cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("preview: %w", err)
 	}
 	return &PreviewResult{
 		AgentName:    st.agentName,
@@ -83,25 +83,25 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 	}
 	st, err := prepareExportState(ctx, cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run: %w", err)
 	}
 
 	if err := runSecretGate(ctx, st); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run: %w", err)
 	}
 
 	imageDir := ""
 	if cfg.WithImage {
 		imageDir, err = materializeLockedImage(ctx, cfg.Home, st.agentName, st.lock)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("run: %w", err)
 		}
 		defer func() { _ = os.RemoveAll(imageDir) }() // best-effort remove
 	}
 
 	pubKey, err := loadPublisherPrivateKey(cfg.PublisherStore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("run: %w", err)
 	}
 
 	manifest := buildBundleManifest(st)
@@ -128,9 +128,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 	br, err := bundle.WriteToFile(bundleCfg, outPath)
 	if err != nil {
-		_ = os.Remove(outPath) // best-effort remove
+		_ = os.Remove(outPath)          // best-effort remove
 		_ = os.Remove(outPath + ".tmp") // best-effort remove
-		return nil, err
+		return nil, fmt.Errorf("run: %w", err)
 	}
 
 	if cfg.Audit != nil {
@@ -204,12 +204,12 @@ func prepareExportState(ctx context.Context, cfg Config) (*exportState, error) {
 		}
 	}
 	if err := CheckDeniedProjectFiles(absProject); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare export state: %w", err)
 	}
 
 	lock, err := pack.LoadDeployedLock(cfg.Home, agentName)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("agent %q is not deployed; run agentpaas pack first", agentName)
 		}
 		return nil, fmt.Errorf("load deployed lock: %w", err)
@@ -228,12 +228,12 @@ func prepareExportState(ctx context.Context, cfg Config) (*exportState, error) {
 	}
 
 	if err := verifyDeployedForExport(ctx, cfg.Home, agentName); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare export state: %w", err)
 	}
 
 	ignore, err := ExportIgnoreMatcher(absProject)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare export state: %w", err)
 	}
 
 	currentDigest, err := pack.ComputeBuildInputDigest(absProject, ignore)
@@ -268,7 +268,7 @@ func prepareExportState(ctx context.Context, cfg Config) (*exportState, error) {
 	}
 
 	policyYAML, err := os.ReadFile(filepath.Join(absProject, "policy.yaml"))
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("read policy.yaml: %w", err)
 	}
 	if policyYAML == nil {
@@ -277,7 +277,7 @@ func prepareExportState(ctx context.Context, cfg Config) (*exportState, error) {
 
 	sbom, err := loadSBOMForExport(cfg.Home, agentName, lock)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("prepare export state: %w", err)
 	}
 
 	return &exportState{
@@ -297,7 +297,7 @@ func verifyDeployedForExport(ctx context.Context, home, agentName string) error 
 	_ = ctx // unused context; interface compliance
 	lock, err := pack.LoadDeployedLock(home, agentName)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify deployed for export: %w", err)
 	}
 	if err := pack.VerifyAgentLock(lock, ""); err != nil {
 		return fmt.Errorf("deployed lock invalid: %w", err)
@@ -312,7 +312,7 @@ func verifyDeployedForExport(ctx context.Context, home, agentName string) error 
 	}
 	deployed, err := pack.LoadDeployedAgent(home, agentName)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify deployed for export: %w", err)
 	}
 	if deployed.ImageDigest != lock.ImageDigest {
 		return fmt.Errorf("deployed image digest mismatch: lock has %s, deployed has %s", lock.ImageDigest, deployed.ImageDigest)
@@ -422,7 +422,7 @@ func collectIncludeFiles(projectDir string, globs []string, ignore *pack.IgnoreM
 		for _, abs := range matches {
 			rel, err := filepath.Rel(projectDir, abs)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("collect include files: %w", err)
 			}
 			rel = filepath.ToSlash(rel)
 			if ignore != nil && ignore.Match(rel) {
@@ -433,7 +433,7 @@ func collectIncludeFiles(projectDir string, globs []string, ignore *pack.IgnoreM
 			}
 			info, err := os.Lstat(abs)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("collect include files: %w", err)
 			}
 			if info.Mode()&fs.ModeSymlink != 0 {
 				return nil, fmt.Errorf("include path %q is a symlink", rel)
@@ -448,7 +448,7 @@ func collectIncludeFiles(projectDir string, globs []string, ignore *pack.IgnoreM
 					}
 					r, err := filepath.Rel(projectDir, path)
 					if err != nil {
-						return err
+						return fmt.Errorf("collect include files: %w", err)
 					}
 					r = filepath.ToSlash(r)
 					if ignore != nil && ignore.Match(r) {
@@ -460,13 +460,13 @@ func collectIncludeFiles(projectDir string, globs []string, ignore *pack.IgnoreM
 					seen[r] = true
 					fi, err := d.Info()
 					if err != nil {
-						return err
+						return fmt.Errorf("collect include files: %w", err)
 					}
 					files = append(files, pack.BuildFile{RelPath: r, AbsPath: path, Info: fi})
 					return nil
 				})
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("collect include files: %w", err)
 				}
 				continue
 			}
