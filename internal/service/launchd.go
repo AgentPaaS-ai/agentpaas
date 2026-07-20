@@ -97,7 +97,7 @@ type plistArrayXML struct {
 // It emits <array><string>...</string>...</array>.
 func (a plistArrayXML) MarshalXML(enc *xml.Encoder, start xml.StartElement) error {
 	if err := enc.EncodeToken(start); err != nil {
-		return err
+		return fmt.Errorf("plist array xml marshal xml: %w", err)
 	}
 	for _, item := range a.Items {
 		if err := enc.EncodeElement(item, xml.StartElement{Name: xml.Name{Local: "string"}}); err != nil {

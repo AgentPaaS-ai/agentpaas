@@ -17,7 +17,7 @@ func ResolveInstalledAgentDir(stateRoot, ref string) (string, error) {
 		return "", fmt.Errorf("empty agent reference")
 	}
 	if err := ValidateReferenceInput(ref); err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve installed agent dir: %w", err)
 	}
 	if stateRoot == "" {
 		return "", fmt.Errorf("install: empty StateRoot")
@@ -26,7 +26,7 @@ func ResolveInstalledAgentDir(stateRoot, ref string) (string, error) {
 	if strings.Contains(ref, "@") {
 		_, dir, err := resolveInstalledRef(stateRoot, ref)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("resolve installed agent dir: %w", err)
 		}
 		if dir == "" {
 			return "", fmt.Errorf("no installed agent for reference %q", ref)
@@ -36,7 +36,7 @@ func ResolveInstalledAgentDir(stateRoot, ref string) (string, error) {
 
 	_, dir, err := resolveInstalledRef(stateRoot, ref)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve installed agent dir: %w", err)
 	}
 	if dir != "" {
 		return dir, nil
@@ -48,7 +48,7 @@ func ResolveInstalledAgentDir(stateRoot, ref string) (string, error) {
 
 	res, err := ResolveAgentRef(ResolveRefOpts{StateRoot: stateRoot, Input: ref})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve installed agent dir: %w", err)
 	}
 	if res.Installed {
 		name, pub8, perr := naming.ParseAgentRef(res.Ref)
@@ -57,7 +57,7 @@ func ResolveInstalledAgentDir(stateRoot, ref string) (string, error) {
 		}
 		dir, err := findInstalledDirByRef(stateRoot, name, pub8)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("resolve installed agent dir: %w", err)
 		}
 		if dir == "" {
 			return "", fmt.Errorf("no installed agent for reference %q", ref)
@@ -88,7 +88,7 @@ func ProvenanceReportFromLock(lock *pack.AgentLock) (*pack.ProvenanceReport, err
 	}
 	report, err := pack.VerifyProvenance(lock)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("provenance report from lock: %w", err)
 	}
 	if !report.Verified {
 		return nil, fmt.Errorf("provenance chain invalid")
@@ -100,7 +100,7 @@ func ProvenanceReportFromLock(lock *pack.AgentLock) (*pack.ProvenanceReport, err
 func ReadInstalledProvenanceReport(stateRoot, ref string) (*pack.ProvenanceReport, error) {
 	dir, err := ResolveInstalledAgentDir(stateRoot, ref)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read installed provenance report: %w", err)
 	}
 	lockPath := filepath.Join(dir, installedLockName)
 	lock, err := pack.ReadAgentLock(lockPath)

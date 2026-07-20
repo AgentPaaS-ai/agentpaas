@@ -133,7 +133,7 @@ func (a *FileAuditAppender) Append(record audit.AuditRecord) error {
 	data = append(data, '\n')
 
 	if _, err = a.file.Write(data); err != nil {
-		return err
+		return fmt.Errorf("file audit appender append: %w", err)
 	}
 
 	a.prevHash = recordHash

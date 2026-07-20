@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -75,7 +76,7 @@ func (s *Server) listAgents(r *http.Request) ([]AgentResource, error) {
 	}
 	agents, err := s.resourceMgr.ListAgents(r.Context())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("server list agents: %w", err)
 	}
 	if agents == nil {
 		return []AgentResource{}, nil
@@ -89,7 +90,7 @@ func (s *Server) listGateways(r *http.Request) ([]GatewayResource, error) {
 	}
 	gateways, err := s.resourceMgr.ListGateways(r.Context())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("server list gateways: %w", err)
 	}
 	if gateways == nil {
 		return []GatewayResource{}, nil
@@ -103,7 +104,7 @@ func (s *Server) listMCPServers(r *http.Request) ([]MCPServerResource, error) {
 	}
 	mcpServers, err := s.resourceMgr.ListMCPServers(r.Context())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("server list mcpservers: %w", err)
 	}
 	if mcpServers == nil {
 		return []MCPServerResource{}, nil

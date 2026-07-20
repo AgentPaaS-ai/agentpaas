@@ -78,13 +78,13 @@ func provenanceShowBundle(cmd *cobra.Command, path string, jsonOut bool) error {
 func provenanceShowInstalled(cmd *cobra.Command, ref string, jsonOut bool) error {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		return err
+		return fmt.Errorf("provenance show installed: %w", err)
 	}
 	stateRoot := home.NewHomePaths(homeDir).State
 
 	provReport, err := install.ReadInstalledProvenanceReport(stateRoot, ref)
 	if err != nil {
-		return err
+		return fmt.Errorf("provenance show installed: %w", err)
 	}
 
 	if jsonOut {

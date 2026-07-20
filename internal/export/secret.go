@@ -19,23 +19,23 @@ func runSecretGate(ctx context.Context, st *exportState) error {
 
 	for _, f := range st.sourceFiles {
 		if err := copyExportFile(tmp, "source", f); err != nil {
-			return err
+			return fmt.Errorf("run secret gate: %w", err)
 		}
 	}
 	for _, f := range st.extraFiles {
 		if err := copyExportFile(tmp, "extra", f); err != nil {
-			return err
+			return fmt.Errorf("run secret gate: %w", err)
 		}
 	}
 
 	for _, f := range st.sourceFiles {
 		if err := scanSentinel(f.AbsPath); err != nil {
-			return err
+			return fmt.Errorf("run secret gate: %w", err)
 		}
 	}
 	for _, f := range st.extraFiles {
 		if err := scanSentinel(f.AbsPath); err != nil {
-			return err
+			return fmt.Errorf("run secret gate: %w", err)
 		}
 	}
 
@@ -53,7 +53,7 @@ func runSecretGate(ctx context.Context, st *exportState) error {
 func copyExportFile(tmp, prefix string, f pack.BuildFile) error {
 	dest := filepath.Join(tmp, prefix, filepath.FromSlash(f.RelPath))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-		return err
+		return fmt.Errorf("copy export file: %w", err)
 	}
 	data, err := os.ReadFile(f.AbsPath)
 	if err != nil {
@@ -68,7 +68,7 @@ func copyExportFile(tmp, prefix string, f pack.BuildFile) error {
 func scanSentinel(absPath string) error {
 	info, err := os.Lstat(absPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("scan sentinel: %w", err)
 	}
 	if info.Mode()&fs.ModeSymlink != 0 {
 		return fmt.Errorf("export blocked: symlink %s", absPath)
@@ -78,7 +78,7 @@ func scanSentinel(absPath string) error {
 	}
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("scan sentinel: %w", err)
 	}
 	if pack.ContainsExportSentinel(data) {
 		return fmt.Errorf("export blocked: sentinel secret in %s", filepath.Base(absPath))

@@ -50,7 +50,7 @@ type APIKeyStore struct {
 func NewAPIKeyStore(filePath string, auditAppender audit.AuditAppender) (*APIKeyStore, error) {
 	canonicalPath, err := canonicalAPIKeyPath(filePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new apikey store: %w", err)
 	}
 	s := &APIKeyStore{
 		filePath: canonicalPath,
@@ -67,7 +67,7 @@ func NewAPIKeyStore(filePath string, auditAppender audit.AuditAppender) (*APIKey
 func (s *APIKeyStore) CreateKey(ctx context.Context, scopes []string, description, createdBy string) (string, *APIKeyRecord, error) {
 	rawKey, keyID, err := newAPIKeyMaterial()
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("apikey store create key: %w", err)
 	}
 	record := &APIKeyRecord{
 		ID:          keyID,
@@ -175,7 +175,7 @@ func (s *APIKeyStore) RevokeKey(ctx context.Context, keyID, revokedBy string) er
 func (s *APIKeyStore) RotateKey(ctx context.Context, oldKeyID, rotatedBy string) (string, *APIKeyRecord, error) {
 	rawKey, keyID, err := newAPIKeyMaterial()
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("apikey store rotate key: %w", err)
 	}
 
 	s.mu.Lock()
@@ -261,21 +261,21 @@ func (s *APIKeyStore) Authenticate(ctx context.Context) (CallerID, AuthMethod, e
 	}
 	record, err := s.ValidateKey(ctx, token)
 	if err != nil {
-		return "", AuthMethodNone, err
+		return "", AuthMethodNone, fmt.Errorf("apikey store authenticate: %w", err)
 	}
 	return CallerID("api_key:" + record.ID), AuthMethodAPIKey, nil
 }
 
 func (s *APIKeyStore) load() error {
 	if err := rejectSymlinkPath(s.filePath, false); err != nil {
-		return err
+		return fmt.Errorf("apikey store load: %w", err)
 	}
 	data, err := os.ReadFile(s.filePath)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("apikey store load: %w", err)
 	}
 
 	var records []*APIKeyRecord
@@ -292,7 +292,7 @@ func (s *APIKeyStore) load() error {
 
 func (s *APIKeyStore) saveLocked() error {
 	if err := rejectSymlinkPath(s.filePath, false); err != nil {
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 	records := make([]*APIKeyRecord, 0, len(s.records))
 	for _, record := range s.records {
@@ -300,20 +300,20 @@ func (s *APIKeyStore) saveLocked() error {
 	}
 	data, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 
 	dir := filepath.Dir(s.filePath)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 	if err := rejectSymlinkPath(dir, true); err != nil {
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 
 	tmp, err := os.CreateTemp(dir, ".apikeys-*.tmp")
 	if err != nil {
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 	tmpName := tmp.Name()
 	cleanup := true
@@ -325,17 +325,17 @@ func (s *APIKeyStore) saveLocked() error {
 
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close() // best-effort close
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 	if err := tmp.Chmod(0600); err != nil {
 		_ = tmp.Close() // best-effort close
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 	if err := os.Rename(tmpName, s.filePath); err != nil {
-		return err
+		return fmt.Errorf("apikey store save locked: %w", err)
 	}
 	cleanup = false
 	return nil
@@ -445,7 +445,7 @@ func canonicalAPIKeyPath(path string) (string, error) {
 
 	resolved, err := filepath.EvalSymlinks(current)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("canonical apikey path: %w", err)
 	}
 	for i := len(missing) - 1; i >= 0; i-- {
 		resolved = filepath.Join(resolved, missing[i])
@@ -479,7 +479,7 @@ func rejectSymlinkPath(path string, mustExist bool) error {
 			return nil
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("reject symlink path: %w", err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("api key path contains symlink: %s", current)

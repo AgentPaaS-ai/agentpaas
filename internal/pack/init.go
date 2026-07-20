@@ -22,7 +22,7 @@ import (
 // Policy is created separately by InitPolicy or `policy init`.
 func InitScaffold(projectDir string, runtime RuntimeType) error {
 	if err := validateProjectDir(projectDir); err != nil {
-		return err
+		return fmt.Errorf("init scaffold: %w", err)
 	}
 	if runtime == "" || runtime == RuntimeUnknown {
 		runtime = RuntimePython
@@ -31,18 +31,18 @@ func InitScaffold(projectDir string, runtime RuntimeType) error {
 		return fmt.Errorf("unsupported runtime: %s", runtime)
 	}
 	if err := rejectSymlinkPath(projectDir, true); err != nil {
-		return err
+		return fmt.Errorf("init scaffold: %w", err)
 	}
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		return fmt.Errorf("create project directory: %w", err)
 	}
 	if err := rejectSymlinkPath(projectDir, false); err != nil {
-		return err
+		return fmt.Errorf("init scaffold: %w", err)
 	}
 
 	agentPath := filepath.Join(projectDir, "agent.yaml")
 	if err := rejectSymlinkPath(agentPath, true); err != nil {
-		return err
+		return fmt.Errorf("init scaffold: %w", err)
 	}
 	if _, err := os.Lstat(agentPath); err == nil {
 		return fmt.Errorf("agent.yaml already exists in %s", projectDir)
@@ -64,7 +64,7 @@ func InitScaffold(projectDir string, runtime RuntimeType) error {
 	}
 	for name, content := range files {
 		if err := writeNewProjectFile(filepath.Join(projectDir, name), content); err != nil {
-			return err
+			return fmt.Errorf("init scaffold: %w", err)
 		}
 	}
 
@@ -76,7 +76,7 @@ func InitScaffold(projectDir string, runtime RuntimeType) error {
 // created with the detected runtime and agent name derived from the dir.
 func InitFromCode(projectDir string, runtime RuntimeType) error {
 	if err := validateProjectDir(projectDir); err != nil {
-		return err
+		return fmt.Errorf("init from code: %w", err)
 	}
 	if runtime == "" || runtime == RuntimeUnknown {
 		runtime = RuntimePython
@@ -85,18 +85,18 @@ func InitFromCode(projectDir string, runtime RuntimeType) error {
 		return fmt.Errorf("unsupported runtime: %s", runtime)
 	}
 	if err := rejectSymlinkPath(projectDir, true); err != nil {
-		return err
+		return fmt.Errorf("init from code: %w", err)
 	}
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		return fmt.Errorf("create project directory: %w", err)
 	}
 	if err := rejectSymlinkPath(projectDir, false); err != nil {
-		return err
+		return fmt.Errorf("init from code: %w", err)
 	}
 
 	agentPath := filepath.Join(projectDir, "agent.yaml")
 	if err := rejectSymlinkPath(agentPath, true); err != nil {
-		return err
+		return fmt.Errorf("init from code: %w", err)
 	}
 	if _, err := os.Lstat(agentPath); err == nil {
 		return nil
@@ -122,15 +122,15 @@ func InitFromCode(projectDir string, runtime RuntimeType) error {
 // If policy.yaml already exists, it is left untouched (never overwrite policy).
 func InitPolicy(projectDir string) error {
 	if err := validateProjectDir(projectDir); err != nil {
-		return err
+		return fmt.Errorf("init policy: %w", err)
 	}
 	if err := rejectSymlinkPath(projectDir, false); err != nil {
-		return err
+		return fmt.Errorf("init policy: %w", err)
 	}
 
 	policyPath := filepath.Join(projectDir, "policy.yaml")
 	if err := rejectSymlinkPath(policyPath, true); err != nil {
-		return err
+		return fmt.Errorf("init policy: %w", err)
 	}
 	if info, err := os.Lstat(policyPath); err == nil {
 		if !info.Mode().IsRegular() {
@@ -247,7 +247,7 @@ ingress: []
 
 func writeNewProjectFile(path string, content string) error {
 	if err := rejectSymlinkPath(path, true); err != nil {
-		return err
+		return fmt.Errorf("write new project file: %w", err)
 	}
 
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)

@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
@@ -18,7 +18,6 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
-	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 )
 
 // defaultImage is the default container image used for agent and gateway
@@ -60,7 +59,7 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 // creating any containers.
 func (d *DockerRuntime) ServerVersion(ctx context.Context) (string, error) {
 	if d.cli == nil {
-		return "", errors.New("DockerRuntime: not initialized (no Docker client)")
+		return "", ErrDockerNotInitialized
 	}
 	info, err := d.cli.Info(ctx)
 	if err != nil {
@@ -122,7 +121,7 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 		return d.driver.Create(ctx, spec)
 	}
 	if d.cli == nil {
-		return "", errors.New("DockerRuntime: not initialized (no Docker client)")
+		return "", ErrDockerNotInitialized
 	}
 
 	if spec.Image == "" {
@@ -244,7 +243,7 @@ func (d *DockerRuntime) Start(ctx context.Context, id ContainerID) error {
 		return ErrContainerNotFound
 	}
 	if d.cli == nil {
-		return errors.New("DockerRuntime: not initialized (no Docker client)")
+		return ErrDockerNotInitialized
 	}
 	if err := d.cli.ContainerStart(ctx, string(id), container.StartOptions{}); err != nil {
 		if errdefs.IsNotFound(err) {
@@ -265,7 +264,7 @@ func (d *DockerRuntime) Stop(ctx context.Context, id ContainerID, timeout *time.
 		return ErrContainerNotFound
 	}
 	if d.cli == nil {
-		return errors.New("DockerRuntime: not initialized (no Docker client)")
+		return ErrDockerNotInitialized
 	}
 	stopOpts := container.StopOptions{}
 	if timeout != nil {
@@ -291,7 +290,7 @@ func (d *DockerRuntime) Remove(ctx context.Context, id ContainerID, force bool) 
 		return ErrContainerNotFound
 	}
 	if d.cli == nil {
-		return errors.New("DockerRuntime: not initialized (no Docker client)")
+		return ErrDockerNotInitialized
 	}
 	removeOpts := container.RemoveOptions{
 		Force: force,
@@ -311,7 +310,7 @@ func (d *DockerRuntime) Status(ctx context.Context, id ContainerID) (ContainerSt
 		return ContainerStatusUnknown, ErrContainerNotFound
 	}
 	if d.cli == nil {
-		return ContainerStatusUnknown, errors.New("DockerRuntime: not initialized (no Docker client)")
+		return ContainerStatusUnknown, ErrDockerNotInitialized
 	}
 	json, err := d.cli.ContainerInspect(ctx, string(id))
 	if err != nil {
@@ -414,7 +413,7 @@ func (d *DockerRuntime) Stats(ctx context.Context, id ContainerID) (ContainerSta
 		return ContainerStats{}, fmt.Errorf("%w: empty container ID", ErrContainerNotFound)
 	}
 	if d.cli == nil {
-		return ContainerStats{}, errors.New("DockerRuntime: not initialized (no Docker client)")
+		return ContainerStats{}, ErrDockerNotInitialized
 	}
 
 	statsResp, err := d.cli.ContainerStats(ctx, string(id), false)
@@ -445,7 +444,7 @@ func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOption
 		return nil, fmt.Errorf("%w: empty container ID", ErrContainerNotFound)
 	}
 	if d.cli == nil {
-		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+		return nil, ErrDockerNotInitialized
 	}
 
 	tail := strconv.Itoa(opts.Tail)
@@ -476,7 +475,7 @@ func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOption
 	pr, pw := io.Pipe()
 	go func() {
 		_, err := stdcopy.StdCopy(pw, pw, reader)
-		_ = reader.Close() // best-effort close
+		_ = reader.Close()         // best-effort close
 		_ = pw.CloseWithError(err) // best-effort cleanup
 	}()
 	return pr, nil
@@ -492,7 +491,7 @@ func (d *DockerRuntime) Exec(ctx context.Context, id ContainerID, cmd []string) 
 		return "", "", -1, ErrContainerNotFound
 	}
 	if d.cli == nil {
-		return "", "", -1, errors.New("DockerRuntime: not initialized")
+		return "", "", -1, ErrDockerNotInitializedShort
 	}
 
 	execCreate, err := d.cli.ContainerExecCreate(ctx, string(id), container.ExecOptions{
@@ -534,7 +533,7 @@ func (d *DockerRuntime) ExecWithStdin(ctx context.Context, id ContainerID, cmd [
 		return "", "", -1, ErrContainerNotFound
 	}
 	if d.cli == nil {
-		return "", "", -1, errors.New("DockerRuntime: not initialized")
+		return "", "", -1, ErrDockerNotInitializedShort
 	}
 
 	execCreate, err := d.cli.ContainerExecCreate(ctx, string(id), container.ExecOptions{
@@ -593,7 +592,7 @@ func (d *DockerRuntime) CreateNetwork(ctx context.Context, spec NetworkSpec) (Ne
 		return "", fmt.Errorf("%w: network name is required", ErrInvalidSpec)
 	}
 	if d.cli == nil {
-		return "", errors.New("DockerRuntime: not initialized (no Docker client)")
+		return "", ErrDockerNotInitialized
 	}
 
 	netCreate := network.CreateOptions{
@@ -619,7 +618,7 @@ func (d *DockerRuntime) RemoveNetwork(ctx context.Context, id NetworkID) error {
 		return ErrNetworkNotFound
 	}
 	if d.cli == nil {
-		return errors.New("DockerRuntime: not initialized (no Docker client)")
+		return ErrDockerNotInitialized
 	}
 	if err := d.cli.NetworkRemove(ctx, string(id)); err != nil {
 		if errdefs.IsNotFound(err) || strings.Contains(err.Error(), "not found") {
@@ -636,7 +635,7 @@ func (d *DockerRuntime) InspectNetwork(ctx context.Context, id NetworkID) (Netwo
 		return NetworkInfo{}, ErrNetworkNotFound
 	}
 	if d.cli == nil {
-		return NetworkInfo{}, errors.New("DockerRuntime: not initialized (no Docker client)")
+		return NetworkInfo{}, ErrDockerNotInitialized
 	}
 	resource, err := d.cli.NetworkInspect(ctx, string(id), network.InspectOptions{})
 	if err != nil {
@@ -663,7 +662,7 @@ func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id Contain
 		return nil, ErrContainerNotFound
 	}
 	if d.cli == nil {
-		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+		return nil, ErrDockerNotInitialized
 	}
 	json, err := d.cli.ContainerInspect(ctx, string(id))
 	if err != nil {
@@ -697,7 +696,7 @@ func (d *DockerRuntime) InspectContainerIP(ctx context.Context, id ContainerID, 
 	}
 	networks, err := d.InspectContainerNetworks(ctx, id)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("docker runtime inspect container ip: %w", err)
 	}
 	for _, n := range networks {
 		if n.ID == networkID || n.Name == networkID {
@@ -721,7 +720,7 @@ func (d *DockerRuntime) ListContainers(ctx context.Context, labelFilters ...stri
 		return d.driver.ListContainers(ctx, labelFilters...)
 	}
 	if d.cli == nil {
-		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+		return nil, ErrDockerNotInitialized
 	}
 
 	filterArgs := filters.NewArgs()
@@ -782,7 +781,7 @@ func (d *DockerRuntime) ListNetworks(ctx context.Context, labelFilters ...string
 		return d.driver.ListNetworks(ctx, labelFilters...)
 	}
 	if d.cli == nil {
-		return nil, errors.New("DockerRuntime: not initialized (no Docker client)")
+		return nil, ErrDockerNotInitialized
 	}
 
 	filterArgs := filters.NewArgs()

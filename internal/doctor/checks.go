@@ -539,7 +539,7 @@ func CheckSocketPerms(homeDir string) CheckResult {
 
 	// If socket doesn't exist yet, that's fine — daemon creates it.
 	fi, err := os.Lstat(paths.Socket)
-	if os.IsNotExist(err) {
+	if errors.Is(err, os.ErrNotExist) {
 		return CheckResult{
 			Name:    name,
 			Status:  "ok",
@@ -591,7 +591,7 @@ func CheckHomeDirPerms(homeDir string) CheckResult {
 
 	paths := home.NewHomePaths(homeDir)
 
-	if _, err := os.Stat(paths.Home); os.IsNotExist(err) {
+	if _, err := os.Stat(paths.Home); errors.Is(err, os.ErrNotExist) {
 		return CheckResult{
 			Name:    name,
 			Status:  "error",

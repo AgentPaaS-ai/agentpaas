@@ -139,7 +139,7 @@ func (ix *SQLiteIndexer) QueryBySeq(seq int64) (*AuditRecord, error) {
 		&payloadJSON, &hostedCtxJSON,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sqlite indexer query by seq: %w", err)
 	}
 
 	if payloadJSON.Valid && payloadJSON.String != "" {
@@ -172,7 +172,7 @@ func (ix *SQLiteIndexer) QueryByEventType(eventType string, limit int) ([]AuditR
 
 	rows, err := ix.db.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("sqlite indexer query by event type: %w", err)
 	}
 	defer func() { _ = rows.Close() }() // best-effort close
 
@@ -180,7 +180,7 @@ func (ix *SQLiteIndexer) QueryByEventType(eventType string, limit int) ([]AuditR
 	for rows.Next() {
 		var rec AuditRecord
 		if err := rows.Scan(&rec.Seq, &rec.PrevHash, &rec.RecordHash, &rec.Timestamp, &rec.EventType, &rec.DeploymentMode, &rec.Actor); err != nil {
-			return records, err
+			return records, fmt.Errorf("sqlite indexer query by event type: %w", err)
 		}
 		records = append(records, rec)
 	}
@@ -197,7 +197,7 @@ func (ix *SQLiteIndexer) Close() error {
 func RebuildSQLiteIndex(auditPath, dbPath string) error {
 	ix, err := NewSQLiteIndexer(dbPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("rebuild sqlite index: %w", err)
 	}
 	defer func() { _ = ix.Close() }() // best-effort close
 	return ix.Rebuild(auditPath)

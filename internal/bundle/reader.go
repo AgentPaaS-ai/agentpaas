@@ -73,7 +73,7 @@ func Open(path string) (*Bundle, error) {
 		// Validate path.
 		name := hdr.Name
 		if err := validateEntryPath(name); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("open: %w", err)
 		}
 
 		// Reject duplicate paths.
@@ -150,9 +150,9 @@ func Open(path string) (*Bundle, error) {
 
 		// For source/ and image/ entries, store metadata for on-demand extraction.
 		entry := bundleMetaEntry{
-			Name: name,
-			Mode: hdr.Mode,
-			Size: hdr.Size,
+			Name:  name,
+			Mode:  hdr.Mode,
+			Size:  hdr.Size,
 			IsDir: hdr.Typeflag == tar.TypeDir,
 		}
 		meta[name] = entry

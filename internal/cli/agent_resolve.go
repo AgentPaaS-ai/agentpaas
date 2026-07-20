@@ -11,7 +11,7 @@ import (
 func resolveCLIAgentRef(cmd *cobra.Command, input string) (*install.ResolvedAgent, error) {
 	homeDir, err := getAgentpaasHome(cmd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve cliagent ref: %w", err)
 	}
 	paths := home.NewHomePaths(homeDir)
 	return install.ResolveAgentRef(install.ResolveRefOpts{

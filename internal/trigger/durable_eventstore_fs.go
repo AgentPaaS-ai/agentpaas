@@ -21,12 +21,12 @@ func eventRejectSymlinkPath(path string) error {
 	}
 	cleaned := filepath.Clean(path)
 	if err := eventRejectSymlinkLeaf(cleaned); err != nil {
-		return err
+		return fmt.Errorf("event reject symlink path: %w", err)
 	}
 	parent := filepath.Dir(cleaned)
 	if parent != cleaned {
 		if err := eventRejectSymlinkLeaf(parent); err != nil {
-			return err
+			return fmt.Errorf("event reject symlink path: %w", err)
 		}
 	}
 	return nil
@@ -36,10 +36,10 @@ func eventRejectSymlinkPath(path string) error {
 func eventRejectSymlinkLeaf(path string) error {
 	fi, err := os.Lstat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("event reject symlink leaf: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: %s", ErrEventStoreSymlink, path)
@@ -53,9 +53,9 @@ func eventMkdirProtected(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("%w: empty dir", ErrEventStoreInvalidPath)
 	}
-	if err := eventRejectSymlinkPath(dir); err != nil && !os.IsNotExist(err) {
+	if err := eventRejectSymlinkPath(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		if !errors.Is(err, ErrEventStoreSymlink) {
-			if _, e := os.Lstat(dir); e != nil && !os.IsNotExist(e) {
+			if _, e := os.Lstat(dir); e != nil && !errors.Is(e, os.ErrNotExist) {
 				return err
 			}
 		} else {
@@ -67,7 +67,7 @@ func eventMkdirProtected(dir string) error {
 	}
 	fi, err := os.Lstat(dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("event mkdir protected: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: %s", ErrEventStoreSymlink, dir)
@@ -81,7 +81,7 @@ func eventMkdirProtected(dir string) error {
 		}
 		fi, err = os.Lstat(dir)
 		if err != nil {
-			return err
+			return fmt.Errorf("event mkdir protected: %w", err)
 		}
 		if fi.Mode().Perm()&0o077 != 0 {
 			return fmt.Errorf("%w: %s mode %#o", ErrEventStoreUnsafePerm, dir, fi.Mode().Perm())
@@ -94,11 +94,11 @@ func eventMkdirProtected(dir string) error {
 // caps the read at maxBytes to prevent OOM during recovery.
 func eventReadFileStrict(path string, maxBytes int64) ([]byte, error) {
 	if err := eventRejectSymlinkPath(path); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("event read file strict: %w", err)
 	}
 	fi, err := os.Lstat(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("event read file strict: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("%w: %s", ErrEventStoreSymlink, path)
@@ -114,12 +114,12 @@ func eventReadFileStrict(path string, maxBytes int64) ([]byte, error) {
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("event read file strict: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("event read file strict: %w", err)
 	}
 	if int64(len(data)) > maxBytes {
 		return nil, fmt.Errorf("%w: %s", ErrEventStoreTooLarge, path)

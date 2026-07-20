@@ -2,6 +2,7 @@ package routedrun
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -26,15 +27,15 @@ type WALOp struct {
 type WALEntry struct {
 	SchemaVersion string `json:"schema_version"`
 
-	EntryID      string    `json:"entry_id"`
-	WorkflowID   string    `json:"workflow_id"`
-	Generation   int64     `json:"generation"` // expected generation before apply
-	NewGeneration int64    `json:"new_generation"`
-	Command      string    `json:"command"`
-	Operations   []WALOp   `json:"operations,omitempty"`
-	Committed    bool      `json:"committed"`
-	CreatedAt    time.Time `json:"created_at"`
-	CommittedAt  *time.Time `json:"committed_at,omitempty"`
+	EntryID       string     `json:"entry_id"`
+	WorkflowID    string     `json:"workflow_id"`
+	Generation    int64      `json:"generation"` // expected generation before apply
+	NewGeneration int64      `json:"new_generation"`
+	Command       string     `json:"command"`
+	Operations    []WALOp    `json:"operations,omitempty"`
+	Committed     bool       `json:"committed"`
+	CreatedAt     time.Time  `json:"created_at"`
+	CommittedAt   *time.Time `json:"committed_at,omitempty"`
 }
 
 // walDir returns the transactions directory for a workflow.
@@ -50,21 +51,21 @@ func (s *LocalStore) writeWALEntry(wfID WorkflowID, entry *WALEntry) (string, er
 	if entry.EntryID == "" {
 		id, err := generateID("wal-")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("local store write walentry: %w", err)
 		}
 		entry.EntryID = id
 	}
 	dir := s.walDir(wfID)
 	if err := mkdirProtected(dir); err != nil {
-		return "", err
+		return "", fmt.Errorf("local store write walentry: %w", err)
 	}
 	path := filepath.Join(dir, entry.EntryID+".json")
 	data, err := json.Marshal(entry)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("local store write walentry: %w", err)
 	}
 	if err := atomicWriteFile(path, data, filePerm); err != nil {
-		return "", err
+		return "", fmt.Errorf("local store write walentry: %w", err)
 	}
 	return path, nil
 }
@@ -76,7 +77,7 @@ func (s *LocalStore) commitWALEntry(path string, entry *WALEntry) error {
 	entry.CommittedAt = &now
 	data, err := json.Marshal(entry)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store commit walentry: %w", err)
 	}
 	return atomicWriteFile(path, data, filePerm)
 }
@@ -93,21 +94,21 @@ func (s *LocalStore) RecoverWAL(wfID WorkflowID) error {
 func (s *LocalStore) recoverWAL(wfID WorkflowID) error {
 	dir := s.walDir(wfID)
 	if err := rejectSymlinkPath(dir); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		// dir may not exist
-		if _, statErr := os.Lstat(dir); os.IsNotExist(statErr) {
+		if _, statErr := os.Lstat(dir); errors.Is(statErr, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("local store recover wal: %w", err)
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("local store recover wal: %w", err)
 	}
 	var names []string
 	for _, e := range entries {
@@ -129,7 +130,7 @@ func (s *LocalStore) recoverWAL(wfID WorkflowID) error {
 		path := filepath.Join(dir, name)
 		data, err := readFileStrict(path, maxStateFileBytes)
 		if err != nil {
-			return err
+			return fmt.Errorf("local store recover wal: %w", err)
 		}
 		var entry WALEntry
 		if err := json.Unmarshal(data, &entry); err != nil {
@@ -139,16 +140,16 @@ func (s *LocalStore) recoverWAL(wfID WorkflowID) error {
 			// Uncommitted: roll back any partial materialization, then discard.
 			// Pre-transition state is authoritative; never leave a half-applied mix.
 			if err := s.rollbackWALOps(WorkflowID(entry.WorkflowID), entry.Operations); err != nil {
-				return err
+				return fmt.Errorf("local store recover wal: %w", err)
 			}
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 			continue
 		}
 		// Committed: ensure materialization is present (idempotent re-apply).
 		if err := s.materializeWALOps(WorkflowID(entry.WorkflowID), entry.Operations); err != nil {
-			return err
+			return fmt.Errorf("local store recover wal: %w", err)
 		}
 	}
 	return nil
@@ -165,7 +166,7 @@ func (s *LocalStore) rollbackWALOps(wfID WorkflowID, ops []WALOp) error {
 		}
 		path, err := s.pathForWALOp(wfID, op)
 		if err != nil {
-			return err
+			return fmt.Errorf("local store rollback walops: %w", err)
 		}
 		switch action {
 		case "put":
@@ -174,7 +175,7 @@ func (s *LocalStore) rollbackWALOps(wfID WorkflowID, ops []WALOp) error {
 			if op.Kind == "workflow" {
 				continue
 			}
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 		case "delete":
@@ -195,11 +196,11 @@ func (s *LocalStore) materializeWALOps(wfID WorkflowID, ops []WALOp) error {
 		}
 		path, err := s.pathForWALOp(wfID, op)
 		if err != nil {
-			return err
+			return fmt.Errorf("local store materialize walops: %w", err)
 		}
 		switch action {
 		case "delete":
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err
 			}
 		case "put":
@@ -207,10 +208,10 @@ func (s *LocalStore) materializeWALOps(wfID WorkflowID, ops []WALOp) error {
 				return fmt.Errorf("routedrun: wal put missing payload for %s/%s", op.Kind, op.ID)
 			}
 			if err := mkdirProtected(filepath.Dir(path)); err != nil {
-				return err
+				return fmt.Errorf("local store materialize walops: %w", err)
 			}
 			if err := atomicWriteFile(path, op.Payload, filePerm); err != nil {
-				return err
+				return fmt.Errorf("local store materialize walops: %w", err)
 			}
 		default:
 			return fmt.Errorf("routedrun: unknown wal action %q", action)
@@ -256,7 +257,7 @@ func (s *LocalStore) pathForWALOp(wfID WorkflowID, op WALOp) (string, error) {
 func (s *LocalStore) applyTransitionLocked(wfID WorkflowID, expectedGeneration int64, command string, ops []WALOp) error {
 	wf, gen, err := s.loadWorkflowCAS(wfID)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store apply transition locked: %w", err)
 	}
 	if gen != expectedGeneration {
 		return fmt.Errorf("%w: workflow %s expected generation %d got %d", ErrCASConflict, wfID, expectedGeneration, gen)
@@ -272,7 +273,7 @@ func (s *LocalStore) applyTransitionLocked(wfID WorkflowID, expectedGeneration i
 	// Always include updated workflow as first op (unless already present).
 	wfPayload, err := marshalPersisted(newGen, wf)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store apply transition locked: %w", err)
 	}
 	fullOps := make([]WALOp, 0, len(ops)+1)
 	hasWorkflow := false
@@ -303,15 +304,15 @@ func (s *LocalStore) applyTransitionLocked(wfID WorkflowID, expectedGeneration i
 	}
 	path, err := s.writeWALEntry(wfID, entry)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store apply transition locked: %w", err)
 	}
 	// Commit before materialize so uncommitted never equals partial files.
 	if err := s.commitWALEntry(path, entry); err != nil {
-		return err
+		return fmt.Errorf("local store apply transition locked: %w", err)
 	}
 	if err := s.materializeWALOps(wfID, fullOps); err != nil {
 		// Committed: recovery will re-apply materialization.
-		return err
+		return fmt.Errorf("local store apply transition locked: %w", err)
 	}
 	// Append to events.jsonl for observability.
 	_ = s.appendWorkflowEvent(wfID, entry) // intentionally ignored (reviewed)
@@ -321,12 +322,12 @@ func (s *LocalStore) applyTransitionLocked(wfID WorkflowID, expectedGeneration i
 func (s *LocalStore) appendWorkflowEvent(wfID WorkflowID, entry *WALEntry) error {
 	dir := filepath.Join(s.workflowsDir(), safeID(string(wfID)))
 	if err := mkdirProtected(dir); err != nil {
-		return err
+		return fmt.Errorf("local store append workflow event: %w", err)
 	}
 	path := filepath.Join(dir, "events.jsonl")
 	line, err := json.Marshal(entry)
 	if err != nil {
-		return err
+		return fmt.Errorf("local store append workflow event: %w", err)
 	}
 	if len(line) > maxLedgerLineBytes {
 		return fmt.Errorf("%w: event line", ErrSizeCapExceeded)

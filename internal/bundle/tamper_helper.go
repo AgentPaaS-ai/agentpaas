@@ -17,7 +17,7 @@ import (
 func TamperManifestCreatedAt(src, dst string) error {
 	entries, err := readBundleTarEntries(src)
 	if err != nil {
-		return err
+		return fmt.Errorf("tamper manifest created at: %w", err)
 	}
 	found := false
 	for i := range entries {

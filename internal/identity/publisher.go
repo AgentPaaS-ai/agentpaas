@@ -126,7 +126,7 @@ func ParseFingerprintDisplay(s string) string {
 func CreatePublisherIdentity(ks KeyStore, name string) (*PublisherIdentity, error) {
 	// Validate name.
 	if err := ValidatePublisherName(name); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create publisher identity: %w", err)
 	}
 
 	// Check if identity already exists.
@@ -180,10 +180,10 @@ func CreatePublisherIdentity(ks KeyStore, name string) (*PublisherIdentity, erro
 
 	now := time.Now()
 	return &PublisherIdentity{
-		Name:          name,
-		Fingerprint:   PublisherFingerprint(&key.PublicKey),
-		PublicKeyPEM:  string(pubPEM),
-		CreatedAt:     now,
+		Name:         name,
+		Fingerprint:  PublisherFingerprint(&key.PublicKey),
+		PublicKeyPEM: string(pubPEM),
+		CreatedAt:    now,
 	}, nil
 }
 
@@ -233,10 +233,10 @@ func LoadPublisherIdentity(ks KeyStore) (*PublisherIdentity, error) {
 	}
 
 	return &PublisherIdentity{
-		Name:          name,
-		Fingerprint:   PublisherFingerprint(&key.PublicKey),
-		PublicKeyPEM:  string(pubPEM),
-		CreatedAt:     createdAt,
+		Name:         name,
+		Fingerprint:  PublisherFingerprint(&key.PublicKey),
+		PublicKeyPEM: string(pubPEM),
+		CreatedAt:    createdAt,
 	}, nil
 }
 

@@ -51,14 +51,14 @@ func GenerateSystemdUnit(cfg SystemdUnitConfig) ([]byte, error) {
 	}
 
 	if err := validateSystemdField("DaemonPath", cfg.DaemonPath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate systemd unit: %w", err)
 	}
 	if err := validateSystemdField("HomeDir", cfg.HomeDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate systemd unit: %w", err)
 	}
 	if cfg.EnvHome != "" {
 		if err := validateSystemdField("EnvHome", cfg.EnvHome); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("generate systemd unit: %w", err)
 		}
 	}
 

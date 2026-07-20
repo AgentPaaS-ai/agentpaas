@@ -26,7 +26,6 @@ func logJournalErr(event string, err error) {
 	}
 }
 
-
 // ---------------------------------------------------------------------------
 // Claim
 // ---------------------------------------------------------------------------
@@ -44,11 +43,11 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 	}
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("supervisor claim for run: %w", err)
 	}
 	atts, err := s.store.ListAttempts(ctx, runID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("supervisor claim for run: %w", err)
 	}
 	var existing *routedrun.AttemptRecord
 	for _, a := range atts {
@@ -59,7 +58,7 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 	}
 	if existing != nil {
 		if err := s.establishTracker(ctx, existing, run); err != nil {
-			return "", err
+			return "", fmt.Errorf("supervisor claim for run: %w", err)
 		}
 		return existing.AttemptID, nil
 	}
@@ -72,26 +71,26 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 	}
 	att := &routedrun.AttemptRecord{
 		SchemaVersion: routedrun.CurrentSchemaVersion,
-		RunID:          runID,
-		WorkflowID:     run.WorkflowID,
-		Status:         routedrun.AttemptStatusRunning,
-		AttemptNumber:  len(atts) + 1,
+		RunID:         runID,
+		WorkflowID:    run.WorkflowID,
+		Status:        routedrun.AttemptStatusRunning,
+		AttemptNumber: len(atts) + 1,
 		Lease: &routedrun.AttemptLease{
 			DurationMs: leaseMs,
-			AcquiredAt:  s.nowWall(),
-			ExpiresAt:   s.nowWall().Add(time.Duration(leaseMs) * time.Millisecond),
+			AcquiredAt: s.nowWall(),
+			ExpiresAt:  s.nowWall().Add(time.Duration(leaseMs) * time.Millisecond),
 		},
 	}
 	if err := s.store.CreateAttempt(ctx, att); err != nil {
-		return "", err
+		return "", fmt.Errorf("supervisor claim for run: %w", err)
 	}
 	// Reload to get the store-issued lease ID/token.
 	att, err = s.store.GetAttempt(ctx, att.AttemptID)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("supervisor claim for run: %w", err)
 	}
 	if err := s.establishTracker(ctx, att, run); err != nil {
-		return "", err
+		return "", fmt.Errorf("supervisor claim for run: %w", err)
 	}
 	// Append the ACCEPTED control-journal event (durable admission committed).
 	s.mu.Lock()
@@ -120,7 +119,7 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 func (s *Supervisor) establishTracker(_ context.Context, att *routedrun.AttemptRecord, _ *routedrun.RunRecord) error { // intentionally ignored (reviewed)
 	key, err := s.loadOrCreateControlKey(att.RunID, att.AttemptID)
 	if err != nil {
-		return err
+		return fmt.Errorf("supervisor establish tracker: %w", err)
 	}
 	nowMs := s.nowMonotonicMs()
 	trk := newAttemptTracker(
@@ -219,13 +218,13 @@ func (s *Supervisor) HandleCheckpoint(ctx context.Context, attemptID routedrun.A
 	if err := s.store.SaveCheckpoint(ctx, cp); err != nil {
 		trk.mu.Unlock()
 		if !errors.Is(err, routedrun.ErrAlreadyExists) {
-			return err
+			return fmt.Errorf("supervisor handle checkpoint: %w", err)
 		}
 	}
 	ref := fmt.Sprintf(`{"checkpoint_id":"%s","sequence":%d}`, string(cp.CheckpointID), cp.Sequence)
 	if err := s.appendJournalEventLocked(trk, routedrun.InvokeJobEventProgressRef, ref); err != nil {
 		trk.mu.Unlock()
-		return err
+		return fmt.Errorf("supervisor handle checkpoint: %w", err)
 	}
 	trk.acceptActivity(s.nowMonotonicMs())
 	trk.mu.Unlock()
@@ -362,7 +361,7 @@ func (s *Supervisor) Finalize(ctx context.Context, attemptID routedrun.AttemptID
 // journal event. Idempotent on the attempt.
 func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, event ResultEvent) error {
 	if err := s.casAttemptTo(ctx, trk, routedrun.AttemptStatusSucceeded, "verified_result"); err != nil {
-		return err
+		return fmt.Errorf("supervisor finalize success: %w", err)
 	}
 	result := &routedrun.InvokeJobResult{
 		SchemaVersion:      routedrun.CurrentSchemaVersion,
@@ -395,10 +394,10 @@ func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, e
 			DeploymentMode: "local",
 			Actor:          "supervisor",
 			Payload: map[string]interface{}{
-				"run_id":      string(trk.runID),
-				"attempt_id":  string(trk.attemptID),
-				"target":      "SUCCEEDED",
-				"error":       err.Error(),
+				"run_id":     string(trk.runID),
+				"attempt_id": string(trk.attemptID),
+				"target":     "SUCCEEDED",
+				"error":      err.Error(),
 			},
 		}))
 		return fmt.Errorf("cas run to succeeded: %w", err)
@@ -419,7 +418,7 @@ func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, e
 
 func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, reason string) error {
 	if err := s.casAttemptTo(ctx, trk, routedrun.AttemptStatusFailed, reason); err != nil {
-		return err
+		return fmt.Errorf("supervisor finalize failed: %w", err)
 	}
 	if trk.verifiedResult != nil {
 		result := &routedrun.InvokeJobResult{
@@ -448,10 +447,10 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 			DeploymentMode: "local",
 			Actor:          "supervisor",
 			Payload: map[string]interface{}{
-				"run_id":      string(trk.runID),
-				"attempt_id":  string(trk.attemptID),
-				"target":      "FAILED",
-				"error":       err.Error(),
+				"run_id":     string(trk.runID),
+				"attempt_id": string(trk.attemptID),
+				"target":     "FAILED",
+				"error":      err.Error(),
 			},
 		}))
 		return fmt.Errorf("cas run to failed: %w", err)
@@ -465,7 +464,7 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 		Payload: map[string]interface{}{
 			"run_id":     string(trk.runID),
 			"attempt_id": string(trk.attemptID),
-			"reason":      reason,
+			"reason":     reason,
 		},
 	}))
 	return nil
@@ -473,7 +472,7 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 
 func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) error {
 	if err := s.casAttemptTo(ctx, trk, routedrun.AttemptStatusCancelled, "user_cancelled"); err != nil {
-		return err
+		return fmt.Errorf("supervisor cancel attempt: %w", err)
 	}
 	logJournalErr("cancelled", s.appendJournalEvent(trk, routedrun.InvokeJobEventCancelled, "{}"))
 	// F14: on casRunTo error, audit and return the error.
@@ -484,10 +483,10 @@ func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) err
 			DeploymentMode: "local",
 			Actor:          "supervisor",
 			Payload: map[string]interface{}{
-				"run_id":      string(trk.runID),
-				"attempt_id":  string(trk.attemptID),
-				"target":      "CANCELLED",
-				"error":       err.Error(),
+				"run_id":     string(trk.runID),
+				"attempt_id": string(trk.attemptID),
+				"target":     "CANCELLED",
+				"error":      err.Error(),
 			},
 		}))
 		return fmt.Errorf("cas run to cancelled: %w", err)
@@ -524,7 +523,7 @@ func (s *Supervisor) casAttemptToByRecord(ctx context.Context, att *routedrun.At
 	for i := 0; i < 8; i++ {
 		current, err := s.store.GetAttempt(ctx, att.AttemptID)
 		if err != nil {
-			return err
+			return fmt.Errorf("supervisor cas attempt to by record: %w", err)
 		}
 		if current.Status.IsTerminal() {
 			if current.Status == target {
@@ -533,11 +532,11 @@ func (s *Supervisor) casAttemptToByRecord(ctx context.Context, att *routedrun.At
 			return ErrAlreadyTerminal
 		}
 		if err := routedrun.ValidateAttemptTransition(current.Status, target); err != nil {
-			return err
+			return fmt.Errorf("supervisor cas attempt to by record: %w", err)
 		}
 		gen, err := s.store.GetAttemptGeneration(ctx, att.AttemptID)
 		if err != nil {
-			return err
+			return fmt.Errorf("supervisor cas attempt to by record: %w", err)
 		}
 		now := s.nowWall()
 		current.Status = target
@@ -552,7 +551,7 @@ func (s *Supervisor) casAttemptToByRecord(ctx context.Context, att *routedrun.At
 			if errors.Is(err, routedrun.ErrCASConflict) {
 				continue
 			}
-			return err
+			return fmt.Errorf("supervisor cas attempt to by record: %w", err)
 		}
 		return nil
 	}
@@ -565,17 +564,17 @@ func (s *Supervisor) casRunTo(ctx context.Context, runID routedrun.RunID, target
 	for i := 0; i < 8; i++ {
 		run, err := s.store.GetRun(ctx, runID)
 		if err != nil {
-			return err
+			return fmt.Errorf("supervisor cas run to: %w", err)
 		}
 		if run.Status.IsTerminal() {
 			return nil
 		}
 		if err := routedrun.ValidateRunTransition(run.Status, target); err != nil {
-			return err
+			return fmt.Errorf("supervisor cas run to: %w", err)
 		}
 		gen, err := s.store.GetRunGeneration(ctx, runID)
 		if err != nil {
-			return err
+			return fmt.Errorf("supervisor cas run to: %w", err)
 		}
 		run.Status = target
 		now := s.nowWall()
@@ -585,7 +584,7 @@ func (s *Supervisor) casRunTo(ctx context.Context, runID routedrun.RunID, target
 			if errors.Is(err, routedrun.ErrCASConflict) {
 				continue
 			}
-			return err
+			return fmt.Errorf("supervisor cas run to: %w", err)
 		}
 		return nil
 	}

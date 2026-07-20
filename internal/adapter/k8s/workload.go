@@ -33,7 +33,7 @@ func (w *K8sWorkloadRuntime) Prepare(ctx context.Context, r port.PrepareRequest)
 	pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{GenerateName: name + "-", Labels: map[string]string{"agentpaas.tenant": r.TenantID, "agentpaas.run": r.RunID, "agentpaas.attempt": r.AttemptID}}, Spec: corev1.PodSpec{RestartPolicy: corev1.RestartPolicyNever, SecurityContext: &corev1.PodSecurityContext{RunAsNonRoot: &nonroot}, Containers: []corev1.Container{{Name: "workload", Image: r.ImageDigest, Command: []string{"sleep", "30"}, SecurityContext: &corev1.SecurityContext{ReadOnlyRootFilesystem: &readonly, Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}}}, Resources: corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceCPU: *resource.NewMilliQuantity(r.ResourcePolicy.CPUShares, resource.DecimalSI), corev1.ResourceMemory: *resource.NewQuantity(r.ResourcePolicy.MemoryMB*1024*1024, resource.BinarySI)}}}}}}
 	created, err := w.client.CoreV1().Pods(w.namespace).Create(ctx, pod, metav1.CreateOptions{})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("k8s workload runtime prepare: %w", err)
 	}
 	id := port.WorkloadID(created.Name)
 	created.Labels["agentpaas.workload"] = created.Name
@@ -88,6 +88,7 @@ func (w *K8sWorkloadRuntime) Start(ctx context.Context, id port.WorkloadID) erro
 	w.mu.Unlock()
 	return nil
 }
+
 // B28-4: Signal implements signal-type-aware stopping.
 // SIGTERM stops with a grace period; SIGKILL stops immediately.
 // Other signals (e.g. HUP) are mapped to Stop with default grace.

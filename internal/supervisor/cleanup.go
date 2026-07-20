@@ -34,7 +34,7 @@ func (s *Supervisor) Cleanup(ctx context.Context, runID routedrun.RunID) error {
 		if errors.Is(err, routedrun.ErrNotFound) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("supervisor cleanup: %w", err)
 	}
 	// Do not clean up a non-terminal run (the work may still be active).
 	if !run.Status.IsTerminal() {
@@ -42,7 +42,7 @@ func (s *Supervisor) Cleanup(ctx context.Context, runID routedrun.RunID) error {
 	}
 	atts, err := s.store.ListAttempts(ctx, runID)
 	if err != nil {
-		return err
+		return fmt.Errorf("supervisor cleanup: %w", err)
 	}
 	// Drop in-memory trackers for the run's attempts.
 	s.mu.Lock()
@@ -54,7 +54,7 @@ func (s *Supervisor) Cleanup(ctx context.Context, runID routedrun.RunID) error {
 	// The control journals (event history) are PRESERVED for audit.
 	if s.stateRoot != "" {
 		keyPath := filepath.Join(s.stateRoot, "runs", string(runID), "control-key")
-		if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(keyPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			// Best-effort: do not fail cleanup on key removal failure.
 			log.Printf("supervisor: remove control-key %s: %v", keyPath, err)
 		}

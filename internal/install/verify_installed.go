@@ -23,11 +23,11 @@ var ErrInstallVerifyFailed = errors.New("post-install verification failed")
 func VerifyInstalledAgent(stateRoot, agentRef string, auditAppender audit.AuditAppender) error {
 	name, pub8, err := parseInstalledRef(agentRef)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify installed agent: %w", err)
 	}
 	dir, err := findInstalledDirByRef(stateRoot, name, pub8)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify installed agent: %w", err)
 	}
 	if dir == "" {
 		return fmt.Errorf("%w: no installed agent at %q", ErrInstallVerifyFailed, agentRef)
@@ -123,7 +123,7 @@ func immutableInstalled(auditAppender audit.AuditAppender, agentName, field stri
 func rejectInstalledSymlinks(root string) error {
 	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("reject installed symlinks: %w", err)
 		}
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("symlink not allowed: %s", path)
@@ -135,7 +135,7 @@ func rejectInstalledSymlinks(root string) error {
 func parseInstalledRef(ref string) (name, pub8 string, err error) {
 	name, pub8, err = naming.ParseAgentRef(ref)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("parse installed ref: %w", err)
 	}
 	if pub8 == "" {
 		return "", "", fmt.Errorf("installed ref %q requires name@pub8", ref)

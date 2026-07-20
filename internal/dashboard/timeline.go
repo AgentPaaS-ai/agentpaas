@@ -174,7 +174,7 @@ func (h *TimelineHandler) writeExistingSpans(ctx context.Context, w http.Respons
 	}
 	spans, err := h.store.QuerySpans(ctx, runID, 0)
 	if err != nil {
-		return err
+		return fmt.Errorf("timeline handler write existing spans: %w", err)
 	}
 	h.mu.RLock()
 	maxSpans := h.maxSpansInMemory
@@ -187,11 +187,11 @@ func (h *TimelineHandler) writeExistingSpans(ctx context.Context, w http.Respons
 		for _, span := range spans {
 			event, err := spanToTimelineEvent(runID, span)
 			if err != nil {
-				return err
+				return fmt.Errorf("timeline handler write existing spans: %w", err)
 			}
 			if batcher.Add(event) {
 				if err := writeTimelineBatch(w, flusher, batcher.Flush()); err != nil {
-					return err
+					return fmt.Errorf("timeline handler write existing spans: %w", err)
 				}
 			}
 		}
@@ -203,10 +203,10 @@ func (h *TimelineHandler) writeExistingSpans(ctx context.Context, w http.Respons
 	for _, span := range spans {
 		event, err := spanToTimelineEvent(runID, span)
 		if err != nil {
-			return err
+			return fmt.Errorf("timeline handler write existing spans: %w", err)
 		}
 		if err := writeTimelineEvent(w, flusher, "", event.Type, event); err != nil {
-			return err
+			return fmt.Errorf("timeline handler write existing spans: %w", err)
 		}
 	}
 	return nil
@@ -228,7 +228,7 @@ func runEventToTimeline(event trigger.RunEvent) (TimelineEvent, error) {
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return TimelineEvent{}, err
+		return TimelineEvent{}, fmt.Errorf("run event to timeline: %w", err)
 	}
 	return TimelineEvent{
 		Type:      "run_event",
@@ -302,7 +302,7 @@ func spanToTimelineEvent(runID string, span otel.SpanRecord) (TimelineEvent, err
 	}
 	data, err := json.Marshal(redactTimelineValue(row))
 	if err != nil {
-		return TimelineEvent{}, err
+		return TimelineEvent{}, fmt.Errorf("span to timeline event: %w", err)
 	}
 	return TimelineEvent{
 		Type:      rowType,
@@ -336,15 +336,15 @@ func classifySpan(span otel.SpanRecord, attrs map[string]any) string {
 func writeTimelineEvent(w http.ResponseWriter, flusher http.Flusher, id string, eventType string, event TimelineEvent) error {
 	data, err := json.Marshal(event)
 	if err != nil {
-		return err
+		return fmt.Errorf("write timeline event: %w", err)
 	}
 	if id != "" {
 		if _, err := fmt.Fprintf(w, "id: %s\n", id); err != nil {
-			return err
+			return fmt.Errorf("write timeline event: %w", err)
 		}
 	}
 	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, data); err != nil {
-		return err
+		return fmt.Errorf("write timeline event: %w", err)
 	}
 	flusher.Flush()
 	return nil
@@ -356,10 +356,10 @@ func writeTimelineBatch(w http.ResponseWriter, flusher http.Flusher, events []Ti
 	}
 	data, err := json.Marshal(map[string][]TimelineEvent{"events": events})
 	if err != nil {
-		return err
+		return fmt.Errorf("write timeline batch: %w", err)
 	}
 	if _, err := fmt.Fprintf(w, "event: span_batch\ndata: %s\n\n", data); err != nil {
-		return err
+		return fmt.Errorf("write timeline batch: %w", err)
 	}
 	flusher.Flush()
 	return nil
@@ -372,10 +372,10 @@ func writeTimelineHeartbeat(w http.ResponseWriter, flusher http.Flusher) error {
 		Data:      json.RawMessage(`{}`),
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("write timeline heartbeat: %w", err)
 	}
 	if _, err := fmt.Fprintf(w, "event: heartbeat\ndata: %s\n\n", data); err != nil {
-		return err
+		return fmt.Errorf("write timeline heartbeat: %w", err)
 	}
 	flusher.Flush()
 	return nil

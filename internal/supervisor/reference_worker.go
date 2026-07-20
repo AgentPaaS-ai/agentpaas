@@ -78,23 +78,23 @@ type ReferenceWorker struct {
 	fixtures []string
 
 	// Internal state accumulated during the run.
-	mu              sync.Mutex
-	turnCount       int
-	progressSeq     int64
-	completedTurns  []int
+	mu                sync.Mutex
+	turnCount         int
+	progressSeq       int64
+	completedTurns    []int
 	checkpointDigests []string
-	checkpointIDs   []string
-	artifactRefs    []string
-	promptsPerTurn  map[int]string
-	responsesPerTurn map[int]string
+	checkpointIDs     []string
+	artifactRefs      []string
+	promptsPerTurn    map[int]string
+	responsesPerTurn  map[int]string
 	accumulatedTokens int
-	contextBound    int
-	finalDigest     string
-	finalResult     string
-	currentCPID     string
+	contextBound      int
+	finalDigest       string
+	finalResult       string
+	currentCPID       string
 
 	// Checkpoint digests by phase (1-indexed).
-	phaseDigests    map[int]string
+	phaseDigests      map[int]string
 	phaseArtifactRefs map[int]string
 }
 
@@ -129,20 +129,20 @@ func NewReferenceWorker(cfg ReferenceWorkerConfig) *ReferenceWorker {
 	}
 
 	return &ReferenceWorker{
-		supervisor:    cfg.Supervisor,
-		attemptID:     cfg.AttemptID,
-		leaseID:       cfg.LeaseID,
-		controlKey:    cfg.ControlKey,
-		artifactRoot:  cfg.ArtifactRoot,
-		runID:         runID,
-		workflowID:    workflowID,
-		invocationID:  invocationID,
-		fixtures:      fixtures,
-		promptsPerTurn:  make(map[int]string),
-		responsesPerTurn: make(map[int]string),
-		phaseDigests:    make(map[int]string),
+		supervisor:        cfg.Supervisor,
+		attemptID:         cfg.AttemptID,
+		leaseID:           cfg.LeaseID,
+		controlKey:        cfg.ControlKey,
+		artifactRoot:      cfg.ArtifactRoot,
+		runID:             runID,
+		workflowID:        workflowID,
+		invocationID:      invocationID,
+		fixtures:          fixtures,
+		promptsPerTurn:    make(map[int]string),
+		responsesPerTurn:  make(map[int]string),
+		phaseDigests:      make(map[int]string),
 		phaseArtifactRefs: make(map[int]string),
-		contextBound:   contextBound,
+		contextBound:      contextBound,
 	}
 }
 
@@ -312,28 +312,28 @@ func (w *ReferenceWorker) runPhasesInternal(ctx context.Context, fromPhase, toPh
 	// Phase 1: Turns 1-5 -> Read fixtures (tool phase)
 	if fromPhase <= 1 && toPhase >= 1 {
 		if err := w.executePhase(ctx, 1, "read_fixtures", w.phase1ReadFixtures); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 	}
 
 	// Phase 2: Turns 6-10 -> Analyze (model phase)
 	if fromPhase <= 2 && toPhase >= 2 {
 		if err := w.executePhase(ctx, 2, "analyze", w.phase2Analyze); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 	}
 
 	// Phase 3: Turns 11-15 -> Cross-reference (tool + model)
 	if fromPhase <= 3 && toPhase >= 3 {
 		if err := w.executePhase(ctx, 3, "cross_reference", w.phase3CrossReference); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 	}
 
 	// Phase 4: Turns 16-20 -> Compile dossier (model phase)
 	if fromPhase <= 4 && toPhase >= 4 {
 		if err := w.executePhase(ctx, 4, "compile_dossier", w.phase4CompileDossier); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 	}
 
@@ -348,22 +348,22 @@ func (w *ReferenceWorker) runPhasesInternal(ctx context.Context, fromPhase, toPh
 		// Repeat phase 1-type: read_fixtures (5 turns)
 		currentPhase++
 		if err := w.executePhase(ctx, currentPhase, "read_fixtures", w.phaseReadFixturesGeneric); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 		// Repeat phase 2-type: analyze (5 turns)
 		currentPhase++
 		if err := w.executePhase(ctx, currentPhase, "analyze", w.phaseAnalyzeGeneric); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 		// Repeat phase 3-type: cross_reference (5 turns)
 		currentPhase++
 		if err := w.executePhase(ctx, currentPhase, "cross_reference", w.phaseCrossReferenceGeneric); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 		// Repeat phase 4-type: compile_dossier (5 turns)
 		currentPhase++
 		if err := w.executePhase(ctx, currentPhase, "compile_dossier", w.phaseCompileDossierGeneric); err != nil {
-			return err
+			return fmt.Errorf("reference worker run phases internal: %w", err)
 		}
 
 		w.mu.Lock()
@@ -389,7 +389,7 @@ func (w *ReferenceWorker) runPhasesInternal(ctx context.Context, fromPhase, toPh
 func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName string, phaseFn func(ctx context.Context, phase int) (string, error)) error {
 	result, err := phaseFn(ctx, phase)
 	if err != nil {
-		return err
+		return fmt.Errorf("reference worker execute phase: %w", err)
 	}
 
 	// Emit a heartbeat after the phase. The sequence is incremented.
@@ -421,21 +421,21 @@ func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName
 		cpSeq := int64(phase*5 + 1)
 		cpID := routedrun.CheckpointID(fmt.Sprintf("cp-%s-%d", w.attemptID, cpSeq))
 		cp := &routedrun.SemanticCheckpoint{
-			CheckpointID:       cpID,
-			AttemptID:          w.attemptID,
-			RunID:              w.runID,
-			WorkflowID:         w.workflowID,
-			LeaseID:            w.leaseID,
-			Phase:              phaseName,
-			CompletedWork:      []string{fmt.Sprintf("phase_%d_complete", phase)},
-			RemainingWork:     []string{fmt.Sprintf("phase_%d_pending", phase+1)},
-			ArtifactRefs:       []string{artifactRef},
+			CheckpointID:        cpID,
+			AttemptID:           w.attemptID,
+			RunID:               w.runID,
+			WorkflowID:          w.workflowID,
+			LeaseID:             w.leaseID,
+			Phase:               phaseName,
+			CompletedWork:       []string{fmt.Sprintf("phase_%d_complete", phase)},
+			RemainingWork:       []string{fmt.Sprintf("phase_%d_pending", phase+1)},
+			ArtifactRefs:        []string{artifactRef},
 			LastCommittedAction: fmt.Sprintf("phase_%d", phase),
-			SafeToResume:       true,
+			SafeToResume:        true,
 			// B30-2: CheckpointDigest is auto-computed by SaveCheckpoint.
 			// The reference worker's own content digest is tracked separately
 			// in phaseDigests for cross-reference within the worker.
-			Sequence:           cpSeq,
+			Sequence: cpSeq,
 		}
 		if err := w.supervisor.HandleCheckpoint(ctx, w.attemptID, w.signCheckpoint(CheckpointEvent{
 			AttemptID:  w.attemptID,
@@ -477,7 +477,7 @@ func (w *ReferenceWorker) phase1ReadFixtures(ctx context.Context, _ int) (string
 		w.mu.Lock()
 		if err := w.checkContextBoundLocked(len(content)); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase1 read fixtures: %w", err)
 		}
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
@@ -507,7 +507,7 @@ func (w *ReferenceWorker) phase2Analyze(ctx context.Context, phase int) (string,
 		addition := len(prompt) + len(response)
 		if err := w.checkContextBoundLocked(addition); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase2 analyze: %w", err)
 		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
@@ -549,7 +549,7 @@ func (w *ReferenceWorker) phase3CrossReference(ctx context.Context, phase int) (
 		addition := len(prompt) + len(response)
 		if err := w.checkContextBoundLocked(addition); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase3 cross reference: %w", err)
 		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
@@ -582,7 +582,7 @@ func (w *ReferenceWorker) phase4CompileDossier(ctx context.Context, phase int) (
 		addition := len(prompt) + len(response)
 		if err := w.checkContextBoundLocked(addition); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase4 compile dossier: %w", err)
 		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
@@ -625,7 +625,7 @@ func (w *ReferenceWorker) phaseReadFixturesGeneric(ctx context.Context, _ int) (
 		w.mu.Lock()
 		if err := w.checkContextBoundLocked(len(content)); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase read fixtures generic: %w", err)
 		}
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
@@ -659,7 +659,7 @@ func (w *ReferenceWorker) phaseAnalyzeGeneric(ctx context.Context, phase int) (s
 		addition := len(prompt) + len(response)
 		if err := w.checkContextBoundLocked(addition); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase analyze generic: %w", err)
 		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
@@ -705,7 +705,7 @@ func (w *ReferenceWorker) phaseCrossReferenceGeneric(ctx context.Context, phase 
 		addition := len(prompt) + len(response)
 		if err := w.checkContextBoundLocked(addition); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase cross reference generic: %w", err)
 		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
@@ -742,7 +742,7 @@ func (w *ReferenceWorker) phaseCompileDossierGeneric(ctx context.Context, phase 
 		addition := len(prompt) + len(response)
 		if err := w.checkContextBoundLocked(addition); err != nil {
 			w.mu.Unlock()
-			return "", err
+			return "", fmt.Errorf("reference worker phase compile dossier generic: %w", err)
 		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
@@ -779,7 +779,7 @@ func (w *ReferenceWorker) phaseFinalizeGeneric(ctx context.Context, phase int) (
 	addition := len(prompt) + len(response)
 	if err := w.checkContextBoundLocked(addition); err != nil {
 		w.mu.Unlock()
-		return "", err
+		return "", fmt.Errorf("reference worker phase finalize generic: %w", err)
 	}
 	w.promptsPerTurn[turn] = prompt
 	w.responsesPerTurn[turn] = response
@@ -1053,4 +1053,3 @@ func (w *ReferenceWorker) recordToolResponse(turn int, key, value string) {
 	w.promptsPerTurn[turn] = fmt.Sprintf("tool:%s", key)
 	w.responsesPerTurn[turn] = value
 }
-

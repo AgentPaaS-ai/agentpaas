@@ -3,10 +3,11 @@ package docker
 import (
 	"context"
 	"fmt"
-	"github.com/AgentPaaS-ai/agentpaas/internal/port"
-	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"sync"
 	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/port"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 // DockerWorkloadRuntime adapts a RuntimeDriver to WorkloadRuntime.
@@ -25,7 +26,7 @@ func (w *DockerWorkloadRuntime) Prepare(ctx context.Context, r port.PrepareReque
 	}
 	id, err := w.driver.Create(ctx, runtime.ContainerSpec{Image: r.ImageDigest, Labels: map[string]string{"agentpaas.tenant": r.TenantID, "agentpaas.run": r.RunID}})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("docker workload runtime prepare: %w", err)
 	}
 	wid := port.WorkloadID(string(id))
 	w.mu.Lock()
@@ -73,6 +74,7 @@ func (w *DockerWorkloadRuntime) Signal(ctx context.Context, id port.WorkloadID, 
 	}
 	return nil
 }
+
 // B28-3: Fence bridges to the B26/B27 fencing path by immediately killing
 // the container with zero grace period. This is the safest default: a fenced
 // container must not continue to consume budget or emit egress.

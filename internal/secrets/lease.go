@@ -66,7 +66,7 @@ func NewDirectLease(cfg DirectLeaseConfig) (*DirectLease, error) {
 	}
 	leaseDir = realLeaseDir
 	if err := validateLeaseRoot(leaseDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new direct lease: %w", err)
 	}
 	now := cfg.Now
 	if now == nil {
@@ -94,18 +94,18 @@ func NewDirectLease(cfg DirectLeaseConfig) (*DirectLease, error) {
 
 func (l *DirectLease) Lease(ctx context.Context, runID, credentialID, policyRuleID string) (LeaseHandle, error) {
 	if err := l.validateActiveRun(runID); err != nil {
-		return LeaseHandle{}, err
+		return LeaseHandle{}, fmt.Errorf("direct lease lease: %w", err)
 	}
 	rule, err := l.egressRule(policyRuleID)
 	if err != nil {
-		return LeaseHandle{}, err
+		return LeaseHandle{}, fmt.Errorf("direct lease lease: %w", err)
 	}
 	if rule.Credential != credentialID {
 		return LeaseHandle{}, fmt.Errorf("policy rule %s does not reference credential %s", policyRuleID, credentialID)
 	}
 	credential, err := l.credential(credentialID)
 	if err != nil {
-		return LeaseHandle{}, err
+		return LeaseHandle{}, fmt.Errorf("direct lease lease: %w", err)
 	}
 	if credential.Type == "env_lease" || (credential.Type == "direct_lease" && credential.Mode == "env") {
 		return LeaseHandle{}, errors.New("env_lease not supported in P1")
@@ -130,7 +130,7 @@ func (l *DirectLease) Lease(ctx context.Context, runID, credentialID, policyRule
 
 	filePath, err := l.createLeaseFile(runID, credentialID, value)
 	if err != nil {
-		return LeaseHandle{}, err
+		return LeaseHandle{}, fmt.Errorf("direct lease lease: %w", err)
 	}
 	handle := LeaseHandle{
 		FilePath:     filePath,
@@ -143,7 +143,7 @@ func (l *DirectLease) Lease(ctx context.Context, runID, credentialID, policyRule
 	}
 	if err := handle.auditEvent(audit.EventTypeSecretLeased); err != nil {
 		_ = os.Remove(filePath) // best-effort remove
-		return LeaseHandle{}, err
+		return LeaseHandle{}, fmt.Errorf("direct lease lease: %w", err)
 	}
 	return handle, nil
 }
@@ -153,7 +153,7 @@ func ReadLease(_ context.Context, handle LeaseHandle) ([]byte, error) {
 		return nil, errors.New("not a valid lease handle")
 	}
 	if err := rejectSymlinkPath(handle.FilePath); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read lease: %w", err)
 	}
 	info, err := os.Lstat(handle.FilePath)
 	if err != nil {
@@ -167,7 +167,7 @@ func ReadLease(_ context.Context, handle LeaseHandle) ([]byte, error) {
 		return nil, fmt.Errorf("read lease file: %w", err)
 	}
 	if err := handle.auditEvent(audit.EventTypeSecretRead); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read lease: %w", err)
 	}
 	return data, nil
 }
@@ -240,18 +240,18 @@ func (l *DirectLease) createLeaseFile(runID, credentialID string, value []byte) 
 	}
 	runDir := filepath.Join(l.leaseDir, runComponent)
 	if err := rejectSymlinkPath(runDir); err != nil {
-		return "", err
+		return "", fmt.Errorf("direct lease create lease file: %w", err)
 	}
 	if err := os.Mkdir(runDir, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
 		return "", fmt.Errorf("create lease run directory: %w", err)
 	}
 	if err := rejectSymlinkPath(runDir); err != nil {
-		return "", err
+		return "", fmt.Errorf("direct lease create lease file: %w", err)
 	}
 
 	filePath := filepath.Join(runDir, credentialComponent)
 	if err := rejectSymlinkPath(filePath); err != nil {
-		return "", err
+		return "", fmt.Errorf("direct lease create lease file: %w", err)
 	}
 	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o400)
 	if err != nil {
@@ -287,7 +287,7 @@ func (l *DirectLease) validateActiveRun(runID string) error {
 func (l *DirectLease) egressRule(policyRuleID string) (policy.EgressRule, error) {
 	index, err := parseRuleID(policyRuleID)
 	if err != nil {
-		return policy.EgressRule{}, err
+		return policy.EgressRule{}, fmt.Errorf("direct lease egress rule: %w", err)
 	}
 	if index < 0 || index >= len(l.policy.Egress) {
 		return policy.EgressRule{}, fmt.Errorf("policy rule %s does not exist", policyRuleID)
@@ -309,10 +309,10 @@ func validateLeaseRoot(root string) error {
 		return fmt.Errorf("lease directory %s must be absolute", root)
 	}
 	if err := rejectSystemPath(root); err != nil {
-		return err
+		return fmt.Errorf("validate lease root: %w", err)
 	}
 	if err := rejectSymlinkPath(root); err != nil {
-		return err
+		return fmt.Errorf("validate lease root: %w", err)
 	}
 	info, err := os.Lstat(root)
 	if err != nil {

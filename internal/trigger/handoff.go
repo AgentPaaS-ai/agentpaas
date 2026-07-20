@@ -222,7 +222,7 @@ func (hm *HandoffManager) Trigger(ctx context.Context, req *HandoffRequest) (*Ha
 	payload, contentType, err := hm.buildPayload(cfg, req)
 	if err != nil {
 		hm.auditHandoffSkipped(req, "payload_build_error")
-		return &HandoffResult{Invoked: false, Reason: "payload_build_error", Envelope: envelope}, err
+		return &HandoffResult{Invoked: false, Reason: "payload_build_error", Envelope: envelope}, fmt.Errorf("handoff manager trigger: %w", err)
 	}
 
 	if contentType == "" {
@@ -240,7 +240,7 @@ func (hm *HandoffManager) Trigger(ctx context.Context, req *HandoffRequest) (*Ha
 	resp, err := hm.invoke(context.WithValue(ctx, callerKey{}, CallerID("system:handoff:"+req.SourceAgent)), invokeReq)
 	if err != nil {
 		hm.auditHandoffSkipped(req, "invoke_error")
-		return &HandoffResult{Invoked: false, Reason: "invoke_error", Envelope: envelope}, err
+		return &HandoffResult{Invoked: false, Reason: "invoke_error", Envelope: envelope}, fmt.Errorf("handoff manager trigger: %w", err)
 	}
 
 	runID := ""
@@ -304,7 +304,7 @@ func (hm *HandoffManager) buildPayload(cfg *HandoffConfig, req *HandoffRequest) 
 		}
 		b, err := json.Marshal(payload)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("handoff manager build payload: %w", err)
 		}
 		return b, "application/json", nil
 	case PayloadModeArtifactRef:
@@ -323,7 +323,7 @@ func (hm *HandoffManager) buildPayload(cfg *HandoffConfig, req *HandoffRequest) 
 		}
 		b, err := json.Marshal(payload)
 		if err != nil {
-			return nil, "", err
+			return nil, "", fmt.Errorf("handoff manager build payload: %w", err)
 		}
 		return b, "application/json", nil
 	case PayloadModeFixedJSON:

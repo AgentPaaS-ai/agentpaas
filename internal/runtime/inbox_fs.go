@@ -27,12 +27,12 @@ func inboxRejectSymlinkPath(path string) error {
 	}
 	cleaned := filepath.Clean(path)
 	if err := inboxRejectSymlinkLeaf(cleaned); err != nil {
-		return err
+		return fmt.Errorf("inbox reject symlink path: %w", err)
 	}
 	parent := filepath.Dir(cleaned)
 	if parent != cleaned {
 		if err := inboxRejectSymlinkLeaf(parent); err != nil {
-			return err
+			return fmt.Errorf("inbox reject symlink path: %w", err)
 		}
 	}
 	return nil
@@ -42,10 +42,10 @@ func inboxRejectSymlinkPath(path string) error {
 func inboxRejectSymlinkLeaf(path string) error {
 	fi, err := os.Lstat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("inbox reject symlink leaf: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: %s", ErrInboxSymlink, path)
@@ -60,9 +60,9 @@ func inboxMkdirProtected(dir string) error {
 	if dir == "" {
 		return fmt.Errorf("%w: empty dir", ErrInboxInvalidPath)
 	}
-	if err := inboxRejectSymlinkPath(dir); err != nil && !os.IsNotExist(err) {
+	if err := inboxRejectSymlinkPath(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
 		if !errors.Is(err, ErrInboxSymlink) {
-			if _, e := os.Lstat(dir); e != nil && !os.IsNotExist(e) {
+			if _, e := os.Lstat(dir); e != nil && !errors.Is(e, os.ErrNotExist) {
 				return err
 			}
 		} else {
@@ -74,7 +74,7 @@ func inboxMkdirProtected(dir string) error {
 	}
 	fi, err := os.Lstat(dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("inbox mkdir protected: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: %s", ErrInboxSymlink, dir)
@@ -88,7 +88,7 @@ func inboxMkdirProtected(dir string) error {
 		}
 		fi, err = os.Lstat(dir)
 		if err != nil {
-			return err
+			return fmt.Errorf("inbox mkdir protected: %w", err)
 		}
 		if fi.Mode().Perm()&0o077 != 0 {
 			return fmt.Errorf("%w: %s mode %#o", ErrInboxUnsafePerm, dir, fi.Mode().Perm())
@@ -101,11 +101,11 @@ func inboxMkdirProtected(dir string) error {
 // caps the read at maxBytes to prevent OOM during recovery.
 func inboxReadFileStrict(path string, maxBytes int64) ([]byte, error) {
 	if err := inboxRejectSymlinkPath(path); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inbox read file strict: %w", err)
 	}
 	fi, err := os.Lstat(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inbox read file strict: %w", err)
 	}
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("%w: %s", ErrInboxSymlink, path)
@@ -121,12 +121,12 @@ func inboxReadFileStrict(path string, maxBytes int64) ([]byte, error) {
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inbox read file strict: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("inbox read file strict: %w", err)
 	}
 	if int64(len(data)) > maxBytes {
 		return nil, fmt.Errorf("%w: %s", ErrInboxTooLarge, path)

@@ -75,10 +75,10 @@ func NewFakeKeyStore() *FakeKeyStore {
 
 func (f *FakeKeyStore) Set(_ context.Context, name string, value []byte) error {
 	if err := ValidateSecretName(name); err != nil {
-		return err
+		return fmt.Errorf("fake key store set: %w", err)
 	}
 	if err := validateSecretValue(value); err != nil {
-		return err
+		return fmt.Errorf("fake key store set: %w", err)
 	}
 
 	f.mu.Lock()
@@ -97,7 +97,7 @@ func (f *FakeKeyStore) Set(_ context.Context, name string, value []byte) error {
 
 func (f *FakeKeyStore) Get(_ context.Context, name string) ([]byte, error) {
 	if err := ValidateSecretName(name); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fake key store get: %w", err)
 	}
 
 	f.mu.Lock()
@@ -126,7 +126,7 @@ func (f *FakeKeyStore) List(_ context.Context) ([]SecretMeta, error) {
 
 func (f *FakeKeyStore) Delete(_ context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
-		return err
+		return fmt.Errorf("fake key store delete: %w", err)
 	}
 
 	f.mu.Lock()
@@ -141,7 +141,7 @@ func (f *FakeKeyStore) Delete(_ context.Context, name string) error {
 
 func (f *FakeKeyStore) TouchLastUsed(_ context.Context, name string) error {
 	if err := ValidateSecretName(name); err != nil {
-		return err
+		return fmt.Errorf("fake key store touch last used: %w", err)
 	}
 
 	f.mu.Lock()

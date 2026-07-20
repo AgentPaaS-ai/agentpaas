@@ -208,6 +208,14 @@ var (
 	// ErrStatsNotReady is returned when Docker container stats lack a prior
 	// CPU sample (precpu_stats are zero on the first stats read).
 	ErrStatsNotReady = errors.New("container stats not ready")
+
+	// ErrDockerNotInitialized is returned when DockerRuntime methods are
+	// called without a configured Docker client.
+	ErrDockerNotInitialized = errors.New("DockerRuntime: not initialized (no Docker client)")
+
+	// ErrDockerNotInitializedShort is the shorter form used by a few
+	// DockerRuntime methods.
+	ErrDockerNotInitializedShort = errors.New("DockerRuntime: not initialized")
 )
 
 // RuntimeDriver is the abstraction over container runtimes (Docker, etc.)

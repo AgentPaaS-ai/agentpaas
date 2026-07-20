@@ -18,7 +18,7 @@ func materializeLockedImage(ctx context.Context, home, agentName string, lock *p
 	}
 	deployed, err := pack.LoadDeployedAgent(home, agentName)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("materialize locked image: %w", err)
 	}
 	if deployed.ImageDigest != lock.ImageDigest {
 		return "", fmt.Errorf("deployed image digest %s does not match lock %s", deployed.ImageDigest, lock.ImageDigest)
@@ -26,7 +26,7 @@ func materializeLockedImage(ctx context.Context, home, agentName string, lock *p
 
 	tmp, err := os.MkdirTemp("", "agentpaas-export-image-*")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("materialize locked image: %w", err)
 	}
 	cleanup := true
 	defer func() {
@@ -37,10 +37,10 @@ func materializeLockedImage(ctx context.Context, home, agentName string, lock *p
 
 	ref := pack.LocalImageRef(agentName, lock.ImageDigest)
 	if err := verifyLocalImageDigest(ctx, ref, lock.ImageDigest); err != nil {
-		return "", err
+		return "", fmt.Errorf("materialize locked image: %w", err)
 	}
 	if err := copyImageToOCILayout(ctx, ref, tmp); err != nil {
-		return "", err
+		return "", fmt.Errorf("materialize locked image: %w", err)
 	}
 	cleanup = false
 	return tmp, nil

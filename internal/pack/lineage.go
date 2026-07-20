@@ -53,17 +53,17 @@ func ReadLineage(projectDir string) (*LineageFile, error) {
 	path := filepath.Join(projectDir, lineageFileName)
 	info, err := os.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrLineageNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("read lineage: %w", err)
 	}
 	if info.Size() > maxLineageFileBytes {
 		return nil, fmt.Errorf("lineage file exceeds %d byte cap", maxLineageFileBytes)
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read lineage: %w", err)
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()

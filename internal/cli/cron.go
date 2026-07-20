@@ -28,18 +28,18 @@ func newCronCmd() *cobra.Command {
 			if expr == "" {
 				return fmt.Errorf("required flag --expr is missing")
 			}
-			version, _ := cmd.Flags().GetString("version") // cobra flag default on missing
-		payload, _ := cmd.Flags().GetString("payload") // cobra flag default on missing
-		contentType, _ := cmd.Flags().GetString("content-type") // cobra flag default on missing
-			timezone, _ := cmd.Flags().GetString("timezone") // cobra flag default on missing
+			version, _ := cmd.Flags().GetString("version")          // cobra flag default on missing
+			payload, _ := cmd.Flags().GetString("payload")          // cobra flag default on missing
+			contentType, _ := cmd.Flags().GetString("content-type") // cobra flag default on missing
+			timezone, _ := cmd.Flags().GetString("timezone")        // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -48,7 +48,7 @@ func newCronCmd() *cobra.Command {
 
 			resolved, err := resolveCLIAgentRef(cmd, args[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 
 			resp, err := client.CronAdd(ctx, &controlv1.CronAddRequest{
@@ -56,8 +56,8 @@ func newCronCmd() *cobra.Command {
 				Expr:         expr,
 				AgentVersion: version,
 				Timezone:     timezone,
-				Payload:       []byte(payload),
-				ContentType:   contentType,
+				Payload:      []byte(payload),
+				ContentType:  contentType,
 			})
 			if err != nil {
 				return fmt.Errorf("cron add failed: %w", err)
@@ -105,11 +105,11 @@ func newCronCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -159,7 +159,7 @@ func newCronCmd() *cobra.Command {
 			var b strings.Builder
 			tw := tabwriter.NewWriter(&b, 0, 0, 3, ' ', 0)
 			if _, err := fmt.Fprintln(tw, "SCHEDULE_ID\tEXPR\tAGENT_NAME"); err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			for _, s := range schedules {
 				if _, err := fmt.Fprintf(tw, "%s\t%s\t%s\n",
@@ -171,7 +171,7 @@ func newCronCmd() *cobra.Command {
 				}
 			}
 			if err := tw.Flush(); err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			return printTextOrJSON(false, nil, func(v interface{}) string {
 				return strings.TrimSuffix(b.String(), "\n")
@@ -186,11 +186,11 @@ func newCronCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new cron cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 

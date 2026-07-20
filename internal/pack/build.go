@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/build"
 	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
+	"github.com/docker/docker/api/types/build"
 )
 
 const (
@@ -76,7 +76,7 @@ type BuildFile struct {
 // BuildImage builds a deterministic OCI image for the agent project.
 func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	if err := validateBuildConfig(&cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 
 	// Enforce LLM egress policy at pack time.
@@ -85,34 +85,34 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	// at runtime when it tries to call the LLM API through the gateway.
 	agentConfig, err := LoadAgentYAML(cfg.ProjectDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 	policyFile, err := LoadPolicy(cfg.ProjectDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 	if err := ValidateLLMEgress(agentConfig, policyFile); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 
 	ignore, err := LoadIgnore(cfg.ProjectDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 
 	inputDigest, err := ComputeBuildInputDigest(cfg.ProjectDir, ignore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 
 	deps, err := ResolveDependencies(ctx, cfg.ProjectDir, cfg.Runtime)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 
 	buildCtx, err := createDockerBuildContext(cfg, ignore, deps)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build image: %w", err)
 	}
 
 	cli, err := dockerclient.New()
@@ -198,7 +198,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 func ComputeBuildInputDigest(projectDir string, ignore *IgnoreMatcher) (string, error) {
 	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("compute build input digest: %w", err)
 	}
 	return ComputeBuildInputDigestFromFiles(files)
 }
@@ -224,7 +224,7 @@ func ComputeBuildInputDigestFromFiles(files []BuildFile) (string, error) {
 
 		data, err := readProjectFile(file.AbsPath)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("compute build input digest from files: %w", err)
 		}
 		if _, err := h.Write(data); err != nil {
 			return "", fmt.Errorf("hash content %s: %w", file.RelPath, err)
@@ -245,10 +245,10 @@ func ComputeBuildInputDigestFromFiles(files []BuildFile) (string, error) {
 func ResolveDependencies(ctx context.Context, projectDir string, runtime RuntimeType) ([]string, error) {
 	_ = runtime // intentionally ignored (reviewed)
 	if err := validateProjectDir(projectDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve dependencies: %w", err)
 	}
 	if err := rejectSymlinkPath(projectDir, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve dependencies: %w", err)
 	}
 
 	reqPath := filepath.Join(projectDir, "requirements.txt")
@@ -274,7 +274,7 @@ func ResolveDependencies(ctx context.Context, projectDir string, runtime Runtime
 func CreateBuildContext(projectDir string, ignore *IgnoreMatcher) (io.Reader, error) {
 	buf := new(bytes.Buffer)
 	if err := writeProjectFilesToTar(buf, projectDir, "", ignore, time.Unix(0, 0)); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create build context: %w", err)
 	}
 
 	return bytes.NewReader(buf.Bytes()), nil
@@ -295,13 +295,13 @@ func validateBuildConfig(cfg *BuildConfig) error {
 		return errors.New("build config is required")
 	}
 	if err := validateProjectDir(cfg.ProjectDir); err != nil {
-		return err
+		return fmt.Errorf("validate build config: %w", err)
 	}
 	if !filepath.IsAbs(cfg.ProjectDir) {
 		return fmt.Errorf("project directory must be absolute: %s", cfg.ProjectDir)
 	}
 	if err := rejectSymlinkPath(cfg.ProjectDir, false); err != nil {
-		return err
+		return fmt.Errorf("validate build config: %w", err)
 	}
 	if cfg.Runtime == "" {
 		cfg.Runtime = RuntimePython
@@ -355,7 +355,7 @@ func validateBuildConfig(cfg *BuildConfig) error {
 	}
 	if cfg.SDKDir != "" {
 		if err := rejectSymlinkPath(cfg.SDKDir, false); err != nil {
-			return err
+			return fmt.Errorf("validate build config: %w", err)
 		}
 	}
 
@@ -368,11 +368,11 @@ func resolveRequirements(ctx context.Context, projectDir string, reqPath string)
 		return nil, fmt.Errorf("create locked requirements file: %w", err)
 	}
 	lockedPath := lockedFile.Name()
-	defer func() { _ = lockedFile.Close() }() // best-effort close
+	defer func() { _ = lockedFile.Close() }()    // best-effort close
 	defer func() { _ = os.Remove(lockedPath) }() // best-effort remove
 
 	if err := rejectSymlinkPath(reqPath, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve requirements: %w", err)
 	}
 
 	cmdCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -389,7 +389,7 @@ func resolveRequirements(ctx context.Context, projectDir string, reqPath string)
 
 	data, err := readProjectFile(lockedPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve requirements: %w", err)
 	}
 
 	return parseLockedRequirements(data), nil
@@ -411,7 +411,7 @@ func resolvePyproject(ctx context.Context, projectDir string) ([]string, error) 
 	lockPath := filepath.Join(projectDir, "uv.lock")
 	data, err := readProjectFile(lockPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve pyproject: %w", err)
 	}
 
 	return parseUVLock(data), nil
@@ -472,26 +472,26 @@ func trimTOMLString(value string) string {
 // Symlinks are rejected. If ignore is nil, it falls back to LoadIgnore(projectDir).
 func CollectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]BuildFile, error) {
 	if err := validateProjectDir(projectDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collect build files: %w", err)
 	}
 	if !filepath.IsAbs(projectDir) {
 		return nil, fmt.Errorf("project directory must be absolute: %s", projectDir)
 	}
 	if err := rejectSymlinkPath(projectDir, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collect build files: %w", err)
 	}
 	if ignore == nil {
 		var err error
 		ignore, err = LoadIgnore(projectDir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("collect build files: %w", err)
 		}
 	}
 
 	var files []BuildFile
 	err := filepath.WalkDir(projectDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("collect build files: %w", err)
 		}
 		info, err := os.Lstat(path)
 		if err != nil {
@@ -503,7 +503,7 @@ func CollectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]BuildFile, e
 
 		rel, err := safeRelPath(projectDir, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("collect build files: %w", err)
 		}
 		if rel == "." {
 			return nil
@@ -527,7 +527,7 @@ func CollectBuildFiles(projectDir string, ignore *IgnoreMatcher) ([]BuildFile, e
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collect build files: %w", err)
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].RelPath < files[j].RelPath
@@ -546,7 +546,7 @@ func collectSDKFiles(sdkDir string) ([]sdkFile, error) {
 	var files []sdkFile
 	err := filepath.WalkDir(sdkDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			return fmt.Errorf("collect sdkfiles: %w", err)
 		}
 		if d.IsDir() {
 			if d.Name() == "__pycache__" {
@@ -559,17 +559,17 @@ func collectSDKFiles(sdkDir string) ([]sdkFile, error) {
 		}
 		relPath, err := filepath.Rel(sdkDir, path)
 		if err != nil {
-			return err
+			return fmt.Errorf("collect sdkfiles: %w", err)
 		}
 		info, err := d.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("collect sdkfiles: %w", err)
 		}
 		files = append(files, sdkFile{absPath: path, relPath: relPath, info: info})
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("collect sdkfiles: %w", err)
 	}
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].relPath < files[j].relPath
@@ -580,14 +580,14 @@ func collectSDKFiles(sdkDir string) ([]sdkFile, error) {
 func writeProjectFilesToTar(dst io.Writer, projectDir string, prefix string, ignore *IgnoreMatcher, timestamp time.Time) error {
 	files, err := CollectBuildFiles(projectDir, ignore)
 	if err != nil {
-		return err
+		return fmt.Errorf("write project files to tar: %w", err)
 	}
 
 	tw := tar.NewWriter(dst)
 	defer func() { _ = tw.Close() }() // best-effort close
 	for _, file := range files {
 		if err := addFileToTar(tw, file.AbsPath, filepath.ToSlash(filepath.Join(prefix, file.RelPath)), file.Info, timestamp); err != nil {
-			return err
+			return fmt.Errorf("write project files to tar: %w", err)
 		}
 	}
 
@@ -600,7 +600,7 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 	defer func() { _ = tw.Close() }() // best-effort close
 
 	if err := addBytesToTar(tw, "Dockerfile", []byte(renderDockerfile(cfg, deps)), 0o644, cfg.SourceDateEpoch); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create docker build context: %w", err)
 	}
 	// Write the lock file in pip-compatible format (package==version).
 	// The deps slice uses package@version internally, but pip install -r
@@ -610,7 +610,7 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 		pipDeps = append(pipDeps, strings.Replace(d, "@", "==", 1))
 	}
 	if err := addBytesToTar(tw, "agentpaas-locked.txt", []byte(strings.Join(pipDeps, "\n")+"\n"), 0o644, cfg.SourceDateEpoch); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create docker build context: %w", err)
 	}
 
 	harnessInfo, err := os.Stat(cfg.HarnessPath)
@@ -618,7 +618,7 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 		return nil, fmt.Errorf("inspect harness %s: %w", cfg.HarnessPath, err)
 	}
 	if err := addFileToTarWithMode(tw, cfg.HarnessPath, "harness", harnessInfo, 0o555, cfg.SourceDateEpoch); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create docker build context: %w", err)
 	}
 
 	if cfg.SDKDir != "" {
@@ -628,18 +628,18 @@ func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []str
 		}
 		for _, file := range sdkFiles {
 			if err := addFileToTar(tw, file.absPath, filepath.ToSlash(filepath.Join("python", file.relPath)), file.info, cfg.SourceDateEpoch); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("create docker build context: %w", err)
 			}
 		}
 	}
 
 	files, err := CollectBuildFiles(cfg.ProjectDir, ignore)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create docker build context: %w", err)
 	}
 	for _, file := range files {
 		if err := addFileToTar(tw, file.AbsPath, filepath.ToSlash(filepath.Join("project", file.RelPath)), file.Info, cfg.SourceDateEpoch); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("create docker build context: %w", err)
 		}
 	}
 	if err := tw.Close(); err != nil {
@@ -688,11 +688,11 @@ func addFileToTar(tw *tar.Writer, filePath string, tarPath string, info fs.FileI
 func addFileToTarWithMode(tw *tar.Writer, filePath string, tarPath string, info fs.FileInfo, mode int64, timestamp time.Time) error {
 	_ = info // intentionally ignored (reviewed)
 	if err := rejectSymlinkPath(filePath, false); err != nil {
-		return err
+		return fmt.Errorf("add file to tar with mode: %w", err)
 	}
 	data, err := readProjectFile(filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("add file to tar with mode: %w", err)
 	}
 
 	return addBytesToTar(tw, tarPath, data, mode, timestamp)

@@ -12,6 +12,7 @@ package runtime
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sort"
 	"sync"
@@ -111,7 +112,7 @@ func NewResourceCollector(sampler Sampler, interval time.Duration) *ResourceColl
 func (c *ResourceCollector) Sample(ctx context.Context) (ResourceSample, error) {
 	s, err := c.sampler(ctx)
 	if err != nil {
-		return s, err
+		return s, fmt.Errorf("resource collector sample: %w", err)
 	}
 	if s.Timestamp.IsZero() {
 		s.Timestamp = time.Now().UTC()
