@@ -72,7 +72,7 @@ func EnsureLocalRegistry(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create Docker client: %w", err)
 	}
-	defer func() { _ = cli.Close() }()
+	defer func() { _ = cli.Close() }() // best-effort close
 
 	if err := ensureRegistryContainer(ctx, cli); err != nil {
 		return "", err
@@ -86,7 +86,7 @@ func CleanupLocalRegistry(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create Docker client: %w", err)
 	}
-	defer func() { _ = cli.Close() }()
+	defer func() { _ = cli.Close() }() // best-effort close
 
 	containers, err := cli.ContainerList(ctx, container.ListOptions{
 		All:     true,
@@ -132,7 +132,7 @@ func PushImageToLocalRegistry(ctx context.Context, sourceTag, agentName, agentVe
 	if err != nil {
 		return "", fmt.Errorf("create Docker client: %w", err)
 	}
-	defer func() { _ = cli.Close() }()
+	defer func() { _ = cli.Close() }() // best-effort close
 
 	if err := cli.ImageTag(ctx, sourceTag, targetTag); err != nil {
 		return "", fmt.Errorf("tag image %q as %q: %w", sourceTag, targetTag, err)
@@ -142,7 +142,7 @@ func PushImageToLocalRegistry(ctx context.Context, sourceTag, agentName, agentVe
 	if err != nil {
 		return "", fmt.Errorf("push image %q: %w", targetTag, err)
 	}
-	defer func() { _ = pushReader.Close() }()
+	defer func() { _ = pushReader.Close() }() // best-effort close
 	if _, err := io.Copy(io.Discard, pushReader); err != nil {
 		return "", fmt.Errorf("drain push output: %w", err)
 	}
@@ -184,7 +184,7 @@ func ensureRegistryContainer(ctx context.Context, cli *client.Client) error {
 func createRegistryContainer(ctx context.Context, cli *client.Client) error {
 	reader, err := cli.ImagePull(ctx, localRegistryImage, image.PullOptions{})
 	if err == nil {
-		defer func() { _ = reader.Close() }()
+		defer func() { _ = reader.Close() }() // best-effort close
 		if _, drainErr := io.Copy(io.Discard, reader); drainErr != nil {
 			return fmt.Errorf("drain registry image pull: %w", drainErr)
 		}
@@ -219,7 +219,7 @@ func createRegistryContainer(ctx context.Context, cli *client.Client) error {
 
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		if isPortBindConflict(err) {
-			_ = cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true})
+			_ = cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true}) // best-effort cleanup
 			return fmt.Errorf(
 				"registry port %d is already in use; set AGENTPAAS_TEST_REGISTRY_PORT to choose another port: %w",
 				localRegistryPort, err,

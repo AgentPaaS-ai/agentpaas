@@ -183,7 +183,7 @@ func (h *LogViewerHandler) ServeDockerArtifacts(w http.ResponseWriter, r *http.R
 
 // sanitizeString applies the full pipeline: redact, escape control chars, ensure valid UTF-8, HTML-escape, truncate.
 func sanitizeString(input string, maxLen int) string {
-	s, _ := sanitizeStringWithTruncated(input, maxLen)
+	s, _ := sanitizeStringWithTruncated(input, maxLen) // truncation flag unused
 	return s
 }
 

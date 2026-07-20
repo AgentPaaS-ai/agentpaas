@@ -92,7 +92,7 @@ func MaterializeInstall(ctx context.Context, opts MaterializeOpts) (*Materialize
 	stagingActive := true
 	defer func() {
 		if stagingActive {
-			_ = os.RemoveAll(stagingDir)
+			_ = os.RemoveAll(stagingDir) // best-effort remove
 		}
 	}()
 
@@ -101,12 +101,12 @@ func MaterializeInstall(ctx context.Context, opts MaterializeOpts) (*Materialize
 	}
 	if opts.PostWriteHook != nil {
 		if err := opts.PostWriteHook(stagingDir); err != nil {
-			_ = rollbackInstalled(finalDir, stagingDir)
+			_ = rollbackInstalled(finalDir, stagingDir) // intentionally ignored (reviewed)
 			return nil, fmt.Errorf("%w: post-write hook: %v — please file a bug report at https://github.com/AgentPaaS-ai/agentpaas/issues", ErrMaterializeFailed, err)
 		}
 	}
 	if verr := verifyInstalledAtDir(stagingDir, opts.Audit, manifest.AgentName); verr != nil {
-		_ = os.RemoveAll(stagingDir)
+		_ = os.RemoveAll(stagingDir) // best-effort remove
 		stagingActive = false
 		return nil, fmt.Errorf("%w: %v — please file a bug report at https://github.com/AgentPaaS-ai/agentpaas/issues", ErrMaterializeFailed, verr)
 	}
@@ -150,7 +150,7 @@ func writeInstalledTree(ctx context.Context, stagingDir string, opts Materialize
 		return fmt.Errorf("extract source: %w", err)
 	}
 	parent := ParentBundleRef{Digest: opts.BundleDigest, Path: opts.BundlePath}
-	parentRaw, _ := json.MarshalIndent(parent, "", "  ")
+	parentRaw, _ := json.MarshalIndent(parent, "", "  ") // intentionally ignored (reviewed)
 	if err := writeInstalledFile(stagingDir, installedParentBundleRef, parentRaw, 0o600); err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func acquireImage(ctx context.Context, stagingDir string, opts MaterializeOpts, 
 		if err != nil {
 			return "", "", false, err
 		}
-		defer func() { _ = os.RemoveAll(tmpOCI) }()
+		defer func() { _ = os.RemoveAll(tmpOCI) }() // best-effort remove
 		if err := opts.Bundle.ExtractImage(tmpOCI); err != nil {
 			return "", "", false, fmt.Errorf("extract image: %w", err)
 		}
@@ -274,7 +274,7 @@ func atomicReplaceInstalledDir(stagingDir, finalDir string) error {
 	if err := os.RemoveAll(finalDir); err != nil && !os.IsNotExist(err) {
 		trash := finalDir + ".trash-" + fmt.Sprintf("%d", time.Now().UnixNano())
 		if rerr := os.Rename(finalDir, trash); rerr == nil {
-			_ = os.RemoveAll(trash)
+			_ = os.RemoveAll(trash) // best-effort remove
 		} else {
 			return fmt.Errorf("replace installed dir: %w", err)
 		}
@@ -286,8 +286,8 @@ func atomicReplaceInstalledDir(stagingDir, finalDir string) error {
 }
 
 func rollbackInstalled(finalDir, stagingDir string) error {
-	_ = os.RemoveAll(stagingDir)
-	_ = os.RemoveAll(finalDir)
+	_ = os.RemoveAll(stagingDir) // best-effort remove
+	_ = os.RemoveAll(finalDir) // best-effort remove
 	return nil
 }
 

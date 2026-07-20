@@ -108,7 +108,7 @@ func (s *Server) Start(parent context.Context) error {
 	s.grpcListener = grpcListener
 	s.cfg.GRPCAddr = grpcListener.Addr().String()
 	go func() {
-		_ = s.grpcServer.Serve(grpcListener)
+		_ = s.grpcServer.Serve(grpcListener) // intentionally ignored (reviewed)
 	}()
 
 	mux := newRESTGatewayMux()
@@ -162,7 +162,7 @@ func (s *Server) Start(parent context.Context) error {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
-		_ = s.restServer.Serve(restListener)
+		_ = s.restServer.Serve(restListener) // intentionally ignored (reviewed)
 	}()
 
 	return nil
@@ -188,7 +188,7 @@ func jsonValidationMiddleware(next http.Handler) http.Handler {
 			writeRESTJSONError(w, http.StatusBadRequest, "failed to read body")
 			return
 		}
-		_ = r.Body.Close()
+		_ = r.Body.Close() // best-effort close
 
 		if len(bytes.TrimSpace(body)) == 0 {
 			writeRESTJSONError(w, http.StatusBadRequest, "request body is required")
@@ -208,7 +208,7 @@ func jsonValidationMiddleware(next http.Handler) http.Handler {
 func writeRESTJSONError(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{ // best-effort encode to client
 		"code":    int(codes.InvalidArgument),
 		"message": msg,
 	})
@@ -376,7 +376,7 @@ func (s *Server) Stop() {
 	if s.restServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = s.restServer.Shutdown(ctx)
+		_ = s.restServer.Shutdown(ctx) // best-effort cleanup
 	}
 	if s.grpcServer != nil {
 		s.grpcServer.GracefulStop()
@@ -466,7 +466,7 @@ func (s *TriggerService) Invoke(ctx context.Context, req *triggerv1.InvokeReques
 		return nil, status.Errorf(codes.Internal, "generate run id: %v", err)
 	}
 	if s.idempotency != nil && req.GetIdempotencyKey() != "" {
-		caller, _ := CallerFromContext(ctx)
+		caller, _ := CallerFromContext(ctx) // optional caller identity
 		requestHash := CanonicalRequestHash(
 			string(caller),
 			req.GetAgentName(),
@@ -542,7 +542,7 @@ func (s *TriggerService) InvokeStream(req *triggerv1.InvokeRequest, stream trigg
 	}
 	idempotencyReplay := false
 	if s.idempotency != nil && req.GetIdempotencyKey() != "" {
-		caller, _ := CallerFromContext(ctx)
+		caller, _ := CallerFromContext(ctx) // optional caller identity
 		requestHash := CanonicalRequestHash(
 			string(caller),
 			req.GetAgentName(),

@@ -28,7 +28,7 @@ func newExportCmd() *cobra.Command {
 				return err
 			}
 
-			outPath, _ := cmd.Flags().GetString("output")
+			outPath, _ := cmd.Flags().GetString("output") // cobra flag default on missing
 			if outPath == "" {
 				agentYAML, err := readAgentYAMLName(absPath)
 				if err != nil {
@@ -41,9 +41,9 @@ func newExportCmd() *cobra.Command {
 				return err
 			}
 
-			withImage, _ := cmd.Flags().GetBool("with-image")
-			yes, _ := cmd.Flags().GetBool("yes")
-			includeRaw, _ := cmd.Flags().GetStringSlice("include")
+			withImage, _ := cmd.Flags().GetBool("with-image") // cobra flag default on missing
+			yes, _ := cmd.Flags().GetBool("yes") // cobra flag default on missing
+			includeRaw, _ := cmd.Flags().GetStringSlice("include") // optional value; zero on miss
 			var includes []string
 			for _, g := range includeRaw {
 				g = strings.TrimSpace(g)
@@ -60,7 +60,7 @@ func newExportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Minute)
 			defer cancel()

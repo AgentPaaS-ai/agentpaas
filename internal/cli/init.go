@@ -28,8 +28,8 @@ func newInitCmd() *cobra.Command {
 				projectDir = args[0]
 			}
 
-			fromCode, _ := cmd.Flags().GetBool("from-code")
-			noninteractive, _ := cmd.Flags().GetBool("noninteractive")
+			fromCode, _ := cmd.Flags().GetBool("from-code") // cobra flag default on missing
+			noninteractive, _ := cmd.Flags().GetBool("noninteractive") // cobra flag default on missing
 			if fromCode && !noninteractive {
 				return errors.New("--from-code requires --noninteractive in P1")
 			}
@@ -41,7 +41,7 @@ func newInitCmd() *cobra.Command {
 				projectDir = resolvedDir
 			}
 
-			runtimeFlag, _ := cmd.Flags().GetString("runtime")
+			runtimeFlag, _ := cmd.Flags().GetString("runtime") // cobra flag default on missing
 			runtime, err := initRuntime(projectDir, runtimeFlag)
 			if err != nil {
 				return err
@@ -62,7 +62,7 @@ func newInitCmd() *cobra.Command {
 				}
 			}
 
-			jsonOutput, _ := cmd.Root().PersistentFlags().GetBool("json")
+			jsonOutput, _ := cmd.Root().PersistentFlags().GetBool("json") // cobra flag default on missing
 			if jsonOutput {
 				result := struct {
 					ProjectDir string           `json:"project_dir"`

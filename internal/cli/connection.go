@@ -33,7 +33,7 @@ func ConnectToDaemon(socketPath string) (controlv1.ControlServiceClient, *grpc.C
 	dialer := &net.Dialer{Timeout: 3 * time.Second}
 	c, derr := dialer.Dial("unix", socketPath)
 	if derr != nil {
-		_ = conn.Close()
+		_ = conn.Close() // best-effort close
 		errMsg := derr.Error()
 		if strings.Contains(errMsg, "connection refused") ||
 			strings.Contains(errMsg, "no such file or directory") ||
@@ -45,7 +45,7 @@ func ConnectToDaemon(socketPath string) (controlv1.ControlServiceClient, *grpc.C
 		}
 		return nil, nil, fmt.Errorf("cannot connect to daemon at %s: %w", socketPath, derr)
 	}
-	_ = c.Close()
+	_ = c.Close() // best-effort close
 
 	client := controlv1.NewControlServiceClient(conn)
 	return client, conn, nil

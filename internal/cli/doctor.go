@@ -233,7 +233,7 @@ func runDoctorChecks() []map[string]string {
 				"message": fmt.Sprintf("%s not writable: %v", agentpaasHome, err),
 			})
 		} else {
-			_ = os.Remove(testFile)
+			_ = os.Remove(testFile) // best-effort remove
 			checks = append(checks, map[string]string{
 				"name":    "Home directory",
 				"status":  "ok",

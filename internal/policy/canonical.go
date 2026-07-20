@@ -574,7 +574,7 @@ func Digest(p *Policy) (string, error) {
 	if p == nil {
 		return "", fmt.Errorf("policy digest: nil policy")
 	}
-	cp, _ := Canonicalize(p)
+	cp, _ := Canonicalize(p) // warnings discarded; digest/validation uses result
 	data, err := marshalCanonicalJSON(cp)
 	if err != nil {
 		return "", fmt.Errorf("policy digest: failed to marshal canonical form: %w", err)

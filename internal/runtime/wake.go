@@ -160,7 +160,7 @@ func (w *WakeRegistry) NotifyWake(ctx context.Context, tenantID string, sig Wake
 	if tenantID == "" || sig.RunID == "" || sig.TaskID == "" {
 		return fmt.Errorf("runtime: NotifyWake requires tenant, run, and task ids")
 	}
-	payload, _ := json.Marshal(inboxWakePayload{
+	payload, _ := json.Marshal(inboxWakePayload{ // best-effort marshal
 		TaskID: sig.TaskID,
 		Type:   string(sig.Reason),
 	})

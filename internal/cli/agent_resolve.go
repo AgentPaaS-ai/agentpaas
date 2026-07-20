@@ -18,7 +18,7 @@ func resolveCLIAgentRef(cmd *cobra.Command, input string) (*install.ResolvedAgen
 		StateRoot: paths.State,
 		Input:     input,
 		Infof: func(format string, args ...any) {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), format, args...)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), format, args...) // best-effort write
 		},
 	})
 }

@@ -48,7 +48,7 @@ func newPackCmd() *cobra.Command {
 				policyPath := filepath.Join(projectDir, "policy.yaml")
 				if data, err := os.ReadFile(policyPath); err == nil {
 					if hasWildcardEgress(data) {
-						allowWildcard, _ := cmd.Flags().GetBool("allow-wildcard")
+						allowWildcard, _ := cmd.Flags().GetBool("allow-wildcard") // cobra flag default on missing
 						if !allowWildcard {
 							fmt.Fprintf(os.Stderr,
 								"WARNING: policy.yaml contains wildcard egress (domain: '*'). "+
@@ -64,8 +64,8 @@ func newPackCmd() *cobra.Command {
 				}
 			}
 
-			agentName, _ := cmd.Flags().GetString("name")
-			agentVersion, _ := cmd.Flags().GetString("version")
+			agentName, _ := cmd.Flags().GetString("name") // cobra flag default on missing
+			agentVersion, _ := cmd.Flags().GetString("version") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -75,7 +75,7 @@ func newPackCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(5 * time.Minute)
 			defer cancel()
@@ -220,7 +220,7 @@ func resolveRunTarget(cmd *cobra.Command, client controlv1.ControlServiceClient,
 // getAgentpaasHome resolves the AgentPaaS home directory from the --home flag
 // or AGENTPAAS_HOME env var, falling back to ~/.agentpaas.
 func getAgentpaasHome(cmd *cobra.Command) (string, error) {
-	homeFlag, _ := cmd.Flags().GetString("home")
+	homeFlag, _ := cmd.Flags().GetString("home") // cobra flag default on missing
 	if homeFlag != "" {
 		return homeFlag, nil
 	}
@@ -248,12 +248,12 @@ func newRunCmd() *cobra.Command {
 			}
 
 			// B26 continuation / control flags — fail closed via daemon.
-			continueRunID, _ := cmd.Flags().GetString("continue")
-			action, _ := cmd.Flags().GetString("action")
-			attemptLease, _ := cmd.Flags().GetDuration("attempt-lease")
-			deploymentRef, _ := cmd.Flags().GetString("deployment-ref")
-			inputFlag, _ := cmd.Flags().GetString("input")
-			idempotencyKey, _ := cmd.Flags().GetString("idempotency-key")
+			continueRunID, _ := cmd.Flags().GetString("continue") // cobra flag default on missing
+			action, _ := cmd.Flags().GetString("action") // cobra flag default on missing
+			attemptLease, _ := cmd.Flags().GetDuration("attempt-lease") // cobra flag default on missing
+			deploymentRef, _ := cmd.Flags().GetString("deployment-ref") // cobra flag default on missing
+			inputFlag, _ := cmd.Flags().GetString("input") // cobra flag default on missing
+			idempotencyKey, _ := cmd.Flags().GetString("idempotency-key") // cobra flag default on missing
 			generatedKey := false
 
 			// Deployment invocation path: when --deployment-ref or --input is set,
@@ -288,7 +288,7 @@ func newRunCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				defer func() { _ = conn.Close() }()
+				defer func() { _ = conn.Close() }() // best-effort close
 				ctx, cancel := contextWithTimeout(30 * time.Second)
 				defer cancel()
 				resp, err := client.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
@@ -314,7 +314,7 @@ func newRunCmd() *cobra.Command {
 					RunID:          resp.GetRunId(),
 					IdempotencyKey: idempotencyKey,
 				}
-				_ = generatedKey
+				_ = generatedKey // key material returned via other channel / displayed above
 				return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 					r := v.(struct {
 						Outcome        string `json:"outcome"`
@@ -334,7 +334,7 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			// Resolve the target to a deployed agent name.
 			agentName, err := resolveRunTarget(cmd, client, target)
@@ -454,18 +454,18 @@ func newRunExtendCmd() *cobra.Command {
 		Short: "Amend run limits (not enabled until B35)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			reason, _ := cmd.Flags().GetString("reason")
+			reason, _ := cmd.Flags().GetString("reason") // cobra flag default on missing
 			if strings.TrimSpace(reason) == "" {
 				return fmt.Errorf("--reason is required")
 			}
-			key, _ := cmd.Flags().GetString("idempotency-key")
+			key, _ := cmd.Flags().GetString("idempotency-key") // cobra flag default on missing
 			if key == "" {
 				return fmt.Errorf("--idempotency-key is required for extend (API contract)")
 			}
-			maxActive, _ := cmd.Flags().GetDuration("max-active-time")
-			maxSpend, _ := cmd.Flags().GetString("max-llm-spend-usd")
-			_ = maxActive
-			_ = maxSpend
+			maxActive, _ := cmd.Flags().GetDuration("max-active-time") // cobra flag default on missing
+			maxSpend, _ := cmd.Flags().GetString("max-llm-spend-usd") // cobra flag default on missing
+			_ = maxActive // reserved CLI flags not yet wired to RPC
+			_ = maxSpend // reserved CLI flags not yet wired to RPC
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -475,7 +475,7 @@ func newRunExtendCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 
@@ -515,7 +515,7 @@ func runControlNotEnabled(command string) func(cmd *cobra.Command, args []string
 		if err != nil {
 			return err
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close() }() // best-effort close
 		ctx, cancel := contextWithTimeout(15 * time.Second)
 		defer cancel()
 
@@ -612,7 +612,7 @@ func newListRunsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -661,7 +661,7 @@ func newStopCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Second)
 			defer cancel()
@@ -694,8 +694,8 @@ func newConfirmCmd() *cobra.Command {
 		Short: "Approve or decline a pending trust-boundary change",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			approve, _ := cmd.Flags().GetBool("approve")
-			decline, _ := cmd.Flags().GetBool("decline")
+			approve, _ := cmd.Flags().GetBool("approve") // cobra flag default on missing
+			decline, _ := cmd.Flags().GetBool("decline") // cobra flag default on missing
 			if approve == decline {
 				return fmt.Errorf("exactly one of --approve or --decline is required")
 			}
@@ -708,7 +708,7 @@ func newConfirmCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			decision := "decline"
 			if approve {
@@ -777,7 +777,7 @@ func newConfirmationsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Second)
 			defer cancel()
@@ -819,9 +819,9 @@ func newLogsCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
-			follow, _ := cmd.Flags().GetBool("follow")
-			tail, _ := cmd.Flags().GetInt32("tail")
-			logsJSON, _ := cmd.Flags().GetBool("json")
+			follow, _ := cmd.Flags().GetBool("follow") // cobra flag default on missing
+			tail, _ := cmd.Flags().GetInt32("tail") // cobra flag default on missing
+			logsJSON, _ := cmd.Flags().GetBool("json") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -831,7 +831,7 @@ func newLogsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(60 * time.Second)
 			defer cancel()
@@ -869,7 +869,7 @@ func newLogsCmd() *cobra.Command {
 				} else if jsonOut {
 					entryMap["run_id"] = entry.GetRunId()
 					entryMap["fields"] = fields
-					data, _ := json.Marshal(entryMap)
+					data, _ := json.Marshal(entryMap) // best-effort JSON for display
 					fmt.Println(string(data))
 				} else {
 					ts := ""
@@ -923,7 +923,7 @@ func newPolicyApplyCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("read policy file: %w", err)
 			}
-			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			dryRun, _ := cmd.Flags().GetBool("dry-run") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -933,7 +933,7 @@ func newPolicyApplyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -1049,7 +1049,7 @@ func newPolicyExplainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Second)
 			defer cancel()
@@ -1096,7 +1096,7 @@ func newPolicyProposeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Second)
 			defer cancel()
@@ -1244,7 +1244,7 @@ func newSecretCmd() *cobra.Command {
 			if err := secrets.ValidateSecretName(name); err != nil {
 				return err
 			}
-			provider, _ := cmd.Flags().GetString("provider")
+			provider, _ := cmd.Flags().GetString("provider") // cobra flag default on missing
 			if provider == "" {
 				provider = detectProviderFromName(name)
 			}
@@ -1258,9 +1258,9 @@ func newSecretCmd() *cobra.Command {
 			}
 			result := secrets.TestProvider(cmd.Context(), provider, value)
 			if result.Status == "ok" {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "secret %q: %s test OK (%s, HTTP %d)\n", name, result.Provider, result.Endpoint, result.HTTPStatus)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "secret %q: %s test OK (%s, HTTP %d)\n", name, result.Provider, result.Endpoint, result.HTTPStatus) // best-effort CLI write
 			} else {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "secret %q: %s test FAILED: %s\n", name, result.Provider, result.Detail)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "secret %q: %s test FAILED: %s\n", name, result.Provider, result.Detail) // best-effort CLI write
 				return fmt.Errorf("credential test failed for %q", name)
 			}
 			return nil
@@ -1418,8 +1418,8 @@ func newAuditVerifyCmd() *cobra.Command {
 		Short: "Verify the audit hash chain and checkpoints",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			auditPath, _ := cmd.Flags().GetString("audit")
-			checkpointsPath, _ := cmd.Flags().GetString("checkpoints")
+			auditPath, _ := cmd.Flags().GetString("audit") // cobra flag default on missing
+			checkpointsPath, _ := cmd.Flags().GetString("checkpoints") // cobra flag default on missing
 			if auditPath == "" || checkpointsPath == "" {
 				homeDir, err := homeDirPath(cmd)
 				if err != nil {
@@ -1443,11 +1443,11 @@ func newAuditVerifyCmd() *cobra.Command {
 					return err
 				}
 			} else if len(result.Issues) == 0 {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Audit chain valid: %d records, %d checkpoints\n", result.AuditRecordCount, result.CheckpointCount)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Audit chain valid: %d records, %d checkpoints\n", result.AuditRecordCount, result.CheckpointCount) // best-effort CLI write
 			} else {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Audit chain verification FAILED")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Audit chain verification FAILED") // best-effort CLI write
 				for _, issue := range result.Issues {
-					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", issue.Message)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "- %s\n", issue.Message) // best-effort CLI write
 				}
 			}
 			if len(result.Issues) > 0 {
@@ -1467,10 +1467,10 @@ func newAuditQueryCmd() *cobra.Command {
 		Short: "Query audit log entries",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID, _ := cmd.Flags().GetString("run-id")
-			agentFilter, _ := cmd.Flags().GetString("agent-name")
-			pageSize, _ := cmd.Flags().GetInt32("page-size")
-			limit, _ := cmd.Flags().GetInt32("limit")
+			runID, _ := cmd.Flags().GetString("run-id") // cobra flag default on missing
+			agentFilter, _ := cmd.Flags().GetString("agent-name") // cobra flag default on missing
+			pageSize, _ := cmd.Flags().GetInt32("page-size") // cobra flag default on missing
+			limit, _ := cmd.Flags().GetInt32("limit") // cobra flag default on missing
 			// --limit is an alias for --page-size; use whichever was explicitly set.
 			if limit != 50 && pageSize == 50 {
 				pageSize = limit
@@ -1491,7 +1491,7 @@ func newAuditQueryCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -1556,8 +1556,8 @@ func newAuditExportCmd() *cobra.Command {
 		Short: "Export audit log entries",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			format, _ := cmd.Flags().GetString("format")
-			output, _ := cmd.Flags().GetString("output")
+			format, _ := cmd.Flags().GetString("format") // cobra flag default on missing
+			output, _ := cmd.Flags().GetString("output") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -1567,7 +1567,7 @@ func newAuditExportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(60 * time.Second)
 			defer cancel()
@@ -1627,7 +1627,7 @@ func newValidateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -1686,7 +1686,7 @@ func newSummarizeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -1750,7 +1750,7 @@ func newExplainFailureCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -1805,7 +1805,7 @@ func newExplainDenialCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Second)
 			defer cancel()
@@ -1851,7 +1851,7 @@ func newRecommendPatchCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Second)
 			defer cancel()
@@ -1906,7 +1906,7 @@ func newTimelineCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -1967,7 +1967,7 @@ func newStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
@@ -2010,7 +2010,7 @@ func newNextActionCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(10 * time.Second)
 			defer cancel()
@@ -2103,4 +2103,4 @@ func contextWithTimeout(d time.Duration) (context.Context, context.CancelFunc) {
 }
 
 // ensure timestamppb import is used (for future timestamp conversion helpers)
-var _ = timestamppb.New
+var _ = timestamppb.New // keep import used

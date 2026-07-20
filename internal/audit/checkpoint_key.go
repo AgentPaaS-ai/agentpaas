@@ -148,15 +148,15 @@ func writeCheckpointKeyEncrypted(path string, privateKeyDER []byte, passphrase s
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpName)
+			_ = os.Remove(tmpName) // best-effort remove
 		}
 	}()
 	if _, err := tmp.Write(encrypted); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return fmt.Errorf("write checkpoint key: %w", err)
 	}
 	if err := tmp.Chmod(0600); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return fmt.Errorf("chmod checkpoint key: %w", err)
 	}
 	if err := tmp.Close(); err != nil {

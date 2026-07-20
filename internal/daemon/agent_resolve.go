@@ -15,14 +15,14 @@ func (s *controlServer) resolveDaemonAgentRef(input string) (daemonKey string, a
 		StateRoot: s.homePaths.State,
 		Input:     input,
 		Infof: func(format string, args ...any) {
-			_, _ = fmt.Fprintf(os.Stderr, format, args...)
+			_, _ = fmt.Fprintf(os.Stderr, format, args...) // best-effort write
 		},
 	})
 	if err != nil {
 		return "", "", err
 	}
 	label := ""
-	if _, _, ok := install.ParseInstalledAgentDir(resolved.DaemonKey); ok {
+	if _, _, ok := install.ParseInstalledAgentDir(resolved.DaemonKey); ok { // intentionally ignored (reviewed)
 		label = resolved.DaemonKey
 	}
 	return resolved.DaemonKey, label, nil

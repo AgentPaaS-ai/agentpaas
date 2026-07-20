@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"io"
 	"net/http"
 	"net/url"
@@ -208,8 +209,8 @@ func (d *WebhookDeliverer) attemptDelivery(ctx context.Context, hook *WebhookCon
 	if err != nil {
 		return WebhookDelivery{Event: event, Hook: hook, Attempt: attempt, Status: "failed", Error: err.Error(), Timestamp: timestamp}
 	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	defer func() { _ = resp.Body.Close() }() // best-effort close
+	_, _ = io.Copy(io.Discard, resp.Body) // best-effort drain
 
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		return WebhookDelivery{Event: event, Hook: hook, Attempt: attempt, Status: "delivered", StatusCode: resp.StatusCode, Timestamp: timestamp}
@@ -219,8 +220,8 @@ func (d *WebhookDeliverer) attemptDelivery(ctx context.Context, hook *WebhookCon
 
 func computeHMAC(secret string, timestamp time.Time, body []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = fmt.Fprintf(mac, "%d.", timestamp.Unix())
-	_, _ = mac.Write(body)
+	_, _ = fmt.Fprintf(mac, "%d.", timestamp.Unix()) // best-effort write
+	_, _ = mac.Write(body) // hash.Hash.Write never errors
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
@@ -274,7 +275,7 @@ func (d *WebhookDeliverer) auditDelivered(event *RunEvent, hook *WebhookConfig, 
 	if d.audit == nil {
 		return
 	}
-	_ = d.audit.Append(audit.AuditRecord{
+	if err := d.audit.Append(audit.AuditRecord{
 		EventType:      "webhook_delivered",
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		DeploymentMode: "local",
@@ -287,14 +288,16 @@ func (d *WebhookDeliverer) auditDelivered(event *RunEvent, hook *WebhookConfig, 
 			"event_id":   event.EventID,
 			"attempt":    attempt,
 		},
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", "webhook_delivered", err)
+	}
 }
 
 func (d *WebhookDeliverer) auditDeadLetter(event *RunEvent, hook *WebhookConfig, reason string) {
 	if d.audit == nil {
 		return
 	}
-	_ = d.audit.Append(audit.AuditRecord{
+	if err := d.audit.Append(audit.AuditRecord{
 		EventType:      "webhook_dead_lettered",
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		DeploymentMode: "local",
@@ -307,7 +310,9 @@ func (d *WebhookDeliverer) auditDeadLetter(event *RunEvent, hook *WebhookConfig,
 			"event_id":   event.EventID,
 			"reason":     reason,
 		},
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", "webhook_dead_lettered", err)
+	}
 }
 
 func redactURL(rawURL string) string {

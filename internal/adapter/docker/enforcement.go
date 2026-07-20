@@ -17,7 +17,7 @@ func newDockerEnforcer() *DockerEgressEnforcer {
 	return &DockerEgressEnforcer{&policyEnforcer{rules: map[string]port.CommSnapshot{}}}
 }
 
-var _ = newDockerEnforcer
+var _ = newDockerEnforcer // compile-time interface/import assertion
 
 func (p *policyEnforcer) apply(_ context.Context, id string, s port.CommSnapshot) error {
 	p.mu.Lock()

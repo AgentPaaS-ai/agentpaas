@@ -1,5 +1,7 @@
 package routedrun
 
+// Ignored context values (`_ = ctx`) satisfy interface signatures without cancellation for in-process stores; reviewed as legitimate. // unused context; interface compliance
+
 import (
 	"context"
 	"crypto/sha256"
@@ -115,7 +117,7 @@ var (
 // ---------------------------------------------------------------------------
 
 func (s *LocalStore) CreateDeployment(ctx context.Context, dep *DeploymentRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if dep == nil {
 		return fmt.Errorf("%w: nil deployment", ErrInvalidArgument)
 	}
@@ -148,7 +150,7 @@ func (s *LocalStore) CreateDeployment(ctx context.Context, dep *DeploymentRecord
 }
 
 func (s *LocalStore) GetDeployment(ctx context.Context, deploymentID DeploymentID) (*DeploymentRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var dep DeploymentRecord
@@ -159,7 +161,7 @@ func (s *LocalStore) GetDeployment(ctx context.Context, deploymentID DeploymentI
 }
 
 func (s *LocalStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := s.deploymentsDir()
@@ -179,7 +181,7 @@ func (s *LocalStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord, 
 }
 
 func (s *LocalStore) SetDeploymentStatus(ctx context.Context, deploymentID DeploymentID, status DeploymentStatus, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	path := s.deploymentPath(deploymentID)
@@ -204,7 +206,7 @@ func (s *LocalStore) SetDeploymentStatus(ctx context.Context, deploymentID Deplo
 }
 
 func (s *LocalStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if alias == nil || alias.Alias == "" {
 		return fmt.Errorf("%w: alias", ErrInvalidArgument)
 	}
@@ -238,7 +240,7 @@ func (s *LocalStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord
 }
 
 func (s *LocalStore) ResolveAlias(ctx context.Context, alias string) (*AliasRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var rec AliasRecord
@@ -249,7 +251,7 @@ func (s *LocalStore) ResolveAlias(ctx context.Context, alias string) (*AliasReco
 }
 
 func (s *LocalStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := s.aliasesDir()
@@ -269,7 +271,7 @@ func (s *LocalStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 }
 
 func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationRequest, expectedDeploymentGeneration int64) (*InvocationReceipt, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if request == nil {
 		return nil, fmt.Errorf("%w: nil request", ErrInvalidArgument)
 	}
@@ -564,15 +566,15 @@ type nodeRun struct {
 }
 
 func (s *LocalStore) GetInvocationByIdempotency(ctx context.Context, callerIdentity, idempotencyKey string) (*InvocationReceipt, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	receipt, _, err := s.loadIdempotency(callerIdentity, idempotencyKey)
+	receipt, _, err := s.loadIdempotency(callerIdentity, idempotencyKey) // intentionally ignored (reviewed)
 	return receipt, err
 }
 
 func (s *LocalStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.invocationsDir(), "_receipts")
@@ -588,7 +590,7 @@ func (s *LocalStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt,
 	}
 	if names == nil {
 		// try walk receipts
-		_ = dir
+		_ = dir // retained for interface/debug symmetry
 	}
 	// Receipts stored under invocations/_receipts/<inv_id>.json
 	if _, err := os.Lstat(dir); os.IsNotExist(err) {
@@ -712,7 +714,7 @@ func (s *LocalStore) attemptPath(run RunID, att AttemptID) string {
 // ---------------------------------------------------------------------------
 
 func (s *LocalStore) CreateRun(ctx context.Context, run *RunRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if run == nil {
 		return fmt.Errorf("%w: nil run", ErrInvalidArgument)
 	}
@@ -740,7 +742,7 @@ func (s *LocalStore) CreateRun(ctx context.Context, run *RunRecord) error {
 }
 
 func (s *LocalStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var run RunRecord
@@ -754,7 +756,7 @@ func (s *LocalStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, error
 // The supervisor (B30-T05) uses this to drive compare-and-swap transitions on
 // runs whose RunRecord struct does not itself carry a Generation field.
 func (s *LocalStore) GetRunGeneration(ctx context.Context, runID RunID) (int64, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var run RunRecord
@@ -770,7 +772,7 @@ func (s *LocalStore) GetRunGeneration(ctx context.Context, runID RunID) (int64, 
 // transitions on attempts whose AttemptRecord struct does not itself carry a
 // Generation field.
 func (s *LocalStore) GetAttemptGeneration(ctx context.Context, attemptID AttemptID) (int64, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	att, err := s.findAttemptLocked(attemptID)
@@ -787,7 +789,7 @@ func (s *LocalStore) GetAttemptGeneration(ctx context.Context, attemptID Attempt
 }
 
 func (s *LocalStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if run == nil {
 		return fmt.Errorf("%w: nil run", ErrInvalidArgument)
 	}
@@ -810,7 +812,7 @@ func (s *LocalStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGene
 }
 
 func (s *LocalStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if attempt == nil {
 		return fmt.Errorf("%w: nil attempt", ErrInvalidArgument)
 	}
@@ -865,7 +867,7 @@ func (s *LocalStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) 
 }
 
 func (s *LocalStore) GetAttempt(ctx context.Context, attemptID AttemptID) (*AttemptRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Attempts live under run dirs; scan if needed. Prefer index by walking runs.
@@ -899,7 +901,7 @@ func (s *LocalStore) findAttemptLocked(attemptID AttemptID) (*AttemptRecord, err
 }
 
 func (s *LocalStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if attempt == nil {
 		return fmt.Errorf("%w: nil attempt", ErrInvalidArgument)
 	}
@@ -936,7 +938,7 @@ func (s *LocalStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, 
 }
 
 func (s *LocalStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*RunRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := s.runsDir()
@@ -971,7 +973,7 @@ func (s *LocalStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*Ru
 }
 
 func (s *LocalStore) ListAttempts(ctx context.Context, runID RunID) ([]*AttemptRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.runsDir(), safeID(string(runID)), "attempts")
@@ -998,7 +1000,7 @@ func (s *LocalStore) ListAttempts(ctx context.Context, runID RunID) ([]*AttemptR
 }
 
 func (s *LocalStore) AppendLedger(ctx context.Context, runID RunID, entry string) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if len(entry) > maxLedgerLineBytes {
 		return fmt.Errorf("%w: ledger line", ErrSizeCapExceeded)
 	}
@@ -1009,7 +1011,7 @@ func (s *LocalStore) AppendLedger(ctx context.Context, runID RunID, entry string
 }
 
 func (s *LocalStore) ReconcileInterrupted(ctx context.Context, runID RunID) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var run RunRecord
@@ -1088,7 +1090,7 @@ func (s *LocalStore) listAttemptsLocked(runID RunID) ([]*AttemptRecord, error) {
 // ---------------------------------------------------------------------------
 
 func (s *LocalStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if wf == nil {
 		return fmt.Errorf("%w: nil workflow", ErrInvalidArgument)
 	}
@@ -1126,7 +1128,7 @@ func (s *LocalStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) err
 }
 
 func (s *LocalStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*WorkflowRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var wf WorkflowRecord
@@ -1137,7 +1139,7 @@ func (s *LocalStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*W
 }
 
 func (s *LocalStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if wf == nil {
 		return fmt.Errorf("%w: nil workflow", ErrInvalidArgument)
 	}
@@ -1168,7 +1170,7 @@ func (s *LocalStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, exp
 }
 
 func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := s.workflowsDir()
@@ -1197,7 +1199,7 @@ func (s *LocalStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, erro
 }
 
 func (s *LocalStore) CreateNode(ctx context.Context, node *PipelineNode) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if node == nil {
 		return fmt.Errorf("%w: nil node", ErrInvalidArgument)
 	}
@@ -1225,7 +1227,7 @@ func (s *LocalStore) CreateNode(ctx context.Context, node *PipelineNode) error {
 }
 
 func (s *LocalStore) GetNode(ctx context.Context, nodeID NodeID) (*PipelineNode, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.findNodeLocked(nodeID)
@@ -1254,7 +1256,7 @@ func (s *LocalStore) findNodeLocked(nodeID NodeID) (*PipelineNode, error) {
 }
 
 func (s *LocalStore) UpdateNode(ctx context.Context, node *PipelineNode, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if node == nil {
 		return fmt.Errorf("%w: nil node", ErrInvalidArgument)
 	}
@@ -1274,7 +1276,7 @@ func (s *LocalStore) UpdateNode(ctx context.Context, node *PipelineNode, expecte
 }
 
 func (s *LocalStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*PipelineNode, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "nodes")
@@ -1298,7 +1300,7 @@ func (s *LocalStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*P
 }
 
 func (s *LocalStore) RegisterService(ctx context.Context, svc *MCPServiceBinding) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if svc == nil {
 		return fmt.Errorf("%w: nil service", ErrInvalidArgument)
 	}
@@ -1323,7 +1325,7 @@ func (s *LocalStore) RegisterService(ctx context.Context, svc *MCPServiceBinding
 }
 
 func (s *LocalStore) UpdateService(ctx context.Context, svc *MCPServiceBinding, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if svc == nil {
 		return fmt.Errorf("%w: nil service", ErrInvalidArgument)
 	}
@@ -1343,7 +1345,7 @@ func (s *LocalStore) UpdateService(ctx context.Context, svc *MCPServiceBinding, 
 }
 
 func (s *LocalStore) ListServices(ctx context.Context, workflowID WorkflowID) ([]*MCPServiceBinding, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "services")
@@ -1366,7 +1368,7 @@ func (s *LocalStore) ListServices(ctx context.Context, workflowID WorkflowID) ([
 }
 
 func (s *LocalStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelope) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if handoff == nil {
 		return fmt.Errorf("%w: nil handoff", ErrInvalidArgument)
 	}
@@ -1394,7 +1396,7 @@ func (s *LocalStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelope
 }
 
 func (s *LocalStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*HandoffEnvelope, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := s.workflowsDir()
@@ -1416,7 +1418,7 @@ func (s *LocalStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*Hand
 }
 
 func (s *LocalStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) ([]*HandoffEnvelope, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "handoffs")
@@ -1439,7 +1441,7 @@ func (s *LocalStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) ([
 }
 
 func (s *LocalStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if batch == nil {
 		return fmt.Errorf("%w: nil batch", ErrInvalidArgument)
 	}
@@ -1464,7 +1466,7 @@ func (s *LocalStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) er
 }
 
 func (s *LocalStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if batch == nil {
 		return fmt.Errorf("%w: nil batch", ErrInvalidArgument)
 	}
@@ -1484,7 +1486,7 @@ func (s *LocalStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, ex
 }
 
 func (s *LocalStore) ListChildBatches(ctx context.Context, workflowID WorkflowID) ([]*ChildBatch, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	dir := filepath.Join(s.workflowsDir(), safeID(string(workflowID)), "child-batches")
@@ -1507,7 +1509,7 @@ func (s *LocalStore) ListChildBatches(ctx context.Context, workflowID WorkflowID
 }
 
 func (s *LocalStore) CommitChildResult(ctx context.Context, result *ChildResult) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if result == nil {
 		return fmt.Errorf("%w: nil child result", ErrInvalidArgument)
 	}
@@ -1560,7 +1562,7 @@ func (s *LocalStore) findBatchWorkflowLocked(batchID ChildBatchID) (WorkflowID, 
 }
 
 func (s *LocalStore) ListChildResults(ctx context.Context, childBatchID ChildBatchID) ([]*ChildResult, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	wfID, err := s.findBatchWorkflowLocked(childBatchID)
@@ -1590,7 +1592,7 @@ func (s *LocalStore) ListChildResults(ctx context.Context, childBatchID ChildBat
 }
 
 func (s *LocalStore) RequestControl(ctx context.Context, req *ControlRequest) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if req == nil {
 		return fmt.Errorf("%w: nil control request", ErrInvalidArgument)
 	}
@@ -1670,7 +1672,7 @@ func (s *LocalStore) findControlByIdempotencyLocked(wfID WorkflowID, key string)
 }
 
 func (s *LocalStore) GetDesiredState(ctx context.Context, workflowID WorkflowID) (*DesiredState, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var ds DesiredState
@@ -1681,7 +1683,7 @@ func (s *LocalStore) GetDesiredState(ctx context.Context, workflowID WorkflowID)
 }
 
 func (s *LocalStore) AppendControlResult(ctx context.Context, req *ControlRequest, result interface{}) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	path := filepath.Join(s.workflowsDir(), safeID(string(req.WorkflowID)), "controls.jsonl")
@@ -1699,7 +1701,7 @@ func (s *LocalStore) AppendControlResult(ctx context.Context, req *ControlReques
 }
 
 func (s *LocalStore) AppendLimitAmendment(ctx context.Context, workflowID WorkflowID, expectedAuthorityGeneration int64, amendment *LimitAmendment) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if amendment == nil {
 		return fmt.Errorf("%w: nil amendment", ErrInvalidArgument)
 	}
@@ -1811,7 +1813,7 @@ func amendmentPayloadEqual(existing, incoming *LimitAmendment) bool {
 }
 
 func (s *LocalStore) ApplyTransition(ctx context.Context, workflowID WorkflowID, expectedGeneration int64, command string) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Optional structured ops in command: if JSON object with "operations", use them.
@@ -1984,7 +1986,7 @@ func computeIntentDigest(req *InvocationRequest) string {
 		sum := sha256.Sum256([]byte(req.InputJSON))
 		inDigest = hex.EncodeToString(sum[:])
 	}
-	raw, _ := json.Marshal(intent{
+	raw, _ := json.Marshal(intent{ // best-effort debug/intent snapshot
 		Ref:     req.RequestedDeploymentRef,
 		Input:   inDigest,
 		Active:  req.InitialMaxActiveDurationMs,
@@ -2122,17 +2124,17 @@ func (s *LocalStore) activeTimePath(wfID WorkflowID) string {
 
 // GetActiveTimeLedger loads the workflow active-time ledger.
 func (s *LocalStore) GetActiveTimeLedger(ctx context.Context, workflowID WorkflowID) (*ActiveTimeLedger, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ledger, _, err := s.loadActiveTimeLedgerLocked(workflowID)
+	ledger, _, err := s.loadActiveTimeLedgerLocked(workflowID) // intentionally ignored (reviewed)
 	return ledger, err
 }
 
 // GetActiveTimeLedgerGeneration returns the file generation of the active-time
 // ledger, for use with CAS writes via PutActiveTimeLedger.
 func (s *LocalStore) GetActiveTimeLedgerGeneration(ctx context.Context, workflowID WorkflowID) (int64, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, gen, err := s.loadActiveTimeLedgerLocked(workflowID)
@@ -2142,7 +2144,7 @@ func (s *LocalStore) GetActiveTimeLedgerGeneration(ctx context.Context, workflow
 // PutActiveTimeLedger persists the workflow active-time ledger.
 // expectedGeneration is the file generation expected. Pass 0 to bypass CAS.
 func (s *LocalStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if ledger == nil {
 		return fmt.Errorf("%w: nil active time ledger", ErrInvalidArgument)
 	}

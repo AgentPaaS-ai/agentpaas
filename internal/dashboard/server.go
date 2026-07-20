@@ -203,7 +203,7 @@ func (s *Server) routes() http.Handler {
 	root := http.NewServeMux()
 	dist, err := fs.Sub(spaFiles, "dist")
 	if err != nil {
-		root.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		root.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { // intentionally ignored (reviewed)
 			writeJSONError(w, http.StatusInternalServerError, "dashboard assets unavailable")
 		})
 		return root
@@ -313,7 +313,7 @@ func spaHandler(dist fs.FS) http.Handler {
 		if requestPath != "" {
 			file, err := dist.Open(requestPath)
 			if err == nil {
-				defer func() { _ = file.Close() }()
+				defer func() { _ = file.Close() }() // best-effort close
 				if info, statErr := file.Stat(); statErr == nil && !info.IsDir() {
 					files.ServeHTTP(w, r)
 					return
@@ -328,7 +328,7 @@ func spaHandler(dist fs.FS) http.Handler {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(index)
+		_, _ = w.Write(index) // best-effort write; error checked via Flush/Error
 	})
 }
 

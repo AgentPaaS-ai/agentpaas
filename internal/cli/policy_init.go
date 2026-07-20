@@ -26,10 +26,10 @@ func newPolicyInitCmd() *cobra.Command {
 				projectDir = args[0]
 			}
 
-			templateName, _ := cmd.Flags().GetString("template")
-			providerName, _ := cmd.Flags().GetString("provider")
-			noninteractive, _ := cmd.Flags().GetBool("noninteractive")
-			force, _ := cmd.Flags().GetBool("force")
+			templateName, _ := cmd.Flags().GetString("template") // cobra flag default on missing
+			providerName, _ := cmd.Flags().GetString("provider") // cobra flag default on missing
+			noninteractive, _ := cmd.Flags().GetBool("noninteractive") // cobra flag default on missing
+			force, _ := cmd.Flags().GetBool("force") // cobra flag default on missing
 
 			// Resolve the project directory to an absolute path.
 			resolvedDir, err := filepath.Abs(projectDir)
@@ -69,7 +69,7 @@ func newPolicyInitCmd() *cobra.Command {
 				}
 				content = buildAllowLLMTemplate(domain)
 			} else {
-				content, _ = policyTemplate(templateName)
+				content, _ = policyTemplate(templateName) // optional value; zero on miss
 			}
 
 			// Write the policy file.

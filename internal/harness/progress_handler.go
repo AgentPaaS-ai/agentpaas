@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -39,13 +40,13 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 	}
 
 	// --- Validate event_id ---
-	eventID, _ := p["event_id"].(string)
+	eventID, _ := p["event_id"].(string) // optional value; zero on miss
 	if eventID == "" {
 		return rpcError(req.ID, "event_id is required", "INVALID_PROGRESS")
 	}
 
 	// --- Validate phase ---
-	phase, _ := p["phase"].(string)
+	phase, _ := p["phase"].(string) // optional value; zero on miss
 	if phase == "" {
 		return rpcError(req.ID, "phase must not be empty", "INVALID_PROGRESS")
 	}
@@ -75,7 +76,7 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 	}
 
 	// --- Validate last_committed_action ---
-	lastCommitted, _ := p["last_committed_action"].(string)
+	lastCommitted, _ := p["last_committed_action"].(string) // optional value; zero on miss
 	if lastCommitted != "" && len([]byte(lastCommitted)) > progressStrItemMax {
 		return rpcError(req.ID, "last_committed_action exceeds max length", "INVALID_PROGRESS")
 	}
@@ -84,7 +85,7 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 	}
 
 	// --- Validate safe_to_resume ---
-	safeToResume, _ := p["safe_to_resume"].(bool)
+	safeToResume, _ := p["safe_to_resume"].(bool) // optional value; zero on miss
 	if safeToResume {
 		if lastCommitted == "" {
 			return rpcError(req.ID, "safe_to_resume=true requires last_committed_action", "INVALID_PROGRESS")
@@ -162,7 +163,7 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 
 	// --- Emit audit event (non-secret summary) ---
 	if s.audit != nil {
-		_ = s.audit.Append(audit.AuditRecord{
+		if err := s.audit.Append(audit.AuditRecord{
 			Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 			EventType: "progress",
 			Actor:     "harness",
@@ -173,7 +174,9 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 				"safe_to_resume": safeToResume,
 				"checkpoint_id": checkpointID,
 			},
-		})
+		}); err != nil {
+			log.Printf("harness: audit append (%s): %v", "progress", err)
+		}
 	}
 
 	return rpcResponse{ID: req.ID, OK: true, Result: resp}

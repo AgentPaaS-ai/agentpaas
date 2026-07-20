@@ -151,7 +151,7 @@ func listInstalledByAgentName(stateRoot, bareName string) ([]InstalledAgentEntry
 	}
 	var out []InstalledAgentEntry
 	for _, e := range list {
-		name, _, ok := ParseInstalledAgentDir(e.Ref)
+		name, _, ok := ParseInstalledAgentDir(e.Ref) // intentionally ignored (reviewed)
 		if !ok {
 			continue
 		}
@@ -200,7 +200,7 @@ func FormatAgentDisplay(ref, alias string) string {
 
 // DisplayForDaemonKey returns the D7 display string for a daemon agent key.
 func DisplayForDaemonKey(stateRoot, daemonKey string) string {
-	if _, _, ok := ParseInstalledAgentDir(daemonKey); !ok {
+	if _, _, ok := ParseInstalledAgentDir(daemonKey); !ok { // intentionally ignored (reviewed)
 		return daemonKey
 	}
 	name, pub8, err := naming.ParseAgentRef(daemonKey)

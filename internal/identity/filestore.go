@@ -113,8 +113,8 @@ var fileLocks sync.Map // map[string]*sync.Mutex
 // is keyed by the absolute path so that two stores pointing at the same file
 // (via different relative paths) share the same lock.
 func getFileLock(path string) *sync.Mutex {
-	abs, _ := filepath.Abs(path)
-	v, _ := fileLocks.LoadOrStore(abs, &sync.Mutex{})
+	abs, _ := filepath.Abs(path) // best-effort abs; fallback to path
+	v, _ := fileLocks.LoadOrStore(abs, &sync.Mutex{}) // sync.Map always ok
 	return v.(*sync.Mutex)
 }
 
@@ -283,7 +283,7 @@ func (f *FileKeyStore) saveToDisk() error {
 			return fmt.Errorf("write keystore file: %w", err)
 		}
 		if _, err := outFile.Write(out); err != nil {
-			_ = outFile.Close()
+			_ = outFile.Close() // best-effort close
 			return fmt.Errorf("write keystore file: %w", err)
 		}
 		return outFile.Close()
@@ -294,7 +294,7 @@ func (f *FileKeyStore) saveToDisk() error {
 			return fmt.Errorf("write keystore file: %w", err)
 		}
 		if _, err := outFile.Write(out); err != nil {
-			_ = outFile.Close()
+			_ = outFile.Close() // best-effort close
 			return fmt.Errorf("write keystore file: %w", err)
 		}
 		return outFile.Close()

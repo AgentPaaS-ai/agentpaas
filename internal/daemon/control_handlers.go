@@ -41,6 +41,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// logBestEffort logs a non-fatal cleanup/secondary error without changing control flow.
+func logBestEffort(op string, err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: best-effort %s: %v\n", op, err)
+	}
+}
+
+
 type packKeyStoreAdapter struct {
 	store identity.KeyStore
 }
@@ -239,7 +247,7 @@ func waitForGateway(ctx context.Context, rt runtime.RuntimeDriver, gatewayID run
 			// Host may be able to dial on Linux. Try 15021 before next sleep.
 			conn, dialErr := net.DialTimeout("tcp", net.JoinHostPort(ip, "15021"), 250*time.Millisecond)
 			if dialErr == nil {
-				_ = conn.Close()
+				_ = conn.Close() // best-effort close
 				return nil
 			}
 		}
@@ -262,7 +270,7 @@ func gatewayLogsIndicateReady(ctx context.Context, rt runtime.RuntimeDriver, gat
 	if err != nil {
 		return false
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() { _ = reader.Close() }() // best-effort close
 	all, err := io.ReadAll(io.LimitReader(reader, 64*1024))
 	if err != nil || len(all) == 0 {
 		return false
@@ -353,7 +361,10 @@ func validateCredentialsExist(s *controlServer, agentName string, isInstalled bo
 	var deployedDir string
 	if isInstalled {
 		// For installed agents, the state dir layout is different.
-		name, pub8, _ := install.ParseInstalledAgentDir(agentName)
+		name, pub8, ok := install.ParseInstalledAgentDir(agentName)
+		if !ok {
+			return fmt.Errorf("invalid installed agent ref %q", agentName)
+		}
 		dir, err := install.InstalledAgentPath(s.homePaths.State, name, pub8)
 		if err != nil {
 			return fmt.Errorf("resolve installed agent dir: %w", err)
@@ -446,7 +457,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// Detect installed (shared bundle) agents vs packed (local) agents.
 	// Installed agents use a different verification and image digest path.
 	isInstalled := false
-	if _, _, ok := install.ParseInstalledAgentDir(agentName); ok {
+	if _, _, ok := install.ParseInstalledAgentDir(agentName); ok { // intentionally ignored (reviewed)
 		isInstalled = true
 	}
 
@@ -530,7 +541,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		Labels:   runtime.Labels(runtime.ResourceTypeNetEgress, runID),
 	})
 	if err != nil {
-		_ = rt.RemoveNetwork(ctx, netID)
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 		return nil, status.Errorf(codes.Internal, "create egress network: %v", err)
 	}
 
@@ -541,13 +552,13 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// umask to the mode, yielding 0755 which denies write to "other").
 	hostAuditDir := filepath.Join(s.homePaths.State, "runs", runID, "harness-audit")
 	if err := os.MkdirAll(hostAuditDir, 0o777); err != nil {
-		_ = rt.RemoveNetwork(ctx, egressNetID)
-		_ = rt.RemoveNetwork(ctx, netID)
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 		return nil, status.Errorf(codes.Internal, "create audit dir: %v", err)
 	}
 	if err := os.Chmod(hostAuditDir, 0o777); err != nil {
-		_ = rt.RemoveNetwork(ctx, egressNetID)
-		_ = rt.RemoveNetwork(ctx, netID)
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 		return nil, status.Errorf(codes.Internal, "chmod audit dir: %v", err)
 	}
 
@@ -561,8 +572,21 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// Read the agent's policy.yaml from the deployed/installed directory.
 	var deployedDir string
 	if isInstalled {
-		name, pub8, _ := install.ParseInstalledAgentDir(agentName)
-		deployedDir, _ = install.InstalledAgentPath(s.homePaths.State, name, pub8)
+		name, pub8, ok := install.ParseInstalledAgentDir(agentName)
+		if !ok {
+			logBestEffort("parse installed agent dir", fmt.Errorf("invalid installed agent ref %q", agentName))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			return nil, status.Errorf(codes.InvalidArgument, "invalid installed agent ref %q", agentName)
+		}
+		var pathErr error
+		deployedDir, pathErr = install.InstalledAgentPath(s.homePaths.State, name, pub8)
+		if pathErr != nil {
+			logBestEffort("resolve installed agent path", pathErr)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			return nil, status.Errorf(codes.Internal, "resolve installed agent path: %v", pathErr)
+		}
 	} else {
 		deployedDir = pack.DeployedAgentPath(s.homePaths.Home, agentName)
 	}
@@ -573,39 +597,39 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		// Parse and compile the policy into gateway config.
 		parsedPolicy, err := policy.ParsePolicy(bytes.NewReader(policyData))
 		if err != nil {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "parse agent policy: %v", err)
 		}
 		if errs := policy.ValidatePolicy(parsedPolicy); policy.HasErrors(errs) {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "validate agent policy: %v", errs)
 		}
 		compiled, err := policy.CompileGatewayConfig(parsedPolicy)
 		if err != nil {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "compile gateway config: %v", err)
 		}
 		// Write compiled config to per-run directory.
 		perRunConfigDir := filepath.Join(s.homePaths.State, "runs", runID, "gateway-config")
 		if err := os.MkdirAll(perRunConfigDir, 0o700); err != nil {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "create gateway config dir: %v", err)
 		}
 		gatewayConfigPath := filepath.Join(perRunConfigDir, "config.yaml")
 		if err := os.WriteFile(gatewayConfigPath, compiled, 0o600); err != nil {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "write gateway config: %v", err)
 		}
 		// Rewrite __agentpaas_secret:<id> placeholders in apiKey.keys with Keychain values
 		// so agentgateway can validate ingress keys at startup/runtime.
 		if err := s.rewriteGatewayConfigSecrets(gatewayConfigPath, parsedPolicy); err != nil {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.FailedPrecondition, "resolve gateway ingress secrets: %v", err)
 		}
 		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", gatewayConfigPath)}
@@ -615,14 +639,14 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		denyAllConfig := []byte("config:\n  dns:\n    lookupFamily: V4Only\nbinds: []\n")
 		perRunConfigDir := filepath.Join(s.homePaths.State, "runs", runID, "gateway-config")
 		if err := os.MkdirAll(perRunConfigDir, 0o700); err != nil {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "create gateway config dir: %v", err)
 		}
 		denyAllPath := filepath.Join(perRunConfigDir, "config.yaml")
 		if err := os.WriteFile(denyAllPath, denyAllConfig, 0o600); err != nil {
-			_ = rt.RemoveNetwork(ctx, egressNetID)
-			_ = rt.RemoveNetwork(ctx, netID)
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "write default-deny config: %v", err)
 		}
 		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", denyAllPath)}
@@ -638,15 +662,15 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		User:       "64000",
 	})
 	if err != nil {
-		_ = rt.RemoveNetwork(ctx, egressNetID)
-		_ = rt.RemoveNetwork(ctx, netID)
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 		return nil, status.Errorf(codes.Internal, "create gateway container: %v", err)
 	}
 
 	if err := rt.Start(ctx, gatewayID); err != nil {
-		_ = rt.Remove(ctx, gatewayID, true)
-		_ = rt.RemoveNetwork(ctx, egressNetID)
-		_ = rt.RemoveNetwork(ctx, netID)
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 		return nil, status.Errorf(codes.Internal, "start gateway container: %v", err)
 	}
 
@@ -769,7 +793,10 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	journalHostPath := ""
 	if journalKey != nil && attemptID != "" {
 		journalHostPath = filepath.Join(s.homePaths.State, "runs", runID, "journals", attemptID+".jsonl")
-		_ = os.MkdirAll(filepath.Dir(journalHostPath), 0o700)
+		if err := os.MkdirAll(filepath.Dir(journalHostPath), 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: create journal dir: %v\n", err)
+			journalHostPath = ""
+		}
 	}
 
 	agentBinds := []string{fmt.Sprintf("%s:/audit", hostAuditDir)}
@@ -824,22 +851,22 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	agentSpec.Image = imageRef
 	containerID, err := rt.Create(ctx, agentSpec)
 	if err != nil {
-		_ = rt.Remove(ctx, gatewayID, true)
-		_ = rt.RemoveNetwork(ctx, egressNetID)
-		_ = rt.RemoveNetwork(ctx, netID)
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 		if journalKeyPath != "" {
-			_ = os.RemoveAll(journalKeyPath)
+			logBestEffort("remove", os.RemoveAll(journalKeyPath))
 		}
 		return nil, status.Errorf(codes.Internal, "create container: %v", err)
 	}
 
 	if err := rt.Start(ctx, containerID); err != nil {
-		_ = rt.Remove(ctx, containerID, true)
-		_ = rt.Remove(ctx, gatewayID, true)
-		_ = rt.RemoveNetwork(ctx, egressNetID)
-		_ = rt.RemoveNetwork(ctx, netID)
+		logBestEffort("Remove", rt.Remove(ctx, containerID, true))
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 		if journalKeyPath != "" {
-			_ = os.RemoveAll(journalKeyPath)
+			logBestEffort("remove", os.RemoveAll(journalKeyPath))
 		}
 		return nil, status.Errorf(codes.Internal, "start container: %v", err)
 	}
@@ -949,7 +976,9 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			// by summarize/timeline (BUG 11 fix).
 			if s.homePaths != nil {
 				respPath := filepath.Join(s.homePaths.State, "runs", runID, "invoke-response.json")
-				_ = os.WriteFile(respPath, []byte(stdout), 0o644)
+				if err := os.WriteFile(respPath, []byte(stdout), 0o644); err != nil {
+					fmt.Fprintf(os.Stderr, "daemon: persist invoke response (%s): %v\n", runID, err)
+				}
 			}
 			s.recordAudit("invoke", "daemon", map[string]interface{}{
 				"run_id":     runID,
@@ -1021,22 +1050,22 @@ func (s *controlServer) cleanupRun(ctx context.Context, tr *trackedRun) {
 	}
 	if tr.Gateway != "" {
 		timeout := 10 * time.Second
-		_ = rt.Stop(ctx, tr.Gateway, &timeout)
-		_ = rt.Remove(ctx, tr.Gateway, true)
+		logBestEffort("Stop", rt.Stop(ctx, tr.Gateway, &timeout))
+		logBestEffort("Remove", rt.Remove(ctx, tr.Gateway, true))
 	}
 	if tr.Container != "" {
 		timeout := 10 * time.Second
-		_ = rt.Stop(ctx, tr.Container, &timeout)
-		_ = rt.Remove(ctx, tr.Container, true)
+		logBestEffort("Stop", rt.Stop(ctx, tr.Container, &timeout))
+		logBestEffort("Remove", rt.Remove(ctx, tr.Container, true))
 	}
 	if tr.Network != "" {
-		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(tr.Network))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, runtime.NetworkID(tr.Network)))
 	}
 	if tr.EgressNetwork != "" {
-		_ = rt.RemoveNetwork(ctx, runtime.NetworkID(tr.EgressNetwork))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, runtime.NetworkID(tr.EgressNetwork)))
 	}
 	if tr.GatewayConfigDir != "" {
-		_ = os.RemoveAll(tr.GatewayConfigDir)
+		logBestEffort("remove", os.RemoveAll(tr.GatewayConfigDir))
 	}
 }
 
@@ -1057,7 +1086,7 @@ func (s *controlServer) finalizeRun(ctx context.Context, runID string, tr *track
 			tr.ProgressTailer.Stop()
 		}
 		if tr.JournalKeyPath != "" {
-			_ = os.RemoveAll(tr.JournalKeyPath)
+			logBestEffort("remove", os.RemoveAll(tr.JournalKeyPath))
 		}
 		// 2. Ingest harness audit records into the daemon audit chain.
 		//    This reads harness-audit.jsonl, verifies the hash chain,
@@ -1124,8 +1153,8 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 
 	// Stop and remove gateway container (best-effort; may already be cleaned).
 	if tracked.Gateway != "" {
-		_ = rt.Stop(ctx, tracked.Gateway, &timeout)
-		_ = rt.Remove(ctx, tracked.Gateway, req.GetForce())
+		logBestEffort("Stop", rt.Stop(ctx, tracked.Gateway, &timeout))
+		logBestEffort("Remove", rt.Remove(ctx, tracked.Gateway, req.GetForce()))
 	}
 
 	finalStatus := tracked.Status
@@ -1182,7 +1211,7 @@ func (s *controlServer) Logs(req *controlv1.LogsRequest, stream controlv1.Contro
 		return status.Error(codes.InvalidArgument, "run_id is required")
 	}
 
-	containerID, _, _ := s.lookupRun(runID)
+	containerID, _, _ := s.lookupRun(runID) // status/agent unused for log stream
 	if containerID == "" {
 		return status.Errorf(codes.NotFound, "run %q not found", runID)
 	}
@@ -1203,7 +1232,7 @@ func (s *controlServer) Logs(req *controlv1.LogsRequest, stream controlv1.Contro
 	if err != nil {
 		return status.Errorf(codes.Internal, "get logs: %v", err)
 	}
-	defer func() { _ = rc.Close() }()
+	defer func() { _ = rc.Close() }() // best-effort close
 
 	scanner := bufio.NewScanner(rc)
 	for scanner.Scan() {
@@ -1264,7 +1293,7 @@ func (s *controlServer) PolicyApply(ctx context.Context, req *controlv1.PolicyAp
 		return nil, status.Errorf(codes.Internal, "write gateway config: %v", err)
 	}
 
-	canonical, _ := policy.Canonicalize(&p)
+	canonical, _ := policy.Canonicalize(&p) // warnings already captured above
 	rulesApplied := int32(len(canonical.Egress))
 	return &controlv1.PolicyApplyResponse{
 		PolicyDigest: digest,
@@ -1453,7 +1482,9 @@ func (s *controlServer) recordAudit(eventType, actor string, payload map[string]
 	}
 	// Refresh the SQLite index so dashboard queries see the new record.
 	if s.auditIndex != nil && s.homePaths != nil {
-		_ = s.auditIndex.Rebuild(filepath.Join(s.homePaths.State, "audit.jsonl"))
+		if err := s.auditIndex.Rebuild(filepath.Join(s.homePaths.State, "audit.jsonl")); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: audit index rebuild: %v\n", err)
+		}
 	}
 }
 
@@ -1467,7 +1498,7 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 	readyCmd := []string{"python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=5)"}
 	ready := false
 	for i := 0; i < 30; i++ {
-		_, _, exitCode, _ := rt.Exec(ctx, containerID, readyCmd)
+		_, _, exitCode, _ := rt.Exec(ctx, containerID, readyCmd) // readiness probe; non-zero/err = not ready
 		if exitCode == 0 {
 			ready = true
 			break
@@ -2111,7 +2142,9 @@ func (s *controlServer) ingestHarnessAudit(runID, auditDir string) {
 				"action": "audit_ingestion_refused",
 			},
 		}
-		_ = s.auditWriter.Append(tamperRecord)
+		if err := s.auditWriter.Append(tamperRecord); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: audit append (harness_audit_chain_broken): %v\n", err)
+		}
 		return
 	}
 	if len(records) == 0 {
@@ -2130,7 +2163,9 @@ func (s *controlServer) ingestHarnessAudit(runID, auditDir string) {
 				"action": "audit_ingestion_refused",
 			},
 		}
-		_ = s.auditWriter.Append(tamperRecord)
+		if err := s.auditWriter.Append(tamperRecord); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: audit append (harness_audit_chain_broken): %v\n", err)
+		}
 		return
 	}
 
@@ -2148,7 +2183,9 @@ func (s *controlServer) ingestHarnessAudit(runID, auditDir string) {
 	}
 	// Refresh the SQLite index so dashboard queries see the new records.
 	if s.auditIndex != nil && s.homePaths != nil {
-		_ = s.auditIndex.Rebuild(filepath.Join(s.homePaths.State, "audit.jsonl"))
+		if err := s.auditIndex.Rebuild(filepath.Join(s.homePaths.State, "audit.jsonl")); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: audit index rebuild: %v\n", err)
+		}
 	}
 }
 
@@ -2180,7 +2217,7 @@ func (s *controlServer) openPackageIdentityKey(ctx context.Context, agentName st
 		return nil, "", err
 	}
 	keyID := identity.KeyID("package_identity_" + agentName)
-	_ = ctx
+	_ = ctx // reserved for future cancellation of keystore ops
 	return store, keyID, nil
 }
 
@@ -2275,9 +2312,9 @@ func auditChainVerificationToProto(result *audit.VerificationResult) *controlv1.
 func auditRecordToEntry(record audit.AuditRecord) *controlv1.AuditEntry {
 	var payload []byte
 	if record.Payload != nil {
-		payload, _ = json.Marshal(record.Payload)
+		payload, _ = json.Marshal(record.Payload) // best-effort; nil payload on failure
 	}
-	ts, _ := time.Parse(time.RFC3339Nano, record.Timestamp)
+	ts, _ := time.Parse(time.RFC3339Nano, record.Timestamp) // zero time if unparseable
 	return &controlv1.AuditEntry{
 		EventId:   strconv.FormatInt(record.Seq, 10),
 		EventType: protoEventTypeFromAudit(record.EventType),
@@ -2350,7 +2387,7 @@ func readAuditJSONL(path string) ([]audit.AuditRecord, error) {
 		}
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	var records []audit.AuditRecord
 	scanner := bufio.NewScanner(f)
@@ -2403,9 +2440,10 @@ func formatAuditExport(records []audit.AuditRecord, format string, includePayloa
 	case "csv":
 		var buf strings.Builder
 		w := csv.NewWriter(&buf)
-		_ = w.Write([]string{"seq", "timestamp", "event_type", "deployment_mode", "actor"})
+		// csv.Writer buffers; errors reported by w.Error() after Flush below.
+		_ = w.Write([]string{"seq", "timestamp", "event_type", "deployment_mode", "actor"}) // best-effort write; error checked via Flush/Error
 		for _, record := range records {
-			_ = w.Write([]string{
+			_ = w.Write([]string{ // best-effort write; error checked via Flush/Error
 				strconv.FormatInt(record.Seq, 10),
 				record.Timestamp,
 				record.EventType,
@@ -2615,15 +2653,15 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpName)
+			_ = os.Remove(tmpName) // best-effort temp cleanup
 		}
 	}()
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close before return
 		return err
 	}
 	if err := tmp.Chmod(perm); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close before return
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -2680,7 +2718,7 @@ func (s *controlServer) CronAdd(ctx context.Context, req *controlv1.CronAddReque
 // ListRuns returns all currently tracked agent runs, merging in-memory
 // tracking with persisted store records when available (survives restart).
 func (s *controlServer) ListRuns(ctx context.Context, req *controlv1.ListRunsRequest) (*controlv1.ListRunsResponse, error) {
-	_ = req
+	_ = req // ListRuns currently ignores filter fields
 	s.runMu.Lock()
 	runs := make([]*controlv1.RunInfo, 0, len(s.runs))
 	seen := make(map[string]struct{}, len(s.runs))

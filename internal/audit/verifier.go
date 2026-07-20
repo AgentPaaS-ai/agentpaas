@@ -187,7 +187,7 @@ func readAuditChain(path string) ([]AuditRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open audit file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	var records []AuditRecord
 	scanner := bufio.NewScanner(f)
@@ -254,7 +254,7 @@ func readCheckpoints(path string) ([]*CheckpointRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	var checkpoints []*CheckpointRecord
 	scanner := bufio.NewScanner(f)
@@ -335,7 +335,7 @@ func WriteCheckpointJSONL(path string, cp *CheckpointRecord) error {
 	if err != nil {
 		return fmt.Errorf("open checkpoints file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	line, err := json.Marshal(cp)
 	if err != nil {

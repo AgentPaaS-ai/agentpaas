@@ -147,11 +147,11 @@ func WriteToFile(cfg BundleConfig, path string) (*BundleResult, error) {
 		return tmp.Close()
 	}()
 	if writeErr != nil {
-		_ = os.Remove(tmpPath)
+		_ = os.Remove(tmpPath) // best-effort remove
 		return nil, writeErr
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
+		_ = os.Remove(tmpPath) // best-effort remove
 		return nil, fmt.Errorf("rename temp to bundle: %w", err)
 	}
 	result, err := computeResultFromFile(cfg, path)
@@ -174,7 +174,7 @@ func computeResultFromFile(cfg BundleConfig, path string) (*BundleResult, error)
 	if err != nil {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer func() { _ = gzReader.Close() }()
+	defer func() { _ = gzReader.Close() }() // best-effort close
 	tr := tar.NewReader(gzReader)
 	for {
 		_, err := tr.Next()
@@ -299,7 +299,7 @@ func writeBundleTar(w io.Writer, manifestJSON, lockJSON, policyYAML, sbomJSON []
 
 	// Write tar.
 	tw := tar.NewWriter(w)
-	defer func() { _ = tw.Close() }()
+	defer func() { _ = tw.Close() }() // best-effort close
 
 	for _, e := range entries {
 		var body []byte
@@ -365,7 +365,7 @@ func writeDeterministicGzip(w io.Writer, data []byte) error {
 		OS:      0xff,
 	}
 	if _, err := gw.Write(data); err != nil {
-		_ = gw.Close()
+		_ = gw.Close() // best-effort close
 		return err
 	}
 	return gw.Close()
@@ -419,7 +419,7 @@ func deterministicECDSASignASN1(key *ecdsa.PrivateKey, hash []byte) ([]byte, err
 	x := intBytes(key.D)
 	v := bytes.Repeat([]byte{1}, sha256.Size)
 	k := make([]byte, sha256.Size)
-	mac := func(key, data []byte) []byte { h := hmac.New(sha256.New, key); _, _ = h.Write(data); return h.Sum(nil) }
+	mac := func(key, data []byte) []byte { h := hmac.New(sha256.New, key); _, _ = h.Write(data); return h.Sum(nil) } // hash.Hash.Write never errors
 	k = mac(k, append(append(append([]byte{}, v...), 0), append(x, h1...)...))
 	v = mac(k, v)
 	k = mac(k, append(append(append([]byte{}, v...), 1), append(x, h1...)...))
@@ -433,7 +433,7 @@ func deterministicECDSASignASN1(key *ecdsa.PrivateKey, hash []byte) ([]byte, err
 		candidate := new(big.Int).SetBytes(t[:rolen])
 		if candidate.Sign() > 0 && candidate.Cmp(q) < 0 {
 			//nolint:staticcheck // SA1019: crypto/ecdh does not support deterministic signing (RFC 6979)
-			x1, _ := key.Curve.ScalarBaseMult(candidate.Bytes())
+			x1, _ := key.Curve.ScalarBaseMult(candidate.Bytes()) // curve candidate search
 			r := new(big.Int).Mod(x1, q)
 			if r.Sign() != 0 {
 				inv := new(big.Int).ModInverse(candidate, q)

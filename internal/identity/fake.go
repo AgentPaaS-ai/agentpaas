@@ -167,7 +167,7 @@ func (testRandReader) Read(b []byte) (int, error) {
 
 // parseECDSAPrivateKey decodes a PEM-encoded ECDSA private key.
 func parseECDSAPrivateKey(pemBytes []byte) (*ecdsa.PrivateKey, error) {
-	block, _ := pem.Decode(pemBytes)
+	block, _ := pem.Decode(pemBytes) // optional value; zero on miss
 	if block == nil {
 		return nil, errors.New("failed to decode PEM block")
 	}

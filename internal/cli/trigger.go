@@ -47,8 +47,8 @@ func newTriggerCmd() *cobra.Command {
 				addr = "127.0.0.1:7717"
 			}
 
-			payloadPath, _ := cmd.Flags().GetString("payload")
-			contentType, _ := cmd.Flags().GetString("content-type")
+			payloadPath, _ := cmd.Flags().GetString("payload") // cobra flag default on missing
+			contentType, _ := cmd.Flags().GetString("content-type") // cobra flag default on missing
 
 			// Build request body.
 			var body map[string]interface{}
@@ -96,7 +96,7 @@ func newTriggerCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("trigger invoke failed: %w", err)
 			}
-			defer func() { _ = resp.Body.Close() }()
+			defer func() { _ = resp.Body.Close() }() // best-effort close
 
 			respBody, err := io.ReadAll(resp.Body)
 			if err != nil {
@@ -117,10 +117,10 @@ func newTriggerCmd() *cobra.Command {
 
 			// Wait for the run to complete, then read the invoke response (BUG 11 fix).
 			// Only wait if --wait flag is set (default: false, returns immediately).
-			waitForResponse, _ := cmd.Flags().GetBool("wait")
+			waitForResponse, _ := cmd.Flags().GetBool("wait") // cobra flag default on missing
 			invokeResponse := ""
 			if waitForResponse {
-				homeDir, _ := homeDirPath(cmd)
+				homeDir, _ := homeDirPath(cmd) // optional value; zero on miss
 				if homeDir != "" && runID != "" {
 					respPath := filepath.Join(homeDir, "state", "runs", runID, "invoke-response.json")
 					for i := 0; i < 60; i++ { // wait up to 60 seconds

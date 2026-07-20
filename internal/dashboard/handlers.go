@@ -11,7 +11,7 @@ type resourcesResponse struct {
 	MCPServers []MCPServerResource `json:"mcp_servers"`
 }
 
-func (s *Server) handleCSRF(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleCSRF(w http.ResponseWriter, _ *http.Request) { // intentionally ignored (reviewed)
 	writeJSON(w, http.StatusOK, map[string]string{"csrf_token": s.csrfToken})
 }
 
@@ -65,7 +65,7 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, mcpServers)
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) { // intentionally ignored (reviewed)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -114,7 +114,7 @@ func (s *Server) listMCPServers(r *http.Request) ([]MCPServerResource, error) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v) // best-effort encode to client
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {

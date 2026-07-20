@@ -579,7 +579,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = sbom
+	_ = sbom // intentionally ignored (reviewed)
 
 	keyMaterial, err := cfg.KeyStore.Load(cfg.KeyID)
 	if err != nil {
@@ -972,7 +972,7 @@ func LockDigest(lock *AgentLock) string {
 
 // PublicKeyFromPEM parses a PEM-encoded ECDSA P-256 public key.
 func PublicKeyFromPEM(pemBytes []byte) (*ecdsa.PublicKey, error) {
-	block, _ := pem.Decode(pemBytes)
+	block, _ := pem.Decode(pemBytes) // optional value; zero on miss
 	if block == nil {
 		return nil, errors.New("decode public key PEM")
 	}
@@ -1184,7 +1184,7 @@ func exportedBytesField(v interface{}) ([]byte, bool) {
 }
 
 func parsePrivateKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
-	block, _ := pem.Decode(pemBytes)
+	block, _ := pem.Decode(pemBytes) // optional value; zero on miss
 	if block == nil {
 		return nil, errors.New("decode private key PEM")
 	}
@@ -1236,7 +1236,7 @@ func isLocalRegistryRef(imageRef string) bool {
 	}
 	// Check if the host is exactly localhost or 127.0.0.1 (with optional port)
 	// Must be a prefix match on the host component, not a substring of the whole ref.
-	if h, _, err := net.SplitHostPort(host); err == nil {
+	if h, _, err := net.SplitHostPort(host); err == nil { // intentionally ignored (reviewed)
 		host = h
 	}
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
@@ -1286,9 +1286,9 @@ func ensureNoTlogSigningConfig() (string, func(), error) {
 		return "", nil, fmt.Errorf("create signing config: %w", err)
 	}
 	path := f.Name()
-	cleanup := func() { _ = os.Remove(path) }
+	cleanup := func() { _ = os.Remove(path) } // best-effort remove
 	if _, err := f.WriteString(noTlogSigningConfigJSON); err != nil {
-		_ = f.Close()
+		_ = f.Close() // best-effort close
 		cleanup()
 		return "", nil, fmt.Errorf("write signing config: %w", err)
 	}
@@ -1304,7 +1304,7 @@ func writeCosignSigningKey(pkcs8PEM []byte) (string, func(), error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("create cosign import dir: %w", err)
 	}
-	cleanup := func() { _ = os.RemoveAll(tmpDir) }
+	cleanup := func() { _ = os.RemoveAll(tmpDir) } // best-effort remove
 
 	srcPath := filepath.Join(tmpDir, "src.pem")
 	if err := os.WriteFile(srcPath, pkcs8PEM, 0o600); err != nil {
@@ -1395,9 +1395,9 @@ func writeTempPublicKey(keyPEM []byte) (string, func(), error) {
 		return "", nil, fmt.Errorf("create temp public key: %w", err)
 	}
 	path := f.Name()
-	cleanup := func() { _ = os.Remove(path) }
+	cleanup := func() { _ = os.Remove(path) } // best-effort remove
 	if _, err := f.Write(keyPEM); err != nil {
-		_ = f.Close()
+		_ = f.Close() // best-effort close
 		cleanup()
 		return "", nil, fmt.Errorf("write temp public key: %w", err)
 	}

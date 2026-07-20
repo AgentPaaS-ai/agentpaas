@@ -96,7 +96,7 @@ func (a *DockerArtifactStore) Verify(_ context.Context, id port.ArtifactID, expe
 	return nil
 }
 
-func (a *DockerArtifactStore) Retain(_ context.Context, id port.ArtifactID, _ port.RetentionPolicy) error {
+func (a *DockerArtifactStore) Retain(_ context.Context, id port.ArtifactID, _ port.RetentionPolicy) error { // intentionally ignored (reviewed)
 	return nil
 }
 

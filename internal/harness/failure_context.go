@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -197,13 +198,15 @@ func attachFailureContext(errResp *ErrorResponse, ctx *FailureContext, appender 
 		out.Detail = string(encoded)
 	}
 	if appender != nil {
-		_ = appender.Append(audit.AuditRecord{
+		if err := appender.Append(audit.AuditRecord{
 			Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 			EventType:      "failure_context",
 			DeploymentMode: "local",
 			Actor:          "harness",
 			Payload:        failureContextPayload(cleaned),
-		})
+		}); err != nil {
+			log.Printf("harness: audit append (%s): %v", "failure_context", err)
+		}
 	}
 	return &out
 }

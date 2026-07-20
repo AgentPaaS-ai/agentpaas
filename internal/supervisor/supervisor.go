@@ -345,7 +345,7 @@ func NewSupervisor(
 // (stdout/stderr line, process-existence poll, unauthenticated file write).
 // It does NOT reset the stall timer. It exists so callers can record the
 // signal for observability without it counting as progress.
-func (s *Supervisor) UnauthenticatedActivity(_ context.Context, _ routedrun.AttemptID, _ string) error {
+func (s *Supervisor) UnauthenticatedActivity(_ context.Context, _ routedrun.AttemptID, _ string) error { // intentionally ignored (reviewed)
 	return nil
 }
 

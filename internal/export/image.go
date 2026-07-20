@@ -31,7 +31,7 @@ func materializeLockedImage(ctx context.Context, home, agentName string, lock *p
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.RemoveAll(tmp)
+			_ = os.RemoveAll(tmp) // best-effort remove
 		}
 	}()
 
