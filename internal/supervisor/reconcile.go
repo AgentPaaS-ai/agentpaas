@@ -118,6 +118,9 @@ func (s *Supervisor) revokeLeaseAndFail(ctx context.Context, att *routedrun.Atte
 		if current.Status.IsTerminal() {
 			return nil
 		}
+		if err := routedrun.ValidateAttemptTransition(current.Status, routedrun.AttemptStatusFailed); err != nil {
+			return err
+		}
 		gen, err := s.store.GetAttemptGeneration(ctx, att.AttemptID)
 		if err != nil {
 			return err
@@ -225,7 +228,11 @@ func (s *Supervisor) reconcileActiveTime(ctx context.Context, workflowID routedr
 	// charged before the freeze remains).
 	if wf.Status == routedrun.WorkflowStatusPaused || wf.Status == routedrun.WorkflowStatusNeedsReplan {
 		ledger.RunningSegmentStartMs = nil
-		return s.store.PutActiveTimeLedger(ctx, workflowID, ledger)
+		gen, err := s.store.GetActiveTimeLedgerGeneration(ctx, workflowID)
+		if err != nil {
+			return err
+		}
+		return s.store.PutActiveTimeLedger(ctx, workflowID, ledger, gen)
 	}
 	// PAUSE_REQUESTED and RUNNING are accruing. On restart we cannot know how
 	// much wall time elapsed while the daemon was down (the monotonic clock
@@ -246,5 +253,9 @@ func (s *Supervisor) reconcileActiveTime(ctx context.Context, workflowID routedr
 		ledger.ConsumedMs += elapsed
 	}
 	ledger.RunningSegmentStartMs = nil
-	return s.store.PutActiveTimeLedger(ctx, workflowID, ledger)
+	gen, err := s.store.GetActiveTimeLedgerGeneration(ctx, workflowID)
+	if err != nil {
+		return err
+	}
+	return s.store.PutActiveTimeLedger(ctx, workflowID, ledger, gen)
 }

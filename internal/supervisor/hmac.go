@@ -53,3 +53,36 @@ func canonicalResultBytes(r ResultEvent) []byte {
 	b, _ := json.Marshal(cr)
 	return b
 }
+
+// verifyCheckpointHMAC recomputes the HMAC over the canonical checkpoint event
+// and compares it to the supplied HMAC.
+func verifyCheckpointHMAC(c CheckpointEvent, key []byte) bool {
+	if len(key) == 0 {
+		return false
+	}
+	want := c.HMAC
+	if want == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write(canonicalCheckpointBytes(c))
+	got := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(want), []byte(got))
+}
+
+func canonicalCheckpointBytes(c CheckpointEvent) []byte {
+	cc := c
+	cc.HMAC = ""
+	b, _ := json.Marshal(cc)
+	return b
+}
+
+// verifyResultDigest recomputes SHA-256 of the event's StructuredResult and
+// compares it to event.ResultDigest.
+func verifyResultDigest(r ResultEvent) bool {
+	if r.StructuredResult == "" && r.ResultDigest == "" {
+		return true
+	}
+	got := sha256.Sum256([]byte(r.StructuredResult))
+	return hex.EncodeToString(got[:]) == r.ResultDigest
+}

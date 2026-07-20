@@ -1140,7 +1140,8 @@ func (s *MemoryStore) GetActiveTimeLedger(ctx context.Context, workflowID Workfl
 }
 
 // PutActiveTimeLedger stores the active-time ledger.
-func (s *MemoryStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger) error {
+// expectedGeneration is the CAS generation. Pass 0 to bypass CAS.
+func (s *MemoryStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger, expectedGeneration int64) error {
 	_ = ctx
 	if ledger == nil {
 		return fmt.Errorf("%w: nil active time ledger", ErrInvalidArgument)
@@ -1158,6 +1159,18 @@ func (s *MemoryStore) PutActiveTimeLedger(ctx context.Context, workflowID Workfl
 	}
 	s.activeTime[workflowID] = &cp
 	return nil
+}
+
+// GetActiveTimeLedgerGeneration returns the CAS generation for the active-time
+// ledger. MemoryStore does not enforce CAS so this returns 0.
+func (s *MemoryStore) GetActiveTimeLedgerGeneration(ctx context.Context, workflowID WorkflowID) (int64, error) {
+	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.activeTime[workflowID]; ok {
+		return 0, nil
+	}
+	return 0, fmt.Errorf("%w: active time ledger not found", ErrNotFound)
 }
 
 func (s *MemoryStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, to WorkflowStatus) {
