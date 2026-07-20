@@ -29,12 +29,28 @@ func newTriggerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trigger",
 		Short: "Manage agent triggers and invocations",
+		Long: `Invoke agents through the trigger REST API (HTTP).
+
+Unlike 'agentpaas run' (gRPC to the control daemon), trigger uses
+POST /v1/trigger/invoke. Address defaults to 127.0.0.1:7717 or
+$AGENTPAAS_TRIGGER_REST_ADDR. Optional bearer auth via $AGENTPAAS_TRIGGER_API_KEY.`,
+		Example: `  agentpaas trigger invoke weather
+  agentpaas trigger invoke weather --payload '{"city":"SEA"}' --wait
+  agentpaas trigger invoke weather --payload ./input.json`,
 	}
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "invoke <agent-name>",
 		Short: "Invoke an agent via the trigger REST API",
-		Args:  cobra.ExactArgs(1),
+		Long: `Start a run by posting to the trigger REST endpoint.
+
+agent-name may be a bare name, name@pub8, or alias. Without --wait,
+returns the run_id immediately. With --wait, polls for invoke-response.json
+for up to 60 seconds.`,
+		Example: `  agentpaas trigger invoke weather
+  agentpaas trigger invoke weather --payload '{"q":"hi"}' --wait
+  agentpaas trigger invoke weather --payload ./payload.json --content-type application/json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resolved, err := resolveCLIAgentRef(cmd, args[0])
 			if err != nil {
@@ -158,9 +174,9 @@ func newTriggerCmd() *cobra.Command {
 	})
 
 	invokeCmd := cmd.Commands()[0]
-	invokeCmd.Flags().String("payload", "", "Inline JSON payload or path to a payload file (optional)")
-	invokeCmd.Flags().String("content-type", "application/json", "Payload content type")
-	invokeCmd.Flags().Bool("wait", false, "Wait for run to complete and show invoke response")
+	invokeCmd.Flags().String("payload", "", "Inline JSON object (starts with '{') or path to a payload file")
+	invokeCmd.Flags().String("content-type", "application/json", "MIME type of the payload bytes (default: application/json)")
+	invokeCmd.Flags().Bool("wait", false, "Wait up to 60s for the run to finish and print invoke-response.json")
 
 	return cmd
 }

@@ -20,6 +20,10 @@ public keys with TOFU (trust on first use) and manual pre-pinning support.
 
 The trust store is stored at <home>/trust/publishers.json. Commands operate
 directly on the store file (no daemon required).`,
+		Example: `  agentpaas trust add a1b2c3d4... --key publisher.pem --alias parvez
+  agentpaas trust list
+  agentpaas trust show parvez
+  agentpaas trust remove parvez --yes`,
 	}
 
 	cmd.AddCommand(newTrustAddCmd())
@@ -75,10 +79,9 @@ fingerprint and the PEM-encoded public key file.
 The fingerprint accepts both compact form (64 hex chars) and display form
 (with spaces between 4-char blocks). The public key PEM must be an ECDSA
 P-256 key. The fingerprint is validated against the PEM to ensure
-self-consistency before the publisher is trusted.
-
-Example:
-  agent trust add a1b2c3d4... --key publisher.pem --alias parvez`,
+self-consistency before the publisher is trusted.`,
+		Example: `  agentpaas trust add a1b2c3d4e5f6... --key publisher.pem --alias parvez
+  agentpaas trust add "a1b2 c3d4 e5f6 ..." --key ./keys/pub.pem`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fingerprint := args[0]
@@ -132,8 +135,8 @@ Example:
 		},
 	}
 
-	cmd.Flags().StringVar(&keyFile, "key", "", "Path to PEM-encoded public key file (required)")
-	cmd.Flags().StringVar(&alias, "alias", "", "Human-readable alias for the publisher (optional slug)")
+	cmd.Flags().StringVar(&keyFile, "key", "", "Path to PEM-encoded ECDSA P-256 public key file (required)")
+	cmd.Flags().StringVar(&alias, "alias", "", "Optional lowercase slug alias for this publisher (max 64 chars)")
 	_ = cmd.MarkFlagRequired("key") // flag registration; failure surfaces at Execute
 
 	return cmd
@@ -154,7 +157,13 @@ func newTrustListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List trusted publishers",
-		Args:  cobra.NoArgs,
+		Long: `List every publisher in the local trust store.
+
+Shows fingerprint, alias, first-seen, last-used, and source (manual or tofu).
+Use the global --json flag for structured output. No daemon required.`,
+		Example: `  agentpaas trust list
+  agentpaas trust list --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			storePath, err := trustStorePath(cmd)
 			if err != nil {
@@ -226,7 +235,13 @@ func newTrustShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "show <fingerprint-or-alias>",
 		Short: "Show details for a trusted publisher",
-		Args:  cobra.ExactArgs(1),
+		Long: `Show full details for one trusted publisher, including public key PEM.
+
+Accepts a full fingerprint, display-form fingerprint, or alias.`,
+		Example: `  agentpaas trust show parvez
+  agentpaas trust show a1b2c3d4e5f6...
+  agentpaas trust show parvez --json`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			storePath, err := trustStorePath(cmd)
 			if err != nil {
@@ -282,13 +297,16 @@ func newTrustRemoveCmd() *cobra.Command {
 	var yesFlag bool
 
 	cmd := &cobra.Command{
-		Use:   "remove <fingerprint-or-alias>",
-		Short: "Remove a publisher from the trust store",
+		Use:     "remove <fingerprint-or-alias>",
+		Aliases: []string{"rm"},
+		Short:   "Remove a publisher from the trust store",
 		Long: `Remove a publisher from the trust store.
 
 By default, when running in a terminal, you must type the first 8 characters
 of the fingerprint to confirm removal. Use --yes to skip confirmation in
 non-interactive mode.`,
+		Example: `  agentpaas trust remove parvez --yes
+  agentpaas trust rm a1b2c3d4e5f6... --yes`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			storePath, err := trustStorePath(cmd)
@@ -349,7 +367,7 @@ non-interactive mode.`,
 		},
 	}
 
-	cmd.Flags().BoolVar(&yesFlag, "yes", false, "Skip confirmation prompt")
+	cmd.Flags().BoolVar(&yesFlag, "yes", false, "Skip fingerprint confirmation prompt (required on non-TTY)")
 
 	return cmd
 }

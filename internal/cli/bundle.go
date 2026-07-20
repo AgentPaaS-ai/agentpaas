@@ -13,7 +13,10 @@ func newBundleCmd() *cobra.Command {
 		Use:   "bundle",
 		Short: "Offline bundle operations (no daemon)",
 		Long: `Commands for inspecting .agentpaas bundles without the daemon or trust store.
-These operations are read-only and fully offline.`,
+These operations are read-only and fully offline — useful before install
+to review publisher, policy, provenance, and SBOM.`,
+		Example: `  agentpaas bundle inspect ./weather-agent.agentpaas
+  agentpaas bundle inspect ./weather-agent.agentpaas --json`,
 	}
 	cmd.AddCommand(newBundleInspectCmd())
 	return cmd
@@ -24,8 +27,14 @@ func newBundleInspectCmd() *cobra.Command {
 		Use:   "inspect <file>",
 		Short: "Offline security review of a .agentpaas bundle",
 		Long: `Inspect a bundle file without installing, trusting, or contacting the daemon.
+
 Shows integrity checks, and when verification passes: publisher, provenance,
-full policy summary, lints, requirements, and SBOM.`,
+full policy summary, lints, requirements, and SBOM. Exits non-zero if
+bundle integrity verification fails.
+
+Use the global --json flag for structured output.`,
+		Example: `  agentpaas bundle inspect ./weather-agent.agentpaas
+  agentpaas bundle inspect ./weather-agent.agentpaas --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]

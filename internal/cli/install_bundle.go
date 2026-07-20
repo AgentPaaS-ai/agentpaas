@@ -23,7 +23,18 @@ func newInstallBundleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install <file.agentpaas>",
 		Short: "Verify and install a signed AgentPaaS bundle",
-		Args:  cobra.ExactArgs(1),
+		Long: `Verify a signed .agentpaas bundle, resolve publisher trust, obtain policy
+consent, and materialize the agent into local installed state.
+
+On a TTY, prompts to pin unknown publishers and accept policy changes.
+Use --yes with --confirm-fingerprint and --accept-policy for non-interactive
+installs. Trust pins are retained even after 'agentpaas installed remove'.`,
+		Example: `  agentpaas install ./weather-agent.agentpaas
+  agentpaas install ./weather-agent.agentpaas --yes \
+    --confirm-fingerprint a1b2c3d4e5f6... \
+    --accept-policy sha256:abcd...
+  agentpaas install ./weather.agentpaas --prefer-image --allow-downgrade`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
 			b, err := bundle.Open(path)
@@ -109,12 +120,12 @@ func newInstallBundleCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("confirm-fingerprint", "", "Confirm an unknown publisher fingerprint")
-	cmd.Flags().String("accept-policy", "", "Accept the bundle policy digest")
-	cmd.Flags().Bool("yes", false, "Skip confirmation prompts")
-	cmd.Flags().Bool("allow-downgrade", false, "Allow version downgrade")
-	cmd.Flags().Bool("allow-unlocked-deps", false, "Allow install without uv.lock")
-	cmd.Flags().Bool("prefer-image", false, "Use a prebuilt image included in the bundle")
+	cmd.Flags().String("confirm-fingerprint", "", "Confirm an unknown publisher by full fingerprint (non-interactive TOFU)")
+	cmd.Flags().String("accept-policy", "", "Accept the bundle policy by digest (sha256:...) without prompting")
+	cmd.Flags().Bool("yes", false, "Skip interactive confirmation prompts (combine with fingerprint/policy flags)")
+	cmd.Flags().Bool("allow-downgrade", false, "Allow installing a lower agent version over a higher installed one")
+	cmd.Flags().Bool("allow-unlocked-deps", false, "Allow install when the bundle lacks a uv.lock dependency lockfile")
+	cmd.Flags().Bool("prefer-image", false, "Prefer a prebuilt OCI image embedded in the bundle when present")
 	return cmd
 }
 
