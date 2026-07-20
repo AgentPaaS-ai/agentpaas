@@ -797,6 +797,17 @@ func isGatewayEgressDenied(statusCode int, body string) bool {
 		strings.Contains(lb, "not in allowlist")
 }
 
+// mcpServiceNotEnabledCode is the typed error name reserved by B26
+// (internal/daemon/routed_handlers.go) for the managed MCP service-not-enabled
+// path. The no-router harness branch reuses it so the same typed denial
+// surfaces regardless of which layer rejects the call.
+const mcpServiceNotEnabledCode = "agentpaas_mcp_service_not_enabled"
+
+// mcpServiceNotEnabledReason is the audit/payload reason string for the
+// production no-router MCP path. It carries the typed code name so consumers
+// can match on the stable identifier rather than a free-form message.
+const mcpServiceNotEnabledReason = "agentpaas_mcp_service_not_enabled: managed mcp service is not enabled until B33"
+
 func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcResponse {
 	start := time.Now()
 	serverID := stringParam(req.Params, "server_id")
@@ -835,17 +846,35 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 		})
 		return rpcError(req.ID, "mcp server/tool is not declared", "mcp_denied")
 	}
-	result := map[string]any{
-		"server_id": serverID,
-		"tool":      tool,
-		"result":    map[string]any{"ok": true},
+	// No router is installed. In production this is a governed path that must
+	// fail closed with a typed not-enabled error — a synthetic {ok: true} would
+	// be a false-success defect (same class as B20 C8). B33 wires the real
+	// production router in v0.4; until then the managed MCP service is not
+	// enabled. Explicit test mode (AGENTPAAS_TEST_FAKE_MCP=1) keeps the
+	// synthetic result for fixtures that opt in, mirroring
+	// AGENTPAAS_TEST_FAKE_LLM. External stdio/HTTP MCP compatibility (router
+	// installed) is unaffected — the router != nil branch above handles it.
+	if os.Getenv("AGENTPAAS_TEST_FAKE_MCP") == "1" {
+		result := map[string]any{
+			"server_id": serverID,
+			"tool":      tool,
+			"result":    map[string]any{"ok": true},
+		}
+		s.auditMCPCall(serverID, tool, inputHash, hashJSONValue(result), elapsedMS(start))
+		return rpcResponse{
+			ID:     req.ID,
+			OK:     true,
+			Result: result,
+		}
 	}
-	s.auditMCPCall(serverID, tool, inputHash, hashJSONValue(result), elapsedMS(start))
-	return rpcResponse{
-		ID:     req.ID,
-		OK:     true,
-		Result: result,
-	}
+	s.auditMCPDenied(serverID, tool, mcpServiceNotEnabledReason)
+	state.setFailureEvidence(&UpstreamEvidence{
+		Availability: AvailabilityForbidden,
+		TimingMS:     elapsedMS(start),
+		BodyHash:     inputHash,
+		BodyRedacted: "[REDACTED:body]",
+	})
+	return rpcError(req.ID, mcpServiceNotEnabledReason, mcpServiceNotEnabledCode)
 }
 
 func (s *harnessRPCServer) auditEgressDecision(actor, destination, method, credentialID, statusCode, decision, reason string) {
