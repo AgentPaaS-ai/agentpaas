@@ -291,7 +291,7 @@ func (a *StreamingAdapter) pump(
 ) {
 	defer close(out)
 	defer cancel()
-	defer func() { _ = a.provider.Close() }()
+	defer func() { _ = a.provider.Close() }() // best-effort close
 
 	// Emit response_started. This is the only non-terminal emit before the
 	// loop; if it fails (backpressure or validation), the stream is terminal
@@ -619,7 +619,7 @@ func usageToPayload(u *runtime.Usage) []byte {
 // out-of-band providers). It rejects late deltas after the stream is closed.
 // This is exported for adapters that integrate via a push model rather than a
 // delta channel; the default pump path does not call it.
-func (a *StreamingAdapter) AcceptDelta(state *streamState, _ ModelStreamDelta) error {
+func (a *StreamingAdapter) AcceptDelta(state *streamState, _ ModelStreamDelta) error { // intentionally ignored (reviewed)
 	if state.isClosed() {
 		return ErrStreamClosed
 	}

@@ -74,14 +74,14 @@ to pack, run, and manage agents.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Validate home path if --home was explicitly provided.
 			if cmd.Root().PersistentFlags().Changed("home") {
-				val, _ := cmd.Root().PersistentFlags().GetString("home")
+				val, _ := cmd.Root().PersistentFlags().GetString("home") // cobra flag default on missing
 				if err := home.ValidatePath(val); err != nil {
 					return fmt.Errorf("invalid --home path: %w", err)
 				}
 			}
 			// Validate socket path if --socket was explicitly provided.
 			if cmd.Root().PersistentFlags().Changed("socket") {
-				val, _ := cmd.Root().PersistentFlags().GetString("socket")
+				val, _ := cmd.Root().PersistentFlags().GetString("socket") // cobra flag default on missing
 				if err := home.ValidatePath(val); err != nil {
 					return fmt.Errorf("invalid --socket path: %w", err)
 				}

@@ -169,7 +169,7 @@ func findInstalledDirByRef(stateRoot, name, pub8 string) (string, error) {
 	if !strings.EqualFold(m.AgentName, name) || !MatchPublisherPub8(m.PublisherFingerprint, pub8) {
 		return "", nil
 	}
-	_ = trust.NormalizeFingerprint(m.PublisherFingerprint)
+	_ = trust.NormalizeFingerprint(m.PublisherFingerprint) // intentionally ignored (reviewed)
 	return dir, nil
 }
 

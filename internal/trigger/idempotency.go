@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,14 +125,14 @@ func (s *IdempotencyStore) CheckOrReserve(ctx context.Context, key, runID, reque
 // CanonicalRequestHash computes the SHA-256 hash over the canonical request fields.
 func CanonicalRequestHash(callerID, agentName, lockDigest string, payload []byte, contentType, apiVersion string) string {
 	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "caller=%s\n", callerID)
-	_, _ = fmt.Fprintf(h, "agent=%s\n", agentName)
-	_, _ = fmt.Fprintf(h, "lock_digest=%s\n", lockDigest)
-	_, _ = fmt.Fprintf(h, "payload_len=%d\n", len(payload))
-	_, _ = h.Write(payload)
-	_, _ = h.Write([]byte("\n"))
-	_, _ = fmt.Fprintf(h, "content_type=%s\n", contentType)
-	_, _ = fmt.Fprintf(h, "api_version=%s\n", apiVersion)
+	_, _ = fmt.Fprintf(h, "caller=%s\n", callerID) // best-effort write
+	_, _ = fmt.Fprintf(h, "agent=%s\n", agentName) // best-effort write
+	_, _ = fmt.Fprintf(h, "lock_digest=%s\n", lockDigest) // best-effort write
+	_, _ = fmt.Fprintf(h, "payload_len=%d\n", len(payload)) // best-effort write
+	_, _ = h.Write(payload) // hash.Hash.Write never errors
+	_, _ = h.Write([]byte("\n")) // hash.Hash.Write never errors
+	_, _ = fmt.Fprintf(h, "content_type=%s\n", contentType) // best-effort write
+	_, _ = fmt.Fprintf(h, "api_version=%s\n", apiVersion) // best-effort write
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -148,7 +149,9 @@ func (s *IdempotencyStore) purgeExpired(now time.Time) {
 			delete(s.entries, key)
 		}
 	}
-	_ = s.save()
+	if err := s.save(); err != nil {
+		log.Printf("trigger: idempotency save failed: %v", err)
+	}
 }
 
 // EntryCount returns the number of active entries.
@@ -212,13 +215,15 @@ func (s *IdempotencyStore) auditEvent(ctx context.Context, eventType string, pay
 	if s.audit == nil {
 		return
 	}
-	caller, _ := CallerFromContext(ctx)
-	_ = s.audit.Append(audit.AuditRecord{
+	caller, _ := CallerFromContext(ctx) // optional caller identity
+	if err := s.audit.Append(audit.AuditRecord{
 		EventType:      eventType,
 		DeploymentMode: "local",
 		Actor:          string(caller),
 		Payload:        payload,
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", eventType, err)
+	}
 }
 
 func validateIdempotencyPath(filePath string) error {

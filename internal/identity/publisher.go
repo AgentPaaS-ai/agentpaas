@@ -167,7 +167,7 @@ func CreatePublisherIdentity(ks KeyStore, name string) (*PublisherIdentity, erro
 	}
 	if err := ks.Create(publisherIdentityNameKeyID, KeyTypePublisher, nameMaterial); err != nil {
 		// Clean up the key entry if name storage fails.
-		_ = ks.Delete(publisherIdentityKeyID)
+		_ = ks.Delete(publisherIdentityKeyID) // best-effort key delete on replace
 		return nil, fmt.Errorf("store publisher name: %w", err)
 	}
 

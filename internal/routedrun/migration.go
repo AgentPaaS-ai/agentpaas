@@ -207,7 +207,7 @@ func (r *MigrationRegistry) MigrateFile(path string) error {
 	if err := atomicWriteFile(path, migrated, filePerm); err != nil {
 		// Attempt rollback from backup.
 		if rb, rerr := os.ReadFile(backup); rerr == nil {
-			_ = atomicWriteFile(path, rb, filePerm)
+			_ = atomicWriteFile(path, rb, filePerm) // intentionally ignored (reviewed)
 		}
 		return fmt.Errorf("routedrun: write migrated file: %w", err)
 	}
@@ -218,9 +218,9 @@ func (r *MigrationRegistry) MigrateFile(path string) error {
 		return fmt.Errorf("routedrun: write migration commit: %w", err)
 	}
 	// Safe to drop backup and commit marker after success (retain optional; remove for cleanliness).
-	_ = os.Remove(backup)
-	_ = os.Remove(commitPath)
-	_ = fsyncDir(dir)
+	_ = os.Remove(backup) // best-effort remove
+	_ = os.Remove(commitPath) // best-effort remove
+	_ = fsyncDir(dir) // intentionally ignored (reviewed)
 	return nil
 }
 

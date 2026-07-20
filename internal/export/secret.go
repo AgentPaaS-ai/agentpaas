@@ -15,7 +15,7 @@ func runSecretGate(ctx context.Context, st *exportState) error {
 	if err != nil {
 		return fmt.Errorf("create scan temp dir: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
+	defer func() { _ = os.RemoveAll(tmp) }() // best-effort remove
 
 	for _, f := range st.sourceFiles {
 		if err := copyExportFile(tmp, "source", f); err != nil {

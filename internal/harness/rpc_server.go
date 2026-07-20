@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -99,12 +100,12 @@ func startHarnessRPCServer(appender AuditAppender) (*harnessRPCServer, error) {
 	socket := filepath.Join(dir, "rpc.sock")
 	addr, err := net.ResolveUnixAddr("unix", socket)
 	if err != nil {
-		_ = os.RemoveAll(dir)
+		_ = os.RemoveAll(dir) // best-effort temp cleanup on error path
 		return nil, err
 	}
 	listener, err := net.ListenUnix("unix", addr)
 	if err != nil {
-		_ = os.RemoveAll(dir)
+		_ = os.RemoveAll(dir) // best-effort temp cleanup on error path
 		return nil, err
 	}
 	s := &harnessRPCServer{
@@ -235,17 +236,21 @@ func (s *harnessRPCServer) serve() {
 }
 
 func (s *harnessRPCServer) handleConn(conn net.Conn) {
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.Close() }() // best-effort close
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	encoder := json.NewEncoder(conn)
 	for scanner.Scan() {
 		var req rpcRequest
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
-			_ = encoder.Encode(rpcResponse{OK: false, Error: err.Error(), Code: "invalid_json"})
+			if encErr := encoder.Encode(rpcResponse{OK: false, Error: err.Error(), Code: "invalid_json"}); encErr != nil {
+				log.Printf("harness: rpc encode error response: %v", encErr)
+			}
 			continue
 		}
-		_ = encoder.Encode(s.handleRequest(req))
+		if encErr := encoder.Encode(s.handleRequest(req)); encErr != nil {
+			log.Printf("harness: rpc encode response: %v", encErr)
+		}
 	}
 }
 
@@ -344,7 +349,9 @@ func (s *harnessRPCServer) LoadProgressMetadata(cfg Config) error {
 		return fmt.Errorf("load journal key: %w", err)
 	}
 	// Delete the key file immediately so agent code cannot read it.
-	_ = os.Remove(cfg.JournalKeyPath)
+	if err := os.Remove(cfg.JournalKeyPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("harness: failed to remove journal key file %s: %v (key may remain readable by agent)", cfg.JournalKeyPath, err)
+	}
 
 	identity := progressIdentity{
 		RunID:     cfg.RunID,
@@ -370,7 +377,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	modelOverride := stringParam(req.Params, "model")
 
 	// Read LLM config from payload (set by daemon at invoke time).
-	llmConfig, _ := state.payload["llm"].(map[string]any)
+	llmConfig, _ := state.payload["llm"].(map[string]any) // optional; nil means no config
 
 	// Backward compat: no LLM config → fake response only in test mode.
 	// In production, fail-closed with a structured error.
@@ -531,7 +538,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "http request failed: "+err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() // best-effort close
 
 	// Read response body (1 MB limit, same as handleHTTP).
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
@@ -754,7 +761,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		})
 		return rpcError(req.ID, err.Error(), "http_failed")
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() // best-effort close
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
 	if err != nil {
 		s.auditEgressDecision("harness", rawURL, method, "", strconv.Itoa(resp.StatusCode), "denied", "response read failed: "+err.Error())
@@ -948,20 +955,22 @@ func (s *harnessRPCServer) auditEgressDecision(actor, destination, method, crede
 	if reason != "" {
 		payload["reason"] = reason
 	}
-	_ = s.audit.Append(audit.AuditRecord{
+	if err := s.audit.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		EventType:      "egress_" + decision,
 		DeploymentMode: "local",
 		Actor:          actor,
 		Payload:        payload,
-	})
+	}); err != nil {
+		log.Printf("harness: audit append failed (egress_%s): %v", decision, err)
+	}
 }
 
 func (s *harnessRPCServer) auditMCPDenied(serverID, tool, reason string) {
 	if s.audit == nil {
 		return
 	}
-	_ = s.audit.Append(audit.AuditRecord{
+	if err := s.audit.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		EventType:      "mcp_denied",
 		DeploymentMode: "local",
@@ -971,14 +980,16 @@ func (s *harnessRPCServer) auditMCPDenied(serverID, tool, reason string) {
 			"tool":      tool,
 			"reason":    reason,
 		},
-	})
+	}); err != nil {
+		log.Printf("harness: audit append failed (mcp_denied): %v", err)
+	}
 }
 
 func (s *harnessRPCServer) auditMCPCall(serverID, tool, inputHash, outputHash string, timingMS int64) {
 	if s.audit == nil {
 		return
 	}
-	_ = s.audit.Append(audit.AuditRecord{
+	if err := s.audit.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		EventType:      "mcp_call",
 		DeploymentMode: "local",
@@ -990,7 +1001,9 @@ func (s *harnessRPCServer) auditMCPCall(serverID, tool, inputHash, outputHash st
 			"output_hash": outputHash,
 			"timing_ms":   timingMS,
 		},
-	})
+	}); err != nil {
+		log.Printf("harness: audit append failed (mcp_call): %v", err)
+	}
 }
 
 func (state *rpcInvokeState) setFailureEvidence(evidence *UpstreamEvidence) {
@@ -1070,7 +1083,7 @@ func stringParam(params map[string]any, key string) string {
 	if params == nil {
 		return ""
 	}
-	value, _ := params[key].(string)
+	value, _ := params[key].(string) // optional string param
 	return value
 }
 
@@ -1092,7 +1105,7 @@ func listParam(params map[string]any, key string) []any {
 	if params == nil {
 		return nil
 	}
-	items, _ := params[key].([]any)
+	items, _ := params[key].([]any) // optional array param
 	return items
 }
 

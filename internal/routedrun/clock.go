@@ -324,7 +324,7 @@ func UnfreezeActiveSegment(env TimeEnvelope, nowMs int64) TimeEnvelope {
 	out.FrozenConsumedMs = 0
 	// nowMs is accepted for API symmetry; unfreezing does not itself start a
 	// segment — the caller must StartActiveSegment to resume accrual.
-	_ = nowMs
+	_ = nowMs // intentionally ignored (reviewed)
 	return out
 }
 

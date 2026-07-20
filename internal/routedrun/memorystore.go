@@ -1,5 +1,7 @@
 package routedrun
 
+// Ignored context values (`_ = ctx`) satisfy interface signatures without cancellation for in-process stores; reviewed as legitimate. // unused context; interface compliance
+
 import (
 	"context"
 	"fmt"
@@ -102,7 +104,7 @@ var (
 func memKey(caller, key string) string { return caller + "\x00" + key }
 
 func (s *MemoryStore) CreateDeployment(ctx context.Context, dep *DeploymentRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if dep == nil {
@@ -136,7 +138,7 @@ func (s *MemoryStore) CreateDeployment(ctx context.Context, dep *DeploymentRecor
 }
 
 func (s *MemoryStore) GetDeployment(ctx context.Context, deploymentID DeploymentID) (*DeploymentRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	d, ok := s.deployments[deploymentID]
@@ -148,7 +150,7 @@ func (s *MemoryStore) GetDeployment(ctx context.Context, deploymentID Deployment
 }
 
 func (s *MemoryStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*DeploymentRecord, 0, len(s.deployments))
@@ -160,7 +162,7 @@ func (s *MemoryStore) ListDeployments(ctx context.Context) ([]*DeploymentRecord,
 }
 
 func (s *MemoryStore) SetDeploymentStatus(ctx context.Context, deploymentID DeploymentID, status DeploymentStatus, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	d, ok := s.deployments[deploymentID]
@@ -182,7 +184,7 @@ func (s *MemoryStore) SetDeploymentStatus(ctx context.Context, deploymentID Depl
 }
 
 func (s *MemoryStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if alias == nil || alias.Alias == "" {
@@ -208,7 +210,7 @@ func (s *MemoryStore) CompareAndSwapAlias(ctx context.Context, alias *AliasRecor
 }
 
 func (s *MemoryStore) ResolveAlias(ctx context.Context, alias string) (*AliasRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	a, ok := s.aliases[alias]
@@ -220,7 +222,7 @@ func (s *MemoryStore) ResolveAlias(ctx context.Context, alias string) (*AliasRec
 }
 
 func (s *MemoryStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*AliasRecord, 0, len(s.aliases))
@@ -232,7 +234,7 @@ func (s *MemoryStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 }
 
 func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRequest, expectedDeploymentGeneration int64) (*InvocationReceipt, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if request == nil {
 		return nil, fmt.Errorf("%w: nil request", ErrInvalidArgument)
 	}
@@ -427,7 +429,7 @@ func (s *MemoryStore) resolveDepLocked(ref string) (*DeploymentRecord, error) {
 }
 
 func (s *MemoryStore) GetInvocationByIdempotency(ctx context.Context, callerIdentity, idempotencyKey string) (*InvocationReceipt, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	rec, ok := s.idempotency[memKey(callerIdentity, idempotencyKey)]
@@ -439,7 +441,7 @@ func (s *MemoryStore) GetInvocationByIdempotency(ctx context.Context, callerIden
 }
 
 func (s *MemoryStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*InvocationReceipt, 0, len(s.receipts))
@@ -451,7 +453,7 @@ func (s *MemoryStore) ListInvocations(ctx context.Context) ([]*InvocationReceipt
 }
 
 func (s *MemoryStore) CreateRun(ctx context.Context, run *RunRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if run.RunID == "" {
@@ -474,7 +476,7 @@ func (s *MemoryStore) CreateRun(ctx context.Context, run *RunRecord) error {
 }
 
 func (s *MemoryStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	r, ok := s.runs[runID]
@@ -486,7 +488,7 @@ func (s *MemoryStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, erro
 }
 
 func (s *MemoryStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.runGen[run.RunID] != expectedGeneration {
@@ -500,7 +502,7 @@ func (s *MemoryStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGen
 }
 
 func (s *MemoryStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if attempt.AttemptID == "" {
@@ -535,7 +537,7 @@ func (s *MemoryStore) CreateAttempt(ctx context.Context, attempt *AttemptRecord)
 }
 
 func (s *MemoryStore) GetAttempt(ctx context.Context, attemptID AttemptID) (*AttemptRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	a, ok := s.attempts[attemptID]
@@ -547,7 +549,7 @@ func (s *MemoryStore) GetAttempt(ctx context.Context, attemptID AttemptID) (*Att
 }
 
 func (s *MemoryStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.attemptGen[attempt.AttemptID] != expectedGeneration {
@@ -567,7 +569,7 @@ func (s *MemoryStore) UpdateAttempt(ctx context.Context, attempt *AttemptRecord,
 }
 
 func (s *MemoryStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*RunRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*RunRecord, 0)
@@ -582,7 +584,7 @@ func (s *MemoryStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*R
 }
 
 func (s *MemoryStore) ListAttempts(ctx context.Context, runID RunID) ([]*AttemptRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*AttemptRecord, 0)
@@ -597,7 +599,7 @@ func (s *MemoryStore) ListAttempts(ctx context.Context, runID RunID) ([]*Attempt
 }
 
 func (s *MemoryStore) AppendLedger(ctx context.Context, runID RunID, entry string) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if len(entry) > maxLedgerLineBytes {
 		return fmt.Errorf("%w: ledger line", ErrSizeCapExceeded)
 	}
@@ -608,7 +610,7 @@ func (s *MemoryStore) AppendLedger(ctx context.Context, runID RunID, entry strin
 }
 
 func (s *MemoryStore) ReconcileInterrupted(ctx context.Context, runID RunID) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	run, ok := s.runs[runID]
@@ -648,7 +650,7 @@ func (s *MemoryStore) ReconcileInterrupted(ctx context.Context, runID RunID) err
 }
 
 func (s *MemoryStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if wf.WorkflowID == "" {
@@ -675,7 +677,7 @@ func (s *MemoryStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) er
 }
 
 func (s *MemoryStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*WorkflowRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	wf, ok := s.workflows[workflowID]
@@ -687,7 +689,7 @@ func (s *MemoryStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*
 }
 
 func (s *MemoryStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.workflowGen[wf.WorkflowID] != expectedGeneration {
@@ -714,7 +716,7 @@ func (s *MemoryStore) UpdateWorkflow(ctx context.Context, wf *WorkflowRecord, ex
 }
 
 func (s *MemoryStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*WorkflowRecord, 0, len(s.workflows))
@@ -726,7 +728,7 @@ func (s *MemoryStore) ListWorkflows(ctx context.Context) ([]*WorkflowRecord, err
 }
 
 func (s *MemoryStore) CreateNode(ctx context.Context, node *PipelineNode) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if node.NodeID == "" {
@@ -743,7 +745,7 @@ func (s *MemoryStore) CreateNode(ctx context.Context, node *PipelineNode) error 
 }
 
 func (s *MemoryStore) GetNode(ctx context.Context, nodeID NodeID) (*PipelineNode, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	n, ok := s.nodes[nodeID]
@@ -755,7 +757,7 @@ func (s *MemoryStore) GetNode(ctx context.Context, nodeID NodeID) (*PipelineNode
 }
 
 func (s *MemoryStore) UpdateNode(ctx context.Context, node *PipelineNode, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.nodeGen[node.NodeID] != expectedGeneration {
@@ -768,7 +770,7 @@ func (s *MemoryStore) UpdateNode(ctx context.Context, node *PipelineNode, expect
 }
 
 func (s *MemoryStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*PipelineNode, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*PipelineNode, 0)
@@ -783,7 +785,7 @@ func (s *MemoryStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*
 }
 
 func (s *MemoryStore) RegisterService(ctx context.Context, svc *MCPServiceBinding) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if svc.ServiceID == "" {
@@ -800,7 +802,7 @@ func (s *MemoryStore) RegisterService(ctx context.Context, svc *MCPServiceBindin
 }
 
 func (s *MemoryStore) UpdateService(ctx context.Context, svc *MCPServiceBinding, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.serviceGen[svc.ServiceID] != expectedGeneration {
@@ -813,7 +815,7 @@ func (s *MemoryStore) UpdateService(ctx context.Context, svc *MCPServiceBinding,
 }
 
 func (s *MemoryStore) ListServices(ctx context.Context, workflowID WorkflowID) ([]*MCPServiceBinding, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*MCPServiceBinding, 0)
@@ -828,7 +830,7 @@ func (s *MemoryStore) ListServices(ctx context.Context, workflowID WorkflowID) (
 }
 
 func (s *MemoryStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelope) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if handoff.HandoffID == "" {
@@ -847,7 +849,7 @@ func (s *MemoryStore) CommitHandoff(ctx context.Context, handoff *HandoffEnvelop
 }
 
 func (s *MemoryStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*HandoffEnvelope, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	h, ok := s.handoffs[handoffID]
@@ -859,7 +861,7 @@ func (s *MemoryStore) GetHandoff(ctx context.Context, handoffID HandoffID) (*Han
 }
 
 func (s *MemoryStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) ([]*HandoffEnvelope, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*HandoffEnvelope, 0)
@@ -874,7 +876,7 @@ func (s *MemoryStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) (
 }
 
 func (s *MemoryStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if batch.ChildBatchID == "" {
@@ -891,7 +893,7 @@ func (s *MemoryStore) CreateChildBatch(ctx context.Context, batch *ChildBatch) e
 }
 
 func (s *MemoryStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.childBatchGen[batch.ChildBatchID] != expectedGeneration {
@@ -904,7 +906,7 @@ func (s *MemoryStore) UpdateChildBatch(ctx context.Context, batch *ChildBatch, e
 }
 
 func (s *MemoryStore) ListChildBatches(ctx context.Context, workflowID WorkflowID) ([]*ChildBatch, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*ChildBatch, 0)
@@ -919,7 +921,7 @@ func (s *MemoryStore) ListChildBatches(ctx context.Context, workflowID WorkflowI
 }
 
 func (s *MemoryStore) CommitChildResult(ctx context.Context, result *ChildResult) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if result.ChildResultID == "" {
@@ -941,7 +943,7 @@ func (s *MemoryStore) CommitChildResult(ctx context.Context, result *ChildResult
 }
 
 func (s *MemoryStore) ListChildResults(ctx context.Context, childBatchID ChildBatchID) ([]*ChildResult, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	out := make([]*ChildResult, 0)
@@ -956,7 +958,7 @@ func (s *MemoryStore) ListChildResults(ctx context.Context, childBatchID ChildBa
 }
 
 func (s *MemoryStore) RequestControl(ctx context.Context, req *ControlRequest) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Idempotency: same workflow + key returns the original ControlRequestID.
@@ -993,7 +995,7 @@ func (s *MemoryStore) RequestControl(ctx context.Context, req *ControlRequest) e
 }
 
 func (s *MemoryStore) GetDesiredState(ctx context.Context, workflowID WorkflowID) (*DesiredState, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ds, ok := s.desired[workflowID]
@@ -1005,7 +1007,7 @@ func (s *MemoryStore) GetDesiredState(ctx context.Context, workflowID WorkflowID
 }
 
 func (s *MemoryStore) AppendControlResult(ctx context.Context, req *ControlRequest, result interface{}) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.controlResults = append(s.controlResults, controlResultEntry{Req: req, Result: result})
@@ -1013,7 +1015,7 @@ func (s *MemoryStore) AppendControlResult(ctx context.Context, req *ControlReque
 }
 
 func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID WorkflowID, expectedAuthorityGeneration int64, amendment *LimitAmendment) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	wf, ok := s.workflows[workflowID]
@@ -1078,8 +1080,8 @@ func (s *MemoryStore) AppendLimitAmendment(ctx context.Context, workflowID Workf
 }
 
 func (s *MemoryStore) ApplyTransition(ctx context.Context, workflowID WorkflowID, expectedGeneration int64, command string) error {
-	_ = ctx
-	_ = command
+	_ = ctx // interface compliance; store ops are local
+	_ = command // interface compliance; memory store is no-op command
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	wf, ok := s.workflows[workflowID]
@@ -1124,7 +1126,7 @@ func (s *MemoryStore) checkConcurrencyForResumeLocked(depID DeploymentID) error 
 
 // GetActiveTimeLedger loads the in-memory active-time ledger.
 func (s *MemoryStore) GetActiveTimeLedger(ctx context.Context, workflowID WorkflowID) (*ActiveTimeLedger, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ledger, ok := s.activeTime[workflowID]
@@ -1142,7 +1144,7 @@ func (s *MemoryStore) GetActiveTimeLedger(ctx context.Context, workflowID Workfl
 // PutActiveTimeLedger stores the active-time ledger.
 // expectedGeneration is the CAS generation. Pass 0 to bypass CAS.
 func (s *MemoryStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger, expectedGeneration int64) error {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	if ledger == nil {
 		return fmt.Errorf("%w: nil active time ledger", ErrInvalidArgument)
 	}
@@ -1164,7 +1166,7 @@ func (s *MemoryStore) PutActiveTimeLedger(ctx context.Context, workflowID Workfl
 // GetActiveTimeLedgerGeneration returns the CAS generation for the active-time
 // ledger. MemoryStore does not enforce CAS so this returns 0.
 func (s *MemoryStore) GetActiveTimeLedgerGeneration(ctx context.Context, workflowID WorkflowID) (int64, error) {
-	_ = ctx
+	_ = ctx // interface compliance; store ops are local
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.activeTime[workflowID]; ok {

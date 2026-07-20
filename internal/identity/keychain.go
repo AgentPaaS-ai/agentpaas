@@ -162,7 +162,7 @@ func (k *KeychainKeyStore) removeFromManifest(keyID string) error {
 	}
 	if len(filtered) == 0 {
 		// Remove the manifest entry entirely when the last key is gone.
-		_, _ = k.securityCall("delete-generic-password", "-a", manifestKey, "-s", k.service)
+		_, _ = k.securityCall("delete-generic-password", "-a", manifestKey, "-s", k.service) // optional value; zero on miss
 		return nil
 	}
 	return k.saveManifest(filtered)

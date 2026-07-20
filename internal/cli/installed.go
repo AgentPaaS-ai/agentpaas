@@ -74,7 +74,7 @@ func newInstalledAliasCmd() *cobra.Command {
 			}
 			paths := home.NewHomePaths(homeDir)
 			emit := func(eventType string, payload map[string]string) {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s %v\n", eventType, payload)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s %v\n", eventType, payload) // best-effort write
 			}
 			if err := install.SetInstalledAlias(paths.State, args[0], args[1], emit); err != nil {
 				return err
@@ -115,7 +115,7 @@ func newInstalledListCmd() *cobra.Command {
 				return nil
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "REF\tALIAS\tVERSION\tPUBLISHER\tINSTALLED\tMODE")
+			_, _ = fmt.Fprintln(w, "REF\tALIAS\tVERSION\tPUBLISHER\tINSTALLED\tMODE") // best-effort write
 			for _, e := range entries {
 				alias := e.Alias
 				if alias == "" {
@@ -125,7 +125,7 @@ func newInstalledListCmd() *cobra.Command {
 				if !e.InstalledAt.IsZero() {
 					at = e.InstalledAt.UTC().Format("2006-01-02 15:04:05")
 				}
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", e.Ref, alias, e.Version, e.Publisher, at, e.Mode)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", e.Ref, alias, e.Version, e.Publisher, at, e.Mode) // best-effort write
 			}
 			return w.Flush()
 		},

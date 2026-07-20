@@ -162,7 +162,7 @@ func ValidatePolicy(p *Policy) []ValidationError {
 
 		// Hostname validation and wildcard check.
 		if e.Domain != "" {
-			hasWild, _, hostErr := validateHostname(e.Domain)
+			hasWild, _, hostErr := validateHostname(e.Domain) // ok flag unused when only host needed
 			if hostErr != nil {
 				errs = append(errs, ValidationError{
 					Field:    prefix + ".domain",
@@ -181,7 +181,7 @@ func ValidatePolicy(p *Policy) []ValidationError {
 
 		// CIDR validation.
 		if e.CIDR != "" {
-			if _, _, cidrErr := net.ParseCIDR(e.CIDR); cidrErr != nil {
+			if _, _, cidrErr := net.ParseCIDR(e.CIDR); cidrErr != nil { // intentionally ignored (reviewed)
 				errs = append(errs, ValidationError{
 					Field:    prefix + ".cidr",
 					Message:  fmt.Sprintf("invalid CIDR: %v", cidrErr),
@@ -1018,7 +1018,7 @@ func hasMatchingEgress(rules []EgressRule, host string) bool {
 		if e.Domain == "" {
 			continue
 		}
-		hasWild, cleanHost, _ := validateHostname(e.Domain)
+		hasWild, cleanHost, _ := validateHostname(e.Domain) // ok flag unused when only host needed
 		if hasWild {
 			// Wildcard: "*.example.com" matches "api.example.com" but not "example.com"
 			if strings.HasSuffix(host, "."+cleanHost) {

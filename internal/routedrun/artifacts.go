@@ -230,7 +230,7 @@ func (aw *ArtifactWorkspace) RemoveUnreferenced() error {
 			return nil
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			_ = os.Remove(path)
+			_ = os.Remove(path) // best-effort remove
 			return nil
 		}
 		rel, err := filepath.Rel(aw.root, path)
@@ -246,7 +246,7 @@ func (aw *ArtifactWorkspace) RemoveUnreferenced() error {
 				delete(aw.mu.metadata, rel)
 			}
 			aw.mu.Unlock()
-			_ = os.Remove(path)
+			_ = os.Remove(path) // best-effort remove
 		}
 		return nil
 	})
@@ -306,7 +306,7 @@ func hashFile(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err

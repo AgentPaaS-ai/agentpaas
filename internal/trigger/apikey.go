@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -318,16 +319,16 @@ func (s *APIKeyStore) saveLocked() error {
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpName)
+			_ = os.Remove(tmpName) // best-effort remove
 		}
 	}()
 
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return err
 	}
 	if err := tmp.Chmod(0600); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -344,13 +345,15 @@ func (s *APIKeyStore) auditEvent(ctx context.Context, eventType string, payload 
 	if s.audit == nil {
 		return
 	}
-	caller, _ := CallerFromContext(ctx)
-	_ = s.audit.Append(audit.AuditRecord{
+	caller, _ := CallerFromContext(ctx) // optional caller identity
+	if err := s.audit.Append(audit.AuditRecord{
 		EventType:      eventType,
 		DeploymentMode: "local",
 		Actor:          string(caller),
 		Payload:        payload,
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", eventType, err)
+	}
 }
 
 var (

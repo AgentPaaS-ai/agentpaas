@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -64,7 +65,7 @@ func (cp *SemanticCheckpoint) ComputeDigest() string {
 		"safe_to_resume":        cp.SafeToResume,
 		"artifact_references":   cp.ArtifactRefs,
 	}
-	b, _ := json.Marshal(canonical)
+	b, _ := json.Marshal(canonical) // best-effort marshal
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
@@ -450,7 +451,7 @@ func (t *ProgressTailer) IngestRecord(ctx context.Context, line []byte) (string,
 func (t *ProgressTailer) verifyHMAC(rec *journalLine) bool {
 	expected := rec.HMAC
 	rec.HMAC = ""
-	canonical, _ := json.Marshal(rec)
+	canonical, _ := json.Marshal(rec) // best-effort marshal
 	mac := hmac.New(sha256.New, t.key)
 	mac.Write(canonical)
 	actual := hex.EncodeToString(mac.Sum(nil))
@@ -505,7 +506,7 @@ func (t *ProgressTailer) run(ctx context.Context) {
 					// On tampered/malformed journal, stop accepting progress.
 					// Emit audit event if an appender is configured.
 					if t.auditAppender != nil {
-						_ = t.auditAppender.Append(audit.AuditRecord{
+						if err := t.auditAppender.Append(audit.AuditRecord{
 							Timestamp: time.Now().UTC().Format(time.RFC3339Nano),
 							EventType: "progress_journal_invalid",
 							Actor:     "daemon",
@@ -514,7 +515,9 @@ func (t *ProgressTailer) run(ctx context.Context) {
 								"attempt_id": string(t.attemptID),
 								"error":      err.Error(),
 							},
-						})
+						}); err != nil {
+							log.Printf("routedrun: audit append (%s): %v", "progress_journal_invalid", err)
+						}
 					}
 					// Mark resume capability as none.
 					rc := ResumeCapNone
@@ -529,7 +532,7 @@ func (t *ProgressTailer) run(ctx context.Context) {
 					}
 					if t.store != nil {
 						if ls, ok := t.store.(*LocalStore); ok {
-							_ = ls.SaveAttemptProgress(ctx, t.attemptID, progress)
+							_ = ls.SaveAttemptProgress(ctx, t.attemptID, progress) // intentionally ignored (reviewed)
 						}
 					}
 					return

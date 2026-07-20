@@ -54,15 +54,15 @@ func InitEgressFirewall() {
 		return
 	}
 	path := tmp.Name()
-	defer func() { _ = os.Remove(path) }()
+	defer func() { _ = os.Remove(path) }() // best-effort remove
 
 	if _, err := tmp.WriteString(firewallInitScript); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		log.Printf("harness: egress firewall defense-in-depth unavailable (write script: %v); topology isolation remains primary", err)
 		return
 	}
 	if err := tmp.Chmod(0o700); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		log.Printf("harness: egress firewall defense-in-depth unavailable (chmod script: %v); topology isolation remains primary", err)
 		return
 	}

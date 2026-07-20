@@ -268,7 +268,7 @@ func VerifyAuditBundle(bundleDir string, expectedFingerprint string, verifySigna
 		return nil, fmt.Errorf("read public key: %w", err)
 	}
 
-	pubBlock, _ := pem.Decode(pubKeyData)
+	pubBlock, _ := pem.Decode(pubKeyData) // optional value; zero on miss
 	if pubBlock == nil {
 		return nil, fmt.Errorf("decode public key PEM: no PEM block found")
 	}
@@ -371,13 +371,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return fmt.Errorf("open source: %w", err)
 	}
-	defer func() { _ = srcFile.Close() }()
+	defer func() { _ = srcFile.Close() }() // best-effort close
 
 	dstFile, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("create destination: %w", err)
 	}
-	defer func() { _ = dstFile.Close() }()
+	defer func() { _ = dstFile.Close() }() // best-effort close
 
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("copy data: %w", err)

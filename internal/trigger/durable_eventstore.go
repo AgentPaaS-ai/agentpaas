@@ -428,7 +428,7 @@ func (s *DurableEventStore) appendWAL(tenantID, runID string, rec walRecord) err
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 	// Reject a symlinked or world-readable WAL — fail closed.
 	fi, err := f.Stat()
 	if err != nil {

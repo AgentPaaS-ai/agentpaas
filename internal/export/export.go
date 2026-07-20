@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -96,7 +97,7 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = os.RemoveAll(imageDir) }()
+		defer func() { _ = os.RemoveAll(imageDir) }() // best-effort remove
 	}
 
 	pubKey, err := loadPublisherPrivateKey(cfg.PublisherStore)
@@ -128,13 +129,13 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 
 	br, err := bundle.WriteToFile(bundleCfg, outPath)
 	if err != nil {
-		_ = os.Remove(outPath)
-		_ = os.Remove(outPath + ".tmp")
+		_ = os.Remove(outPath) // best-effort remove
+		_ = os.Remove(outPath + ".tmp") // best-effort remove
 		return nil, err
 	}
 
 	if cfg.Audit != nil {
-		_ = cfg.Audit.Append(audit.AuditRecord{
+		if err := cfg.Audit.Append(audit.AuditRecord{
 			Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 			EventType:      "bundle_exported",
 			DeploymentMode: "local",
@@ -147,7 +148,9 @@ func Run(ctx context.Context, cfg Config) (*Result, error) {
 				"file_count":            br.FileCount,
 				"with_image":            cfg.WithImage,
 			},
-		})
+		}); err != nil {
+			log.Printf("export: audit append (%s): %v", "bundle_exported", err)
+		}
 	}
 
 	return &Result{
@@ -292,7 +295,7 @@ func prepareExportState(ctx context.Context, cfg Config) (*exportState, error) {
 }
 
 func verifyDeployedForExport(ctx context.Context, home, agentName string) error {
-	_ = ctx
+	_ = ctx // unused context; interface compliance
 	lock, err := pack.LoadDeployedLock(home, agentName)
 	if err != nil {
 		return err
@@ -333,7 +336,7 @@ func loadSBOMForExport(home, agentName string, lock *pack.AgentLock) ([]byte, er
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	ref := pack.LocalImageRef(agentName, lock.ImageDigest)
-	data, _, err := pack.GenerateSBOM(ctx, ref)
+	data, _, err := pack.GenerateSBOM(ctx, ref) // intentionally ignored (reviewed)
 	if err != nil {
 		return nil, fmt.Errorf("generate sbom for export: %w", err)
 	}
@@ -356,7 +359,7 @@ func buildFileManifest(source []pack.BuildFile, extra []pack.BuildFile) []FileMa
 }
 
 func fileEntry(tarPath, absPath string, extra bool) FileManifestEntry {
-	data, _ := os.ReadFile(absPath)
+	data, _ := os.ReadFile(absPath) // best-effort read; empty on fail
 	digest := sha256Hex(data)
 	var size int64
 	if st, err := os.Stat(absPath); err == nil {

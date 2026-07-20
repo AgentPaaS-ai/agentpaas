@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -568,7 +569,7 @@ func invocationReceiptToProto(r *routedrun.InvocationReceipt) *controlv1.Invocat
 }
 
 func (s *controlServer) CreateWorkflow(ctx context.Context, req *controlv1.CreateWorkflowRequest) (*controlv1.CreateWorkflowResponse, error) {
-	_ = ctx
+	_ = ctx // unused context; interface compliance
 	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
 	}
@@ -598,7 +599,7 @@ func (s *controlServer) GetWorkflow(ctx context.Context, req *controlv1.GetWorkf
 }
 
 func (s *controlServer) CancelWorkflow(ctx context.Context, req *controlv1.CancelWorkflowRequest) (*controlv1.CancelWorkflowResponse, error) {
-	_ = ctx
+	_ = ctx // unused context; interface compliance
 	if req.GetWorkflowId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow_id is required")
 	}
@@ -611,7 +612,7 @@ func (s *controlServer) CancelWorkflow(ctx context.Context, req *controlv1.Cance
 }
 
 func (s *controlServer) SetWorkflowDesiredState(ctx context.Context, req *controlv1.SetWorkflowDesiredStateRequest) (*controlv1.SetWorkflowDesiredStateResponse, error) {
-	_ = ctx
+	_ = ctx // unused context; interface compliance
 	if req.GetWorkflowId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow_id is required")
 	}
@@ -626,7 +627,7 @@ func (s *controlServer) SetWorkflowDesiredState(ctx context.Context, req *contro
 }
 
 func (s *controlServer) RestartWorkflow(ctx context.Context, req *controlv1.RestartWorkflowRequest) (*controlv1.RestartWorkflowResponse, error) {
-	_ = ctx
+	_ = ctx // unused context; interface compliance
 	if req.GetSourceWorkflowId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "source_workflow_id is required")
 	}
@@ -640,7 +641,7 @@ func (s *controlServer) RestartWorkflow(ctx context.Context, req *controlv1.Rest
 }
 
 func (s *controlServer) AmendLimits(ctx context.Context, req *controlv1.AmendLimitsRequest) (*controlv1.AmendLimitsResponse, error) {
-	_ = ctx
+	_ = ctx // unused context; interface compliance
 	if req.GetWorkflowId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow_id is required")
 	}
@@ -673,10 +674,10 @@ func (s *controlServer) GetWorkflowGraph(ctx context.Context, req *controlv1.Get
 		return nil, mapRoutedStoreError(err)
 	}
 	// Inspect is allowed (state read). Runtime start remains gated.
-	nodes, _ := s.workflowStore.ListNodes(ctx, wf.WorkflowID)
-	services, _ := s.workflowStore.ListServices(ctx, wf.WorkflowID)
-	handoffs, _ := s.workflowStore.ListHandoffs(ctx, wf.WorkflowID)
-	batches, _ := s.workflowStore.ListChildBatches(ctx, wf.WorkflowID)
+	nodes, _ := s.workflowStore.ListNodes(ctx, wf.WorkflowID) // best-effort list; empty on fail
+	services, _ := s.workflowStore.ListServices(ctx, wf.WorkflowID) // best-effort list; empty on fail
+	handoffs, _ := s.workflowStore.ListHandoffs(ctx, wf.WorkflowID) // best-effort list; empty on fail
+	batches, _ := s.workflowStore.ListChildBatches(ctx, wf.WorkflowID) // best-effort list; empty on fail
 
 	resp := &controlv1.GetWorkflowGraphResponse{
 		Workflow: workflowToProto(wf),
@@ -834,7 +835,9 @@ func (s *controlServer) failClosedRoutedRun(ctx context.Context, agentName strin
 	// Persist inspectable placeholder metadata when store is available.
 	// No invocation/admission — state-only snapshot for consent/inspect.
 	if s.workflowStore != nil && sig != nil {
-		_ = s.persistRoutedInspectPlaceholder(ctx, agentName, sig)
+		if err := s.persistRoutedInspectPlaceholder(ctx, agentName, sig); err != nil {
+			log.Printf("daemon: %s failed: %v", "s.persistRoutedInspectPlaceholder", err)
+		}
 	}
 
 	switch {
@@ -926,14 +929,17 @@ func (s *controlServer) persistLegacyRunAsOneAttempt(ctx context.Context, runID,
 	// Minimal standalone workflow shell so RunRecord.WorkflowID is non-empty.
 	wfID := routedrun.WorkflowID("legacy-wf-" + runID)
 	if s.workflowStore != nil {
-		_ = s.workflowStore.CreateWorkflow(ctx, &routedrun.WorkflowRecord{
+		if err := s.workflowStore.CreateWorkflow(ctx, &routedrun.WorkflowRecord{
 			SchemaVersion:       routedrun.CurrentSchemaVersion,
 			WorkflowID:          wfID,
 			WorkflowKind:        pack.WorkflowKindStandalone,
 			Status:              routedrun.WorkflowStatusRunning,
 			Generation:          1,
 			AuthorityGeneration: 1,
-		})
+		}); err != nil {
+			// Best-effort shell workflow for legacy runs; run/attempt still persist below.
+			log.Printf("daemon: create legacy workflow shell %s: %v", wfID, err)
+		}
 	}
 	run := &routedrun.RunRecord{
 		SchemaVersion: routedrun.CurrentSchemaVersion,
@@ -987,7 +993,9 @@ func (s *controlServer) updateLegacyRunStatus(ctx context.Context, runID, status
 		run.TerminatedAt = &now
 	}
 	// Generation for UpdateRun is 1 after CreateRun (writeJSON gen=1).
-	_ = s.runStore.UpdateRun(ctx, run, 1)
+	if err := s.runStore.UpdateRun(ctx, run, 1); err != nil {
+		log.Printf("daemon: update legacy run status %s: %v", runID, err)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1120,4 +1128,4 @@ func workflowKindNotEnabled(kind string) (feature, block, code string) {
 }
 
 // ensure unused import of yaml is satisfied even if build tags change.
-var _ = yaml.Unmarshal
+var _ = yaml.Unmarshal // compile-time interface/import assertion

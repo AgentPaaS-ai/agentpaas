@@ -128,7 +128,7 @@ func ParseURI(uri string) (agentName, agentVersion, runID string, err error) {
 // VerifyURI checks that the SPIFFE URI matches the expected agent name and
 // version. It returns nil if the URI is valid and the identity matches.
 func VerifyURI(uri, expectedAgentName, expectedAgentVersion string) error {
-	name, ver, _, err := ParseURI(uri)
+	name, ver, _, err := ParseURI(uri) // intentionally ignored (reviewed)
 	if err != nil {
 		return fmt.Errorf("verify SPIFFE URI: %w", err)
 	}

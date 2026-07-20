@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -54,11 +55,11 @@ func (s *Supervisor) Cleanup(ctx context.Context, runID routedrun.RunID) error {
 	if s.stateRoot != "" {
 		keyPath := filepath.Join(s.stateRoot, "runs", string(runID), "control-key")
 		if err := os.Remove(keyPath); err != nil && !os.IsNotExist(err) {
-			// Best-effort: do not fail cleanup on a missing key file.
-			_ = err
+			// Best-effort: do not fail cleanup on key removal failure.
+			log.Printf("supervisor: remove control-key %s: %v", keyPath, err)
 		}
 	}
-	_ = s.audit.Append(audit.AuditRecord{
+	if err := s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_cleanup",
 		DeploymentMode: "local",
@@ -66,6 +67,8 @@ func (s *Supervisor) Cleanup(ctx context.Context, runID routedrun.RunID) error {
 		Payload: map[string]interface{}{
 			"run_id": string(runID),
 		},
-	})
+	}); err != nil {
+		log.Printf("supervisor: audit append (%s): %v", "supervisor_cleanup", err)
+	}
 	return nil
 }

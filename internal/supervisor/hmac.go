@@ -27,7 +27,7 @@ func verifyProgressHMAC(p ProgressEvent, key []byte) bool {
 func canonicalProgressBytes(p ProgressEvent) []byte {
 	cp := p
 	cp.HMAC = ""
-	b, _ := json.Marshal(cp)
+	b, _ := json.Marshal(cp) // best-effort marshal
 	return b
 }
 
@@ -50,7 +50,7 @@ func verifyResultHMAC(r ResultEvent, key []byte) bool {
 func canonicalResultBytes(r ResultEvent) []byte {
 	cr := r
 	cr.HMAC = ""
-	b, _ := json.Marshal(cr)
+	b, _ := json.Marshal(cr) // best-effort marshal
 	return b
 }
 
@@ -73,7 +73,7 @@ func verifyCheckpointHMAC(c CheckpointEvent, key []byte) bool {
 func canonicalCheckpointBytes(c CheckpointEvent) []byte {
 	cc := c
 	cc.HMAC = ""
-	b, _ := json.Marshal(cc)
+	b, _ := json.Marshal(cc) // best-effort marshal
 	return b
 }
 

@@ -50,7 +50,7 @@ func NewAuditWriter(path string) (*AuditWriter, error) {
 
 	// Reconstruct head by replaying all existing records.
 	if err := w.replay(); err != nil {
-		_ = f.Close()
+		_ = f.Close() // best-effort close
 		return nil, fmt.Errorf("replay audit file: %w", err)
 	}
 
@@ -86,7 +86,7 @@ func NewAuditWriterRecoverable(path string) (*AuditWriter, error) {
 		// but the valid prefix is preserved and the daemon can start.
 		recoverErr := w.recoverFromCorruption(err)
 		if recoverErr != nil {
-			_ = f.Close()
+			_ = f.Close() // best-effort close
 			return nil, fmt.Errorf("replay audit file: %w (recovery failed: %v)", err, recoverErr)
 		}
 	}
@@ -107,7 +107,7 @@ func NewAuditWriterWithCheckpoints(path string, checkpointPath string, cadence i
 	}
 	mgr, err := NewCheckpointManager(checkpointPath, cadence, keyDER)
 	if err != nil {
-		_ = w.Close()
+		_ = w.Close() // best-effort close
 		return nil, fmt.Errorf("checkpoint manager: %w", err)
 	}
 	w.checkpointMgr = mgr
@@ -427,7 +427,7 @@ func (w *AuditWriter) Close() error {
 
 	// Create a final checkpoint if there are uncheckpointed records.
 	if w.checkpointMgr != nil && w.seq > 0 {
-		lastCpSeq, _ := w.checkpointMgr.LatestAnchor()
+		lastCpSeq, _ := w.checkpointMgr.LatestAnchor() // optional value; zero on miss
 		if w.seq > lastCpSeq {
 			if _, err := w.checkpointMgr.CreateCheckpoint(w.seq, w.hash); err != nil {
 				// Log but don't block shutdown — the chain is still valid,

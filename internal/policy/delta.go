@@ -38,8 +38,8 @@ func ComputeDelta(parentYAML, childYAML []byte) (*PolicyDelta, error) {
 		return nil, err
 	}
 
-	parentC, _ := Canonicalize(parent)
-	childC, _ := Canonicalize(child)
+	parentC, _ := Canonicalize(parent) // warnings discarded; digest/validation uses result
+	childC, _ := Canonicalize(child) // warnings discarded; digest/validation uses result
 
 	delta := &PolicyDelta{}
 

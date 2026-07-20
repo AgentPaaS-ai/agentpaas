@@ -301,7 +301,7 @@ func materializeBuildContext(projectDir string, ignore *IgnoreMatcher) (string, 
 	if err != nil {
 		return "", nil, fmt.Errorf("create build context temp dir: %w", err)
 	}
-	cleanup := func() { _ = os.RemoveAll(dir) }
+	cleanup := func() { _ = os.RemoveAll(dir) } // best-effort remove
 
 	for _, file := range files {
 		dst := filepath.Join(dir, filepath.FromSlash(file.RelPath))
@@ -333,8 +333,8 @@ func materializeBuildContext(projectDir string, ignore *IgnoreMatcher) (string, 
 }
 
 func rewriteFindingFiles(findings []SecretFinding, contextDir string, projectDir string) []SecretFinding {
-	_ = contextDir
-	_ = projectDir
+	_ = contextDir // intentionally ignored (reviewed)
+	_ = projectDir // intentionally ignored (reviewed)
 	return findings
 }
 

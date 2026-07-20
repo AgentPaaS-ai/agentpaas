@@ -127,7 +127,7 @@ func (s *TriggerService) CancelRun(ctx context.Context, req *triggerv1.CancelRun
 		return nil, status.Error(codes.InvalidArgument, "run_id exceeds 256 characters")
 	}
 
-	caller, _ := CallerFromContext(ctx)
+	caller, _ := CallerFromContext(ctx) // optional caller identity
 	if err := s.appendCancelAudit(EventCancelRequested, caller, map[string]interface{}{
 		"run_id": runID,
 		"reason": req.GetReason(),

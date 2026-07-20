@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -458,7 +459,7 @@ func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName
 
 // phase1ReadFixtures: Turns 1-5. Each turn reads a fixture via tool call
 // and accumulates a running summary.
-func (w *ReferenceWorker) phase1ReadFixtures(ctx context.Context, _ int) (string, error) {
+func (w *ReferenceWorker) phase1ReadFixtures(ctx context.Context, _ int) (string, error) { // intentionally ignored (reviewed)
 	var summary strings.Builder
 	for i := 0; i < 5; i++ {
 		turn := i + 1
@@ -602,7 +603,7 @@ func (w *ReferenceWorker) phase4CompileDossier(ctx context.Context, phase int) (
 
 // phaseReadFixturesGeneric reads 5 fixture documents, starting from the current
 // turn count. Identical semantics to phase1ReadFixtures but with dynamic turns.
-func (w *ReferenceWorker) phaseReadFixturesGeneric(ctx context.Context, _ int) (string, error) {
+func (w *ReferenceWorker) phaseReadFixturesGeneric(ctx context.Context, _ int) (string, error) { // intentionally ignored (reviewed)
 	w.mu.Lock()
 	baseTurn := w.turnCount
 	w.mu.Unlock()
@@ -953,11 +954,17 @@ func (w *ReferenceWorker) writePhaseArtifact(phase int, content string) (string,
 func (w *ReferenceWorker) startGovernedOp(ctx context.Context, kind string) {
 	switch kind {
 	case "model":
-		_ = w.supervisor.HandleModelStart(ctx, w.attemptID, w.leaseID)
+		if err := w.supervisor.HandleModelStart(ctx, w.attemptID, w.leaseID); err != nil {
+			log.Printf("supervisor: %s failed: %v", "w.supervisor.HandleModelStart", err)
+		}
 	case "http":
-		_ = w.supervisor.HandleHTTPStart(ctx, w.attemptID, w.leaseID)
+		if err := w.supervisor.HandleHTTPStart(ctx, w.attemptID, w.leaseID); err != nil {
+			log.Printf("supervisor: %s failed: %v", "w.supervisor.HandleHTTPStart", err)
+		}
 	case "mcp":
-		_ = w.supervisor.HandleMCPStart(ctx, w.attemptID, w.leaseID)
+		if err := w.supervisor.HandleMCPStart(ctx, w.attemptID, w.leaseID); err != nil {
+			log.Printf("supervisor: %s failed: %v", "w.supervisor.HandleMCPStart", err)
+		}
 	}
 }
 
@@ -965,11 +972,17 @@ func (w *ReferenceWorker) startGovernedOp(ctx context.Context, kind string) {
 func (w *ReferenceWorker) endGovernedOp(ctx context.Context, kind string) {
 	switch kind {
 	case "model":
-		_ = w.supervisor.HandleModelEnd(ctx, w.attemptID, w.leaseID)
+		if err := w.supervisor.HandleModelEnd(ctx, w.attemptID, w.leaseID); err != nil {
+			log.Printf("supervisor: %s failed: %v", "w.supervisor.HandleModelEnd", err)
+		}
 	case "http":
-		_ = w.supervisor.HandleHTTPEnd(ctx, w.attemptID, w.leaseID)
+		if err := w.supervisor.HandleHTTPEnd(ctx, w.attemptID, w.leaseID); err != nil {
+			log.Printf("supervisor: %s failed: %v", "w.supervisor.HandleHTTPEnd", err)
+		}
 	case "mcp":
-		_ = w.supervisor.HandleMCPEnd(ctx, w.attemptID, w.leaseID)
+		if err := w.supervisor.HandleMCPEnd(ctx, w.attemptID, w.leaseID); err != nil {
+			log.Printf("supervisor: %s failed: %v", "w.supervisor.HandleMCPEnd", err)
+		}
 	}
 }
 
@@ -988,7 +1001,9 @@ func (w *ReferenceWorker) emitProgress(ctx context.Context, phase string) {
 		Phase:     phase,
 	}
 	p = w.signProgress(p)
-	_ = w.supervisor.TrackProgress(ctx, w.attemptID, p)
+	if err := w.supervisor.TrackProgress(ctx, w.attemptID, p); err != nil {
+		log.Printf("supervisor: %s failed: %v", "w.supervisor.TrackProgress", err)
+	}
 }
 
 // signProgress signs a ProgressEvent with the HMAC key.

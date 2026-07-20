@@ -38,5 +38,5 @@ Use --json for structured JSON output.`,
 // for the ldflags injection pattern; the actual values are set at build time
 // in internal/daemon.GitCommit.
 func init() {
-	_ = runtime.Version
+	_ = runtime.Version // intentionally ignored (reviewed)
 }

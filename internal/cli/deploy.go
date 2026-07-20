@@ -40,13 +40,13 @@ func newDeployCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			bundleDigest, _ := cmd.Flags().GetString("bundle-digest")
-			policyDigest, _ := cmd.Flags().GetString("policy-digest")
-			imageLock, _ := cmd.Flags().GetString("image-lock-digest")
-			provenance, _ := cmd.Flags().GetString("provenance-digest")
-			maxConcurrent, _ := cmd.Flags().GetInt32("max-concurrent-runs")
-			alias, _ := cmd.Flags().GetString("alias")
-			actor, _ := cmd.Flags().GetString("actor")
+			bundleDigest, _ := cmd.Flags().GetString("bundle-digest") // cobra flag default on missing
+			policyDigest, _ := cmd.Flags().GetString("policy-digest") // cobra flag default on missing
+			imageLock, _ := cmd.Flags().GetString("image-lock-digest") // cobra flag default on missing
+			provenance, _ := cmd.Flags().GetString("provenance-digest") // cobra flag default on missing
+			maxConcurrent, _ := cmd.Flags().GetInt32("max-concurrent-runs") // cobra flag default on missing
+			alias, _ := cmd.Flags().GetString("alias") // cobra flag default on missing
+			actor, _ := cmd.Flags().GetString("actor") // cobra flag default on missing
 
 			if bundleDigest == "" {
 				// Allow create with placeholder digests for state-only tests;
@@ -64,7 +64,7 @@ func newDeployCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(30 * time.Second)
 			defer cancel()
@@ -153,7 +153,7 @@ func newDeployListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 			resp, err := client.ListDeployments(ctx, &controlv1.ListDeploymentsRequest{})
@@ -188,7 +188,7 @@ func newDeployInspectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 			resp, err := client.GetDeployment(ctx, &controlv1.GetDeploymentRequest{
@@ -221,7 +221,7 @@ func newDeployDeactivateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 			resp, err := client.DeactivateDeployment(ctx, &controlv1.DeactivateDeploymentRequest{
@@ -269,7 +269,7 @@ func newDeployAliasSetCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 			resp, err := client.CreateDeploymentAlias(ctx, &controlv1.CreateDeploymentAliasRequest{
@@ -296,7 +296,7 @@ func newDeployAliasPromoteCmd() *cobra.Command {
 		Short: "CAS-promote an alias to a new deployment (requires --expected-generation)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			expGen, _ := cmd.Flags().GetInt64("expected-generation")
+			expGen, _ := cmd.Flags().GetInt64("expected-generation") // optional value; zero on miss
 			if !cmd.Flags().Changed("expected-generation") {
 				return fmt.Errorf("--expected-generation is required for promote (alias CAS)")
 			}
@@ -304,7 +304,7 @@ func newDeployAliasPromoteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 			resp, err := client.CasDeploymentAlias(ctx, &controlv1.CasDeploymentAliasRequest{
@@ -334,7 +334,7 @@ func newDeployAliasRollbackCmd() *cobra.Command {
 		Short: "CAS-rollback an alias to a prior deployment (requires --expected-generation)",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			expGen, _ := cmd.Flags().GetInt64("expected-generation")
+			expGen, _ := cmd.Flags().GetInt64("expected-generation") // optional value; zero on miss
 			if !cmd.Flags().Changed("expected-generation") {
 				return fmt.Errorf("--expected-generation is required for rollback (alias CAS)")
 			}
@@ -342,7 +342,7 @@ func newDeployAliasRollbackCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 			resp, err := client.CasDeploymentAlias(ctx, &controlv1.CasDeploymentAliasRequest{
@@ -375,7 +375,7 @@ func newDeployAliasListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
 			defer cancel()
 			resp, err := client.ListDeploymentAliases(ctx, &controlv1.ListDeploymentAliasesRequest{})

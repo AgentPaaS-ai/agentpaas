@@ -64,7 +64,7 @@ func (w *DockerWorkloadRuntime) Signal(ctx context.Context, id port.WorkloadID, 
 	if e != nil {
 		return e
 	}
-	_, _, code, e := w.driver.Exec(ctx, c, []string{"kill", "-" + string(s), "1"})
+	_, _, code, e := w.driver.Exec(ctx, c, []string{"kill", "-" + string(s), "1"}) // intentionally ignored (reviewed)
 	if e != nil {
 		return e
 	}

@@ -193,7 +193,7 @@ func checkOpenAIModeration(text, apiKey string) error {
 	if err != nil {
 		return fmt.Errorf("moderation unavailable: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() // best-effort close
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("moderation status %d", resp.StatusCode)
 	}
@@ -239,7 +239,7 @@ func checkGuardrailWebhook(rawURL, text, direction string) error {
 	if err != nil {
 		return fmt.Errorf("guardrail webhook unavailable: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() // best-effort close
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("guardrail webhook blocked %s", direction)
 	}

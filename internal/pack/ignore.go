@@ -136,10 +136,10 @@ func (p ignorePattern) matches(filePath string) bool {
 		return matchesPathComponent(filePath, p.value)
 	}
 	if strings.ContainsAny(p.value, "*?[") {
-		if ok, _ := path.Match(p.value, path.Base(filePath)); ok {
+		if ok, _ := path.Match(p.value, path.Base(filePath)); ok { // invalid pattern treated as non-match
 			return true
 		}
-		if ok, _ := path.Match(p.value, filePath); ok {
+		if ok, _ := path.Match(p.value, filePath); ok { // invalid pattern treated as non-match
 			return true
 		}
 	}

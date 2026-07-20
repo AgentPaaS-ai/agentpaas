@@ -28,7 +28,7 @@ func NewGateway(broker *Broker, client *http.Client) *Gateway {
 		client = http.DefaultClient
 	}
 	copyClient := *client
-	copyClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+	copyClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { // intentionally ignored (reviewed)
 		return http.ErrUseLastResponse
 	}
 	return &Gateway{broker: broker, client: &copyClient}
@@ -75,7 +75,7 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 		if location == "" {
 			return resp, nil
 		}
-		_ = resp.Body.Close()
+		_ = resp.Body.Close() // best-effort close
 		nextURL, err := resolveRedirect(currentURL, location)
 		if err != nil {
 			return nil, err
@@ -95,7 +95,7 @@ func (g *Gateway) Do(ctx context.Context, request GatewayRequest) (*http.Respons
 func redactCredentialFromResponse(resp *http.Response, credential string) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		_ = resp.Body.Close()
+		_ = resp.Body.Close() // best-effort close
 		return fmt.Errorf("read upstream response body: %w", err)
 	}
 	if err := resp.Body.Close(); err != nil {

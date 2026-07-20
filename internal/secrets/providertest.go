@@ -78,7 +78,7 @@ func testOpenRouter(parentCtx context.Context, secretValue []byte) ProviderTestR
 		},
 		"max_tokens": 5,
 	}
-	bodyBytes, _ := json.Marshal(body)
+	bodyBytes, _ := json.Marshal(body) // best-effort marshal
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterEndpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -105,7 +105,7 @@ func testOpenAI(parentCtx context.Context, secretValue []byte) ProviderTestResul
 			{"role": "user", "content": "say OK"},
 		},
 	}
-	bodyBytes, _ := json.Marshal(body)
+	bodyBytes, _ := json.Marshal(body) // best-effort marshal
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openAIEndpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -133,7 +133,7 @@ func testAnthropic(parentCtx context.Context, secretValue []byte) ProviderTestRe
 			{"role": "user", "content": "say OK"},
 		},
 	}
-	bodyBytes, _ := json.Marshal(body)
+	bodyBytes, _ := json.Marshal(body) // best-effort marshal
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicEndpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -161,7 +161,7 @@ func testXAI(parentCtx context.Context, secretValue []byte) ProviderTestResult {
 			{"role": "user", "content": "say OK"},
 		},
 	}
-	bodyBytes, _ := json.Marshal(body)
+	bodyBytes, _ := json.Marshal(body) // best-effort marshal
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, xaiEndpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -189,7 +189,7 @@ func testNous(parentCtx context.Context, secretValue []byte) ProviderTestResult 
 		},
 		"max_tokens": 5,
 	}
-	bodyBytes, _ := json.Marshal(body)
+	bodyBytes, _ := json.Marshal(body) // best-effort marshal
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, nousEndpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
@@ -216,10 +216,10 @@ func doProviderRequest(req *http.Request, provider, endpoint string) ProviderTes
 			Detail:   fmt.Sprintf("failed to reach %s: %v", endpoint, err),
 		}
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() // best-effort close
 
 	// Read the response body so we can surface provider error details.
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096)) // best-effort body read
 
 	status := "ok"
 	detail := ""
