@@ -880,7 +880,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	if journalKey != nil && journalHostPath != "" && s.localStore != nil {
 		tailer := routedrun.NewProgressTailer(
 			journalHostPath, journalKey,
-			s.localStore, s.runStore,
+			s.localStore,
 			routedrun.AttemptID(attemptID), routedrun.RunID(runID),
 		)
 		if s.auditWriter != nil {
