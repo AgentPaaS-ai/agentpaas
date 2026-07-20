@@ -50,15 +50,36 @@ func TestAdversaryT06_ContinuationWithoutMutation(t *testing.T) {
 func TestAdversaryT06_NotEnabledPathCreatesResources(t *testing.T) {
 	s := newTestControlServer(t)
 	ctx := context.Background()
+	// As of B30-T02 the durable admission path is enabled, so the FEATURE_NOT_ENABLED
+	// stub no longer applies. The test's original intent still holds: an
+	// InvokeDeployment call against a deployment ref that does not exist in the
+	// store must NOT silently create resources (no invocation, no run). The
+	// handler validates caller_identity (now required) and then hands the
+	// request to the admission store, which rejects an unresolved ref with a
+	// typed DEPLOYMENT_NOT_FOUND error. We assert the typed error is present,
+	// the outcome is not ACCEPTED, and no IDs were minted.
 	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
 		DeploymentRef:  "dep-test",
 		IdempotencyKey: "idem-1",
+		CallerIdentity: "adversary-test",
 	})
 	if err != nil {
 		t.Fatalf("Invoke unexpected err: %v", err)
 	}
-	if resp.GetError() == nil || resp.GetOutcomeName() != "FEATURE_NOT_ENABLED" {
-		t.Fatal("ADVERSARY BREAK: not-enabled response missing or wrong")
+	if resp.GetError() == nil {
+		t.Fatal("ADVERSARY BREAK: expected typed error for unresolved deployment ref, got none")
+	}
+	if resp.GetOutcome() == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
+		t.Fatalf("ADVERSARY BREAK: admission accepted for unresolved ref (outcome=%v)", resp.GetOutcome())
+	}
+	if resp.GetOutcomeName() != "DEPLOYMENT_NOT_FOUND" {
+		t.Fatalf("expected DEPLOYMENT_NOT_FOUND outcome, got %q", resp.GetOutcomeName())
+	}
+	if resp.GetInvocationId() != "" {
+		t.Fatalf("ADVERSARY BREAK: invocation created for unresolved ref: %q", resp.GetInvocationId())
+	}
+	if resp.GetRunId() != "" {
+		t.Fatalf("ADVERSARY BREAK: run created for unresolved ref: %q", resp.GetRunId())
 	}
 	if s.localStore == nil {
 		t.Fatal("store not wired")
@@ -91,11 +112,25 @@ func TestAdversaryT06_DeactivateWithActiveRuns(t *testing.T) {
 		t.Fatalf("Deactivate err: %v", err)
 	}
 	// Post-deactivate invoke must still fail-closed (new invocations blocked).
-	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{DeploymentRef: depID, IdempotencyKey: "k2"})
+	// As of B30-T02 the durable path is active: with caller_identity present the
+	// request reaches admission, which rejects the inactive deployment with a
+	// typed DEPLOYMENT_INACTIVE error (structured response, not a gRPC error).
+	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
+		DeploymentRef:  depID,
+		IdempotencyKey: "k2",
+		CallerIdentity: "adversary-test",
+	})
 	if err != nil {
-		// expected fail-closed (gRPC error path)
-	} else if resp.GetError() == nil || resp.GetOutcomeName() != "FEATURE_NOT_ENABLED" {
-		t.Errorf("ADVERSARY BREAK: invoke after deactivate succeeded (no fail-closed)")
+		t.Fatalf("invoke after deactivate returned gRPC error (should be typed): %v", err)
+	}
+	if resp.GetError() == nil {
+		t.Fatal("ADVERSARY BREAK: invoke after deactivate succeeded (no fail-closed)")
+	}
+	if resp.GetOutcome() == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
+		t.Fatalf("ADVERSARY BREAK: invoke after deactivate was accepted (outcome=%v)", resp.GetOutcome())
+	}
+	if resp.GetError().GetCodeName() != "DEPLOYMENT_INACTIVE" {
+		t.Fatalf("expected DEPLOYMENT_INACTIVE typed error, got %q (outcome=%q)", resp.GetError().GetCodeName(), resp.GetOutcomeName())
 	}
 	// Confirmed: deactivation works without cancelling actives, new invokes blocked.
 }
@@ -103,8 +138,29 @@ func TestAdversaryT06_DeactivateWithActiveRuns(t *testing.T) {
 func TestAdversaryT06_CLIIdempotencyKeyLeak(t *testing.T) {
 	s := newTestControlServer(t)
 	ctx := context.Background()
-	_, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{DeploymentRef: "d", IdempotencyKey: "secret-key-xyz"})
-	_ = err // expected: not-enabled, no leak possible
+	// As of B30-T02 the durable admission path is active, so we pass
+	// caller_identity (now required) to exercise the real store path. The
+	// deployment ref "d" does not resolve to any alias or deployment, so the
+	// store rejects it with a typed DEPLOYMENT_NOT_FOUND error before any
+	// state is written — the idempotency key is never persisted and thus
+	// cannot leak via error messages or stored records.
+	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
+		DeploymentRef:  "d",
+		IdempotencyKey: "secret-key-xyz",
+		CallerIdentity: "adversary-test",
+	})
+	if err != nil {
+		t.Fatalf("Invoke unexpected gRPC error (should be typed): %v", err)
+	}
+	if resp.GetError() == nil {
+		t.Fatal("expected typed error for unresolved deployment ref")
+	}
+	if resp.GetOutcome() == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
+		t.Fatalf("ADVERSARY BREAK: invocation accepted for unresolved ref (outcome=%v)", resp.GetOutcome())
+	}
+	if resp.GetInvocationId() != "" {
+		t.Fatalf("ADVERSARY BREAK: invocation created for unresolved ref: %q", resp.GetInvocationId())
+	}
 }
 
 func TestAdversaryT06_LegacyRunRegression(t *testing.T) {
@@ -148,8 +204,28 @@ func TestAdversaryT06_MissingScopeBypass_Amend(t *testing.T) {
 func TestAdversaryT06_StateLeakOnFailure(t *testing.T) {
 	s := newTestControlServer(t)
 	ctx := context.Background()
-	resp, _ := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{DeploymentRef: "bad", IdempotencyKey: "k"})
+	// As of B30-T02 the durable admission path is active. With caller_identity
+	// present, the request reaches admission; "bad" resolves to no alias or
+	// deployment, so the store returns a typed DEPLOYMENT_NOT_FOUND error.
+	// No invocation or run IDs are minted on the failure path — no state leak.
+	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
+		DeploymentRef:  "bad",
+		IdempotencyKey: "k",
+		CallerIdentity: "adversary-test",
+	})
+	if err != nil {
+		t.Fatalf("Invoke unexpected gRPC error (should be typed): %v", err)
+	}
 	if resp.GetError() == nil {
-		t.Fatal("expected error")
+		t.Fatal("expected typed error")
+	}
+	if resp.GetOutcome() == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
+		t.Fatalf("ADVERSARY BREAK: invocation accepted for unresolved ref (outcome=%v)", resp.GetOutcome())
+	}
+	if resp.GetInvocationId() != "" {
+		t.Fatalf("ADVERSARY BREAK: invocation created on failure path: %q", resp.GetInvocationId())
+	}
+	if resp.GetRunId() != "" {
+		t.Fatalf("ADVERSARY BREAK: run created on failure path: %q", resp.GetRunId())
 	}
 }
