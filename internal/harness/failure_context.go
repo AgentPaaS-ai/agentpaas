@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/hashutil"
 )
 
 const (
@@ -290,8 +291,7 @@ func hashedHeaders(headers http.Header) map[string]string {
 }
 
 func sha256HexString(value string) string {
-	sum := sha256.Sum256([]byte(value))
-	return hex.EncodeToString(sum[:])
+	return hashutil.SHA256HexString(value)
 }
 
 func redactedCredentialEvidence() string {

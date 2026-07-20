@@ -4,15 +4,16 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
 )
 
 // AuditSearchView is the sanitized API response for audit record search.
@@ -396,24 +397,17 @@ func isSystemDashboardPath(path string) bool {
 }
 
 func rejectSymlinkPath(path string, allowMissingLeaf bool) error {
-	cleaned := filepath.Clean(path)
-	parts := strings.Split(strings.TrimPrefix(cleaned, string(filepath.Separator)), string(filepath.Separator))
-	current := string(filepath.Separator)
-	for i, part := range parts {
-		if part == "" {
-			continue
-		}
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if err != nil {
-			if allowMissingLeaf && i == len(parts)-1 && os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink path component rejected")
-		}
+	missing := fsutil.MissingFail
+	if allowMissingLeaf {
+		missing = fsutil.MissingAllowLeaf
 	}
-	return nil
+	err := fsutil.RejectSymlinkWalk(path, fsutil.WalkOptions{Missing: missing})
+	if err == nil {
+		return nil
+	}
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("symlink path component rejected")
+	}
+	return err
 }

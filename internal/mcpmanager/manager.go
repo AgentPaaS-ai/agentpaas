@@ -5,12 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"sort"
 	"sync"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/urlutil"
 )
 
 // Readiness states for MCP servers.
@@ -213,13 +213,5 @@ func computePolicyDigest(s policy.MCPServer) string {
 }
 
 func stripURLUserinfo(rawURL string) string {
-	if rawURL == "" {
-		return ""
-	}
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return rawURL
-	}
-	parsed.User = nil
-	return parsed.String()
+	return urlutil.StripUserinfo(rawURL)
 }

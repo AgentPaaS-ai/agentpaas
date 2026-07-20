@@ -2,12 +2,10 @@ package export
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +13,7 @@ import (
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/bundle"
+	"github.com/AgentPaaS-ai/agentpaas/internal/hashutil"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 )
@@ -479,6 +478,5 @@ func collectIncludeFiles(projectDir string, globs []string, ignore *pack.IgnoreM
 }
 
 func sha256Hex(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
+	return hashutil.SHA256Hex(data)
 }
