@@ -27,6 +27,13 @@ const (
 	FailureCategoryWorkerKilled   = "worker_killed"
 	FailureCategoryMCPDenied      = "mcp_denied"
 
+	// FailureCategoryResourceLimit (B30-T04) records that the worker was
+	// terminated by an explicit resource-limit policy: CPU quota exhausted
+	// (SIGXCPU), PID limit exhausted (RLIMIT_NPROC / cgroup pids), or OOM
+	// (cgroup memory). Reported separately from accumulated workflow
+	// active time — the limit is signed policy, not an accidental ceiling.
+	FailureCategoryResourceLimit = "resource_limit_exhausted"
+
 	AvailabilityAvailable   = "available"
 	AvailabilityUnavailable = "unavailable"
 	AvailabilityRateLimited = "rate_limited"
@@ -141,6 +148,8 @@ func failureCategory(reason, status, detail string, evidence *UpstreamEvidence) 
 		return FailureCategoryInvokeTimeout
 	case reason == "worker_kill_failed":
 		return FailureCategoryWorkerKilled
+	case isResourceLimitTermination(reason, detail):
+		return FailureCategoryResourceLimit
 	case reason == "mcp_denied" || strings.Contains(detail, "mcp_denied"):
 		return FailureCategoryMCPDenied
 	case strings.Contains(detail, "mcp") || strings.Contains(reason, "mcp"):
@@ -152,6 +161,28 @@ func failureCategory(reason, status, detail string, evidence *UpstreamEvidence) 
 	default:
 		return FailureCategoryTaskFailed
 	}
+}
+
+// isResourceLimitTermination reports whether the failure reason/detail
+// indicates a worker was terminated by an explicit resource-limit policy:
+// CPU quota exhausted (SIGXCPU / RLIMIT_CPU), PID limit exhausted
+// (RLIMIT_NPROC / cgroup pids), or OOM (cgroup memory). These are signed
+// policy stops, reported separately from accumulated workflow active time
+// (b30-summary.md:414).
+func isResourceLimitTermination(reason, detail string) bool {
+	switch reason {
+	case "cpu_quota_exhausted", "pid_limit_exhausted", "oom_killed":
+		return true
+	}
+	lower := strings.ToLower(detail)
+	switch {
+	case strings.Contains(lower, "cpu quota exhausted"),
+		strings.Contains(lower, "pid limit exhausted"),
+		strings.Contains(lower, "memory limit exceeded"),
+		strings.Contains(lower, "oom"):
+		return true
+	}
+	return false
 }
 
 func attachFailureContext(errResp *ErrorResponse, ctx *FailureContext, appender AuditAppender) *ErrorResponse {

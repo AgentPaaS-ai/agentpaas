@@ -102,6 +102,13 @@ type ContainerSpec struct {
 	// 0 means no limit. Populated from agent.yaml by the upper orchestrator.
 	NanoCPUs int64
 
+	// MaxPIDs (B30-T04) is the container-level PID cgroup limit
+	// (--pids-limit). 0 means use the runtime default (256, a safe
+	// fork-bomb ceiling for agent containers). A positive value overrides
+	// the default with a policy-derived ceiling; -1 means unlimited
+	// (not recommended for agent containers).
+	MaxPIDs int64
+
 	// Binds is a list of host-path:container-path bind mounts. Each entry
 	// follows the Docker --volume format: "host_path:container_path" or
 	// "host_path:container_path:ro" for read-only. Used to mount audit
