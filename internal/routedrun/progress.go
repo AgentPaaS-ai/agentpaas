@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/strutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -555,16 +556,7 @@ func (t *ProgressTailer) Stop() {
 // without a newline are held back — the caller must not advance past them
 // so the next poll picks them up after the writer flushes the complete line.
 func splitLines(data []byte) [][]byte {
-	var lines [][]byte
-	start := 0
-	for i, b := range data {
-		if b == '\n' {
-			lines = append(lines, data[start:i])
-			start = i + 1
-		}
-	}
-	// Do NOT include trailing fragment without a newline.
-	return lines
+	return strutil.SplitCompleteLines(data)
 }
 
 // isAlreadyExists checks if an error is ErrAlreadyExists.

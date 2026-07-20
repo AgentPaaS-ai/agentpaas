@@ -17,6 +17,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/httpjson"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
 
@@ -402,10 +403,7 @@ func normalizeConfig(cfg Config) Config {
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	value = sanitizeResponse(value)
-	_ = json.NewEncoder(w).Encode(value) // best-effort encode to client
+	httpjson.Write(w, status, sanitizeResponse(value))
 }
 
 func sanitizeResponse(value any) any {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
@@ -339,41 +340,18 @@ func rejectSymlinkPath(path string) error {
 	if !filepath.IsAbs(clean) {
 		return fmt.Errorf("lease path %s must be absolute", path)
 	}
-	if hasDotDotPathSegment(clean) {
+	if fsutil.HasDotDotPathSegment(clean) {
 		return fmt.Errorf("lease path %s must not contain dot-dot path segments", path)
 	}
-	volume := filepath.VolumeName(clean)
-	rest := strings.TrimPrefix(clean, volume)
-	if rest == "" {
+	err := fsutil.RejectSymlinkWalk(clean, fsutil.WalkOptions{Missing: fsutil.MissingAllowAll})
+	if err == nil {
 		return nil
 	}
-	separator := string(os.PathSeparator)
-	current := volume
-	if strings.HasPrefix(rest, separator) {
-		current += separator
-		rest = strings.TrimPrefix(rest, separator)
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("lease path %s contains symlink component %s", path, se.Path)
 	}
-	for _, component := range strings.Split(rest, separator) {
-		if component == "" {
-			continue
-		}
-		if current == "" || current == separator {
-			current = filepath.Join(current, component)
-		} else {
-			current = filepath.Join(current, component)
-		}
-		info, err := os.Lstat(current)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("lstat lease path: %w", err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("lease path %s contains symlink component %s", path, current)
-		}
-	}
-	return nil
+	return fmt.Errorf("lstat lease path: %w", err)
 }
 
 func safeLeasePathComponent(value string) (string, error) {
@@ -403,11 +381,4 @@ func safeLeasePathComponent(value string) (string, error) {
 	return value, nil
 }
 
-func hasDotDotPathSegment(path string) bool {
-	for _, component := range strings.Split(path, string(os.PathSeparator)) {
-		if component == ".." {
-			return true
-		}
-	}
-	return false
-}
+
