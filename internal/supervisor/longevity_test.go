@@ -29,7 +29,7 @@ func TestLongevity_FakeClock24Hour_100Turns(t *testing.T) {
 		ledger.ConsumedMs = 0
 		ledger.RunningSegmentStartMs = nil
 		ledger.FrozenConsumedMs = 0
-		if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+		if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 			t.Fatalf("PutActiveTimeLedger: %v", err)
 		}
 	}
@@ -104,7 +104,7 @@ func TestLongevity_FakeClock24Hour_100Turns(t *testing.T) {
 	nowMs := h.clock.NowMonotonic().UnixMilli()
 	ledger = h.ledger()
 	ledger.RunningSegmentStartMs = &nowMs
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 
@@ -139,7 +139,7 @@ func TestLongevity_FakeClock24Hour_100Turns(t *testing.T) {
 	ledger.ConsumedMs = 0
 	ledger.RunningSegmentStartMs = nil
 	ledger.FrozenConsumedMs = 0
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger (reset): %v", err)
 	}
 

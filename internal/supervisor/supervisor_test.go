@@ -72,6 +72,20 @@ func signResult(r ResultEvent, key []byte) ResultEvent {
 	return r
 }
 
+func canonicalCheckpoint(c CheckpointEvent) []byte {
+	cc := c
+	cc.HMAC = ""
+	b, _ := json.Marshal(cc)
+	return b
+}
+
+func signCheckpoint(c CheckpointEvent, key []byte) CheckpointEvent {
+	mac := hmac.New(sha256.New, key)
+	mac.Write(canonicalCheckpoint(c))
+	c.HMAC = hex.EncodeToString(mac.Sum(nil))
+	return c
+}
+
 // fakeControlJournal is an in-memory control journal for tests. It records
 // appended events keyed by sequence and verifies HMACs on read.
 type fakeControlJournal struct {
@@ -336,7 +350,7 @@ func (h *testHarness) seedRunAndWorkflow() {
 		ConsumedMs:            0,
 		RunningSegmentStartMs: ptrInt64(h.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, wf.WorkflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, wf.WorkflowID, ledger, 1); err != nil {
 		h.t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 }
@@ -387,6 +401,8 @@ func (h *testHarness) makeForgedProgress(seq int64, phase string) ProgressEvent 
 }
 
 func (h *testHarness) makeSuccessResult() ResultEvent {
+	resultJSON := `{"ok":true}`
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(resultJSON)))
 	r := ResultEvent{
 		AttemptID:       h.attemptID,
 		LeaseID:         h.leaseID,
@@ -394,10 +410,21 @@ func (h *testHarness) makeSuccessResult() ResultEvent {
 		WorkflowID:      h.workflowID,
 		InvocationID:    "inv-test",
 		TerminalStatus:  routedrun.InvokeJobResultSucceeded,
-		StructuredResult: `{"ok":true}`,
-		ResultDigest:    "digest-success",
+		StructuredResult: resultJSON,
+		ResultDigest:    digest,
 	}
 	return signResult(r, h.controlKey)
+}
+
+// makeForgedCheckpoint builds a CheckpointEvent with a bad HMAC for testing HMAC rejection.
+// makeCheckpoint builds and signs a CheckpointEvent for the harness attempt.
+func (h *testHarness) makeCheckpoint(cp *routedrun.SemanticCheckpoint) CheckpointEvent {
+	c := CheckpointEvent{
+		AttemptID:  h.attemptID,
+		LeaseID:    h.leaseID,
+		Checkpoint: cp,
+	}
+	return signCheckpoint(c, h.controlKey)
 }
 
 func (h *testHarness) attemptStatus() routedrun.AttemptStatus {
@@ -782,11 +809,7 @@ func TestReconcilePreservesCheckpoint(t *testing.T) {
 		CreatedAt:        h.clock.Now(),
 	}
 	// Commit the checkpoint via the supervisor.
-	if err := h.supervisor.HandleCheckpoint(ctx, attID, CheckpointEvent{
-		AttemptID:  attID,
-		LeaseID:    h.leaseID,
-		Checkpoint: cp,
-	}); err != nil {
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 	// Simulate restart.
@@ -837,7 +860,7 @@ func TestActiveTimeFrozenDuringPause(t *testing.T) {
 		ConsumedMs:            consumedBefore,
 		RunningSegmentStartMs: ptrInt64(h.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	// Advance the wall+monotonic clock significantly (simulating wall time
@@ -879,7 +902,7 @@ func TestActiveTimeFrozenDuringNeedsReplan(t *testing.T) {
 		ConsumedMs:            consumedBefore,
 		RunningSegmentStartMs: ptrInt64(h.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	h.clock.AdvanceMonotonic(300 * time.Second)
@@ -917,7 +940,7 @@ func TestActiveTimeChargedDuringPauseRequested(t *testing.T) {
 		ConsumedMs:            consumedBefore,
 		RunningSegmentStartMs: ptrInt64(segmentStart),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	// Advance 200,000ms = 200s.
