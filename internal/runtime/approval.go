@@ -111,43 +111,13 @@ type ApprovalStore struct {
 }
 
 // NewApprovalStore creates an in-memory ApprovalStore backed by the given
-// event store for wake notifications. Durability of the requests themselves
-// is provided by the durable event store wake events plus the inbox WAL; for
-// a fully durable approval log, use NewDurableApprovalStore.
+// event store for wake notifications.
 func NewApprovalStore(events port.EventStore) *ApprovalStore {
 	return &ApprovalStore{
 		events: events,
 		runs:   make(map[string]*approvalRunState),
 		randID: defaultApprovalRandID,
 	}
-}
-
-// NewDurableApprovalStore creates an ApprovalStore that persists requests to
-// stateDir/<tenantID>/<runID>.wal in addition to emitting wake events.
-func NewDurableApprovalStore(stateDir string, events port.EventStore) (*ApprovalStore, error) {
-	if stateDir == "" {
-		return nil, fmt.Errorf("runtime: approval state dir is empty")
-	}
-	if events == nil {
-		return nil, fmt.Errorf("runtime: approval event store is nil")
-	}
-	cleaned := filepathClean(stateDir)
-	if err := inboxRejectSymlinkPath(cleaned); err != nil {
-		return nil, fmt.Errorf("new durable approval store: %w", err)
-	}
-	if err := inboxMkdirProtected(cleaned); err != nil {
-		return nil, fmt.Errorf("runtime: create approval state dir %s: %w", cleaned, err)
-	}
-	s := &ApprovalStore{
-		events:   events,
-		runs:     make(map[string]*approvalRunState),
-		stateDir: cleaned,
-		randID:   defaultApprovalRandID,
-	}
-	if err := s.recover(); err != nil {
-		return nil, fmt.Errorf("runtime: recover approvals: %w", err)
-	}
-	return s, nil
 }
 
 // defaultApprovalRandID generates a 16-byte random hex ID.
@@ -157,12 +127,6 @@ func defaultApprovalRandID() (string, error) {
 		return "", fmt.Errorf("default approval rand id: %w", err)
 	}
 	return "apr-" + hex.EncodeToString(b), nil
-}
-
-// filepathClean is a small indirection so approval.go keeps a narrow import
-// surface. It returns the cleaned path.
-func filepathClean(p string) string {
-	return filepath.Clean(p)
 }
 
 // Request durably records an approval request. The request's RequestID is
@@ -393,76 +357,4 @@ func (a *ApprovalStore) appendWAL(tenantID, runID string, rec approvalWALRecord)
 // walPath returns the on-disk approval WAL path.
 func (a *ApprovalStore) walPath(tenantID, runID string) string {
 	return filepath.Join(a.stateDir, inboxSafeID(tenantID), inboxSafeID(runID)+inboxWALSuffix)
-}
-
-// recover replays approval WAL files.
-func (a *ApprovalStore) recover() error {
-	if a.stateDir == "" {
-		return nil
-	}
-	entries, err := os.ReadDir(a.stateDir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("approval store recover: %w", err)
-	}
-	for _, tenantEntry := range entries {
-		if !tenantEntry.IsDir() {
-			continue
-		}
-		tenantPath := filepath.Join(a.stateDir, tenantEntry.Name())
-		runEntries, err := os.ReadDir(tenantPath)
-		if err != nil {
-			return fmt.Errorf("approval store recover: %w", err)
-		}
-		for _, runEntry := range runEntries {
-			if runEntry.IsDir() || !strings.HasSuffix(runEntry.Name(), inboxWALSuffix) {
-				continue
-			}
-			path := filepath.Join(tenantPath, runEntry.Name())
-			if err := a.recoverWALFile(path); err != nil {
-				return fmt.Errorf("approval store recover: %w", err)
-			}
-		}
-	}
-	return nil
-}
-
-// recoverWALFile replays a single approval WAL file.
-func (a *ApprovalStore) recoverWALFile(path string) error {
-	data, err := inboxReadFileStrict(path, maxInboxWALFileBytes)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("approval store recover walfile: %w", err)
-	}
-	for _, line := range splitInboxWALLines(data) {
-		if len(line) == 0 {
-			continue
-		}
-		var rec approvalWALRecord
-		if err := json.Unmarshal(line, &rec); err != nil {
-			return fmt.Errorf("runtime: corrupt approval wal %s: %w", path, err)
-		}
-		r, err := a.runState(rec.TenantID, rec.RunID, true)
-		if err != nil {
-			return fmt.Errorf("approval store recover walfile: %w", err)
-		}
-		r.mu.Lock()
-		r.requests[rec.RequestID] = &ApprovalRequest{
-			RequestID:  rec.RequestID,
-			RunID:      rec.RunID,
-			TaskID:     rec.TaskID,
-			Question:   rec.Question,
-			Options:    rec.Options,
-			Status:     rec.Status,
-			Resolution: rec.Resolution,
-			ExpiresAt:  rec.ExpiresAt,
-			CreatedAt:  rec.CreatedAt,
-		}
-		r.mu.Unlock()
-	}
-	return nil
 }

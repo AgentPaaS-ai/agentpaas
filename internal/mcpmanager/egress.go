@@ -174,11 +174,6 @@ func (ep *EgressPolicy) CheckEgress(ctx context.Context, serverID, destination, 
 	return false, "", "", fmt.Errorf("%s", reason)
 }
 
-// AuditEgress emits an audit event for an egress decision (allowed or denied).
-func (ep *EgressPolicy) AuditEgress(serverID, destination, method, credentialID, policyRuleID, decision string) {
-	ep.auditEgressDecision(serverID, destination, normalizeMethod(method), credentialID, policyRuleID, decision, "")
-}
-
 func (ep *EgressPolicy) auditEgressDecision(serverID, destination, method, credentialID, policyRuleID, decision, reason string) {
 	if ep == nil || ep.audit == nil {
 		return

@@ -255,11 +255,6 @@ func SignAsPublisher(ks KeyStore, digest []byte) ([]byte, error) {
 	return sig, nil
 }
 
-// PublisherSigningKeyID returns the keystore key ID for the publisher identity.
-func PublisherSigningKeyID() KeyID {
-	return publisherIdentityKeyID
-}
-
 // LoadPublisherSigningKey loads the publisher ECDSA private key for bundle manifest signing.
 // Callers must not log or persist the returned key.
 func LoadPublisherSigningKey(ks KeyStore) (*ecdsa.PrivateKey, error) {

@@ -544,18 +544,5 @@ func (f *FileKeyStore) List() ([]KeyMetadata, error) {
 	return result, nil
 }
 
-// ---------------------------------------------------------------------------
-// Doctor warning hook
-// ---------------------------------------------------------------------------
-
-// FileKeyStoreInUseWarning returns a warning message suitable for the doctor
-// subsystem. It should be called by the doctor when it detects that the file
-// keystore is in use (i.e., as a P1-approved but non-ideal fallback).
-func FileKeyStoreInUseWarning() string {
-	return "WARNING: Encrypted file keystore is in use. This is a P1-approved fallback; " +
-		"the macOS Keychain is preferred for production deployments. " +
-		"Ensure the keystore file has permissions 0600 and the passphrase is stored securely."
-}
-
 // Compile-time check that FileKeyStore satisfies the KeyStore interface.
 var _ KeyStore = (*FileKeyStore)(nil)

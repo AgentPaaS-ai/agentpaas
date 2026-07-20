@@ -33,33 +33,6 @@ func HasEmbeddedSDK() bool {
 	return err == nil
 }
 
-// EmbeddedSDKFiles returns the list of embedded SDK file paths
-// (POSIX-style, relative to the embed root, e.g. "python/agentpaas_sdk/__init__.py").
-// Excludes directories, __pycache__, and .pyc files. // intentionally ignored (reviewed)
-func EmbeddedSDKFiles() ([]string, error) {
-	var files []string
-	err := fs.WalkDir(embeddedSDK, EmbeddedSDKPrefix, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if d.Name() == "__pycache__" {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if filepath.Ext(d.Name()) == ".pyc" {
-			return nil
-		}
-		files = append(files, path)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("walk embedded SDK: %w", err)
-	}
-	return files, nil
-}
-
 // ExtractEmbeddedSDK writes the embedded SDK files into dir, preserving
 // the python/agentpaas_sdk/ directory structure. Returns the path to use
 // as SDKDir (dir + "/python"). The caller MUST remove the temp dir when

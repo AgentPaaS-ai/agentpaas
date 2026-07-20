@@ -143,15 +143,6 @@ func NewHandoffManager(cfgs []*HandoffConfig, auditAppender audit.AuditAppender)
 	return hm
 }
 
-// SetTriggerService wires the invoke function to TriggerService.Invoke.
-func (hm *HandoffManager) SetTriggerService(svc *TriggerService) {
-	hm.mu.Lock()
-	defer hm.mu.Unlock()
-	if svc != nil {
-		hm.invoke = svc.Invoke
-	}
-}
-
 // HandoffRequest is the input to trigger a handoff.
 type HandoffRequest struct {
 	// SourceAgent is the agent requesting the handoff.

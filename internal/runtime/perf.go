@@ -129,17 +129,6 @@ func (r *TimingRecorder) Record(phase Phase, start, end time.Time, providerTime 
 	r.mu.Unlock()
 }
 
-// Spans returns a copy of the recorded spans in insertion order. It is
-// primarily useful for diagnostics and for fixtures that want to inspect
-// what was recorded.
-func (r *TimingRecorder) Spans() []TimingSpan {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	out := make([]TimingSpan, len(r.spans))
-	copy(out, r.spans)
-	return out
-}
-
 // Summary computes per-phase p50/p95/p99 distributions, separating AgentPaaS
 // overhead (ProviderTime=false) from provider/tool time (ProviderTime=true).
 // Phases with no recorded spans are omitted from the map; callers that need

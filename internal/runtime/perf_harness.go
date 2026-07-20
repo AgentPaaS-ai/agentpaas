@@ -69,12 +69,6 @@ type PerfHarness struct {
 	Now func() time.Time
 }
 
-// NewPerfHarness returns a harness with the default sampler and a 5ms
-// resource sampling interval.
-func NewPerfHarness() *PerfHarness {
-	return &PerfHarness{ResourceInterval: 5 * time.Millisecond}
-}
-
 func (h *PerfHarness) now() time.Time {
 	if h.Now != nil {
 		return h.Now()
