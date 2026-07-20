@@ -302,3 +302,50 @@ func TestMustParse_Panics(t *testing.T) {
 	}()
 	MustParse("not-a-number")
 }
+
+func TestFromNanoUSD(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		nano int64
+		want string
+	}{
+		{0, "0"},
+		{1, "0.000000001"},
+		{1_000_000_000, "1"},
+		{1_500_000_000, "1.5"},
+		{-1, ""}, // negative nano is constructible but not via Parse
+	}
+	for _, tc := range cases {
+		d := FromNanoUSD(tc.nano)
+		if d == nil {
+			t.Fatalf("FromNanoUSD(%d) returned nil", tc.nano)
+		}
+		if d.NanoUSD() != tc.nano {
+			t.Errorf("NanoUSD() = %d, want %d", d.NanoUSD(), tc.nano)
+		}
+		if tc.want != "" && d.String() != tc.want {
+			t.Errorf("String() = %q, want %q", d.String(), tc.want)
+		}
+	}
+	// Round-trip: Parse → NanoUSD → FromNanoUSD → String
+	orig, err := Parse("42.125")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := FromNanoUSD(orig.NanoUSD())
+	if rt.String() != orig.String() {
+		t.Errorf("round-trip %q -> nano -> %q", orig.String(), rt.String())
+	}
+}
+
+func TestParse_EdgePlusPrefix(t *testing.T) {
+	t.Parallel()
+	// Leading '+' is not documented as allowed — must reject.
+	if _, err := Parse("+1"); err == nil {
+		t.Fatal(`Parse("+1") should reject leading plus`)
+	}
+	// Unicode digits must not be accepted.
+	if _, err := Parse("١"); err == nil {
+		t.Fatal("Parse arabic-indic digit should reject")
+	}
+}

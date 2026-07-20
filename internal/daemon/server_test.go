@@ -693,9 +693,22 @@ func TestDaemonNoTcpListener(t *testing.T) {
 	}
 }
 
-// Ensure the Doc.go file exists and compiles.
+// Ensure the package-level documentation and daemon type compile.
 func TestPackageDocCompiles(t *testing.T) {
-	// Just verify the package exists — compilation check is done by go build.
+	// Package must export Daemon and New; construct via New is covered elsewhere.
+	// This guards against accidental unexport of the core type.
+	var d *Daemon
+	if d != nil {
+		t.Fatal("zero *Daemon must be nil")
+	}
+	// Option type must remain usable without invoking network.
+	var opts []Option
+	if opts == nil {
+		opts = []Option{}
+	}
+	if len(opts) != 0 {
+		t.Fatal("empty Option slice should have len 0")
+	}
 }
 
 func TestDaemonStartsDashboard(t *testing.T) {

@@ -296,7 +296,7 @@ func TestB30T02PartB_CrashReplay_AfterAcceptedBeforeStarted(t *testing.T) {
 		Payload:       `{"envelope":"job-1"}`,
 	}
 	if err := cj2.Append(dupAccepted); err == nil {
-		t.Logf("BUG: ControlJournal accepted a duplicate-sequence accepted event (sequence collision not rejected)")
+		t.Error("ControlJournal accepted a duplicate-sequence accepted event (sequence collision not rejected)")
 	}
 	// The next event must be sequence 2 (started), confirming exactly one
 	// accepted envelope was consumed.
@@ -449,7 +449,7 @@ func TestB30T02PartB_CrashReplay_AfterTerminalCommit(t *testing.T) {
 		Payload:       `{"result_digest":"sha256:forged"}`,
 	}
 	if err := cj2.Append(dupSucceeded); err == nil {
-		t.Logf("BUG: ControlJournal accepted a duplicate-sequence terminal event")
+		t.Error("ControlJournal accepted a duplicate-sequence terminal event")
 	}
 }
 
