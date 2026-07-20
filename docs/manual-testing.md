@@ -5,7 +5,7 @@ or debug tests. This is the **developer** testing map for the Go codebase —
 not the product walkthrough (see [quickstart.md](quickstart.md) for that).
 
 For the **release** end-to-end operator loop (clean install → build → share →
-receive), see [execution/golden-loop-test.md](execution/golden-loop-test.md).
+receive), see [execution/reference/e2e-test-plan.md](execution/reference/e2e-test-plan.md).
 
 ## Testing Philosophy
 
@@ -404,4 +404,4 @@ go test ./internal/home/ -race -run Adversary -count=1 -v
 ```
 
 Operator install and first agent: [quickstart.md](quickstart.md).
-Release manual loop: [execution/golden-loop-test.md](execution/golden-loop-test.md).
+Release manual loop: [execution/reference/e2e-test-plan.md](execution/reference/e2e-test-plan.md).

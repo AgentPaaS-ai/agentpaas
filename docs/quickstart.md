@@ -346,7 +346,7 @@ flow and slash commands.
 | Threat model | [threat-model.md](threat-model.md) |
 | Audit export | [audit-export.md](audit-export.md) |
 | Developer test suite (unit → redteam) | [manual-testing.md](manual-testing.md) |
-| Release golden loop | [execution/golden-loop-test.md](execution/golden-loop-test.md) |
+| Release golden loop | [execution/reference/e2e-test-plan.md](execution/reference/e2e-test-plan.md) |
 | Current limits | [known-limitations.md](known-limitations.md) |
 | Weather demo | [../demo/README.md](../demo/README.md) |
 
