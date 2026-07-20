@@ -235,26 +235,63 @@ func (s *MemoryStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 
 func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRequest, expectedDeploymentGeneration int64) (*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
-	if request == nil {
-		return nil, fmt.Errorf("%w: nil request", ErrInvalidArgument)
-	}
-	if request.IdempotencyKey == "" || request.CallerIdentity == "" {
-		return nil, fmt.Errorf("%w: idempotency required", ErrInvalidArgument)
+	if err := validateMemoryAdmitRequest(request); err != nil {
+		return nil, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	intent := computeIntentDigest(request)
-	ik := memKey(request.CallerIdentity, request.IdempotencyKey)
-	if rec, ok := s.idempotency[ik]; ok {
-		if rec.InvocationIntentDigest == intent {
-			r := *s.receipts[rec.InvocationID]
-			return &r, nil
-		}
-		return nil, fmt.Errorf("%w: key %s", ErrIdempotencyConflict, request.IdempotencyKey)
+	if receipt, err := s.replayIdempotentAdmission(request, intent); receipt != nil || err != nil {
+		return receipt, err
 	}
 
-	dep, err := s.resolveDepLocked(request.RequestedDeploymentRef)
+	dep, err := s.resolveActiveDeploymentForAdmit(request.RequestedDeploymentRef, expectedDeploymentGeneration)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.enforceDeploymentConcurrencyQuota(dep); err != nil {
+		return nil, err
+	}
+
+	now := s.now()
+	topo, err := buildMemoryAdmissionTopology(request, dep, intent, now)
+	if err != nil {
+		return nil, err
+	}
+	s.persistAdmissionTopology(topo, request, intent, now)
+
+	cp := *topo.receipt
+	return &cp, nil
+}
+
+func validateMemoryAdmitRequest(request *InvocationRequest) error {
+	if request == nil {
+		return fmt.Errorf("%w: nil request", ErrInvalidArgument)
+	}
+	if request.IdempotencyKey == "" || request.CallerIdentity == "" {
+		return fmt.Errorf("%w: idempotency required", ErrInvalidArgument)
+	}
+	return nil
+}
+
+// replayIdempotentAdmission returns an existing receipt on exact intent match.
+// On miss it returns (nil, nil). On conflict it returns the error.
+func (s *MemoryStore) replayIdempotentAdmission(request *InvocationRequest, intent string) (*InvocationReceipt, error) {
+	ik := memKey(request.CallerIdentity, request.IdempotencyKey)
+	rec, ok := s.idempotency[ik]
+	if !ok {
+		return nil, nil
+	}
+	if rec.InvocationIntentDigest == intent {
+		r := *s.receipts[rec.InvocationID]
+		return &r, nil
+	}
+	return nil, fmt.Errorf("%w: key %s", ErrIdempotencyConflict, request.IdempotencyKey)
+}
+
+func (s *MemoryStore) resolveActiveDeploymentForAdmit(ref string, expectedDeploymentGeneration int64) (*DeploymentRecord, error) {
+	dep, err := s.resolveDepLocked(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +301,10 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 	if dep.Status != DeploymentActive {
 		return nil, fmt.Errorf("%w: %s", ErrDeploymentInactive, dep.DeploymentID)
 	}
+	return dep, nil
+}
+
+func (s *MemoryStore) enforceDeploymentConcurrencyQuota(dep *DeploymentRecord) error {
 	holding := 0
 	for _, wf := range s.workflows {
 		if wf.DeploymentID != dep.DeploymentID {
@@ -279,9 +320,22 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 		max = 1
 	}
 	if holding >= max {
-		return nil, fmt.Errorf("%w: holding %d", ErrAlreadyRunning, holding)
+		return fmt.Errorf("%w: holding %d", ErrAlreadyRunning, holding)
 	}
+	return nil
+}
 
+type memoryAdmissionTopology struct {
+	invID        InvocationID
+	wfID         WorkflowID
+	primaryRunID RunID
+	wf           *WorkflowRecord
+	nodes        []*PipelineNode
+	runs         []*RunRecord
+	receipt      *InvocationReceipt
+}
+
+func buildMemoryAdmissionTopology(request *InvocationRequest, dep *DeploymentRecord, intent string, now time.Time) (*memoryAdmissionTopology, error) {
 	invID, err := NewInvocationID()
 	if err != nil {
 		return nil, err
@@ -290,128 +344,50 @@ func (s *MemoryStore) AdmitInvocation(ctx context.Context, request *InvocationRe
 	if err != nil {
 		return nil, err
 	}
-	now := s.now()
 	kind := topologyKind(dep)
 	stageCount := topologyStageCount(dep, kind)
+	wf := newPendingWorkflowRecord(wfID, invID, dep, kind, request, now)
 
-	wf := &WorkflowRecord{
-		SchemaVersion:       CurrentSchemaVersion,
-		WorkflowID:          wfID,
-		WorkflowKind:        kind,
-		InvocationID:        invID,
-		DeploymentID:        dep.DeploymentID,
-		Status:              WorkflowStatusPending,
-		Generation:          1,
-		PolicyDigest:        dep.PolicyDigest,
-		MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-		MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
-		MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
-		AuthorityGeneration: 1,
-		CreatedAt:           now,
-		UpdatedAt:           now,
+	pairs, primaryRunID, err := buildAdmissionNodeRuns(request, dep, wfID, kind, stageCount, now)
+	if err != nil {
+		return nil, err
 	}
-	s.workflows[wfID] = wf
-	s.workflowGen[wfID] = 1
+	nodes := make([]*PipelineNode, 0, len(pairs))
+	runs := make([]*RunRecord, 0, len(pairs))
+	for _, p := range pairs {
+		nodes = append(nodes, p.node)
+		runs = append(runs, p.run)
+	}
+	receipt := newInvocationReceipt(request, dep, invID, wfID, primaryRunID, intent, now)
+	return &memoryAdmissionTopology{
+		invID:        invID,
+		wfID:         wfID,
+		primaryRunID: primaryRunID,
+		wf:           wf,
+		nodes:        nodes,
+		runs:         runs,
+		receipt:      receipt,
+	}, nil
+}
 
-	var primaryRunID RunID
-	mk := func(stage int, runKind string, status NodeStatus, pkg, ver string) error {
-		nodeID, err := NewNodeID()
-		if err != nil {
-			return err
-		}
-		runID, err := NewRunID()
-		if err != nil {
-			return err
-		}
-		if stage == 0 {
-			primaryRunID = runID
-		}
-		nid := nodeID
-		s.nodes[nodeID] = &PipelineNode{
-			SchemaVersion:  CurrentSchemaVersion,
-			NodeID:         nodeID,
-			WorkflowID:     wfID,
-			Status:         status,
-			RunID:          runID,
-			StageOrder:     stage,
-			PackageName:    pkg,
-			PackageVersion: ver,
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		}
-		s.nodeGen[nodeID] = 1
-		s.runs[runID] = &RunRecord{
-			SchemaVersion:       CurrentSchemaVersion,
-			RunID:               runID,
-			WorkflowID:          wfID,
-			Status:              RunStatusPending,
-			RunKind:             runKind,
-			PolicyDigest:        dep.PolicyDigest,
-			NodeID:              &nid,
-			MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-			MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
-			MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
-			CreatedAt:           now,
-			UpdatedAt:           now,
-		}
-		s.runGen[runID] = 1
-		return nil
+func (s *MemoryStore) persistAdmissionTopology(topo *memoryAdmissionTopology, request *InvocationRequest, intent string, now time.Time) {
+	s.workflows[topo.wfID] = topo.wf
+	s.workflowGen[topo.wfID] = 1
+	for _, node := range topo.nodes {
+		s.nodes[node.NodeID] = node
+		s.nodeGen[node.NodeID] = 1
 	}
-
-	switch kind {
-	case "pipeline":
-		for i := 0; i < stageCount; i++ {
-			st := NodeStatusPending
-			if i == 0 {
-				st = NodeStatusReady
-			}
-			if err := mk(i, "pipeline_stage", st, stagePackageName(dep, i), stagePackageVersion(dep, i)); err != nil {
-				return nil, err
-			}
-		}
-	case "parent_child":
-		if err := mk(0, "parent", NodeStatusReady, dep.PackageName, dep.PackageVersion); err != nil {
-			return nil, err
-		}
-	default:
-		if err := mk(0, "standalone", NodeStatusReady, dep.PackageName, dep.PackageVersion); err != nil {
-			return nil, err
-		}
+	for _, run := range topo.runs {
+		s.runs[run.RunID] = run
+		s.runGen[run.RunID] = 1
 	}
-
-	receipt := &InvocationReceipt{
-		SchemaVersion:              CurrentSchemaVersion,
-		InvocationID:               invID,
-		WorkflowID:                 wfID,
-		RunID:                      primaryRunID,
-		ResolvedDeploymentID:       dep.DeploymentID,
-		ResolvedDeploymentVersion:  dep.PackageVersion,
-		ResolvedDeploymentDigest:   dep.BundleDigest,
-		NestedPackageDigests:       copyStringMap(dep.NestedPackageDigests),
-		RequestedDeploymentRef:     request.RequestedDeploymentRef,
-		InvocationIntentDigest:     intent,
-		CallerIdentity:             request.CallerIdentity,
-		InitialMaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-		InitialAttemptLeaseMs:      request.InitialAttemptLeaseMs,
-		InitialMaxCostUsdDecimal:   request.InitialMaxCostUsdDecimal,
-		AdmittedAt:                 now,
-	}
-	s.receipts[invID] = receipt
-	s.idempotency[ik] = &DurableIdempotencyRecord{
-		SchemaVersion:          CurrentSchemaVersion,
-		InvocationID:           invID,
-		CallerIdentity:         request.CallerIdentity,
-		IdempotencyKey:         request.IdempotencyKey,
-		InvocationIntentDigest: intent,
-		Outcome:                AdmissionAccepted,
-		CreatedAt:              now,
-	}
-	s.activeTime[wfID] = &ActiveTimeLedger{
+	s.receipts[topo.invID] = topo.receipt
+	ik := memKey(request.CallerIdentity, request.IdempotencyKey)
+	s.idempotency[ik] = newAcceptedIdempotencyRecord(request, topo.invID, intent, now)
+	s.activeTime[topo.wfID] = &ActiveTimeLedger{
 		SchemaVersion: CurrentSchemaVersion,
 		UpdatedAt:     now,
 	}
-	cp := *receipt
-	return &cp, nil
 }
 
 func (s *MemoryStore) resolveDepLocked(ref string) (*DeploymentRecord, error) {

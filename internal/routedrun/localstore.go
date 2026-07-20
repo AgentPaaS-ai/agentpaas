@@ -272,17 +272,8 @@ func (s *LocalStore) ListAliases(ctx context.Context) ([]*AliasRecord, error) {
 
 func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationRequest, expectedDeploymentGeneration int64) (*InvocationReceipt, error) {
 	_ = ctx // interface compliance; store ops are local
-	if request == nil {
-		return nil, fmt.Errorf("%w: nil request", ErrInvalidArgument)
-	}
-	if request.IdempotencyKey == "" || request.CallerIdentity == "" {
-		return nil, fmt.Errorf("%w: idempotency_key and caller_identity required", ErrInvalidArgument)
-	}
-	if err := checkStringCap("input_json", request.InputJSON); err != nil {
+	if err := validateLocalAdmitRequest(request); err != nil {
 		return nil, err
-	}
-	if len(request.InputJSON) > maxInputJSONBytes {
-		return nil, fmt.Errorf("%w: input_json", ErrSizeCapExceeded)
 	}
 
 	s.mu.Lock()
@@ -291,18 +282,72 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 	intent := computeIntentDigest(request)
 
 	// 1. Idempotency lookup
-	if receipt, rec, err := s.loadIdempotency(request.CallerIdentity, request.IdempotencyKey); err == nil {
+	if receipt, err := s.replayIdempotentAdmission(request, intent); receipt != nil || err != nil {
+		return receipt, err
+	}
+
+	// 2. Resolve deployment (alias or exact).
+	dep, err := s.resolveActiveDeploymentForAdmit(request.RequestedDeploymentRef, expectedDeploymentGeneration)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Concurrency check — slot-holding workflows for this deployment.
+	if err := s.enforceDeploymentConcurrencyQuota(dep); err != nil {
+		return nil, err
+	}
+
+	// 4. Allocate identities and topology records.
+	topo, err := buildLocalAdmissionTopology(request, dep, s.now())
+	if err != nil {
+		return nil, err
+	}
+
+	receipt := newInvocationReceipt(request, dep, topo.invID, topo.wfID, topo.primaryRunID, intent, topo.now)
+	idem := newAcceptedIdempotencyRecord(request, topo.invID, intent, topo.now)
+
+	// 5. Persist atomically via admission transaction record + materialization.
+	if err := s.commitAdmission(request, receipt, idem, topo.wf, topo.pairs); err != nil {
+		return nil, err
+	}
+	return receipt, nil
+}
+
+func validateLocalAdmitRequest(request *InvocationRequest) error {
+	if request == nil {
+		return fmt.Errorf("%w: nil request", ErrInvalidArgument)
+	}
+	if request.IdempotencyKey == "" || request.CallerIdentity == "" {
+		return fmt.Errorf("%w: idempotency_key and caller_identity required", ErrInvalidArgument)
+	}
+	if err := checkStringCap("input_json", request.InputJSON); err != nil {
+		return err
+	}
+	if len(request.InputJSON) > maxInputJSONBytes {
+		return fmt.Errorf("%w: input_json", ErrSizeCapExceeded)
+	}
+	return nil
+}
+
+// replayIdempotentAdmission returns an existing receipt on exact intent match.
+// On miss it returns (nil, nil). On conflict or load error it returns the error.
+func (s *LocalStore) replayIdempotentAdmission(request *InvocationRequest, intent string) (*InvocationReceipt, error) {
+	receipt, rec, err := s.loadIdempotency(request.CallerIdentity, request.IdempotencyKey)
+	if err == nil {
 		if rec.InvocationIntentDigest == intent {
 			// Exact replay — return existing receipt even if alias moved.
 			return receipt, nil
 		}
 		return nil, fmt.Errorf("%w: key %s", ErrIdempotencyConflict, request.IdempotencyKey)
-	} else if !errorsIsNotFound(err) {
+	}
+	if !errorsIsNotFound(err) {
 		return nil, err
 	}
+	return nil, nil
+}
 
-	// 2. Resolve deployment (alias or exact).
-	dep, err := s.resolveDeploymentRefLocked(request.RequestedDeploymentRef)
+func (s *LocalStore) resolveActiveDeploymentForAdmit(ref string, expectedDeploymentGeneration int64) (*DeploymentRecord, error) {
+	dep, err := s.resolveDeploymentRefLocked(ref)
 	if err != nil {
 		return nil, err
 	}
@@ -312,11 +357,13 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 	if dep.Status != DeploymentActive {
 		return nil, fmt.Errorf("%w: %s", ErrDeploymentInactive, dep.DeploymentID)
 	}
+	return dep, nil
+}
 
-	// 3. Concurrency check — slot-holding workflows for this deployment.
+func (s *LocalStore) enforceDeploymentConcurrencyQuota(dep *DeploymentRecord) error {
 	holding, err := s.countSlotHoldingLocked(dep.DeploymentID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	max := dep.MaxConcurrentRuns
 	if max <= 0 {
@@ -324,10 +371,22 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 	}
 	if holding >= max {
 		// Never persist queued state on ALREADY_RUNNING.
-		return nil, fmt.Errorf("%w: deployment %s holding %d max %d", ErrAlreadyRunning, dep.DeploymentID, holding, max)
+		return fmt.Errorf("%w: deployment %s holding %d max %d", ErrAlreadyRunning, dep.DeploymentID, holding, max)
 	}
+	return nil
+}
 
-	// 4. Allocate identities and topology records.
+// localAdmissionTopology holds the in-memory records produced before commit.
+type localAdmissionTopology struct {
+	invID        InvocationID
+	wfID         WorkflowID
+	primaryRunID RunID
+	wf           *WorkflowRecord
+	pairs        []nodeRun
+	now          time.Time
+}
+
+func buildLocalAdmissionTopology(request *InvocationRequest, dep *DeploymentRecord, now time.Time) (*localAdmissionTopology, error) {
 	invID, err := NewInvocationID()
 	if err != nil {
 		return nil, err
@@ -336,177 +395,143 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 	if err != nil {
 		return nil, err
 	}
-	now := s.now()
 	kind := topologyKind(dep)
 	stageCount := topologyStageCount(dep, kind)
 
-	wf := &WorkflowRecord{
-		SchemaVersion:      CurrentSchemaVersion,
-		WorkflowID:         wfID,
-		WorkflowKind:       kind,
-		InvocationID:       invID,
-		DeploymentID:       dep.DeploymentID,
-		Status:             WorkflowStatusPending,
-		Generation:         1,
-		PolicyDigest:       dep.PolicyDigest,
-		MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-		MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-		MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
-		AuthorityGeneration: 1,
-		CreatedAt:          now,
-		UpdatedAt:          now,
+	wf := newPendingWorkflowRecord(wfID, invID, dep, kind, request, now)
+	pairs, primaryRunID, err := buildAdmissionNodeRuns(request, dep, wfID, kind, stageCount, now)
+	if err != nil {
+		return nil, err
 	}
+	return &localAdmissionTopology{
+		invID:        invID,
+		wfID:         wfID,
+		primaryRunID: primaryRunID,
+		wf:           wf,
+		pairs:        pairs,
+		now:          now,
+	}, nil
+}
 
+func newPendingWorkflowRecord(wfID WorkflowID, invID InvocationID, dep *DeploymentRecord, kind string, request *InvocationRequest, now time.Time) *WorkflowRecord {
+	return &WorkflowRecord{
+		SchemaVersion:       CurrentSchemaVersion,
+		WorkflowID:          wfID,
+		WorkflowKind:        kind,
+		InvocationID:        invID,
+		DeploymentID:        dep.DeploymentID,
+		Status:              WorkflowStatusPending,
+		Generation:          1,
+		PolicyDigest:        dep.PolicyDigest,
+		MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
+		MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
+		MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
+		AuthorityGeneration: 1,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+}
+
+func buildAdmissionNodeRuns(request *InvocationRequest, dep *DeploymentRecord, wfID WorkflowID, kind string, stageCount int, now time.Time) ([]nodeRun, RunID, error) {
 	var pairs []nodeRun
 	var primaryRunID RunID
 
 	switch kind {
 	case "pipeline":
 		for i := 0; i < stageCount; i++ {
-			nodeID, err := NewNodeID()
-			if err != nil {
-				return nil, err
-			}
-			runID, err := NewRunID()
-			if err != nil {
-				return nil, err
-			}
-			if i == 0 {
-				primaryRunID = runID
-			}
 			st := NodeStatusPending
 			if i == 0 {
 				st = NodeStatusReady
 			}
-			nid := nodeID
-			pairs = append(pairs, nodeRun{
-				node: &PipelineNode{
-					SchemaVersion: CurrentSchemaVersion,
-					NodeID:        nodeID,
-					WorkflowID:    wfID,
-					Status:        st,
-					RunID:         runID,
-					StageOrder:    i,
-					PackageName:   stagePackageName(dep, i),
-					PackageVersion: stagePackageVersion(dep, i),
-					CreatedAt:     now,
-					UpdatedAt:     now,
-				},
-				run: &RunRecord{
-					SchemaVersion:      CurrentSchemaVersion,
-					RunID:              runID,
-					WorkflowID:         wfID,
-					Status:             RunStatusPending,
-					RunKind:            "pipeline_stage",
-					PolicyDigest:       dep.PolicyDigest,
-					NodeID:             &nid,
-					MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-					MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-					MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
-					CreatedAt:          now,
-					UpdatedAt:          now,
-				},
-			})
+			p, err := newAdmissionNodeRun(request, dep, wfID, i, st, "pipeline_stage", stagePackageName(dep, i), stagePackageVersion(dep, i), now)
+			if err != nil {
+				return nil, "", err
+			}
+			if i == 0 {
+				primaryRunID = p.run.RunID
+			}
+			pairs = append(pairs, p)
 		}
 	case "parent_child":
-		nodeID, err := NewNodeID()
+		p, err := newAdmissionNodeRun(request, dep, wfID, 0, NodeStatusReady, "parent", dep.PackageName, dep.PackageVersion, now)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		runID, err := NewRunID()
-		if err != nil {
-			return nil, err
-		}
-		primaryRunID = runID
-		nid := nodeID
-		pairs = append(pairs, nodeRun{
-			node: &PipelineNode{
-				SchemaVersion: CurrentSchemaVersion,
-				NodeID:        nodeID,
-				WorkflowID:    wfID,
-				Status:        NodeStatusReady,
-				RunID:         runID,
-				StageOrder:    0,
-				PackageName:   dep.PackageName,
-				PackageVersion: dep.PackageVersion,
-				CreatedAt:     now,
-				UpdatedAt:     now,
-			},
-			run: &RunRecord{
-				SchemaVersion:      CurrentSchemaVersion,
-				RunID:              runID,
-				WorkflowID:         wfID,
-				Status:             RunStatusPending,
-				RunKind:            "parent",
-				PolicyDigest:       dep.PolicyDigest,
-				NodeID:             &nid,
-				MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-				MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-				MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
-				CreatedAt:          now,
-				UpdatedAt:          now,
-			},
-		})
+		primaryRunID = p.run.RunID
+		pairs = append(pairs, p)
 	default: // standalone
-		nodeID, err := NewNodeID()
+		p, err := newAdmissionNodeRun(request, dep, wfID, 0, NodeStatusReady, "standalone", dep.PackageName, dep.PackageVersion, now)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
-		runID, err := NewRunID()
-		if err != nil {
-			return nil, err
-		}
-		primaryRunID = runID
-		nid := nodeID
-		pairs = append(pairs, nodeRun{
-			node: &PipelineNode{
-				SchemaVersion: CurrentSchemaVersion,
-				NodeID:        nodeID,
-				WorkflowID:    wfID,
-				Status:        NodeStatusReady,
-				RunID:         runID,
-				StageOrder:    0,
-				PackageName:   dep.PackageName,
-				PackageVersion: dep.PackageVersion,
-				CreatedAt:     now,
-				UpdatedAt:     now,
-			},
-			run: &RunRecord{
-				SchemaVersion:      CurrentSchemaVersion,
-				RunID:              runID,
-				WorkflowID:         wfID,
-				Status:             RunStatusPending,
-				RunKind:            "standalone",
-				PolicyDigest:       dep.PolicyDigest,
-				NodeID:             &nid,
-				MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-				MaxAttemptLeaseMs:  request.InitialAttemptLeaseMs,
-				MaxLLMSpendDecimal: request.InitialMaxCostUsdDecimal,
-				CreatedAt:          now,
-				UpdatedAt:          now,
-			},
-		})
+		primaryRunID = p.run.RunID
+		pairs = append(pairs, p)
 	}
+	return pairs, primaryRunID, nil
+}
 
-	receipt := &InvocationReceipt{
-		SchemaVersion:             CurrentSchemaVersion,
-		InvocationID:              invID,
-		WorkflowID:                wfID,
-		RunID:                     primaryRunID,
-		ResolvedDeploymentID:      dep.DeploymentID,
-		ResolvedDeploymentVersion: dep.PackageVersion,
-		ResolvedDeploymentDigest:  dep.BundleDigest,
-		NestedPackageDigests:      copyStringMap(dep.NestedPackageDigests),
-		RequestedDeploymentRef:    request.RequestedDeploymentRef,
-		InvocationIntentDigest:    intent,
-		CallerIdentity:            request.CallerIdentity,
+func newAdmissionNodeRun(request *InvocationRequest, dep *DeploymentRecord, wfID WorkflowID, stage int, nodeStatus NodeStatus, runKind, pkg, ver string, now time.Time) (nodeRun, error) {
+	nodeID, err := NewNodeID()
+	if err != nil {
+		return nodeRun{}, err
+	}
+	runID, err := NewRunID()
+	if err != nil {
+		return nodeRun{}, err
+	}
+	nid := nodeID
+	return nodeRun{
+		node: &PipelineNode{
+			SchemaVersion:   CurrentSchemaVersion,
+			NodeID:          nodeID,
+			WorkflowID:      wfID,
+			Status:          nodeStatus,
+			RunID:           runID,
+			StageOrder:      stage,
+			PackageName:     pkg,
+			PackageVersion:  ver,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		run: &RunRecord{
+			SchemaVersion:       CurrentSchemaVersion,
+			RunID:               runID,
+			WorkflowID:          wfID,
+			Status:              RunStatusPending,
+			RunKind:             runKind,
+			PolicyDigest:        dep.PolicyDigest,
+			NodeID:              &nid,
+			MaxActiveDurationMs: request.InitialMaxActiveDurationMs,
+			MaxAttemptLeaseMs:   request.InitialAttemptLeaseMs,
+			MaxLLMSpendDecimal:  request.InitialMaxCostUsdDecimal,
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		},
+	}, nil
+}
+
+func newInvocationReceipt(request *InvocationRequest, dep *DeploymentRecord, invID InvocationID, wfID WorkflowID, primaryRunID RunID, intent string, now time.Time) *InvocationReceipt {
+	return &InvocationReceipt{
+		SchemaVersion:              CurrentSchemaVersion,
+		InvocationID:               invID,
+		WorkflowID:                 wfID,
+		RunID:                      primaryRunID,
+		ResolvedDeploymentID:       dep.DeploymentID,
+		ResolvedDeploymentVersion:  dep.PackageVersion,
+		ResolvedDeploymentDigest:   dep.BundleDigest,
+		NestedPackageDigests:       copyStringMap(dep.NestedPackageDigests),
+		RequestedDeploymentRef:     request.RequestedDeploymentRef,
+		InvocationIntentDigest:     intent,
+		CallerIdentity:             request.CallerIdentity,
 		InitialMaxActiveDurationMs: request.InitialMaxActiveDurationMs,
-		InitialAttemptLeaseMs:     request.InitialAttemptLeaseMs,
-		InitialMaxCostUsdDecimal:  request.InitialMaxCostUsdDecimal,
-		AdmittedAt:                now,
+		InitialAttemptLeaseMs:      request.InitialAttemptLeaseMs,
+		InitialMaxCostUsdDecimal:   request.InitialMaxCostUsdDecimal,
+		AdmittedAt:                 now,
 	}
+}
 
-	idem := &DurableIdempotencyRecord{
+func newAcceptedIdempotencyRecord(request *InvocationRequest, invID InvocationID, intent string, now time.Time) *DurableIdempotencyRecord {
+	return &DurableIdempotencyRecord{
 		SchemaVersion:          CurrentSchemaVersion,
 		InvocationID:           invID,
 		CallerIdentity:         request.CallerIdentity,
@@ -515,12 +540,6 @@ func (s *LocalStore) AdmitInvocation(ctx context.Context, request *InvocationReq
 		Outcome:                AdmissionAccepted,
 		CreatedAt:              now,
 	}
-
-	// 5. Persist atomically via admission transaction record + materialization.
-	if err := s.commitAdmission(request, receipt, idem, wf, pairs); err != nil {
-		return nil, err
-	}
-	return receipt, nil
 }
 
 func (s *LocalStore) commitAdmission(req *InvocationRequest, receipt *InvocationReceipt, idem *DurableIdempotencyRecord, wf *WorkflowRecord, pairs []nodeRun) error {
