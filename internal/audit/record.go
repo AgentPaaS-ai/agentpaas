@@ -2,10 +2,15 @@ package audit
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
 )
+
+// emptyJSONObject is reused for empty orderedKeyMap marshaling to avoid a
+// per-call []byte("{}") allocation on the audit write path.
+var emptyJSONObject = []byte("{}")
 
 // AuditRecord represents a single entry in the audit log. Each record is
 // cryptographically linked to its predecessor via the hash chain.
@@ -66,7 +71,8 @@ type orderedKeyMap map[string]interface{}
 // a deterministic JSON object with keys sorted lexicographically.
 func (m orderedKeyMap) MarshalJSON() ([]byte, error) {
 	if len(m) == 0 {
-		return []byte(`{}`), nil
+		// Hot path: empty payloads are common; reuse package-level bytes.
+		return emptyJSONObject, nil
 	}
 
 	keys := make([]string, 0, len(m))
@@ -75,7 +81,9 @@ func (m orderedKeyMap) MarshalJSON() ([]byte, error) {
 	}
 	sort.Strings(keys)
 
-	var buf []byte
+	// Pre-size buffer to cut mid-marshal growth (audit append is per-event hot).
+	// 2 braces + ~24 bytes average per entry overhead before real key/value sizes.
+	buf := make([]byte, 0, 2+len(keys)*24)
 	buf = append(buf, '{')
 	for i, k := range keys {
 		if i > 0 {
@@ -140,5 +148,6 @@ func (r *AuditRecord) computeRecordHash() (string, error) {
 		return "", fmt.Errorf("canonical marshal: %w", err)
 	}
 	hash := sha256.Sum256(canonical)
-	return fmt.Sprintf("%x", hash), nil
+	// hex.EncodeToString avoids fmt.Sprintf's format-parsing overhead on every append.
+	return hex.EncodeToString(hash[:]), nil
 }

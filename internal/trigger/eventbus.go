@@ -63,6 +63,8 @@ func (b *EventBus) RegisterRun(runID string) {
 		return
 	}
 	b.buffers[runID] = &runBuffer{
+		// Typical lifecycle is a handful of events (created/started/progress/terminal).
+		events:      make([]RunEvent, 0, 8),
 		subscribers: make(map[int64]chan RunEvent),
 	}
 }
@@ -87,18 +89,20 @@ func (b *EventBus) Publish(runID string, eventType EventType, data any) *RunEven
 	}
 
 	buf.nextID++
-	event := RunEvent{
+	// Append then take pointer into the backing array so the returned *RunEvent
+	// does not force a second heap copy of the same event value.
+	buf.events = append(buf.events, RunEvent{
 		EventID:   buf.nextID,
 		RunID:     runID,
 		Type:      eventType,
 		Timestamp: time.Now().UTC(),
 		Data:      data,
-	}
-	buf.events = append(buf.events, event)
+	})
+	event := &buf.events[len(buf.events)-1]
 
 	for _, ch := range buf.subscribers {
 		select {
-		case ch <- event:
+		case ch <- *event:
 		default:
 		}
 	}
@@ -111,7 +115,7 @@ func (b *EventBus) Publish(runID string, eventType EventType, data any) *RunEven
 		buf.subscribers = make(map[int64]chan RunEvent)
 	}
 
-	return &event
+	return event
 }
 
 // Subscribe subscribes to events for a run, replaying events after fromEventID.

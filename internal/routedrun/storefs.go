@@ -43,6 +43,9 @@ const (
 	maxInputJSONBytes  = 1 << 20
 )
 
+// jsonlNewline is shared so appendJSONL avoids allocating a 1-byte slice per write.
+var jsonlNewline = []byte{'\n'}
+
 // persisted wraps a record with store-level generation for CAS when the
 // domain type itself has no Generation field.
 type persisted struct {
@@ -347,7 +350,11 @@ func appendJSONL(path string, line []byte) error {
 		_ = f.Close() // best-effort close
 		return fmt.Errorf("%w: %s mode %#o", ErrUnsafePermissions, path, fi.Mode().Perm())
 	}
-	if _, err := f.Write(append(line, '\n')); err != nil {
+	// Two writes avoids append(line, '\n') reallocating the marshaled payload.
+	if _, err := f.Write(line); err != nil {
+		return fmt.Errorf("append jsonl: %w", err)
+	}
+	if _, err := f.Write(jsonlNewline); err != nil {
 		return fmt.Errorf("append jsonl: %w", err)
 	}
 	if err := f.Sync(); err != nil {
