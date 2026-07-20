@@ -192,7 +192,8 @@ func TestInvokeDeployment_NotEnabledNoMutation(t *testing.T) {
 		t.Fatalf("expected InvalidArgument for missing key, got %v", err)
 	}
 
-	// With key → feature not enabled, no accepted job.
+	// With key + caller → B30-T02 activates the durable admission path:
+	// the invocation is accepted, not feature-not-enabled.
 	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
 		DeploymentRef:  d.GetDeployment().GetDeploymentId(),
 		InputJson:      []byte(`{"x":1}`),
@@ -202,36 +203,31 @@ func TestInvokeDeployment_NotEnabledNoMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected gRPC error: %v", err)
 	}
-	if resp.GetError() == nil {
-		t.Fatal("expected feature not enabled error")
+	if resp.GetOutcome() != controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
+		t.Fatalf("outcome=%v want ACCEPTED (durable admission is active as of B30-T02)", resp.GetOutcome())
 	}
-	if resp.GetError().GetCode() != controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED {
-		t.Fatalf("code=%v", resp.GetError().GetCode())
+	if resp.GetError() != nil {
+		t.Fatalf("unexpected typed error: %+v", resp.GetError())
 	}
-	if resp.GetError().GetCodeName() != "routed_run_invocation_not_enabled" &&
-		resp.GetError().GetDetails()["code_name"] != "routed_run_invocation_not_enabled" {
-		t.Fatalf("details=%v name=%s", resp.GetError().GetDetails(), resp.GetError().GetCodeName())
-	}
-	// No accepted outcome.
-	if resp.GetOutcome() == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
-		t.Fatal("must not accept invocation in B26")
+	if resp.GetInvocationId() == "" {
+		t.Fatal("invocation_id empty")
 	}
 
-	// Store must have zero invocations.
+	// Store must have exactly one invocation now.
 	invs, err := s.localStore.ListInvocations(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(invs) != 0 {
-		t.Fatalf("expected no invocations, got %d", len(invs))
+	if len(invs) != 1 {
+		t.Fatalf("expected 1 invocation, got %d", len(invs))
 	}
-	// No runs created.
+	// Exactly one run created (standalone topology: 1 run, READY node, no attempt).
 	runs, err := s.runStore.ListRuns(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(runs) != 0 {
-		t.Fatalf("expected no runs, got %d", len(runs))
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 run, got %d", len(runs))
 	}
 }
 
@@ -456,21 +452,29 @@ func TestNotEnabledErrorHelpers(t *testing.T) {
 }
 
 func TestMCPServiceBinding_NotRoutedThroughHarness(t *testing.T) {
-	// Ensure InvokeDeployment never produces synthetic MCP success.
+	// Ensure InvokeDeployment never produces synthetic MCP success. With the
+	// B30-T02 durable path active, an unresolved alias is rejected by the
+	// admission store with a typed error — no synthetic receipt, no harness
+	// audit, no containers.
 	s := newTestControlServer(t)
 	ctx := context.Background()
 	resp, err := s.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
 		DeploymentRef: "alias/prod", InputJson: []byte(`{}`), IdempotencyKey: "k",
+		CallerIdentity: "c",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Unresolved alias -> typed error, not ACCEPTED.
+	if resp.GetOutcome() == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
+		t.Fatal("must not accept invocation for unresolved alias")
+	}
 	if resp.GetError() == nil {
-		t.Fatal("expected not-enabled")
+		t.Fatal("expected typed error for unresolved alias")
 	}
 	// No harness audit or containers — store empty.
 	if invs, _ := s.localStore.ListInvocations(ctx); len(invs) != 0 {
-		t.Fatal("invocation receipt must not be created on not-enabled path")
+		t.Fatal("invocation receipt must not be created for unresolved alias")
 	}
 }
 
