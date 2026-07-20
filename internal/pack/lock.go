@@ -579,18 +579,8 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = sbom // intentionally ignored (reviewed)
 
-	keyMaterial, err := cfg.KeyStore.Load(cfg.KeyID)
-	if err != nil {
-		return nil, fmt.Errorf("load package identity key: %w", err)
-	}
-	privateKey, privateKeyPEM, err := privateKeyFromMaterial(keyMaterial)
-	if err != nil {
-		return nil, err
-	}
-
-	keyFile, cleanup, err := writeCosignSigningKey(privateKeyPEM)
+	privateKey, keyFile, cleanup, err := preparePackageSigningMaterial(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -611,7 +601,46 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, fmt.Errorf("policy validation: %w", err)
 	}
 
-	lock := &AgentLock{
+	lock := assembleAgentLock(cfg, sbom, sbomDigest, string(publicKeyPEM), privateKey, signatureReferrer, policyDigest)
+
+	pubIdentity, err := loadRequiredPublisherIdentity(cfg)
+	if err != nil {
+		return nil, err
+	}
+	attachPublisherInfo(lock, pubIdentity)
+
+	if err := attachLockProvenance(lock, cfg, pubIdentity); err != nil {
+		return nil, err
+	}
+
+	if err := signAgentLock(lock, cfg); err != nil {
+		return nil, err
+	}
+
+	return lock, nil
+}
+
+// preparePackageSigningMaterial loads the package AID key and writes a temporary
+// cosign key file. Caller must invoke cleanup.
+func preparePackageSigningMaterial(cfg LockConfig) (privateKey *ecdsa.PrivateKey, keyFile string, cleanup func(), err error) {
+	keyMaterial, err := cfg.KeyStore.Load(cfg.KeyID)
+	if err != nil {
+		return nil, "", func() {}, fmt.Errorf("load package identity key: %w", err)
+	}
+	privateKey, privateKeyPEM, err := privateKeyFromMaterial(keyMaterial)
+	if err != nil {
+		return nil, "", func() {}, err
+	}
+	keyFile, cleanup, err = writeCosignSigningKey(privateKeyPEM)
+	if err != nil {
+		return nil, "", func() {}, err
+	}
+	return privateKey, keyFile, cleanup, nil
+}
+
+// assembleAgentLock builds the unsigned lock struct fields from pack inputs.
+func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID string, privateKey *ecdsa.PrivateKey, signatureReferrer, policyDigest string) *AgentLock {
+	return &AgentLock{
 		SchemaVersion:        LockSchemaVersion,
 		AgentName:            agentYAMLString(cfg.AgentYAML, "Name", "AgentName"),
 		AgentVersion:         agentYAMLString(cfg.AgentYAML, "Version", "AgentVersion"),
@@ -625,7 +654,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		SBOM:                 sbom,
 		PolicyDigest:         policyDigest,
 		PolicyYAML:           cfg.PolicyYAML,
-		PackageAID:           string(publicKeyPEM),
+		PackageAID:           packageAID,
 		PublicKeyFingerprint: PublicKeyFingerprint(&privateKey.PublicKey),
 		SBOMReferrer:         "oci://" + cfg.BuildResult.ImageRef + "#sbom@sha256:" + sbomDigest,
 		SignatureReferrer:    signatureReferrer,
@@ -638,119 +667,141 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		CreatedAt: cfg.SourceDateEpoch.UTC(),
 		AgentYAML: cfg.AgentYAML,
 	}
+}
 
-	// Publisher identity is REQUIRED — no agent may be packed without one.
-	// This ensures every agent has a verifiable provenance chain and a
-	// fingerprint the receiver can verify out-of-band.
-	var pubIdentity *identity.PublisherIdentity
-	if cfg.PublisherKeyStore != nil {
-		var pubErr error
-		pubIdentity, pubErr = identity.LoadPublisherIdentity(cfg.PublisherKeyStore)
-		if pubErr != nil {
-			if errors.Is(pubErr, identity.ErrNoPublisherIdentity) {
-				return nil, errors.New("no publisher identity — run 'agentpaas identity init' before packing agents")
-			}
-			// Any other identity error also fails closed.
-			return nil, fmt.Errorf("load publisher identity: %w", pubErr)
-		}
-	} else {
+// loadRequiredPublisherIdentity loads the publisher identity. Publisher
+// identity is REQUIRED — no agent may be packed without one.
+func loadRequiredPublisherIdentity(cfg LockConfig) (*identity.PublisherIdentity, error) {
+	if cfg.PublisherKeyStore == nil {
 		return nil, errors.New("no publisher keystore configured — run 'agentpaas identity init' before packing agents")
 	}
-	if pubIdentity != nil {
-		now := time.Now().UTC()
-		lock.Publisher = &PublisherInfo{
-			Name:         pubIdentity.Name,
-			Fingerprint:  pubIdentity.Fingerprint,
-			PublicKeyPEM: pubIdentity.PublicKeyPEM,
-			SignedAt:     now,
+	pubIdentity, pubErr := identity.LoadPublisherIdentity(cfg.PublisherKeyStore)
+	if pubErr != nil {
+		if errors.Is(pubErr, identity.ErrNoPublisherIdentity) {
+			return nil, errors.New("no publisher identity — run 'agentpaas identity init' before packing agents")
 		}
+		// Any other identity error also fails closed.
+		return nil, fmt.Errorf("load publisher identity: %w", pubErr)
 	}
+	return pubIdentity, nil
+}
 
+func attachPublisherInfo(lock *AgentLock, pubIdentity *identity.PublisherIdentity) {
+	if pubIdentity == nil {
+		return
+	}
+	now := time.Now().UTC()
+	lock.Publisher = &PublisherInfo{
+		Name:         pubIdentity.Name,
+		Fingerprint:  pubIdentity.Fingerprint,
+		PublicKeyPEM: pubIdentity.PublicKeyPEM,
+		SignedAt:     now,
+	}
+}
+
+// attachLockProvenance records either a forked or created provenance entry.
+func attachLockProvenance(lock *AgentLock, cfg LockConfig, pubIdentity *identity.PublisherIdentity) error {
 	lineage, lineageErr := ReadLineage(cfg.ProjectDir)
 	if lineageErr != nil && !errors.Is(lineageErr, ErrLineageNotFound) {
-		return nil, fmt.Errorf("%s: %w", errLineageCorrupt, lineageErr)
+		return fmt.Errorf("%s: %w", errLineageCorrupt, lineageErr)
 	}
 	if lineage != nil {
-		if pubIdentity == nil {
-			return nil, errors.New(errForkPackNeedsIdentity)
-		}
-		if err := VerifyLineageParentProvenance(&lineage.Parent); err != nil {
-			return nil, fmt.Errorf("%s: %w", errLineageCorrupt, err)
-		}
-		parentProv := lineage.Parent.Provenance
-		if len(parentProv)+1 > maxProvenanceChainLength {
-			return nil, errors.New(errProvenanceChainCap)
-		}
-		parentPolicyYAML, err := base64.StdEncoding.DecodeString(lineage.Parent.PolicyYAMLB64)
-		if err != nil {
-			return nil, fmt.Errorf("%s: decode parent policy: %w", errLineageCorrupt, err)
-		}
-		polDelta, err := policy.ComputeDelta(parentPolicyYAML, cfg.PolicyYAML)
-		if err != nil {
-			return nil, fmt.Errorf("policy delta: %w", err)
-		}
-		now := time.Now().UTC()
-		entry := ProvenanceEntry{
-			Action:                "forked",
-			PublisherFingerprint:  pubIdentity.Fingerprint,
-			PublisherName:         pubIdentity.Name,
-			PublisherPublicKeyPEM: pubIdentity.PublicKeyPEM,
-			AgentName:             lock.AgentName,
-			AgentVersion:          lock.AgentVersion,
-			ParentLockDigest:      lineage.Parent.LockDigest,
-			ParentBundleDigest:    lineage.Parent.BundleDigest,
-			ParentPolicyDigest:    lineage.Parent.PolicyDigest,
-			PolicyDelta:           policyDeltaFromPolicy(polDelta),
-			Timestamp:             now,
-		}
-		entryCanonical, err := provenanceEntryCanonical(&entry)
-		if err != nil {
-			return nil, fmt.Errorf("provenance entry canonical: %w", err)
-		}
-		entryDigest := sha256.Sum256(entryCanonical)
-		entrySig, err := identity.SignAsPublisher(cfg.PublisherKeyStore, entryDigest[:])
-		if err != nil {
-			return nil, fmt.Errorf("sign provenance entry: %w", err)
-		}
-		entry.EntrySignature = base64.StdEncoding.EncodeToString(entrySig)
-		lock.Provenance = append(append([]ProvenanceEntry(nil), parentProv...), entry)
-	} else if pubIdentity != nil {
-		now := time.Now().UTC()
-		entry := ProvenanceEntry{
-			Action:                "created",
-			PublisherFingerprint:  pubIdentity.Fingerprint,
-			PublisherName:         pubIdentity.Name,
-			PublisherPublicKeyPEM: pubIdentity.PublicKeyPEM,
-			AgentName:             lock.AgentName,
-			AgentVersion:          lock.AgentVersion,
-			ParentLockDigest:      "",
-			ParentBundleDigest:    "",
-			ParentPolicyDigest:    "",
-			PolicyDelta:           nil,
-			Timestamp:             now,
-		}
-		entryCanonical, err := provenanceEntryCanonical(&entry)
-		if err != nil {
-			return nil, fmt.Errorf("provenance entry canonical: %w", err)
-		}
-		entryDigest := sha256.Sum256(entryCanonical)
-		entrySig, err := identity.SignAsPublisher(cfg.PublisherKeyStore, entryDigest[:])
-		if err != nil {
-			return nil, fmt.Errorf("sign provenance entry: %w", err)
-		}
-		entry.EntrySignature = base64.StdEncoding.EncodeToString(entrySig)
-		lock.Provenance = []ProvenanceEntry{entry}
+		return attachForkedProvenance(lock, cfg, pubIdentity, lineage)
 	}
+	if pubIdentity != nil {
+		return attachCreatedProvenance(lock, cfg, pubIdentity)
+	}
+	return nil
+}
 
+func attachForkedProvenance(lock *AgentLock, cfg LockConfig, pubIdentity *identity.PublisherIdentity, lineage *LineageFile) error {
+	if pubIdentity == nil {
+		return errors.New(errForkPackNeedsIdentity)
+	}
+	if err := VerifyLineageParentProvenance(&lineage.Parent); err != nil {
+		return fmt.Errorf("%s: %w", errLineageCorrupt, err)
+	}
+	parentProv := lineage.Parent.Provenance
+	if len(parentProv)+1 > maxProvenanceChainLength {
+		return errors.New(errProvenanceChainCap)
+	}
+	parentPolicyYAML, err := base64.StdEncoding.DecodeString(lineage.Parent.PolicyYAMLB64)
+	if err != nil {
+		return fmt.Errorf("%s: decode parent policy: %w", errLineageCorrupt, err)
+	}
+	polDelta, err := policy.ComputeDelta(parentPolicyYAML, cfg.PolicyYAML)
+	if err != nil {
+		return fmt.Errorf("policy delta: %w", err)
+	}
+	now := time.Now().UTC()
+	entry := ProvenanceEntry{
+		Action:                "forked",
+		PublisherFingerprint:  pubIdentity.Fingerprint,
+		PublisherName:         pubIdentity.Name,
+		PublisherPublicKeyPEM: pubIdentity.PublicKeyPEM,
+		AgentName:             lock.AgentName,
+		AgentVersion:          lock.AgentVersion,
+		ParentLockDigest:      lineage.Parent.LockDigest,
+		ParentBundleDigest:    lineage.Parent.BundleDigest,
+		ParentPolicyDigest:    lineage.Parent.PolicyDigest,
+		PolicyDelta:           policyDeltaFromPolicy(polDelta),
+		Timestamp:             now,
+	}
+	if err := signLockProvenanceEntry(&entry, cfg.PublisherKeyStore); err != nil {
+		return err
+	}
+	lock.Provenance = append(append([]ProvenanceEntry(nil), parentProv...), entry)
+	return nil
+}
+
+func attachCreatedProvenance(lock *AgentLock, cfg LockConfig, pubIdentity *identity.PublisherIdentity) error {
+	now := time.Now().UTC()
+	entry := ProvenanceEntry{
+		Action:                "created",
+		PublisherFingerprint:  pubIdentity.Fingerprint,
+		PublisherName:         pubIdentity.Name,
+		PublisherPublicKeyPEM: pubIdentity.PublicKeyPEM,
+		AgentName:             lock.AgentName,
+		AgentVersion:          lock.AgentVersion,
+		ParentLockDigest:      "",
+		ParentBundleDigest:    "",
+		ParentPolicyDigest:    "",
+		PolicyDelta:           nil,
+		Timestamp:             now,
+	}
+	if err := signLockProvenanceEntry(&entry, cfg.PublisherKeyStore); err != nil {
+		return err
+	}
+	lock.Provenance = []ProvenanceEntry{entry}
+	return nil
+}
+
+func signLockProvenanceEntry(entry *ProvenanceEntry, publisherKeyStore identity.KeyStore) error {
+	entryCanonical, err := provenanceEntryCanonical(entry)
+	if err != nil {
+		return fmt.Errorf("provenance entry canonical: %w", err)
+	}
+	entryDigest := sha256.Sum256(entryCanonical)
+	entrySig, err := identity.SignAsPublisher(publisherKeyStore, entryDigest[:])
+	if err != nil {
+		return fmt.Errorf("sign provenance entry: %w", err)
+	}
+	entry.EntrySignature = base64.StdEncoding.EncodeToString(entrySig)
+	return nil
+}
+
+// signAgentLock attaches the package AID lockfile signature and optional
+// publisher signature over the canonical lock JSON.
+func signAgentLock(lock *AgentLock, cfg LockConfig) error {
 	// Sign the lock with the package AID key.
 	canonical, err := canonicalJSON(lock)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	digest := sha256.Sum256(canonical)
 	signature, err := cfg.KeyStore.Sign(cfg.KeyID, digest[:])
 	if err != nil {
-		return nil, fmt.Errorf("sign agent.lock: %w", err)
+		return fmt.Errorf("sign agent.lock: %w", err)
 	}
 	lock.LockfileSignature = base64.StdEncoding.EncodeToString(signature)
 
@@ -759,17 +810,16 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	if lock.Publisher != nil && cfg.PublisherKeyStore != nil {
 		pubCanonical, err := canonicalJSON(lock)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		pubDigest := sha256.Sum256(pubCanonical)
 		pubSig, err := identity.SignAsPublisher(cfg.PublisherKeyStore, pubDigest[:])
 		if err != nil {
-			return nil, fmt.Errorf("sign publisher: %w", err)
+			return fmt.Errorf("sign publisher: %w", err)
 		}
 		lock.PublisherSignature = base64.StdEncoding.EncodeToString(pubSig)
 	}
-
-	return lock, nil
+	return nil
 }
 
 // canonicalJSON returns the canonical JSON encoding of the lockfile
