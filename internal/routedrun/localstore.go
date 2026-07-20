@@ -750,6 +750,42 @@ func (s *LocalStore) GetRun(ctx context.Context, runID RunID) (*RunRecord, error
 	return &run, nil
 }
 
+// GetRunGeneration returns the persisted envelope generation of the run record.
+// The supervisor (B30-T05) uses this to drive compare-and-swap transitions on
+// runs whose RunRecord struct does not itself carry a Generation field.
+func (s *LocalStore) GetRunGeneration(ctx context.Context, runID RunID) (int64, error) {
+	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var run RunRecord
+	gen, err := s.readJSON(s.runPath(runID), &run)
+	if err != nil {
+		return 0, err
+	}
+	return gen, nil
+}
+
+// GetAttemptGeneration returns the persisted envelope generation of the attempt
+// record. The supervisor (B30-T05) uses this to drive compare-and-swap
+// transitions on attempts whose AttemptRecord struct does not itself carry a
+// Generation field.
+func (s *LocalStore) GetAttemptGeneration(ctx context.Context, attemptID AttemptID) (int64, error) {
+	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	att, err := s.findAttemptLocked(attemptID)
+	if err != nil {
+		return 0, err
+	}
+	path := s.attemptPath(att.RunID, att.AttemptID)
+	var rec AttemptRecord
+	gen, err := s.readJSON(path, &rec)
+	if err != nil {
+		return 0, err
+	}
+	return gen, nil
+}
+
 func (s *LocalStore) UpdateRun(ctx context.Context, run *RunRecord, expectedGeneration int64) error {
 	_ = ctx
 	if run == nil {
