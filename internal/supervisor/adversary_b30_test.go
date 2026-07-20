@@ -551,6 +551,14 @@ func TestAdversary_B30_CheckpointDigestTamper(t *testing.T) {
 	got, err := h.store.GetLatestCheckpoint(ctx, attID)
 	if err != nil {
 		// Rejecting the tampered file entirely is a valid defense.
+		// The error must be a digest-verification failure or ErrNotFound
+		// (the tampered checkpoint was rejected). Any other error is
+		// suspicious (F24).
+		if !errors.Is(err, routedrun.ErrNotFound) &&
+			!strings.Contains(err.Error(), "digest") &&
+			!strings.Contains(err.Error(), "verify") {
+			t.Fatalf("ADVERSARY BREAK: GetLatestCheckpoint failed with unexpected error: %v", err)
+		}
 		return
 	}
 
@@ -570,7 +578,13 @@ func TestAdversary_B30_CheckpointDigestTamper(t *testing.T) {
 	}
 	got2, err := h.store.GetLatestCheckpoint(ctx, attID)
 	if err != nil {
-		return // rejection after reconcile is fine
+		// Rejection after reconcile is fine, but must be a relevant error (F24).
+		if !errors.Is(err, routedrun.ErrNotFound) &&
+			!strings.Contains(err.Error(), "digest") &&
+			!strings.Contains(err.Error(), "verify") {
+			t.Fatalf("ADVERSARY BREAK: GetLatestCheckpoint after reconcile failed with unexpected error: %v", err)
+		}
+		return
 	}
 	if got2.SafeToResume && got2.CheckpointDigest == "digest-tampered-evil" {
 		t.Fatal("ADVERSARY BREAK: after reconcile, tampered checkpoint still trusted for resume")
