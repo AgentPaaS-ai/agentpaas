@@ -14,17 +14,6 @@ import (
 // Claim
 // ---------------------------------------------------------------------------
 
-// Claim acquires the active lease for an invocation's run and starts tracking
-// the attempt. It is the post-admission entry point.
-//
-// Claim is a convenience wrapper; the daemon wiring (T07) passes the already-
-// resolved runID to ClaimForRun. Claim itself requires a run-resolution path
-// that lives in the DeploymentStore, so it returns an error directing callers
-// to ClaimForRun.
-func (s *Supervisor) Claim(ctx context.Context, invocationID routedrun.InvocationID) (routedrun.AttemptID, error) {
-	return "", fmt.Errorf("%w: Claim requires a resolved run; use ClaimForRun", ErrInvalidArgument)
-}
-
 // ClaimForRun acquires the active lease for an already-resolved run. This is
 // the lower-level entry point the daemon calls after AdmitInvocation has
 // committed the durable READY launch-intent and resolved the runID.

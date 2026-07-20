@@ -127,9 +127,17 @@ func (s *LocalStore) SaveCheckpoint(ctx context.Context, cp *SemanticCheckpoint)
 	}
 
 	cp.SchemaVersion = CurrentSchemaVersion
-	// Auto-compute the checkpoint digest from canonical content so that
-	// saved checkpoints always carry a verifiable integrity digest.
-	cp.CheckpointDigest = cp.ComputeDigest()
+	// B30-2 (F8): verify caller-supplied digest matches ComputeDigest().
+	// If the caller provides a digest that doesn't match, fail closed.
+	// If the caller doesn't supply a digest, compute one.
+	if cp.CheckpointDigest != "" {
+		expected := cp.ComputeDigest()
+		if cp.CheckpointDigest != expected {
+			return fmt.Errorf("%w: caller-supplied checkpoint digest does not match computed digest", ErrInvalidArgument)
+		}
+	} else {
+		cp.CheckpointDigest = cp.ComputeDigest()
+	}
 	data, err := json.Marshal(cp)
 	if err != nil {
 		return fmt.Errorf("marshal checkpoint: %w", err)
