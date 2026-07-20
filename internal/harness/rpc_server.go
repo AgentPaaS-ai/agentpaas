@@ -21,6 +21,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
 
 type harnessRPCServer struct {
@@ -40,6 +41,11 @@ type harnessRPCServer struct {
 	// them before the first invoke.
 	progressJournal  *progressJournalWriter
 	progressIdentity progressIdentity
+
+	// nowMonotonicMs supplies the monotonic millisecond timestamp used to
+	// evaluate the TimeEnvelope in handleLLM (B30-T03 Part B, ceiling 5). When
+	// nil, routedrun.NowMonotonicMs(nil) (time.Now().UnixMilli()) is used.
+	nowMonotonicMs func() int64
 }
 
 type rpcInvokeState struct {
@@ -48,6 +54,12 @@ type rpcInvokeState struct {
 	terminate   func()
 	credentials map[string]rpcCredential
 	mcpAllowed  map[string]map[string]bool
+
+	// timeEnvelope is the authoritative active-time envelope (B30-T03 Part B,
+	// ceiling 5). When present, the LLM HTTP client timeout is derived from
+	// env.EffectiveOperationDeadlineMs(nowMs, env.ModelCallTimeoutMs). When
+	// nil (legacy v0.2.3 compat path), the legacy 120s constant applies.
+	timeEnvelope *routedrun.TimeEnvelope
 
 	// Progress journal (B27)
 	progressJournal   *progressJournalWriter
@@ -119,6 +131,13 @@ func (s *harnessRPCServer) Close() error {
 func (s *harnessRPCServer) SetInvoke(payload map[string]any, budget *BudgetEnforcer, terminate func()) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Extract the TimeEnvelope from the payload (B30-T03 Part B, ceiling 5).
+	// Absent (legacy v0.2.3 trigger path) → nil, modelClientTimeout falls
+	// back to the legacy 120s constant.
+	var envPtr *routedrun.TimeEnvelope
+	if env, ok := routedrun.UnmarshalTimeEnvelopeFromPayload(payload); ok {
+		envPtr = &env
+	}
 	s.invoke = &rpcInvokeState{
 		budget:           budget,
 		payload:          payload,
@@ -127,6 +146,7 @@ func (s *harnessRPCServer) SetInvoke(payload map[string]any, budget *BudgetEnfor
 		mcpAllowed:       mcpAllowlistFromPayload(payload),
 		progressJournal:  s.progressJournal,  // B27: pre-loaded journal writer
 		progressIdentity: s.progressIdentity, // B27: pre-loaded identity
+		timeEnvelope:     envPtr,
 	}
 }
 
@@ -134,6 +154,35 @@ func (s *harnessRPCServer) ClearInvoke() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.invoke = nil
+}
+
+// legacyModelClientTimeout is the v0.2.3 fixed HTTP timeout for LLM calls.
+// It is used ONLY when no TimeEnvelope is available on the durable path
+// (legacy compat). On the durable path the timeout is derived from
+// env.EffectiveOperationDeadlineMs(nowMs, env.ModelCallTimeoutMs).
+const legacyModelClientTimeout = 120 * time.Second
+
+// modelClientTimeout returns the HTTP client timeout for an LLM call. When a
+// TimeEnvelope is attached to the invoke state, the timeout is derived from
+// env.EffectiveOperationDeadlineMs(nowMs, env.ModelCallTimeoutMs) — the min of
+// the model-call timeout, the attempt-lease remaining, and the active time
+// remaining (B30-T03 Part B, ceiling 5). When no envelope is present (legacy
+// v0.2.3 compat), it falls back to legacyModelClientTimeout.
+func (s *harnessRPCServer) modelClientTimeout(state *rpcInvokeState) time.Duration {
+	if state != nil && state.timeEnvelope != nil {
+		nowMs := routedrun.NowMonotonicMs(nil)
+		if s.nowMonotonicMs != nil {
+			nowMs = s.nowMonotonicMs()
+		}
+		deadlineMs := state.timeEnvelope.EffectiveOperationDeadlineMs(nowMs, state.timeEnvelope.ModelCallTimeoutMs)
+		if deadlineMs <= 0 {
+			// Envelope exhausted: allow a tiny grace (1ms) so the call surfaces
+			// a structured error rather than an immediate zero-timeout panic.
+			return 1 * time.Millisecond
+		}
+		return time.Duration(deadlineMs) * time.Millisecond
+	}
+	return legacyModelClientTimeout
 }
 
 // SetProgressMetadata wires the progress journal, identity, and resume
@@ -461,6 +510,11 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// the provider returned, causing "context deadline exceeded" failures on
 	// anything requiring non-trivial reasoning.
 	//
+	// B30-T03 Part B (ceiling 5): the timeout is now derived from the
+	// TimeEnvelope's EffectiveOperationDeadlineMs when one is available; when
+	// no envelope is present (legacy v0.2.3 compat), modelClientTimeout
+	// returns legacyModelClientTimeout (120s).
+	//
 	// BUG-033/034 fix: deny HTTP redirects. The gateway rewrites URLs to
 	// http://gateway:7799/path; a 302 redirect target is an HTTPS URL that
 	// the client cannot TLS-terminate directly (the gateway does TLS). Without
@@ -468,7 +522,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// connect directly to the redirect target, bypassing the gateway's
 	// egress policy and producing TLS handshake errors.
 	client := &http.Client{
-		Timeout: 120 * time.Second,
+		Timeout: s.modelClientTimeout(state),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},

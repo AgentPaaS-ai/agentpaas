@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 	"unicode"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
 
 const (
@@ -107,6 +109,11 @@ type Server struct {
 	closed      bool
 
 	invokeMu sync.Mutex
+
+	// nowMonotonicMs supplies the monotonic millisecond timestamp used to
+	// evaluate the TimeEnvelope in handleInvoke (B30-T03 Part B, ceiling 3).
+	// When nil, routedrun.NowMonotonicMs(nil) (time.Now().UnixMilli()) is used.
+	nowMonotonicMs func() int64
 }
 
 // NewServer creates a harness server and performs the Python import phase.
@@ -263,8 +270,20 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := newInvokeMetadata(payload, s.cfg)
-	budget := newBudgetEnforcer(budgetFromPayload(payload), meta.runID, meta.invokeID, s.cfg.Audit, time.Now)
-	ctx, cancel := contextWithOptionalTimeout(r.Context(), s.cfg.InvokeTimeout)
+	// B30-T03 Part B (ceiling 4): attach the TimeEnvelope from the payload to
+	// the budget config so the wall-clock budget is derived from
+	// ActiveTimeRemainingMs when present (legacy 120s fallback otherwise).
+	bCfg := budgetFromPayload(payload)
+	if env, ok := routedrun.UnmarshalTimeEnvelopeFromPayload(payload); ok {
+		bCfg.TimeEnvelope = &env
+	}
+	budget := newBudgetEnforcer(bCfg, meta.runID, meta.invokeID, s.cfg.Audit, time.Now)
+	// B30-T03 Part B (ceiling 3): derive the /invoke context timeout from the
+	// TimeEnvelope carried in the payload (via the durable admission receipt)
+	// when present; otherwise fall back to the configured InvokeTimeout (the
+	// legacy v0.2.3 300s default). The env var AGENTPAAS_INVOKE_TIMEOUT
+	// remains a legacy compat override.
+	ctx, cancel := contextWithOptionalTimeout(r.Context(), s.invokeTimeoutForPayload(payload))
 	defer cancel()
 	resp, invokeErr, evidence := worker.Invoke(ctx, payload, budget, s.cfg.TerminateGrace)
 	if invokeErr != nil {
@@ -273,6 +292,30 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// invokeTimeoutForPayload returns the /invoke context timeout. When the
+// payload carries a TimeEnvelope (B30-T03 Part B, ceiling 3), the timeout is
+// derived from env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs) —
+// the min of the stall timeout, the attempt-lease remaining, and the active
+// time remaining. When no envelope is present (legacy v0.2.3 compat), it
+// falls back to s.cfg.InvokeTimeout (the 300s default from
+// AGENTPAAS_INVOKE_TIMEOUT or its legacy default).
+func (s *Server) invokeTimeoutForPayload(payload map[string]any) time.Duration {
+	if env, ok := routedrun.UnmarshalTimeEnvelopeFromPayload(payload); ok {
+		nowMs := routedrun.NowMonotonicMs(nil)
+		if s.nowMonotonicMs != nil {
+			nowMs = s.nowMonotonicMs()
+		}
+		deadlineMs := env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs)
+		if deadlineMs <= 0 {
+			// Envelope exhausted: tiny grace so the call surfaces a structured
+			// error rather than a zero-timeout panic.
+			return 1 * time.Millisecond
+		}
+		return time.Duration(deadlineMs) * time.Millisecond
+	}
+	return s.cfg.InvokeTimeout
 }
 
 func (s *Server) workerForInvoke() (*pythonWorker, *ErrorResponse) {
