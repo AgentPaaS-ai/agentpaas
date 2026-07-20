@@ -88,7 +88,7 @@ func (t *auditTailer) readNewRecords() {
 	if err != nil {
 		return // file may not exist yet
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	if _, err := f.Seek(t.lastOffset, io.SeekStart); err != nil {
 		return

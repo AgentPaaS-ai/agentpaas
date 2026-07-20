@@ -246,7 +246,7 @@ func (s *DurableInboxStore) Append(_ context.Context, msg InboxMessage) (Message
 	// worst failure mode of the inbox protocol: a waiting worker would
 	// never be resumed. Surface the Append error to the caller so the
 	// failure is observable and the caller can retry or reconcile.
-	wakePayload, _ := json.Marshal(inboxWakePayload{
+	wakePayload, _ := json.Marshal(inboxWakePayload{ // best-effort marshal
 		MessageID: msg.MessageID,
 		TaskID:    msg.TaskID,
 		Type:      string(msg.Type),
@@ -428,7 +428,7 @@ func (s *DurableInboxStore) appendWAL(tenantID, runID string, rec inboxWALRecord
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 	fi, err := f.Stat()
 	if err != nil {
 		return err
@@ -483,28 +483,28 @@ func (s *DurableInboxStore) rewriteMessagesLocked(r *inboxRunState, msgs []Inbox
 		}
 		line, err := json.Marshal(rec)
 		if err != nil {
-			_ = f.Close()
-			_ = os.Remove(tmp)
+			_ = f.Close() // best-effort close
+			_ = os.Remove(tmp) // best-effort remove
 			return err
 		}
 		if _, err := w.Write(append(line, '\n')); err != nil {
-			_ = f.Close()
-			_ = os.Remove(tmp)
+			_ = f.Close() // best-effort close
+			_ = os.Remove(tmp) // best-effort remove
 			return err
 		}
 	}
 	if err := w.Flush(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		_ = f.Close() // best-effort close
+		_ = os.Remove(tmp) // best-effort remove
 		return err
 	}
 	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmp)
+		_ = f.Close() // best-effort close
+		_ = os.Remove(tmp) // best-effort remove
 		return err
 	}
 	if err := f.Close(); err != nil {
-		_ = os.Remove(tmp)
+		_ = os.Remove(tmp) // best-effort remove
 		return err
 	}
 	return os.Rename(tmp, path)

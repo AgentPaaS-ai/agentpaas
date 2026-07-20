@@ -73,7 +73,7 @@ func validateDockerBinary(name string) *CheckResult {
 
 	// Check if the binary is in a user-writable directory.
 	// Home directories and /tmp-like dirs are considered user-writable.
-	homeDir, _ := os.UserHomeDir()
+	homeDir, _ := os.UserHomeDir() // empty home handled by caller
 	if homeDir != "" && strings.HasPrefix(realPath, homeDir) {
 		return &CheckResult{
 			Name:    name,
@@ -458,10 +458,10 @@ func CheckPortsFree() CheckResult {
 		if err4 != nil || err6 != nil {
 			// Close whichever succeeded.
 			if err4 == nil && ln4 != nil {
-				_ = ln4.Close()
+				_ = ln4.Close() // best-effort close
 			}
 			if err6 == nil && ln6 != nil {
-				_ = ln6.Close()
+				_ = ln6.Close() // best-effort close
 			}
 			// Try to identify the process.
 			procName := identifyProcess(port)
@@ -474,8 +474,8 @@ func CheckPortsFree() CheckResult {
 		}
 
 		// Both succeeded — close both and move on.
-		_ = ln4.Close()
-		_ = ln6.Close()
+		_ = ln4.Close() // best-effort close
+		_ = ln6.Close() // best-effort close
 	}
 
 	if len(squatters) > 0 {
@@ -649,7 +649,7 @@ func CheckDaemonReady(socketPath string) CheckResult {
 			FixHint: "Run 'agent daemon start' to start the daemon.",
 		}
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.Close() }() // best-effort close
 
 	client := controlv1.NewControlServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), daemonDialTimeout)
@@ -701,7 +701,7 @@ func CheckProtoCompatible(socketPath string, cliVersion, cliProtoVersion string)
 			Message: fmt.Sprintf("Cannot connect to daemon (CLI v%s, proto %s) — check skipped", cliVersion, cliProtoVersion),
 		}
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.Close() }() // best-effort close
 
 	client := controlv1.NewControlServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), daemonDialTimeout)

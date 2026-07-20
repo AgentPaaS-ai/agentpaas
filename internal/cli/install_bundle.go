@@ -30,7 +30,7 @@ func newInstallBundleCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = b.Close() }()
+			defer func() { _ = b.Close() }() // best-effort close
 			vr, err := bundle.Verify(b)
 			if err != nil {
 				return err
@@ -67,7 +67,7 @@ func newInstallBundleCmd() *cobra.Command {
 				return formatInstallError(err)
 			}
 			for _, line := range trustResult.DisplayLines {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), line)
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), line) // best-effort write
 			}
 
 			state := &installpkg.FileInstallState{StateRoot: filepath.Join(homeDir, "state")}
@@ -83,7 +83,7 @@ func newInstallBundleCmd() *cobra.Command {
 			if err != nil {
 				return formatInstallError(err)
 			}
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), consent.CardText)
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), consent.CardText) // best-effort write
 			digest, err := bundle.FileBundleDigest(path)
 			if err != nil {
 				return err
@@ -105,7 +105,7 @@ func newInstallBundleCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Installed: %s\n", result.AgentRef)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Installed: %s\n", result.AgentRef) // best-effort write
 			return nil
 		},
 	}

@@ -171,7 +171,7 @@ func recomputeCheckpointDigest(cp *SemanticCheckpoint) string {
 		"safe_to_resume":       cp.SafeToResume,
 		"artifact_references":  cp.ArtifactRefs,
 	}
-	b, _ := json.Marshal(fields)
+	b, _ := json.Marshal(fields) // best-effort marshal
 	return hexSha256String(b)
 }
 

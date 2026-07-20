@@ -48,7 +48,7 @@ func NewCheckpointManager(path string, cadence int64, keyDER []byte) (*Checkpoin
 
 	// Replay existing checkpoints to reconstruct chain state
 	if err := m.replay(); err != nil {
-		_ = f.Close()
+		_ = f.Close() // best-effort close
 		return nil, fmt.Errorf("replay checkpoints: %w", err)
 	}
 
@@ -56,12 +56,12 @@ func NewCheckpointManager(path string, cadence int64, keyDER []byte) (*Checkpoin
 	if len(keyDER) > 0 {
 		key, err := x509.ParsePKCS8PrivateKey(keyDER)
 		if err != nil {
-			_ = f.Close()
+			_ = f.Close() // best-effort close
 			return nil, fmt.Errorf("parse checkpoint signing key: %w", err)
 		}
 		ecKey, ok := key.(*ecdsa.PrivateKey)
 		if !ok {
-			_ = f.Close()
+			_ = f.Close() // best-effort close
 			return nil, fmt.Errorf("checkpoint signing key is not ECDSA")
 		}
 		m.signer = ecKey

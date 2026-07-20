@@ -193,7 +193,7 @@ func RecordDeployment(homeDir, agentName string, lock *AgentLock) error {
 	stagingActive := true
 	defer func() {
 		if stagingActive {
-			_ = os.RemoveAll(stagingDir)
+			_ = os.RemoveAll(stagingDir) // best-effort remove
 		}
 	}()
 	if err := rejectSymlinkPath(stagingDir, false); err != nil {
@@ -383,7 +383,7 @@ func replaceDeployedDir(stagingDir, deployedDir string) error {
 	backupActive = true
 	defer func() {
 		if backupActive {
-			_ = os.RemoveAll(backupDir)
+			_ = os.RemoveAll(backupDir) // best-effort remove
 		}
 	}()
 

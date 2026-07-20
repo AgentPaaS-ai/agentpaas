@@ -64,7 +64,7 @@ func (p *k8sPolicyEnforcer) check(_ context.Context, id, d string) port.Decision
 }
 func (p *k8sPolicyEnforcer) remove(ctx context.Context, id string) error {
 	if p.client != nil {
-		_ = p.client.NetworkingV1().NetworkPolicies(p.namespace).Delete(ctx, "agentpaas-"+id, metav1.DeleteOptions{})
+		_ = p.client.NetworkingV1().NetworkPolicies(p.namespace).Delete(ctx, "agentpaas-"+id, metav1.DeleteOptions{}) // best-effort cleanup
 	}
 	p.mu.Lock()
 	delete(p.rules, id)

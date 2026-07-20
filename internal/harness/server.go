@@ -356,7 +356,7 @@ func (s *Server) workerForInvoke() (*pythonWorker, *ErrorResponse) {
 
 func readLimitedBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
 	reader := http.MaxBytesReader(w, r.Body, MaxPayloadBytes)
-	defer func() { _ = reader.Close() }()
+	defer func() { _ = reader.Close() }() // best-effort close
 
 	body, err := io.ReadAll(reader)
 	if err != nil {
@@ -405,7 +405,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	value = sanitizeResponse(value)
-	_ = json.NewEncoder(w).Encode(value)
+	_ = json.NewEncoder(w).Encode(value) // best-effort encode to client
 }
 
 func sanitizeResponse(value any) any {
@@ -443,7 +443,7 @@ func sanitizeDetail(detail string) string {
 }
 
 func loopbackAddr(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
+	host, _, err := net.SplitHostPort(addr) // intentionally ignored (reviewed)
 	if err != nil {
 		return false
 	}

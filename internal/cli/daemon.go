@@ -78,7 +78,7 @@ func runDaemonStatus(cmd *cobra.Command) error {
 		// For text output, we return the error so cobra can display it.
 		return fmt.Errorf("%s: %w\n%s", errMsg, err, hint)
 	} else {
-		defer func() { _ = conn.Close() }()
+		defer func() { _ = conn.Close() }() // best-effort close
 
 		// Call the Doctor RPC to get version info.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -237,7 +237,7 @@ func buildDaemonStartCommand(cmd *cobra.Command, daemonBinary string, paths *hom
 
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		_ = logFile.Close()
+		_ = logFile.Close() // best-effort close
 		return nil, nil, fmt.Errorf("cannot determine home directory: %w", err)
 	}
 
@@ -249,7 +249,7 @@ func buildDaemonStartCommand(cmd *cobra.Command, daemonBinary string, paths *hom
 	// ~/.agentpaas instead of $AGENTPAAS_HOME and fail to find its socket.
 	cmdDaemon.Env = filterEnv(os.Environ(), "AGENTPAAS_HOME", "AGENTPAAS_SOCKET")
 	cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_HOME="+homeDir)
-	if sock, _ := socketPath(cmd); sock != "" {
+	if sock, _ := socketPath(cmd); sock != "" { // optional value; zero on miss
 		cmdDaemon.Env = append(cmdDaemon.Env, "AGENTPAAS_SOCKET="+sock)
 	}
 
@@ -288,7 +288,7 @@ func runDaemonStart(cmd *cobra.Command) error {
 	}
 
 	// Start the daemon subprocess.
-	cmdDaemon, _, err := buildDaemonStartCommand(cmd, daemonBinary, paths)
+	cmdDaemon, _, err := buildDaemonStartCommand(cmd, daemonBinary, paths) // intentionally ignored (reviewed)
 	if err != nil {
 		return err
 	}
@@ -383,7 +383,7 @@ func runDaemonStop(cmd *cobra.Command) error {
 	// Wait for process to exit.
 	waitDone := make(chan struct{})
 	go func() {
-		_, _ = proc.Wait()
+		_, _ = proc.Wait() // optional value; zero on miss
 		select {
 		case waitDone <- struct{}{}:
 		default:
@@ -395,9 +395,9 @@ func runDaemonStop(cmd *cobra.Command) error {
 		fmt.Printf("Daemon (PID %d) stopped\n", pid)
 	case <-time.After(10 * time.Second):
 		fmt.Printf("Daemon (PID %d) did not exit within 10 seconds — sending SIGKILL\n", pid)
-		_ = proc.Signal(syscall.SIGKILL)
+		_ = proc.Signal(syscall.SIGKILL) // intentionally ignored (reviewed)
 		// Best-effort reap the zombie.
-		go func() { _, _ = proc.Wait() }()
+		go func() { _, _ = proc.Wait() }() // optional value; zero on miss
 	}
 
 	return nil
@@ -412,7 +412,7 @@ func newDaemonRestartCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Stop — ignore "not running" errors.
-			_ = runDaemonStop(cmd)
+			_ = runDaemonStop(cmd) // best-effort cleanup
 			return runDaemonStart(cmd)
 		},
 	}

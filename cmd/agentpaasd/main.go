@@ -40,7 +40,7 @@ func main() {
 	// Docker daemon that is configured via Docker context (colima, Docker
 	// Desktop) rather than an explicit DOCKER_HOST env var. This is a no-op
 	// when DOCKER_HOST is already set or the default socket is in use.
-	_ = dockerclient.ExportHostToEnv()
+	_ = dockerclient.ExportHostToEnv() // best-effort env export
 
 	// Resolve home directory.
 	homeDir, err := home.DiscoverHome()

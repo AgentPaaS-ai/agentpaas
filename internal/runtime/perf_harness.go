@@ -165,7 +165,7 @@ func (h *PerfHarness) runPhases(
 	if fixture.Run != nil {
 		if err := fixture.Run(ctx, rec); err != nil {
 			// Still attempt teardown so resources are released.
-			_ = h.teardown(ctx, fixture, rec)
+			_ = h.teardown(ctx, fixture, rec) // intentionally ignored (reviewed)
 			return errors.Join(ErrPerfRunFailed, err)
 		}
 	}

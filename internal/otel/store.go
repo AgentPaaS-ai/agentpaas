@@ -112,7 +112,7 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	if err != nil {
 		return fmt.Errorf("begin trace tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback() }() // best-effort; no-op after commit
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO otel_spans (
@@ -123,7 +123,7 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	if err != nil {
 		return fmt.Errorf("prepare span insert: %w", err)
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close() }() // best-effort close
 
 	resourceSpans := traces.ResourceSpans()
 	for i := 0; i < resourceSpans.Len(); i++ {
@@ -199,7 +199,7 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 	if err != nil {
 		return fmt.Errorf("begin log tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback() }() // best-effort; no-op after commit
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO otel_logs (
@@ -209,7 +209,7 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 	if err != nil {
 		return fmt.Errorf("prepare log insert: %w", err)
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close() }() // best-effort close
 
 	resourceLogs := logs.ResourceLogs()
 	for i := 0; i < resourceLogs.Len(); i++ {
@@ -281,7 +281,7 @@ func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) erro
 	if err != nil {
 		return fmt.Errorf("begin metric tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback() }() // best-effort; no-op after commit
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO otel_metrics (name, type, timestamp, value, attributes, resource)
@@ -290,7 +290,7 @@ func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) erro
 	if err != nil {
 		return fmt.Errorf("prepare metric insert: %w", err)
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close() }() // best-effort close
 
 	resourceMetrics := metrics.ResourceMetrics()
 	for i := 0; i < resourceMetrics.Len(); i++ {
@@ -355,7 +355,7 @@ func (s *Store) QuerySpans(ctx context.Context, runID string, limit int) ([]Span
 	if err != nil {
 		return nil, fmt.Errorf("query spans: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { _ = rows.Close() }() // best-effort close
 
 	var records []SpanRecord
 	for rows.Next() {
@@ -422,7 +422,7 @@ func (s *Store) QueryLogs(ctx context.Context, runID string, limit int) ([]LogRe
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { _ = rows.Close() }() // best-effort close
 
 	var records []LogRecord
 	for rows.Next() {
@@ -471,7 +471,7 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int64, erro
 	if err != nil {
 		return 0, fmt.Errorf("begin prune tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback() }() // best-effort; no-op after commit
 
 	var deleted int64
 	for _, statement := range []string{
@@ -543,7 +543,7 @@ func (s *Store) RecoverFromCorruption(ctx context.Context) (recovered int64, err
 		if openedForCheck {
 			s.db = db
 			if err := migrate(s.db); err != nil {
-				_ = db.Close()
+				_ = db.Close() // best-effort close on error path
 				s.db = nil
 				return 0, fmt.Errorf("migrate healthy db: %w", err)
 			}
@@ -613,19 +613,19 @@ func openSQLiteDB(ctx context.Context, dbPath string) (*sql.DB, error) {
 	}
 
 	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode=WAL"); err != nil {
-		_ = db.Close()
+		_ = db.Close() // best-effort close on error path
 		return nil, fmt.Errorf("enable wal: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, "PRAGMA busy_timeout=5000"); err != nil {
-		_ = db.Close()
+		_ = db.Close() // best-effort close on error path
 		return nil, fmt.Errorf("set busy timeout: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, "PRAGMA synchronous=NORMAL"); err != nil {
-		_ = db.Close()
+		_ = db.Close() // best-effort close on error path
 		return nil, fmt.Errorf("set synchronous: %w", err)
 	}
 	if err := migrate(db); err != nil {
-		_ = db.Close()
+		_ = db.Close() // best-effort close on error path
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 

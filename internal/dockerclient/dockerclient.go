@@ -129,7 +129,7 @@ func fromContextStore() (host string, contextName string, err error) {
 // resolution order as New. Child processes (syft, cosign) only honor
 // DOCKER_HOST and do not read the Docker context store.
 func ResolvedDockerHost() (string, error) {
-	host, _, err := resolveHost()
+	host, _, err := resolveHost() // best-effort host resolve
 	if err != nil {
 		return "", fmt.Errorf("resolve Docker host: %w", err)
 	}
@@ -141,7 +141,7 @@ func ResolvedDockerHost() (string, error) {
 // uses TLS (tcp:// with certs configured in the context). It is safe to
 // call from both the CLI process and the daemon subprocess.
 func New() (*client.Client, error) {
-	host, _, err := resolveHost()
+	host, _, err := resolveHost() // best-effort host resolve
 	if err != nil {
 		return nil, fmt.Errorf("resolve Docker host: %w", err)
 	}
@@ -183,7 +183,7 @@ func Ping(timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = cli.Close() }()
+	defer func() { _ = cli.Close() }() // best-effort close
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -191,7 +191,7 @@ func Ping(timeout time.Duration) error {
 	// If the host is a unix socket, check it's actually present and
 	// reachable at the filesystem level first — gives a much clearer
 	// error than a raw dial timeout.
-	host, _, _ := resolveHost()
+	host, _, _ := resolveHost() // best-effort host resolve
 	if u, err := url.Parse(host); err == nil && u.Scheme == "unix" {
 		sockPath := u.Path
 		if _, err := os.Stat(sockPath); err != nil {
@@ -202,7 +202,7 @@ func Ping(timeout time.Duration) error {
 		if err != nil {
 			return fmt.Errorf("cannot connect to docker socket %s: %w", sockPath, err)
 		}
-		_ = c.Close()
+		_ = c.Close() // best-effort close
 	}
 
 	if _, err := cli.Ping(ctx); err != nil {

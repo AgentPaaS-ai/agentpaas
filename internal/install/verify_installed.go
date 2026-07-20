@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,7 +113,9 @@ func immutableInstalled(auditAppender audit.AuditAppender, agentName, field stri
 		},
 	}
 	if auditAppender != nil {
-		_ = auditAppender.Append(record)
+		if err := auditAppender.Append(record); err != nil {
+			log.Printf("install: audit append (%s): %v", "audit", err)
+		}
 	}
 	return fmt.Errorf("%w: %s: %v", ErrInstallVerifyFailed, field, cause)
 }

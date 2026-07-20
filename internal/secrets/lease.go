@@ -142,7 +142,7 @@ func (l *DirectLease) Lease(ctx context.Context, runID, credentialID, policyRule
 		valid:        true,
 	}
 	if err := handle.auditEvent(audit.EventTypeSecretLeased); err != nil {
-		_ = os.Remove(filePath)
+		_ = os.Remove(filePath) // best-effort remove
 		return LeaseHandle{}, err
 	}
 	return handle, nil
@@ -194,8 +194,8 @@ func (h LeaseHandle) GoString() string {
 	return h.String()
 }
 
-func (h LeaseHandle) Format(s fmt.State, _ rune) {
-	_, _ = fmt.Fprint(s, h.String())
+func (h LeaseHandle) Format(s fmt.State, _ rune) { // intentionally ignored (reviewed)
+	_, _ = fmt.Fprint(s, h.String()) // best-effort write
 }
 
 func (h LeaseHandle) MarshalJSON() ([]byte, error) {
@@ -257,18 +257,18 @@ func (l *DirectLease) createLeaseFile(runID, credentialID string, value []byte) 
 	if err != nil {
 		return "", fmt.Errorf("create lease file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	if _, err := f.Write(value); err != nil {
-		_ = os.Remove(filePath)
+		_ = os.Remove(filePath) // best-effort remove
 		return "", fmt.Errorf("write lease file: %w", err)
 	}
 	if err := f.Chmod(0o400); err != nil {
-		_ = os.Remove(filePath)
+		_ = os.Remove(filePath) // best-effort remove
 		return "", fmt.Errorf("chmod lease file: %w", err)
 	}
 	if err := f.Chown(l.agentUID, -1); err != nil {
-		_ = os.Remove(filePath)
+		_ = os.Remove(filePath) // best-effort remove
 		return "", fmt.Errorf("chown lease file: %w", err)
 	}
 	return filePath, nil

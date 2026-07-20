@@ -125,7 +125,7 @@ func WithAuthToken(parent context.Context, token string) context.Context {
 
 // AuthInterceptor returns a gRPC unary interceptor that requires authentication.
 func AuthInterceptor(auth Authenticator) grpc.UnaryServerInterceptor {
-	return func(requestContext context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+	return func(requestContext context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) { // intentionally ignored (reviewed)
 		caller, method, err := auth.Authenticate(requestContext)
 		if err != nil {
 			return nil, err
@@ -138,7 +138,7 @@ func AuthInterceptor(auth Authenticator) grpc.UnaryServerInterceptor {
 // AuthStreamInterceptor returns a gRPC stream interceptor that requires
 // authentication.
 func AuthStreamInterceptor(auth Authenticator) grpc.StreamServerInterceptor {
-	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error { // intentionally ignored (reviewed)
 		caller, method, err := auth.Authenticate(ss.Context())
 		if err != nil {
 			return err

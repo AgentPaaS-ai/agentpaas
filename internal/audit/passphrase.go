@@ -82,7 +82,7 @@ func keychainGet(service, account string) (string, error) {
 // keychainSet stores a password in macOS Keychain via the security CLI.
 func keychainSet(service, account, password string) error {
 	// Try to delete first (ignore error if not found)
-	_ = exec.Command("security", "delete-generic-password", "-s", service, "-a", account).Run()
+	_ = exec.Command("security", "delete-generic-password", "-s", service, "-a", account).Run() // best-effort external cleanup
 	cmd := exec.Command("security", "add-generic-password", "-s", service, "-a", account, "-w", password, "-U")
 	return cmd.Run()
 }

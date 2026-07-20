@@ -24,14 +24,14 @@ func newCronCmd() *cobra.Command {
 		Short: "Add a cron schedule for an agent",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			expr, _ := cmd.Flags().GetString("expr")
+			expr, _ := cmd.Flags().GetString("expr") // cobra flag default on missing
 			if expr == "" {
 				return fmt.Errorf("required flag --expr is missing")
 			}
-			version, _ := cmd.Flags().GetString("version")
-		payload, _ := cmd.Flags().GetString("payload")
-		contentType, _ := cmd.Flags().GetString("content-type")
-			timezone, _ := cmd.Flags().GetString("timezone")
+			version, _ := cmd.Flags().GetString("version") // cobra flag default on missing
+		payload, _ := cmd.Flags().GetString("payload") // cobra flag default on missing
+		contentType, _ := cmd.Flags().GetString("content-type") // cobra flag default on missing
+			timezone, _ := cmd.Flags().GetString("timezone") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -41,7 +41,7 @@ func newCronCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(30 * time.Second)
 			defer cancel()
@@ -111,7 +111,7 @@ func newCronCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(30 * time.Second)
 			defer cancel()
@@ -192,7 +192,7 @@ func newCronCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer func() { _ = conn.Close() }()
+			defer func() { _ = conn.Close() }() // best-effort close
 
 			ctx, cancel := contextWithTimeout(30 * time.Second)
 			defer cancel()

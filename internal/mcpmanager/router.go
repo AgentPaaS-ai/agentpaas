@@ -155,7 +155,7 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 	if err != nil {
 		return nil, fmt.Errorf("send http MCP request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() { _ = resp.Body.Close() }() // best-effort close
 	responseBody, err := readLimitedHTTPResponseBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read http MCP response: %w", err)

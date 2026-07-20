@@ -60,7 +60,7 @@ func main() {
 			log.Printf("harness: audit appender: %v", err)
 		} else {
 			cfg.Audit = appender
-			defer func() { _ = appender.Close() }()
+			defer func() { _ = appender.Close() }() // best-effort close
 		}
 	}
 

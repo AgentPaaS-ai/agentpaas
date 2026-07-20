@@ -4,11 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
+
+// logAuditErr logs a failed audit append without changing control flow.
+// Audit is best-effort relative to the durable store CAS, but silent loss is unacceptable.
+func logAuditErr(event string, err error) {
+	if err != nil {
+		log.Printf("supervisor: audit append (%s): %v", event, err)
+	}
+}
+
+// logJournalErr logs a failed journal append after a terminal CAS.
+func logJournalErr(event string, err error) {
+	if err != nil {
+		log.Printf("supervisor: journal append (%s): %v", event, err)
+	}
+}
+
 
 // ---------------------------------------------------------------------------
 // Claim
@@ -21,7 +38,7 @@ import (
 // ClaimForRun is idempotent on the run: if a non-terminal attempt with an
 // active lease already exists, it re-establishes in-memory tracking for that
 // attempt and returns its ID without creating a new attempt or a new lease.
-func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ routedrun.InvocationID) (routedrun.AttemptID, error) {
+func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ routedrun.InvocationID) (routedrun.AttemptID, error) { // intentionally ignored (reviewed)
 	if runID == "" {
 		return "", fmt.Errorf("%w: empty run id", ErrInvalidArgument)
 	}
@@ -87,7 +104,7 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 		return "", fmt.Errorf("append accepted event: %w", err)
 	}
 	// Audit AFTER durable commit (the attempt record + journal event).
-	_ = s.audit.Append(audit.AuditRecord{
+	logAuditErr("supervisor_attempt_claimed", s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_claimed",
 		DeploymentMode: "local",
@@ -96,11 +113,11 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 			"run_id":     string(runID),
 			"attempt_id": string(att.AttemptID),
 		},
-	})
+	}))
 	return att.AttemptID, nil
 }
 
-func (s *Supervisor) establishTracker(_ context.Context, att *routedrun.AttemptRecord, _ *routedrun.RunRecord) error {
+func (s *Supervisor) establishTracker(_ context.Context, att *routedrun.AttemptRecord, _ *routedrun.RunRecord) error { // intentionally ignored (reviewed)
 	key, err := s.loadOrCreateControlKey(att.RunID, att.AttemptID)
 	if err != nil {
 		return err
@@ -212,7 +229,7 @@ func (s *Supervisor) HandleCheckpoint(ctx context.Context, attemptID routedrun.A
 	}
 	trk.acceptActivity(s.nowMonotonicMs())
 	trk.mu.Unlock()
-	_ = s.audit.Append(audit.AuditRecord{
+	logAuditErr("supervisor_checkpoint_committed", s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_checkpoint_committed",
 		DeploymentMode: "local",
@@ -222,7 +239,7 @@ func (s *Supervisor) HandleCheckpoint(ctx context.Context, attemptID routedrun.A
 			"attempt_id":    string(trk.attemptID),
 			"checkpoint_id": string(cp.CheckpointID),
 		},
-	})
+	}))
 	return nil
 }
 
@@ -367,12 +384,12 @@ func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, e
 	if err := s.results.SaveInvokeJobResult(ctx, result); err != nil {
 		return fmt.Errorf("save invoke job result: %w", err)
 	}
-	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventSucceeded, "{}")
+	logJournalErr("succeeded", s.appendJournalEvent(trk, routedrun.InvokeJobEventSucceeded, "{}"))
 	// F14: on casRunTo error, audit and return the error.
 	// A persistently failing run CAS leaves the attempt terminal but the
 	// run RUNNING (split-brain). Finalize idempotency makes retry safe.
 	if err := s.casRunTo(ctx, trk.runID, routedrun.RunStatusSucceeded); err != nil {
-		_ = s.audit.Append(audit.AuditRecord{
+		logAuditErr("supervisor_cas_run_error", s.audit.Append(audit.AuditRecord{
 			Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 			EventType:      "supervisor_cas_run_error",
 			DeploymentMode: "local",
@@ -383,11 +400,11 @@ func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, e
 				"target":      "SUCCEEDED",
 				"error":       err.Error(),
 			},
-		})
+		}))
 		return fmt.Errorf("cas run to succeeded: %w", err)
 	}
 	s.markTerminal(trk, routedrun.InvokeJobResultSucceeded)
-	_ = s.audit.Append(audit.AuditRecord{
+	logAuditErr("supervisor_attempt_succeeded", s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_succeeded",
 		DeploymentMode: "local",
@@ -396,7 +413,7 @@ func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, e
 			"run_id":     string(trk.runID),
 			"attempt_id": string(trk.attemptID),
 		},
-	})
+	}))
 	return nil
 }
 
@@ -422,10 +439,10 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 			return fmt.Errorf("save invoke job result: %w", err)
 		}
 	}
-	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventFailed, "{}")
+	logJournalErr("failed", s.appendJournalEvent(trk, routedrun.InvokeJobEventFailed, "{}"))
 	// F14: on casRunTo error, audit and return the error.
 	if err := s.casRunTo(ctx, trk.runID, routedrun.RunStatusFailed); err != nil {
-		_ = s.audit.Append(audit.AuditRecord{
+		logAuditErr("supervisor_cas_run_error", s.audit.Append(audit.AuditRecord{
 			Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 			EventType:      "supervisor_cas_run_error",
 			DeploymentMode: "local",
@@ -436,11 +453,11 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 				"target":      "FAILED",
 				"error":       err.Error(),
 			},
-		})
+		}))
 		return fmt.Errorf("cas run to failed: %w", err)
 	}
 	s.markTerminal(trk, routedrun.InvokeJobResultFailed)
-	_ = s.audit.Append(audit.AuditRecord{
+	logAuditErr("supervisor_attempt_failed", s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_failed",
 		DeploymentMode: "local",
@@ -450,7 +467,7 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 			"attempt_id": string(trk.attemptID),
 			"reason":      reason,
 		},
-	})
+	}))
 	return nil
 }
 
@@ -458,10 +475,10 @@ func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) err
 	if err := s.casAttemptTo(ctx, trk, routedrun.AttemptStatusCancelled, "user_cancelled"); err != nil {
 		return err
 	}
-	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventCancelled, "{}")
+	logJournalErr("cancelled", s.appendJournalEvent(trk, routedrun.InvokeJobEventCancelled, "{}"))
 	// F14: on casRunTo error, audit and return the error.
 	if err := s.casRunTo(ctx, trk.runID, routedrun.RunStatusCancelled); err != nil {
-		_ = s.audit.Append(audit.AuditRecord{
+		logAuditErr("supervisor_cas_run_error", s.audit.Append(audit.AuditRecord{
 			Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 			EventType:      "supervisor_cas_run_error",
 			DeploymentMode: "local",
@@ -472,11 +489,11 @@ func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) err
 				"target":      "CANCELLED",
 				"error":       err.Error(),
 			},
-		})
+		}))
 		return fmt.Errorf("cas run to cancelled: %w", err)
 	}
 	s.markTerminal(trk, routedrun.InvokeJobResultCancelled)
-	_ = s.audit.Append(audit.AuditRecord{
+	logAuditErr("supervisor_attempt_cancelled", s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
 		EventType:      "supervisor_attempt_cancelled",
 		DeploymentMode: "local",
@@ -485,7 +502,7 @@ func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) err
 			"run_id":     string(trk.runID),
 			"attempt_id": string(trk.attemptID),
 		},
-	})
+	}))
 	return nil
 }
 

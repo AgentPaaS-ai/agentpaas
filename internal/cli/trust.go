@@ -124,9 +124,9 @@ Example:
 
 			displayFP := trust.DisplayFingerprint(fingerprint)
 			if alias != "" {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Trusted publisher %q (%s)\n", alias, displayFP)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Trusted publisher %q (%s)\n", alias, displayFP) // best-effort CLI write
 			} else {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Trusted publisher %s\n", displayFP)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Trusted publisher %s\n", displayFP) // best-effort CLI write
 			}
 			return nil
 		},
@@ -134,7 +134,7 @@ Example:
 
 	cmd.Flags().StringVar(&keyFile, "key", "", "Path to PEM-encoded public key file (required)")
 	cmd.Flags().StringVar(&alias, "alias", "", "Human-readable alias for the publisher (optional slug)")
-	_ = cmd.MarkFlagRequired("key")
+	_ = cmd.MarkFlagRequired("key") // flag registration; failure surfaces at Execute
 
 	return cmd
 }
@@ -185,7 +185,7 @@ func newTrustListCmd() *cobra.Command {
 			}
 
 			if len(publishers) == 0 {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No trusted publishers")
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No trusted publishers") // best-effort CLI write
 				return nil
 			}
 
@@ -195,7 +195,7 @@ func newTrustListCmd() *cobra.Command {
 				if alias == "" {
 					alias = "-"
 				}
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-72s  %-16s  %-20s  %-20s  %-6s\n",
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-72s  %-16s  %-20s  %-20s  %-6s\n", // best-effort CLI write
 					trust.DisplayFingerprint(p.Fingerprint),
 					alias,
 					p.FirstSeen,
@@ -261,15 +261,15 @@ func newTrustShowCmd() *cobra.Command {
 				})
 			}
 
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Fingerprint:  %s\n", trust.DisplayFingerprint(pub.Fingerprint))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Fingerprint:  %s\n", trust.DisplayFingerprint(pub.Fingerprint)) // best-effort CLI write
 			if pub.Alias != "" {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Alias:        %s\n", pub.Alias)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Alias:        %s\n", pub.Alias) // best-effort CLI write
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "First Seen:   %s\n", pub.FirstSeen)
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last Used:    %s\n", pub.LastUsed)
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Source:       %s\n", pub.Source)
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Status:       %s\n", pub.Status)
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nPublic Key PEM:\n%s", pub.PublicKeyPEM)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "First Seen:   %s\n", pub.FirstSeen) // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last Used:    %s\n", pub.LastUsed) // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Source:       %s\n", pub.Source) // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Status:       %s\n", pub.Status) // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nPublic Key PEM:\n%s", pub.PublicKeyPEM) // best-effort CLI write
 			return nil
 		},
 	}
@@ -314,7 +314,7 @@ non-interactive mode.`,
 			if !yesFlag {
 				if isTerminal(os.Stdin) {
 					fp8 := fp[:8]
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), // best-effort CLI write
 						"Type %q to confirm removal of publisher %s: ", fp8,
 						trust.DisplayFingerprint(fp))
 					var input string
@@ -341,9 +341,9 @@ non-interactive mode.`,
 			}
 
 			if alias != "" {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed publisher %q (%s)\n", alias, trust.DisplayFingerprint(fp))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed publisher %q (%s)\n", alias, trust.DisplayFingerprint(fp)) // best-effort CLI write
 			} else {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed publisher %s\n", trust.DisplayFingerprint(fp))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed publisher %s\n", trust.DisplayFingerprint(fp)) // best-effort CLI write
 			}
 			return nil
 		},

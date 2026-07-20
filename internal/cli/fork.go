@@ -19,7 +19,7 @@ func defaultForkInstalled(cmd *cobra.Command, stateRoot, ref, targetDir string) 
 		auditPath := filepath.Join(homeDir, "state", "audit.jsonl")
 		if w, werr := audit.NewAuditWriter(auditPath); werr == nil {
 			auditAppender = w
-			defer func() { _ = w.Close() }()
+			defer func() { _ = w.Close() }() // best-effort close
 		}
 	}
 	return install.ForkInstalled(stateRoot, ref, targetDir, auditAppender)
@@ -50,7 +50,7 @@ project directory and writes lineage.json for fork-aware pack/export.`,
 				return fmt.Errorf("no installed agent at %q", args[0])
 			}
 			if warn := install.ForkPublisherWarning(paths.State, args[0]); warn != "" {
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), warn)
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), warn) // best-effort write
 			}
 
 			if err := forkInstalledFunc(cmd, paths.State, args[0], args[1]); err != nil {

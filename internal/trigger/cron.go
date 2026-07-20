@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -100,7 +101,9 @@ func NewCronScheduler(cfg CronConfig) *CronScheduler {
 
 	if cfg.StatePath != "" {
 		if loaded, err := cs.loadSchedules(); err != nil || !loaded {
-			_ = cs.persistSchedules()
+			if err := cs.persistSchedules(); err != nil {
+				log.Printf("trigger: persistSchedules failed: %v", err)
+			}
 		}
 	}
 
@@ -228,7 +231,7 @@ func (cs *CronScheduler) nextTickInterval() time.Duration {
 }
 
 func (cs *CronScheduler) auditCronMissed(schedule *CronSchedule, reason string) {
-	_ = cs.audit.Append(audit.AuditRecord{
+	if err := cs.audit.Append(audit.AuditRecord{
 		EventType:      "cron_missed",
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		DeploymentMode: "local",
@@ -238,11 +241,13 @@ func (cs *CronScheduler) auditCronMissed(schedule *CronSchedule, reason string) 
 			"cron_expr":  schedule.Expr,
 			"reason":     reason,
 		},
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", "cron_missed", err)
+	}
 }
 
 func (cs *CronScheduler) auditCronSkipped(schedule *CronSchedule, reason string) {
-	_ = cs.audit.Append(audit.AuditRecord{
+	if err := cs.audit.Append(audit.AuditRecord{
 		EventType:      "cron_skipped_concurrency",
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		DeploymentMode: "local",
@@ -252,7 +257,9 @@ func (cs *CronScheduler) auditCronSkipped(schedule *CronSchedule, reason string)
 			"cron_expr":  schedule.Expr,
 			"reason":     reason,
 		},
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", "cron_skipped_concurrency", err)
+	}
 }
 
 type noOpCronAuditAppender struct{}

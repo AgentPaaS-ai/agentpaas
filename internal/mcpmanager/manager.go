@@ -207,7 +207,7 @@ func computePolicyDigest(s policy.MCPServer) string {
 		"transport":     s.Transport,
 		"url":           stripURLUserinfo(s.URL),
 	}
-	data, _ := json.Marshal(canonical)
+	data, _ := json.Marshal(canonical) // best-effort marshal
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
 }

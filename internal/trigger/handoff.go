@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -349,7 +350,7 @@ const (
 )
 
 func (hm *HandoffManager) auditHandoffInvoked(req *HandoffRequest, cfg *HandoffConfig, env *A2AEnvelope, runID string) {
-	_ = hm.audit.Append(audit.AuditRecord{
+	if err := hm.audit.Append(audit.AuditRecord{
 		EventType:      eventHandoffInvoked,
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		DeploymentMode: "local",
@@ -362,11 +363,13 @@ func (hm *HandoffManager) auditHandoffInvoked(req *HandoffRequest, cfg *HandoffC
 			"run_id":         runID,
 			"envelope":       env,
 		},
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", eventHandoffInvoked, err)
+	}
 }
 
 func (hm *HandoffManager) auditHandoffSkipped(req *HandoffRequest, reason string) {
-	_ = hm.audit.Append(audit.AuditRecord{
+	if err := hm.audit.Append(audit.AuditRecord{
 		EventType:      eventHandoffSkipped,
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		DeploymentMode: "local",
@@ -377,11 +380,13 @@ func (hm *HandoffManager) auditHandoffSkipped(req *HandoffRequest, reason string
 			"correlation_id": req.CorrelationID,
 			"reason":         reason,
 		},
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", eventHandoffSkipped, err)
+	}
 }
 
 func (hm *HandoffManager) auditHandoffDenied(req *HandoffRequest, reason string) {
-	_ = hm.audit.Append(audit.AuditRecord{
+	if err := hm.audit.Append(audit.AuditRecord{
 		EventType:      eventHandoffDenied,
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		DeploymentMode: "local",
@@ -392,7 +397,9 @@ func (hm *HandoffManager) auditHandoffDenied(req *HandoffRequest, reason string)
 			"correlation_id": req.CorrelationID,
 			"reason":         reason,
 		},
-	})
+	}); err != nil {
+		log.Printf("trigger: audit append (%s): %v", eventHandoffDenied, err)
+	}
 }
 
 func generateCorrelationID() string {

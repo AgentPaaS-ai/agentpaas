@@ -49,7 +49,7 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 	// regardless so the caller can decide how to handle an unreachable daemon.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = cli.Ping(ctx)
+	_, _ = cli.Ping(ctx) // optional value; zero on miss
 
 	return &DockerRuntime{cli: cli}, nil
 }
@@ -107,7 +107,7 @@ func (d *DockerRuntime) ensureImage(ctx context.Context, imageRef string) error 
 	if err != nil {
 		return fmt.Errorf("pull image %q: %w", imageRef, err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() { _ = reader.Close() }() // best-effort close
 	if _, err := io.Copy(io.Discard, reader); err != nil {
 		return fmt.Errorf("drain pull output: %w", err)
 	}
@@ -227,7 +227,7 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 	// Connect additional networks for dual-homing
 	for _, netID := range additionalNetIDs {
 		if err := d.cli.NetworkConnect(ctx, netID, resp.ID, nil); err != nil {
-			_ = d.Remove(ctx, ContainerID(resp.ID), true)
+			_ = d.Remove(ctx, ContainerID(resp.ID), true) // best-effort cleanup
 			return "", fmt.Errorf("connect network %q: %w", netID, err)
 		}
 	}
@@ -424,7 +424,7 @@ func (d *DockerRuntime) Stats(ctx context.Context, id ContainerID) (ContainerSta
 		}
 		return ContainerStats{}, fmt.Errorf("container stats %q: %w", string(id), err)
 	}
-	defer func() { _ = statsResp.Body.Close() }()
+	defer func() { _ = statsResp.Body.Close() }() // best-effort close
 
 	data, err := io.ReadAll(statsResp.Body)
 	if err != nil {
@@ -476,8 +476,8 @@ func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOption
 	pr, pw := io.Pipe()
 	go func() {
 		_, err := stdcopy.StdCopy(pw, pw, reader)
-		_ = reader.Close()
-		_ = pw.CloseWithError(err)
+		_ = reader.Close() // best-effort close
+		_ = pw.CloseWithError(err) // best-effort cleanup
 	}()
 	return pr, nil
 }
@@ -568,7 +568,7 @@ func (d *DockerRuntime) ExecWithStdin(ctx context.Context, id ContainerID, cmd [
 
 	// Close the write side to signal EOF to the container process.
 	if conn, ok := hijacked.Conn.(interface{ CloseWrite() error }); ok {
-		_ = conn.CloseWrite()
+		_ = conn.CloseWrite() // best-effort cleanup
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer

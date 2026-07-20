@@ -26,7 +26,7 @@ func (s *Supervisor) appendJournalEventLocked(trk *attemptTracker, kind routedru
 	if err != nil {
 		return fmt.Errorf("open control journal: %w", err)
 	}
-	defer func() { _ = journal.Close() }()
+	defer func() { _ = journal.Close() }() // best-effort close
 
 	// Build the event. Retry on sequence-conflict errors (up to 3 times)
 	// to handle read-modify-write races between supervisor instances (F17).

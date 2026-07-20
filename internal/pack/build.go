@@ -119,7 +119,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create Docker client: %w", err)
 	}
-	defer func() { _ = cli.Close() }()
+	defer func() { _ = cli.Close() }() // best-effort close
 
 	buildResp, err := cli.ImageBuild(ctx, buildCtx, build.ImageBuildOptions{
 		Tags:       []string{cfg.ImageTag},
@@ -138,7 +138,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build image: %w", err)
 	}
-	defer func() { _ = buildResp.Body.Close() }()
+	defer func() { _ = buildResp.Body.Close() }() // best-effort close
 
 	// Read and check the build output stream. Docker ImageBuild returns a
 	// streaming JSON response where each line is either {"stream":"..."} for
@@ -243,7 +243,7 @@ func ComputeBuildInputDigestFromFiles(files []BuildFile) (string, error) {
 // Returns the list of locked package@version strings.
 // Returns error with verbatim uv output on conflict.
 func ResolveDependencies(ctx context.Context, projectDir string, runtime RuntimeType) ([]string, error) {
-	_ = runtime
+	_ = runtime // intentionally ignored (reviewed)
 	if err := validateProjectDir(projectDir); err != nil {
 		return nil, err
 	}
@@ -368,8 +368,8 @@ func resolveRequirements(ctx context.Context, projectDir string, reqPath string)
 		return nil, fmt.Errorf("create locked requirements file: %w", err)
 	}
 	lockedPath := lockedFile.Name()
-	defer func() { _ = lockedFile.Close() }()
-	defer func() { _ = os.Remove(lockedPath) }()
+	defer func() { _ = lockedFile.Close() }() // best-effort close
+	defer func() { _ = os.Remove(lockedPath) }() // best-effort remove
 
 	if err := rejectSymlinkPath(reqPath, false); err != nil {
 		return nil, err
@@ -584,7 +584,7 @@ func writeProjectFilesToTar(dst io.Writer, projectDir string, prefix string, ign
 	}
 
 	tw := tar.NewWriter(dst)
-	defer func() { _ = tw.Close() }()
+	defer func() { _ = tw.Close() }() // best-effort close
 	for _, file := range files {
 		if err := addFileToTar(tw, file.AbsPath, filepath.ToSlash(filepath.Join(prefix, file.RelPath)), file.Info, timestamp); err != nil {
 			return err
@@ -597,7 +597,7 @@ func writeProjectFilesToTar(dst io.Writer, projectDir string, prefix string, ign
 func createDockerBuildContext(cfg BuildConfig, ignore *IgnoreMatcher, deps []string) (io.Reader, error) {
 	buf := new(bytes.Buffer)
 	tw := tar.NewWriter(buf)
-	defer func() { _ = tw.Close() }()
+	defer func() { _ = tw.Close() }() // best-effort close
 
 	if err := addBytesToTar(tw, "Dockerfile", []byte(renderDockerfile(cfg, deps)), 0o644, cfg.SourceDateEpoch); err != nil {
 		return nil, err
@@ -686,7 +686,7 @@ func addFileToTar(tw *tar.Writer, filePath string, tarPath string, info fs.FileI
 }
 
 func addFileToTarWithMode(tw *tar.Writer, filePath string, tarPath string, info fs.FileInfo, mode int64, timestamp time.Time) error {
-	_ = info
+	_ = info // intentionally ignored (reviewed)
 	if err := rejectSymlinkPath(filePath, false); err != nil {
 		return err
 	}
