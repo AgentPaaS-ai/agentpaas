@@ -52,15 +52,27 @@ t2-test-agent/
 /integrations/bin/
 /bin/
 
-# Never commit internal build artifacts
+# Internal / private docs — not part of the public tree
 docs/archive/
-docs/owa-records/
 docs/plans/
-docs/b*-*.md
+docs/owa-records/archive/
 docs/*-resume-prompt*.md
 docs/*-checkpoint*.md
-docs/*-risk-analysis.md
 docs/*-block-end.md
 docs/*-start-prompt.md
-/docs/execution/
 docs/roadmap.md
+Agentpaas-pitch.md
+
+# Execution docs: keep planning/, reference/, blocks/, current-state, README, startup prompt.
+# Ignore only stale subtrees and one-off session artifacts under docs/execution/.
+docs/execution/archive/
+docs/execution/resume-prompts/
+docs/execution/session-resume-prompt-*.md
+docs/execution/testing-results.md
+docs/execution/golden-loop-test.md
+docs/execution/prompts/b*-restart-prompt.md
+docs/execution/prompts/b*-start-prompt.md
+
+# Ephemeral local workspaces
+.worktrees/
+b16-test-workspace/
