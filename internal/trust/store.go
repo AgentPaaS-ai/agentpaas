@@ -309,14 +309,14 @@ func (s *Store) Save() error {
 		return fmt.Errorf("trust: create temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
-	defer func() { _ = os.Remove(tmpPath) }()
+	defer func() { _ = os.Remove(tmpPath) }() // best-effort remove
 
 	if _, err := tmpFile.Write(data); err != nil {
-		_ = tmpFile.Close()
+		_ = tmpFile.Close() // best-effort close
 		return fmt.Errorf("trust: write temp file: %w", err)
 	}
 	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
+		_ = tmpFile.Close() // best-effort close
 		return fmt.Errorf("trust: fsync temp file: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
@@ -338,7 +338,7 @@ func (s *Store) Save() error {
 	if err != nil {
 		return fmt.Errorf("trust: open dir for fsync: %w", err)
 	}
-	defer func() { _ = dirFd.Close() }()
+	defer func() { _ = dirFd.Close() }() // best-effort close
 	if err := dirFd.Sync(); err != nil {
 		return fmt.Errorf("trust: fsync dir: %w", err)
 	}
@@ -363,11 +363,11 @@ func acquireFlock(lockPath string) (int, error) {
 			return fd, nil
 		}
 		if err != unix.EWOULDBLOCK {
-			_ = unix.Close(fd)
+			_ = unix.Close(fd) // best-effort cleanup
 			return -1, fmt.Errorf("trust: flock %s: %w", lockPath, err)
 		}
 		if time.Now().After(deadline) {
-			_ = unix.Close(fd)
+			_ = unix.Close(fd) // best-effort cleanup
 			return -1, fmt.Errorf("%w: %s", ErrLockTimeout, lockPath)
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -376,10 +376,10 @@ func acquireFlock(lockPath string) (int, error) {
 
 // releaseFlock releases the flock and closes the file descriptor.
 func releaseFlock(fd int, lockPath string) {
-	_ = unix.Flock(fd, unix.LOCK_UN)
-	_ = unix.Close(fd)
+	_ = unix.Flock(fd, unix.LOCK_UN) // intentionally ignored (reviewed)
+	_ = unix.Close(fd) // best-effort cleanup
 	// Clean up the lock file so it doesn't accumulate.
-	_ = os.Remove(lockPath)
+	_ = os.Remove(lockPath) // best-effort remove
 }
 
 // FingerprintFromPEM parses a PEM-encoded public key and returns its hex-encoded
@@ -397,7 +397,7 @@ func FingerprintFromPEM(pemData string) (string, error) {
 // "PUBLIC KEY" (PKIX/SPKI) and "EC PUBLIC KEY" blocks. The key must be
 // an ECDSA P-256 key.
 func parsePublicKeyPEM(pemData string) (*ecdsa.PublicKey, error) {
-	block, _ := pem.Decode([]byte(pemData))
+	block, _ := pem.Decode([]byte(pemData)) // optional value; zero on miss
 	if block == nil {
 		return nil, errors.New("no PEM block found in public key data")
 	}

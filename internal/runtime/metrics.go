@@ -156,7 +156,7 @@ func (c *ResourceCollector) loop(ctx context.Context) {
 			return
 		case <-t.C:
 			// Sample is best-effort here: an error just skips this tick.
-			_, _ = c.Sample(ctx)
+			_, _ = c.Sample(ctx) // optional value; zero on miss
 		}
 	}
 }

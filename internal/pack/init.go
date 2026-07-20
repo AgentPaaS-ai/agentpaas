@@ -254,7 +254,7 @@ func writeNewProjectFile(path string, content string) error {
 	if err != nil {
 		return fmt.Errorf("create %s: %w", path, err)
 	}
-	defer func() { _ = file.Close() }()
+	defer func() { _ = file.Close() }() // best-effort close
 
 	if _, err := file.WriteString(content); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)

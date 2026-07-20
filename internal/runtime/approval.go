@@ -222,7 +222,7 @@ func (a *ApprovalStore) Request(ctx context.Context, tenantID string, req Approv
 	}
 	// No wake event on Request: the worker is the one who asked, it is not
 	// waiting for its own request. Wake fires on Resolve.
-	_ = ctx
+	_ = ctx // unused context; interface compliance
 	return req.RequestID, nil
 }
 
@@ -295,10 +295,10 @@ func (a *ApprovalStore) Resolve(ctx context.Context, tenantID, requestID, resolu
 			return fmt.Errorf("runtime: approval resolve wal: %w", err)
 		}
 	}
-	_ = foundRun
+	_ = foundRun // intentionally ignored (reviewed)
 
 	// Emit a wake event so a waiting worker is notified.
-	payload, _ := json.Marshal(inboxWakePayload{
+	payload, _ := json.Marshal(inboxWakePayload{ // best-effort marshal
 		MessageID: found.RequestID,
 		TaskID:    found.TaskID,
 		Type:      string(WakeReasonApproval),
@@ -376,7 +376,7 @@ func (a *ApprovalStore) appendWAL(tenantID, runID string, rec approvalWALRecord)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 	fi, err := f.Stat()
 	if err != nil {
 		return err

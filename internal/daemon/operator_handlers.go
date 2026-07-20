@@ -127,7 +127,7 @@ func (s *controlServer) ValidateAgentProject(ctx context.Context, req *controlv1
 			fmt.Sprintf("open policy.yaml: %v", err),
 		), nil
 	}
-	defer func() { _ = policyFile.Close() }()
+	defer func() { _ = policyFile.Close() }() // best-effort close
 
 	parsedPolicy, err := policy.ParsePolicy(policyFile)
 	if err != nil {
@@ -290,7 +290,7 @@ func (s *controlServer) SummarizeRun(ctx context.Context, req *controlv1.Summari
 			resp.Status = "failed"
 			finishedAt = parseAuditTime(record.Timestamp)
 			resp.ExitCode = auditInt32(record.Payload, "exit_code")
-			category, _ := diagnosisForRecord(record)
+			category, _ := diagnosisForRecord(record) // category optional
 			resp.ErrorCategory = string(category)
 		case "run_stop":
 			if auditString(record.Payload, "status") == "failed" {
@@ -739,7 +739,7 @@ func (s *controlServer) policyDenialEvidence(destination string) ([]operator.Evi
 }
 
 func (s *controlServer) confirmationStore() *ConfirmationStore {
-	store, _ := confirmationStores.LoadOrStore(s, NewConfirmationStore())
+	store, _ := confirmationStores.LoadOrStore(s, NewConfirmationStore()) // sync.Map always ok
 	return store.(*ConfirmationStore)
 }
 

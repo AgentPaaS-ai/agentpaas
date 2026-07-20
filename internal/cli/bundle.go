@@ -33,7 +33,7 @@ full policy summary, lints, requirements, and SBOM.`,
 			if err != nil {
 				return fmt.Errorf("open bundle: %w", err)
 			}
-			defer func() { _ = b.Close() }()
+			defer func() { _ = b.Close() }() // best-effort close
 
 			verifyReport, err := bundle.Verify(b)
 			if err != nil {
@@ -45,7 +45,7 @@ full policy summary, lints, requirements, and SBOM.`,
 				return fmt.Errorf("inspect bundle: %w", err)
 			}
 
-			jsonOut, _ := cmd.Flags().GetBool("json")
+			jsonOut, _ := cmd.Flags().GetBool("json") // cobra flag default on missing
 			if !jsonOut {
 				jsonOut = jsonOutput(cmd)
 			}
@@ -54,7 +54,7 @@ full policy summary, lints, requirements, and SBOM.`,
 					return err
 				}
 			} else {
-				_, _ = fmt.Fprint(os.Stdout, bundle.FormatInspectText(report))
+				_, _ = fmt.Fprint(os.Stdout, bundle.FormatInspectText(report)) // best-effort write
 			}
 
 			if !report.Verified {

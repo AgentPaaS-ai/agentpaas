@@ -59,7 +59,7 @@ func readBundleTarEntries(path string) ([]tarEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gzip: %w", err)
 	}
-	defer func() { _ = gz.Close() }()
+	defer func() { _ = gz.Close() }() // best-effort close
 	tr := tar.NewReader(gz)
 	var entries []tarEntry
 	for {

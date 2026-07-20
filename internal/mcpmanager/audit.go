@@ -1,6 +1,7 @@
 package mcpmanager
 
 import (
+	"log"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
@@ -14,7 +15,7 @@ func AuditToolCall(appender audit.AuditAppender, serverID, tool, agentID, runID,
 	if appender == nil {
 		return
 	}
-	_ = appender.Append(audit.AuditRecord{
+	if err := appender.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		EventType:      audit.EventTypeMCPToolCall,
 		DeploymentMode: "local",
@@ -32,7 +33,9 @@ func AuditToolCall(appender audit.AuditAppender, serverID, tool, agentID, runID,
 			"timing_ms":      timingMS,
 			"host_affecting": IsHostAffecting(tool),
 		},
-	})
+	}); err != nil {
+		log.Printf("mcpmanager: audit append (%s): %v", audit.EventTypeMCPToolCall, err)
+	}
 }
 
 // AuditToolDenied records an MCP tool denial audit event with full metadata.
@@ -46,15 +49,15 @@ func AuditToolDenied(appender audit.AuditAppender, serverID, tool, agentID, runI
 		timingMS     int64
 	)
 	if len(metadata) > 0 {
-		credentialID, _ = metadata[0].(string)
+		credentialID, _ = metadata[0].(string) // optional value; zero on miss
 	}
 	if len(metadata) > 1 {
-		inputHash, _ = metadata[1].(string)
+		inputHash, _ = metadata[1].(string) // optional value; zero on miss
 	}
 	if len(metadata) > 2 {
-		timingMS, _ = metadata[2].(int64)
+		timingMS, _ = metadata[2].(int64) // optional value; zero on miss
 	}
-	_ = appender.Append(audit.AuditRecord{
+	if err := appender.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		EventType:      audit.EventTypeMCPToolDenied,
 		DeploymentMode: "local",
@@ -73,5 +76,7 @@ func AuditToolDenied(appender audit.AuditAppender, serverID, tool, agentID, runI
 			"timing_ms":      timingMS,
 			"host_affecting": IsHostAffecting(tool),
 		},
-	})
+	}); err != nil {
+		log.Printf("mcpmanager: audit append (%s): %v", audit.EventTypeMCPToolDenied, err)
+	}
 }

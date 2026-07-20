@@ -254,7 +254,7 @@ func computeSourceDigestFromBundle(b *Bundle) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create temp dir: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	defer func() { _ = os.RemoveAll(tmpDir) }() // best-effort remove
 
 	if err := b.ExtractSource(tmpDir); err != nil {
 		return "", fmt.Errorf("extract source: %w", err)
@@ -287,7 +287,7 @@ func readBundleTarFile(b *Bundle, name string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gzip reader: %w", err)
 	}
-	defer func() { _ = gzReader.Close() }()
+	defer func() { _ = gzReader.Close() }() // best-effort close
 	tr := tar.NewReader(gzReader)
 	for {
 		hdr, err := tr.Next()

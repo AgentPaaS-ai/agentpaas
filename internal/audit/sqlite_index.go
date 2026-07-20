@@ -28,7 +28,7 @@ func NewSQLiteIndexer(dbPath string) (*SQLiteIndexer, error) {
 
 	// Create tables if they don't exist
 	if err := ix.ensureSchema(); err != nil {
-		_ = db.Close()
+		_ = db.Close() // best-effort close
 		return nil, fmt.Errorf("ensure schema: %w", err)
 	}
 
@@ -66,7 +66,7 @@ func (ix *SQLiteIndexer) Rebuild(auditPath string) error {
 	if txErr != nil {
 		return fmt.Errorf("begin tx: %w", txErr)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = tx.Rollback() }() // best-effort rollback; no-op after commit
 
 	// Clear existing data
 	if _, execErr := tx.Exec("DELETE FROM audit_records"); execErr != nil {
@@ -81,7 +81,7 @@ func (ix *SQLiteIndexer) Rebuild(auditPath string) error {
 	if prepErr != nil {
 		return fmt.Errorf("prepare insert: %w", prepErr)
 	}
-	defer func() { _ = stmt.Close() }()
+	defer func() { _ = stmt.Close() }() // best-effort close
 
 	for _, rec := range records {
 		payloadJSON := marshalJSON(rec.Payload)
@@ -174,7 +174,7 @@ func (ix *SQLiteIndexer) QueryByEventType(eventType string, limit int) ([]AuditR
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
+	defer func() { _ = rows.Close() }() // best-effort close
 
 	var records []AuditRecord
 	for rows.Next() {
@@ -199,7 +199,7 @@ func RebuildSQLiteIndex(auditPath, dbPath string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = ix.Close() }()
+	defer func() { _ = ix.Close() }() // best-effort close
 	return ix.Rebuild(auditPath)
 }
 

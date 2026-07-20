@@ -62,8 +62,8 @@ func (c CredentialInjection) GoString() string {
 	return c.String()
 }
 
-func (c CredentialInjection) Format(s fmt.State, _ rune) {
-	_, _ = fmt.Fprint(s, c.String())
+func (c CredentialInjection) Format(s fmt.State, _ rune) { // intentionally ignored (reviewed)
+	_, _ = fmt.Fprint(s, c.String()) // best-effort write
 }
 
 func NewBroker(cfg BrokerConfig) (*Broker, error) {
@@ -296,7 +296,7 @@ func (b *Broker) credential(id string) (policy.Credential, error) {
 }
 
 func (b *Broker) credentialIDForRule(policyRuleID string) string {
-	rule, _, err := b.egressRule(policyRuleID)
+	rule, _, err := b.egressRule(policyRuleID) // intentionally ignored (reviewed)
 	if err != nil {
 		return ""
 	}

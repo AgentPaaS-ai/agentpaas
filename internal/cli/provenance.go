@@ -47,7 +47,7 @@ func provenanceShowBundle(cmd *cobra.Command, path string, jsonOut bool) error {
 	if err != nil {
 		return fmt.Errorf("open bundle: %w", err)
 	}
-	defer func() { _ = b.Close() }()
+	defer func() { _ = b.Close() }() // best-effort close
 
 	verifyReport, err := bundle.Verify(b)
 	if err != nil {

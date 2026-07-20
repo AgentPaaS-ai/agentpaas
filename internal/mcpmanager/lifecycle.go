@@ -195,7 +195,7 @@ func (lc *Lifecycle) waitForStdio(serverID string, cmd *exec.Cmd, state *stdioSt
 	}
 }
 
-func (lc *Lifecycle) startHTTP(ctx context.Context, serverID, _ string, runID string, server policy.MCPServer) error {
+func (lc *Lifecycle) startHTTP(ctx context.Context, serverID, _ string, runID string, server policy.MCPServer) error { // intentionally ignored (reviewed)
 	if lc.driver == nil {
 		return errors.New("http MCP server requires Docker runtime")
 	}

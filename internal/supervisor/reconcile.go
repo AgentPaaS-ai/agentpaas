@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"io/fs"
 	"time"
 
@@ -56,7 +57,9 @@ func (s *Supervisor) Reconcile(ctx context.Context, runID routedrun.RunID) error
 			}
 		}
 		if !anySucceeded {
-			_ = s.casRunTo(ctx, runID, routedrun.RunStatusFailed)
+			if err := s.casRunTo(ctx, runID, routedrun.RunStatusFailed); err != nil {
+				log.Printf("supervisor: %s failed: %v", "s.casRunTo", err)
+			}
 		}
 	}
 	// Reconcile active-time segment state from the workflow.
@@ -85,7 +88,7 @@ func (s *Supervisor) reconcileAttempt(ctx context.Context, att *routedrun.Attemp
 		return fmt.Errorf("reconcile: open journal: %w", err)
 	}
 	events, err := journal.Read(1)
-	_ = journal.Close()
+	_ = journal.Close() // best-effort close
 	if err != nil {
 		// F16: distinguish absence from corruption/IO errors.
 		// os.IsNotExist/fs.ErrNotExist-style errors mean no journal events
@@ -96,7 +99,7 @@ func (s *Supervisor) reconcileAttempt(ctx context.Context, att *routedrun.Attemp
 			// No journal directory or no events: ambiguous active lease.
 			events = nil
 		} else {
-			_ = s.audit.Append(audit.AuditRecord{
+			if err := s.audit.Append(audit.AuditRecord{
 				Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 				EventType:      "supervisor_journal_read_error",
 				DeploymentMode: "local",
@@ -106,7 +109,9 @@ func (s *Supervisor) reconcileAttempt(ctx context.Context, att *routedrun.Attemp
 					"attempt_id": string(att.AttemptID),
 					"error":      err.Error(),
 				},
-			})
+			}); err != nil {
+				log.Printf("supervisor: audit append (%s): %v", "supervisor_journal_read_error", err)
+			}
 			return fmt.Errorf("reconcile: journal read error for attempt %s: %w", att.AttemptID, err)
 		}
 	}
@@ -169,7 +174,7 @@ func (s *Supervisor) reconcileSuccess(ctx context.Context, att *routedrun.Attemp
 	}
 	// Complete the run CAS to SUCCEEDED.
 	if err := s.casRunTo(ctx, att.RunID, routedrun.RunStatusSucceeded); err != nil {
-		_ = s.audit.Append(audit.AuditRecord{
+		if err := s.audit.Append(audit.AuditRecord{
 			Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 			EventType:      "supervisor_reconcile_run_cas_error",
 			DeploymentMode: "local",
@@ -179,7 +184,9 @@ func (s *Supervisor) reconcileSuccess(ctx context.Context, att *routedrun.Attemp
 				"attempt_id": string(att.AttemptID),
 				"error":      err.Error(),
 			},
-		})
+		}); err != nil {
+			log.Printf("supervisor: audit append (%s): %v", "supervisor_reconcile_run_cas_error", err)
+		}
 		return fmt.Errorf("reconcile: cas run to succeeded: %w", err)
 	}
 	// Establish in-memory tracking as terminal.
@@ -240,11 +247,11 @@ func (s *Supervisor) revokeLeaseAndFail(ctx context.Context, att *routedrun.Atte
 					break
 				}
 				if !errors.Is(aerr, routedrun.ErrJournalSequenceConflict) {
-					_ = journal.Close()
+					_ = journal.Close() // best-effort close
 					return fmt.Errorf("reconcile: append FAILED journal event: %w", aerr)
 				}
 			}
-			_ = journal.Close()
+			_ = journal.Close() // best-effort close
 		}
 		s.markTerminalForRestart(att)
 		return nil

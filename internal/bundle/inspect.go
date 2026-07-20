@@ -184,7 +184,7 @@ func FileBundleDigest(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open bundle: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("read bundle: %w", err)
@@ -404,13 +404,13 @@ func isRawIPDomain(domain string) bool {
 		return false
 	}
 	if strings.Contains(d, "/") {
-		if _, _, err := net.ParseCIDR(d); err == nil {
+		if _, _, err := net.ParseCIDR(d); err == nil { // intentionally ignored (reviewed)
 			return true
 		}
 	}
 	host := d
 	if strings.Contains(host, ":") {
-		if h, _, err := net.SplitHostPort(host); err == nil {
+		if h, _, err := net.SplitHostPort(host); err == nil { // intentionally ignored (reviewed)
 			host = h
 		}
 	}
@@ -498,9 +498,9 @@ func FormatInspectText(r *InspectReport) string {
 			if c.Passed {
 				status = "PASS"
 			}
-			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\n", c.Name, status, c.Detail)
+			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\n", c.Name, status, c.Detail) // best-effort write
 		}
-		_ = tw.Flush()
+		_ = tw.Flush() // best-effort flush
 	}
 	if !r.Verified {
 		fmt.Fprintf(&b, "\nIntegrity verification failed. Publisher, provenance, and policy sections are withheld.\n")

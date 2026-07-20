@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 
 	"google.golang.org/grpc/codes"
@@ -91,7 +92,9 @@ func (cs *CronScheduler) AddSchedule(ctx context.Context, schedule *CronSchedule
 	cs.mu.Unlock()
 
 	if cs.statePath != "" {
-		_ = cs.persistSchedules()
+		if err := cs.persistSchedules(); err != nil {
+			log.Printf("trigger: persistSchedules failed: %v", err)
+		}
 	}
 
 	return schedule.ScheduleID, nil
@@ -124,7 +127,9 @@ func (cs *CronScheduler) RemoveSchedule(ctx context.Context, scheduleID string) 
 	cs.mu.Unlock()
 
 	if cs.statePath != "" {
-		_ = cs.persistSchedules()
+		if err := cs.persistSchedules(); err != nil {
+			log.Printf("trigger: persistSchedules failed: %v", err)
+		}
 	}
 
 	return nil

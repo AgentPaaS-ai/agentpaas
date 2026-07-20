@@ -40,7 +40,7 @@ func lastRecordHashFromFile(path string) string {
 		fmt.Fprintf(os.Stderr, "harness: seed prevHash: open %s: %v\n", path, err)
 		return ""
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	const tailRead = 4096
 	readSize := int64(tailRead)

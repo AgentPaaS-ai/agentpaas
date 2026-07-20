@@ -94,7 +94,7 @@ func (r *childReaper) reap() {
 	for _, pid := range r.reapableChildren() {
 		var status syscall.WaitStatus
 		var usage syscall.Rusage
-		_, _ = syscall.Wait4(pid, &status, syscall.WNOHANG, &usage)
+		_, _ = syscall.Wait4(pid, &status, syscall.WNOHANG, &usage) // best-effort reaper wait
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -122,20 +123,20 @@ func ForkInstalled(stateRoot, ref, targetDir string, auditAppender audit.AuditAp
 
 	sourceRoot := filepath.Join(installedDir, installedSourceDir)
 	if err := copyForkSourceTree(sourceRoot, targetAbs); err != nil {
-		_ = os.RemoveAll(targetAbs)
+		_ = os.RemoveAll(targetAbs) // best-effort remove
 		return fmt.Errorf("%w: copy source: %w", ErrForkRefused, err)
 	}
 	if err := os.WriteFile(filepath.Join(targetAbs, installedPolicyName), policyYAML, 0o600); err != nil {
-		_ = os.RemoveAll(targetAbs)
+		_ = os.RemoveAll(targetAbs) // best-effort remove
 		return fmt.Errorf("%w: write policy: %w", ErrForkRefused, err)
 	}
 	lineageRaw, err := json.Marshal(lineage)
 	if err != nil {
-		_ = os.RemoveAll(targetAbs)
+		_ = os.RemoveAll(targetAbs) // best-effort remove
 		return fmt.Errorf("%w: marshal lineage: %w", ErrForkRefused, err)
 	}
 	if err := os.WriteFile(filepath.Join(targetAbs, forkLineageFileName), lineageRaw, 0o600); err != nil {
-		_ = os.RemoveAll(targetAbs)
+		_ = os.RemoveAll(targetAbs) // best-effort remove
 		return fmt.Errorf("%w: write lineage: %w", ErrForkRefused, err)
 	}
 
@@ -151,7 +152,9 @@ func ForkInstalled(stateRoot, ref, targetDir string, auditAppender audit.AuditAp
 		},
 	}
 	if auditAppender != nil {
-		_ = auditAppender.Append(record)
+		if err := auditAppender.Append(record); err != nil {
+			log.Printf("install: audit append (%s): %v", "audit", err)
+		}
 	}
 	return nil
 }
@@ -257,7 +260,7 @@ func ForkPublisherWarning(stateRoot, ref string) string {
 
 // ForkAgentNameFromRef extracts the agent name from an installed ref for display.
 func ForkAgentNameFromRef(ref string) (string, error) {
-	name, _, err := naming.ParseAgentRef(ref)
+	name, _, err := naming.ParseAgentRef(ref) // intentionally ignored (reviewed)
 	if err != nil {
 		if strings.Contains(ref, "@") {
 			return "", err

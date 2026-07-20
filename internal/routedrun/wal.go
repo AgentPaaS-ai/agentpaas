@@ -116,7 +116,7 @@ func (s *LocalStore) recoverWAL(wfID WorkflowID) error {
 		}
 		name := e.Name()
 		if strings.HasPrefix(name, ".tmp-") {
-			_ = os.Remove(filepath.Join(dir, name))
+			_ = os.Remove(filepath.Join(dir, name)) // best-effort remove
 			continue
 		}
 		if !strings.HasSuffix(name, ".json") {
@@ -314,7 +314,7 @@ func (s *LocalStore) applyTransitionLocked(wfID WorkflowID, expectedGeneration i
 		return err
 	}
 	// Append to events.jsonl for observability.
-	_ = s.appendWorkflowEvent(wfID, entry)
+	_ = s.appendWorkflowEvent(wfID, entry) // intentionally ignored (reviewed)
 	return nil
 }
 

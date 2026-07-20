@@ -54,7 +54,7 @@ type plistValueXML struct {
 
 // MarshalXML implements xml.Marshaler for plistEntryXML.
 // It emits <key>K</key><VALUE>...</VALUE> on a single line.
-func (e plistEntryXML) MarshalXML(enc *xml.Encoder, _ xml.StartElement) error {
+func (e plistEntryXML) MarshalXML(enc *xml.Encoder, _ xml.StartElement) error { // intentionally ignored (reviewed)
 	// Emit <key>...</key>
 	if err := enc.EncodeElement(e.Key, xml.StartElement{Name: xml.Name{Local: "key"}}); err != nil {
 		return err

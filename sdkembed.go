@@ -35,7 +35,7 @@ func HasEmbeddedSDK() bool {
 
 // EmbeddedSDKFiles returns the list of embedded SDK file paths
 // (POSIX-style, relative to the embed root, e.g. "python/agentpaas_sdk/__init__.py").
-// Excludes directories, __pycache__, and .pyc files.
+// Excludes directories, __pycache__, and .pyc files. // intentionally ignored (reviewed)
 func EmbeddedSDKFiles() ([]string, error) {
 	var files []string
 	err := fs.WalkDir(embeddedSDK, EmbeddedSDKPrefix, func(path string, d fs.DirEntry, err error) error {
@@ -108,8 +108,8 @@ func ExtractEmbeddedSDKToTemp() (sdkDir string, cleanup func(), err error) {
 	}
 	sdkDir, err = ExtractEmbeddedSDK(tmp)
 	if err != nil {
-		_ = os.RemoveAll(tmp)
+		_ = os.RemoveAll(tmp) // best-effort remove
 		return "", nil, err
 	}
-	return sdkDir, func() { _ = os.RemoveAll(tmp) }, nil
+	return sdkDir, func() { _ = os.RemoveAll(tmp) }, nil // best-effort remove
 }

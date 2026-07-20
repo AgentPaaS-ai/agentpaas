@@ -169,7 +169,7 @@ func (w *progressJournalWriter) append(
 func (w *progressJournalWriter) computeHMAC(rec progressJournalRecord) string {
 	// Marshal without HMAC, then HMAC the bytes.
 	rec.HMAC = ""
-	canonical, _ := json.Marshal(rec)
+	canonical, _ := json.Marshal(rec) // best-effort marshal
 	mac := hmac.New(sha256.New, w.key)
 	mac.Write(canonical)
 	return hex.EncodeToString(mac.Sum(nil))
@@ -232,7 +232,7 @@ func removeJournalKey(path string) error {
 func verifyJournalRecord(rec *progressJournalRecord, key []byte) bool {
 	expected := rec.HMAC
 	rec.HMAC = ""
-	canonical, _ := json.Marshal(rec)
+	canonical, _ := json.Marshal(rec) // best-effort marshal
 	mac := hmac.New(sha256.New, key)
 	mac.Write(canonical)
 	actual := hex.EncodeToString(mac.Sum(nil))
@@ -254,7 +254,7 @@ func computeCheckpointDigest(rec *progressJournalRecord) string {
 		"safe_to_resume":       rec.SafeToResume,
 		"artifact_references":  rec.ArtifactRefs,
 	}
-	b, _ := json.Marshal(cp)
+	b, _ := json.Marshal(cp) // best-effort marshal
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }

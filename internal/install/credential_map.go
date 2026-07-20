@@ -139,7 +139,7 @@ func ApplyMapCredential(opts MapCredentialOpts) error {
 	if err != nil {
 		return fmt.Errorf("parse installed policy: %w", err)
 	}
-	llmCredID, _ := SignedLLMCredentialID(opts.StateRoot, opts.Ref)
+	llmCredID, _ := SignedLLMCredentialID(opts.StateRoot, opts.Ref) // optional credential id
 	if !isDeclaredBrokeredCredential(pol, declared) && declared != llmCredID {
 		return fmt.Errorf("%w: credential %q is not a declared brokered or signed LLM credential", ErrCredentialMapInvalid, declared)
 	}

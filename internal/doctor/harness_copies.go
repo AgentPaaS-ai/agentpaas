@@ -88,7 +88,7 @@ func hashAndStat(path string) (string, time.Time, bool) {
 	if err != nil {
 		return "", time.Time{}, false
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {

@@ -26,7 +26,7 @@ func Open(path string) (*Bundle, error) {
 	}
 	defer func() {
 		if f != nil {
-			_ = f.Close()
+			_ = f.Close() // best-effort close
 		}
 	}()
 
@@ -36,7 +36,7 @@ func Open(path string) (*Bundle, error) {
 	}
 	defer func() {
 		if gzReader != nil {
-			_ = gzReader.Close()
+			_ = gzReader.Close() // best-effort close
 		}
 	}()
 
@@ -179,7 +179,7 @@ func Open(path string) (*Bundle, error) {
 	}
 
 	// Close gzip reader (we'll keep the file open for on-demand extraction).
-	_ = gzReader.Close()
+	_ = gzReader.Close() // best-effort close
 	gzReader = nil
 
 	// Parse JSON metadata.
@@ -239,7 +239,7 @@ func (b *Bundle) extractPrefix(destDir, prefix string, entries []bundleMetaEntry
 	if err != nil {
 		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
+	defer func() { _ = os.RemoveAll(tmpDir) }() // best-effort remove
 
 	// Reset file position and decompress.
 	if _, err := b.raw.Seek(0, io.SeekStart); err != nil {
@@ -249,7 +249,7 @@ func (b *Bundle) extractPrefix(destDir, prefix string, entries []bundleMetaEntry
 	if err != nil {
 		return fmt.Errorf("gzip reader: %w", err)
 	}
-	defer func() { _ = gzReader.Close() }()
+	defer func() { _ = gzReader.Close() }() // best-effort close
 	tr := tar.NewReader(gzReader)
 
 	// Build set of paths to extract.
@@ -296,14 +296,14 @@ func (b *Bundle) extractPrefix(destDir, prefix string, entries []bundleMetaEntry
 			return fmt.Errorf("create %s: %w", relPath, err)
 		}
 		if _, err := io.CopyN(f, tr, hdr.Size); err != nil {
-			_ = f.Close()
+			_ = f.Close() // best-effort close
 			return fmt.Errorf("write %s: %w", relPath, err)
 		}
 		if err := f.Chmod(os.FileMode(hdr.Mode & 0o777)); err != nil {
-			_ = f.Close()
+			_ = f.Close() // best-effort close
 			return fmt.Errorf("chmod %s: %w", relPath, err)
 		}
-		_ = f.Close()
+		_ = f.Close() // best-effort close
 	}
 
 	// Move extracted files from tmpDir to destDir (atomic via rename for each file).

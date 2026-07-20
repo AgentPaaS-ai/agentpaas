@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/netip"
@@ -182,7 +183,7 @@ func (ep *EgressPolicy) auditEgressDecision(serverID, destination, method, crede
 	if ep == nil || ep.audit == nil {
 		return
 	}
-	_ = ep.audit.Append(audit.AuditRecord{
+	if err := ep.audit.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
 		EventType:      eventTypeMCPEgressDecision,
 		DeploymentMode: "local",
@@ -196,7 +197,9 @@ func (ep *EgressPolicy) auditEgressDecision(serverID, destination, method, crede
 			"reason":         reason,
 			"server_id":      serverID,
 		},
-	})
+	}); err != nil {
+		log.Printf("mcpmanager: audit append (%s): %v", eventTypeMCPEgressDecision, err)
+	}
 }
 
 func normalizeMethods(methods []string) []string {

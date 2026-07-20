@@ -104,7 +104,7 @@ func parsePolicyFile(path string) (*policy.Policy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open policy: %w", err)
 	}
-	defer func() { _ = file.Close() }()
+	defer func() { _ = file.Close() }() // best-effort close
 	parsed, err := policy.ParsePolicy(file)
 	if err != nil {
 		return nil, fmt.Errorf("parse policy: %w", err)

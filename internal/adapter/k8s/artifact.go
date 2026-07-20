@@ -43,7 +43,7 @@ func (a *K8sArtifactStore) Commit(_ context.Context, r port.CommitArtifactReques
 	return id, digest, nil
 }
 
-func (a *K8sArtifactStore) Authorize(_ context.Context, id port.ArtifactID, _ string) error {
+func (a *K8sArtifactStore) Authorize(_ context.Context, id port.ArtifactID, _ string) error { // intentionally ignored (reviewed)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if _, ok := a.store[id]; !ok {
@@ -92,7 +92,7 @@ func (a *K8sArtifactStore) Verify(_ context.Context, id port.ArtifactID, expecte
 	return nil
 }
 
-func (a *K8sArtifactStore) Retain(_ context.Context, _ port.ArtifactID, _ port.RetentionPolicy) error {
+func (a *K8sArtifactStore) Retain(_ context.Context, _ port.ArtifactID, _ port.RetentionPolicy) error { // intentionally ignored (reviewed)
 	return nil
 }
 

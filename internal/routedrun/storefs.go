@@ -160,16 +160,16 @@ func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpPath)
+			_ = os.Remove(tmpPath) // best-effort remove
 		}
 	}()
 
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return fmt.Errorf("routedrun: write temp: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return fmt.Errorf("routedrun: fsync temp: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
@@ -193,7 +193,7 @@ func fsyncDir(dir string) error {
 	if err != nil {
 		return fmt.Errorf("routedrun: open dir for fsync: %w", err)
 	}
-	defer func() { _ = d.Close() }()
+	defer func() { _ = d.Close() }() // best-effort close
 	if err := d.Sync(); err != nil {
 		return fmt.Errorf("routedrun: fsync dir: %w", err)
 	}
@@ -225,7 +225,7 @@ func readFileStrict(path string, maxBytes int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 	// Cap read.
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
@@ -345,7 +345,7 @@ func escapeAlias(alias string) string {
 		case r == '/':
 			b.WriteString("__")
 		default:
-			_, _ = fmt.Fprintf(&b, "_%04x", r)
+			_, _ = fmt.Fprintf(&b, "_%04x", r) // best-effort write
 		}
 	}
 	s := b.String()
@@ -384,14 +384,14 @@ func appendJSONL(path string, line []byte) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 	// Enforce permissions on open.
 	fi, err := f.Stat()
 	if err != nil {
 		return err
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
-		_ = f.Close()
+		_ = f.Close() // best-effort close
 		return fmt.Errorf("%w: %s mode %#o", ErrUnsafePermissions, path, fi.Mode().Perm())
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
@@ -416,7 +416,7 @@ func cleanupOrphanTemps(root string) error {
 			return fmt.Errorf("%w: %s", ErrSymlinkRejected, path)
 		}
 		if !info.IsDir() && strings.HasPrefix(info.Name(), ".tmp-") {
-			_ = os.Remove(path)
+			_ = os.Remove(path) // best-effort remove
 		}
 		return nil
 	})

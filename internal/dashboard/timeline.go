@@ -420,10 +420,10 @@ func attrInt(attrs map[string]any, keys ...string) int {
 		case int64:
 			return int(value)
 		case json.Number:
-			i, _ := value.Int64()
+			i, _ := value.Int64() // best-effort numeric coerce; zero on fail
 			return int(i)
 		case string:
-			i, _ := strconv.Atoi(value)
+			i, _ := strconv.Atoi(value) // best-effort numeric coerce; zero on fail
 			return i
 		}
 	}
@@ -440,10 +440,10 @@ func attrFloat(attrs map[string]any, keys ...string) float64 {
 		case int64:
 			return float64(value)
 		case json.Number:
-			f, _ := value.Float64()
+			f, _ := value.Float64() // optional value; zero on miss
 			return f
 		case string:
-			f, _ := strconv.ParseFloat(value, 64)
+			f, _ := strconv.ParseFloat(value, 64) // best-effort numeric coerce; zero on fail
 			return f
 		}
 	}
@@ -456,7 +456,7 @@ func attrBool(attrs map[string]any, keys ...string) bool {
 		case bool:
 			return value
 		case string:
-			parsed, _ := strconv.ParseBool(value)
+			parsed, _ := strconv.ParseBool(value) // best-effort numeric coerce; zero on fail
 			return parsed
 		}
 	}

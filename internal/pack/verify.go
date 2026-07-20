@@ -120,7 +120,7 @@ func VerifyBuildOutput(ctx context.Context, imageRef string, cfg BuildConfig) er
 	defer func() {
 		rmCtx, rmCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer rmCancel()
-		_ = exec.CommandContext(rmCtx, "docker", "rm", "-f", containerID).Run()
+		_ = exec.CommandContext(rmCtx, "docker", "rm", "-f", containerID).Run() // best-effort external cleanup
 	}()
 
 	// Poll healthz endpoint until 200 or timeout.
@@ -213,7 +213,7 @@ func computeFileMD5(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("open %s: %w", path, err)
 	}
-	defer func() { _ = f.Close() }()
+	defer func() { _ = f.Close() }() // best-effort close
 
 	h := md5.New()
 	if _, err := io.Copy(h, f); err != nil {

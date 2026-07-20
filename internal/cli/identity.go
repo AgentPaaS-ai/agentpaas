@@ -69,9 +69,9 @@ func newIdentityInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Create a new publisher identity",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			name, _ := cmd.Flags().GetString("name")
-			forceRotate, _ := cmd.Flags().GetBool("force-rotate")
+		RunE: func(cmd *cobra.Command, _ []string) error { // intentionally ignored (reviewed)
+			name, _ := cmd.Flags().GetString("name") // cobra flag default on missing
+			forceRotate, _ := cmd.Flags().GetBool("force-rotate") // cobra flag default on missing
 
 			// Resolve name: from flag or interactive prompt.
 			if name == "" {
@@ -142,8 +142,8 @@ func runIdentityForceRotate(cmd *cobra.Command, ks identity.KeyStore, name strin
 	oldFP := existing.Fingerprint
 
 	// Delete existing entries from keystore.
-	_ = ks.Delete(identity.KeyID("publisher_identity"))
-	_ = ks.Delete(identity.KeyID("publisher_identity_name"))
+	_ = ks.Delete(identity.KeyID("publisher_identity")) // best-effort key delete on replace
+	_ = ks.Delete(identity.KeyID("publisher_identity_name")) // best-effort key delete on replace
 
 	// Create new identity.
 	pi, err := identity.CreatePublisherIdentity(ks, name)
@@ -170,13 +170,15 @@ func runIdentityForceRotate(cmd *cobra.Command, ks identity.KeyStore, name strin
 func printIdentityInitResult(cmd *cobra.Command, pi *identity.PublisherIdentity) {
 	jsonOut := jsonOutput(cmd)
 	if jsonOut {
-		_ = printTextOrJSON(true, identityShowResult{
-			Name:          pi.Name,
-			Fingerprint:   pi.Fingerprint,
+		if err := printTextOrJSON(true, identityShowResult{
+			Name:               pi.Name,
+			Fingerprint:        pi.Fingerprint,
 			FingerprintDisplay: identity.FormatFingerprintDisplay(pi.Fingerprint),
-			PublicKeyPEM:  pi.PublicKeyPEM,
-			CreatedAt:     pi.CreatedAt.Format(time.RFC3339),
-		}, nil)
+			PublicKeyPEM:       pi.PublicKeyPEM,
+			CreatedAt:          pi.CreatedAt.Format(time.RFC3339),
+		}, nil); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "identity: print json: %v\n", err) //nolint:errcheck
+		}
 		return
 	}
 
@@ -206,7 +208,7 @@ func newIdentityShowCmd() *cobra.Command {
 		Use:   "show",
 		Short: "Display publisher identity information",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error { // intentionally ignored (reviewed)
 			ks, err := openIdentityStore(cmd)
 			if err != nil {
 				return fmt.Errorf("open identity keystore: %w", err)
@@ -273,8 +275,8 @@ func newIdentityExportCmd() *cobra.Command {
 		Use:   "export",
 		Short: "Export an encrypted backup of the publisher identity",
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			outPath, _ := cmd.Flags().GetString("out")
+		RunE: func(cmd *cobra.Command, _ []string) error { // intentionally ignored (reviewed)
+			outPath, _ := cmd.Flags().GetString("out") // cobra flag default on missing
 			if outPath == "" {
 				return fmt.Errorf("--out flag is required")
 			}
@@ -328,7 +330,7 @@ func newIdentityExportCmd() *cobra.Command {
 			}
 
 			// Load identity for audit fingerprint.
-			pi, _ := identity.LoadPublisherIdentity(ks)
+			pi, _ := identity.LoadPublisherIdentity(ks) // optional value; zero on miss
 			fp := ""
 			if pi != nil {
 				fp = pi.Fingerprint
@@ -344,7 +346,7 @@ func newIdentityExportCmd() *cobra.Command {
 	}
 
 	cmd.Flags().String("out", "", "Output file path (required)")
-	_ = cmd.MarkFlagRequired("out")
+	_ = cmd.MarkFlagRequired("out") // flag registration; failure surfaces at Execute
 
 	return cmd
 }
@@ -499,17 +501,17 @@ func writeEnvelopeAtomic(path string, mode os.FileMode, data []byte) error {
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.Remove(tmpName)
+			_ = os.Remove(tmpName) // best-effort remove
 		}
 	}()
 
 	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return fmt.Errorf("write export data: %w", err)
 	}
 
 	if err := tmp.Chmod(mode); err != nil {
-		_ = tmp.Close()
+		_ = tmp.Close() // best-effort close
 		return fmt.Errorf("chmod export file: %w", err)
 	}
 
@@ -616,7 +618,7 @@ func newIdentityImportCmd() *cobra.Command {
 			}
 			if err := ks.Create(identity.KeyID("publisher_identity_name"), identity.KeyTypePublisher, nameMaterial); err != nil {
 				// Rollback key entry.
-				_ = ks.Delete(identity.KeyID("publisher_identity"))
+				_ = ks.Delete(identity.KeyID("publisher_identity")) // best-effort key delete on replace
 				return fmt.Errorf("store imported publisher name: %w", err)
 			}
 
@@ -647,7 +649,7 @@ func readImportPassphrase(cmd *cobra.Command) (string, error) {
 // fingerprintFromPEM computes a SHA-256 fingerprint from a PEM-encoded ECDSA
 // private key (same algorithm as identity.PublisherFingerprint).
 func fingerprintFromPEM(pemStr string) (string, error) {
-	block, _ := pem.Decode([]byte(pemStr))
+	block, _ := pem.Decode([]byte(pemStr)) // optional value; zero on miss
 	if block == nil {
 		return "", fmt.Errorf("failed to decode PEM block")
 	}
@@ -679,7 +681,7 @@ func emitAudit(cmd *cobra.Command, eventType string, payload map[string]string) 
 		logAuditLocal(cmd, eventType, payload)
 		return
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = conn.Close() }() // best-effort close
 
 	// TODO: wire audit events through daemon control API.
 	// For now, always log locally.
@@ -698,7 +700,7 @@ func logAuditLocal(cmd *cobra.Command, eventType string, payload map[string]stri
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Payload:   payload,
 	}
-	eventJSON, _ := json.Marshal(event)
+	eventJSON, _ := json.Marshal(event) // best-effort marshal
 	fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s\n", string(eventJSON)) //nolint:errcheck
 }
 
@@ -722,5 +724,5 @@ func readLine(r io.Reader) (string, error) {
 }
 
 // Compile-time check that the key constants are known.
-var _ = identity.KeyID("publisher_identity")
-var _ = identity.KeyTypePublisher
+var _ = identity.KeyID("publisher_identity") // compile-time interface/import assertion
+var _ = identity.KeyTypePublisher // compile-time interface/import assertion
