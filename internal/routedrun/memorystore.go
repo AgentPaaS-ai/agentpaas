@@ -1192,6 +1192,7 @@ func (s *MemoryStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, 
 				ledger.ConsumedMs += delta
 			}
 			ledger.RunningSegmentStartMs = nil
+			ledger.SegmentStartWallMs = nil
 		}
 		if to == WorkflowStatusPaused || to == WorkflowStatusNeedsReplan {
 			ledger.FrozenConsumedMs = ledger.ConsumedMs
@@ -1199,6 +1200,7 @@ func (s *MemoryStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, 
 	}
 	if !fromCharge && toCharge {
 		ledger.RunningSegmentStartMs = &nowMs
+		ledger.SegmentStartWallMs = &nowMs
 		ledger.FrozenConsumedMs = 0
 	}
 	if to.IsTerminal() {
@@ -1208,6 +1210,7 @@ func (s *MemoryStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, 
 				ledger.ConsumedMs += delta
 			}
 			ledger.RunningSegmentStartMs = nil
+			ledger.SegmentStartWallMs = nil
 		}
 	}
 	ledger.UpdatedAt = s.now()
