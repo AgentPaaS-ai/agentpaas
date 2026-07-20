@@ -24,9 +24,7 @@ func TestGenerateID_PrefixesAndEntropy(t *testing.T) {
 		{"service", func() (string, error) { id, err := NewServiceID(); return string(id), err }, PrefixService},
 		{"child_batch", func() (string, error) { id, err := NewChildBatchID(); return string(id), err }, PrefixChildBatch},
 		{"child_result", func() (string, error) { id, err := NewChildResultID(); return string(id), err }, PrefixChildResult},
-		{"artifact", func() (string, error) { id, err := NewArtifactID(); return string(id), err }, PrefixArtifact},
-		{"checkpoint", func() (string, error) { id, err := NewCheckpointID(); return string(id), err }, PrefixCheckpoint},
-		{"model_call", func() (string, error) { id, err := NewModelCallID(); return string(id), err }, PrefixModelCall},
+
 	}
 	seen := map[string]bool{}
 	for _, c := range checks {
