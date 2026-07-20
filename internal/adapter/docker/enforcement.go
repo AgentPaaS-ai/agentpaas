@@ -45,19 +45,33 @@ func (p *policyEnforcer) remove(_ context.Context, id string) error {
 	p.mu.Unlock()
 	return nil
 }
+// DockerEgressEnforcer.Apply applies docker egress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *DockerEgressEnforcer) Apply(c context.Context, id string, s port.CommSnapshot) error {
 	return e.apply(c, id, s)
 }
+// DockerEgressEnforcer.Check checks docker egress enforcer.
 func (e *DockerEgressEnforcer) Check(c context.Context, id, d string) port.Decision {
 	return e.check(c, id, d)
 }
+// DockerEgressEnforcer.Remove removes docker egress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *DockerEgressEnforcer) Remove(c context.Context, id string) error { return e.remove(c, id) }
+// DockerIngressEnforcer.Apply applies docker ingress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (i *DockerIngressEnforcer) Apply(c context.Context, id string, s port.CommSnapshot) error {
 	return i.apply(c, id, s)
 }
+// DockerIngressEnforcer.Check checks docker ingress enforcer.
 func (i *DockerIngressEnforcer) Check(c context.Context, id, d string) port.Decision {
 	return i.check(c, id, d)
 }
+// DockerIngressEnforcer.Remove removes docker ingress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (i *DockerIngressEnforcer) Remove(c context.Context, id string) error { return i.remove(c, id) }
 func itoa(n int) string {
 	if n == 0 {

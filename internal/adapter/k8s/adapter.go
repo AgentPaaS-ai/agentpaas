@@ -52,7 +52,9 @@ func NewK8sAdapter(deps K8sAdapterDeps) *K8sAdapter {
 // K8sClock is the system clock used by the adapter.
 type K8sClock struct{ n atomic.Uint64 }
 
+// K8sClock.Now now.
 func (c *K8sClock) Now() time.Time    { return time.Now() }
+// K8sClock.Monotonic monotonic.
 func (c *K8sClock) Monotonic() uint64 { return c.n.Add(1) }
 
 // K8sLeaseStore is an in-memory lease store with TTL-based expiry.
@@ -63,6 +65,9 @@ type K8sLeaseStore struct {
 
 var _ port.LeaseStore = (*K8sLeaseStore)(nil)
 
+// K8sLeaseStore.Acquire acquires k8s lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *K8sLeaseStore) Acquire(_ context.Context, r port.LeaseRequest) (port.LeaseID, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -79,6 +84,9 @@ func (l *K8sLeaseStore) Acquire(_ context.Context, r port.LeaseRequest) (port.Le
 	return id, nil
 }
 
+// K8sLeaseStore.Renew renews k8s lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *K8sLeaseStore) Renew(_ context.Context, id port.LeaseID, extendBy time.Duration) (time.Time, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -91,6 +99,9 @@ func (l *K8sLeaseStore) Renew(_ context.Context, id port.LeaseID, extendBy time.
 	return s.Expiry, nil
 }
 
+// K8sLeaseStore.Release releases k8s lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *K8sLeaseStore) Release(_ context.Context, id port.LeaseID) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -103,6 +114,9 @@ func (l *K8sLeaseStore) Release(_ context.Context, id port.LeaseID) error {
 	return nil
 }
 
+// K8sLeaseStore.Verify verifies k8s lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *K8sLeaseStore) Verify(_ context.Context, id port.LeaseID) (port.LeaseStatus, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -117,6 +131,9 @@ func (l *K8sLeaseStore) Verify(_ context.Context, id port.LeaseID) (port.LeaseSt
 	return s, nil
 }
 
+// K8sLeaseStore.Revoke revokes k8s lease store.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (l *K8sLeaseStore) Revoke(_ context.Context, id port.LeaseID) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()

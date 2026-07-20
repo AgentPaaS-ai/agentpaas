@@ -31,6 +31,9 @@ func (s *DockerStateStore) init() {
 		s.ws = map[string]*port.WorkflowState{}
 	}
 }
+// DockerStateStore.CasDeployment compare-and-swaps deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) CasDeployment(_ context.Context, v port.DeploymentState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -42,6 +45,9 @@ func (s *DockerStateStore) CasDeployment(_ context.Context, v port.DeploymentSta
 	s.ds[v.TenantID+"/"+v.DeploymentID] = &v
 	return nil
 }
+// DockerStateStore.GetDeployment returns the deployment.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) GetDeployment(_ context.Context, t, id string) (*port.DeploymentState, error) {
 	s.init()
 	s.mu.RLock()
@@ -53,6 +59,9 @@ func (s *DockerStateStore) GetDeployment(_ context.Context, t, id string) (*port
 	x := *v
 	return &x, nil
 }
+// DockerStateStore.ListDeployments lists the deployments.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) ListDeployments(_ context.Context, t string) ([]*port.DeploymentState, error) {
 	s.init()
 	s.mu.RLock()
@@ -66,6 +75,9 @@ func (s *DockerStateStore) ListDeployments(_ context.Context, t string) ([]*port
 	}
 	return out, nil
 }
+// DockerStateStore.CasRun compare-and-swaps run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) CasRun(_ context.Context, v port.RunState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -78,6 +90,9 @@ func (s *DockerStateStore) CasRun(_ context.Context, v port.RunState, g int64) e
 	s.rs[k] = &v
 	return nil
 }
+// DockerStateStore.GetRun returns the run.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) GetRun(_ context.Context, t, id string) (*port.RunState, error) {
 	s.init()
 	s.mu.RLock()
@@ -89,6 +104,9 @@ func (s *DockerStateStore) GetRun(_ context.Context, t, id string) (*port.RunSta
 	x := *v
 	return &x, nil
 }
+// DockerStateStore.ListRuns lists the runs.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) ListRuns(_ context.Context, t, w string) ([]*port.RunState, error) {
 	s.init()
 	s.mu.RLock()
@@ -102,6 +120,9 @@ func (s *DockerStateStore) ListRuns(_ context.Context, t, w string) ([]*port.Run
 	}
 	return out, nil
 }
+// DockerStateStore.CasAttempt compare-and-swaps attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) CasAttempt(_ context.Context, v port.AttemptState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -114,6 +135,9 @@ func (s *DockerStateStore) CasAttempt(_ context.Context, v port.AttemptState, g 
 	s.as[k] = &v
 	return nil
 }
+// DockerStateStore.GetAttempt returns the attempt.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) GetAttempt(_ context.Context, t, id string) (*port.AttemptState, error) {
 	s.init()
 	s.mu.RLock()
@@ -125,6 +149,9 @@ func (s *DockerStateStore) GetAttempt(_ context.Context, t, id string) (*port.At
 	x := *v
 	return &x, nil
 }
+// DockerStateStore.CasWorkflow compare-and-swaps workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) CasWorkflow(_ context.Context, v port.WorkflowState, g int64) error {
 	s.init()
 	s.mu.Lock()
@@ -137,6 +164,9 @@ func (s *DockerStateStore) CasWorkflow(_ context.Context, v port.WorkflowState, 
 	s.ws[k] = &v
 	return nil
 }
+// DockerStateStore.GetWorkflow returns the workflow.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (s *DockerStateStore) GetWorkflow(_ context.Context, t, id string) (*port.WorkflowState, error) {
 	s.init()
 	s.mu.RLock()

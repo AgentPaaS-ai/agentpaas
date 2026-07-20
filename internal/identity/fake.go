@@ -158,6 +158,7 @@ func (f *FakeKeyStore) List() ([]KeyMetadata, error) {
 // In production, crypto/rand.Reader should be used.
 type testRandReader struct{}
 
+// testRandReader.Read fills b with a fixed byte pattern for deterministic tests.
 func (testRandReader) Read(b []byte) (int, error) {
 	for i := range b {
 		b[i] = 0x42

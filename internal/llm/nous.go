@@ -12,10 +12,16 @@ const defaultNousModel = "deepseek/deepseek-v4-flash"
 
 type nousAdapter struct{}
 
+// nousAdapter.Name returns the provider or component name.
 func (a *nousAdapter) Name() string       { return "nous" }
+// nousAdapter.Endpoint returns the API endpoint URL.
 func (a *nousAdapter) Endpoint() string   { return nousEndpoint }
+// nousAdapter.AuthHeader returns the HTTP authorization header name and value prefix.
 func (a *nousAdapter) AuthHeader() string { return "Authorization" }
 
+// nousAdapter.BuildRequest builds the provider-specific request payload and headers.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *nousAdapter) BuildRequest(ctx context.Context, model, prompt, credentialValue string, maxTokens ...int) (*http.Request, error) {
 	if model == "" {
 		model = defaultNousModel
@@ -42,6 +48,9 @@ func (a *nousAdapter) BuildRequest(ctx context.Context, model, prompt, credentia
 	return req, nil
 }
 
+// nousAdapter.ParseResponse parses the provider-specific response into a normalized result.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (a *nousAdapter) ParseResponse(statusCode int, body []byte) (*LLMResult, error) {
 	if statusCode < 200 || statusCode >= 300 {
 		return nil, formatHTTPError("nous", statusCode, body)

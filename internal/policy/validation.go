@@ -17,6 +17,7 @@ type ValidationError struct {
 	Severity string `json:"severity"` // "error" or "warning"
 }
 
+// ValidationError.Error returns the error message.
 func (ve ValidationError) Error() string {
 	return fmt.Sprintf("%s: [%s] %s", ve.Field, ve.Severity, ve.Message)
 }

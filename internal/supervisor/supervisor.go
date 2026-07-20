@@ -154,6 +154,7 @@ type AuditLogger interface {
 // chain. Production wiring MUST inject a real AuditWriter.
 type noopAuditLogger struct{}
 
+// noopAuditLogger.Append discards the audit record and always succeeds.
 func (noopAuditLogger) Append(audit.AuditRecord) error { return nil }
 
 // GovernedOperationKind enumerates the in-flight governed operations whose

@@ -998,6 +998,7 @@ type TransitionError struct {
 	Message   string      `json:"message"`
 }
 
+// TransitionError.Error returns the error message.
 func (e *TransitionError) Error() string {
 	return e.Message
 }

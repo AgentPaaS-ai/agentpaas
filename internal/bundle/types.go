@@ -194,6 +194,7 @@ type ErrCapExceeded struct {
 	Max int64
 }
 
+// ErrCapExceeded.Error returns the error message.
 func (e *ErrCapExceeded) Error() string {
 	return "bundle cap exceeded: " + e.Cap
 }
@@ -204,6 +205,7 @@ type ErrPathRejected struct {
 	Reason string
 }
 
+// ErrPathRejected.Error returns the error message.
 func (e *ErrPathRejected) Error() string {
 	return "bundle path rejected: " + e.Path + " — " + e.Reason
 }
@@ -213,6 +215,7 @@ type ErrUnsupported struct {
 	What string
 }
 
+// ErrUnsupported.Error returns the error message.
 func (e *ErrUnsupported) Error() string {
 	return "unsupported bundle feature: " + e.What
 }

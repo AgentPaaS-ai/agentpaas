@@ -71,19 +71,33 @@ func (p *k8sPolicyEnforcer) remove(ctx context.Context, id string) error {
 	p.mu.Unlock()
 	return nil
 }
+// K8sEgressEnforcer.Apply applies k8s egress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *K8sEgressEnforcer) Apply(c context.Context, id string, s port.CommSnapshot) error {
 	return e.policy.apply(c, id, s)
 }
+// K8sEgressEnforcer.Check checks k8s egress enforcer.
 func (e *K8sEgressEnforcer) Check(c context.Context, id, d string) port.Decision {
 	return e.policy.check(c, id, d)
 }
+// K8sEgressEnforcer.Remove removes k8s egress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *K8sEgressEnforcer) Remove(c context.Context, id string) error { return e.policy.remove(c, id) }
+// K8sIngressEnforcer.Apply applies k8s ingress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *K8sIngressEnforcer) Apply(c context.Context, id string, s port.CommSnapshot) error {
 	return e.policy.apply(c, id, s)
 }
+// K8sIngressEnforcer.Check checks k8s ingress enforcer.
 func (e *K8sIngressEnforcer) Check(c context.Context, id, d string) port.Decision {
 	return e.policy.check(c, id, d)
 }
+// K8sIngressEnforcer.Remove removes k8s ingress enforcer.
+//
+// It returns an error if the operation fails or inputs are invalid.
 func (e *K8sIngressEnforcer) Remove(c context.Context, id string) error {
 	return e.policy.remove(c, id)
 }
