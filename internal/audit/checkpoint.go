@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -61,7 +62,8 @@ func (c *CheckpointRecord) computeCheckpointHash() (string, error) {
 		return "", fmt.Errorf("canonical marshal: %w", err)
 	}
 	hash := sha256.Sum256(canonical)
-	return fmt.Sprintf("%x", hash), nil
+	// hex.EncodeToString is cheaper than fmt.Sprintf("%x") on the write path.
+	return hex.EncodeToString(hash[:]), nil
 }
 
 // Sign signs the checkpoint using the given ECDSA P-256 private key. It sets

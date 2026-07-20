@@ -599,7 +599,7 @@ func (s *MemoryStore) ListRuns(ctx context.Context, workflowID WorkflowID) ([]*R
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*RunRecord, 0)
+	out := make([]*RunRecord, 0, len(s.runs))
 	for _, r := range s.runs {
 		if workflowID != "" && r.WorkflowID != workflowID {
 			continue
@@ -617,7 +617,7 @@ func (s *MemoryStore) ListAttempts(ctx context.Context, runID RunID) ([]*Attempt
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*AttemptRecord, 0)
+	out := make([]*AttemptRecord, 0, len(s.attempts))
 	for _, a := range s.attempts {
 		if a.RunID != runID {
 			continue
@@ -833,7 +833,7 @@ func (s *MemoryStore) ListNodes(ctx context.Context, workflowID WorkflowID) ([]*
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*PipelineNode, 0)
+	out := make([]*PipelineNode, 0, len(s.nodes))
 	for _, n := range s.nodes {
 		if n.WorkflowID != workflowID {
 			continue
@@ -887,7 +887,7 @@ func (s *MemoryStore) ListServices(ctx context.Context, workflowID WorkflowID) (
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*MCPServiceBinding, 0)
+	out := make([]*MCPServiceBinding, 0, len(s.services))
 	for _, svc := range s.services {
 		if svc.WorkflowID != workflowID {
 			continue
@@ -942,7 +942,7 @@ func (s *MemoryStore) ListHandoffs(ctx context.Context, workflowID WorkflowID) (
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*HandoffEnvelope, 0)
+	out := make([]*HandoffEnvelope, 0, len(s.handoffs))
 	for _, h := range s.handoffs {
 		if h.WorkflowID != workflowID {
 			continue
@@ -996,7 +996,7 @@ func (s *MemoryStore) ListChildBatches(ctx context.Context, workflowID WorkflowI
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*ChildBatch, 0)
+	out := make([]*ChildBatch, 0, len(s.childBatches))
 	for _, b := range s.childBatches {
 		if b.WorkflowID != workflowID {
 			continue
@@ -1039,7 +1039,7 @@ func (s *MemoryStore) ListChildResults(ctx context.Context, childBatchID ChildBa
 	_ = ctx // interface compliance; store ops are local
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	out := make([]*ChildResult, 0)
+	out := make([]*ChildResult, 0, len(s.childResults))
 	for _, r := range s.childResults {
 		if r.ChildBatchID != childBatchID {
 			continue
