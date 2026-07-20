@@ -197,6 +197,13 @@ type TimeBudgetSummary struct {
 	RunActiveTimeMS      int64  `json:"run_active_time_ms,omitempty"`
 	WorkflowActiveTimeMS int64  `json:"workflow_active_time_ms,omitempty"`
 	RemainingMS          int64  `json:"remaining_ms,omitempty"`
+
+	// CPUSeconds (B30-T04) is the consumed CPU time for this attempt,
+	// reported SEPARATELY from accumulated workflow active time. When a
+	// CPU quota is signed by policy (InvokeJob.CPUQuotaSeconds), CPUSeconds
+	// is bounded by that quota and the attempt evidence records
+	// "cpu_quota_exhausted" when the limit is hit.
+	CPUSeconds int64 `json:"cpu_seconds,omitempty"`
 }
 
 // LLMBudgetSummary uses decimal strings for spend (never float).
