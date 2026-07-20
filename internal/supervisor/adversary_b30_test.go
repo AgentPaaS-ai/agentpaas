@@ -570,7 +570,7 @@ func TestAdversary_B30_ChargePausedWallTime(t *testing.T) {
 		ConsumedMs:            consumedPaused,
 		RunningSegmentStartMs: ptrInt64(h1.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h1.store.PutActiveTimeLedger(ctx, h1.workflowID, ledger); err != nil {
+	if err := h1.store.PutActiveTimeLedger(ctx, h1.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	h1.clock.AdvanceMonotonic(5 * time.Minute)
@@ -605,7 +605,7 @@ func TestAdversary_B30_ChargePausedWallTime(t *testing.T) {
 		ConsumedMs:            consumedPR,
 		RunningSegmentStartMs: ptrInt64(h2.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h2.store.PutActiveTimeLedger(ctx, h2.workflowID, ledger2); err != nil {
+	if err := h2.store.PutActiveTimeLedger(ctx, h2.workflowID, ledger2, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	h2.clock.AdvanceMonotonic(2 * time.Minute)

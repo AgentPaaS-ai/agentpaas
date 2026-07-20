@@ -350,7 +350,7 @@ func (h *testHarness) seedRunAndWorkflow() {
 		ConsumedMs:            0,
 		RunningSegmentStartMs: ptrInt64(h.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, wf.WorkflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, wf.WorkflowID, ledger, 1); err != nil {
 		h.t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 }
@@ -401,6 +401,8 @@ func (h *testHarness) makeForgedProgress(seq int64, phase string) ProgressEvent 
 }
 
 func (h *testHarness) makeSuccessResult() ResultEvent {
+	resultJSON := `{"ok":true}`
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(resultJSON)))
 	r := ResultEvent{
 		AttemptID:       h.attemptID,
 		LeaseID:         h.leaseID,
@@ -408,8 +410,8 @@ func (h *testHarness) makeSuccessResult() ResultEvent {
 		WorkflowID:      h.workflowID,
 		InvocationID:    "inv-test",
 		TerminalStatus:  routedrun.InvokeJobResultSucceeded,
-		StructuredResult: `{"ok":true}`,
-		ResultDigest:    "digest-success",
+		StructuredResult: resultJSON,
+		ResultDigest:    digest,
 	}
 	return signResult(r, h.controlKey)
 }
@@ -867,7 +869,7 @@ func TestActiveTimeFrozenDuringPause(t *testing.T) {
 		ConsumedMs:            consumedBefore,
 		RunningSegmentStartMs: ptrInt64(h.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	// Advance the wall+monotonic clock significantly (simulating wall time
@@ -909,7 +911,7 @@ func TestActiveTimeFrozenDuringNeedsReplan(t *testing.T) {
 		ConsumedMs:            consumedBefore,
 		RunningSegmentStartMs: ptrInt64(h.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	h.clock.AdvanceMonotonic(300 * time.Second)
@@ -947,7 +949,7 @@ func TestActiveTimeChargedDuringPauseRequested(t *testing.T) {
 		ConsumedMs:            consumedBefore,
 		RunningSegmentStartMs: ptrInt64(segmentStart),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 	// Advance 200,000ms = 200s.

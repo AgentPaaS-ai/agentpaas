@@ -58,6 +58,12 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 		return existing.AttemptID, nil
 	}
 	// Create a new attempt.
+	// Resolve the lease duration from the run's MaxAttemptLeaseMs, or the
+	// spec default of 300_000ms (5 minutes) when the run does not define one.
+	leaseMs := run.MaxAttemptLeaseMs
+	if leaseMs <= 0 {
+		leaseMs = 300_000 // 5-minute spec default
+	}
 	att := &routedrun.AttemptRecord{
 		SchemaVersion: routedrun.CurrentSchemaVersion,
 		RunID:          runID,
@@ -65,9 +71,9 @@ func (s *Supervisor) ClaimForRun(ctx context.Context, runID routedrun.RunID, _ r
 		Status:         routedrun.AttemptStatusRunning,
 		AttemptNumber:  len(atts) + 1,
 		Lease: &routedrun.AttemptLease{
-			DurationMs: 60_000,
+			DurationMs: leaseMs,
 			AcquiredAt:  s.nowWall(),
-			ExpiresAt:   s.nowWall().Add(60 * time.Second),
+			ExpiresAt:   s.nowWall().Add(time.Duration(leaseMs) * time.Millisecond),
 		},
 	}
 	if err := s.store.CreateAttempt(ctx, att); err != nil {
@@ -261,6 +267,11 @@ func (s *Supervisor) HandleResult(ctx context.Context, attemptID routedrun.Attem
 		trk.mu.Unlock()
 		return ErrInvalidHMAC
 	}
+	// Verify ResultDigest matches the SHA-256 of StructuredResult.
+	if !verifyResultDigest(event) {
+		trk.mu.Unlock()
+		return ErrDigestMismatch
+	}
 	trk.verifiedResult = &event
 	trk.mu.Unlock()
 
@@ -449,6 +460,9 @@ func (s *Supervisor) casAttemptTo(ctx context.Context, trk *attemptTracker, targ
 			}
 			return ErrAlreadyTerminal
 		}
+		if err := routedrun.ValidateAttemptTransition(att.Status, target); err != nil {
+			return err
+		}
 		gen, err := s.store.GetAttemptGeneration(ctx, trk.attemptID)
 		if err != nil {
 			return err
@@ -483,6 +497,9 @@ func (s *Supervisor) casRunTo(ctx context.Context, runID routedrun.RunID, target
 		}
 		if run.Status.IsTerminal() {
 			return nil
+		}
+		if err := routedrun.ValidateRunTransition(run.Status, target); err != nil {
+			return err
 		}
 		gen, err := s.store.GetRunGeneration(ctx, runID)
 		if err != nil {

@@ -550,7 +550,7 @@ func (s *LocalStore) commitAdmission(req *InvocationRequest, receipt *Invocation
 	if err := s.saveActiveTimeLedgerLocked(wf.WorkflowID, &ActiveTimeLedger{
 		SchemaVersion: CurrentSchemaVersion,
 		UpdatedAt:     s.now(),
-	}); err != nil {
+	}, 1); err != nil {
 		return err
 	}
 	// Index receipt by invocation for ListInvocations.
@@ -1122,7 +1122,7 @@ func (s *LocalStore) CreateWorkflow(ctx context.Context, wf *WorkflowRecord) err
 	return s.saveActiveTimeLedgerLocked(wf.WorkflowID, &ActiveTimeLedger{
 		SchemaVersion: CurrentSchemaVersion,
 		UpdatedAt:     s.now(),
-	})
+	}, 1)
 }
 
 func (s *LocalStore) GetWorkflow(ctx context.Context, workflowID WorkflowID) (*WorkflowRecord, error) {
@@ -2125,11 +2125,23 @@ func (s *LocalStore) GetActiveTimeLedger(ctx context.Context, workflowID Workflo
 	_ = ctx
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.loadActiveTimeLedgerLocked(workflowID)
+	ledger, _, err := s.loadActiveTimeLedgerLocked(workflowID)
+	return ledger, err
+}
+
+// GetActiveTimeLedgerGeneration returns the file generation of the active-time
+// ledger, for use with CAS writes via PutActiveTimeLedger.
+func (s *LocalStore) GetActiveTimeLedgerGeneration(ctx context.Context, workflowID WorkflowID) (int64, error) {
+	_ = ctx
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, gen, err := s.loadActiveTimeLedgerLocked(workflowID)
+	return gen, err
 }
 
 // PutActiveTimeLedger persists the workflow active-time ledger.
-func (s *LocalStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger) error {
+// expectedGeneration is the file generation expected. Pass 0 to bypass CAS.
+func (s *LocalStore) PutActiveTimeLedger(ctx context.Context, workflowID WorkflowID, ledger *ActiveTimeLedger, expectedGeneration int64) error {
 	_ = ctx
 	if ledger == nil {
 		return fmt.Errorf("%w: nil active time ledger", ErrInvalidArgument)
@@ -2140,26 +2152,27 @@ func (s *LocalStore) PutActiveTimeLedger(ctx context.Context, workflowID Workflo
 		ledger.SchemaVersion = CurrentSchemaVersion
 	}
 	ledger.UpdatedAt = s.now()
-	return s.saveActiveTimeLedgerLocked(workflowID, ledger)
+	return s.saveActiveTimeLedgerLocked(workflowID, ledger, expectedGeneration)
 }
 
-func (s *LocalStore) loadActiveTimeLedgerLocked(wfID WorkflowID) (*ActiveTimeLedger, error) {
+func (s *LocalStore) loadActiveTimeLedgerLocked(wfID WorkflowID) (*ActiveTimeLedger, int64, error) {
 	var ledger ActiveTimeLedger
-	if _, err := s.readJSON(s.activeTimePath(wfID), &ledger); err != nil {
-		return nil, err
+	gen, err := s.readJSON(s.activeTimePath(wfID), &ledger)
+	if err != nil {
+		return nil, 0, err
 	}
-	return &ledger, nil
+	return &ledger, gen, nil
 }
 
-func (s *LocalStore) saveActiveTimeLedgerLocked(wfID WorkflowID, ledger *ActiveTimeLedger) error {
+func (s *LocalStore) saveActiveTimeLedgerLocked(wfID WorkflowID, ledger *ActiveTimeLedger, expectedGeneration int64) error {
 	if ledger.SchemaVersion == "" {
 		ledger.SchemaVersion = CurrentSchemaVersion
 	}
-	return s.writeJSON(s.activeTimePath(wfID), 1, ledger)
+	return s.writeJSON(s.activeTimePath(wfID), expectedGeneration, ledger)
 }
 
 func (s *LocalStore) closeActiveTimeSegmentConservativelyLocked(wfID WorkflowID) error {
-	ledger, err := s.loadActiveTimeLedgerLocked(wfID)
+	ledger, gen, err := s.loadActiveTimeLedgerLocked(wfID)
 	if err != nil {
 		if errorsIsNotFound(err) {
 			return nil
@@ -2172,17 +2185,18 @@ func (s *LocalStore) closeActiveTimeSegmentConservativelyLocked(wfID WorkflowID)
 	// Conservative: clear open segment without charging unknown wall time.
 	ledger.RunningSegmentStartMs = nil
 	ledger.UpdatedAt = s.now()
-	return s.saveActiveTimeLedgerLocked(wfID, ledger)
+	return s.saveActiveTimeLedgerLocked(wfID, ledger, gen+1)
 }
 
 func (s *LocalStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, to WorkflowStatus) error {
 	if from == to {
 		return nil
 	}
-	ledger, err := s.loadActiveTimeLedgerLocked(wfID)
+	ledger, gen, err := s.loadActiveTimeLedgerLocked(wfID)
 	if err != nil {
 		if errorsIsNotFound(err) {
 			ledger = &ActiveTimeLedger{SchemaVersion: CurrentSchemaVersion}
+			gen = 0
 		} else {
 			return err
 		}
@@ -2218,5 +2232,5 @@ func (s *LocalStore) syncActiveTimeOnStatusChangeLocked(wfID WorkflowID, from, t
 		}
 	}
 	ledger.UpdatedAt = s.now()
-	return s.saveActiveTimeLedgerLocked(wfID, ledger)
+	return s.saveActiveTimeLedgerLocked(wfID, ledger, gen+1)
 }

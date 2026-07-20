@@ -76,6 +76,9 @@ var (
 	ErrNotVerifiedResult = errors.New("supervisor: success requires verified result event")
 	// ErrInvalidArgument is returned for malformed supervisor inputs.
 	ErrInvalidArgument = errors.New("supervisor: invalid argument")
+	// ErrDigestMismatch is returned when a ResultEvent's ResultDigest does not
+	// match the SHA-256 of its StructuredResult.
+	ErrDigestMismatch = errors.New("supervisor: result digest mismatch")
 )
 
 // DurableStore is the subset of routedrun.LocalStore the supervisor drives
@@ -100,7 +103,8 @@ type DurableStore interface {
 
 	// Active-time ledger.
 	GetActiveTimeLedger(ctx context.Context, workflowID routedrun.WorkflowID) (*routedrun.ActiveTimeLedger, error)
-	PutActiveTimeLedger(ctx context.Context, workflowID routedrun.WorkflowID, ledger *routedrun.ActiveTimeLedger) error
+	GetActiveTimeLedgerGeneration(ctx context.Context, workflowID routedrun.WorkflowID) (int64, error)
+	PutActiveTimeLedger(ctx context.Context, workflowID routedrun.WorkflowID, ledger *routedrun.ActiveTimeLedger, expectedGeneration int64) error
 
 	// Checkpoints (preserved on restart).
 	SaveCheckpoint(ctx context.Context, cp *routedrun.SemanticCheckpoint) error

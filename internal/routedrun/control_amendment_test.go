@@ -561,7 +561,7 @@ func TestActiveTime_CrashClosesSegmentConservatively(t *testing.T) {
 		SchemaVersion:         CurrentSchemaVersion,
 		ConsumedMs:            8000,
 		RunningSegmentStartMs: &openStartMs,
-	}); err != nil {
+	}, 1); err != nil {
 		t.Fatal(err)
 	}
 	run := &RunRecord{
