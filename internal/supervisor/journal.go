@@ -27,23 +27,31 @@ func (s *Supervisor) appendJournalEventLocked(trk *attemptTracker, kind routedru
 		return fmt.Errorf("open control journal: %w", err)
 	}
 	defer func() { _ = journal.Close() }()
-	// Read the current sequence to compute the next. The journal factory is
-	// responsible for monotonic sequence; we pass Sequence 0 and let the
-	// journal assign it, or we read the last event to compute the next.
-	// The routedrun.ControlJournal assigns the next sequence when Sequence is
-	// 0; the fake test journal does the same.
-	next := int64(1)
-	if events, err := journal.Read(1); err == nil && len(events) > 0 {
-		next = events[len(events)-1].Sequence + 1
+
+	// Build the event. Retry on sequence-conflict errors (up to 3 times)
+	// to handle read-modify-write races between supervisor instances (F17).
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		next := int64(1)
+		if events, rerr := journal.Read(1); rerr == nil && len(events) > 0 {
+			next = events[len(events)-1].Sequence + 1
+		}
+		event := routedrun.InvokeJobEvent{
+			SchemaVersion: "1.0",
+			Sequence:      next,
+			Timestamp:     s.nowWall(),
+			EventKind:     kind,
+			Payload:       payload,
+		}
+		lastErr = journal.Append(event)
+		if lastErr == nil {
+			return nil
+		}
+		if !errors.Is(lastErr, routedrun.ErrJournalSequenceConflict) {
+			return lastErr
+		}
 	}
-	event := routedrun.InvokeJobEvent{
-		SchemaVersion: "1.0",
-		Sequence:      next,
-		Timestamp:     s.nowWall(),
-		EventKind:     kind,
-		Payload:       payload,
-	}
-	return journal.Append(event)
+	return fmt.Errorf("journal append after retries: %w", lastErr)
 }
 
 // loadOrCreateControlKey loads the per-attempt HMAC key from the control-key

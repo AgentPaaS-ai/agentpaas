@@ -116,7 +116,7 @@ func (j *fakeControlJournal) Append(event routedrun.InvokeJobEvent) error {
 		event.Sequence = wantSeq
 	}
 	if event.Sequence != wantSeq {
-		return fmt.Errorf("sequence %d want %d", event.Sequence, wantSeq)
+		return fmt.Errorf("%w: sequence %d want %d", routedrun.ErrJournalSequenceConflict, event.Sequence, wantSeq)
 	}
 	event.HMAC = j.computeHMAC(event)
 	j.events = append(j.events, event)
