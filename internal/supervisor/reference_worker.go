@@ -35,6 +35,13 @@ type RunOptions struct {
 	// all completed phases before the checkpoint and resumes from the next
 	// uncommitted phase.
 	ResumeFrom string
+
+	// TargetTurns is the number of work turns to execute before finalize.
+	// Zero means the default (20 work turns + 1 final = 21 total). When set
+	// higher (e.g. 100), the worker repeats the read/analyze/cross-reference/
+	// compile cycle until the turn count reaches the target, then finalizes.
+	// The minimum effective value is 21 (the default run).
+	TargetTurns int
 }
 
 // ReferenceWorker is a deterministic simulation of a durable multi-turn agent
@@ -194,7 +201,7 @@ func (w *ReferenceWorker) CurrentCheckpointID() string {
 
 // runPhases is exposed for the resume test to simulate partial execution.
 func (w *ReferenceWorker) runPhases(ctx context.Context, opts RunOptions, fromPhase, toPhase int) error {
-	return w.runPhasesInternal(ctx, fromPhase, toPhase)
+	return w.runPhasesInternal(ctx, fromPhase, toPhase, 0)
 }
 
 // ---------------------------------------------------------------------------
@@ -224,11 +231,19 @@ func (w *ReferenceWorker) Run(ctx context.Context, opts RunOptions) error {
 		}
 	}
 
-	return w.runPhasesInternal(ctx, startPhase, 5)
+	targetTurns := opts.TargetTurns
+	if targetTurns <= 0 {
+		targetTurns = 20 // default: 20 work turns + 1 finalize = 21 total
+	}
+
+	return w.runPhasesInternal(ctx, startPhase, 5, targetTurns)
 }
 
 // runPhasesInternal executes phases from fromPhase to toPhase inclusive.
-func (w *ReferenceWorker) runPhasesInternal(ctx context.Context, fromPhase, toPhase int) error {
+// When targetTurns > 0 and the default phases (1-4) don't reach the target,
+// the worker repeats phases 1-4 in cycles until the turn count reaches
+// targetTurns, then runs the finalize phase.
+func (w *ReferenceWorker) runPhasesInternal(ctx context.Context, fromPhase, toPhase int, targetTurns int) error {
 	// Phase 1: Turns 1-5 -> Read fixtures (tool phase)
 	if fromPhase <= 1 && toPhase >= 1 {
 		if err := w.executePhase(ctx, 1, "read_fixtures", w.phase1ReadFixtures); err != nil {
@@ -257,11 +272,49 @@ func (w *ReferenceWorker) runPhasesInternal(ctx context.Context, fromPhase, toPh
 		}
 	}
 
-	// Phase 5: Turn 21 -> Finalize
-	if fromPhase <= 5 && toPhase >= 5 {
-		if err := w.executePhase(ctx, 5, "finalize", w.phase5Finalize); err != nil {
+	// If targetTurns > 20, repeat phases 1-4 in cycles until the turn count
+	// reaches targetTurns.
+	currentPhase := 5
+	w.mu.Lock()
+	currentTurns := w.turnCount
+	w.mu.Unlock()
+
+	for targetTurns > 0 && currentTurns < targetTurns {
+		// Repeat phase 1-type: read_fixtures (5 turns)
+		currentPhase++
+		if err := w.executePhase(ctx, currentPhase, "read_fixtures", w.phaseReadFixturesGeneric); err != nil {
 			return err
 		}
+		// Repeat phase 2-type: analyze (5 turns)
+		currentPhase++
+		if err := w.executePhase(ctx, currentPhase, "analyze", w.phaseAnalyzeGeneric); err != nil {
+			return err
+		}
+		// Repeat phase 3-type: cross_reference (5 turns)
+		currentPhase++
+		if err := w.executePhase(ctx, currentPhase, "cross_reference", w.phaseCrossReferenceGeneric); err != nil {
+			return err
+		}
+		// Repeat phase 4-type: compile_dossier (5 turns)
+		currentPhase++
+		if err := w.executePhase(ctx, currentPhase, "compile_dossier", w.phaseCompileDossierGeneric); err != nil {
+			return err
+		}
+
+		w.mu.Lock()
+		currentTurns = w.turnCount
+		w.mu.Unlock()
+	}
+
+	// Phase finalize: 1 turn
+	if fromPhase <= 5 && toPhase >= 5 {
+		finalizePhase := currentPhase
+		if finalizePhase <= 5 {
+			finalizePhase = 5
+		} else {
+			finalizePhase++ // next phase after last repeat cycle
+		}
+		return w.executePhase(ctx, finalizePhase, "finalize", w.phaseFinalizeGeneric)
 	}
 
 	return nil
@@ -278,8 +331,9 @@ func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName
 	w.emitProgress(ctx, phaseName+"_complete")
 
 	// Write artifact for this phase (except finalize which writes the final result).
+	isFinalize := phaseName == "finalize"
 	var artifactRef string
-	if phase < 5 {
+	if !isFinalize {
 		artifactRef, err = w.writePhaseArtifact(phase, result)
 		if err != nil {
 			return fmt.Errorf("write phase %d artifact: %w", phase, err)
@@ -297,8 +351,8 @@ func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName
 	}
 	w.mu.Unlock()
 
-	// Commit checkpoint.
-	if phase < 5 {
+	// Commit checkpoint (except finalize).
+	if !isFinalize {
 		cpSeq := int64(phase*5 + 1)
 		cpID := routedrun.CheckpointID(fmt.Sprintf("cp-%s-%d", w.attemptID, cpSeq))
 		cp := &routedrun.SemanticCheckpoint{
@@ -457,13 +511,162 @@ func (w *ReferenceWorker) phase4CompileDossier(ctx context.Context, phase int) (
 	return dossier.String(), nil
 }
 
-// phase5Finalize: Turn 21. Write final result and send ResultEvent.
-func (w *ReferenceWorker) phase5Finalize(ctx context.Context, _ int) (string, error) {
-	turn := 21
+// ---------------------------------------------------------------------------
+// Generic phase implementations (parameterized by phase number and turn offset)
+// ---------------------------------------------------------------------------
+
+// phaseReadFixturesGeneric reads 5 fixture documents, starting from the current
+// turn count. Identical semantics to phase1ReadFixtures but with dynamic turns.
+func (w *ReferenceWorker) phaseReadFixturesGeneric(ctx context.Context, _ int) (string, error) {
+	w.mu.Lock()
+	baseTurn := w.turnCount
+	w.mu.Unlock()
+
+	var summary strings.Builder
+	for i := 0; i < 5; i++ {
+		turn := baseTurn + i + 1
+
+		// Tool phase: read_document
+		w.startGovernedOp(ctx, "http")
+		docID := fmt.Sprintf("document_%d", i)
+		content := w.fakeToolReadDocument(docID)
+		w.recordToolResponse(turn, docID, content)
+		w.endGovernedOp(ctx, "http")
+
+		// Accumulate summary.
+		fmt.Fprintf(&summary, "Read %s: %.50s...\n", docID, content)
+
+		w.mu.Lock()
+		w.turnCount++
+		w.completedTurns = append(w.completedTurns, turn)
+		w.accumulatedTokens += len(content)
+		w.mu.Unlock()
+
+		w.emitProgress(ctx, "reading_fixture")
+	}
+	return summary.String(), nil
+}
+
+// phaseAnalyzeGeneric runs 5 model turns, referencing the digest from the
+// preceding phase (phase-1) in the cycle.
+func (w *ReferenceWorker) phaseAnalyzeGeneric(ctx context.Context, phase int) (string, error) {
+	w.mu.Lock()
+	baseTurn := w.turnCount
+	prevDigest := w.phaseDigests[phase-1]
+	w.mu.Unlock()
+
+	var analysis strings.Builder
+	for i := 0; i < 5; i++ {
+		turn := baseTurn + i + 1
+
+		w.startGovernedOp(ctx, "model")
+		prompt := fmt.Sprintf("Analyze documents. Prior checkpoint digest: %s. Step: %d/5",
+			prevDigest, i+1)
+		response := w.fakeModelCall(turn, prompt)
+		w.endGovernedOp(ctx, "model")
+
+		w.mu.Lock()
+		w.promptsPerTurn[turn] = prompt
+		w.responsesPerTurn[turn] = response
+		w.turnCount++
+		w.completedTurns = append(w.completedTurns, turn)
+		w.accumulatedTokens += len(prompt) + len(response)
+		w.mu.Unlock()
+
+		fmt.Fprintf(&analysis, "Analysis step %d: %s\n", i+1, response)
+		w.emitProgress(ctx, "analyzing")
+	}
+	return analysis.String(), nil
+}
+
+// phaseCrossReferenceGeneric runs 5 cross-reference turns, using the artifact
+// from the read_fixtures phase in the current cycle (phase-2).
+func (w *ReferenceWorker) phaseCrossReferenceGeneric(ctx context.Context, phase int) (string, error) {
+	w.mu.Lock()
+	baseTurn := w.turnCount
+	readPhaseArtifact := w.phaseArtifactRefs[phase-2]
+	w.mu.Unlock()
+
+	lookupKeys := []string{"agentpaas", "consensus", "supervisor_pattern", "hash_chains", "system_design"}
+	var crossRef strings.Builder
+	for i := 0; i < 5; i++ {
+		turn := baseTurn + i + 1
+
+		// Tool phase: lookup
+		w.startGovernedOp(ctx, "http")
+		key := lookupKeys[i]
+		lookupResult := w.fakeToolLookup(key)
+		w.recordToolResponse(turn, key, lookupResult)
+		w.endGovernedOp(ctx, "http")
+
+		// Model phase: synthesize with artifact ref
+		w.startGovernedOp(ctx, "model")
+		prompt := fmt.Sprintf("Cross-reference lookup(%q) = %q. Prior artifact: %s. Step: %d/5",
+			key, lookupResult, readPhaseArtifact, i+1)
+		response := w.fakeModelCall(turn, prompt)
+		w.endGovernedOp(ctx, "model")
+
+		w.mu.Lock()
+		w.promptsPerTurn[turn] = prompt
+		w.responsesPerTurn[turn] = response
+		w.turnCount++
+		w.completedTurns = append(w.completedTurns, turn)
+		w.accumulatedTokens += len(prompt) + len(response)
+		w.mu.Unlock()
+
+		fmt.Fprintf(&crossRef, "Cross-ref %s: %s\n", key, response)
+		w.emitProgress(ctx, "cross_referencing")
+	}
+	return crossRef.String(), nil
+}
+
+// phaseCompileDossierGeneric runs 5 compilation turns, referencing the digest
+// from the preceding cross_reference phase (phase-1) in the cycle.
+func (w *ReferenceWorker) phaseCompileDossierGeneric(ctx context.Context, phase int) (string, error) {
+	w.mu.Lock()
+	baseTurn := w.turnCount
+	crossRefDigest := w.phaseDigests[phase-1]
+	w.mu.Unlock()
+
+	var dossier strings.Builder
+	for i := 0; i < 5; i++ {
+		turn := baseTurn + i + 1
+
+		w.startGovernedOp(ctx, "model")
+		prompt := fmt.Sprintf("Compile dossier section %d/5. Prior cross-reference digest: %s.",
+			i+1, crossRefDigest)
+		response := w.fakeModelCall(turn, prompt)
+		w.endGovernedOp(ctx, "model")
+
+		w.mu.Lock()
+		w.promptsPerTurn[turn] = prompt
+		w.responsesPerTurn[turn] = response
+		w.turnCount++
+		w.completedTurns = append(w.completedTurns, turn)
+		w.accumulatedTokens += len(prompt) + len(response)
+		w.mu.Unlock()
+
+		fmt.Fprintf(&dossier, "Dossier section %d: %s\n", i+1, response)
+		w.emitProgress(ctx, "compiling_dossier")
+	}
+	return dossier.String(), nil
+}
+
+// phaseFinalizeGeneric writes the final result and sends the ResultEvent.
+// The phase parameter indicates which phase number this finalize corresponds to.
+func (w *ReferenceWorker) phaseFinalizeGeneric(ctx context.Context, phase int) (string, error) {
+	w.mu.Lock()
+	turn := w.turnCount + 1
+	prevDigest := w.phaseDigests[phase-1]
+	totalTurns := w.turnCount
+	artifacts := make([]string, len(w.artifactRefs))
+	copy(artifacts, w.artifactRefs)
+	// Count non-finalize phases for the result.
+	phaseCount := len(w.checkpointDigests)
+	w.mu.Unlock()
 
 	w.startGovernedOp(ctx, "model")
-	phase4Digest := w.phaseDigests[4]
-	prompt := fmt.Sprintf("Finalize dossier using digest: %s", phase4Digest)
+	prompt := fmt.Sprintf("Finalize dossier using digest: %s", prevDigest)
 	response := w.fakeModelCall(turn, prompt)
 	w.endGovernedOp(ctx, "model")
 
@@ -488,19 +691,14 @@ func (w *ReferenceWorker) phase5Finalize(ctx context.Context, _ int) (string, er
 		Summary            string   `json:"summary"`
 	}
 
-	w.mu.Lock()
-	artifacts := make([]string, len(w.artifactRefs))
-	copy(artifacts, w.artifactRefs)
-	w.mu.Unlock()
-
 	result := dossierResult{
 		SchemaVersion:      "1.0",
 		TotalDocuments:     5,
-		PhasesCompleted:    5,
-		TotalTurns:         21,
+		PhasesCompleted:    phaseCount,
+		TotalTurns:         totalTurns + 1, // include finalize turn
 		ArtifactReferences: artifacts,
-		CheckpointDigest:   phase4Digest,
-		Summary:            "Research dossier complete with 5 documents analyzed across 4 material phases.",
+		CheckpointDigest:   prevDigest,
+		Summary:            "Research dossier complete with 5 documents analyzed across multiple phases.",
 	}
 
 	resultBytes, err := json.Marshal(result)
