@@ -27,6 +27,20 @@ type ReferenceWorkerConfig struct {
 	LeaseID      routedrun.LeaseID
 	ControlKey   []byte
 	ArtifactRoot string
+
+	// RunID is the run this worker belongs to (F28).
+	// If empty, defaults to "run-ref-worker".
+	RunID routedrun.RunID
+	// WorkflowID is the workflow this worker belongs to (F28).
+	// If empty, defaults to "wf-ref-worker".
+	WorkflowID routedrun.WorkflowID
+	// InvocationID is the invocation this worker serves (F28).
+	// If empty, defaults to "inv-ref-worker".
+	InvocationID routedrun.InvocationID
+
+	// ContextBound is the maximum accumulated context in bytes (F27).
+	// If zero, defaults to 65536 (64KB).
+	ContextBound int
 }
 
 // RunOptions configures a Run execution.
@@ -53,6 +67,11 @@ type ReferenceWorker struct {
 	leaseID      routedrun.LeaseID
 	controlKey   []byte
 	artifactRoot string
+
+	// Identity fields from the claim (F28).
+	runID        routedrun.RunID
+	workflowID   routedrun.WorkflowID
+	invocationID routedrun.InvocationID
 
 	// Fixture set: bounded list of fake documents.
 	fixtures []string
@@ -87,18 +106,42 @@ func NewReferenceWorker(cfg ReferenceWorkerConfig) *ReferenceWorker {
 		"document_3: The supervisor pattern decouples lifecycle management from business logic in long-running processes.",
 		"document_4: Cryptographic hash chains provide tamper-evident audit logs for security-sensitive operations.",
 	}
+
+	// Apply defaults for identity fields (F28).
+	runID := cfg.RunID
+	if runID == "" {
+		runID = "run-ref-worker"
+	}
+	workflowID := cfg.WorkflowID
+	if workflowID == "" {
+		workflowID = "wf-ref-worker"
+	}
+	invocationID := cfg.InvocationID
+	if invocationID == "" {
+		invocationID = "inv-ref-worker"
+	}
+
+	// Apply default for context bound (F27).
+	contextBound := cfg.ContextBound
+	if contextBound == 0 {
+		contextBound = 65536 // 64KB text bound
+	}
+
 	return &ReferenceWorker{
 		supervisor:    cfg.Supervisor,
 		attemptID:     cfg.AttemptID,
 		leaseID:       cfg.LeaseID,
 		controlKey:    cfg.ControlKey,
 		artifactRoot:  cfg.ArtifactRoot,
+		runID:         runID,
+		workflowID:    workflowID,
+		invocationID:  invocationID,
 		fixtures:      fixtures,
 		promptsPerTurn:  make(map[int]string),
 		responsesPerTurn: make(map[int]string),
 		phaseDigests:    make(map[int]string),
 		phaseArtifactRefs: make(map[int]string),
-		contextBound:   65536, // 64KB text bound
+		contextBound:   contextBound,
 	}
 }
 
@@ -181,6 +224,27 @@ func (w *ReferenceWorker) ContextBound() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.contextBound
+}
+
+// RunID returns the run ID used by this worker (F28).
+func (w *ReferenceWorker) GetRunID() routedrun.RunID {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.runID
+}
+
+// GetWorkflowID returns the workflow ID used by this worker (F28).
+func (w *ReferenceWorker) GetWorkflowID() routedrun.WorkflowID {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.workflowID
+}
+
+// GetInvocationID returns the invocation ID used by this worker (F28).
+func (w *ReferenceWorker) GetInvocationID() routedrun.InvocationID {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.invocationID
 }
 
 // CompletedTurns returns the list of completed turn numbers.
@@ -358,8 +422,8 @@ func (w *ReferenceWorker) executePhase(ctx context.Context, phase int, phaseName
 		cp := &routedrun.SemanticCheckpoint{
 			CheckpointID:       cpID,
 			AttemptID:          w.attemptID,
-			RunID:              routedrun.RunID("run-ref-worker"),
-			WorkflowID:         routedrun.WorkflowID("wf-ref-worker"),
+			RunID:              w.runID,
+			WorkflowID:         w.workflowID,
 			LeaseID:            w.leaseID,
 			Phase:              phaseName,
 			CompletedWork:      []string{fmt.Sprintf("phase_%d_complete", phase)},
@@ -408,6 +472,10 @@ func (w *ReferenceWorker) phase1ReadFixtures(ctx context.Context, _ int) (string
 		fmt.Fprintf(&summary, "Read %s: %.50s...\n", docID, content)
 
 		w.mu.Lock()
+		if err := w.checkContextBoundLocked(len(content)); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
 		w.accumulatedTokens += len(content)
@@ -433,11 +501,16 @@ func (w *ReferenceWorker) phase2Analyze(ctx context.Context, phase int) (string,
 		w.endGovernedOp(ctx, "model")
 
 		w.mu.Lock()
+		addition := len(prompt) + len(response)
+		if err := w.checkContextBoundLocked(addition); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
-		w.accumulatedTokens += len(prompt) + len(response)
+		w.accumulatedTokens += addition
 		w.mu.Unlock()
 
 		fmt.Fprintf(&analysis, "Analysis step %d: %s\n", i+1, response)
@@ -470,11 +543,16 @@ func (w *ReferenceWorker) phase3CrossReference(ctx context.Context, phase int) (
 		w.endGovernedOp(ctx, "model")
 
 		w.mu.Lock()
+		addition := len(prompt) + len(response)
+		if err := w.checkContextBoundLocked(addition); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
-		w.accumulatedTokens += len(prompt) + len(response)
+		w.accumulatedTokens += addition
 		w.mu.Unlock()
 
 		fmt.Fprintf(&crossRef, "Cross-ref %s: %s\n", key, response)
@@ -498,11 +576,16 @@ func (w *ReferenceWorker) phase4CompileDossier(ctx context.Context, phase int) (
 		w.endGovernedOp(ctx, "model")
 
 		w.mu.Lock()
+		addition := len(prompt) + len(response)
+		if err := w.checkContextBoundLocked(addition); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
-		w.accumulatedTokens += len(prompt) + len(response)
+		w.accumulatedTokens += addition
 		w.mu.Unlock()
 
 		fmt.Fprintf(&dossier, "Dossier section %d: %s\n", i+1, response)
@@ -537,6 +620,10 @@ func (w *ReferenceWorker) phaseReadFixturesGeneric(ctx context.Context, _ int) (
 		fmt.Fprintf(&summary, "Read %s: %.50s...\n", docID, content)
 
 		w.mu.Lock()
+		if err := w.checkContextBoundLocked(len(content)); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
 		w.accumulatedTokens += len(content)
@@ -566,11 +653,16 @@ func (w *ReferenceWorker) phaseAnalyzeGeneric(ctx context.Context, phase int) (s
 		w.endGovernedOp(ctx, "model")
 
 		w.mu.Lock()
+		addition := len(prompt) + len(response)
+		if err := w.checkContextBoundLocked(addition); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
-		w.accumulatedTokens += len(prompt) + len(response)
+		w.accumulatedTokens += addition
 		w.mu.Unlock()
 
 		fmt.Fprintf(&analysis, "Analysis step %d: %s\n", i+1, response)
@@ -607,11 +699,16 @@ func (w *ReferenceWorker) phaseCrossReferenceGeneric(ctx context.Context, phase 
 		w.endGovernedOp(ctx, "model")
 
 		w.mu.Lock()
+		addition := len(prompt) + len(response)
+		if err := w.checkContextBoundLocked(addition); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
-		w.accumulatedTokens += len(prompt) + len(response)
+		w.accumulatedTokens += addition
 		w.mu.Unlock()
 
 		fmt.Fprintf(&crossRef, "Cross-ref %s: %s\n", key, response)
@@ -639,11 +736,16 @@ func (w *ReferenceWorker) phaseCompileDossierGeneric(ctx context.Context, phase 
 		w.endGovernedOp(ctx, "model")
 
 		w.mu.Lock()
+		addition := len(prompt) + len(response)
+		if err := w.checkContextBoundLocked(addition); err != nil {
+			w.mu.Unlock()
+			return "", err
+		}
 		w.promptsPerTurn[turn] = prompt
 		w.responsesPerTurn[turn] = response
 		w.turnCount++
 		w.completedTurns = append(w.completedTurns, turn)
-		w.accumulatedTokens += len(prompt) + len(response)
+		w.accumulatedTokens += addition
 		w.mu.Unlock()
 
 		fmt.Fprintf(&dossier, "Dossier section %d: %s\n", i+1, response)
@@ -671,11 +773,16 @@ func (w *ReferenceWorker) phaseFinalizeGeneric(ctx context.Context, phase int) (
 	w.endGovernedOp(ctx, "model")
 
 	w.mu.Lock()
+	addition := len(prompt) + len(response)
+	if err := w.checkContextBoundLocked(addition); err != nil {
+		w.mu.Unlock()
+		return "", err
+	}
 	w.promptsPerTurn[turn] = prompt
 	w.responsesPerTurn[turn] = response
 	w.turnCount++
 	w.completedTurns = append(w.completedTurns, turn)
-	w.accumulatedTokens += len(prompt) + len(response)
+	w.accumulatedTokens += addition
 	w.mu.Unlock()
 
 	w.emitProgress(ctx, "finalizing")
@@ -726,9 +833,9 @@ func (w *ReferenceWorker) phaseFinalizeGeneric(ctx context.Context, phase int) (
 	resultEvent := ResultEvent{
 		AttemptID:          w.attemptID,
 		LeaseID:            w.leaseID,
-		RunID:              routedrun.RunID("run-ref-worker"),
-		WorkflowID:         routedrun.WorkflowID("wf-ref-worker"),
-		InvocationID:       routedrun.InvocationID("inv-ref-worker"),
+		RunID:              w.runID,
+		WorkflowID:         w.workflowID,
+		InvocationID:       w.invocationID,
 		TerminalStatus:     routedrun.InvokeJobResultSucceeded,
 		StructuredResult:   resultJSON,
 		ResultDigest:       digest,
@@ -910,6 +1017,16 @@ func (w *ReferenceWorker) signCheckpoint(c CheckpointEvent) CheckpointEvent {
 func (w *ReferenceWorker) computeDigest(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])
+}
+
+// checkContextBound returns ErrContextBoundExceeded if adding additional
+// tokens would exceed the configured context bound (F27). Must be called
+// while w.mu is held.
+func (w *ReferenceWorker) checkContextBoundLocked(additional int) error {
+	if w.accumulatedTokens+additional > w.contextBound {
+		return fmt.Errorf("%w: %d+%d > %d", ErrContextBoundExceeded, w.accumulatedTokens, additional, w.contextBound)
+	}
+	return nil
 }
 
 // recordToolResponse stores a tool response for test inspection.
