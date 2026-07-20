@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -377,31 +378,23 @@ func readProjectFile(path string) ([]byte, error) {
 }
 
 func rejectSymlinkPath(path string, allowMissingLeaf bool) error {
-	cleanPath := filepath.Clean(path)
-	absPath, err := filepath.Abs(cleanPath)
-	if err != nil {
-		return fmt.Errorf("resolve %s: %w", path, err)
+	missing := fsutil.MissingFail
+	if allowMissingLeaf {
+		// Historical pack behavior: when allowMissingLeaf is set, any missing
+		// component along the upward walk is tolerated (not only the leaf).
+		missing = fsutil.MissingAllowAll
 	}
-
-	current := absPath
-	for {
-		parent := filepath.Dir(current)
-		info, err := os.Lstat(current)
-		if err == nil {
-			if info.Mode()&os.ModeSymlink != 0 && filepath.Dir(parent) != parent {
-				return fmt.Errorf("path component %s is a symlink (potential escape)", current)
-			}
-		} else if errors.Is(err, fs.ErrNotExist) {
-			if !allowMissingLeaf {
-				return fmt.Errorf("inspect %s: %w", current, err)
-			}
-		} else {
-			return fmt.Errorf("inspect %s: %w", current, err)
-		}
-
-		if parent == current {
-			return nil
-		}
-		current = parent
+	err := fsutil.RejectSymlinkWalk(path, fsutil.WalkOptions{
+		ResolveAbs:             true,
+		Missing:                missing,
+		SkipVolumeRootSymlinks: true,
+	})
+	if err == nil {
+		return nil
 	}
+	var se *fsutil.SymlinkError
+	if errors.As(err, &se) {
+		return fmt.Errorf("path component %s is a symlink (potential escape)", se.Path)
+	}
+	return err
 }

@@ -4,11 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/money"
+	"github.com/AgentPaaS-ai/agentpaas/internal/urlutil"
 	"golang.org/x/net/idna"
 )
 
@@ -541,12 +541,7 @@ func canonicalizeIngress(rules []IngressRule, warnings *[]string) []CanonicalIng
 // stripURLUserinfo removes userinfo (user:password@) from a URL string.
 // If the URL has no userinfo or cannot be parsed, returns the original URL.
 func stripURLUserinfo(rawURL string) string {
-	u, err := url.Parse(rawURL)
-	if err != nil || u.User == nil {
-		return rawURL
-	}
-	u.User = nil
-	return u.String()
+	return urlutil.StripUserinfo(rawURL)
 }
 
 // sortedInts returns a sorted copy of the integer slice.

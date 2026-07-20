@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/asn1"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/hashutil"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 )
 
@@ -577,6 +577,5 @@ func computeOCIImageDigest(imageDir string) *ManifestImageEntry {
 // --- Helpers ---
 
 func sha256Hex(data []byte) string {
-	s := sha256.Sum256(data)
-	return hex.EncodeToString(s[:])
+	return hashutil.SHA256Hex(data)
 }

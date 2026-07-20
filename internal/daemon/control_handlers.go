@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
@@ -1956,10 +1955,9 @@ func (s *controlServer) writeCredentialsForRun(runID string, deployedDir string,
 }
 
 // secretServiceName derives a deterministic macOS Keychain service name from the
-// home directory path. This matches the CLI convention in internal/cli/control.go.
+// home directory path. This matches the CLI convention via secrets.KeychainServiceName.
 func secretServiceName(homeDir string) string {
-	sum := sha256.Sum256([]byte(homeDir))
-	return "ai.agentpaas.secrets." + hex.EncodeToString(sum[:8])
+	return secrets.KeychainServiceName(homeDir)
 }
 
 func (s *controlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error) {
