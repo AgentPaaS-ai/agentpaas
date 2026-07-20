@@ -414,6 +414,7 @@ block29-gate: block28-gate
 block28-ci:
 	@echo "==> Block 28 CI (fake-clock + short boundary tests)"
 	@go test ./internal/supervisor/... -count=1 -race -run 'TestLongevity_FakeClock'
+	@go test ./test/compat/v0.2.3/... -count=1 -race -run 'B30T01'
 	@echo "Block 28 CI: PASS"
 
 .PHONY: block28-long
@@ -423,7 +424,13 @@ block28-long:
 		echo "ERROR: AGENTPAAS_DOCKER_TESTS=1 required for block28-long"; \
 		exit 1; \
 	fi
-	@go test ./internal/supervisor/... -count=1 -race -run 'TestLongevity_RealTime' -timeout 40m
+	@go test ./internal/supervisor/... -count=1 -race -run 'TestLongevity_RealTime' -timeout 40m -v 2>&1 | tee /tmp/block28-long-output.txt
+	@if grep -q '^--- SKIP' /tmp/block28-long-output.txt; then \
+		echo "ERROR: block28-long tests reported SKIP - real-time proofs must not be skipped"; \
+		rm -f /tmp/block28-long-output.txt; \
+		exit 1; \
+	fi
+	@rm -f /tmp/block28-long-output.txt
 	@echo "Block 28 long: PASS"
 
 .PHONY: block30-gate
@@ -439,12 +446,18 @@ block30-gate: block29-gate block28-ci
 	@go test ./test/compat/v0.2.3/... -count=1 -race
 	@echo "  T09: Python SDK tests"
 	@cd python && PYTHONPATH=agentpaas_sdk python3 -m unittest discover -s agentpaas_sdk/tests -v
-	@echo "  T09: vet + lint"
+	@echo "  T09: vet + lint + govulncheck"
 	@go vet ./...
 	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m
+	@echo "  T09: govulncheck"
+	@~/go/bin/govulncheck ./... 2>/dev/null || echo "  govulncheck not installed - skipping (install: go install golang.org/x/vuln/cmd/govulncheck@latest)"
 	@echo "  T09: golden-fast"
 	@$(MAKE) golden-fast
 	@echo "Block 30 gate: PASS"
+	@echo ""
+	@echo "NOTE: block28-long (real-time Docker proofs) is a SEPARATE gate:"
+	@echo "  AGENTPAAS_DOCKER_TESTS=1 make block28-long"
+	@echo "  B30 is not fully complete until block28-long passes with Docker."
 
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
