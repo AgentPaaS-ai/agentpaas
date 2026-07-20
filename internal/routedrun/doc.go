@@ -1,9 +1,18 @@
-// Package routedrun defines the durable domain contracts for the AgentPaaS
-// v0.3.0 Durable Routed Run: deployment, invocation, run, workflow, and
-// their associated state machines, enums, and store interfaces.
+// Package routedrun defines the durable domain model for the AgentPaaS
+// Durable Routed Run: deployments, aliases, invocations, runs, attempts,
+// workflows, time envelopes, artifacts, progress, and store interfaces.
 //
-// This package is contracts-only. It contains no store implementations,
-// daemon wiring, or behavioral logic beyond state-transition validation.
+// Core concerns:
+//   - Stable typed IDs (DeploymentID, InvocationID, RunID, AttemptID, …)
+//   - Enumerations and CAS-friendly record types with generation fields
+//   - State-transition validation for run/attempt/workflow lifecycles
+//   - Store interfaces (DeploymentStore, RunStore, WorkflowStore) plus
+//     filesystem and in-memory implementations (LocalStore, MemoryStore)
+//   - Write-ahead logging, control journal hooks, artifact workspaces,
+//     resume/progress helpers, and time-envelope wiring
+//
+// Daemon gRPC handlers and the supervisor consume these types; this package
+// does not open network listeners or drive containers directly.
 package routedrun
 
 import (
