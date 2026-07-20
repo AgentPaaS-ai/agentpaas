@@ -102,7 +102,7 @@ type storeFile struct {
 // on disk. Use Load to create a Store from an existing file, or to initialize
 // a new empty store. Use Save to persist changes.
 type Store struct {
-	path    string // path to publishers.json
+	path string // path to publishers.json
 	// lockFd removed — was unused
 	records map[string]*Publisher
 	removed map[string]bool // fingerprints explicitly removed since last load
@@ -137,7 +137,7 @@ func Load(path string) (*Store, error) {
 	// If the file doesn't exist, that's fine — return empty store.
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return s, nil
 		}
 		return nil, fmt.Errorf("trust: read store file %s: %w", path, err)
@@ -261,7 +261,7 @@ func (s *Store) Save() error {
 	lockPath := s.path + ".lock"
 	fd, err := acquireFlock(lockPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("store save: %w", err)
 	}
 	defer releaseFlock(fd, lockPath)
 
@@ -377,7 +377,7 @@ func acquireFlock(lockPath string) (int, error) {
 // releaseFlock releases the flock and closes the file descriptor.
 func releaseFlock(fd int, lockPath string) {
 	_ = unix.Flock(fd, unix.LOCK_UN) // intentionally ignored (reviewed)
-	_ = unix.Close(fd) // best-effort cleanup
+	_ = unix.Close(fd)               // best-effort cleanup
 	// Clean up the lock file so it doesn't accumulate.
 	_ = os.Remove(lockPath) // best-effort remove
 }
@@ -388,7 +388,7 @@ func releaseFlock(fd int, lockPath string) {
 func FingerprintFromPEM(pemData string) (string, error) {
 	pub, err := parsePublicKeyPEM(pemData)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("fingerprint from pem: %w", err)
 	}
 	return computeFingerprint(pub), nil
 }

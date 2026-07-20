@@ -142,7 +142,7 @@ func applyGuardrailsToText(cg *compiledGuardrails, text string, direction string
 	// Webhooks: fail-closed if configured and request cannot be completed, or response denies.
 	for _, target := range cg.webhooks {
 		if err := checkGuardrailWebhook(target, out, direction); err != nil {
-			return "", err
+			return "", fmt.Errorf("apply guardrails to text: %w", err)
 		}
 	}
 	// Moderation: when configured, require a credential value and call the provider
@@ -160,7 +160,7 @@ func applyGuardrailsToText(cg *compiledGuardrails, text string, direction string
 			return "", fmt.Errorf("guardrail moderation credential %q unavailable", m.Credential)
 		}
 		if err := checkOpenAIModeration(out, cred.Value); err != nil {
-			return "", err
+			return "", fmt.Errorf("apply guardrails to text: %w", err)
 		}
 	}
 	return out, nil
@@ -271,4 +271,3 @@ func combineSystemPrompt(systemPrompt, userPrompt string) string {
 	// Use a delimiter that is easy to audit and unlikely to confuse providers.
 	return "System: " + systemPrompt + "\n\nUser: " + userPrompt
 }
-

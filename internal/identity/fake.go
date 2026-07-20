@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -44,7 +45,7 @@ func NewFakeKeyStore() *FakeKeyStore {
 // ErrInvalidKeyID if the ID fails validation.
 func (f *FakeKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error {
 	if err := ValidateKeyID(id); err != nil {
-		return err
+		return fmt.Errorf("fake key store create: %w", err)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -63,7 +64,7 @@ func (f *FakeKeyStore) Create(id KeyID, kt KeyType, material KeyMaterial) error 
 // fails validation.
 func (f *FakeKeyStore) Load(id KeyID) (KeyMaterial, error) {
 	if err := ValidateKeyID(id); err != nil {
-		return KeyMaterial{}, err
+		return KeyMaterial{}, fmt.Errorf("fake key store load: %w", err)
 	}
 	f.mu.RLock()
 	defer f.mu.RUnlock()
@@ -81,7 +82,7 @@ func (f *FakeKeyStore) Load(id KeyID) (KeyMaterial, error) {
 // the ID fails validation.
 func (f *FakeKeyStore) Sign(id KeyID, digest []byte) ([]byte, error) {
 	if err := ValidateKeyID(id); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fake key store sign: %w", err)
 	}
 	f.mu.RLock()
 	sk, ok := f.keys[id]
@@ -94,7 +95,7 @@ func (f *FakeKeyStore) Sign(id KeyID, digest []byte) ([]byte, error) {
 	}
 	key, err := parseECDSAPrivateKey(sk.material.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fake key store sign: %w", err)
 	}
 	// Deterministic RFC 6979 ECDSA signing via crypto/ecdsa.
 	return ecdsa.SignASN1(testRandReader{}, key, digest)
@@ -127,7 +128,7 @@ func (f *FakeKeyStore) Verify(id KeyID, digest []byte, signature []byte) bool {
 // the key does not exist, or ErrInvalidKeyID if the ID fails validation.
 func (f *FakeKeyStore) Delete(id KeyID) error {
 	if err := ValidateKeyID(id); err != nil {
-		return err
+		return fmt.Errorf("fake key store delete: %w", err)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -174,7 +175,7 @@ func parseECDSAPrivateKey(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	}
 	key, err := x509.ParseECPrivateKey(block.Bytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse ecdsaprivate key: %w", err)
 	}
 	return key, nil
 }
@@ -184,7 +185,7 @@ func parseECDSAPrivateKey(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 func parseECDSAPublicKey(pemBytes []byte) (*ecdsa.PublicKey, error) {
 	priv, err := parseECDSAPrivateKey(pemBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse ecdsapublic key: %w", err)
 	}
 	return &priv.PublicKey, nil
 }

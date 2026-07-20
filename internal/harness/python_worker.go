@@ -77,7 +77,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	// code begins executing.
 	if cfg.CredentialsPath != "" {
 		if err := rpcServer.LoadCredentials(cfg.CredentialsPath); err != nil {
-			_ = rpcServer.Close() // best-effort cleanup
+			_ = rpcServer.Close()     // best-effort cleanup
 			_ = stderrCapture.Close() // best-effort cleanup
 			errResp := &ErrorResponse{Status: "FAILED", Reason: "credential_load_failed", Detail: err.Error()}
 			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
@@ -94,7 +94,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	// returns INVALID_PROGRESS (nil journal guard).
 	if cfg.JournalKeyPath != "" && cfg.JournalPath != "" && cfg.AttemptID != "" {
 		if err := rpcServer.LoadProgressMetadata(cfg); err != nil {
-			_ = rpcServer.Close() // best-effort cleanup
+			_ = rpcServer.Close()     // best-effort cleanup
 			_ = stderrCapture.Close() // best-effort cleanup
 			errResp := &ErrorResponse{Status: "FAILED", Reason: "progress_metadata_load_failed", Detail: err.Error()}
 			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
@@ -107,7 +107,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
-		_ = rpcServer.Close() // best-effort cleanup
+		_ = rpcServer.Close()     // best-effort cleanup
 		_ = stderrCapture.Close() // best-effort cleanup
 		errResp := &ErrorResponse{Status: "FAILED", Reason: "worker_stdin_failed", Detail: err.Error()}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
@@ -115,8 +115,8 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		_ = rpcServer.Close() // best-effort cleanup
-		_ = stdin.Close() // best-effort cleanup
+		_ = rpcServer.Close()     // best-effort cleanup
+		_ = stdin.Close()         // best-effort cleanup
 		_ = stderrCapture.Close() // best-effort cleanup
 		errResp := &ErrorResponse{Status: "FAILED", Reason: "worker_stdout_failed", Detail: err.Error()}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
@@ -125,9 +125,9 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 
 	if err := cmd.Start(); err != nil {
 		cancel()
-		_ = rpcServer.Close() // best-effort cleanup
-		_ = stdin.Close() // best-effort cleanup
-		_ = stdout.Close() // best-effort cleanup
+		_ = rpcServer.Close()     // best-effort cleanup
+		_ = stdin.Close()         // best-effort cleanup
+		_ = stdout.Close()        // best-effort cleanup
 		_ = stderrCapture.Close() // best-effort cleanup
 		errResp := &ErrorResponse{Status: "FAILED", Reason: "worker_start_failed", Detail: err.Error()}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
@@ -144,20 +144,20 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	}
 	if msg.Type == "import_failed" {
 		cancel()
-		_ = rpcServer.Close() // best-effort cleanup
-		_ = stdin.Close() // best-effort cleanup
-		_ = stdout.Close() // best-effort cleanup
-		_ = stderrCapture.Close() // best-effort cleanup
+		_ = rpcServer.Close()        // best-effort cleanup
+		_ = stdin.Close()            // best-effort cleanup
+		_ = stdout.Close()           // best-effort cleanup
+		_ = stderrCapture.Close()    // best-effort cleanup
 		_ = waitCommand(cmd, reaper) // best-effort cleanup
 		errResp := &ErrorResponse{Status: "FAILED", Reason: msg.Reason, Detail: msg.Detail}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
 	if msg.Type != "ready" {
 		cancel()
-		_ = rpcServer.Close() // best-effort cleanup
-		_ = stdin.Close() // best-effort cleanup
-		_ = stdout.Close() // best-effort cleanup
-		_ = stderrCapture.Close() // best-effort cleanup
+		_ = rpcServer.Close()        // best-effort cleanup
+		_ = stdin.Close()            // best-effort cleanup
+		_ = stdout.Close()           // best-effort cleanup
+		_ = stderrCapture.Close()    // best-effort cleanup
 		_ = waitCommand(cmd, reaper) // best-effort cleanup
 		errResp := &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: fmt.Sprintf("unexpected worker message %q", msg.Type)}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
@@ -194,20 +194,20 @@ func waitForImport(cmd *exec.Cmd, reaper *childReaper, cancel context.CancelFunc
 		return msg, nil
 	case err := <-errCh:
 		cancel()
-		_ = stdin.Close() // best-effort cleanup
-		_ = stdout.Close() // best-effort cleanup
+		_ = stdin.Close()      // best-effort cleanup
+		_ = stdout.Close()     // best-effort cleanup
 		_ = stderrFile.Close() // best-effort cleanup
 		// best-effort kill; error is not actionable here.
-		_ = killCommand(cmd) // best-effort cleanup
+		_ = killCommand(cmd)         // best-effort cleanup
 		_ = waitCommand(cmd, reaper) // best-effort cleanup
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_failed", Detail: err.Error()}
 	case <-time.After(timeout):
 		cancel()
-		_ = stdin.Close() // best-effort cleanup
-		_ = stdout.Close() // best-effort cleanup
+		_ = stdin.Close()      // best-effort cleanup
+		_ = stdout.Close()     // best-effort cleanup
 		_ = stderrFile.Close() // best-effort cleanup
 		// best-effort kill; error is not actionable here.
-		_ = killCommand(cmd) // best-effort cleanup
+		_ = killCommand(cmd)         // best-effort cleanup
 		_ = waitCommand(cmd, reaper) // best-effort cleanup
 		return workerMessage{}, &ErrorResponse{Status: "FAILED", Reason: "import_timeout", Detail: "agent import timed out"}
 	}
@@ -358,13 +358,13 @@ func validateResultKeys(value any) error {
 				}
 			}
 			if err := validateResultKeys(child); err != nil {
-				return err
+				return fmt.Errorf("validate result keys: %w", err)
 			}
 		}
 	case []any:
 		for _, child := range v {
 			if err := validateResultKeys(child); err != nil {
-				return err
+				return fmt.Errorf("validate result keys: %w", err)
 			}
 		}
 	}

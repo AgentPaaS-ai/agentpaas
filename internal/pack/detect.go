@@ -97,12 +97,12 @@ func ValidateRouteID(id string) error {
 // and packaging. The runtime field overrides auto-detection.
 // Both flat fields and the v1 metadata/spec schema are supported.
 type AgentYAML struct {
-	Name        string   `yaml:"name"`
-	Version     string   `yaml:"version"`
-	Runtime     string   `yaml:"runtime"`
-	Entry       string   `yaml:"entry"`
-	Description string   `yaml:"description"`
-	Kind        string   `yaml:"kind"`        // v0.3: "worker" or "mcp_service" (legacy absence means worker)
+	Name        string    `yaml:"name"`
+	Version     string    `yaml:"version"`
+	Runtime     string    `yaml:"runtime"`
+	Entry       string    `yaml:"entry"`
+	Description string    `yaml:"description"`
+	Kind        string    `yaml:"kind"` // v0.3: "worker" or "mcp_service" (legacy absence means worker)
 	LLM         LLMConfig `yaml:"llm"`
 	Metadata    struct {
 		Name        string `yaml:"name"`
@@ -156,10 +156,10 @@ type DetectionResult struct {
 // langgraph or crewai imports.
 func DetectProject(projectDir string) (*DetectionResult, error) {
 	if err := validateProjectDir(projectDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("detect project: %w", err)
 	}
 	if err := rejectSymlinkPath(projectDir, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("detect project: %w", err)
 	}
 
 	result := &DetectionResult{
@@ -169,7 +169,7 @@ func DetectProject(projectDir string) (*DetectionResult, error) {
 
 	agentYAML, err := LoadAgentYAML(projectDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("detect project: %w", err)
 	}
 	if agentYAML != nil {
 		result.HasAgentYAML = true
@@ -199,7 +199,7 @@ func DetectProject(projectDir string) (*DetectionResult, error) {
 // Returns nil, nil if agent.yaml does not exist (not an error).
 func LoadAgentYAML(projectDir string) (*AgentYAML, error) {
 	if err := validateProjectDir(projectDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load agent yaml: %w", err)
 	}
 
 	path := filepath.Join(projectDir, "agent.yaml")
@@ -208,7 +208,7 @@ func LoadAgentYAML(projectDir string) (*AgentYAML, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load agent yaml: %w", err)
 	}
 
 	var agent AgentYAML
@@ -336,7 +336,7 @@ func validateProjectDir(projectDir string) error {
 		}
 	}
 	if err := rejectSymlinkPath(absProjectDir, true); err != nil {
-		return err
+		return fmt.Errorf("validate project dir: %w", err)
 	}
 
 	return nil
@@ -366,7 +366,7 @@ func markerRuntime(content string) RuntimeType {
 
 func readProjectFile(path string) ([]byte, error) {
 	if err := rejectSymlinkPath(path, false); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read project file: %w", err)
 	}
 
 	data, err := os.ReadFile(path)

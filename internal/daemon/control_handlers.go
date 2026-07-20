@@ -47,7 +47,6 @@ func logBestEffort(op string, err error) {
 	}
 }
 
-
 type packKeyStoreAdapter struct {
 	store identity.KeyStore
 }
@@ -121,7 +120,7 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	policyPath := filepath.Join(absProjectDir, "policy.yaml")
 	if data, err := os.ReadFile(policyPath); err == nil {
 		policyYAML = data
-	} else if !os.IsNotExist(err) {
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, status.Errorf(codes.Internal, "read policy.yaml: %v", err)
 	}
 
@@ -321,7 +320,7 @@ func verifyDeployedAgent(homeDir, agentName string, auditAppender audit.AuditApp
 		policyPath := filepath.Join(deployedDir, "policy.yaml")
 		policyData, err := os.ReadFile(policyPath)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, os.ErrNotExist) {
 				return fmt.Errorf("policy.yaml missing but lock has policy_digest; repack required")
 			}
 			return fmt.Errorf("read deployed policy.yaml: %w", err)
@@ -1260,7 +1259,7 @@ func (s *controlServer) Logs(req *controlv1.LogsRequest, stream controlv1.Contro
 			Message:   strings.ToValidUTF8(scanner.Text(), "\ufffd"),
 		}
 		if err := stream.Send(entry); err != nil {
-			return err
+			return fmt.Errorf("control server logs: %w", err)
 		}
 	}
 	return scanner.Err()
@@ -2241,14 +2240,14 @@ func (s *controlServer) openPackageIdentityKey(ctx context.Context, agentName st
 	// Package identity material always uses the encrypted file keystore (no Keychain UI).
 	store, err := s.openFileIdentityStore()
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("control server open package identity key: %w", err)
 	}
 	ca, err := identity.NewLocalCA(store, &identity.TrustDomain{Host: "local.agentpaas"})
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("control server open package identity key: %w", err)
 	}
 	if _, err := ca.EnsurePackageIdentityKey(agentName); err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("control server open package identity key: %w", err)
 	}
 	keyID := identity.KeyID("package_identity_" + agentName)
 	_ = ctx // reserved for future cancellation of keystore ops
@@ -2268,7 +2267,7 @@ func (s *controlServer) openFileIdentityStore() (identity.KeyStore, error) {
 	}
 	passphrase, err := ensureKeystorePassphrase(s.homePaths.State)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("control server open file identity store: %w", err)
 	}
 	return identity.NewFileKeyStore(filepath.Join(s.homePaths.State, "keystore"), passphrase)
 }
@@ -2298,7 +2297,7 @@ func ensureKeystorePassphrase(stateDir string) (string, error) {
 func (s *controlServer) recentAuditRecords(limit int) ([]audit.AuditRecord, error) {
 	count, err := s.auditIndex.RecordCount()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("control server recent audit records: %w", err)
 	}
 	if count == 0 {
 		return nil, nil
@@ -2416,10 +2415,10 @@ func protoEventTypeFromAudit(eventType string) controlv1.EventType {
 func readAuditJSONL(path string) ([]audit.AuditRecord, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("read audit jsonl: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 
@@ -2465,7 +2464,7 @@ func formatAuditExport(records []audit.AuditRecord, format string, includePayloa
 			}
 			line, err := json.Marshal(exportRecord)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("format audit export: %w", err)
 			}
 			b.Write(line)
 			b.WriteByte('\n')
@@ -2487,7 +2486,7 @@ func formatAuditExport(records []audit.AuditRecord, format string, includePayloa
 		}
 		w.Flush()
 		if err := w.Error(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("format audit export: %w", err)
 		}
 		return []byte(buf.String()), nil
 	default:
@@ -2681,7 +2680,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
 	if err != nil {
-		return err
+		return fmt.Errorf("write file atomic: %w", err)
 	}
 	tmpName := tmp.Name()
 	cleanup := true
@@ -2692,17 +2691,17 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	}()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close() // best-effort close before return
-		return err
+		return fmt.Errorf("write file atomic: %w", err)
 	}
 	if err := tmp.Chmod(perm); err != nil {
 		_ = tmp.Close() // best-effort close before return
-		return err
+		return fmt.Errorf("write file atomic: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return err
+		return fmt.Errorf("write file atomic: %w", err)
 	}
 	if err := os.Rename(tmpName, path); err != nil {
-		return err
+		return fmt.Errorf("write file atomic: %w", err)
 	}
 	cleanup = false
 	return nil
@@ -2826,7 +2825,7 @@ func (s *controlServer) CronRemove(ctx context.Context, req *controlv1.CronRemov
 		return nil, status.Error(codes.FailedPrecondition, "cron scheduler not available")
 	}
 	if err := s.cronScheduler.RemoveSchedule(ctx, req.GetScheduleId()); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("control server cron remove: %w", err)
 	}
 	return &controlv1.CronRemoveResponse{Removed: true}, nil
 }

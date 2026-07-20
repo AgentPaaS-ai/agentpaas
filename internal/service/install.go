@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -73,7 +74,7 @@ func InstallLaunchdPlist(cfg LaunchdPlistConfig, launchAgentsDir string, force b
 func UninstallLaunchdPlist(launchAgentsDir string) error {
 	dst := filepath.Join(launchAgentsDir, LaunchdPlistFilename())
 	if err := os.Remove(dst); err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return fmt.Errorf("service: remove plist %s: %w", dst, err)

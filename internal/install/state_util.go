@@ -1,6 +1,8 @@
 package install
 
 import (
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -14,10 +16,10 @@ func countFilesUnder(root string) (int, error) {
 	n := 0
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, os.ErrNotExist) {
 				return nil
 			}
-			return err
+			return fmt.Errorf("count files under: %w", err)
 		}
 		if d.IsDir() {
 			return nil

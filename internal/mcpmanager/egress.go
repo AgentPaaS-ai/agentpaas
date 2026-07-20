@@ -83,7 +83,7 @@ func (ep *EgressPolicy) CheckEgress(ctx context.Context, serverID, destination, 
 	}
 	if err := ctx.Err(); err != nil {
 		ep.auditEgressDecision(serverID, destination, method, "", "", "denied", err.Error())
-		return false, "", "", err
+		return false, "", "", fmt.Errorf("egress policy check egress: %w", err)
 	}
 
 	normalizedMethod := normalizeMethod(method)
@@ -237,7 +237,7 @@ func destinationPort(parsed *url.URL) (int, error) {
 	if parsed.Port() != "" {
 		port, err := strconv.Atoi(parsed.Port())
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("destination port: %w", err)
 		}
 		return port, nil
 	}

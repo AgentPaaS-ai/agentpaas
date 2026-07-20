@@ -16,13 +16,13 @@ import (
 
 // Durable event store errors (sentinel).
 var (
-	ErrEventStoreClosed       = errors.New("trigger: event store closed")
-	ErrSubscriberOverflow     = errors.New("trigger: subscriber channel overflow; reconnect with last received sequence")
-	ErrEventStoreInvalidPath  = errors.New("trigger: invalid event store path component")
-	ErrEventStoreSymlink      = errors.New("trigger: symlink rejected in event store path")
-	ErrEventStoreUnsafePerm   = errors.New("trigger: unsafe permissions in event store path")
-	ErrEventStoreTooLarge     = errors.New("trigger: event payload exceeds size cap")
-	ErrEventStoreEmptyArg     = errors.New("trigger: tenant_id and run_id must not be empty")
+	ErrEventStoreClosed      = errors.New("trigger: event store closed")
+	ErrSubscriberOverflow    = errors.New("trigger: subscriber channel overflow; reconnect with last received sequence")
+	ErrEventStoreInvalidPath = errors.New("trigger: invalid event store path component")
+	ErrEventStoreSymlink     = errors.New("trigger: symlink rejected in event store path")
+	ErrEventStoreUnsafePerm  = errors.New("trigger: unsafe permissions in event store path")
+	ErrEventStoreTooLarge    = errors.New("trigger: event payload exceeds size cap")
+	ErrEventStoreEmptyArg    = errors.New("trigger: tenant_id and run_id must not be empty")
 )
 
 const (
@@ -102,7 +102,7 @@ type runState struct {
 	mu          sync.Mutex
 	events      []eventRecord
 	subscribers map[int64]*subscriber
-	nextSubID    int64
+	nextSubID   int64
 	closed      bool
 }
 
@@ -117,8 +117,8 @@ type runState struct {
 type DurableEventStore struct {
 	stateDir string
 
-	mu    sync.Mutex
-	runs  map[string]*runState
+	mu     sync.Mutex
+	runs   map[string]*runState
 	closed bool
 }
 
@@ -132,7 +132,7 @@ func NewDurableEventStore(stateDir string) (*DurableEventStore, error) {
 	}
 	cleaned := filepath.Clean(stateDir)
 	if err := eventRejectSymlinkPath(cleaned); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new durable event store: %w", err)
 	}
 	if err := eventMkdirProtected(cleaned); err != nil {
 		return nil, fmt.Errorf("trigger: create event state dir %s: %w", cleaned, err)
@@ -189,7 +189,7 @@ func (s *DurableEventStore) Append(_ context.Context, event port.Event) (int64, 
 
 	r, err := s.runState(event.TenantID, event.RunID, true)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("durable event store append: %w", err)
 	}
 
 	r.mu.Lock()
@@ -412,33 +412,33 @@ func (s *DurableEventStore) appendWAL(tenantID, runID string, rec walRecord) err
 	path := s.walPath(tenantID, runID)
 	dir := filepath.Dir(path)
 	if err := eventMkdirProtected(dir); err != nil {
-		return err
+		return fmt.Errorf("durable event store append wal: %w", err)
 	}
 	if err := eventRejectSymlinkPath(path); err != nil {
-		return err
+		return fmt.Errorf("durable event store append wal: %w", err)
 	}
 	line, err := json.Marshal(rec)
 	if err != nil {
-		return err
+		return fmt.Errorf("durable event store append wal: %w", err)
 	}
 	if int64(len(line)) > maxEventPayloadBytes+1024 {
 		return fmt.Errorf("%w: encoded record %d bytes", ErrEventStoreTooLarge, len(line))
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, eventFilePerm)
 	if err != nil {
-		return err
+		return fmt.Errorf("durable event store append wal: %w", err)
 	}
 	defer func() { _ = f.Close() }() // best-effort close
 	// Reject a symlinked or world-readable WAL — fail closed.
 	fi, err := f.Stat()
 	if err != nil {
-		return err
+		return fmt.Errorf("durable event store append wal: %w", err)
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		return fmt.Errorf("%w: %s mode %#o", ErrEventStoreUnsafePerm, path, fi.Mode().Perm())
 	}
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		return err
+		return fmt.Errorf("durable event store append wal: %w", err)
 	}
 	return f.Sync()
 }
@@ -449,22 +449,22 @@ func (s *DurableEventStore) appendWAL(tenantID, runID string, rec walRecord) err
 func (s *DurableEventStore) recover() error {
 	entries, err := os.ReadDir(s.stateDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("durable event store recover: %w", err)
 	}
 	for _, tenantEntry := range entries {
 		if !tenantEntry.IsDir() {
 			continue
 		}
 		if err := eventRejectSymlinkLeaf(filepath.Join(s.stateDir, tenantEntry.Name())); err != nil {
-			return err
+			return fmt.Errorf("durable event store recover: %w", err)
 		}
 		tenantPath := filepath.Join(s.stateDir, tenantEntry.Name())
 		runEntries, err := os.ReadDir(tenantPath)
 		if err != nil {
-			return err
+			return fmt.Errorf("durable event store recover: %w", err)
 		}
 		for _, runEntry := range runEntries {
 			if runEntry.IsDir() || !strings.HasSuffix(runEntry.Name(), walSuffix) {
@@ -472,7 +472,7 @@ func (s *DurableEventStore) recover() error {
 			}
 			path := filepath.Join(tenantPath, runEntry.Name())
 			if err := s.recoverWALFile(path); err != nil {
-				return err
+				return fmt.Errorf("durable event store recover: %w", err)
 			}
 		}
 	}
@@ -483,10 +483,10 @@ func (s *DurableEventStore) recover() error {
 func (s *DurableEventStore) recoverWALFile(path string) error {
 	data, err := eventReadFileStrict(path, maxWALFileBytes)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("durable event store recover walfile: %w", err)
 	}
 	// Parse line by line. Each line is one walRecord.
 	for _, line := range splitWALLines(data) {
@@ -499,7 +499,7 @@ func (s *DurableEventStore) recoverWALFile(path string) error {
 		}
 		r, err := s.runState(rec.TenantID, rec.RunID, true)
 		if err != nil {
-			return err
+			return fmt.Errorf("durable event store recover walfile: %w", err)
 		}
 		r.mu.Lock()
 		r.events = append(r.events, eventRecord{event: port.Event{

@@ -3,6 +3,7 @@ package trigger
 import (
 	"context"
 	"crypto/subtle"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -128,7 +129,7 @@ func AuthInterceptor(auth Authenticator) grpc.UnaryServerInterceptor {
 	return func(requestContext context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) { // intentionally ignored (reviewed)
 		caller, method, err := auth.Authenticate(requestContext)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("auth interceptor: %w", err)
 		}
 		requestContext = WithCaller(requestContext, caller, method)
 		return handler(requestContext, req)
@@ -141,7 +142,7 @@ func AuthStreamInterceptor(auth Authenticator) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error { // intentionally ignored (reviewed)
 		caller, method, err := auth.Authenticate(ss.Context())
 		if err != nil {
-			return err
+			return fmt.Errorf("auth stream interceptor: %w", err)
 		}
 		requestContext := WithCaller(ss.Context(), caller, method)
 		return handler(srv, &wrappedStream{ServerStream: ss, ctx: requestContext})

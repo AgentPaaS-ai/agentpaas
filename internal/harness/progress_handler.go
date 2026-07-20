@@ -14,10 +14,10 @@ import (
 
 // v0.3 safety bounds (mirror SDK bounds in Go).
 const (
-	progressPhaseMax       = 128
-	progressStrItemMax     = 1024
-	progressListMax        = 50
-	progressArtifactMax    = 32
+	progressPhaseMax        = 128
+	progressStrItemMax      = 1024
+	progressListMax         = 50
+	progressArtifactMax     = 32
 	progressArtifactPathMax = 512
 	progressArtifactSegMax  = 8
 )
@@ -168,11 +168,11 @@ func (s *harnessRPCServer) handleProgress(req rpcRequest, state *rpcInvokeState)
 			EventType: "progress",
 			Actor:     "harness",
 			Payload: map[string]interface{}{
-				"run_id":       state.progressIdentity.RunID,
-				"attempt_id":   state.progressIdentity.AttemptID,
-				"phase":        phase,
+				"run_id":         state.progressIdentity.RunID,
+				"attempt_id":     state.progressIdentity.AttemptID,
+				"phase":          phase,
 				"safe_to_resume": safeToResume,
-				"checkpoint_id": checkpointID,
+				"checkpoint_id":  checkpointID,
 			},
 		}); err != nil {
 			log.Printf("harness: audit append (%s): %v", "progress", err)
@@ -230,7 +230,7 @@ func validateArtifactRefs(v any) ([]string, error) {
 			return nil, fmt.Errorf("artifact_reference entries must be strings")
 		}
 		if err := validateArtifactPath(s); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("validate artifact refs: %w", err)
 		}
 		out = append(out, s)
 	}

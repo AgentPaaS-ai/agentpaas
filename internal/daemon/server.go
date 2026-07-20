@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -139,18 +140,18 @@ func New(paths *home.HomePaths, version VersionInfo, opts ...Option) (*Daemon, e
 	li, err := lockFileInode(lockFile)
 	if err != nil {
 		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) // best-effort unlock on error path
-		_ = lockFile.Close() // best-effort close on error path
+		_ = lockFile.Close()                                   // best-effort close on error path
 		return nil, fmt.Errorf("daemon: cannot stat lock file %s: %w", paths.Lock, err)
 	}
 	pathFi, err := os.Stat(paths.Lock)
 	if err != nil {
 		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) // best-effort unlock on error path
-		_ = lockFile.Close() // best-effort close on error path
+		_ = lockFile.Close()                                   // best-effort close on error path
 		return nil, fmt.Errorf("daemon: cannot stat lock file path %s: %w", paths.Lock, err)
 	}
 	if li.dev != uint64(pathFi.Sys().(*syscall.Stat_t).Dev) || li.ino != pathFi.Sys().(*syscall.Stat_t).Ino {
 		_ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) // best-effort unlock on error path
-		_ = lockFile.Close() // best-effort close on error path
+		_ = lockFile.Close()                                   // best-effort close on error path
 		return nil, fmt.Errorf("daemon: lock file %s was replaced (inode mismatch) — refusing to start", paths.Lock)
 	}
 
@@ -186,7 +187,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Check root.
 	if !d.allowRoot {
 		if err := CheckRoot(os.Getuid(), false); err != nil {
-			return err
+			return fmt.Errorf("daemon start: %w", err)
 		}
 	}
 
@@ -233,14 +234,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Set socket permissions to 0600. Fail closed if chmod fails — a world-accessible
 	// control socket would allow other local users to drive the daemon.
 	if err := os.Chmod(d.paths.Socket, 0600); err != nil {
-		_ = ln.Close() // best-effort close
+		_ = ln.Close()       // best-effort close
 		_ = d.cleanupFiles() // best-effort cleanup
 		return fmt.Errorf("daemon: cannot chmod Unix socket %s: %w", d.paths.Socket, err)
 	}
 
 	auditIndex, err := audit.NewSQLiteIndexer(filepath.Join(d.paths.State, "audit.db"))
 	if err != nil {
-		_ = ln.Close() // best-effort close on error path
+		_ = ln.Close()       // best-effort close on error path
 		_ = d.cleanupFiles() // best-effort cleanup on error path
 		return fmt.Errorf("daemon: open audit index: %w", err)
 	}
@@ -252,8 +253,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 	keyDER, checkpointPubKey, err := audit.LoadOrGenerateCheckpointKey(keyPath)
 	if err != nil {
 		_ = auditIndex.Close() // best-effort close on error path
-		_ = ln.Close() // best-effort close on error path
-		_ = d.cleanupFiles() // best-effort cleanup on error path
+		_ = ln.Close()         // best-effort close on error path
+		_ = d.cleanupFiles()   // best-effort cleanup on error path
 		return fmt.Errorf("daemon: load checkpoint signing key: %w", err)
 	}
 	log.Printf("daemon: audit checkpoint key loaded (encrypted at rest)")
@@ -266,8 +267,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 	auditWriter, err := audit.NewAuditWriterWithCheckpoints(auditPath, checkpointPath, checkpointCadence, keyDER)
 	if err != nil {
 		_ = auditIndex.Close() // best-effort close on error path
-		_ = ln.Close() // best-effort close on error path
-		_ = d.cleanupFiles() // best-effort cleanup on error path
+		_ = ln.Close()         // best-effort close on error path
+		_ = d.cleanupFiles()   // best-effort cleanup on error path
 		return fmt.Errorf("daemon: open audit writer: %w", err)
 	}
 	// Rebuild the index from the existing chain (if any) for recovery.
@@ -337,9 +338,9 @@ func (d *Daemon) Start(ctx context.Context) error {
 	// Wire DeploymentStore / RunStore / WorkflowStore (state foundation).
 	if err := controlServer.initRoutedStores(routedStoreRoot(d.paths)); err != nil {
 		_ = auditWriter.Close() // best-effort close on error path
-		_ = auditIndex.Close() // best-effort close on error path
-		_ = ln.Close() // best-effort close on error path
-		_ = d.cleanupFiles() // best-effort cleanup on error path
+		_ = auditIndex.Close()  // best-effort close on error path
+		_ = ln.Close()          // best-effort close on error path
+		_ = d.cleanupFiles()    // best-effort cleanup on error path
 		return fmt.Errorf("daemon: init routed stores: %w", err)
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
@@ -398,7 +399,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 				TriggerPayload: payload,
 			})
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("daemon start: %w", err)
 			}
 			return resp.GetRunId(), nil
 		})
@@ -433,7 +434,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	triggerSvc.SetInvokeFunc(func(ctx context.Context, agentName string, payload []byte) (string, error) {
 		resp, err := controlServer.Run(ctx, &controlv1.RunRequest{AgentName: agentName, TriggerPayload: payload})
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("daemon start: %w", err)
 		}
 		return resp.GetRunId(), nil
 	})
@@ -573,7 +574,7 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	// Release the flock.
 	if d.lockFile != nil {
 		_ = syscall.Flock(int(d.lockFile.Fd()), syscall.LOCK_UN) // best-effort unlock
-		_ = d.lockFile.Close() // best-effort close
+		_ = d.lockFile.Close()                                   // best-effort close
 		d.lockFile = nil
 	}
 
@@ -608,14 +609,14 @@ func (d *Daemon) cleanupFiles() error {
 	var firstErr error
 
 	if d.pidFile != "" {
-		if err := os.Remove(d.pidFile); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(d.pidFile); err != nil && !errors.Is(err, os.ErrNotExist) {
 			firstErr = err
 		}
 		d.pidFile = ""
 	}
 
 	if d.paths != nil && d.paths.Socket != "" {
-		if err := os.Remove(d.paths.Socket); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(d.paths.Socket); err != nil && !errors.Is(err, os.ErrNotExist) {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -657,7 +658,7 @@ func CheckRoot(uid int, allowRoot bool) error {
 func lockFileInode(f *os.File) (lockIno, error) {
 	fi, err := f.Stat()
 	if err != nil {
-		return lockIno{}, err
+		return lockIno{}, fmt.Errorf("lock file inode: %w", err)
 	}
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {
@@ -679,7 +680,7 @@ func (d *Daemon) reacquireLock() error {
 	}
 	pathFi, err := os.Stat(d.paths.Lock)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			// Lock file was deleted and not recreated — we still hold
 			// the flock on the old inode, but there's nothing to do.
 			return nil
@@ -711,25 +712,25 @@ func (d *Daemon) reacquireLock() error {
 	newLI, err := lockFileInode(newFile)
 	if err != nil {
 		_ = syscall.Flock(int(newFile.Fd()), syscall.LOCK_UN) // best-effort unlock on error path
-		_ = newFile.Close() // best-effort close on error path
+		_ = newFile.Close()                                   // best-effort close on error path
 		return fmt.Errorf("daemon: cannot stat new lock file FD: %w", err)
 	}
 	newPathFi, err := os.Stat(d.paths.Lock)
 	if err != nil {
 		_ = syscall.Flock(int(newFile.Fd()), syscall.LOCK_UN) // best-effort unlock on error path
-		_ = newFile.Close() // best-effort close on error path
+		_ = newFile.Close()                                   // best-effort close on error path
 		return fmt.Errorf("daemon: cannot stat new lock file path: %w", err)
 	}
 	newPathSt := newPathFi.Sys().(*syscall.Stat_t)
 	if newLI.dev != uint64(newPathSt.Dev) || newLI.ino != newPathSt.Ino {
 		_ = syscall.Flock(int(newFile.Fd()), syscall.LOCK_UN) // best-effort unlock on error path
-		_ = newFile.Close() // best-effort close on error path
+		_ = newFile.Close()                                   // best-effort close on error path
 		return fmt.Errorf("daemon: new lock file was also replaced during re-acquisition")
 	}
 
 	// Release the old lock and swap.
 	_ = syscall.Flock(int(d.lockFile.Fd()), syscall.LOCK_UN) // best-effort unlock
-	_ = d.lockFile.Close() // best-effort close
+	_ = d.lockFile.Close()                                   // best-effort close
 	d.lockFile = newFile
 	d.lockIno = newLI
 

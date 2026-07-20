@@ -24,7 +24,7 @@ var installedRemoveFactory = defaultRemoveInstalled
 func newDefaultInstallState(cmd *cobra.Command) (install.InstallStateStore, error) {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new default install state: %w", err)
 	}
 	paths := home.NewHomePaths(homeDir)
 	return &install.FileInstallState{StateRoot: paths.State}, nil
@@ -33,7 +33,7 @@ func newDefaultInstallState(cmd *cobra.Command) (install.InstallStateStore, erro
 func defaultListInstalled(cmd *cobra.Command) ([]install.InstalledAgentEntry, error) {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("default list installed: %w", err)
 	}
 	paths := home.NewHomePaths(homeDir)
 	return install.ListInstalledAgents(paths.State)
@@ -42,7 +42,7 @@ func defaultListInstalled(cmd *cobra.Command) ([]install.InstalledAgentEntry, er
 func defaultRemoveInstalled(cmd *cobra.Command, ref string) error {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		return err
+		return fmt.Errorf("default remove installed: %w", err)
 	}
 	paths := home.NewHomePaths(homeDir)
 	return install.RemoveInstalledAgent(cmd.Context(), paths.State, ref, install.DockerContainerStopper{}, nil)
@@ -70,21 +70,21 @@ func newInstalledAliasCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			homeDir, err := homeDirPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new installed alias cmd: %w", err)
 			}
 			paths := home.NewHomePaths(homeDir)
 			emit := func(eventType string, payload map[string]string) {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s %v\n", eventType, payload) // best-effort write
 			}
 			if err := install.SetInstalledAlias(paths.State, args[0], args[1], emit); err != nil {
-				return err
+				return fmt.Errorf("new installed alias cmd: %w", err)
 			}
 			ref, err := install.ResolveAgentRef(install.ResolveRefOpts{
 				StateRoot: paths.State,
 				Input:     args[0],
 			})
 			if err != nil {
-				return err
+				return fmt.Errorf("new installed alias cmd: %w", err)
 			}
 			display := install.FormatAgentDisplay(ref.Ref, strings.TrimSpace(args[1]))
 			cmd.Printf("Alias updated: %s\n", display)
@@ -100,12 +100,12 @@ func newInstalledListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entries, err := installedListFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new installed list cmd: %w", err)
 			}
 			if jsonOutput(cmd) {
 				raw, err := json.Marshal(entries)
 				if err != nil {
-					return err
+					return fmt.Errorf("new installed list cmd: %w", err)
 				}
 				fmt.Println(string(raw))
 				return nil
@@ -140,7 +140,7 @@ func newInstalledRemoveCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := installedRemoveFactory(cmd, args[0]); err != nil {
-				return err
+				return fmt.Errorf("new installed remove cmd: %w", err)
 			}
 			if jsonOutput(cmd) {
 				fmt.Println(`{"status":"ok"}`)
@@ -162,15 +162,15 @@ func newInstalledMapCredentialCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			homeDir, err := homeDirPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new installed map credential cmd: %w", err)
 			}
 			state, err := installStateFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new installed map credential cmd: %w", err)
 			}
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new installed map credential cmd: %w", err)
 			}
 			paths := home.NewHomePaths(homeDir)
 			if err := install.ApplyMapCredential(install.MapCredentialOpts{

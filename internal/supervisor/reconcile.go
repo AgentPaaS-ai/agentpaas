@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"io/fs"
+	"log"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
@@ -34,15 +34,15 @@ func (s *Supervisor) Reconcile(ctx context.Context, runID routedrun.RunID) error
 	}
 	run, err := s.store.GetRun(ctx, runID)
 	if err != nil {
-		return err
+		return fmt.Errorf("supervisor reconcile: %w", err)
 	}
 	atts, err := s.store.ListAttempts(ctx, runID)
 	if err != nil {
-		return err
+		return fmt.Errorf("supervisor reconcile: %w", err)
 	}
 	for _, att := range atts {
 		if err := s.reconcileAttempt(ctx, att); err != nil {
-			return err
+			return fmt.Errorf("supervisor reconcile: %w", err)
 		}
 	}
 	// If the run is not terminal and no attempt succeeded, fail the run.
@@ -64,7 +64,7 @@ func (s *Supervisor) Reconcile(ctx context.Context, runID routedrun.RunID) error
 	}
 	// Reconcile active-time segment state from the workflow.
 	if err := s.reconcileActiveTime(ctx, run.WorkflowID); err != nil {
-		return err
+		return fmt.Errorf("supervisor reconcile: %w", err)
 	}
 	return nil
 }
@@ -170,7 +170,7 @@ func (s *Supervisor) reconcileSuccess(ctx context.Context, att *routedrun.Attemp
 		if errors.Is(err, ErrAlreadyTerminal) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("supervisor reconcile success: %w", err)
 	}
 	// Complete the run CAS to SUCCEEDED.
 	if err := s.casRunTo(ctx, att.RunID, routedrun.RunStatusSucceeded); err != nil {
@@ -200,17 +200,17 @@ func (s *Supervisor) revokeLeaseAndFail(ctx context.Context, att *routedrun.Atte
 	for i := 0; i < 8; i++ {
 		current, err := s.store.GetAttempt(ctx, att.AttemptID)
 		if err != nil {
-			return err
+			return fmt.Errorf("supervisor revoke lease and fail: %w", err)
 		}
 		if current.Status.IsTerminal() {
 			return nil
 		}
 		if err := routedrun.ValidateAttemptTransition(current.Status, routedrun.AttemptStatusFailed); err != nil {
-			return err
+			return fmt.Errorf("supervisor revoke lease and fail: %w", err)
 		}
 		gen, err := s.store.GetAttemptGeneration(ctx, att.AttemptID)
 		if err != nil {
-			return err
+			return fmt.Errorf("supervisor revoke lease and fail: %w", err)
 		}
 		now := s.nowWall()
 		current.Status = routedrun.AttemptStatusFailed
@@ -225,7 +225,7 @@ func (s *Supervisor) revokeLeaseAndFail(ctx context.Context, att *routedrun.Atte
 			if errors.Is(err, routedrun.ErrCASConflict) {
 				continue
 			}
-			return err
+			return fmt.Errorf("supervisor revoke lease and fail: %w", err)
 		}
 		// Append the FAILED control-journal event (durable evidence of the
 		// restart reconciliation). Retry on sequence conflicts (F17).
@@ -318,14 +318,14 @@ func (s *Supervisor) reconcileActiveTime(ctx context.Context, workflowID routedr
 		if errors.Is(err, routedrun.ErrNotFound) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("supervisor reconcile active time: %w", err)
 	}
 	ledger, err := s.store.GetActiveTimeLedger(ctx, workflowID)
 	if err != nil {
 		if errors.Is(err, routedrun.ErrNotFound) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("supervisor reconcile active time: %w", err)
 	}
 	if ledger == nil {
 		return nil
@@ -344,7 +344,7 @@ func (s *Supervisor) reconcileActiveTime(ctx context.Context, workflowID routedr
 		ledger.FrozenConsumedMs = ledger.ConsumedMs
 		gen, err := s.store.GetActiveTimeLedgerGeneration(ctx, workflowID)
 		if err != nil {
-			return err
+			return fmt.Errorf("supervisor reconcile active time: %w", err)
 		}
 		return s.store.PutActiveTimeLedger(ctx, workflowID, ledger, gen)
 	}
@@ -387,7 +387,7 @@ func (s *Supervisor) reconcileActiveTime(ctx context.Context, workflowID routedr
 	ledger.SegmentStartWallMs = nil
 	gen, err := s.store.GetActiveTimeLedgerGeneration(ctx, workflowID)
 	if err != nil {
-		return err
+		return fmt.Errorf("supervisor reconcile active time: %w", err)
 	}
 	return s.store.PutActiveTimeLedger(ctx, workflowID, ledger, gen)
 }

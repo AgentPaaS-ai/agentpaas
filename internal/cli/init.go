@@ -28,7 +28,7 @@ func newInitCmd() *cobra.Command {
 				projectDir = args[0]
 			}
 
-			fromCode, _ := cmd.Flags().GetBool("from-code") // cobra flag default on missing
+			fromCode, _ := cmd.Flags().GetBool("from-code")            // cobra flag default on missing
 			noninteractive, _ := cmd.Flags().GetBool("noninteractive") // cobra flag default on missing
 			if fromCode && !noninteractive {
 				return errors.New("--from-code requires --noninteractive in P1")
@@ -36,7 +36,7 @@ func newInitCmd() *cobra.Command {
 			if fromCode || noninteractive {
 				resolvedDir, err := validateInitProjectPath(projectDir)
 				if err != nil {
-					return err
+					return fmt.Errorf("new init cmd: %w", err)
 				}
 				projectDir = resolvedDir
 			}
@@ -44,21 +44,21 @@ func newInitCmd() *cobra.Command {
 			runtimeFlag, _ := cmd.Flags().GetString("runtime") // cobra flag default on missing
 			runtime, err := initRuntime(projectDir, runtimeFlag)
 			if err != nil {
-				return err
+				return fmt.Errorf("new init cmd: %w", err)
 			}
 
 			if fromCode {
 				if err := pack.InitFromCode(projectDir, runtime); err != nil {
-					return err
+					return fmt.Errorf("new init cmd: %w", err)
 				}
 			} else {
 				if err := pack.InitScaffold(projectDir, runtime); err != nil {
-					return err
+					return fmt.Errorf("new init cmd: %w", err)
 				}
 			}
 			if noninteractive {
 				if err := pack.InitPolicy(projectDir); err != nil {
-					return err
+					return fmt.Errorf("new init cmd: %w", err)
 				}
 			}
 
@@ -98,7 +98,7 @@ func validateInitProjectPath(projectDir string) (string, error) {
 		return "", errors.New("project path contains null byte")
 	}
 	if err := rejectInitSymlinkPath(absProjectDir); err != nil {
-		return "", err
+		return "", fmt.Errorf("validate init project path: %w", err)
 	}
 	return absProjectDir, nil
 }
@@ -139,7 +139,7 @@ func initRuntime(projectDir string, runtimeFlag string) (pack.RuntimeType, error
 			return pack.RuntimePython, nil
 		}
 
-		return pack.RuntimeUnknown, err
+		return pack.RuntimeUnknown, fmt.Errorf("init runtime: %w", err)
 	}
 	if result.Runtime == pack.RuntimeUnknown {
 		return pack.RuntimePython, nil

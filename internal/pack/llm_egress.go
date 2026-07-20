@@ -66,7 +66,7 @@ func ValidateLLMEgress(agentConfig *AgentYAML, policyFile *policy.Policy) error 
 // Returns nil, nil if policy.yaml does not exist (not an error).
 func LoadPolicy(projectDir string) (*policy.Policy, error) {
 	if err := validateProjectDir(projectDir); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load policy: %w", err)
 	}
 
 	path := filepath.Join(projectDir, "policy.yaml")
@@ -75,7 +75,7 @@ func LoadPolicy(projectDir string) (*policy.Policy, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("load policy: %w", err)
 	}
 
 	parsed, err := policy.ParsePolicy(bytes.NewReader(data))

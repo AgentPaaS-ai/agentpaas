@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -39,7 +40,7 @@ func newPackCmd() *cobra.Command {
 			}
 			absPath, err := resolveCLIProjectPath(projectDir)
 			if err != nil {
-				return err
+				return fmt.Errorf("new pack cmd: %w", err)
 			}
 			projectDir = absPath
 
@@ -64,16 +65,16 @@ func newPackCmd() *cobra.Command {
 				}
 			}
 
-			agentName, _ := cmd.Flags().GetString("name") // cobra flag default on missing
+			agentName, _ := cmd.Flags().GetString("name")       // cobra flag default on missing
 			agentVersion, _ := cmd.Flags().GetString("version") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new pack cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new pack cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -115,11 +116,11 @@ func newPackCmd() *cobra.Command {
 // digest, or agent name) to a deployed agent name that the daemon's Run
 // handler can accept.
 //
-// - If target contains a path separator or starts with "." or "/", treat
-//   it as a project directory — read agent.yaml to get the agent name.
-// - If target starts with "sha256:", scan deployed agents for a matching
-//   image digest.
-// - Otherwise, treat it as the deployed agent name directly.
+//   - If target contains a path separator or starts with "." or "/", treat
+//     it as a project directory — read agent.yaml to get the agent name.
+//   - If target starts with "sha256:", scan deployed agents for a matching
+//     image digest.
+//   - Otherwise, treat it as the deployed agent name directly.
 func resolveRunTarget(cmd *cobra.Command, client controlv1.ControlServiceClient, target string) (string, error) {
 	if target == "" {
 		return "", fmt.Errorf("agent name or project path is required")
@@ -212,7 +213,7 @@ func resolveRunTarget(cmd *cobra.Command, client controlv1.ControlServiceClient,
 	// Case 3: agent name / name@pub8 / alias (installed resolution; Phase 1 bare name unchanged).
 	resolved, err := resolveCLIAgentRef(cmd, target)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve run target: %w", err)
 	}
 	return resolved.DaemonKey, nil
 }
@@ -230,7 +231,7 @@ func getAgentpaasHome(cmd *cobra.Command) (string, error) {
 	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("get agentpaas home: %w", err)
 	}
 	return filepath.Join(homeDir, ".agentpaas"), nil
 }
@@ -248,11 +249,11 @@ func newRunCmd() *cobra.Command {
 			}
 
 			// B26 continuation / control flags — fail closed via daemon.
-			continueRunID, _ := cmd.Flags().GetString("continue") // cobra flag default on missing
-			action, _ := cmd.Flags().GetString("action") // cobra flag default on missing
-			attemptLease, _ := cmd.Flags().GetDuration("attempt-lease") // cobra flag default on missing
-			deploymentRef, _ := cmd.Flags().GetString("deployment-ref") // cobra flag default on missing
-			inputFlag, _ := cmd.Flags().GetString("input") // cobra flag default on missing
+			continueRunID, _ := cmd.Flags().GetString("continue")         // cobra flag default on missing
+			action, _ := cmd.Flags().GetString("action")                  // cobra flag default on missing
+			attemptLease, _ := cmd.Flags().GetDuration("attempt-lease")   // cobra flag default on missing
+			deploymentRef, _ := cmd.Flags().GetString("deployment-ref")   // cobra flag default on missing
+			inputFlag, _ := cmd.Flags().GetString("input")                // cobra flag default on missing
 			idempotencyKey, _ := cmd.Flags().GetString("idempotency-key") // cobra flag default on missing
 			generatedKey := false
 
@@ -270,7 +271,7 @@ func newRunCmd() *cobra.Command {
 					// CLI generates a key when omitted; API requires one.
 					id, err := newCLIIdempotencyKey()
 					if err != nil {
-						return err
+						return fmt.Errorf("new run cmd: %w", err)
 					}
 					idempotencyKey = id
 					generatedKey = true
@@ -278,15 +279,15 @@ func newRunCmd() *cobra.Command {
 				}
 				inputBytes, err := readInputFlag(inputFlag)
 				if err != nil {
-					return err
+					return fmt.Errorf("new run cmd: %w", err)
 				}
 				sock, err := socketPath(cmd)
 				if err != nil {
-					return err
+					return fmt.Errorf("new run cmd: %w", err)
 				}
 				client, conn, err := ConnectToDaemon(sock)
 				if err != nil {
-					return err
+					return fmt.Errorf("new run cmd: %w", err)
 				}
 				defer func() { _ = conn.Close() }() // best-effort close
 				ctx, cancel := contextWithTimeout(30 * time.Second)
@@ -304,9 +305,9 @@ func newRunCmd() *cobra.Command {
 					return fmt.Errorf("%s: %s", e.GetCodeName(), e.GetMessage())
 				}
 				result := struct {
-					Outcome       string `json:"outcome"`
-					InvocationID  string `json:"invocation_id,omitempty"`
-					RunID         string `json:"run_id,omitempty"`
+					Outcome        string `json:"outcome"`
+					InvocationID   string `json:"invocation_id,omitempty"`
+					RunID          string `json:"run_id,omitempty"`
 					IdempotencyKey string `json:"idempotency_key,omitempty"`
 				}{
 					Outcome:        resp.GetOutcomeName(),
@@ -328,18 +329,18 @@ func newRunCmd() *cobra.Command {
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new run cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new run cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
 			// Resolve the target to a deployed agent name.
 			agentName, err := resolveRunTarget(cmd, client, target)
 			if err != nil {
-				return err
+				return fmt.Errorf("new run cmd: %w", err)
 			}
 			displayAgent := agentName
 			if homeDir, herr := getAgentpaasHome(cmd); herr == nil {
@@ -463,17 +464,17 @@ func newRunExtendCmd() *cobra.Command {
 				return fmt.Errorf("--idempotency-key is required for extend (API contract)")
 			}
 			maxActive, _ := cmd.Flags().GetDuration("max-active-time") // cobra flag default on missing
-			maxSpend, _ := cmd.Flags().GetString("max-llm-spend-usd") // cobra flag default on missing
-			_ = maxActive // reserved CLI flags not yet wired to RPC
-			_ = maxSpend // reserved CLI flags not yet wired to RPC
+			maxSpend, _ := cmd.Flags().GetString("max-llm-spend-usd")  // cobra flag default on missing
+			_ = maxActive                                              // reserved CLI flags not yet wired to RPC
+			_ = maxSpend                                               // reserved CLI flags not yet wired to RPC
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new run extend cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new run extend cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 			ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -481,12 +482,12 @@ func newRunExtendCmd() *cobra.Command {
 
 			// Treat run-id as workflow_id for the amend-limits RPC skeleton.
 			resp, err := client.AmendLimits(ctx, &controlv1.AmendLimitsRequest{
-				WorkflowId:              args[0],
-				NewMaxActiveDurationMs:  maxActive.Milliseconds(),
-				NewMaxLlmSpendDecimal:   maxSpend,
-				Reason:                  reason,
-				IdempotencyKey:          key,
-				ActorIdentity:           "cli",
+				WorkflowId:             args[0],
+				NewMaxActiveDurationMs: maxActive.Milliseconds(),
+				NewMaxLlmSpendDecimal:  maxSpend,
+				Reason:                 reason,
+				IdempotencyKey:         key,
+				ActorIdentity:          "cli",
 			})
 			if err != nil {
 				return fmt.Errorf("extend failed: %w", err)
@@ -509,11 +510,11 @@ func runControlNotEnabled(command string) func(cmd *cobra.Command, args []string
 	return func(cmd *cobra.Command, args []string) error {
 		sock, err := socketPath(cmd)
 		if err != nil {
-			return err
+			return fmt.Errorf("run control not enabled: %w", err)
 		}
 		client, conn, err := ConnectToDaemon(sock)
 		if err != nil {
-			return err
+			return fmt.Errorf("run control not enabled: %w", err)
 		}
 		defer func() { _ = conn.Close() }() // best-effort close
 		ctx, cancel := contextWithTimeout(15 * time.Second)
@@ -558,10 +559,10 @@ func runControlNotEnabled(command string) func(cmd *cobra.Command, args []string
 			desired = controlv1.ControlCommand_CONTROL_COMMAND_UNSPECIFIED
 		}
 		resp, err := client.SetWorkflowDesiredState(ctx, &controlv1.SetWorkflowDesiredStateRequest{
-			WorkflowId:       args[0],
-			DesiredCommand:   desired,
-			ActorIdentity:    "cli",
-			IdempotencyKey:   key,
+			WorkflowId:     args[0],
+			DesiredCommand: desired,
+			ActorIdentity:  "cli",
+			IdempotencyKey: key,
 		})
 		if err != nil {
 			return fmt.Errorf("%s failed: %w", command, err)
@@ -606,11 +607,11 @@ func newListRunsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new list runs cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new list runs cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -655,11 +656,11 @@ func newStopCmd() *cobra.Command {
 			runID := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new stop cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new stop cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -702,11 +703,11 @@ func newConfirmCmd() *cobra.Command {
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new confirm cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new confirm cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -771,11 +772,11 @@ func newConfirmationsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new confirmations cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new confirmations cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -820,16 +821,16 @@ func newLogsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			runID := args[0]
 			follow, _ := cmd.Flags().GetBool("follow") // cobra flag default on missing
-			tail, _ := cmd.Flags().GetInt32("tail") // cobra flag default on missing
+			tail, _ := cmd.Flags().GetInt32("tail")    // cobra flag default on missing
 			logsJSON, _ := cmd.Flags().GetBool("json") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new logs cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new logs cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -927,11 +928,11 @@ func newPolicyApplyCmd() *cobra.Command {
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new policy apply cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new policy apply cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1012,7 +1013,7 @@ func newPolicyShowCmd() *cobra.Command {
 
 			data, err := os.ReadFile(policyPath)
 			if err != nil {
-				if os.IsNotExist(err) {
+				if errors.Is(err, os.ErrNotExist) {
 					return fmt.Errorf("policy.yaml not found in %s; run 'agentpaas policy init %s' to create one", projectDir, projectDir)
 				}
 				return fmt.Errorf("read policy: %w", err)
@@ -1043,11 +1044,11 @@ func newPolicyExplainCmd() *cobra.Command {
 			target := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new policy explain cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new policy explain cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1090,11 +1091,11 @@ func newPolicyProposeCmd() *cobra.Command {
 			behavior := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new policy propose cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new policy propose cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1149,22 +1150,22 @@ func newSecretCmd() *cobra.Command {
 		Use:     "add <name>",
 		Aliases: []string{"set"},
 		Short:   "Create or update a secret from stdin",
-		Args:  cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			value, err := readSecretValue(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			if err := store.Set(cmd.Context(), name, value); err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "secret %q stored\n", name)
 			return err
@@ -1178,18 +1179,18 @@ func newSecretCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			value, err := readSecretValue(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			if err := store.Set(cmd.Context(), name, value); err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "secret %q rotated\n", name)
 			return err
@@ -1203,11 +1204,11 @@ func newSecretCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			meta, err := store.List(cmd.Context())
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			return writeSecretList(cmd, meta)
 		},
@@ -1217,18 +1218,18 @@ func newSecretCmd() *cobra.Command {
 		Use:     "remove <name>",
 		Aliases: []string{"rm"},
 		Short:   "Remove a secret",
-		Args:  cobra.ExactArgs(1),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			if err := store.Delete(cmd.Context(), name); err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "secret %q removed\n", name)
 			return err
@@ -1242,7 +1243,7 @@ func newSecretCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if err := secrets.ValidateSecretName(name); err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			provider, _ := cmd.Flags().GetString("provider") // cobra flag default on missing
 			if provider == "" {
@@ -1250,7 +1251,7 @@ func newSecretCmd() *cobra.Command {
 			}
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new secret cmd: %w", err)
 			}
 			value, err := store.Get(cmd.Context(), name)
 			if err != nil {
@@ -1295,7 +1296,7 @@ func detectProviderFromName(name string) string {
 func newDefaultSecretStore(cmd *cobra.Command) (secrets.SecretStore, error) {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new default secret store: %w", err)
 	}
 	return secrets.NewKeychainStore(secrets.KeychainServiceName(homeDir))
 }
@@ -1304,7 +1305,7 @@ func readSecretValue(cmd *cobra.Command) ([]byte, error) {
 	in := cmd.InOrStdin()
 	if isTerminal(in) {
 		if _, err := fmt.Fprint(cmd.ErrOrStderr(), "Secret value: "); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("read secret value: %w", err)
 		}
 		reader := bufio.NewReader(io.LimitReader(in, secrets.MaxSecretValueSize+2))
 		value, err := reader.ReadBytes('\n')
@@ -1371,7 +1372,7 @@ func writeSecretList(cmd *cobra.Command, meta []secrets.SecretMeta) error {
 
 	tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 	if _, err := fmt.Fprintln(tw, "NAME\tCREATED_AT\tUPDATED_AT\tLAST_USED_AT\tREFERENCED_BY"); err != nil {
-		return err
+		return fmt.Errorf("write secret list: %w", err)
 	}
 	for _, m := range meta {
 		if _, err := fmt.Fprintf(
@@ -1413,12 +1414,12 @@ func newAuditVerifyCmd() *cobra.Command {
 		Short: "Verify the audit hash chain and checkpoints",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			auditPath, _ := cmd.Flags().GetString("audit") // cobra flag default on missing
+			auditPath, _ := cmd.Flags().GetString("audit")             // cobra flag default on missing
 			checkpointsPath, _ := cmd.Flags().GetString("checkpoints") // cobra flag default on missing
 			if auditPath == "" || checkpointsPath == "" {
 				homeDir, err := homeDirPath(cmd)
 				if err != nil {
-					return err
+					return fmt.Errorf("new audit verify cmd: %w", err)
 				}
 				stateDir := filepath.Join(homeDir, "state")
 				if auditPath == "" {
@@ -1435,7 +1436,7 @@ func newAuditVerifyCmd() *cobra.Command {
 			}
 			if jsonOutput(cmd) {
 				if err := json.NewEncoder(cmd.OutOrStdout()).Encode(result); err != nil {
-					return err
+					return fmt.Errorf("new audit verify cmd: %w", err)
 				}
 			} else if len(result.Issues) == 0 {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Audit chain valid: %d records, %d checkpoints\n", result.AuditRecordCount, result.CheckpointCount) // best-effort CLI write
@@ -1462,10 +1463,10 @@ func newAuditQueryCmd() *cobra.Command {
 		Short: "Query audit log entries",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			runID, _ := cmd.Flags().GetString("run-id") // cobra flag default on missing
+			runID, _ := cmd.Flags().GetString("run-id")           // cobra flag default on missing
 			agentFilter, _ := cmd.Flags().GetString("agent-name") // cobra flag default on missing
-			pageSize, _ := cmd.Flags().GetInt32("page-size") // cobra flag default on missing
-			limit, _ := cmd.Flags().GetInt32("limit") // cobra flag default on missing
+			pageSize, _ := cmd.Flags().GetInt32("page-size")      // cobra flag default on missing
+			limit, _ := cmd.Flags().GetInt32("limit")             // cobra flag default on missing
 			// --limit is an alias for --page-size; use whichever was explicitly set.
 			if limit != 50 && pageSize == 50 {
 				pageSize = limit
@@ -1473,18 +1474,18 @@ func newAuditQueryCmd() *cobra.Command {
 			if agentFilter != "" {
 				resolved, err := resolveCLIAgentRef(cmd, agentFilter)
 				if err != nil {
-					return err
+					return fmt.Errorf("new audit query cmd: %w", err)
 				}
 				agentFilter = resolved.DaemonKey
 			}
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new audit query cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new audit query cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1556,11 +1557,11 @@ func newAuditExportCmd() *cobra.Command {
 
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new audit export cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new audit export cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1612,15 +1613,15 @@ func newValidateCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectPath, err := resolveCLIProjectPath(args[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("new validate cmd: %w", err)
 			}
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new validate cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new validate cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1675,11 +1676,11 @@ func newSummarizeCmd() *cobra.Command {
 			runID := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new summarize cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new summarize cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1739,11 +1740,11 @@ func newExplainFailureCmd() *cobra.Command {
 			runID := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new explain failure cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new explain failure cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1794,11 +1795,11 @@ func newExplainDenialCmd() *cobra.Command {
 			target := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new explain denial cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new explain denial cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1840,11 +1841,11 @@ func newRecommendPatchCmd() *cobra.Command {
 			behavior := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new recommend patch cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new recommend patch cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1895,11 +1896,11 @@ func newTimelineCmd() *cobra.Command {
 			runID := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new timeline cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new timeline cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1956,11 +1957,11 @@ func newStatusCmd() *cobra.Command {
 			runID := args[0]
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new status cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new status cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 
@@ -1999,11 +2000,11 @@ func newNextActionCmd() *cobra.Command {
 			}
 			sock, err := socketPath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new next action cmd: %w", err)
 			}
 			client, conn, err := ConnectToDaemon(sock)
 			if err != nil {
-				return err
+				return fmt.Errorf("new next action cmd: %w", err)
 			}
 			defer func() { _ = conn.Close() }() // best-effort close
 

@@ -51,7 +51,7 @@ full policy summary, lints, requirements, and SBOM.`,
 			}
 			if jsonOut {
 				if err := printTextOrJSON(true, report, nil); err != nil {
-					return err
+					return fmt.Errorf("new bundle inspect cmd: %w", err)
 				}
 			} else {
 				_, _ = fmt.Fprint(os.Stdout, bundle.FormatInspectText(report)) // best-effort write

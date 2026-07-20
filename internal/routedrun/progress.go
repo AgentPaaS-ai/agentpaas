@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -27,20 +28,20 @@ import (
 type SemanticCheckpoint struct {
 	SchemaVersion string `json:"schema_version"`
 
-	CheckpointID    CheckpointID `json:"checkpoint_id"`
-	AttemptID       AttemptID    `json:"attempt_id"`
-	RunID           RunID        `json:"run_id"`
-	WorkflowID      WorkflowID   `json:"workflow_id"`
-	NodeID          NodeID       `json:"node_id,omitempty"`
-	LeaseID         LeaseID      `json:"lease_id"`
+	CheckpointID CheckpointID `json:"checkpoint_id"`
+	AttemptID    AttemptID    `json:"attempt_id"`
+	RunID        RunID        `json:"run_id"`
+	WorkflowID   WorkflowID   `json:"workflow_id"`
+	NodeID       NodeID       `json:"node_id,omitempty"`
+	LeaseID      LeaseID      `json:"lease_id"`
 
 	// Semantic fields from the worker.
 	Phase               string   `json:"phase"`
 	CompletedWork       []string `json:"completed_work"`
-	RemainingWork      []string `json:"remaining_work"`
-	ArtifactRefs       []string `json:"artifact_references"`
+	RemainingWork       []string `json:"remaining_work"`
+	ArtifactRefs        []string `json:"artifact_references"`
 	LastCommittedAction string   `json:"last_committed_action"`
-	SafeToResume       bool     `json:"safe_to_resume"`
+	SafeToResume        bool     `json:"safe_to_resume"`
 
 	// Integrity digests.
 	CheckpointDigest   string `json:"checkpoint_digest"`
@@ -160,7 +161,7 @@ func (s *LocalStore) GetCheckpoint(ctx context.Context, checkpointID CheckpointI
 	cpPath := s.checkpointPath(checkpointID)
 	data, err := os.ReadFile(cpPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%w: checkpoint %s", ErrNotFound, checkpointID)
 		}
 		return nil, fmt.Errorf("read checkpoint: %w", err)
@@ -187,7 +188,7 @@ func (s *LocalStore) GetLatestCheckpoint(ctx context.Context, attemptID AttemptI
 	cpDir := filepath.Join(s.root, checkpointDir)
 	entries, err := os.ReadDir(cpDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%w: no checkpoints", ErrNotFound)
 		}
 		return nil, fmt.Errorf("read checkpoints dir: %w", err)
@@ -253,7 +254,7 @@ func (s *LocalStore) GetAttemptProgress(ctx context.Context, attemptID AttemptID
 	ppPath := s.progressPath(attemptID)
 	data, err := os.ReadFile(ppPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%w: progress for attempt %s", ErrNotFound, attemptID)
 		}
 		return nil, fmt.Errorf("read progress: %w", err)
@@ -273,13 +274,13 @@ type AttemptProgress struct {
 	RunID         RunID     `json:"run_id"`
 
 	// Latest heartbeat.
-	LastPhase      string    `json:"last_phase"`
-	LastHeartbeat  time.Time `json:"last_heartbeat"`
-	LastSequence   int64     `json:"last_sequence"`
+	LastPhase     string    `json:"last_phase"`
+	LastHeartbeat time.Time `json:"last_heartbeat"`
+	LastSequence  int64     `json:"last_sequence"`
 
 	// Latest checkpoint reference.
-	LatestCheckpointID CheckpointID `json:"latest_checkpoint_id,omitempty"`
-	ResumeCapability  *ResumeCapability `json:"resume_capability,omitempty"`
+	LatestCheckpointID CheckpointID      `json:"latest_checkpoint_id,omitempty"`
+	ResumeCapability   *ResumeCapability `json:"resume_capability,omitempty"`
 }
 
 // path helpers
@@ -309,11 +310,11 @@ type ProgressTailer struct {
 	runID         RunID
 	auditAppender audit.AuditAppender
 
-	mu          sync.Mutex
-	lastSeq     int64
-	stopCh      chan struct{}
-	done        chan struct{}
-	stopOnce    sync.Once
+	mu       sync.Mutex
+	lastSeq  int64
+	stopCh   chan struct{}
+	done     chan struct{}
+	stopOnce sync.Once
 }
 
 // NewProgressTailer creates a tailer for the given journal.
@@ -408,18 +409,18 @@ func (t *ProgressTailer) IngestRecord(ctx context.Context, line []byte) (string,
 	var checkpointID string
 	if rec.SafeToResume {
 		cp := &SemanticCheckpoint{
-			CheckpointID:       CheckpointID(fmt.Sprintf("cp-%s-%d", rec.AttemptID, rec.Sequence)),
-			AttemptID:          t.attemptID,
-			RunID:              t.runID,
-			WorkflowID:         WorkflowID(rec.WorkflowID),
-			NodeID:             NodeID(rec.NodeID),
-			LeaseID:            LeaseID(rec.LeaseID),
-			Phase:              rec.Phase,
-			CompletedWork:      rec.CompletedWork,
-			RemainingWork:      rec.RemainingWork,
-			ArtifactRefs:       rec.ArtifactRefs,
+			CheckpointID:        CheckpointID(fmt.Sprintf("cp-%s-%d", rec.AttemptID, rec.Sequence)),
+			AttemptID:           t.attemptID,
+			RunID:               t.runID,
+			WorkflowID:          WorkflowID(rec.WorkflowID),
+			NodeID:              NodeID(rec.NodeID),
+			LeaseID:             LeaseID(rec.LeaseID),
+			Phase:               rec.Phase,
+			CompletedWork:       rec.CompletedWork,
+			RemainingWork:       rec.RemainingWork,
+			ArtifactRefs:        rec.ArtifactRefs,
 			LastCommittedAction: rec.LastCommittedAction,
-			SafeToResume:       true,
+			SafeToResume:        true,
 			// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
 			// Do not carry rec.CheckpointDigest — the journal line may
 			// have a stale or mismatched digest.

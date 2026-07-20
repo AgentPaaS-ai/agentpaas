@@ -30,7 +30,7 @@ func loadOrGeneratePassphrase(stateDir string) (string, error) {
 		// Generate and store
 		pass, err = generateRandomPassphrase()
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("load or generate passphrase: %w", err)
 		}
 		if err := keychainSet(keychainService, keychainAccount, pass); err != nil {
 			// Keychain write failed — fall back to file
@@ -53,7 +53,7 @@ func passphraseFileLoadOrGenerate(stateDir string) (string, error) {
 	}
 	pass, err := generateRandomPassphrase()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("passphrase file load or generate: %w", err)
 	}
 	if err := os.WriteFile(p, []byte(pass), 0600); err != nil {
 		return "", fmt.Errorf("write passphrase file: %w", err)
@@ -74,7 +74,7 @@ func keychainGet(service, account string) (string, error) {
 	cmd := exec.Command("security", "find-generic-password", "-s", service, "-a", account, "-w")
 	out, err := cmd.Output()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("keychain get: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }

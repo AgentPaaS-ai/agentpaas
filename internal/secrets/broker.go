@@ -201,7 +201,7 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 	}
 
 	if err := b.auditSecret(ctx, "injected", runID, policyRuleID, credentialID, dest.String(), method); err != nil {
-		return CredentialInjection{}, err
+		return CredentialInjection{}, fmt.Errorf("broker request credential: %w", err)
 	}
 	return CredentialInjection{HeaderName: headerName, HeaderValue: string(value)}, nil
 }
@@ -255,7 +255,7 @@ func (b *Broker) ValidateEgress(ctx context.Context, runID, destination, method 
 		return fmt.Errorf("parse destination: %w", err)
 	}
 	if err := b.validateActiveRun(runID); err != nil {
-		return err
+		return fmt.Errorf("broker validate egress: %w", err)
 	}
 	for i, rule := range b.policy.Egress {
 		if rule.Credential != "" {
@@ -297,7 +297,7 @@ func (b *Broker) validateActiveRun(runID string) error {
 func (b *Broker) egressRule(policyRuleID string) (policy.EgressRule, int, error) {
 	index, err := parseRuleID(policyRuleID)
 	if err != nil {
-		return policy.EgressRule{}, 0, err
+		return policy.EgressRule{}, 0, fmt.Errorf("broker egress rule: %w", err)
 	}
 	if index < 0 || index >= len(b.policy.Egress) {
 		return policy.EgressRule{}, 0, fmt.Errorf("policy rule %s does not exist", policyRuleID)
@@ -403,7 +403,7 @@ func parseDestination(raw string) (brokerDestination, error) {
 	if strings.Contains(raw, "://") {
 		parsed, err := url.Parse(raw)
 		if err != nil {
-			return brokerDestination{}, err
+			return brokerDestination{}, fmt.Errorf("parse destination: %w", err)
 		}
 		host := parsed.Hostname()
 		if host == "" {
@@ -411,14 +411,14 @@ func parseDestination(raw string) (brokerDestination, error) {
 		}
 		port, err := destinationPort(parsed)
 		if err != nil {
-			return brokerDestination{}, err
+			return brokerDestination{}, fmt.Errorf("parse destination: %w", err)
 		}
 		return brokerDestination{domain: normalizeBrokerDomain(host), port: port}, nil
 	}
 
 	host, portText, err := net.SplitHostPort(raw)
 	if err != nil {
-		return brokerDestination{}, err
+		return brokerDestination{}, fmt.Errorf("parse destination: %w", err)
 	}
 	port, err := strconv.Atoi(portText)
 	if err != nil {

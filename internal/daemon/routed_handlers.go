@@ -374,13 +374,13 @@ func (s *controlServer) invocationIDsForCaller(ctx context.Context, callerIdenti
 // (spec line 274-276).
 func (s *controlServer) invokeDeploymentReceiptResponse(req *controlv1.InvokeDeploymentRequest, receipt *routedrun.InvocationReceipt, outcome controlv1.AdmissionOutcomeCode) *controlv1.InvokeDeploymentResponse {
 	resp := &controlv1.InvokeDeploymentResponse{
-		Outcome:                outcome,
-		OutcomeName:            outcome.String(),
-		InvocationId:           string(receipt.InvocationID),
-		WorkflowId:             string(receipt.WorkflowID),
-		RunId:                  string(receipt.RunID),
-		RequestedDeploymentRef: req.GetDeploymentRef(),
-		ResolvedDeploymentId:   string(receipt.ResolvedDeploymentID),
+		Outcome:                   outcome,
+		OutcomeName:               outcome.String(),
+		InvocationId:              string(receipt.InvocationID),
+		WorkflowId:                string(receipt.WorkflowID),
+		RunId:                     string(receipt.RunID),
+		RequestedDeploymentRef:    req.GetDeploymentRef(),
+		ResolvedDeploymentId:      string(receipt.ResolvedDeploymentID),
 		ResolvedDeploymentVersion: receipt.ResolvedDeploymentVersion,
 		Ceilings: &controlv1.AbsoluteCeilingsSnapshot{
 			OriginalMaxActiveDurationMs: receipt.InitialMaxActiveDurationMs,
@@ -522,11 +522,11 @@ func (s *controlServer) GetRunStatus(ctx context.Context, req *controlv1.GetRunS
 		return nil, mapRoutedStoreError(err)
 	}
 	return &controlv1.GetRunStatusResponse{
-		RunId:       string(run.RunID),
-		WorkflowId:  string(run.WorkflowID),
-		Status:      run.Status.String(),
-		RunKind:     run.RunKind,
-		Generation:  1,
+		RunId:      string(run.RunID),
+		WorkflowId: string(run.WorkflowID),
+		Status:     run.Status.String(),
+		RunKind:    run.RunKind,
+		Generation: 1,
 	}, nil
 }
 
@@ -551,8 +551,8 @@ func (s *controlServer) GetRunResult(ctx context.Context, req *controlv1.GetRunR
 		return nil, mapRoutedStoreError(err)
 	}
 	resp := &controlv1.GetRunResultResponse{
-		RunId:        string(run.RunID),
-		WorkflowId:   string(run.WorkflowID),
+		RunId:      string(run.RunID),
+		WorkflowId: string(run.WorkflowID),
 		// AttemptID empty until T05; result content empty until T05/T08.
 		TerminalStatus: run.Status.String(),
 	}
@@ -570,18 +570,18 @@ func invocationReceiptToProto(r *routedrun.InvocationReceipt) *controlv1.Invocat
 	}
 	out := &controlv1.InvocationRecord{
 		SchemaVersion:              r.SchemaVersion,
-		InvocationId:              string(r.InvocationID),
-		WorkflowId:                string(r.WorkflowID),
-		RunId:                     string(r.RunID),
-		ResolvedDeploymentId:      string(r.ResolvedDeploymentID),
-		ResolvedDeploymentVersion: r.ResolvedDeploymentVersion,
-		ResolvedDeploymentDigest:  r.ResolvedDeploymentDigest,
-		RequestedDeploymentRef:    r.RequestedDeploymentRef,
-		InvocationIntentDigest:    r.InvocationIntentDigest,
-		CallerIdentity:            r.CallerIdentity,
+		InvocationId:               string(r.InvocationID),
+		WorkflowId:                 string(r.WorkflowID),
+		RunId:                      string(r.RunID),
+		ResolvedDeploymentId:       string(r.ResolvedDeploymentID),
+		ResolvedDeploymentVersion:  r.ResolvedDeploymentVersion,
+		ResolvedDeploymentDigest:   r.ResolvedDeploymentDigest,
+		RequestedDeploymentRef:     r.RequestedDeploymentRef,
+		InvocationIntentDigest:     r.InvocationIntentDigest,
+		CallerIdentity:             r.CallerIdentity,
 		InitialMaxActiveDurationMs: r.InitialMaxActiveDurationMs,
-		InitialAttemptLeaseMs:     r.InitialAttemptLeaseMs,
-		InitialMaxCostUsdDecimal:  r.InitialMaxCostUsdDecimal,
+		InitialAttemptLeaseMs:      r.InitialAttemptLeaseMs,
+		InitialMaxCostUsdDecimal:   r.InitialMaxCostUsdDecimal,
 	}
 	if !r.AdmittedAt.IsZero() {
 		out.AdmittedAt = timestamppb.New(r.AdmittedAt)
@@ -653,9 +653,9 @@ func (s *controlServer) SetWorkflowDesiredState(ctx context.Context, req *contro
 		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
 	}
 	return &controlv1.SetWorkflowDesiredStateResponse{
-		WorkflowId:      req.GetWorkflowId(),
-		DesiredCommand:  req.GetDesiredCommand(),
-		Error:           featureNotEnabled("workflow_control", "B35", "routed_run_control_not_enabled"),
+		WorkflowId:     req.GetWorkflowId(),
+		DesiredCommand: req.GetDesiredCommand(),
+		Error:          featureNotEnabled("workflow_control", "B35", "routed_run_control_not_enabled"),
 	}, nil
 }
 
@@ -716,9 +716,9 @@ func (s *controlServer) GetWorkflowGraph(ctx context.Context, req *controlv1.Get
 		return nil, mapRoutedStoreError(err)
 	}
 	// Inspect is allowed (state read). Runtime start remains gated.
-	nodes, _ := s.workflowStore.ListNodes(ctx, wf.WorkflowID) // best-effort list; empty on fail
-	services, _ := s.workflowStore.ListServices(ctx, wf.WorkflowID) // best-effort list; empty on fail
-	handoffs, _ := s.workflowStore.ListHandoffs(ctx, wf.WorkflowID) // best-effort list; empty on fail
+	nodes, _ := s.workflowStore.ListNodes(ctx, wf.WorkflowID)          // best-effort list; empty on fail
+	services, _ := s.workflowStore.ListServices(ctx, wf.WorkflowID)    // best-effort list; empty on fail
+	handoffs, _ := s.workflowStore.ListHandoffs(ctx, wf.WorkflowID)    // best-effort list; empty on fail
 	batches, _ := s.workflowStore.ListChildBatches(ctx, wf.WorkflowID) // best-effort list; empty on fail
 
 	resp := &controlv1.GetWorkflowGraphResponse{
@@ -726,13 +726,13 @@ func (s *controlServer) GetWorkflowGraph(ctx context.Context, req *controlv1.Get
 	}
 	for _, n := range nodes {
 		resp.Nodes = append(resp.Nodes, &controlv1.WorkflowNodeStatus{
-			SchemaVersion: n.SchemaVersion,
-			NodeId:        string(n.NodeID),
-			WorkflowId:    string(n.WorkflowID),
-			Status:        n.Status.String(),
-			RunId:         string(n.RunID),
-			StageOrder:    int32(n.StageOrder),
-			PackageName:   n.PackageName,
+			SchemaVersion:  n.SchemaVersion,
+			NodeId:         string(n.NodeID),
+			WorkflowId:     string(n.WorkflowID),
+			Status:         n.Status.String(),
+			RunId:          string(n.RunID),
+			StageOrder:     int32(n.StageOrder),
+			PackageName:    n.PackageName,
 			PackageVersion: n.PackageVersion,
 		})
 	}
@@ -774,14 +774,14 @@ func (s *controlServer) GetWorkflowGraph(ctx context.Context, req *controlv1.Get
 
 // routedProjectSignals describes why a project is considered "routed".
 type routedProjectSignals struct {
-	HasRoute       bool
-	RouteID        string
-	HasWorkflow    bool
-	WorkflowKind   string
-	PolicyDigest   string
-	HasMCPService  bool
-	HasPipeline    bool
-	HasChildSpawn  bool
+	HasRoute      bool
+	RouteID       string
+	HasWorkflow   bool
+	WorkflowKind  string
+	PolicyDigest  string
+	HasMCPService bool
+	HasPipeline   bool
+	HasChildSpawn bool
 }
 
 // detectRoutedProject inspects deployed/installed agent artifacts for Route or
@@ -915,28 +915,28 @@ func (s *controlServer) persistRoutedInspectPlaceholder(ctx context.Context, age
 		kind = pack.WorkflowKindStandalone
 	}
 	meta := map[string]string{
-		"agent_name":             agentName,
-		"route_id":               sig.RouteID,
-		"route_policy_ref":       "placeholder:route-policy:" + sig.RouteID,
-		"catalog_snapshot_ref":   "placeholder:catalog-snapshot:pending-B32",
-		"policy_digest":          sig.PolicyDigest,
-		"experimental":           "true",
-		"runtime_enabled":        "false",
+		"agent_name":           agentName,
+		"route_id":             sig.RouteID,
+		"route_policy_ref":     "placeholder:route-policy:" + sig.RouteID,
+		"catalog_snapshot_ref": "placeholder:catalog-snapshot:pending-B32",
+		"policy_digest":        sig.PolicyDigest,
+		"experimental":         "true",
+		"runtime_enabled":      "false",
 	}
 	_ = meta // reserved for NestedPackageDigests if we later create a deployment
 	wf := &routedrun.WorkflowRecord{
-		SchemaVersion:      routedrun.CurrentSchemaVersion,
-		WorkflowID:         wfID,
-		WorkflowKind:       kind,
-		Status:             routedrun.WorkflowStatusPending,
-		Generation:         1,
-		PolicyDigest:       sig.PolicyDigest,
-		CatalogSnapshotRef: "placeholder:catalog-snapshot:pending-B32",
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		WorkflowID:          wfID,
+		WorkflowKind:        kind,
+		Status:              routedrun.WorkflowStatusPending,
+		Generation:          1,
+		PolicyDigest:        sig.PolicyDigest,
+		CatalogSnapshotRef:  "placeholder:catalog-snapshot:pending-B32",
 		AuthorityGeneration: 1,
 	}
 	if err := s.workflowStore.CreateWorkflow(ctx, wf); err != nil {
 		// Already exists or store issue — non-fatal for fail-closed path.
-		return err
+		return fmt.Errorf("control server persist routed inspect placeholder: %w", err)
 	}
 	return nil
 }
@@ -991,7 +991,7 @@ func (s *controlServer) persistLegacyRunAsOneAttempt(ctx context.Context, runID,
 		RunKind:       "standalone",
 	}
 	if err := s.runStore.CreateRun(ctx, run); err != nil {
-		return "", err
+		return "", fmt.Errorf("control server persist legacy run as one attempt: %w", err)
 	}
 	att := &routedrun.AttemptRecord{
 		SchemaVersion: routedrun.CurrentSchemaVersion,
@@ -1004,7 +1004,7 @@ func (s *controlServer) persistLegacyRunAsOneAttempt(ctx context.Context, runID,
 		att.AttemptID = routedrun.AttemptID(attemptID)
 	}
 	if err := s.runStore.CreateAttempt(ctx, att); err != nil {
-		return "", err
+		return "", fmt.Errorf("control server persist legacy run as one attempt: %w", err)
 	}
 	return string(att.AttemptID), nil
 }
@@ -1098,18 +1098,18 @@ func workflowToProto(wf *routedrun.WorkflowRecord) *controlv1.WorkflowRecord {
 		return nil
 	}
 	out := &controlv1.WorkflowRecord{
-		SchemaVersion:         wf.SchemaVersion,
-		WorkflowId:            string(wf.WorkflowID),
-		WorkflowKind:          wf.WorkflowKind,
-		InvocationId:          string(wf.InvocationID),
-		DeploymentId:          string(wf.DeploymentID),
-		Status:                wf.Status.String(),
-		Generation:            wf.Generation,
-		PolicyDigest:          wf.PolicyDigest,
-		MaxActiveDurationMs:   wf.MaxActiveDurationMs,
-		MaxAttemptLeaseMs:     wf.MaxAttemptLeaseMs,
-		MaxLlmSpendDecimal:    wf.MaxLLMSpendDecimal,
-		AuthorityGeneration:   wf.AuthorityGeneration,
+		SchemaVersion:       wf.SchemaVersion,
+		WorkflowId:          string(wf.WorkflowID),
+		WorkflowKind:        wf.WorkflowKind,
+		InvocationId:        string(wf.InvocationID),
+		DeploymentId:        string(wf.DeploymentID),
+		Status:              wf.Status.String(),
+		Generation:          wf.Generation,
+		PolicyDigest:        wf.PolicyDigest,
+		MaxActiveDurationMs: wf.MaxActiveDurationMs,
+		MaxAttemptLeaseMs:   wf.MaxAttemptLeaseMs,
+		MaxLlmSpendDecimal:  wf.MaxLLMSpendDecimal,
+		AuthorityGeneration: wf.AuthorityGeneration,
 	}
 	if !wf.CreatedAt.IsZero() {
 		out.CreatedAt = timestamppb.New(wf.CreatedAt)

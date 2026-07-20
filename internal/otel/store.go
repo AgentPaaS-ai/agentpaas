@@ -73,7 +73,7 @@ type MetricRecord struct {
 func NewStore(ctx context.Context, dbPath string) (*Store, error) {
 	db, err := openSQLiteDB(ctx, dbPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new store: %w", err)
 	}
 
 	return &Store{db: db, path: dbPath}, nil
@@ -99,13 +99,13 @@ func (s *Store) Close() error {
 // All attribute values are redacted via logging.Redact before storage.
 func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return fmt.Errorf("store ingest traces: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
-		return err
+		return fmt.Errorf("store ingest traces: %w", err)
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
@@ -128,7 +128,7 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 	resourceSpans := traces.ResourceSpans()
 	for i := 0; i < resourceSpans.Len(); i++ {
 		if err := ctx.Err(); err != nil {
-			return err
+			return fmt.Errorf("store ingest traces: %w", err)
 		}
 		rs := resourceSpans.At(i)
 		resource, err := mapJSON(rs.Resource().Attributes())
@@ -138,7 +138,7 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 		scopeSpans := rs.ScopeSpans()
 		for j := 0; j < scopeSpans.Len(); j++ {
 			if err := ctx.Err(); err != nil {
-				return err
+				return fmt.Errorf("store ingest traces: %w", err)
 			}
 			ss := scopeSpans.At(j)
 			scope, err := scopeJSON(ss.Scope())
@@ -148,7 +148,7 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 			spans := ss.Spans()
 			for k := 0; k < spans.Len(); k++ {
 				if err := ctx.Err(); err != nil {
-					return err
+					return fmt.Errorf("store ingest traces: %w", err)
 				}
 				span := spans.At(k)
 				attributes, err := mapJSON(span.Attributes())
@@ -186,13 +186,13 @@ func (s *Store) IngestTraces(ctx context.Context, traces ptrace.Traces) error {
 // All body and attribute values are redacted via logging.Redact before storage.
 func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return fmt.Errorf("store ingest logs: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
-		return err
+		return fmt.Errorf("store ingest logs: %w", err)
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
@@ -214,7 +214,7 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 	resourceLogs := logs.ResourceLogs()
 	for i := 0; i < resourceLogs.Len(); i++ {
 		if err := ctx.Err(); err != nil {
-			return err
+			return fmt.Errorf("store ingest logs: %w", err)
 		}
 		rl := resourceLogs.At(i)
 		resource, err := mapJSON(rl.Resource().Attributes())
@@ -224,7 +224,7 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 		scopeLogs := rl.ScopeLogs()
 		for j := 0; j < scopeLogs.Len(); j++ {
 			if err := ctx.Err(); err != nil {
-				return err
+				return fmt.Errorf("store ingest logs: %w", err)
 			}
 			sl := scopeLogs.At(j)
 			scope, err := scopeJSON(sl.Scope())
@@ -234,7 +234,7 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 			records := sl.LogRecords()
 			for k := 0; k < records.Len(); k++ {
 				if err := ctx.Err(); err != nil {
-					return err
+					return fmt.Errorf("store ingest logs: %w", err)
 				}
 				record := records.At(k)
 				attributes, err := mapJSON(record.Attributes())
@@ -268,13 +268,13 @@ func (s *Store) IngestLogs(ctx context.Context, logs plog.Logs) error {
 // All attribute values are redacted via logging.Redact before storage.
 func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return fmt.Errorf("store ingest metrics: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
-		return err
+		return fmt.Errorf("store ingest metrics: %w", err)
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
@@ -295,7 +295,7 @@ func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) erro
 	resourceMetrics := metrics.ResourceMetrics()
 	for i := 0; i < resourceMetrics.Len(); i++ {
 		if err := ctx.Err(); err != nil {
-			return err
+			return fmt.Errorf("store ingest metrics: %w", err)
 		}
 		rm := resourceMetrics.At(i)
 		resource, err := mapJSON(rm.Resource().Attributes())
@@ -305,12 +305,12 @@ func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) erro
 		scopeMetrics := rm.ScopeMetrics()
 		for j := 0; j < scopeMetrics.Len(); j++ {
 			if err := ctx.Err(); err != nil {
-				return err
+				return fmt.Errorf("store ingest metrics: %w", err)
 			}
 			ms := scopeMetrics.At(j).Metrics()
 			for k := 0; k < ms.Len(); k++ {
 				if err := ingestMetric(ctx, stmt, ms.At(k), resource); err != nil {
-					return err
+					return fmt.Errorf("store ingest metrics: %w", err)
 				}
 			}
 		}
@@ -326,13 +326,13 @@ func (s *Store) IngestMetrics(ctx context.Context, metrics pmetric.Metrics) erro
 // limit <= 0 means no limit.
 func (s *Store) QuerySpans(ctx context.Context, runID string, limit int) ([]SpanRecord, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store query spans: %w", err)
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	db, err := s.database()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store query spans: %w", err)
 	}
 
 	query := `
@@ -360,7 +360,7 @@ func (s *Store) QuerySpans(ctx context.Context, runID string, limit int) ([]Span
 	var records []SpanRecord
 	for rows.Next() {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("store query spans: %w", err)
 		}
 		var record SpanRecord
 		var startTime, endTime int64
@@ -394,13 +394,13 @@ func (s *Store) QuerySpans(ctx context.Context, runID string, limit int) ([]Span
 // QueryLogs returns logs matching the filter, ordered by timestamp.
 func (s *Store) QueryLogs(ctx context.Context, runID string, limit int) ([]LogRecord, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store query logs: %w", err)
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	db, err := s.database()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("store query logs: %w", err)
 	}
 
 	query := `
@@ -427,7 +427,7 @@ func (s *Store) QueryLogs(ctx context.Context, runID string, limit int) ([]LogRe
 	var records []LogRecord
 	for rows.Next() {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("store query logs: %w", err)
 		}
 		var record LogRecord
 		var timestamp int64
@@ -457,13 +457,13 @@ func (s *Store) QueryLogs(ctx context.Context, runID string, limit int) ([]LogRe
 // This ONLY prunes OTel tables - audit JSONL is NEVER pruned by this method.
 func (s *Store) Prune(ctx context.Context, retention time.Duration) (int64, error) {
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("store prune: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("store prune: %w", err)
 	}
 
 	cutoff := time.Now().Add(-retention).UTC().UnixNano()
@@ -480,7 +480,7 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int64, erro
 		"DELETE FROM otel_metrics WHERE timestamp < ?",
 	} {
 		if err := ctx.Err(); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("store prune: %w", err)
 		}
 		result, err := tx.ExecContext(ctx, statement, cutoff)
 		if err != nil {
@@ -502,13 +502,13 @@ func (s *Store) Prune(ctx context.Context, retention time.Duration) (int64, erro
 // Checkpoint forces a WAL checkpoint (PASSIVE mode).
 func (s *Store) Checkpoint(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return fmt.Errorf("store checkpoint: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	db, err := s.database()
 	if err != nil {
-		return err
+		return fmt.Errorf("store checkpoint: %w", err)
 	}
 
 	if _, err := db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
@@ -522,7 +522,7 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 // (0 if the DB was unrecoverable and recreated empty).
 func (s *Store) RecoverFromCorruption(ctx context.Context) (recovered int64, err error) {
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("store recover from corruption: %w", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -550,7 +550,7 @@ func (s *Store) RecoverFromCorruption(ctx context.Context) (recovered int64, err
 		}
 		total, err := countTelemetryRecords(ctx, db)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("store recover from corruption: %w", err)
 		}
 		return total, nil
 	}
@@ -563,7 +563,7 @@ func (s *Store) RecoverFromCorruption(ctx context.Context) (recovered int64, err
 	}
 
 	if err := renameCorruptFiles(s.path); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("store recover from corruption: %w", err)
 	}
 
 	fresh, err := openSQLiteDB(ctx, s.path)
@@ -604,7 +604,7 @@ func (s *Store) database() (*sql.DB, error) {
 
 func openSQLiteDB(ctx context.Context, dbPath string) (*sql.DB, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("open sqlite db: %w", err)
 	}
 
 	db, err := sql.Open("sqlite", dbPath)
@@ -699,7 +699,7 @@ func ingestMetric(ctx context.Context, stmt *sql.Stmt, metric pmetric.Metric, re
 		points := metric.Histogram().DataPoints()
 		for i := 0; i < points.Len(); i++ {
 			if err := ctx.Err(); err != nil {
-				return err
+				return fmt.Errorf("ingest metric: %w", err)
 			}
 			point := points.At(i)
 			attributes, err := mapJSON(point.Attributes())
@@ -734,7 +734,7 @@ func ingestNumberDataPoints(
 ) error {
 	for i := 0; i < points.Len(); i++ {
 		if err := ctx.Err(); err != nil {
-			return err
+			return fmt.Errorf("ingest number data points: %w", err)
 		}
 		point := points.At(i)
 		attributes, err := mapJSON(point.Attributes())
@@ -790,7 +790,7 @@ func countTelemetryRecords(ctx context.Context, db *sql.DB) (int64, error) {
 		"SELECT COUNT(*) FROM otel_metrics",
 	} {
 		if err := ctx.Err(); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("count telemetry records: %w", err)
 		}
 		var count int64
 		if err := db.QueryRowContext(ctx, query).Scan(&count); err != nil {
@@ -825,7 +825,7 @@ func renameIfExists(oldPath string, newPath string) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
-		return err
+		return fmt.Errorf("rename if exists: %w", err)
 	}
 	return os.Rename(oldPath, newPath)
 }

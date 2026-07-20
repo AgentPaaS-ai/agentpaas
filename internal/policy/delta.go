@@ -31,15 +31,15 @@ type PolicyDelta struct {
 func ComputeDelta(parentYAML, childYAML []byte) (*PolicyDelta, error) {
 	parent, err := ParsePolicy(bytes.NewReader(parentYAML))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compute delta: %w", err)
 	}
 	child, err := ParsePolicy(bytes.NewReader(childYAML))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compute delta: %w", err)
 	}
 
 	parentC, _ := Canonicalize(parent) // warnings discarded; digest/validation uses result
-	childC, _ := Canonicalize(child) // warnings discarded; digest/validation uses result
+	childC, _ := Canonicalize(child)   // warnings discarded; digest/validation uses result
 
 	delta := &PolicyDelta{}
 

@@ -34,7 +34,7 @@ directly on the store file (no daemon required).`,
 func trustStorePath(cmd *cobra.Command) (string, error) {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("trust store path: %w", err)
 	}
 	return trust.DefaultStorePath(homeDir), nil
 }
@@ -96,7 +96,7 @@ Example:
 			// Load the store.
 			storePath, err := trustStorePath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new trust add cmd: %w", err)
 			}
 			store, err := trust.Load(storePath)
 			if err != nil {
@@ -109,7 +109,7 @@ Example:
 			}
 
 			pub := trust.Publisher{
-				Fingerprint: fingerprint,
+				Fingerprint:  fingerprint,
 				PublicKeyPEM: string(pemData),
 				Alias:        alias,
 			}
@@ -158,7 +158,7 @@ func newTrustListCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			storePath, err := trustStorePath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new trust list cmd: %w", err)
 			}
 			store, err := trust.Load(storePath)
 			if err != nil {
@@ -230,7 +230,7 @@ func newTrustShowCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			storePath, err := trustStorePath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new trust show cmd: %w", err)
 			}
 			store, err := trust.Load(storePath)
 			if err != nil {
@@ -239,7 +239,7 @@ func newTrustShowCmd() *cobra.Command {
 
 			fp, err := resolveFingerprint(store, args[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("new trust show cmd: %w", err)
 			}
 
 			pub, ok := store.Get(fp)
@@ -265,10 +265,10 @@ func newTrustShowCmd() *cobra.Command {
 			if pub.Alias != "" {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Alias:        %s\n", pub.Alias) // best-effort CLI write
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "First Seen:   %s\n", pub.FirstSeen) // best-effort CLI write
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last Used:    %s\n", pub.LastUsed) // best-effort CLI write
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Source:       %s\n", pub.Source) // best-effort CLI write
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Status:       %s\n", pub.Status) // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "First Seen:   %s\n", pub.FirstSeen)       // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Last Used:    %s\n", pub.LastUsed)        // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Source:       %s\n", pub.Source)          // best-effort CLI write
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Status:       %s\n", pub.Status)          // best-effort CLI write
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nPublic Key PEM:\n%s", pub.PublicKeyPEM) // best-effort CLI write
 			return nil
 		},
@@ -293,7 +293,7 @@ non-interactive mode.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			storePath, err := trustStorePath(cmd)
 			if err != nil {
-				return err
+				return fmt.Errorf("new trust remove cmd: %w", err)
 			}
 			store, err := trust.Load(storePath)
 			if err != nil {
@@ -302,7 +302,7 @@ non-interactive mode.`,
 
 			fp, err := resolveFingerprint(store, args[0])
 			if err != nil {
-				return err
+				return fmt.Errorf("new trust remove cmd: %w", err)
 			}
 
 			pub, ok := store.Get(fp)

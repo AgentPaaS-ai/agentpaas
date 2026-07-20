@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -166,7 +167,7 @@ func resolveDaemonBinary() (string, error) {
 	daemonBinary := filepath.Join(agentDir, "agentpaasd")
 
 	// If not found next to the agent, try PATH.
-	if _, err := os.Stat(daemonBinary); os.IsNotExist(err) {
+	if _, err := os.Stat(daemonBinary); errors.Is(err, os.ErrNotExist) {
 		var err2 error
 		daemonBinary, err2 = exec.LookPath("agentpaasd")
 		if err2 != nil {
@@ -265,7 +266,7 @@ func runDaemonStart(cmd *cobra.Command) error {
 
 	daemonBinary, err := daemonBinaryResolver()
 	if err != nil {
-		return err
+		return fmt.Errorf("run daemon start: %w", err)
 	}
 
 	// Ensure home directory exists.
@@ -290,7 +291,7 @@ func runDaemonStart(cmd *cobra.Command) error {
 	// Start the daemon subprocess.
 	cmdDaemon, _, err := buildDaemonStartCommand(cmd, daemonBinary, paths) // intentionally ignored (reviewed)
 	if err != nil {
-		return err
+		return fmt.Errorf("run daemon start: %w", err)
 	}
 
 	if err := cmdDaemon.Start(); err != nil {
@@ -355,7 +356,7 @@ func runDaemonStop(cmd *cobra.Command) error {
 	// Read PID file and send SIGTERM.
 	pidData, err := os.ReadFile(paths.PID)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("daemon is not running (no PID file at %s)", paths.PID)
 		}
 		return fmt.Errorf("cannot read PID file %s: %w", paths.PID, err)
