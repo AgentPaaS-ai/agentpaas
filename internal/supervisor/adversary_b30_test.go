@@ -504,7 +504,6 @@ func TestAdversary_B30_CheckpointDigestTamper(t *testing.T) {
 	ctx := context.Background()
 
 	cpID := routedrun.CheckpointID("cp-adv-tamper")
-	originalDigest := "digest-original-safe"
 	cp := &routedrun.SemanticCheckpoint{
 		SchemaVersion:    routedrun.CurrentSchemaVersion,
 		CheckpointID:     cpID,
@@ -516,13 +515,20 @@ func TestAdversary_B30_CheckpointDigestTamper(t *testing.T) {
 		CompletedWork:    []string{"a"},
 		RemainingWork:    []string{"b"},
 		SafeToResume:     true,
-		CheckpointDigest: originalDigest,
+		// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
 	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
+
+	// Read back the real digest that SaveCheckpoint computed.
+	gotCP, err := h.store.GetLatestCheckpoint(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetLatestCheckpoint: %v", err)
+	}
+	originalDigest := gotCP.CheckpointDigest
 
 	// Tamper on disk: rewrite checkpoint file with forged digest + evil work.
 	// Store root is shared with the result store.

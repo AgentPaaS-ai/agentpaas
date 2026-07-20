@@ -418,7 +418,9 @@ func (t *ProgressTailer) IngestRecord(ctx context.Context, line []byte) (string,
 			ArtifactRefs:       rec.ArtifactRefs,
 			LastCommittedAction: rec.LastCommittedAction,
 			SafeToResume:       true,
-			CheckpointDigest:   rec.CheckpointDigest,
+			// B30-2 (F8): let SaveCheckpoint auto-compute the digest.
+			// Do not carry rec.CheckpointDigest — the journal line may
+			// have a stale or mismatched digest.
 			ArtifactMetaDigest: rec.ArtifactMetaDigest,
 			Sequence:           rec.Sequence,
 			CreatedAt:          time.Now().UTC(),
