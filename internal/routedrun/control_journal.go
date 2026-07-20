@@ -38,6 +38,17 @@ const controlKeyFileName = "control-key"
 // progress_ref, succeeded, failed, cancelled) with monotonic sequence
 // numbers and per-event HMAC authentication.
 //
+// B29-8 NOTE — Dual WAL formats (recovery precedence):
+// The B27 progress journal (harness/progress.go JSONL) and the B29
+// event/inbox/approval WALs (trigger/durable_eventstore.go,
+// runtime/inbox.go) are independent WAL formats with different recovery
+// paths. On restart, the supervisor replays the B27 control journal first
+// (for attempt lifecycle events), then replays B29 WALs for event store
+// and inbox state. The B27 journal is the authoritative source for attempt
+// state (pre- and post-B30). B29 WALs augment with event/inbox payloads
+// but never override B27 journal assertions about attempt state/leases.
+// Recovery precedence: B27 control journal > B29 event WAL > B29 inbox WAL. 
+//
 // SECURITY MODEL:
 //   - The journal directory is 0700, created under the run state dir.
 //   - Every event file is 0600, written atomically (temp + fsync + rename).

@@ -193,9 +193,8 @@ func (s *DurableEventStore) Append(_ context.Context, event port.Event) (int64, 
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if r.closed {
+		r.mu.Unlock()
 		return 0, ErrEventStoreClosed
 	}
 	seq := int64(len(r.events)) + 1
@@ -210,17 +209,24 @@ func (s *DurableEventStore) Append(_ context.Context, event port.Event) (int64, 
 		Timestamp:     event.Timestamp,
 	}
 	if err := s.appendWAL(event.TenantID, event.RunID, rec); err != nil {
+		r.mu.Unlock()
 		return 0, fmt.Errorf("trigger: append wal: %w", err)
 	}
-	// WAL is durable. Now update the in-memory index and fan out.
+	// WAL is durable. Now update the in-memory index.
 	r.events = append(r.events, eventRecord{event: event})
 
-	// Fan out to live subscribers. A blocked subscriber that overflows is
-	// closed and removed; the publisher (Append) does NOT block indefinitely
-	// on a slow consumer. Closing a subscriber mid-iteration over the map is
-	// safe because we defer delete to a follow-up loop over a collected slice.
-	var overflowed []int64
+	// Clone subscriber list under the mutex, then fan out asynchronously.
+	// B29-2: fan-out was previously done under r.mu which blocks concurrent
+	// appends. Cloning the subscriber list and releasing the mutex before
+	// delivery keeps the critical section short.
+	subs := make(map[int64]*subscriber, len(r.subscribers))
 	for id, sub := range r.subscribers {
+		subs[id] = sub
+	}
+	r.mu.Unlock()
+
+	var overflowed []int64
+	for id, sub := range subs {
 		if event.Sequence <= sub.cursor {
 			continue
 		}
@@ -228,8 +234,12 @@ func (s *DurableEventStore) Append(_ context.Context, event port.Event) (int64, 
 			overflowed = append(overflowed, id)
 		}
 	}
-	for _, id := range overflowed {
-		delete(r.subscribers, id)
+	if len(overflowed) > 0 {
+		r.mu.Lock()
+		for _, id := range overflowed {
+			delete(r.subscribers, id)
+		}
+		r.mu.Unlock()
 	}
 	return seq, nil
 }
@@ -392,6 +402,12 @@ func (s *DurableEventStore) walPath(tenantID, runID string) string {
 // appendWAL writes one JSON line + newline to the per-run WAL and fsyncs.
 // The caller holds the runState mutex, so concurrent appends to the same run
 // are serialized at the file level.
+// B29-8 NOTE: parent-dir fsync after WAL file creation is not done here.
+// On some filesystems (ext4 without dirsync), a crash after file creation
+// but before data write could lose the file entry. For full durability,
+// a future version should fsync the parent directory after creating a new
+// WAL file. The impact is bounded because existing WAL files are appended
+// via f.Sync() which guarantees data durability on the open file.
 func (s *DurableEventStore) appendWAL(tenantID, runID string, rec walRecord) error {
 	path := s.walPath(tenantID, runID)
 	dir := filepath.Dir(path)
