@@ -417,15 +417,6 @@ func (h *testHarness) makeSuccessResult() ResultEvent {
 }
 
 // makeForgedCheckpoint builds a CheckpointEvent with a bad HMAC for testing HMAC rejection.
-func (h *testHarness) makeForgedCheckpoint(cp *routedrun.SemanticCheckpoint) CheckpointEvent {
-	return CheckpointEvent{
-		AttemptID:  h.attemptID,
-		LeaseID:    h.leaseID,
-		Checkpoint: cp,
-		HMAC:       "deadbeef",
-	}
-}
-
 // makeCheckpoint builds and signs a CheckpointEvent for the harness attempt.
 func (h *testHarness) makeCheckpoint(cp *routedrun.SemanticCheckpoint) CheckpointEvent {
 	c := CheckpointEvent{
