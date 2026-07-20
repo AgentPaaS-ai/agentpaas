@@ -76,3 +76,13 @@ func canonicalCheckpointBytes(c CheckpointEvent) []byte {
 	b, _ := json.Marshal(cc)
 	return b
 }
+
+// verifyResultDigest recomputes SHA-256 of the event's StructuredResult and
+// compares it to event.ResultDigest.
+func verifyResultDigest(r ResultEvent) bool {
+	if r.StructuredResult == "" && r.ResultDigest == "" {
+		return true
+	}
+	got := sha256.Sum256([]byte(r.StructuredResult))
+	return hex.EncodeToString(got[:]) == r.ResultDigest
+}

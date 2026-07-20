@@ -559,7 +559,7 @@ func TestActiveTimeExhaustion(t *testing.T) {
 	// The workflow was seeded with MaxActiveDurationMs = 600_000 (600s).
 	ledger.ConsumedMs = 600_000 // Fully consumed.
 	ledger.RunningSegmentStartMs = nil
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 
@@ -1305,7 +1305,7 @@ func TestFault_TimeExhaustionDuringActivePhase(t *testing.T) {
 	ledger.ConsumedMs = 500_000
 	startMs := h.clock.NowMonotonic().UnixMilli()
 	ledger.RunningSegmentStartMs = &startMs
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 

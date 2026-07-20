@@ -123,7 +123,7 @@ func newRefWorkerHarness(t *testing.T) *refWorkerHarness {
 		ConsumedMs:            0,
 		RunningSegmentStartMs: ptrInt64(h.clock.NowMonotonic().UnixMilli()),
 	}
-	if err := h.store.PutActiveTimeLedger(ctx, wf.WorkflowID, ledger); err != nil {
+	if err := h.store.PutActiveTimeLedger(ctx, wf.WorkflowID, ledger, 1); err != nil {
 		t.Fatalf("PutActiveTimeLedger: %v", err)
 	}
 
