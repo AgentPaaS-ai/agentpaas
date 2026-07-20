@@ -69,6 +69,10 @@ def handle(payload):
 }
 
 func TestFailureContextMCPHashesBodiesOnly(t *testing.T) {
+	// This test verifies the audit hashes the MCP input body. It exercises the
+	// no-router synthetic MCP path, which is gated behind AGENTPAAS_TEST_FAKE_MCP
+	// (B30-T00) so the synthetic success + mcp_call audit event is recorded.
+	t.Setenv("AGENTPAAS_TEST_FAKE_MCP", "1")
 	const sentinel = "SENTINEL_MCP_BODY"
 	recorder := &recordingAuditAppender{}
 	srv := newReadyServerWithConfig(t, Config{Audit: recorder}, `from agentpaas_sdk import agent
