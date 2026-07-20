@@ -132,9 +132,6 @@ func (t *attemptTracker) stallDeadlineMonotonicMs(env routedrun.TimeEnvelope, no
 			return nowMs
 		}
 		start := t.inFlightStartedMonotonicMs
-		if start < nowMs {
-			start = nowMs
-		}
 		return start + deadline
 	}
 	return t.lastActivityMonotonicMs + stallTimeout

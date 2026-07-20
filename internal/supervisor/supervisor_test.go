@@ -129,10 +129,10 @@ func (j *fakeControlJournal) Read(fromSeq int64) ([]routedrun.InvokeJobEvent, er
 	return out, nil
 }
 
+// Close is a no-op: the same journal instance is reused across OpenControlJournal
+// calls, matching the real routedrun.ControlJournal which creates a new handle
+// each time OpenControlJournal is called.
 func (j *fakeControlJournal) Close() error {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	j.closed = true
 	return nil
 }
 
@@ -498,9 +498,9 @@ func TestStdoutSpamDoesNotPreventStall(t *testing.T) {
 	if err := h.supervisor.UnauthenticatedActivity(ctx, attID, "stdout spam"); err != nil {
 		t.Fatalf("UnauthenticatedActivity: %v", err)
 	}
-	// Advance to T+900ms (less than stallTimeout since claim, but the stdout
-	// should NOT have reset the timer).
-	h.clock.AdvanceMonotonic(400 * time.Millisecond)
+	// Advance to T+1600ms (past stallTimeout 1000ms since claim at T=0ms).
+	// The unauthenticated stdout at T+500ms should NOT have reset the timer.
+	h.clock.AdvanceMonotonic(1100 * time.Millisecond)
 	stalled, err := h.supervisor.CheckStall(ctx, attID, env)
 	if err != nil {
 		t.Fatalf("CheckStall: %v", err)
