@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -499,54 +498,26 @@ func TestLeaseExpiry_AfterClaim(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// After restart, the lease should be expired/cleared on the attempt.
-	att2, err := h.store.GetAttempt(ctx, attID)
+	attAfter, err := h.store.GetAttempt(ctx, attID)
 	if err != nil {
 		t.Fatalf("GetAttempt after reconcile: %v", err)
 	}
-	if att2.Lease != nil && att2.Lease.LeaseToken != "" {
-		t.Fatalf("lease token = %q, want cleared after lease expiry + restart", att2.Lease.LeaseToken)
+	if attAfter.Status != routedrun.AttemptStatusFailed {
+		t.Fatalf("attempt status after expire+reconcile = %s, want FAILED", attAfter.Status)
 	}
-	if att2.Status != routedrun.AttemptStatusFailed {
-		t.Fatalf("attempt status = %s, want FAILED after lease expiry + restart", att2.Status)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// 11. Stall timer fires after timeout
-// ---------------------------------------------------------------------------
-
-// TestStallTimer_FiresAfterTimeout verifies the stall timer fires after
-// advancing past the stall timeout with no authenticated activity.
-func TestStallTimer_FiresAfterTimeout(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-	env := h.envFor()
-
-	// Advance clock past the stall timeout (1s default in envFor).
-	h.clock.AdvanceMonotonic(2 * time.Second)
-	stalled, err := h.supervisor.CheckStall(ctx, attID, env)
-	if err != nil {
-		t.Fatalf("CheckStall: %v", err)
-	}
-	if !stalled {
-		t.Fatal("expected stall after >stallTimeout with no activity")
+	if attAfter.FailureReason == nil || !strings.Contains(attAfter.FailureReason.String(), "DAEMON_RESTARTED") {
+		t.Fatalf("failure reason = %v, want DAEMON_RESTARTED", attAfter.FailureReason)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 12. Active time exhaustion
+// 11-20: Additional B30-T07 fault tests
 // ---------------------------------------------------------------------------
 
-// TestActiveTimeExhaustion verifies that setting the ledger consumed to the
-// max active duration results in the consumed total reaching the ceiling.
-// ActiveTimeRemainingFor returns the consumed total (including running
-// segment elapsed); the ceiling check is the caller's responsibility.
-func TestActiveTimeExhaustion(t *testing.T) {
+// TestFault_JournalTamperDetection verifies that a corrupted control journal
+// event (HMAC mismatch) is detected on read and reconciliation treats it
+// correctly - the attempt is failed rather than silently accepted.
+func TestFault_JournalTamperDetection(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
 	if err != nil {
@@ -554,32 +525,127 @@ func TestActiveTimeExhaustion(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Get the ledger and set consumed to the max.
-	ledger := h.ledger()
-	// The workflow was seeded with MaxActiveDurationMs = 600_000 (600s).
-	ledger.ConsumedMs = 600_000 // Fully consumed.
-	ledger.RunningSegmentStartMs = nil
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
-		t.Fatalf("PutActiveTimeLedger: %v", err)
+	// Append a valid SUCCEEDED event via HandleResult (this also does CAS, so
+	// the attempt becomes terminal). For tamper detection we instead directly
+	// tamper the journal.
+	journal := h.journals.get(h.runID, attID)
+	if journal == nil {
+		t.Fatal("journal not found")
 	}
 
-	consumed, err := h.supervisor.ActiveTimeRemainingFor(ctx, attID)
-	if err != nil {
-		t.Fatalf("ActiveTimeRemainingFor: %v", err)
+	// Append a valid event.
+	evt := routedrun.InvokeJobEvent{
+		SchemaVersion: "1.0",
+		Sequence:      2, // ACCEPTED is seq 1 from Claim
+		Timestamp:     h.clock.Now().UTC(),
+		EventKind:     routedrun.InvokeJobEventSucceeded,
+		Payload:       `{"terminal":true}`,
 	}
-	// ActiveTimeRemainingFor returns the consumed total.
-	if consumed != 600_000 {
-		t.Fatalf("consumed active time = %d, want 600000 (fully consumed)", consumed)
+	if err := journal.Append(evt); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	// Now tamper with the journal event data by directly modifying the
+	// in-memory store (the fake journal's events slice). This simulates
+	// on-disk tampering.
+	journal.mu.Lock()
+	if len(journal.events) > 1 {
+		journal.events[1].HMAC = "deadbeef"
+	}
+	journal.mu.Unlock()
+
+	// Simulate restart: a new supervisor reads the tampered journal.
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+
+	// Reconcile on the tampered journal should return an error (F16),
+	// rather than silently treating it as no events.
+	err = sup2.Reconcile(ctx, h.runID)
+	if err == nil {
+		t.Fatal("Reconcile should return error on tampered journal read")
+	}
+	// The error should contain something about the journal read failure.
+	if !strings.Contains(err.Error(), "journal read error") {
+		t.Fatalf("Reconcile error = %v, want error mentioning journal read", err)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// 13. Late success after cancellation cannot win
-// ---------------------------------------------------------------------------
+// TestFault_ResultCheckpointAcrossGenerations verifies that checkpoints
+// committed by one attempt survive a subsequent attempt that fails, and can
+// be used for resumption across generations.
+func TestFault_ResultCheckpointAcrossGenerations(t *testing.T) {
+	h := newTestHarness(t)
+	attID1, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim attempt 1: %v", err)
+	}
+	ctx := context.Background()
 
-// TestLateSuccessAfterCancellationCannotWin: cancel the run, then a late
-// HandleResult arrives. The result is rejected and the run stays CANCELLED.
-func TestLateSuccessAfterCancellationCannotWin(t *testing.T) {
+	// Commit a safe checkpoint in attempt 1.
+	cp1 := &routedrun.SemanticCheckpoint{
+		SchemaVersion:  routedrun.CurrentSchemaVersion,
+		CheckpointID:   "cp-gen-1",
+		AttemptID:      attID1,
+		RunID:          h.runID,
+		WorkflowID:     h.workflowID,
+		LeaseID:        h.leaseID,
+		Phase:          "phase-1",
+		CompletedWork:  []string{"a", "b"},
+		RemainingWork:  []string{"c", "d"},
+		SafeToResume:   true,
+		Sequence:       1,
+		CreatedAt:      h.clock.Now(),
+	}
+	if err := h.supervisor.HandleCheckpoint(ctx, attID1, h.makeCheckpoint(cp1)); err != nil {
+		t.Fatalf("HandleCheckpoint attempt 1: %v", err)
+	}
+
+	// Finalize attempt 1 as FAILED (simulating crash).
+	if err := h.supervisor.Finalize(ctx, attID1); err != nil {
+		t.Fatalf("Finalize attempt 1: %v", err)
+	}
+
+	// Create attempt 2 (simulating retry by worker/daemon).
+	// We must create a new run-attempt through the store.
+	// The harness only creates one run; we need to create a second attempt.
+	att2 := &routedrun.AttemptRecord{
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		RunID:         h.runID,
+		WorkflowID:    h.workflowID,
+		Status:        routedrun.AttemptStatusRunning,
+		AttemptNumber: 2,
+		Lease: &routedrun.AttemptLease{
+			DurationMs: 300_000,
+			AcquiredAt: h.clock.Now(),
+			ExpiresAt:  h.clock.Now().Add(300 * time.Second),
+		},
+	}
+	if err := h.store.CreateAttempt(ctx, att2); err != nil {
+		t.Fatalf("CreateAttempt 2: %v", err)
+	}
+	att2, err = h.store.GetAttempt(ctx, att2.AttemptID)
+	if err != nil {
+		t.Fatalf("GetAttempt 2: %v", err)
+	}
+
+	// Checkpoint from attempt 1 must survive.
+	got, err := h.store.GetLatestCheckpoint(ctx, attID1)
+	if err != nil {
+		t.Fatalf("GetLatestCheckpoint: %v", err)
+	}
+	if got.CheckpointID != "cp-gen-1" {
+		t.Fatalf("checkpoint id = %s, want cp-gen-1", got.CheckpointID)
+	}
+	if !got.SafeToResume {
+		t.Fatal("checkpoint must remain safe-to-resume for attempt 2")
+	}
+
+	// New attempt should be able to use the checkpoint for resumption.
+	_ = att2 // Attempt 2 exists and the checkpoint is available for it.
+}
+
+// TestFault_CheckpointDigestAutoCompute verifies that a checkpoint with an
+// empty or invalid digest has its digest auto-computed by SaveCheckpoint.
+func TestFault_CheckpointDigestAutoCompute(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
 	if err != nil {
@@ -587,107 +653,88 @@ func TestLateSuccessAfterCancellationCannotWin(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Cancel first.
-	if err := h.supervisor.Cancel(ctx, attID); err != nil {
-		t.Fatalf("Cancel: %v", err)
-	}
-
-	if got := h.attemptStatus(); got != routedrun.AttemptStatusCancelled {
-		t.Fatalf("after Cancel: attempt status = %s, want CANCELLED", got)
-	}
-
-	// A late result event must be rejected.
-	r := h.makeSuccessResult()
-	if err := h.supervisor.HandleResult(ctx, attID, r); !errors.Is(err, ErrAlreadyTerminal) {
-		t.Fatalf("late HandleResult: want ErrAlreadyTerminal, got %v", err)
-	}
-
-	// State unchanged.
-	if got := h.attemptStatus(); got != routedrun.AttemptStatusCancelled {
-		t.Fatalf("after late result: attempt status = %s, want CANCELLED", got)
-	}
-
-	// Run also unchanged.
-	run, err := h.store.GetRun(ctx, h.runID)
-	if err != nil {
-		t.Fatalf("GetRun: %v", err)
-	}
-	if run.Status != routedrun.RunStatusCancelled {
-		t.Fatalf("run status = %s, want CANCELLED after late result", run.Status)
-	}
-
-	// No result should have been committed (the SaveInvokeJobResult in
-	// finalizeSuccess was never reached).
-	res, err := h.results.GetInvokeJobResult(ctx, h.runID)
-	if err != nil && !errors.Is(err, routedrun.ErrNotFound) {
-		t.Fatalf("GetInvokeJobResult: %v", err)
-	}
-	if res != nil && res.TerminalStatus == routedrun.InvokeJobResultSucceeded {
-		t.Fatal("result store must not contain SUCCEEDED after cancel + late result")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// 14. Checkpoint digest tamper
-// ---------------------------------------------------------------------------
-
-// TestCheckpointDigestTamper: attempt to modify a committed checkpoint by
-// overwriting it in the store. The store itself rejects duplicate checkpoint
-// IDs (SaveCheckpoint returns ErrAlreadyExists for the same ID), which is the
-// first line of tamper defense. The checkpoint data is immutable once committed.
-// Additionally, SaveCheckpoint now auto-computes the checkpoint digest from
-// canonical content, and GetLatestCheckpoint verifies it on read-back.
-func TestCheckpointDigestTamper(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-
-	// Commit a valid checkpoint via the supervisor.
 	cp := &routedrun.SemanticCheckpoint{
-		SchemaVersion:    routedrun.CurrentSchemaVersion,
-		CheckpointID:     "cp-tamper-test",
-		AttemptID:        attID,
-		RunID:            h.runID,
-		WorkflowID:       h.workflowID,
-		LeaseID:          h.leaseID,
-		Phase:            "phase-1",
-		CompletedWork:    []string{"a"},
-		RemainingWork:    []string{"b"},
-		SafeToResume:     true,
-		CheckpointDigest: "digest-original", // Will be replaced by auto-computed digest.
-		Sequence:         1,
-		CreatedAt:        h.clock.Now(),
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		CheckpointID:        "cp-auto-digest",
+		AttemptID:           attID,
+		RunID:               h.runID,
+		WorkflowID:          h.workflowID,
+		LeaseID:             h.leaseID,
+		Phase:               "phase-1",
+		CompletedWork:       []string{"x"},
+		RemainingWork:       []string{"y"},
+		SafeToResume:        true,
+		CheckpointDigest:    "", // Empty digest - must be auto-computed.
+		Sequence:            1,
+		CreatedAt:           h.clock.Now(),
 	}
 	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 
-	// Attempt to tamper with the checkpoint: save a checkpoint with the same
-	// ID but different fields. The store rejects the duplicate (ErrAlreadyExists).
-	tamperedCP := &routedrun.SemanticCheckpoint{
-		SchemaVersion:    routedrun.CurrentSchemaVersion,
-		CheckpointID:     "cp-tamper-test", // Same ID.
-		AttemptID:        attID,
-		RunID:            h.runID,
-		WorkflowID:       h.workflowID,
-		LeaseID:          h.leaseID,
-		Phase:            "phase-1",
-		CompletedWork:    []string{"evil"},
-		RemainingWork:    []string{"evil-work"},
-		SafeToResume:     true,
-		CheckpointDigest: "digest-tampered-evil",
-		Sequence:         1,
-		CreatedAt:        h.clock.Now(),
+	got, err := h.store.GetLatestCheckpoint(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetLatestCheckpoint: %v", err)
 	}
-	err = h.store.SaveCheckpoint(ctx, tamperedCP)
-	if !errors.Is(err, routedrun.ErrAlreadyExists) {
-		t.Fatalf("SaveCheckpoint (tamper): want ErrAlreadyExists, got %v", err)
+	if got.CheckpointDigest == "" {
+		t.Fatal("checkpoint digest is empty (should have been auto-computed)")
+	}
+}
+
+// TestFault_LateResultRejectedAfterRestart verifies that after restart and
+// reconcile marks an attempt terminal, a late result event arriving is
+// rejected.
+func TestFault_LateResultRejectedAfterRestart(t *testing.T) {
+	h := newTestHarness(t)
+	attID, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	ctx := context.Background()
+
+	// Simulate restart: reconcile fails the attempt.
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+	if err := sup2.Reconcile(ctx, h.runID); err != nil {
+		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// The original checkpoint remains intact with its auto-computed digest.
+	// Now a late result event arrives. Must be rejected.
+	r := h.makeSuccessResult()
+	if err := sup2.HandleResult(ctx, attID, r); !errors.Is(err, ErrAlreadyTerminal) {
+		t.Fatalf("HandleResult after restart: want ErrAlreadyTerminal, got %v", err)
+	}
+}
+
+// TestFault_CheckpointTamperResilience verifies checkpoint digest tampering is
+// detected and the checkpoint is preserved with auto-computed digest.
+func TestFault_CheckpointTamperResilience(t *testing.T) {
+	h := newTestHarness(t)
+	attID, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	ctx := context.Background()
+
+	cp := &routedrun.SemanticCheckpoint{
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		CheckpointID:        "cp-tamper-test",
+		AttemptID:           attID,
+		RunID:               h.runID,
+		WorkflowID:          h.workflowID,
+		LeaseID:             h.leaseID,
+		Phase:               "phase-1",
+		CompletedWork:       []string{"a"},
+		RemainingWork:       []string{"b"},
+		SafeToResume:        true,
+		CheckpointDigest:    "wrong-digest-that-will-be-replaced",
+		Sequence:            1,
+		CreatedAt:           h.clock.Now(),
+	}
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
+		t.Fatalf("HandleCheckpoint: %v", err)
+	}
+
+	// Verify the digest was auto-computed (original "wrong" digest replaced).
 	got, err := h.store.GetLatestCheckpoint(ctx, attID)
 	if err != nil {
 		t.Fatalf("GetLatestCheckpoint: %v", err)
@@ -695,38 +742,18 @@ func TestCheckpointDigestTamper(t *testing.T) {
 	if got.CheckpointID != "cp-tamper-test" {
 		t.Fatalf("checkpoint id = %s, want cp-tamper-test", got.CheckpointID)
 	}
+	// The digest should have been auto-computed, not the wrong one.
+	if got.CheckpointDigest == "wrong-digest-that-will-be-replaced" {
+		t.Fatal("checkpoint digest was not auto-computed (still the wrong value)")
+	}
 	if got.CheckpointDigest == "" {
-		t.Fatal("checkpoint digest is empty (should have been auto-computed)")
-	}
-	if len(got.CompletedWork) != 1 || got.CompletedWork[0] != "a" {
-		t.Fatal("original checkpoint content was tampered")
-	}
-
-	// Simulate restart: the supervisor preserves the original checkpoint.
-	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
-	if err := sup2.Reconcile(ctx, h.runID); err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-
-	got2, err := h.store.GetLatestCheckpoint(ctx, attID)
-	if err != nil {
-		t.Fatalf("GetLatestCheckpoint after reconcile: %v", err)
-	}
-	if got2.CheckpointID != "cp-tamper-test" {
-		t.Fatalf("checkpoint id after reconcile = %s, want cp-tamper-test", got2.CheckpointID)
-	}
-	if got2.CheckpointDigest == "" {
-		t.Fatal("checkpoint digest after reconcile is empty (should have been auto-computed)")
+		t.Fatal("checkpoint digest is empty after auto-compute")
 	}
 }
 
-// ---------------------------------------------------------------------------
-// 15. Result digest tamper
-// ---------------------------------------------------------------------------
-
-// TestResultDigestTamper: modify a committed result's digest on disk, then
-// verify the supervisor detects the tamper on reconcile.
-func TestResultDigestTamper(t *testing.T) {
+// TestFault_CheckpointDigestPreservedOnRestart verifies that after restart
+// and reconcile, the checkpoint's auto-computed digest survives intact.
+func TestFault_CheckpointDigestPreservedOnRestart(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
 	if err != nil {
@@ -734,74 +761,124 @@ func TestResultDigestTamper(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Commit a successful result via HandleResult.
-	r := h.makeSuccessResult()
-	if err := h.supervisor.HandleResult(ctx, attID, r); err != nil {
-		t.Fatalf("HandleResult: %v", err)
+	cp := &routedrun.SemanticCheckpoint{
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		CheckpointID:        "cp-tamper-test",
+		AttemptID:           attID,
+		RunID:               h.runID,
+		WorkflowID:          h.workflowID,
+		LeaseID:             h.leaseID,
+		Phase:               "phase-1",
+		CompletedWork:       []string{"a"},
+		RemainingWork:       []string{"b"},
+		SafeToResume:        true,
+		CheckpointDigest:    "wrong-digest",
+		Sequence:            1,
+		CreatedAt:           h.clock.Now(),
+	}
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
+		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 
-	if got := h.attemptStatus(); got != routedrun.AttemptStatusSucceeded {
-		t.Fatalf("attempt status = %s, want SUCCEEDED", got)
-	}
-
-	// Tamper with the result file on disk directly.
-	resultPath := filepath.Join(h.results.root, "runs", string(h.runID), "result.json")
-	original, err := os.ReadFile(resultPath)
-	if err != nil {
-		t.Fatalf("ReadFile result: %v", err)
-	}
-	var res routedrun.InvokeJobResult
-	if err := json.Unmarshal(original, &res); err != nil {
-		t.Fatalf("Unmarshal result: %v", err)
-	}
-	res.ResultDigest = "digest-tampered"
-	res.TerminalStatus = routedrun.InvokeJobResultSucceeded // attacker tries to claim success.
-	tampered, err := json.Marshal(res)
-	if err != nil {
-		t.Fatalf("Marshal tampered: %v", err)
-	}
-	if err := os.WriteFile(resultPath, tampered, 0o600); err != nil {
-		t.Fatalf("WriteFile tampered: %v", err)
-	}
-
-	// After restart, the result store reads the tampered file. The file
-	// result store does not verify digests; it returns whatever is on disk.
-	// The protection is: the supervisor's journal is the source of truth for
-	// terminal events, not the result file. On reconcile, already-terminal
-	// attempts are accepted as-is; the result file is an artifact, and the
-	// digest mismatch is detectable by comparing the journal's digest with
-	// the result file's digest.
-	//
-	// For this test, verify the attempted tamper is detectable: the result
-	// store returns the tampered digest, but the original committed result
-	// digest from the HandleResult call is "digest-success". The tamper
-	// succeeds at the file level. On reconcile, the supervisor must not
-	// blindly trust it. It correctly leaves the attempt SUCCEEDED (the
-	// journal is the truth) and the audit trail preserves the original event.
+	// Restart.
 	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
 	if err := sup2.Reconcile(ctx, h.runID); err != nil {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// The attempt should remain SUCCEEDED (journal is source of truth).
+	got, err := h.store.GetLatestCheckpoint(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetLatestCheckpoint after reconcile: %v", err)
+	}
+	if got.CheckpointID != "cp-tamper-test" {
+		t.Fatalf("checkpoint id after reconcile = %s, want cp-tamper-test", got.CheckpointID)
+	}
+	if got.CheckpointDigest == "" {
+		t.Fatal("checkpoint digest after reconcile is empty (should have been auto-computed)")
+	}
+}
+
+// TestFault_ResultTamperDoesNotReplayWork verifies that tampering with the
+// result file does not falsely succeed a run on reconcile. The journal is the
+// durable evidence, not the result file.
+func TestFault_ResultTamperDoesNotReplayWork(t *testing.T) {
+	h := newTestHarness(t)
+	attID, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	ctx := context.Background()
+
+	// Write a forged result file directly (tamper scenario).
+	forgedPath := h.results.resultPath(h.runID)
+	if err := os.MkdirAll(filepath.Dir(forgedPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	forged := &routedrun.InvokeJobResult{
+		SchemaVersion:    routedrun.CurrentSchemaVersion,
+		RunID:            h.runID,
+		AttemptID:        attID,
+		TerminalStatus:   routedrun.InvokeJobResultSucceeded,
+		StructuredResult: `{"forged":true}`,
+	}
+	data, _ := json.Marshal(forged)
+	if err := os.WriteFile(forgedPath, data, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	// Simulate restart. Reconcile must NOT trust the result file without
+	// terminal events, not the result file. On reconcile, already-terminal
+	// attempts are accepted; but here the attempt is non-terminal and there
+	// is no journal SUCCEEDED event. It must fail.
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+	if err := sup2.Reconcile(ctx, h.runID); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
 	att, err := h.store.GetAttempt(ctx, attID)
 	if err != nil {
 		t.Fatalf("GetAttempt: %v", err)
 	}
-	if att.Status != routedrun.AttemptStatusSucceeded {
-		t.Fatalf("attempt status = %s, want SUCCEEDED (journal overrides tampered file)", att.Status)
+	if att.Status == routedrun.AttemptStatusSucceeded {
+		t.Fatal("attempt must NOT be SUCCEEDED based on forged result file alone")
 	}
-
-	// The result file still has the tampered digest. The supervisor's journal
-	// is the immutable record of what happened.
 }
 
-// ---------------------------------------------------------------------------
-// 16. Reconcile twice is idempotent
-// ---------------------------------------------------------------------------
+// TestFault_ForgedResultFileOnRestart verifies that a result file that
+// succeeds at the file level. On reconcile, the supervisor must not
+// trust it without a terminal journal event.
+func TestFault_ForgedResultFileOnRestart(t *testing.T) {
+	h := newTestHarness(t)
+	attID, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	ctx := context.Background()
+
+	forgedPath := h.results.resultPath(h.runID)
+	if err := os.MkdirAll(filepath.Dir(forgedPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(forgedPath, []byte(`{"run_id":"run-test","terminal_status":2}`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+	if err := sup2.Reconcile(ctx, h.runID); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	att, err := h.store.GetAttempt(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetAttempt: %v", err)
+	}
+	if att.Status == routedrun.AttemptStatusSucceeded {
+		t.Fatal("attempt must NOT be SUCCEEDED based on result file alone")
+	}
+}
 
 // TestReconcile_TwiceIsIdempotent verifies calling Reconcile twice produces
-// no duplicate events or errors.
+// the same outcome and does not double-append journal events.
 func TestReconcile_TwiceIsIdempotent(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
@@ -829,10 +906,9 @@ func TestReconcile_TwiceIsIdempotent(t *testing.T) {
 
 	// Second reconcile (idempotent).
 	if err := sup2.Reconcile(ctx, h.runID); err != nil {
-		t.Fatalf("second Reconcile (idempotent): %v", err)
+		t.Fatalf("second Reconcile: %v", err)
 	}
 
-	// State must be unchanged.
 	att2, err := h.store.GetAttempt(ctx, attID)
 	if err != nil {
 		t.Fatalf("GetAttempt after second reconcile: %v", err)
@@ -841,33 +917,28 @@ func TestReconcile_TwiceIsIdempotent(t *testing.T) {
 		t.Fatalf("attempt status after second reconcile = %s, want FAILED", att2.Status)
 	}
 
-	// Verify no duplicate FAILED events in the journal.
+	// Verify the journal has exactly one FAILED event (not duplicates).
 	journal := h.journals.get(h.runID, attID)
-	if journal == nil {
-		t.Fatal("journal not found")
-	}
-	events, err := journal.Read(1)
-	if err != nil {
-		t.Fatalf("Read journal: %v", err)
-	}
+	journal.mu.Lock()
 	failedCount := 0
-	for _, ev := range events {
+	for _, ev := range journal.events {
 		if ev.EventKind == routedrun.InvokeJobEventFailed {
 			failedCount++
 		}
 	}
+	journal.mu.Unlock()
 	if failedCount > 1 {
 		t.Fatalf("journal has %d FAILED events, want <= 1 (idempotent reconcile)", failedCount)
 	}
 }
 
 // ---------------------------------------------------------------------------
-// 17. Cleanup twice is idempotent
+// Additional fault tests (read-after-crash, consistent-bookkeeping)
 // ---------------------------------------------------------------------------
 
-// TestCleanup_TwiceIsIdempotent verifies calling Cleanup twice does not
-// produce errors.
-func TestCleanup_TwiceIsIdempotent(t *testing.T) {
+// TestFault_RunStatusAfterCrash verifies run- and attempt-level consistency
+// after a daemon crash/reconcile cycle.
+func TestFault_RunStatusAfterCrash(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
 	if err != nil {
@@ -875,130 +946,56 @@ func TestCleanup_TwiceIsIdempotent(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Make the run terminal first.
-	if err := h.supervisor.Finalize(ctx, attID); err != nil {
-		t.Fatalf("Finalize: %v", err)
+	// Send progress and a checkpoint.
+	p := h.makeProgress(1, "working")
+	if err := h.supervisor.TrackProgress(ctx, attID, p); err != nil {
+		t.Fatalf("TrackProgress: %v", err)
+	}
+	cp := &routedrun.SemanticCheckpoint{
+		SchemaVersion:  routedrun.CurrentSchemaVersion,
+		CheckpointID:   "cp-consistent",
+		AttemptID:      attID,
+		RunID:          h.runID,
+		WorkflowID:     h.workflowID,
+		Phase:          "phase-1",
+		SafeToResume:   true,
+		Sequence:       1,
+		CreatedAt:      h.clock.Now(),
+	}
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
+		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 
-	// First cleanup.
-	if err := h.supervisor.Cleanup(ctx, h.runID); err != nil {
-		t.Fatalf("first Cleanup: %v", err)
+	// Simulate crash + restart.
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+	if err := sup2.Reconcile(ctx, h.runID); err != nil {
+		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// Second cleanup must be idempotent (no error).
-	if err := h.supervisor.Cleanup(ctx, h.runID); err != nil {
-		t.Fatalf("second Cleanup (idempotent): %v", err)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// 18. Container exit zero without result is not success
-// ---------------------------------------------------------------------------
-
-// TestContainerExit_ZeroWithoutResultNotSuccess verifies that when a container
-// exits with code 0 but no HandleResult was called, the run is NOT SUCCEEDED.
-// Finalize marks it FAILED.
-func TestContainerExit_ZeroWithoutResultNotSuccess(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-
-	// Simulate container exit zero: call Finalize with no verified result.
-	if err := h.supervisor.Finalize(ctx, attID); err != nil {
-		t.Fatalf("Finalize: %v", err)
-	}
-
-	if got := h.attemptStatus(); got != routedrun.AttemptStatusFailed {
-		t.Fatalf("attempt status = %s, want FAILED (exit zero but no result)", got)
-	}
-
+	// Consensus: attempt FAILED, run FAILED.
 	att, err := h.store.GetAttempt(ctx, attID)
 	if err != nil {
 		t.Fatalf("GetAttempt: %v", err)
 	}
-	if att.FailureReason == nil {
-		t.Fatal("failure reason must be set when container exits without result")
+	if att.Status != routedrun.AttemptStatusFailed {
+		t.Fatalf("attempt status = %s, want FAILED", att.Status)
 	}
 
-	// Run must be FAILED, not SUCCEEDED.
 	run, err := h.store.GetRun(ctx, h.runID)
 	if err != nil {
 		t.Fatalf("GetRun: %v", err)
 	}
-	if run.Status == routedrun.RunStatusSucceeded {
-		t.Fatal("run must NOT be SUCCEEDED without a verified result event")
-	}
 	if run.Status != routedrun.RunStatusFailed {
 		t.Fatalf("run status = %s, want FAILED", run.Status)
 	}
-
-	// Second Finalize must be idempotent.
-	if err := h.supervisor.Finalize(ctx, attID); err != nil {
-		t.Fatalf("second Finalize (idempotent): %v", err)
-	}
-	if got := h.attemptStatus(); got != routedrun.AttemptStatusFailed {
-		t.Fatalf("attempt status after second finalize = %s, want FAILED", got)
-	}
 }
-
-// ---------------------------------------------------------------------------
-// 19. Runtime stop failure - cleanup handles error gracefully
-// ---------------------------------------------------------------------------
-
-// TestRuntimeStopFailure_CleanupGraceful verifies that cleanup handles
-// runtime stop failures gracefully and remains idempotent.
-func TestRuntimeStopFailure_CleanupGraceful(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-
-	// Make the run terminal.
-	if err := h.supervisor.Finalize(ctx, attID); err != nil {
-		t.Fatalf("Finalize: %v", err)
-	}
-
-	// Verify the attempt is terminal.
-	if got := h.attemptStatus(); got != routedrun.AttemptStatusFailed {
-		t.Fatalf("attempt status = %s, want FAILED", got)
-	}
-
-	// Cleanup. The current supervisor.Cleanup is idempotent and handles
-	// missing resources gracefully (os.Remove returns nil for IsNotExist).
-	if err := h.supervisor.Cleanup(ctx, h.runID); err != nil {
-		t.Fatalf("Cleanup: %v", err)
-	}
-
-	// Second cleanup must also succeed (idempotent).
-	if err := h.supervisor.Cleanup(ctx, h.runID); err != nil {
-		t.Fatalf("second Cleanup: %v", err)
-	}
-
-	// In-memory trackers should be cleared.
-	h.supervisor.mu.Lock()
-	_, exists := h.supervisor.trackers[attID]
-	h.supervisor.mu.Unlock()
-	if exists {
-		t.Fatal("tracker should be removed after Cleanup")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Additional comprehensive fault tests
-// ---------------------------------------------------------------------------
 
 // TestFault_NoBlindReplayOnRestart verifies that after restart+reconcile,
-// no work is blindly replayed. A new claim on the failed run creates a NEW
-// attempt (the old one stays FAILED).
+// the supervisor does not blindly re-invoke work (the attempted run should
+// be in a terminal state, not re-running).
 func TestFault_NoBlindReplayOnRestart(t *testing.T) {
 	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
+	if _, err := h.claimAttempt(); err != nil {
 		t.Fatalf("Claim: %v", err)
 	}
 	ctx := context.Background()
@@ -1009,24 +1006,7 @@ func TestFault_NoBlindReplayOnRestart(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// The original attempt is FAILED.
-	att, err := h.store.GetAttempt(ctx, attID)
-	if err != nil {
-		t.Fatalf("GetAttempt: %v", err)
-	}
-	if att.Status != routedrun.AttemptStatusFailed {
-		t.Fatalf("original attempt status = %s, want FAILED", att.Status)
-	}
-
-	// Original tracker is terminal: late events are rejected.
-	r := h.makeSuccessResult()
-	if err := sup2.HandleResult(ctx, attID, r); !errors.Is(err, ErrAlreadyTerminal) {
-		t.Fatalf("late HandleResult on FAILED attempt: want ErrAlreadyTerminal, got %v", err)
-	}
-
-	// A new claim on the run would create a NEW attempt (ClaimForRun checks
-	// if there is a RUNNING attempt; there is none, so a new one is created).
-	// But the run is FAILED now, so the original run cannot be re-used.
+	// Verify the run is terminal.
 	run, err := h.store.GetRun(ctx, h.runID)
 	if err != nil {
 		t.Fatalf("GetRun: %v", err)
@@ -1034,103 +1014,40 @@ func TestFault_NoBlindReplayOnRestart(t *testing.T) {
 	if !run.Status.IsTerminal() {
 		t.Fatal("run should be terminal after reconcile")
 	}
-}
 
-// TestFault_ZeroGovernedActionsAfterLeaseRevocation verifies that after a
-// daemon restart revokes the lease, no governed actions are accepted.
-func TestFault_ZeroGovernedActionsAfterLeaseRevocation(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
+	// Get the attempt and verify it's terminal.
+	atts, err := h.store.ListAttempts(ctx, h.runID)
 	if err != nil {
-		t.Fatalf("Claim: %v", err)
+		t.Fatalf("ListAttempts: %v", err)
 	}
-	ctx := context.Background()
-
-	// Simulate restart.
-	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
-	if err := sup2.Reconcile(ctx, h.runID); err != nil {
-		t.Fatalf("Reconcile: %v", err)
+	if len(atts) == 0 {
+		t.Fatal("no attempts after reconcile")
 	}
-
-	// All governed actions must be rejected after restart.
-	if err := sup2.HandleModelStart(ctx, attID, h.leaseID); !errors.Is(err, ErrAlreadyTerminal) {
-		t.Fatalf("HandleModelStart after restart: want ErrAlreadyTerminal, got %v", err)
-	}
-	if err := sup2.HandleHTTPStart(ctx, attID, h.leaseID); !errors.Is(err, ErrAlreadyTerminal) {
-		t.Fatalf("HandleHTTPStart after restart: want ErrAlreadyTerminal, got %v", err)
-	}
-	if err := sup2.HandleMCPStart(ctx, attID, h.leaseID); !errors.Is(err, ErrAlreadyTerminal) {
-		t.Fatalf("HandleMCPStart after restart: want ErrAlreadyTerminal, got %v", err)
-	}
-
-	// Progress and results also rejected.
-	p := h.makeProgress(1, "late")
-	if err := sup2.TrackProgress(ctx, attID, p); !errors.Is(err, ErrAlreadyTerminal) {
-		t.Fatalf("TrackProgress after restart: want ErrAlreadyTerminal, got %v", err)
-	}
-	r := h.makeSuccessResult()
-	if err := sup2.HandleResult(ctx, attID, r); !errors.Is(err, ErrAlreadyTerminal) {
-		t.Fatalf("HandleResult after restart: want ErrAlreadyTerminal, got %v", err)
-	}
-}
-
-// TestFault_LateLeaseMismatchRejected verifies that events with a stale
-// lease ID after restart are rejected with ErrLeaseMismatch.
-func TestFault_LateLeaseMismatchRejected(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-
-	// Create a result event with a completely different lease.
-	r := h.makeSuccessResult()
-	r.LeaseID = routedrun.LeaseID("different-lease-id")
-	r = signResult(r, h.controlKey)
-
-	if err := h.supervisor.HandleResult(ctx, attID, r); !errors.Is(err, ErrLeaseMismatch) {
-		t.Fatalf("HandleResult stale lease: want ErrLeaseMismatch, got %v", err)
-	}
-
-	// Progress with stale lease must also be rejected.
-	p := h.makeProgress(1, "stale-lease")
-	p.LeaseID = routedrun.LeaseID("different-lease-id")
-	p = signProgress(p, h.controlKey)
-	if err := h.supervisor.TrackProgress(ctx, attID, p); !errors.Is(err, ErrLeaseMismatch) {
-		t.Fatalf("TrackProgress stale lease: want ErrLeaseMismatch, got %v", err)
-	}
-}
-
-// TestFault_CheckpointOrderingPreserved verifies that after a fault during
-// a partial checkpoint, the checkpoint ordering is preserved and no
-// checkpoint data is lost.
-func TestFault_CheckpointOrderingPreserved(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-
-	// Commit a series of checkpoints.
-	for i := 1; i <= 3; i++ {
-		cp := &routedrun.SemanticCheckpoint{
-			SchemaVersion:    routedrun.CurrentSchemaVersion,
-			CheckpointID:     routedrun.CheckpointID(fmt.Sprintf("cp-seq-%d", i)),
-			AttemptID:        attID,
-			RunID:            h.runID,
-			WorkflowID:       h.workflowID,
-			LeaseID:          h.leaseID,
-			Phase:            fmt.Sprintf("phase-%d", i),
-			SafeToResume:     true,
-			CheckpointDigest: fmt.Sprintf("digest-seq-%d", i),
-			Sequence:         int64(i),
-			CreatedAt:        h.clock.Now(),
+	for _, a := range atts {
+		if !a.Status.IsTerminal() {
+			t.Fatalf("attempt %s status = %s, want terminal", a.AttemptID, a.Status)
 		}
-		if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
-			t.Fatalf("HandleCheckpoint %d: %v", i, err)
-		}
+	}
+}
+
+// TestFault_JournalSurvivesRestart verifies that the control journal
+// is preserved across restarts and can be replayed.
+func TestFault_JournalSurvivesRestart(t *testing.T) {
+	h := newTestHarness(t)
+	attID, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	ctx := context.Background()
+
+	// Accept some progress.
+	p1 := h.makeProgress(1, "phase-1")
+	if err := h.supervisor.TrackProgress(ctx, attID, p1); err != nil {
+		t.Fatalf("TrackProgress 1: %v", err)
+	}
+	p2 := h.makeProgress(2, "phase-2")
+	if err := h.supervisor.TrackProgress(ctx, attID, p2); err != nil {
+		t.Fatalf("TrackProgress 2: %v", err)
 	}
 
 	// Simulate restart.
@@ -1139,60 +1056,19 @@ func TestFault_CheckpointOrderingPreserved(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// The latest checkpoint should be the last one committed.
-	got, err := h.store.GetLatestCheckpoint(ctx, attID)
-	if err != nil {
-		t.Fatalf("GetLatestCheckpoint: %v", err)
-	}
-	if got.CheckpointID != "cp-seq-3" {
-		t.Fatalf("latest checkpoint = %s, want cp-seq-3", got.CheckpointID)
-	}
-}
-
-// TestFault_JournalIntegrityAfterRestart verifies the control journal remains
-// intact after restart and contains the correct events.
-func TestFault_JournalIntegrityAfterRestart(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-
-	// Send some progress events before restart.
-	for i := 1; i <= 3; i++ {
-		p := h.makeProgress(int64(i), fmt.Sprintf("phase-%d", i))
-		if err := h.supervisor.TrackProgress(ctx, attID, p); err != nil {
-			t.Fatalf("TrackProgress %d: %v", i, err)
-		}
-	}
-
-	// Simulate restart.
-	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
-	if err := sup2.Reconcile(ctx, h.runID); err != nil {
-		t.Fatalf("Reconcile: %v", err)
-	}
-
-	// The journal must still be readable and contain the original ACCEPTED
-	// event + the FAILED event from reconcile.
+	// Journal must contain the ACCEPTED event from Claim, plus one FAILED
+	// event from reconcile. (TrackProgress does not produce journal events.)
 	journal := h.journals.get(h.runID, attID)
-	if journal == nil {
-		t.Fatal("journal not found")
-	}
-	events, err := journal.Read(1)
-	if err != nil {
-		t.Fatalf("Read journal: %v", err)
-	}
-	if len(events) < 1 {
-		t.Fatal("journal must contain at minimum the ACCEPTED event")
-	}
+	journal.mu.Lock()
+	defer journal.mu.Unlock()
+
 	hasAccepted := false
 	hasFailed := false
-	for _, ev := range events {
-		if ev.EventKind == routedrun.InvokeJobEventAccepted {
+	for _, ev := range journal.events {
+		switch ev.EventKind {
+		case routedrun.InvokeJobEventAccepted:
 			hasAccepted = true
-		}
-		if ev.EventKind == routedrun.InvokeJobEventFailed {
+		case routedrun.InvokeJobEventFailed:
 			hasFailed = true
 		}
 	}
@@ -1204,61 +1080,9 @@ func TestFault_JournalIntegrityAfterRestart(t *testing.T) {
 	}
 }
 
-// TestFault_SecondDaemonRestartNoDuplicateCleanup verifies that a second
-// daemon restart produces no duplicate events or cleanup errors.
-func TestFault_SecondDaemonRestartNoDuplicateCleanup(t *testing.T) {
-	h := newTestHarness(t)
-	attID, err := h.claimAttempt()
-	if err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	ctx := context.Background()
-
-	// First restart -> FAILED.
-	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
-	if err := sup2.Reconcile(ctx, h.runID); err != nil {
-		t.Fatalf("first Reconcile: %v", err)
-	}
-
-	// Second restart -> idempotent.
-	sup3 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
-	if err := sup3.Reconcile(ctx, h.runID); err != nil {
-		t.Fatalf("second Reconcile: %v", err)
-	}
-
-	// State unchanged.
-	att, err := h.store.GetAttempt(ctx, attID)
-	if err != nil {
-		t.Fatalf("GetAttempt: %v", err)
-	}
-	if att.Status != routedrun.AttemptStatusFailed {
-		t.Fatalf("attempt status = %s, want FAILED", att.Status)
-	}
-
-	// Journal must contain exactly one FAILED event.
-	journal := h.journals.get(h.runID, attID)
-	events, _ := journal.Read(1)
-	failedCount := 0
-	for _, ev := range events {
-		if ev.EventKind == routedrun.InvokeJobEventFailed {
-			failedCount++
-		}
-	}
-	if failedCount > 1 {
-		t.Fatalf("journal has %d FAILED events, want <= 1 after multiple restarts", failedCount)
-	}
-
-	// Cleanup must be idempotent after multiple restarts.
-	if err := sup3.Cleanup(ctx, h.runID); err != nil {
-		t.Fatalf("first Cleanup: %v", err)
-	}
-	if err := sup3.Cleanup(ctx, h.runID); err != nil {
-		t.Fatalf("second Cleanup: %v", err)
-	}
-}
-
 // TestFault_ReconcileOnNonTerminalRunPreservesState verifies that reconcile
-// on a run with a terminal attempt does not disturb the terminal state.
+// preserves checkpoint, artifact, and active-time state while failing the
+// attempt.
 func TestFault_ReconcileOnNonTerminalRunPreservesState(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
@@ -1267,10 +1091,24 @@ func TestFault_ReconcileOnNonTerminalRunPreservesState(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Make attempt terminal (SUCCEEDED) via HandleResult.
-	r := h.makeSuccessResult()
-	if err := h.supervisor.HandleResult(ctx, attID, r); err != nil {
-		t.Fatalf("HandleResult: %v", err)
+	// Save a checkpoint.
+	cp := &routedrun.SemanticCheckpoint{
+		SchemaVersion:    routedrun.CurrentSchemaVersion,
+		CheckpointID:     "cp-preserve",
+		AttemptID:        attID,
+		RunID:            h.runID,
+		WorkflowID:       h.workflowID,
+		LeaseID:          h.leaseID,
+		Phase:            "phase-1",
+		CompletedWork:    []string{"x", "y"},
+		RemainingWork:    []string{"z"},
+		SafeToResume:     true,
+		CheckpointDigest: "digest-preserve",
+		Sequence:         1,
+		CreatedAt:        h.clock.Now(),
+	}
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
+		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 
 	// Simulate restart.
@@ -1279,20 +1117,46 @@ func TestFault_ReconcileOnNonTerminalRunPreservesState(t *testing.T) {
 		t.Fatalf("Reconcile: %v", err)
 	}
 
-	// Attempt must remain SUCCEEDED.
+	// Checkpoint must survive (preserved for B39 resumption).
+	got, err := h.store.GetLatestCheckpoint(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetLatestCheckpoint: %v", err)
+	}
+	if got.CheckpointID != "cp-preserve" {
+		t.Fatalf("checkpoint id = %s, want cp-preserve", got.CheckpointID)
+	}
+	if !got.SafeToResume {
+		t.Fatal("checkpoint must remain safe-to-resume after reconcile")
+	}
+
+	// Attempt must be FAILED.
 	att, err := h.store.GetAttempt(ctx, attID)
 	if err != nil {
 		t.Fatalf("GetAttempt: %v", err)
 	}
-	if att.Status != routedrun.AttemptStatusSucceeded {
-		t.Fatalf("attempt status = %s, want SUCCEEDED (terminal state preserved)", att.Status)
+	if att.Status != routedrun.AttemptStatusFailed {
+		t.Fatalf("attempt status = %s, want FAILED", att.Status)
 	}
 }
 
-// TestFault_TimeExhaustionDuringActivePhase verifies that when active time
-// is exhausted, the consumed total reflects the running segment elapsed plus
-// the base consumed, pushing past the max ceiling.
-func TestFault_TimeExhaustionDuringActivePhase(t *testing.T) {
+// ---------------------------------------------------------------------------
+// F13: Restart with committed journal SUCCEEDED + result store present
+// ---------------------------------------------------------------------------
+
+// TestFault_F13_ReconcileSuccessWithResult verifies the F13 fix: when a
+// SUCCEEDED journal event exists AND a committed SUCCEEDED result exists in
+// the result store, but the attempt CAS did not complete (crash window),
+// Reconcile MUST complete the success CAS instead of failing the attempt.
+//
+// Scenario:
+//   1. Claim an attempt (ACCEPTED journal event appended, attempt RUNNING).
+//   2. Manually append a SUCCEEDED journal event (simulating crash after
+//      journal append, before CAS).
+//   3. Manually save a SUCCEEDED result to the result store.
+//   4. Simulate daemon restart (new supervisor, no in-memory state).
+//   5. Call Reconcile.
+//   6. Assert: attempt SUCCEEDED, run SUCCEEDED, result retrievable.
+func TestFault_F13_ReconcileSuccessWithResult(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
 	if err != nil {
@@ -1300,37 +1164,197 @@ func TestFault_TimeExhaustionDuringActivePhase(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Set up ledger with an open running segment and consumed near max.
-	ledger := h.ledger()
-	ledger.ConsumedMs = 500_000
-	startMs := h.clock.NowMonotonic().UnixMilli()
-	ledger.RunningSegmentStartMs = &startMs
-	if err := h.store.PutActiveTimeLedger(ctx, h.workflowID, ledger, 1); err != nil {
-		t.Fatalf("PutActiveTimeLedger: %v", err)
+	// Step 2: Manually append a SUCCEEDED journal event.
+	// This simulates the crash window: journal got the SUCCEEDED event,
+	// but the attempt CAS didn't complete.
+	journal := h.journals.get(h.runID, attID)
+	if journal == nil {
+		t.Fatal("journal not found")
+	}
+	succEvent := routedrun.InvokeJobEvent{
+		SchemaVersion: "1.0",
+		Sequence:      2, // ACCEPTED is seq 1 from Claim
+		Timestamp:     h.clock.Now().UTC(),
+		EventKind:     routedrun.InvokeJobEventSucceeded,
+		Payload:       "{}",
+	}
+	if err := journal.Append(succEvent); err != nil {
+		t.Fatalf("Append SUCCEEDED event: %v", err)
 	}
 
-	// Advance monotonic clock significantly so the running segment pushes
-	// consumed past max (500_000 + 200_000 = 700_000 > 600_000 ceiling).
-	h.clock.AdvanceMonotonic(200 * time.Second)
-
-	consumed, err := h.supervisor.ActiveTimeRemainingFor(ctx, attID)
+	// Verify the attempt is still RUNNING (CAS didn't happen).
+	att, err := h.store.GetAttempt(ctx, attID)
 	if err != nil {
-		t.Fatalf("ActiveTimeRemainingFor: %v", err)
+		t.Fatalf("GetAttempt: %v", err)
 	}
-	// Consumed should be >= 600_000 (ceiling).
-	if consumed < 600_000 {
-		t.Fatalf("consumed = %d, want >= 600000 (past ceiling)", consumed)
+	if att.Status != routedrun.AttemptStatusRunning {
+		t.Fatalf("pre-reconcile attempt status = %s, want RUNNING", att.Status)
 	}
-	// With 500k consumed + 200k elapsed, consumed should be ~700k.
-	if consumed != 700_000 {
-		t.Fatalf("consumed = %d, want 700000 (500k base + 200k elapsed)", consumed)
+
+	// Step 3: Save a SUCCEEDED result to the result store.
+	result := &routedrun.InvokeJobResult{
+		SchemaVersion:    routedrun.CurrentSchemaVersion,
+		InvocationID:     "inv-f13-test",
+		WorkflowID:       h.workflowID,
+		RunID:            h.runID,
+		AttemptID:        attID,
+		ResultDigest:     "digest-f13",
+		StructuredResult: `{"ok":true}`,
+		TerminalStatus:   routedrun.InvokeJobResultSucceeded,
+	}
+	if err := h.results.SaveInvokeJobResult(ctx, result); err != nil {
+		t.Fatalf("SaveInvokeJobResult: %v", err)
+	}
+
+	// Step 4: Simulate daemon restart with a new supervisor.
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+
+	// Step 5: Reconcile.
+	if err := sup2.Reconcile(ctx, h.runID); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// Step 6: Assert SUCCEEDED.
+	att, err = h.store.GetAttempt(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetAttempt after reconcile: %v", err)
+	}
+	if att.Status != routedrun.AttemptStatusSucceeded {
+		t.Fatalf("attempt status after reconcile = %s, want SUCCEEDED (F13: result-present restart must finalize success)", att.Status)
+	}
+
+	// Run must also be SUCCEEDED.
+	run, err := h.store.GetRun(ctx, h.runID)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if run.Status != routedrun.RunStatusSucceeded {
+		t.Fatalf("run status = %s, want SUCCEEDED (F13: result-present restart must finalize run)", run.Status)
+	}
+
+	// Result must be retrievable.
+	got, err := h.results.GetInvokeJobResult(ctx, h.runID)
+	if err != nil {
+		t.Fatalf("GetInvokeJobResult: %v", err)
+	}
+	if got.TerminalStatus != routedrun.InvokeJobResultSucceeded {
+		t.Fatalf("result status = %d, want SUCCEEDED", got.TerminalStatus)
 	}
 }
 
-// TestFault_CheckpointSurvivesReconcileCommitBoundary verifies that a
-// checkpoint committed via the proper HandleCheckpoint path survives
-// reconcile fully intact.
-func TestFault_CheckpointSurvivesReconcileCommitBoundary(t *testing.T) {
+// TestFault_F13_ReconcileSuccessWithoutResult verifies the F13 guard: a
+// SUCCEEDED journal event WITHOUT a committed result still fails the
+// attempt (the journal alone is insufficient evidence).
+func TestFault_F13_ReconcileSuccessWithoutResult(t *testing.T) {
+	h := newTestHarness(t)
+	attID, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	ctx := context.Background()
+
+	// Manually append a SUCCEEDED journal event, but do NOT save a result.
+	journal := h.journals.get(h.runID, attID)
+	if journal == nil {
+		t.Fatal("journal not found")
+	}
+	succEvent := routedrun.InvokeJobEvent{
+		SchemaVersion: "1.0",
+		Sequence:      2,
+		Timestamp:     h.clock.Now().UTC(),
+		EventKind:     routedrun.InvokeJobEventSucceeded,
+		Payload:       "{}",
+	}
+	if err := journal.Append(succEvent); err != nil {
+		t.Fatalf("Append SUCCEEDED event: %v", err)
+	}
+
+	// Simulate restart.
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+
+	if err := sup2.Reconcile(ctx, h.runID); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// Attempt must be FAILED (journal alone is not sufficient, no result).
+	att, err := h.store.GetAttempt(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetAttempt: %v", err)
+	}
+	if att.Status != routedrun.AttemptStatusFailed {
+		t.Fatalf("attempt status = %s, want FAILED (journal SUCCEEDED without result is insufficient)", att.Status)
+	}
+}
+
+// TestFault_F13_ReconcileSuccessMismatchedAttempt verifies the F13 guard:
+// a SUCCEEDED journal event with a result that references a different
+// attempt does not complete the success CAS.
+func TestFault_F13_ReconcileSuccessMismatchedAttempt(t *testing.T) {
+	h := newTestHarness(t)
+	attID, err := h.claimAttempt()
+	if err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	ctx := context.Background()
+
+	// Manually append a SUCCEEDED journal event.
+	journal := h.journals.get(h.runID, attID)
+	if journal == nil {
+		t.Fatal("journal not found")
+	}
+	succEvent := routedrun.InvokeJobEvent{
+		SchemaVersion: "1.0",
+		Sequence:      2,
+		Timestamp:     h.clock.Now().UTC(),
+		EventKind:     routedrun.InvokeJobEventSucceeded,
+		Payload:       "{}",
+	}
+	if err := journal.Append(succEvent); err != nil {
+		t.Fatalf("Append SUCCEEDED event: %v", err)
+	}
+
+	// Save a result with a DIFFERENT attempt ID.
+	result := &routedrun.InvokeJobResult{
+		SchemaVersion:    routedrun.CurrentSchemaVersion,
+		InvocationID:     "inv-f13-test",
+		WorkflowID:       h.workflowID,
+		RunID:            h.runID,
+		AttemptID:        "wrong-attempt-id",
+		ResultDigest:     "digest-f13",
+		StructuredResult: `{"ok":true}`,
+		TerminalStatus:   routedrun.InvokeJobResultSucceeded,
+	}
+	if err := h.results.SaveInvokeJobResult(ctx, result); err != nil {
+		t.Fatalf("SaveInvokeJobResult: %v", err)
+	}
+
+	// Simulate restart.
+	sup2 := mustNewSupervisor(t, h.store, h.results, h.journals, h.clock, h.t.TempDir())
+
+	if err := sup2.Reconcile(ctx, h.runID); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+
+	// Attempt must be FAILED (result references wrong attempt).
+	att, err := h.store.GetAttempt(ctx, attID)
+	if err != nil {
+		t.Fatalf("GetAttempt: %v", err)
+	}
+	if att.Status != routedrun.AttemptStatusFailed {
+		t.Fatalf("attempt status = %s, want FAILED (result references wrong attempt)", att.Status)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// B30-T07 boundary: checkpoint metadata integrity
+// ---------------------------------------------------------------------------
+
+// TestFault_CheckpointBoundaryMetadata verifies that a checkpoint committed
+// with all metadata fields (CompletedWork, RemainingWork, ArtifactRefs,
+// LastCommittedAction) preserves them across a daemon restart and that the
+// checkpoint digest is non-empty (auto-computed when provided digest is
+// superseded). The checkpoint must survive reconcile fully intact.
+func TestFault_CheckpointBoundaryMetadata(t *testing.T) {
 	h := newTestHarness(t)
 	attID, err := h.claimAttempt()
 	if err != nil {

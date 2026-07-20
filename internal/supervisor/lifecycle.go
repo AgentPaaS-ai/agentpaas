@@ -371,9 +371,32 @@ func (s *Supervisor) finalizeSuccess(ctx context.Context, trk *attemptTracker, e
 		StartedAt:          s.nowWall(),
 		FinishedAt:         s.nowWall(),
 	}
-	_ = s.results.SaveInvokeJobResult(ctx, result)
+	// F15: treat result-persist failure as a finalization failure.
+	// If SaveInvokeJobResult fails, do NOT proceed to journal + run CAS.
+	// The attempt CAS already succeeded (above), so the attempt is terminal,
+	// but a succeeded run with no retrievable result is invalid.
+	if err := s.results.SaveInvokeJobResult(ctx, result); err != nil {
+		return fmt.Errorf("save invoke job result: %w", err)
+	}
 	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventSucceeded, "{}")
-	_ = s.casRunTo(ctx, trk.runID, routedrun.RunStatusSucceeded)
+	// F14: on casRunTo error, audit and return the error.
+	// A persistently failing run CAS leaves the attempt terminal but the
+	// run RUNNING (split-brain). Finalize idempotency makes retry safe.
+	if err := s.casRunTo(ctx, trk.runID, routedrun.RunStatusSucceeded); err != nil {
+		_ = s.audit.Append(audit.AuditRecord{
+			Timestamp:      s.nowWall().Format(time.RFC3339Nano),
+			EventType:      "supervisor_cas_run_error",
+			DeploymentMode: "local",
+			Actor:          "supervisor",
+			Payload: map[string]interface{}{
+				"run_id":      string(trk.runID),
+				"attempt_id":  string(trk.attemptID),
+				"target":      "SUCCEEDED",
+				"error":       err.Error(),
+			},
+		})
+		return fmt.Errorf("cas run to succeeded: %w", err)
+	}
 	s.markTerminal(trk, routedrun.InvokeJobResultSucceeded)
 	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
@@ -405,10 +428,28 @@ func (s *Supervisor) finalizeFailed(ctx context.Context, trk *attemptTracker, re
 			TerminalStatus:     routedrun.InvokeJobResultFailed,
 			FinishedAt:         s.nowWall(),
 		}
-		_ = s.results.SaveInvokeJobResult(ctx, result)
+		// F15: treat result-persist failure as a finalization failure.
+		if err := s.results.SaveInvokeJobResult(ctx, result); err != nil {
+			return fmt.Errorf("save invoke job result: %w", err)
+		}
 	}
 	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventFailed, "{}")
-	_ = s.casRunTo(ctx, trk.runID, routedrun.RunStatusFailed)
+	// F14: on casRunTo error, audit and return the error.
+	if err := s.casRunTo(ctx, trk.runID, routedrun.RunStatusFailed); err != nil {
+		_ = s.audit.Append(audit.AuditRecord{
+			Timestamp:      s.nowWall().Format(time.RFC3339Nano),
+			EventType:      "supervisor_cas_run_error",
+			DeploymentMode: "local",
+			Actor:          "supervisor",
+			Payload: map[string]interface{}{
+				"run_id":      string(trk.runID),
+				"attempt_id":  string(trk.attemptID),
+				"target":      "FAILED",
+				"error":       err.Error(),
+			},
+		})
+		return fmt.Errorf("cas run to failed: %w", err)
+	}
 	s.markTerminal(trk, routedrun.InvokeJobResultFailed)
 	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
@@ -429,7 +470,22 @@ func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) err
 		return err
 	}
 	_ = s.appendJournalEvent(trk, routedrun.InvokeJobEventCancelled, "{}")
-	_ = s.casRunTo(ctx, trk.runID, routedrun.RunStatusCancelled)
+	// F14: on casRunTo error, audit and return the error.
+	if err := s.casRunTo(ctx, trk.runID, routedrun.RunStatusCancelled); err != nil {
+		_ = s.audit.Append(audit.AuditRecord{
+			Timestamp:      s.nowWall().Format(time.RFC3339Nano),
+			EventType:      "supervisor_cas_run_error",
+			DeploymentMode: "local",
+			Actor:          "supervisor",
+			Payload: map[string]interface{}{
+				"run_id":      string(trk.runID),
+				"attempt_id":  string(trk.attemptID),
+				"target":      "CANCELLED",
+				"error":       err.Error(),
+			},
+		})
+		return fmt.Errorf("cas run to cancelled: %w", err)
+	}
 	s.markTerminal(trk, routedrun.InvokeJobResultCancelled)
 	_ = s.audit.Append(audit.AuditRecord{
 		Timestamp:      s.nowWall().Format(time.RFC3339Nano),
@@ -449,34 +505,44 @@ func (s *Supervisor) cancelAttempt(ctx context.Context, trk *attemptTracker) err
 // terminal state, it is a no-op. If it is in a DIFFERENT terminal state, it
 // returns ErrAlreadyTerminal (cancel precedence).
 func (s *Supervisor) casAttemptTo(ctx context.Context, trk *attemptTracker, target routedrun.AttemptStatus, reason string) error {
+	return s.casAttemptToByRecord(ctx, &routedrun.AttemptRecord{
+		AttemptID: trk.attemptID,
+		RunID:     trk.runID,
+		Lease:     &routedrun.AttemptLease{LeaseID: trk.leaseID},
+	}, target, reason)
+}
+
+// casAttemptToByRecord is the record-backed version of casAttemptTo, used
+// during reconcile when no in-memory tracker exists yet (F13).
+func (s *Supervisor) casAttemptToByRecord(ctx context.Context, att *routedrun.AttemptRecord, target routedrun.AttemptStatus, reason string) error {
 	for i := 0; i < 8; i++ {
-		att, err := s.store.GetAttempt(ctx, trk.attemptID)
+		current, err := s.store.GetAttempt(ctx, att.AttemptID)
 		if err != nil {
 			return err
 		}
-		if att.Status.IsTerminal() {
-			if att.Status == target {
+		if current.Status.IsTerminal() {
+			if current.Status == target {
 				return nil
 			}
 			return ErrAlreadyTerminal
 		}
-		if err := routedrun.ValidateAttemptTransition(att.Status, target); err != nil {
+		if err := routedrun.ValidateAttemptTransition(current.Status, target); err != nil {
 			return err
 		}
-		gen, err := s.store.GetAttemptGeneration(ctx, trk.attemptID)
+		gen, err := s.store.GetAttemptGeneration(ctx, att.AttemptID)
 		if err != nil {
 			return err
 		}
 		now := s.nowWall()
-		att.Status = target
-		att.FailureReason = failureReasonFor(reason)
-		att.UpdatedAt = now
-		att.TerminatedAt = &now
-		if att.Lease != nil {
-			att.Lease.ExpiresAt = now
-			att.Lease.LeaseToken = ""
+		current.Status = target
+		current.FailureReason = failureReasonFor(reason)
+		current.UpdatedAt = now
+		current.TerminatedAt = &now
+		if current.Lease != nil {
+			current.Lease.ExpiresAt = now
+			current.Lease.LeaseToken = ""
 		}
-		if err := s.store.UpdateAttempt(ctx, att, gen); err != nil {
+		if err := s.store.UpdateAttempt(ctx, current, gen); err != nil {
 			if errors.Is(err, routedrun.ErrCASConflict) {
 				continue
 			}
