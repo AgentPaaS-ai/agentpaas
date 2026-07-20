@@ -176,6 +176,14 @@ func (h *refWorkerHarness) runWorker(opts RunOptions) error {
 	return h.worker.Run(ctx, opts)
 }
 
+func (h *refWorkerHarness) ledger() *routedrun.ActiveTimeLedger {
+	l, err := h.store.GetActiveTimeLedger(context.Background(), h.workflowID)
+	if err != nil {
+		h.t.Fatalf("GetActiveTimeLedger: %v", err)
+	}
+	return l
+}
+
 // TestReferenceWorker_ExactTurnCount verifies the worker completes exactly
 // 21 turns (20 work turns + 1 finalize turn).
 func TestReferenceWorker_ExactTurnCount(t *testing.T) {
