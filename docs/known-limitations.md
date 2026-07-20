@@ -85,7 +85,10 @@ provide:
 - Complete cached-input/cache-write/subscription/local cost representation.
 - A real production-wired AgentPaaS-container MCP registry/router. The current
   harness path can validate an allowlist but may return a synthetic result
-  when no router is installed.
+  when no router is installed. Scheduled for fail-closed closure in B30 T00
+  (pulled forward from B33 per the 2026-07-19 architecture audit, risk R5);
+  after T00 the no-router path returns a typed not-enabled error in
+  production, and B33 wires the real router in v0.4.
 - A workflow controller, durable stage handoff, or a way to run a sequence of
   agents in separate containers without Hermes relaying each transition.
 - Parent/child spawn and join. An agent cannot currently request bounded child

@@ -31,6 +31,14 @@ The cumulative v0.5.0 resilience promise is:
 > authority and active-time limit, never authorize an LLM call beyond its
 > approved spend limit, and report exactly what happened.
 
+**Status note (2026-07-19):** this promise is the v0.5.0 target, not a
+current capability. The shipped product is v0.2.3: governed local execution
+with default-deny egress, brokered credentials, tamper-evident audit, and
+signed sharing. Durable execution, routing, recovery, and shared spend ship
+across the v0.3–v0.5 release train (see `docs/roadmap.md`); per Fix 5,
+pause/resume and limit amendments follow post-v0.5. Do not read this
+section as a description of what the current release does.
+
 AgentPaaS does not initially promise that the answer is factually correct, that
 the work product is high quality, or that its routing has already found the
 globally optimal model. Those claims require different evidence and remain
@@ -278,10 +286,10 @@ The stable launch claim is:
 > an encrypted artifact, and receive a durable completion event—all locally
 > today.
 
-Docker remains the only supported production runtime. Kubernetes and
-Cloudflare results are portability/feasibility evidence, not shipped adapters.
-Managed-PaaS design-partner work may begin after this release using the B28
-decision while the local release train continues.
+Docker remains the only supported production runtime. The Kubernetes result
+is portability/feasibility evidence, not a shipped adapter. Managed-PaaS
+design-partner work may begin after this release using the B28/D67 decision
+(Kubernetes) while the local release train continues.
 
 ## v0.4.0 — Governed Multi-Agent Workflows
 
@@ -314,8 +322,8 @@ must not silently replace the stable installation channel.
 
 The next commercial milestone is a managed, tenant-isolated AgentPaaS service
 using the same signed package, SDK, policy, catalog, event, artifact, and
-gateway contracts as the local runtime. The B28 evidence chooses whether the
-first managed substrate is Cloudflare, Kubernetes, or another backend; product
+gateway contracts as the local runtime. The B28/D67 decision records
+Kubernetes as the managed-substrate candidate (Cloudflare rejected); product
 APIs do not expose substrate objects.
 
 Early managed pilots and local practitioners should establish:
@@ -349,9 +357,11 @@ objects into the public agent contract.
 
 ## Managed AgentPaaS service
 
-Build the first managed PaaS after v0.3 from the B28 substrate decision and
-the same open-source data plane. Add organizational operations and commercial
-service ownership without replacing or weakening the local security contract.
+Build the first managed PaaS after v0.3 from the B28/D67 substrate decision
+(Kubernetes; Cloudflare rejected) and the same open-source data plane. Add
+organizational operations and commercial service ownership without replacing
+or weakening the local security contract. No production substrate adapter
+ships before a paying design partner exists.
 The managed service is the primary commercial hypothesis, not a distant option;
 it still advances through evidence and bounded pilots rather than a speculative
 multi-cloud control-plane build.
@@ -845,7 +855,7 @@ policy contract.
 The same rule applies to workflow coordination: component catalog, runtime
 directory, event/artifact stores, workflow scheduler, child-run scheduler, and
 aggregate budget ledger are interfaces with local implementations, not
-assumptions embedded directly in Docker, Kubernetes, or Cloudflare calls.
+assumptions embedded directly in Docker or Kubernetes calls.
 
 ## D19. Authority remains deterministic
 
@@ -911,17 +921,17 @@ The sequence is:
 1. Prove the complete local Hermes authoring + SDK + independent AgentPaaS
    deployment/runtime experience.
 2. Before the remaining release-train control-plane work, run one bounded portability
-   slice on Docker, local Kubernetes, and Cloudflare and isolate every
+   slice on Docker and local Kubernetes and isolate every
    substrate-specific implementation behind explicit ports.
 3. Ship v0.3, v0.4, and v0.5 on Docker without claiming production Kubernetes
-   or Cloudflare support.
-4. Use the evidence to select one managed substrate and validate paid managed
-   pilots after v0.3.
+   support.
+4. Use the evidence to record Kubernetes as the managed-substrate candidate
+   (D67) and validate paid managed pilots after v0.3.
 5. Add a customer-owned-cloud adapter when actual demand justifies it.
 
-Cloudflare, Kubernetes, or another platform may become the first managed
-adapter. None is the AgentPaaS architecture, and a service mesh is optional
-infrastructure rather than product authority.
+Kubernetes is the sole managed-substrate candidate (D67; Cloudflare
+rejected). No substrate is the AgentPaaS architecture, and a service mesh is
+optional infrastructure rather than product authority.
 
 ## D23. Explicitly deferred through v0.5.0
 
@@ -947,7 +957,7 @@ infrastructure rather than product authority.
 - Full enterprise SaaS action approvals, OAuth broker redesign, generic
   third-party MCP packaging, broad data-flow attestations, or the former B27
   enterprise mega-demo.
-- Production Kubernetes/Cloudflare adapters, hosted multi-tenancy, billing,
+- Production Kubernetes adapters, hosted multi-tenancy, billing,
   fleet management, and public catalog federation. Their contracts and
   feasibility are addressed in v0.3; their managed production implementation
   follows it.
@@ -1117,6 +1127,12 @@ and are not a hidden queue of top-level invocations.
 
 ## D32. Current time and spend ceilings are hard but explicitly amendable
 
+**Narrowed by Fix 5 (2026-07-19):** the amendment path below is deferred to
+a post-v0.5 minor release. In v0.5, current ceilings are hard, terminal
+exhaustion is final, and amendment requests fail closed with
+`feature_not_enabled`. The append-only amendment contract remains the
+approved design for the follow-on release; B26/B38 schemas reserve it.
+
 The runtime may never authorize active work beyond the currently committed
 workflow active-time ceiling or a physical LLM request whose conservative
 reservation would cross the current spend ceiling. If either authorized
@@ -1158,6 +1174,12 @@ retained unreconciled exposure; the state never parks a live resource between
 decisions.
 
 ## D33. Operators can cancel, pause, resume, and restart truthfully
+
+**Narrowed by Fix 5 (2026-07-19):** v0.5 ships cancel and restart.
+Cooperative pause/resume is deferred to a post-v0.5 minor release; pause
+and resume requests fail closed with `feature_not_enabled`. The
+pause/resume semantics below remain the approved design for activation in
+the follow-on release; B26/B30 state machines reserve the states.
 
 Cancellation is immediate and terminal: AgentPaaS blocks new work, revokes
 leases, fences active workers, stops workflow-owned containers and services,
@@ -1211,8 +1233,8 @@ managed service as the primary commercial hypothesis.
 
 AgentPaaS is an agent-domain control plane for package/deployment identity,
 capabilities, tasks, attempts, leases, communication policy, budgets, events,
-artifacts, credentials, audit, and metering attribution. Docker, Kubernetes,
-Cloudflare, and optional service-mesh components provide compute, networking,
+artifacts, credentials, audit, and metering attribution. Docker and
+Kubernetes provide compute, networking,
 storage primitives, resource isolation, and autoscaling behind adapters. Their
 objects do not become the public AgentPaaS API or a second policy authority.
 
@@ -1223,22 +1245,24 @@ It extracts replaceable runtime/state/event/artifact/gateway/identity/secret/
 package/metering ports and proves one bounded vertical slice. It does not ship
 a cloud service, production Kubernetes adapter, or service mesh in v0.3.
 
-## D37. One conformance slice runs on Docker, Kubernetes, and Cloudflare
+## D37. One conformance slice runs on Docker and Kubernetes
 
-The portability proof uses the same exact signed package and semantic checks
-on the shipped Docker adapter, a local Kubernetes environment, and a
-Cloudflare feasibility environment. The proof covers admission, isolation,
-governed egress, durable state/events/artifacts, restart/fencing, tenant denial,
-metering, and cleanup; platform-specific rewrites or weakened assertions are
-not evidence of portability.
+**Narrowed by D67 (2026-07-19):** Cloudflare is removed from the conformance
+requirement. The portability proof uses the same exact signed package and
+semantic checks on the shipped Docker adapter and a local Kubernetes
+environment. The proof covers admission, isolation, governed egress, durable
+state/events/artifacts, restart/fencing, tenant denial, metering, and
+cleanup; platform-specific rewrites or weakened assertions are not evidence
+of portability.
 
-## D38. The first managed substrate is chosen from evidence
+## D38. Kubernetes is the managed-substrate candidate
 
-Cloudflare is preferred only if it can support the required immutable workload,
-durability, isolation, gateway, credential, event, artifact, metering, latency,
-and economics contracts. Otherwise Kubernetes is the primary managed backend
-and Cloudflare may serve a narrower edge role. If neither passes, the missing
-contract is fixed before building more substrate-specific control-plane code.
+**Narrowed by D67 (2026-07-19):** Kubernetes is the sole managed-substrate
+candidate for the v0.3–v0.5 train. Cloudflare is rejected, not deferred;
+the former "Cloudflare is preferred only if..." evaluation clause is void.
+No production Kubernetes or other substrate adapter ships before a paying
+managed-PaaS design partner exists. Docker remains the only shipped
+production runtime.
 
 ## D39. Agent packages are substrate-neutral and immutable
 
@@ -1248,16 +1272,20 @@ resources, activation, and provenance. Agent source and package metadata do
 not contain Kubernetes YAML, Cloudflare configuration, Docker addresses, raw
 credentials, or substrate control-plane assumptions.
 
-## D40. Agents and MCP servers share one typed private component catalog
+## D40. Agents and MCP servers share one typed private package registry
 
-AgentPaaS maintains a tenant-scoped catalog of signed component packages whose
-kind is `agent`, `mcp_service`, or a later explicitly approved type. Common
-metadata covers identity, exact version/digest, publisher/provenance, runtime
-profile, capabilities, policy requirements, schemas, status, and test evidence;
-type-specific metadata remains explicit rather than pretending agents and
-tools have identical invocation semantics.
+**Narrowed by Fix 3 (2026-07-19):** through v0.5, the registry is a read
+API over the installed-agent and deployment stores with a promotion bit,
+not a standalone catalog with a lifecycle state machine. AgentPaaS
+maintains a tenant-scoped registry of signed component packages whose kind
+is `agent`, `mcp_service`, or a later explicitly approved type. Registry
+metadata covers identity, exact version/digest, publisher/provenance,
+runtime profile, declared capability metadata (stored verbatim, not
+schema-matched), policy requirements, and status. Test attestation records
+and the six-state lifecycle are deferred to post-v0.5 multi-publisher
+demand.
 
-## D41. The package catalog is separate from the live runtime directory
+## D41. The package registry is separate from the live runtime directory
 
 Catalog presence means a tested package is available to resolve; it does not
 mean a process is running. A separate lease-backed runtime directory records
@@ -1267,20 +1295,25 @@ identity independent from a machine, container, pod, or session address.
 
 ## D42. Hermes proposes registration; AgentPaaS authorizes promotion
 
-After Hermes builds and tests a package, it may submit a signed registration
-proposal containing manifests and evidence. AgentPaaS verifies provenance,
-policy, schemas, compatibility, and tenant authority before an authorized
-actor promotes the exact package into the catalog. A prompt, build profile,
-agent, or ordinary invocation credential cannot self-approve availability.
+**Narrowed by Fix 3 (2026-07-19):** the v0.3 promotion path is a single
+authorized `registry promote` operation with audit, not a signed proposal
+ceremony. After Hermes builds and tests a package, an authorized actor
+promotes the exact installed version for delegation. AgentPaaS verifies
+provenance, policy, and tenant authority before promotion. A prompt, build
+profile, agent, or ordinary invocation credential cannot self-approve
+availability. A signed proposal ceremony with attestation evidence is
+deferred to post-v0.5.
 
 ## D43. Capability discovery is bounded and exact versions are pinned
 
-An orchestrator may query for roles such as worker, verifier, or testing agent
-only inside its signed workflow constraints: tenant, allowed package/publisher,
-capabilities, runtime profile, data class, network region, evidence level,
-cost/resource ceiling, and version policy. Resolution is deterministic and
-audited, and admission pins exact package and policy digests so later catalog
-changes cannot alter an accepted workflow.
+**Narrowed by Fix 3 (2026-07-19):** through v0.5, discovery is by name and
+declared capability metadata, not schema matching. An orchestrator may query
+for roles such as worker, verifier, or testing agent only inside its signed
+workflow constraints: tenant, allowed package/publisher, declared capability
+metadata, runtime profile, data class, and version policy. Resolution is
+deterministic and audited, and admission pins exact package and policy
+digests so later registry changes cannot alter an accepted workflow.
+Schema-intersection capability resolution is deferred to post-v0.5.
 
 ## D44. Pipelines and swarms are constrained products, not arbitrary graphs
 
@@ -1361,7 +1394,12 @@ Kubernetes plus a mesh may add workload mTLS, transport identity, telemetry,
 and network enforcement for a managed deployment. AgentPaaS still owns
 capability resolution, two-sided semantic authorization, budgets, tasks,
 artifacts, events, and audit. v0.3 evaluates Kubernetes without requiring a
-mesh and may measure an optional ambient-mesh experiment.
+mesh.
+
+**Narrowed by D67 (2026-07-19):** the optional ambient-mesh experiment is
+cancelled for the v0.3–v0.5 train. A mesh may be evaluated later with a
+paying managed-PaaS design partner; it is not AgentPaaS product work before
+then.
 
 ## D54. Tenancy is a first-class key in every portable contract
 
@@ -1471,6 +1509,10 @@ engineering reports and demos without claiming a shipped capability.
 
 ## D66. B28 executes Kubernetes-first; Cloudflare proof deferred
 
+**Superseded by D67 (2026-07-19):** the Cloudflare deferral below is now a
+rejection. The re-open trigger in the final paragraph is void; the proof
+will not be re-opened. This entry is retained for historical record.
+
 Founder decision (2026-07-19): the B28 portability gate proceeds with the
 local Kubernetes proof as the primary managed-substrate candidate. The
 Cloudflare feasibility proof (B28 T05) is deferred from the B28 exit gate
@@ -1492,6 +1534,61 @@ Cloudflare remains a candidate under D38. This deferral does not anoint
 Kubernetes as the shipped managed substrate; B28 T07 still records evidence
 and the open feasibility questions for Cloudflare. The Docker adapter remains
 the only shipped v0.3 production runtime.
+
+## D68. One gateway per run is an architecture invariant
+
+Founder decision (2026-07-19, architecture audit fix 4): every agent run
+gets its own dedicated gateway sidecar. A shared gateway across agents or
+runs is prohibited in every substrate adapter (Docker today, Kubernetes or
+any future adapter).
+
+Rationale: the per-run gateway is what makes the isolation story
+topological instead of policy-only. Each gateway is dual-homed on one
+agent's internal network and the egress network; agent A has no network
+path to agent B, agent B's gateway, or agent B's brokered credentials. A
+shared gateway connects all agents to a common network element and forces
+the policy engine to carry the isolation that topology currently provides,
+while holding credentials for multiple runs simultaneously — a
+confused-deputy surface the current design does not have. The gateway is a
+small Rust process; the container overhead is not worth the security
+regression. Cross-agent traffic (MCP services, delegation) uses
+workflow-scoped internal networks between the relevant gateways only,
+with per-binding capabilities (D26, D49); it never justifies a shared
+gateway.
+
+Any future adapter or refactor that proposes a shared gateway violates
+this decision and requires an explicit new founder decision.
+
+## D67. Substrate surface frozen: Kubernetes-only managed candidate, Cloudflare rejected
+
+Founder decision (2026-07-19, architecture audit fix 2): the substrate
+surface is closed until a paying managed-PaaS design partner exists.
+
+- **Kubernetes is the sole managed-substrate candidate.** The B28 T07
+  decision record already selected it as primary; this decision makes that
+  selection exclusive and final for the v0.3–v0.5 train.
+- **Cloudflare is rejected, not deferred.** The B28 T05 feasibility proof
+  will not be re-opened. D66's re-open trigger and the five open Cloudflare
+  questions in the T07 record are closed unanswered. D37's three-substrate
+  conformance requirement is satisfied by the recorded Docker and Kubernetes
+  proofs. D38's "Cloudflare is preferred only if..." clause is void.
+- **No service-mesh experiment.** D53's optional ambient-mesh experiment is
+  cancelled for the v0.3–v0.5 train. A mesh remains optional infrastructure
+  a future managed deployment may evaluate with a design partner; it is not
+  AgentPaaS product work.
+- **No second substrate adapter before revenue.** No production Kubernetes
+  adapter, no Cloudflare adapter, no other substrate work ships until a
+  paying design partner signs for a managed service. Docker remains the only
+  supported production runtime through v0.5.
+
+Rationale: B28 was an architecture gate, not a product gate. Its cost is
+sunk and its port contracts are frozen, but every remaining substrate path
+is future work against a commercial hypothesis with zero partners. The
+substrate decision does not need more evidence; it needs a customer.
+
+This decision narrows D37, D38, D53, and D66 for the entire v0.3–v0.5
+train. It may be revisited only by a new explicit founder decision after a
+paying managed-PaaS design partner exists.
 
 ## References informing the direction
 
