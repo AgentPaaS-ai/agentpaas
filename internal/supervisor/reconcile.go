@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
 
@@ -84,27 +87,104 @@ func (s *Supervisor) reconcileAttempt(ctx context.Context, att *routedrun.Attemp
 	events, err := journal.Read(1)
 	_ = journal.Close()
 	if err != nil {
-		// A journal read error is treated as ambiguous: revoke the lease.
-		events = nil
+		// F16: distinguish absence from corruption/IO errors.
+		// os.IsNotExist/fs.ErrNotExist-style errors mean no journal events
+		// exist yet, which is ambiguous (fail the attempt). Real errors
+		// (corruption, IO failure, HMAC tamper) must be audited and
+		// returned for retry/escalation.
+		if isNotFoundish(err) {
+			// No journal directory or no events: ambiguous active lease.
+			events = nil
+		} else {
+			_ = s.audit.Append(audit.AuditRecord{
+				Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+				EventType:      "supervisor_journal_read_error",
+				DeploymentMode: "local",
+				Actor:          "supervisor",
+				Payload: map[string]interface{}{
+					"run_id":     string(att.RunID),
+					"attempt_id": string(att.AttemptID),
+					"error":      err.Error(),
+				},
+			})
+			return fmt.Errorf("reconcile: journal read error for attempt %s: %w", att.AttemptID, err)
+		}
 	}
 	hasTerminal := false
+	var terminalKind routedrun.InvokeJobEventKind
 	for _, ev := range events {
 		switch ev.EventKind {
 		case routedrun.InvokeJobEventSucceeded, routedrun.InvokeJobEventFailed, routedrun.InvokeJobEventCancelled:
 			hasTerminal = true
+			terminalKind = ev.EventKind
 		}
 	}
 	if hasTerminal {
-		// A terminal event was committed but the attempt is non-terminal in
-		// the store. This is a crash between the journal append and the CAS
-		// commit. Conservatively mark FAILED (the journal is the durable
-		// evidence; the store CAS may have lost). We do NOT mark SUCCEEDED
-		// here because the result may not have been persisted to the result
-		// store. Mark FAILED with daemon_restart.
+		if terminalKind == routedrun.InvokeJobEventSucceeded {
+			// F13: a SUCCEEDED journal event was committed but the attempt
+			// CAS did not complete (crash between journal append and CAS).
+			// Check the result store: if a verified SUCCEEDED result
+			// exists, complete the success CAS instead of failing.
+			return s.reconcileSuccess(ctx, att)
+		}
+		// A FAILED or CANCELLED terminal event was committed but the
+		// attempt is non-terminal in the store. Conservatively mark FAILED.
 		return s.revokeLeaseAndFail(ctx, att, "daemon_restart")
 	}
 	// No terminal event: ambiguous active lease. Revoke and fail.
 	return s.revokeLeaseAndFail(ctx, att, "daemon_restart")
+}
+
+// isNotFoundish returns true when err is an "not found" / "not exist" error
+// that indicates absence of data (safe to treat as "no events" during
+// reconcile). Real IO/corruption errors are NOT notFoundish.
+func isNotFoundish(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, routedrun.ErrNotFound)
+}
+
+// reconcileSuccess completes the success CAS pipeline when a SUCCEEDED journal
+// event exists but the attempt is non-terminal (F13). It first verifies that a
+// committed result exists in the result store; if so, it completes the attempt
+// CAS and run CAS to SUCCEEDED. If no result exists, it falls back to failing
+// the attempt (the journal event alone is insufficient evidence).
+func (s *Supervisor) reconcileSuccess(ctx context.Context, att *routedrun.AttemptRecord) error {
+	result, err := s.results.GetInvokeJobResult(ctx, att.RunID)
+	if err != nil || result == nil {
+		// No committed result exists: the journal event alone is not
+		// sufficient. Revoke the lease and fail.
+		return s.revokeLeaseAndFail(ctx, att, "daemon_restart")
+	}
+	// Verify the result matches this attempt and is SUCCEEDED.
+	if result.AttemptID != att.AttemptID || result.TerminalStatus != routedrun.InvokeJobResultSucceeded {
+		return s.revokeLeaseAndFail(ctx, att, "daemon_restart")
+	}
+	// Complete the attempt CAS to SUCCEEDED.
+	if err := s.casAttemptToByRecord(ctx, att, routedrun.AttemptStatusSucceeded, "verified_result"); err != nil {
+		// If the attempt is already terminal (raced with another reconciler),
+		// accept it. Otherwise return the error.
+		if errors.Is(err, ErrAlreadyTerminal) {
+			return nil
+		}
+		return err
+	}
+	// Complete the run CAS to SUCCEEDED.
+	if err := s.casRunTo(ctx, att.RunID, routedrun.RunStatusSucceeded); err != nil {
+		_ = s.audit.Append(audit.AuditRecord{
+			Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+			EventType:      "supervisor_reconcile_run_cas_error",
+			DeploymentMode: "local",
+			Actor:          "supervisor",
+			Payload: map[string]interface{}{
+				"run_id":     string(att.RunID),
+				"attempt_id": string(att.AttemptID),
+				"error":      err.Error(),
+			},
+		})
+		return fmt.Errorf("reconcile: cas run to succeeded: %w", err)
+	}
+	// Establish in-memory tracking as terminal.
+	s.markTerminalForRestart(att)
+	return nil
 }
 
 // revokeLeaseAndFail revokes the attempt's lease and marks it FAILED with the
@@ -164,9 +244,25 @@ func (s *Supervisor) revokeLeaseAndFail(ctx context.Context, att *routedrun.Atte
 }
 
 // markTerminalForRestart establishes an in-memory terminal tracker for an
-// attempt whose durable state is already terminal. This ensures a late event
-// after restart is rejected (ErrAlreadyTerminal) rather than re-finalizing.
+// attempt whose durable state is already terminal. If a tracker already exists
+// for the attempt (e.g. from an in-flight HandleResult), it marks THAT tracker
+// terminal under its lock rather than replacing it (F18). This prevents a
+// live tracker from being orphaned with a stale reference. Only creates a new
+// tracker when none exists.
 func (s *Supervisor) markTerminalForRestart(att *routedrun.AttemptRecord) {
+	s.mu.Lock()
+	existing, ok := s.trackers[att.AttemptID]
+	if ok {
+		s.mu.Unlock()
+		// A live tracker already exists - mark it terminal under its lock.
+		existing.mu.Lock()
+		if !existing.terminal {
+			existing.terminal = true
+			existing.terminalStatus = resultStatusFor(att.Status)
+		}
+		existing.mu.Unlock()
+		return
+	}
 	trk := &attemptTracker{
 		attemptID:      att.AttemptID,
 		runID:          att.RunID,
@@ -175,7 +271,6 @@ func (s *Supervisor) markTerminalForRestart(att *routedrun.AttemptRecord) {
 		terminal:       true,
 		terminalStatus: resultStatusFor(att.Status),
 	}
-	s.mu.Lock()
 	s.trackers[att.AttemptID] = trk
 	s.mu.Unlock()
 }
