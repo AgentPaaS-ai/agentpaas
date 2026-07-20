@@ -230,21 +230,6 @@ def handle_invoke(payload):
 `
 }
 
-// DefaultPolicyYAML returns a default-deny policy.yaml — no egress allowed
-// until the agent onboarding flow adds explicit domain rules.
-func DefaultPolicyYAML() string {
-	return `version: "1.0"
-agent:
-  name: ""
-  description: ""
-egress: []
-credentials: []
-mcp_servers: []
-hooks: []
-ingress: []
-`
-}
-
 func writeNewProjectFile(path string, content string) error {
 	if err := rejectSymlinkPath(path, true); err != nil {
 		return fmt.Errorf("write new project file: %w", err)

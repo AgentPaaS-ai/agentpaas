@@ -19,12 +19,9 @@ const (
 	PrefixHandoff        = "ho-"
 	PrefixChildBatch     = "cb-"
 	PrefixChildResult    = "cr-"
-	PrefixArtifact       = "art-"
 	PrefixRun            = "run-"
 	PrefixAttempt        = "at-"
 	PrefixLease          = "ls-"
-	PrefixCheckpoint     = "cp-"
-	PrefixModelCall      = "mc-"
 	PrefixIdempotency    = "idem-"
 )
 
@@ -107,12 +104,6 @@ func NewChildResultID() (ChildResultID, error) {
 	return ChildResultID(s), err
 }
 
-// NewArtifactID generates a cryptographically random artifact ID.
-func NewArtifactID() (ArtifactID, error) {
-	s, err := generateID(PrefixArtifact)
-	return ArtifactID(s), err
-}
-
 // NewRunID generates a cryptographically random run ID.
 func NewRunID() (RunID, error) {
 	s, err := generateID(PrefixRun)
@@ -131,18 +122,6 @@ func NewAttemptID() (AttemptID, error) {
 func NewLeaseID() (LeaseID, error) {
 	s, err := generateID(PrefixLease)
 	return LeaseID(s), err
-}
-
-// NewCheckpointID generates a cryptographically random checkpoint ID.
-func NewCheckpointID() (CheckpointID, error) {
-	s, err := generateID(PrefixCheckpoint)
-	return CheckpointID(s), err
-}
-
-// NewModelCallID generates a cryptographically random model call ID.
-func NewModelCallID() (ModelCallID, error) {
-	s, err := generateID(PrefixModelCall)
-	return ModelCallID(s), err
 }
 
 // ValidateIDPrefix returns true if id is non-empty and starts with the given prefix.

@@ -115,14 +115,6 @@ func NewWebhookDeliverer(hooks []*WebhookConfig, auditAppender audit.AuditAppend
 	}
 }
 
-// Deliver delivers an event to all configured hooks asynchronously.
-func (d *WebhookDeliverer) Deliver(ctx context.Context, event *RunEvent) {
-	for _, hook := range d.hooks {
-		hook := hook
-		go d.deliverToHook(ctx, hook, event)
-	}
-}
-
 // DeliverSync delivers an event to all configured hooks synchronously.
 func (d *WebhookDeliverer) DeliverSync(ctx context.Context, event *RunEvent) []WebhookDelivery {
 	results := make([]WebhookDelivery, 0, len(d.hooks))

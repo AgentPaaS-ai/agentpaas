@@ -114,18 +114,6 @@ func (l *ResumeCheckpointLoader) LoadResumeCheckpoint(
 	return data, nil
 }
 
-// LoadResumeCheckpointForRun loads the latest checkpoint across all attempts
-// for a given run. This is used when a new attempt is created as a
-// replacement for a failed prior attempt.
-func (l *ResumeCheckpointLoader) LoadResumeCheckpointForRun(
-	ctx context.Context,
-	runID RunID,
-	priorAttemptID AttemptID,
-	resumeReason ResumeReason,
-) (*ResumeCheckpointData, error) {
-	return l.LoadResumeCheckpoint(ctx, priorAttemptID, runID, resumeReason)
-}
-
 // ValidateResumeCheckpoint verifies a checkpoint is compatible with the
 // current attempt's policy/image/catalog. Returns nil if compatible.
 func ValidateResumeCheckpoint(
@@ -179,19 +167,4 @@ func recomputeCheckpointDigest(cp *SemanticCheckpoint) string {
 func hexSha256String(b []byte) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
-}
-
-// SerializeForHarness serializes resume checkpoint data as JSON for the
-// harness startup file (never sent through trigger payload).
-func (d *ResumeCheckpointData) SerializeForHarness() ([]byte, error) {
-	return json.Marshal(d)
-}
-
-// DeserializeResumeCheckpoint deserializes harness-provided JSON.
-func DeserializeResumeCheckpoint(data []byte) (*ResumeCheckpointData, error) {
-	var d ResumeCheckpointData
-	if err := json.Unmarshal(data, &d); err != nil {
-		return nil, fmt.Errorf("unmarshal resume checkpoint: %w", err)
-	}
-	return &d, nil
 }

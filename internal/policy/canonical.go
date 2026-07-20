@@ -577,12 +577,3 @@ func Digest(p *Policy) (string, error) {
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h), nil
 }
-
-// MustDigest computes the digest or panics. Useful for test helpers.
-func MustDigest(p *Policy) string {
-	d, err := Digest(p)
-	if err != nil {
-		panic(err)
-	}
-	return d
-}

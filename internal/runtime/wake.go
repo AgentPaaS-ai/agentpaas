@@ -36,8 +36,6 @@ const (
 	WakeReasonMessage WakeReason = "message"
 	// WakeReasonApproval: an approval was resolved.
 	WakeReasonApproval WakeReason = "approval"
-	// WakeReasonTimeout: the wait timed out.
-	WakeReasonTimeout WakeReason = "timeout"
 )
 
 // WakeSignal is delivered to a waiting worker. The worker receives exactly
@@ -73,20 +71,6 @@ type WakeRegistry struct {
 // NewWakeRegistry creates a WakeRegistry backed by the given event store.
 func NewWakeRegistry(events port.EventStore) *WakeRegistry {
 	return &WakeRegistry{events: events}
-}
-
-// Close stops all in-flight wait goroutines. It is idempotent.
-func (w *WakeRegistry) Close() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.closed {
-		return
-	}
-	w.closed = true
-	for _, cancel := range w.subs {
-		cancel()
-	}
-	w.subs = nil
 }
 
 // WaitForWake returns a channel that receives a WakeSignal when an inbox
@@ -151,28 +135,6 @@ func (w *WakeRegistry) WaitForWake(ctx context.Context, tenantID, runID, taskID 
 	return out, nil
 }
 
-// NotifyWake is called by the supervisor when resuming a stopped worker, or
-// immediately if the worker is still running. It appends a wake event to the
-// durable event store so any WaitForWake subscriber (live or future) is
-// notified. This is the "resume from committed state when the event arrives"
-// path.
-func (w *WakeRegistry) NotifyWake(ctx context.Context, tenantID string, sig WakeSignal) error {
-	if tenantID == "" || sig.RunID == "" || sig.TaskID == "" {
-		return fmt.Errorf("runtime: NotifyWake requires tenant, run, and task ids")
-	}
-	payload, _ := json.Marshal(inboxWakePayload{ // best-effort marshal
-		TaskID: sig.TaskID,
-		Type:   string(sig.Reason),
-	})
-	_, err := w.events.Append(ctx, port.Event{
-		TenantID: tenantID,
-		RunID:    sig.RunID,
-		Type:     wakeEventTypeFromReason(sig.Reason),
-		Payload:  payload,
-	})
-	return err
-}
-
 // wakeSignalFromEvent maps a durable event to a WakeSignal for the given
 // task. Returns ok=false if the event is not a wake event for this task.
 func wakeSignalFromEvent(ev port.Event, taskID string) (WakeSignal, bool) {
@@ -197,18 +159,5 @@ func wakeSignalFromEvent(ev port.Event, taskID string) (WakeSignal, bool) {
 		return WakeSignal{RunID: ev.RunID, TaskID: taskID, Reason: WakeReasonApproval}, true
 	default:
 		return WakeSignal{}, false
-	}
-}
-
-// wakeEventTypeFromReason maps a WakeReason to the durable event type used
-// to notify subscribers.
-func wakeEventTypeFromReason(r WakeReason) string {
-	switch r {
-	case WakeReasonApproval:
-		return wakeEventTypeApproval
-	case WakeReasonTimeout:
-		return wakeEventTypeInbox
-	default:
-		return wakeEventTypeInbox
 	}
 }

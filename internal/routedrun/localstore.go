@@ -45,15 +45,6 @@ func WithClock(now func() time.Time) LocalStoreOption {
 	}
 }
 
-// WithMigrationRegistry sets the schema migration registry.
-func WithMigrationRegistry(reg *MigrationRegistry) LocalStoreOption {
-	return func(s *LocalStore) {
-		if reg != nil {
-			s.reg = reg
-		}
-	}
-}
-
 // OpenLocalStore opens or initializes a local store rooted at root
 // (typically ~/.agentpaas/state). Creates protected directory layout.
 func OpenLocalStore(root string, opts ...LocalStoreOption) (*LocalStore, error) {

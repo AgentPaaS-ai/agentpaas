@@ -2,7 +2,6 @@ package supervisor
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -242,33 +241,4 @@ func (s *Supervisor) CheckStall(ctx context.Context, attemptID routedrun.Attempt
 	}
 	nowMs := s.nowMonotonicMs()
 	return t.isStalled(env, nowMs), nil
-}
-
-// ActiveTimeRemainingFor returns the active-time remaining for the attempt's
-// workflow, read from the durable ledger. It is the inspection seam for the
-// active-time ceiling.
-func (s *Supervisor) ActiveTimeRemainingFor(ctx context.Context, attemptID routedrun.AttemptID) (int64, error) {
-	s.mu.Lock()
-	t, ok := s.trackers[attemptID]
-	s.mu.Unlock()
-	if !ok {
-		return 0, ErrAttemptNotFound
-	}
-	ledger, err := s.store.GetActiveTimeLedger(ctx, t.workflowID)
-	if err != nil {
-		return 0, fmt.Errorf("supervisor active time remaining for: %w", err)
-	}
-	if ledger == nil {
-		return 0, nil
-	}
-	nowMs := s.nowMonotonicMs()
-	consumed := ledger.ConsumedMs
-	if ledger.RunningSegmentStartMs != nil {
-		elapsed := nowMs - *ledger.RunningSegmentStartMs
-		if elapsed < 0 {
-			elapsed = 0
-		}
-		consumed += elapsed
-	}
-	return consumed, nil
 }
