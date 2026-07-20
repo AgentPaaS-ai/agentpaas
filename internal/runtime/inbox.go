@@ -217,8 +217,8 @@ func (s *DurableInboxStore) Append(_ context.Context, msg InboxMessage) (Message
 		return "", fmt.Errorf("durable inbox store append: %w", err)
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.closed {
+		r.mu.Unlock()
 		return "", ErrInboxClosed
 	}
 	rec := inboxWALRecord{
@@ -234,9 +234,11 @@ func (s *DurableInboxStore) Append(_ context.Context, msg InboxMessage) (Message
 		Delivered:     false,
 	}
 	if err := s.appendWAL(msg.TenantID, msg.RunID, rec); err != nil {
+		r.mu.Unlock()
 		return "", fmt.Errorf("runtime: inbox append wal: %w", err)
 	}
 	r.messages = append(r.messages, msg)
+	r.mu.Unlock()
 
 	// Emit a wake event so a waiting worker is notified without polling.
 	// The event payload carries the message id and task id; content is NOT
@@ -246,6 +248,9 @@ func (s *DurableInboxStore) Append(_ context.Context, msg InboxMessage) (Message
 	// worst failure mode of the inbox protocol: a waiting worker would
 	// never be resumed. Surface the Append error to the caller so the
 	// failure is observable and the caller can retry or reconcile.
+	//
+	// Fan-out is performed outside r.mu so a slow EventStore subscriber
+	// cannot stall concurrent inbox List/MarkDelivered on this run.
 	wakePayload, _ := json.Marshal(inboxWakePayload{ // best-effort marshal
 		MessageID: msg.MessageID,
 		TaskID:    msg.TaskID,

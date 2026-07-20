@@ -100,6 +100,8 @@ func (b *EventBus) Publish(runID string, eventType EventType, data any) *RunEven
 	})
 	event := &buf.events[len(buf.events)-1]
 
+	// Fan-out under the buffer lock but never block: a stalled subscriber
+	// must not stall the publisher or other subscribers.
 	for _, ch := range buf.subscribers {
 		select {
 		case ch <- *event:
@@ -119,6 +121,10 @@ func (b *EventBus) Publish(runID string, eventType EventType, data any) *RunEven
 }
 
 // Subscribe subscribes to events for a run, replaying events after fromEventID.
+// The returned cancel function unregisters the subscriber and closes its
+// channel so the consumer cannot hang after disconnect (SSE client gone, etc.).
+// cancel is idempotent and safe after a terminal event has already closed the
+// channel.
 func (b *EventBus) Subscribe(runID string, fromEventID int64) (<-chan RunEvent, func()) {
 	b.mu.RLock()
 	buf, ok := b.buffers[runID]
@@ -136,6 +142,8 @@ func (b *EventBus) Subscribe(runID string, fromEventID int64) (<-chan RunEvent, 
 	buf.nextSubID++
 	ch := make(chan RunEvent, 64)
 
+	// Non-blocking replay under the lock: never hold buf.mu while blocked on
+	// a full channel (deadlock risk if the consumer is not yet reading).
 	for _, event := range buf.events {
 		if event.EventID > fromEventID {
 			select {
@@ -152,10 +160,16 @@ func (b *EventBus) Subscribe(runID string, fromEventID int64) (<-chan RunEvent, 
 
 	buf.subscribers[subID] = ch
 
+	var once sync.Once
 	cancel := func() {
-		buf.mu.Lock()
-		defer buf.mu.Unlock()
-		delete(buf.subscribers, subID)
+		once.Do(func() {
+			buf.mu.Lock()
+			defer buf.mu.Unlock()
+			if existing, ok := buf.subscribers[subID]; ok {
+				delete(buf.subscribers, subID)
+				close(existing)
+			}
+		})
 	}
 
 	return ch, cancel
