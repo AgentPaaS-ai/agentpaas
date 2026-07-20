@@ -260,19 +260,6 @@ func rejectSymlinkPath(path string) error {
 	return err
 }
 
-// rejectSymlinkLeaf fails if path exists and is a symlink.
-func rejectSymlinkLeaf(path string) error {
-	err := fsutil.RejectSymlinkLeaf(path)
-	if err == nil {
-		return nil
-	}
-	var se *fsutil.SymlinkError
-	if errors.As(err, &se) {
-		return fmt.Errorf("%w: %s", ErrSymlinkRejected, se.Path)
-	}
-	return err
-}
-
 // rejectSymlinkInRoot walks every path component from root to path (inclusive)
 // and fails if any is a symlink. path must be under root.
 func rejectSymlinkInRoot(root, path string) error {
