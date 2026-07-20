@@ -194,8 +194,12 @@ func (s *Supervisor) HandleCheckpoint(ctx context.Context, attemptID routedrun.A
 		trk.mu.Unlock()
 		return ErrLeaseMismatch
 	}
+	if !verifyCheckpointHMAC(event, trk.controlKey) {
+		trk.mu.Unlock()
+		return ErrInvalidHMAC
+	}
 	// T05 Part A: the supervisor itself commits checkpoints (authenticated path).
-	// HMAC seam exists for worker-committed checkpoints (T07 wires it).
+	// HMAC verified above; worker-committed checkpoints (T07) follow the same path.
 	cp := event.Checkpoint
 	if cp.SchemaVersion == "" {
 		cp.SchemaVersion = routedrun.CurrentSchemaVersion

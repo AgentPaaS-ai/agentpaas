@@ -490,11 +490,7 @@ func TestAdversary_B30_CheckpointDigestTamper(t *testing.T) {
 		Sequence:         1,
 		CreatedAt:        h.clock.Now(),
 	}
-	if err := h.supervisor.HandleCheckpoint(ctx, attID, CheckpointEvent{
-		AttemptID:  attID,
-		LeaseID:    h.leaseID,
-		Checkpoint: cp,
-	}); err != nil {
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 

@@ -72,6 +72,20 @@ func signResult(r ResultEvent, key []byte) ResultEvent {
 	return r
 }
 
+func canonicalCheckpoint(c CheckpointEvent) []byte {
+	cc := c
+	cc.HMAC = ""
+	b, _ := json.Marshal(cc)
+	return b
+}
+
+func signCheckpoint(c CheckpointEvent, key []byte) CheckpointEvent {
+	mac := hmac.New(sha256.New, key)
+	mac.Write(canonicalCheckpoint(c))
+	c.HMAC = hex.EncodeToString(mac.Sum(nil))
+	return c
+}
+
 // fakeControlJournal is an in-memory control journal for tests. It records
 // appended events keyed by sequence and verifies HMACs on read.
 type fakeControlJournal struct {
@@ -398,6 +412,26 @@ func (h *testHarness) makeSuccessResult() ResultEvent {
 		ResultDigest:    "digest-success",
 	}
 	return signResult(r, h.controlKey)
+}
+
+// makeForgedCheckpoint builds a CheckpointEvent with a bad HMAC for testing HMAC rejection.
+func (h *testHarness) makeForgedCheckpoint(cp *routedrun.SemanticCheckpoint) CheckpointEvent {
+	return CheckpointEvent{
+		AttemptID:  h.attemptID,
+		LeaseID:    h.leaseID,
+		Checkpoint: cp,
+		HMAC:       "deadbeef",
+	}
+}
+
+// makeCheckpoint builds and signs a CheckpointEvent for the harness attempt.
+func (h *testHarness) makeCheckpoint(cp *routedrun.SemanticCheckpoint) CheckpointEvent {
+	c := CheckpointEvent{
+		AttemptID:  h.attemptID,
+		LeaseID:    h.leaseID,
+		Checkpoint: cp,
+	}
+	return signCheckpoint(c, h.controlKey)
 }
 
 func (h *testHarness) attemptStatus() routedrun.AttemptStatus {
@@ -782,11 +816,7 @@ func TestReconcilePreservesCheckpoint(t *testing.T) {
 		CreatedAt:        h.clock.Now(),
 	}
 	// Commit the checkpoint via the supervisor.
-	if err := h.supervisor.HandleCheckpoint(ctx, attID, CheckpointEvent{
-		AttemptID:  attID,
-		LeaseID:    h.leaseID,
-		Checkpoint: cp,
-	}); err != nil {
+	if err := h.supervisor.HandleCheckpoint(ctx, attID, h.makeCheckpoint(cp)); err != nil {
 		t.Fatalf("HandleCheckpoint: %v", err)
 	}
 	// Simulate restart.
