@@ -295,7 +295,6 @@ type ProgressTailer struct {
 	journalPath   string
 	key           []byte
 	store         CheckpointStore
-	runStore      RunStore
 	attemptID     AttemptID
 	runID         RunID
 	auditAppender audit.AuditAppender
@@ -312,7 +311,6 @@ func NewProgressTailer(
 	journalPath string,
 	key []byte,
 	store CheckpointStore,
-	runStore RunStore,
 	attemptID AttemptID,
 	runID RunID,
 ) *ProgressTailer {
@@ -320,7 +318,6 @@ func NewProgressTailer(
 		journalPath: journalPath,
 		key:         key,
 		store:       store,
-		runStore:    runStore,
 		attemptID:   attemptID,
 		runID:       runID,
 		stopCh:      make(chan struct{}),

@@ -233,7 +233,7 @@ func TestProgressTailer_ValidSafeCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	cpID, err := tailer.IngestRecord(ctx, line[:len(line)-1])
 	if err != nil {
 		t.Fatalf("IngestRecord: %v", err)
@@ -273,7 +273,7 @@ func TestProgressTailer_HeartbeatNoCheckpoint(t *testing.T) {
 	rec.HMAC = computeTestHMAC(rec, key)
 	line, _ := json.Marshal(rec)
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	cpID, err := tailer.IngestRecord(ctx, line)
 	if err != nil {
 		t.Fatalf("IngestRecord: %v", err)
@@ -310,7 +310,7 @@ func TestProgressTailer_TamperedHMAC(t *testing.T) {
 	rec.HMAC = computeTestHMAC(rec, []byte("wrong-key-32-bytes-long-enough!!"))
 	line, _ := json.Marshal(rec)
 
-	tailer := NewProgressTailer(journalPath, []byte("right-key-32-bytes-long-enough!"), store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, []byte("right-key-32-bytes-long-enough!"), store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err == nil {
 		t.Fatal("expected HMAC verification error")
@@ -334,7 +334,7 @@ func TestProgressTailer_ReplayedSequence(t *testing.T) {
 	rec.HMAC = computeTestHMAC(rec, key)
 	line, _ := json.Marshal(rec)
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
@@ -358,7 +358,7 @@ func TestProgressTailer_ReorderedSequence(t *testing.T) {
 	journalPath := filepath.Join(dir, "j.jsonl")
 	key := []byte("test-key-32-bytes-long-enough!!")
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 
 	// Ingest seq 2 first.
 	rec2 := journalLine{RunID: "r1", AttemptID: "a1", Sequence: 2, EventID: "e2", Phase: "p2"}
@@ -396,7 +396,7 @@ func TestProgressTailer_RunIDMismatch(t *testing.T) {
 	rec.HMAC = computeTestHMAC(rec, key)
 	line, _ := json.Marshal(rec)
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err == nil {
 		t.Fatal("expected run_id mismatch error")
@@ -420,7 +420,7 @@ func TestProgressTailer_AttemptIDMismatch(t *testing.T) {
 	rec.HMAC = computeTestHMAC(rec, key)
 	line, _ := json.Marshal(rec)
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	_, err := tailer.IngestRecord(ctx, line)
 	if err == nil {
 		t.Fatal("expected attempt_id mismatch error")
@@ -521,7 +521,7 @@ func TestProgressTailer_TamperedJournalAuditEvent(t *testing.T) {
 	}
 
 	auditApp := &testAuditAppender{}
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	tailer.SetAuditAppender(auditApp)
 
 	tailer.Start(ctx)
@@ -606,7 +606,7 @@ func TestProgressTailer_TamperedJournalWithoutAuditAppender(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	// No SetAuditAppender call — must not panic.
 	tailer.Start(ctx)
 	// Give the tailer time to poll and process.
@@ -728,7 +728,7 @@ func TestProgressTailer_PartialLineNotIngested(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tailer := NewProgressTailer(journalPath, key, store, store, AttemptID("a1"), RunID("r1"))
+	tailer := NewProgressTailer(journalPath, key, store, AttemptID("a1"), RunID("r1"))
 	tailer.Start(ctx)
 
 	// Wait for the tailer to process the first line.

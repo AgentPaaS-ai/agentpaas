@@ -146,14 +146,17 @@ func (w *progressJournalWriter) append(
 	}
 	line = append(line, '\n')
 
-	// For safe_to_resume, fsync after write.
+	// Write the record and fsync for ALL events, not just safe_to_resume.
+	// B27-3: performance impact is minimal (journal writes are already O_APPEND).
+	// A non-fsynced heartbeat followed by a crash could allow a false checkpoint
+	// to be inferred from a stale journal line; fsync eliminates that window.
 	if _, err := w.file.Write(line); err != nil {
 		return "", fmt.Errorf("write journal: %w", err)
 	}
+	if err := w.file.Sync(); err != nil {
+		return "", fmt.Errorf("fsync journal: %w", err)
+	}
 	if safeToResume {
-		if err := w.file.Sync(); err != nil {
-			return "", fmt.Errorf("fsync journal: %w", err)
-		}
 		return fmt.Sprintf("cp-%s-%d", w.identity.AttemptID, w.sequence), nil
 	}
 
