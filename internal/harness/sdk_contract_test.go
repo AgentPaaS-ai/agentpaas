@@ -101,6 +101,10 @@ def handle(payload):
 }
 
 func TestSDKMCPAllowlistAndDeniedAudit(t *testing.T) {
+	// The declared-server success case exercises the no-router synthetic MCP
+	// path, which is gated behind AGENTPAAS_TEST_FAKE_MCP (B30-T00). The
+	// undeclared "blocked" case is still denied regardless of fake mode.
+	t.Setenv("AGENTPAAS_TEST_FAKE_MCP", "1")
 	recorder := &recordingAuditAppender{}
 	srv := newReadyServerWithConfig(t, Config{Audit: recorder}, `from agentpaas_sdk import agent
 
