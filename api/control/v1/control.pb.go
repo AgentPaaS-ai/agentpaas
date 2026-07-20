@@ -7954,6 +7954,539 @@ func (x *InvokeDeploymentResponse) GetAdmittedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+// InvocationRecord is the durable admission record returned by GetInvocation.
+type InvocationRecord struct {
+	state                      protoimpl.MessageState `protogen:"open.v1"`
+	SchemaVersion              string                 `protobuf:"bytes,1,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
+	InvocationId               string                 `protobuf:"bytes,2,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	WorkflowId                 string                 `protobuf:"bytes,3,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	RunId                      string                 `protobuf:"bytes,4,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	ResolvedDeploymentId       string                 `protobuf:"bytes,5,opt,name=resolved_deployment_id,json=resolvedDeploymentId,proto3" json:"resolved_deployment_id,omitempty"`
+	ResolvedDeploymentVersion  string                 `protobuf:"bytes,6,opt,name=resolved_deployment_version,json=resolvedDeploymentVersion,proto3" json:"resolved_deployment_version,omitempty"`
+	ResolvedDeploymentDigest   string                 `protobuf:"bytes,7,opt,name=resolved_deployment_digest,json=resolvedDeploymentDigest,proto3" json:"resolved_deployment_digest,omitempty"`
+	RequestedDeploymentRef     string                 `protobuf:"bytes,8,opt,name=requested_deployment_ref,json=requestedDeploymentRef,proto3" json:"requested_deployment_ref,omitempty"`
+	InvocationIntentDigest     string                 `protobuf:"bytes,9,opt,name=invocation_intent_digest,json=invocationIntentDigest,proto3" json:"invocation_intent_digest,omitempty"`
+	CallerIdentity             string                 `protobuf:"bytes,10,opt,name=caller_identity,json=callerIdentity,proto3" json:"caller_identity,omitempty"`
+	InitialMaxActiveDurationMs int64                  `protobuf:"varint,11,opt,name=initial_max_active_duration_ms,json=initialMaxActiveDurationMs,proto3" json:"initial_max_active_duration_ms,omitempty"`
+	InitialAttemptLeaseMs      int64                  `protobuf:"varint,12,opt,name=initial_attempt_lease_ms,json=initialAttemptLeaseMs,proto3" json:"initial_attempt_lease_ms,omitempty"`
+	InitialMaxCostUsdDecimal   string                 `protobuf:"bytes,13,opt,name=initial_max_cost_usd_decimal,json=initialMaxCostUsdDecimal,proto3" json:"initial_max_cost_usd_decimal,omitempty"`
+	AdmittedAt                 *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=admitted_at,json=admittedAt,proto3" json:"admitted_at,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
+}
+
+func (x *InvocationRecord) Reset() {
+	*x = InvocationRecord{}
+	mi := &file_control_v1_control_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InvocationRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InvocationRecord) ProtoMessage() {}
+
+func (x *InvocationRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InvocationRecord.ProtoReflect.Descriptor instead.
+func (*InvocationRecord) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{102}
+}
+
+func (x *InvocationRecord) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetResolvedDeploymentId() string {
+	if x != nil {
+		return x.ResolvedDeploymentId
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetResolvedDeploymentVersion() string {
+	if x != nil {
+		return x.ResolvedDeploymentVersion
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetResolvedDeploymentDigest() string {
+	if x != nil {
+		return x.ResolvedDeploymentDigest
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetRequestedDeploymentRef() string {
+	if x != nil {
+		return x.RequestedDeploymentRef
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetInvocationIntentDigest() string {
+	if x != nil {
+		return x.InvocationIntentDigest
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetCallerIdentity() string {
+	if x != nil {
+		return x.CallerIdentity
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetInitialMaxActiveDurationMs() int64 {
+	if x != nil {
+		return x.InitialMaxActiveDurationMs
+	}
+	return 0
+}
+
+func (x *InvocationRecord) GetInitialAttemptLeaseMs() int64 {
+	if x != nil {
+		return x.InitialAttemptLeaseMs
+	}
+	return 0
+}
+
+func (x *InvocationRecord) GetInitialMaxCostUsdDecimal() string {
+	if x != nil {
+		return x.InitialMaxCostUsdDecimal
+	}
+	return ""
+}
+
+func (x *InvocationRecord) GetAdmittedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.AdmittedAt
+	}
+	return nil
+}
+
+type GetInvocationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InvocationId  string                 `protobuf:"bytes,1,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInvocationRequest) Reset() {
+	*x = GetInvocationRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInvocationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInvocationRequest) ProtoMessage() {}
+
+func (x *GetInvocationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInvocationRequest.ProtoReflect.Descriptor instead.
+func (*GetInvocationRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{103}
+}
+
+func (x *GetInvocationRequest) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+type GetInvocationResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Invocation    *InvocationRecord      `protobuf:"bytes,1,opt,name=invocation,proto3" json:"invocation,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInvocationResponse) Reset() {
+	*x = GetInvocationResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[104]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInvocationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInvocationResponse) ProtoMessage() {}
+
+func (x *GetInvocationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[104]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInvocationResponse.ProtoReflect.Descriptor instead.
+func (*GetInvocationResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{104}
+}
+
+func (x *GetInvocationResponse) GetInvocation() *InvocationRecord {
+	if x != nil {
+		return x.Invocation
+	}
+	return nil
+}
+
+func (x *GetInvocationResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type GetRunStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRunStatusRequest) Reset() {
+	*x = GetRunStatusRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[105]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRunStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRunStatusRequest) ProtoMessage() {}
+
+func (x *GetRunStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[105]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRunStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetRunStatusRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{105}
+}
+
+func (x *GetRunStatusRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+type GetRunStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	WorkflowId    string                 `protobuf:"bytes,2,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	RunKind       string                 `protobuf:"bytes,4,opt,name=run_kind,json=runKind,proto3" json:"run_kind,omitempty"`
+	Generation    int64                  `protobuf:"varint,5,opt,name=generation,proto3" json:"generation,omitempty"`
+	Error         *TypedControlError     `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRunStatusResponse) Reset() {
+	*x = GetRunStatusResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[106]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRunStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRunStatusResponse) ProtoMessage() {}
+
+func (x *GetRunStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[106]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRunStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetRunStatusResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{106}
+}
+
+func (x *GetRunStatusResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *GetRunStatusResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *GetRunStatusResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *GetRunStatusResponse) GetRunKind() string {
+	if x != nil {
+		return x.RunKind
+	}
+	return ""
+}
+
+func (x *GetRunStatusResponse) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *GetRunStatusResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
+type GetRunResultRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetRunResultRequest) Reset() {
+	*x = GetRunResultRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[107]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRunResultRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRunResultRequest) ProtoMessage() {}
+
+func (x *GetRunResultRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[107]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRunResultRequest.ProtoReflect.Descriptor instead.
+func (*GetRunResultRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{107}
+}
+
+func (x *GetRunResultRequest) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+type GetRunResultResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	RunId              string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	InvocationId       string                 `protobuf:"bytes,2,opt,name=invocation_id,json=invocationId,proto3" json:"invocation_id,omitempty"`
+	WorkflowId         string                 `protobuf:"bytes,3,opt,name=workflow_id,json=workflowId,proto3" json:"workflow_id,omitempty"`
+	AttemptId          string                 `protobuf:"bytes,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	ResultDigest       string                 `protobuf:"bytes,5,opt,name=result_digest,json=resultDigest,proto3" json:"result_digest,omitempty"`
+	StructuredResult   string                 `protobuf:"bytes,6,opt,name=structured_result,json=structuredResult,proto3" json:"structured_result,omitempty"`
+	ArtifactReferences []string               `protobuf:"bytes,7,rep,name=artifact_references,json=artifactReferences,proto3" json:"artifact_references,omitempty"`
+	TerminalStatus     string                 `protobuf:"bytes,8,opt,name=terminal_status,json=terminalStatus,proto3" json:"terminal_status,omitempty"`
+	FinishedAt         *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	Error              *TypedControlError     `protobuf:"bytes,10,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *GetRunResultResponse) Reset() {
+	*x = GetRunResultResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[108]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetRunResultResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetRunResultResponse) ProtoMessage() {}
+
+func (x *GetRunResultResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[108]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetRunResultResponse.ProtoReflect.Descriptor instead.
+func (*GetRunResultResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{108}
+}
+
+func (x *GetRunResultResponse) GetRunId() string {
+	if x != nil {
+		return x.RunId
+	}
+	return ""
+}
+
+func (x *GetRunResultResponse) GetInvocationId() string {
+	if x != nil {
+		return x.InvocationId
+	}
+	return ""
+}
+
+func (x *GetRunResultResponse) GetWorkflowId() string {
+	if x != nil {
+		return x.WorkflowId
+	}
+	return ""
+}
+
+func (x *GetRunResultResponse) GetAttemptId() string {
+	if x != nil {
+		return x.AttemptId
+	}
+	return ""
+}
+
+func (x *GetRunResultResponse) GetResultDigest() string {
+	if x != nil {
+		return x.ResultDigest
+	}
+	return ""
+}
+
+func (x *GetRunResultResponse) GetStructuredResult() string {
+	if x != nil {
+		return x.StructuredResult
+	}
+	return ""
+}
+
+func (x *GetRunResultResponse) GetArtifactReferences() []string {
+	if x != nil {
+		return x.ArtifactReferences
+	}
+	return nil
+}
+
+func (x *GetRunResultResponse) GetTerminalStatus() string {
+	if x != nil {
+		return x.TerminalStatus
+	}
+	return ""
+}
+
+func (x *GetRunResultResponse) GetFinishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FinishedAt
+	}
+	return nil
+}
+
+func (x *GetRunResultResponse) GetError() *TypedControlError {
+	if x != nil {
+		return x.Error
+	}
+	return nil
+}
+
 type CreateWorkflowRequest struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	WorkflowKind        string                 `protobuf:"bytes,1,opt,name=workflow_kind,json=workflowKind,proto3" json:"workflow_kind,omitempty"` // standalone, pipeline, parent_child
@@ -7970,7 +8503,7 @@ type CreateWorkflowRequest struct {
 
 func (x *CreateWorkflowRequest) Reset() {
 	*x = CreateWorkflowRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[102]
+	mi := &file_control_v1_control_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7982,7 +8515,7 @@ func (x *CreateWorkflowRequest) String() string {
 func (*CreateWorkflowRequest) ProtoMessage() {}
 
 func (x *CreateWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[102]
+	mi := &file_control_v1_control_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7995,7 +8528,7 @@ func (x *CreateWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*CreateWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{102}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *CreateWorkflowRequest) GetWorkflowKind() string {
@@ -8078,7 +8611,7 @@ type WorkflowRecord struct {
 
 func (x *WorkflowRecord) Reset() {
 	*x = WorkflowRecord{}
-	mi := &file_control_v1_control_proto_msgTypes[103]
+	mi := &file_control_v1_control_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8090,7 +8623,7 @@ func (x *WorkflowRecord) String() string {
 func (*WorkflowRecord) ProtoMessage() {}
 
 func (x *WorkflowRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[103]
+	mi := &file_control_v1_control_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8103,7 +8636,7 @@ func (x *WorkflowRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkflowRecord.ProtoReflect.Descriptor instead.
 func (*WorkflowRecord) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{103}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *WorkflowRecord) GetSchemaVersion() string {
@@ -8228,7 +8761,7 @@ type CreateWorkflowResponse struct {
 
 func (x *CreateWorkflowResponse) Reset() {
 	*x = CreateWorkflowResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[104]
+	mi := &file_control_v1_control_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8240,7 +8773,7 @@ func (x *CreateWorkflowResponse) String() string {
 func (*CreateWorkflowResponse) ProtoMessage() {}
 
 func (x *CreateWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[104]
+	mi := &file_control_v1_control_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8253,7 +8786,7 @@ func (x *CreateWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*CreateWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{104}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *CreateWorkflowResponse) GetWorkflow() *WorkflowRecord {
@@ -8279,7 +8812,7 @@ type GetWorkflowRequest struct {
 
 func (x *GetWorkflowRequest) Reset() {
 	*x = GetWorkflowRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[105]
+	mi := &file_control_v1_control_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8291,7 +8824,7 @@ func (x *GetWorkflowRequest) String() string {
 func (*GetWorkflowRequest) ProtoMessage() {}
 
 func (x *GetWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[105]
+	mi := &file_control_v1_control_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8304,7 +8837,7 @@ func (x *GetWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{105}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *GetWorkflowRequest) GetWorkflowId() string {
@@ -8324,7 +8857,7 @@ type GetWorkflowResponse struct {
 
 func (x *GetWorkflowResponse) Reset() {
 	*x = GetWorkflowResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[106]
+	mi := &file_control_v1_control_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8336,7 +8869,7 @@ func (x *GetWorkflowResponse) String() string {
 func (*GetWorkflowResponse) ProtoMessage() {}
 
 func (x *GetWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[106]
+	mi := &file_control_v1_control_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8349,7 +8882,7 @@ func (x *GetWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*GetWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{106}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *GetWorkflowResponse) GetWorkflow() *WorkflowRecord {
@@ -8380,7 +8913,7 @@ type CancelWorkflowRequest struct {
 
 func (x *CancelWorkflowRequest) Reset() {
 	*x = CancelWorkflowRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[107]
+	mi := &file_control_v1_control_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8392,7 +8925,7 @@ func (x *CancelWorkflowRequest) String() string {
 func (*CancelWorkflowRequest) ProtoMessage() {}
 
 func (x *CancelWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[107]
+	mi := &file_control_v1_control_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8405,7 +8938,7 @@ func (x *CancelWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*CancelWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{107}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{114}
 }
 
 func (x *CancelWorkflowRequest) GetWorkflowId() string {
@@ -8460,7 +8993,7 @@ type CancelWorkflowResponse struct {
 
 func (x *CancelWorkflowResponse) Reset() {
 	*x = CancelWorkflowResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[108]
+	mi := &file_control_v1_control_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8472,7 +9005,7 @@ func (x *CancelWorkflowResponse) String() string {
 func (*CancelWorkflowResponse) ProtoMessage() {}
 
 func (x *CancelWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[108]
+	mi := &file_control_v1_control_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8485,7 +9018,7 @@ func (x *CancelWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*CancelWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{108}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *CancelWorkflowResponse) GetWorkflow() *WorkflowRecord {
@@ -8520,7 +9053,7 @@ type SetWorkflowDesiredStateRequest struct {
 
 func (x *SetWorkflowDesiredStateRequest) Reset() {
 	*x = SetWorkflowDesiredStateRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[109]
+	mi := &file_control_v1_control_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8532,7 +9065,7 @@ func (x *SetWorkflowDesiredStateRequest) String() string {
 func (*SetWorkflowDesiredStateRequest) ProtoMessage() {}
 
 func (x *SetWorkflowDesiredStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[109]
+	mi := &file_control_v1_control_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8545,7 +9078,7 @@ func (x *SetWorkflowDesiredStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWorkflowDesiredStateRequest.ProtoReflect.Descriptor instead.
 func (*SetWorkflowDesiredStateRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{109}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *SetWorkflowDesiredStateRequest) GetWorkflowId() string {
@@ -8617,7 +9150,7 @@ type SetWorkflowDesiredStateResponse struct {
 
 func (x *SetWorkflowDesiredStateResponse) Reset() {
 	*x = SetWorkflowDesiredStateResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[110]
+	mi := &file_control_v1_control_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8629,7 +9162,7 @@ func (x *SetWorkflowDesiredStateResponse) String() string {
 func (*SetWorkflowDesiredStateResponse) ProtoMessage() {}
 
 func (x *SetWorkflowDesiredStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[110]
+	mi := &file_control_v1_control_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8642,7 +9175,7 @@ func (x *SetWorkflowDesiredStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetWorkflowDesiredStateResponse.ProtoReflect.Descriptor instead.
 func (*SetWorkflowDesiredStateResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{110}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *SetWorkflowDesiredStateResponse) GetControlRequestId() string {
@@ -8695,7 +9228,7 @@ type RestartWorkflowRequest struct {
 
 func (x *RestartWorkflowRequest) Reset() {
 	*x = RestartWorkflowRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[111]
+	mi := &file_control_v1_control_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8707,7 +9240,7 @@ func (x *RestartWorkflowRequest) String() string {
 func (*RestartWorkflowRequest) ProtoMessage() {}
 
 func (x *RestartWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[111]
+	mi := &file_control_v1_control_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8720,7 +9253,7 @@ func (x *RestartWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*RestartWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{111}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *RestartWorkflowRequest) GetSourceWorkflowId() string {
@@ -8772,7 +9305,7 @@ type RestartWorkflowResponse struct {
 
 func (x *RestartWorkflowResponse) Reset() {
 	*x = RestartWorkflowResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[112]
+	mi := &file_control_v1_control_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8784,7 +9317,7 @@ func (x *RestartWorkflowResponse) String() string {
 func (*RestartWorkflowResponse) ProtoMessage() {}
 
 func (x *RestartWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[112]
+	mi := &file_control_v1_control_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8797,7 +9330,7 @@ func (x *RestartWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*RestartWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{112}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *RestartWorkflowResponse) GetNewInvocationId() string {
@@ -8862,7 +9395,7 @@ type AmendLimitsRequest struct {
 
 func (x *AmendLimitsRequest) Reset() {
 	*x = AmendLimitsRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[113]
+	mi := &file_control_v1_control_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8874,7 +9407,7 @@ func (x *AmendLimitsRequest) String() string {
 func (*AmendLimitsRequest) ProtoMessage() {}
 
 func (x *AmendLimitsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[113]
+	mi := &file_control_v1_control_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8887,7 +9420,7 @@ func (x *AmendLimitsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AmendLimitsRequest.ProtoReflect.Descriptor instead.
 func (*AmendLimitsRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{113}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *AmendLimitsRequest) GetWorkflowId() string {
@@ -8966,7 +9499,7 @@ type AmendLimitsResponse struct {
 
 func (x *AmendLimitsResponse) Reset() {
 	*x = AmendLimitsResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[114]
+	mi := &file_control_v1_control_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -8978,7 +9511,7 @@ func (x *AmendLimitsResponse) String() string {
 func (*AmendLimitsResponse) ProtoMessage() {}
 
 func (x *AmendLimitsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[114]
+	mi := &file_control_v1_control_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -8991,7 +9524,7 @@ func (x *AmendLimitsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AmendLimitsResponse.ProtoReflect.Descriptor instead.
 func (*AmendLimitsResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{114}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *AmendLimitsResponse) GetAmendmentId() string {
@@ -9048,7 +9581,7 @@ type WorkflowNodeStatus struct {
 
 func (x *WorkflowNodeStatus) Reset() {
 	*x = WorkflowNodeStatus{}
-	mi := &file_control_v1_control_proto_msgTypes[115]
+	mi := &file_control_v1_control_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9060,7 +9593,7 @@ func (x *WorkflowNodeStatus) String() string {
 func (*WorkflowNodeStatus) ProtoMessage() {}
 
 func (x *WorkflowNodeStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[115]
+	mi := &file_control_v1_control_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9073,7 +9606,7 @@ func (x *WorkflowNodeStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkflowNodeStatus.ProtoReflect.Descriptor instead.
 func (*WorkflowNodeStatus) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{115}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *WorkflowNodeStatus) GetSchemaVersion() string {
@@ -9173,7 +9706,7 @@ type ServiceBindingStatus struct {
 
 func (x *ServiceBindingStatus) Reset() {
 	*x = ServiceBindingStatus{}
-	mi := &file_control_v1_control_proto_msgTypes[116]
+	mi := &file_control_v1_control_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9185,7 +9718,7 @@ func (x *ServiceBindingStatus) String() string {
 func (*ServiceBindingStatus) ProtoMessage() {}
 
 func (x *ServiceBindingStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[116]
+	mi := &file_control_v1_control_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9198,7 +9731,7 @@ func (x *ServiceBindingStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceBindingStatus.ProtoReflect.Descriptor instead.
 func (*ServiceBindingStatus) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{116}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{123}
 }
 
 func (x *ServiceBindingStatus) GetSchemaVersion() string {
@@ -9294,7 +9827,7 @@ type HandoffMetadata struct {
 
 func (x *HandoffMetadata) Reset() {
 	*x = HandoffMetadata{}
-	mi := &file_control_v1_control_proto_msgTypes[117]
+	mi := &file_control_v1_control_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9306,7 +9839,7 @@ func (x *HandoffMetadata) String() string {
 func (*HandoffMetadata) ProtoMessage() {}
 
 func (x *HandoffMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[117]
+	mi := &file_control_v1_control_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9319,7 +9852,7 @@ func (x *HandoffMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HandoffMetadata.ProtoReflect.Descriptor instead.
 func (*HandoffMetadata) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{117}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *HandoffMetadata) GetSchemaVersion() string {
@@ -9396,7 +9929,7 @@ type ChildBatchStatus struct {
 
 func (x *ChildBatchStatus) Reset() {
 	*x = ChildBatchStatus{}
-	mi := &file_control_v1_control_proto_msgTypes[118]
+	mi := &file_control_v1_control_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9408,7 +9941,7 @@ func (x *ChildBatchStatus) String() string {
 func (*ChildBatchStatus) ProtoMessage() {}
 
 func (x *ChildBatchStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[118]
+	mi := &file_control_v1_control_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9421,7 +9954,7 @@ func (x *ChildBatchStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChildBatchStatus.ProtoReflect.Descriptor instead.
 func (*ChildBatchStatus) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{118}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *ChildBatchStatus) GetSchemaVersion() string {
@@ -9510,7 +10043,7 @@ type ChildResult struct {
 
 func (x *ChildResult) Reset() {
 	*x = ChildResult{}
-	mi := &file_control_v1_control_proto_msgTypes[119]
+	mi := &file_control_v1_control_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9522,7 +10055,7 @@ func (x *ChildResult) String() string {
 func (*ChildResult) ProtoMessage() {}
 
 func (x *ChildResult) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[119]
+	mi := &file_control_v1_control_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9535,7 +10068,7 @@ func (x *ChildResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChildResult.ProtoReflect.Descriptor instead.
 func (*ChildResult) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{119}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *ChildResult) GetSchemaVersion() string {
@@ -9603,7 +10136,7 @@ type GetWorkflowGraphRequest struct {
 
 func (x *GetWorkflowGraphRequest) Reset() {
 	*x = GetWorkflowGraphRequest{}
-	mi := &file_control_v1_control_proto_msgTypes[120]
+	mi := &file_control_v1_control_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9615,7 +10148,7 @@ func (x *GetWorkflowGraphRequest) String() string {
 func (*GetWorkflowGraphRequest) ProtoMessage() {}
 
 func (x *GetWorkflowGraphRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[120]
+	mi := &file_control_v1_control_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9628,7 +10161,7 @@ func (x *GetWorkflowGraphRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowGraphRequest.ProtoReflect.Descriptor instead.
 func (*GetWorkflowGraphRequest) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{120}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *GetWorkflowGraphRequest) GetWorkflowId() string {
@@ -9653,7 +10186,7 @@ type GetWorkflowGraphResponse struct {
 
 func (x *GetWorkflowGraphResponse) Reset() {
 	*x = GetWorkflowGraphResponse{}
-	mi := &file_control_v1_control_proto_msgTypes[121]
+	mi := &file_control_v1_control_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -9665,7 +10198,7 @@ func (x *GetWorkflowGraphResponse) String() string {
 func (*GetWorkflowGraphResponse) ProtoMessage() {}
 
 func (x *GetWorkflowGraphResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_control_v1_control_proto_msgTypes[121]
+	mi := &file_control_v1_control_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -9678,7 +10211,7 @@ func (x *GetWorkflowGraphResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetWorkflowGraphResponse.ProtoReflect.Descriptor instead.
 func (*GetWorkflowGraphResponse) Descriptor() ([]byte, []int) {
-	return file_control_v1_control_proto_rawDescGZIP(), []int{121}
+	return file_control_v1_control_proto_rawDescGZIP(), []int{128}
 }
 
 func (x *GetWorkflowGraphResponse) GetWorkflow() *WorkflowRecord {
@@ -10405,7 +10938,61 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x05error\x18\n" +
 	" \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\x12;\n" +
 	"\vadmitted_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"admittedAt\"\xed\x02\n" +
+	"admittedAt\"\xe1\x05\n" +
+	"\x10InvocationRecord\x12%\n" +
+	"\x0eschema_version\x18\x01 \x01(\tR\rschemaVersion\x12#\n" +
+	"\rinvocation_id\x18\x02 \x01(\tR\finvocationId\x12\x1f\n" +
+	"\vworkflow_id\x18\x03 \x01(\tR\n" +
+	"workflowId\x12\x15\n" +
+	"\x06run_id\x18\x04 \x01(\tR\x05runId\x124\n" +
+	"\x16resolved_deployment_id\x18\x05 \x01(\tR\x14resolvedDeploymentId\x12>\n" +
+	"\x1bresolved_deployment_version\x18\x06 \x01(\tR\x19resolvedDeploymentVersion\x12<\n" +
+	"\x1aresolved_deployment_digest\x18\a \x01(\tR\x18resolvedDeploymentDigest\x128\n" +
+	"\x18requested_deployment_ref\x18\b \x01(\tR\x16requestedDeploymentRef\x128\n" +
+	"\x18invocation_intent_digest\x18\t \x01(\tR\x16invocationIntentDigest\x12'\n" +
+	"\x0fcaller_identity\x18\n" +
+	" \x01(\tR\x0ecallerIdentity\x12B\n" +
+	"\x1einitial_max_active_duration_ms\x18\v \x01(\x03R\x1ainitialMaxActiveDurationMs\x127\n" +
+	"\x18initial_attempt_lease_ms\x18\f \x01(\x03R\x15initialAttemptLeaseMs\x12>\n" +
+	"\x1cinitial_max_cost_usd_decimal\x18\r \x01(\tR\x18initialMaxCostUsdDecimal\x12;\n" +
+	"\vadmitted_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"admittedAt\";\n" +
+	"\x14GetInvocationRequest\x12#\n" +
+	"\rinvocation_id\x18\x01 \x01(\tR\finvocationId\"\x9e\x01\n" +
+	"\x15GetInvocationResponse\x12F\n" +
+	"\n" +
+	"invocation\x18\x01 \x01(\v2&.agentpaas.control.v1.InvocationRecordR\n" +
+	"invocation\x12=\n" +
+	"\x05error\x18\x02 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\",\n" +
+	"\x13GetRunStatusRequest\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\xe0\x01\n" +
+	"\x14GetRunStatusResponse\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1f\n" +
+	"\vworkflow_id\x18\x02 \x01(\tR\n" +
+	"workflowId\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x19\n" +
+	"\brun_kind\x18\x04 \x01(\tR\arunKind\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x05 \x01(\x03R\n" +
+	"generation\x12=\n" +
+	"\x05error\x18\x06 \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\",\n" +
+	"\x13GetRunResultRequest\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\"\xba\x03\n" +
+	"\x14GetRunResultResponse\x12\x15\n" +
+	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12#\n" +
+	"\rinvocation_id\x18\x02 \x01(\tR\finvocationId\x12\x1f\n" +
+	"\vworkflow_id\x18\x03 \x01(\tR\n" +
+	"workflowId\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x04 \x01(\tR\tattemptId\x12#\n" +
+	"\rresult_digest\x18\x05 \x01(\tR\fresultDigest\x12+\n" +
+	"\x11structured_result\x18\x06 \x01(\tR\x10structuredResult\x12/\n" +
+	"\x13artifact_references\x18\a \x03(\tR\x12artifactReferences\x12'\n" +
+	"\x0fterminal_status\x18\b \x01(\tR\x0eterminalStatus\x12;\n" +
+	"\vfinished_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"finishedAt\x12=\n" +
+	"\x05error\x18\n" +
+	" \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"\xed\x02\n" +
 	"\x15CreateWorkflowRequest\x12#\n" +
 	"\rworkflow_kind\x18\x01 \x01(\tR\fworkflowKind\x12%\n" +
 	"\x0edeployment_ref\x18\x02 \x01(\tR\rdeploymentRef\x12\x1d\n" +
@@ -10653,7 +11240,7 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x16CONTROL_COMMAND_RESUME\x10\x03\x12\x1b\n" +
 	"\x17CONTROL_COMMAND_RESTART\x10\x04\x12\x1c\n" +
 	"\x18CONTROL_COMMAND_CONTINUE\x10\x05\x12 \n" +
-	"\x1cCONTROL_COMMAND_AMEND_LIMITS\x10\x062\xff-\n" +
+	"\x1cCONTROL_COMMAND_AMEND_LIMITS\x10\x062\xbf1\n" +
 	"\x0eControlService\x12j\n" +
 	"\x04Pack\x12!.agentpaas.control.v1.PackRequest\x1a\".agentpaas.control.v1.PackResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/pack\x12\x8f\x01\n" +
 	"\rExportPreview\x12*.agentpaas.control.v1.ExportPreviewRequest\x1a+.agentpaas.control.v1.ExportPreviewResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/control/export:preview\x12r\n" +
@@ -10690,7 +11277,10 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x12GetDeploymentAlias\x12/.agentpaas.control.v1.GetDeploymentAliasRequest\x1a0.agentpaas.control.v1.GetDeploymentAliasResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/control/deployment-aliases/{alias}\x12\xa8\x01\n" +
 	"\x15ListDeploymentAliases\x122.agentpaas.control.v1.ListDeploymentAliasesRequest\x1a3.agentpaas.control.v1.ListDeploymentAliasesResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/control/deployment-aliases\x12\xae\x01\n" +
 	"\x12CasDeploymentAlias\x12/.agentpaas.control.v1.CasDeploymentAliasRequest\x1a0.agentpaas.control.v1.CasDeploymentAliasResponse\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/control/deployment-aliases/{alias}:cas\x12\x9c\x01\n" +
-	"\x10InvokeDeployment\x12-.agentpaas.control.v1.InvokeDeploymentRequest\x1a..agentpaas.control.v1.InvokeDeploymentResponse\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/control/deployments:invoke\x12\x8d\x01\n" +
+	"\x10InvokeDeployment\x12-.agentpaas.control.v1.InvokeDeploymentRequest\x1a..agentpaas.control.v1.InvokeDeploymentResponse\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/control/deployments:invoke\x12\x99\x01\n" +
+	"\rGetInvocation\x12*.agentpaas.control.v1.GetInvocationRequest\x1a+.agentpaas.control.v1.GetInvocationResponse\"/\x82\xd3\xe4\x93\x02)\x12'/v1/control/invocations/{invocation_id}\x12\x8f\x01\n" +
+	"\fGetRunStatus\x12).agentpaas.control.v1.GetRunStatusRequest\x1a*.agentpaas.control.v1.GetRunStatusResponse\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/control/runs/{run_id}/status\x12\x8f\x01\n" +
+	"\fGetRunResult\x12).agentpaas.control.v1.GetRunResultRequest\x1a*.agentpaas.control.v1.GetRunResultResponse\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/control/runs/{run_id}/result\x12\x8d\x01\n" +
 	"\x0eCreateWorkflow\x12+.agentpaas.control.v1.CreateWorkflowRequest\x1a,.agentpaas.control.v1.CreateWorkflowResponse\" \x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/control/workflows\x12\x8f\x01\n" +
 	"\vGetWorkflow\x12(.agentpaas.control.v1.GetWorkflowRequest\x1a).agentpaas.control.v1.GetWorkflowResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/control/workflows/{workflow_id}\x12\xa2\x01\n" +
 	"\x0eCancelWorkflow\x12+.agentpaas.control.v1.CancelWorkflowRequest\x1a,.agentpaas.control.v1.CancelWorkflowResponse\"5\x82\xd3\xe4\x93\x02/:\x01*\"*/v1/control/workflows/{workflow_id}:cancel\x12\xc4\x01\n" +
@@ -10713,7 +11303,7 @@ func file_control_v1_control_proto_rawDescGZIP() []byte {
 }
 
 var file_control_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 127)
+var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 134)
 var file_control_v1_control_proto_goTypes = []any{
 	(LogLevel)(0),                           // 0: agentpaas.control.v1.LogLevel
 	(EventType)(0),                          // 1: agentpaas.control.v1.EventType
@@ -10824,46 +11414,53 @@ var file_control_v1_control_proto_goTypes = []any{
 	(*InvokeDeploymentRequest)(nil),         // 106: agentpaas.control.v1.InvokeDeploymentRequest
 	(*AbsoluteCeilingsSnapshot)(nil),        // 107: agentpaas.control.v1.AbsoluteCeilingsSnapshot
 	(*InvokeDeploymentResponse)(nil),        // 108: agentpaas.control.v1.InvokeDeploymentResponse
-	(*CreateWorkflowRequest)(nil),           // 109: agentpaas.control.v1.CreateWorkflowRequest
-	(*WorkflowRecord)(nil),                  // 110: agentpaas.control.v1.WorkflowRecord
-	(*CreateWorkflowResponse)(nil),          // 111: agentpaas.control.v1.CreateWorkflowResponse
-	(*GetWorkflowRequest)(nil),              // 112: agentpaas.control.v1.GetWorkflowRequest
-	(*GetWorkflowResponse)(nil),             // 113: agentpaas.control.v1.GetWorkflowResponse
-	(*CancelWorkflowRequest)(nil),           // 114: agentpaas.control.v1.CancelWorkflowRequest
-	(*CancelWorkflowResponse)(nil),          // 115: agentpaas.control.v1.CancelWorkflowResponse
-	(*SetWorkflowDesiredStateRequest)(nil),  // 116: agentpaas.control.v1.SetWorkflowDesiredStateRequest
-	(*SetWorkflowDesiredStateResponse)(nil), // 117: agentpaas.control.v1.SetWorkflowDesiredStateResponse
-	(*RestartWorkflowRequest)(nil),          // 118: agentpaas.control.v1.RestartWorkflowRequest
-	(*RestartWorkflowResponse)(nil),         // 119: agentpaas.control.v1.RestartWorkflowResponse
-	(*AmendLimitsRequest)(nil),              // 120: agentpaas.control.v1.AmendLimitsRequest
-	(*AmendLimitsResponse)(nil),             // 121: agentpaas.control.v1.AmendLimitsResponse
-	(*WorkflowNodeStatus)(nil),              // 122: agentpaas.control.v1.WorkflowNodeStatus
-	(*ServiceBindingStatus)(nil),            // 123: agentpaas.control.v1.ServiceBindingStatus
-	(*HandoffMetadata)(nil),                 // 124: agentpaas.control.v1.HandoffMetadata
-	(*ChildBatchStatus)(nil),                // 125: agentpaas.control.v1.ChildBatchStatus
-	(*ChildResult)(nil),                     // 126: agentpaas.control.v1.ChildResult
-	(*GetWorkflowGraphRequest)(nil),         // 127: agentpaas.control.v1.GetWorkflowGraphRequest
-	(*GetWorkflowGraphResponse)(nil),        // 128: agentpaas.control.v1.GetWorkflowGraphResponse
-	nil,                                     // 129: agentpaas.control.v1.LogEntry.FieldsEntry
-	nil,                                     // 130: agentpaas.control.v1.NextActionResponse.ParamsEntry
-	nil,                                     // 131: agentpaas.control.v1.TypedControlError.DetailsEntry
-	nil,                                     // 132: agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
-	nil,                                     // 133: agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
-	(*timestamppb.Timestamp)(nil),           // 134: google.protobuf.Timestamp
+	(*InvocationRecord)(nil),                // 109: agentpaas.control.v1.InvocationRecord
+	(*GetInvocationRequest)(nil),            // 110: agentpaas.control.v1.GetInvocationRequest
+	(*GetInvocationResponse)(nil),           // 111: agentpaas.control.v1.GetInvocationResponse
+	(*GetRunStatusRequest)(nil),             // 112: agentpaas.control.v1.GetRunStatusRequest
+	(*GetRunStatusResponse)(nil),            // 113: agentpaas.control.v1.GetRunStatusResponse
+	(*GetRunResultRequest)(nil),             // 114: agentpaas.control.v1.GetRunResultRequest
+	(*GetRunResultResponse)(nil),            // 115: agentpaas.control.v1.GetRunResultResponse
+	(*CreateWorkflowRequest)(nil),           // 116: agentpaas.control.v1.CreateWorkflowRequest
+	(*WorkflowRecord)(nil),                  // 117: agentpaas.control.v1.WorkflowRecord
+	(*CreateWorkflowResponse)(nil),          // 118: agentpaas.control.v1.CreateWorkflowResponse
+	(*GetWorkflowRequest)(nil),              // 119: agentpaas.control.v1.GetWorkflowRequest
+	(*GetWorkflowResponse)(nil),             // 120: agentpaas.control.v1.GetWorkflowResponse
+	(*CancelWorkflowRequest)(nil),           // 121: agentpaas.control.v1.CancelWorkflowRequest
+	(*CancelWorkflowResponse)(nil),          // 122: agentpaas.control.v1.CancelWorkflowResponse
+	(*SetWorkflowDesiredStateRequest)(nil),  // 123: agentpaas.control.v1.SetWorkflowDesiredStateRequest
+	(*SetWorkflowDesiredStateResponse)(nil), // 124: agentpaas.control.v1.SetWorkflowDesiredStateResponse
+	(*RestartWorkflowRequest)(nil),          // 125: agentpaas.control.v1.RestartWorkflowRequest
+	(*RestartWorkflowResponse)(nil),         // 126: agentpaas.control.v1.RestartWorkflowResponse
+	(*AmendLimitsRequest)(nil),              // 127: agentpaas.control.v1.AmendLimitsRequest
+	(*AmendLimitsResponse)(nil),             // 128: agentpaas.control.v1.AmendLimitsResponse
+	(*WorkflowNodeStatus)(nil),              // 129: agentpaas.control.v1.WorkflowNodeStatus
+	(*ServiceBindingStatus)(nil),            // 130: agentpaas.control.v1.ServiceBindingStatus
+	(*HandoffMetadata)(nil),                 // 131: agentpaas.control.v1.HandoffMetadata
+	(*ChildBatchStatus)(nil),                // 132: agentpaas.control.v1.ChildBatchStatus
+	(*ChildResult)(nil),                     // 133: agentpaas.control.v1.ChildResult
+	(*GetWorkflowGraphRequest)(nil),         // 134: agentpaas.control.v1.GetWorkflowGraphRequest
+	(*GetWorkflowGraphResponse)(nil),        // 135: agentpaas.control.v1.GetWorkflowGraphResponse
+	nil,                                     // 136: agentpaas.control.v1.LogEntry.FieldsEntry
+	nil,                                     // 137: agentpaas.control.v1.NextActionResponse.ParamsEntry
+	nil,                                     // 138: agentpaas.control.v1.TypedControlError.DetailsEntry
+	nil,                                     // 139: agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
+	nil,                                     // 140: agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
+	(*timestamppb.Timestamp)(nil),           // 141: google.protobuf.Timestamp
 }
 var file_control_v1_control_proto_depIdxs = []int32{
 	10,  // 0: agentpaas.control.v1.ExportPreviewResponse.files:type_name -> agentpaas.control.v1.ExportFileEntry
 	15,  // 1: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
 	0,   // 2: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
-	134, // 3: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	129, // 4: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
+	141, // 3: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	136, // 4: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
 	2,   // 5: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
 	1,   // 6: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
 	30,  // 7: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	134, // 8: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
-	134, // 9: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
+	141, // 8: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
+	141, // 9: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
 	1,   // 10: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
-	134, // 11: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
+	141, // 11: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
 	32,  // 12: agentpaas.control.v1.AuditChainVerification.issues:type_name -> agentpaas.control.v1.AuditCheckpointIssue
 	31,  // 13: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
 	33,  // 14: agentpaas.control.v1.AuditQueryResponse.chain_verification:type_name -> agentpaas.control.v1.AuditChainVerification
@@ -10873,10 +11470,10 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	43,  // 18: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
 	44,  // 19: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	44,  // 20: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	134, // 21: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
+	141, // 21: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
 	48,  // 22: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
-	134, // 23: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
-	134, // 24: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
+	141, // 23: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
+	141, // 24: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
 	44,  // 25: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	77,  // 26: agentpaas.control.v1.SummarizeRunResponse.attempt_report:type_name -> agentpaas.control.v1.AttemptReport
 	45,  // 27: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
@@ -10884,27 +11481,27 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	44,  // 29: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	44,  // 30: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	46,  // 31: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
-	134, // 32: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
+	141, // 32: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
 	57,  // 33: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
-	130, // 34: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
+	137, // 34: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
 	44,  // 35: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	46,  // 36: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
 	61,  // 37: agentpaas.control.v1.CronAddResponse.schedule:type_name -> agentpaas.control.v1.CronScheduleInfo
 	61,  // 38: agentpaas.control.v1.CronListResponse.schedules:type_name -> agentpaas.control.v1.CronScheduleInfo
-	134, // 39: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
+	141, // 39: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
 	68,  // 40: agentpaas.control.v1.ListRunsResponse.runs:type_name -> agentpaas.control.v1.RunInfo
-	134, // 41: agentpaas.control.v1.CheckpointSummary.created_at:type_name -> google.protobuf.Timestamp
-	134, // 42: agentpaas.control.v1.ArtifactRef.created_at:type_name -> google.protobuf.Timestamp
-	134, // 43: agentpaas.control.v1.RouteDecision.timestamp:type_name -> google.protobuf.Timestamp
+	141, // 41: agentpaas.control.v1.CheckpointSummary.created_at:type_name -> google.protobuf.Timestamp
+	141, // 42: agentpaas.control.v1.ArtifactRef.created_at:type_name -> google.protobuf.Timestamp
+	141, // 43: agentpaas.control.v1.RouteDecision.timestamp:type_name -> google.protobuf.Timestamp
 	71,  // 44: agentpaas.control.v1.AttemptReport.progress:type_name -> agentpaas.control.v1.ProgressSummary
 	72,  // 45: agentpaas.control.v1.AttemptReport.checkpoint:type_name -> agentpaas.control.v1.CheckpointSummary
 	73,  // 46: agentpaas.control.v1.AttemptReport.artifacts:type_name -> agentpaas.control.v1.ArtifactRef
 	74,  // 47: agentpaas.control.v1.AttemptReport.time:type_name -> agentpaas.control.v1.TimeBudgetSummary
 	75,  // 48: agentpaas.control.v1.AttemptReport.llm_budget:type_name -> agentpaas.control.v1.LLMBudgetSummary
 	76,  // 49: agentpaas.control.v1.AttemptReport.route_decisions:type_name -> agentpaas.control.v1.RouteDecision
-	134, // 50: agentpaas.control.v1.AttemptReport.created_at:type_name -> google.protobuf.Timestamp
+	141, // 50: agentpaas.control.v1.AttemptReport.created_at:type_name -> google.protobuf.Timestamp
 	5,   // 51: agentpaas.control.v1.TypedControlError.code:type_name -> agentpaas.control.v1.TypedControlErrorCode
-	131, // 52: agentpaas.control.v1.TypedControlError.details:type_name -> agentpaas.control.v1.TypedControlError.DetailsEntry
+	138, // 52: agentpaas.control.v1.TypedControlError.details:type_name -> agentpaas.control.v1.TypedControlError.DetailsEntry
 	78,  // 53: agentpaas.control.v1.IdempotentReplayResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	16,  // 54: agentpaas.control.v1.IdempotentReplayResponse.original:type_name -> agentpaas.control.v1.RunResponse
 	78,  // 55: agentpaas.control.v1.AlreadyRunningResponse.error:type_name -> agentpaas.control.v1.TypedControlError
@@ -10915,11 +11512,11 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	78,  // 60: agentpaas.control.v1.ConcurrencyUnavailableResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	78,  // 61: agentpaas.control.v1.LimitAmendmentDeniedResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	78,  // 62: agentpaas.control.v1.FeatureNotEnabledResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	132, // 63: agentpaas.control.v1.CreateDeploymentRequest.nested_package_digests:type_name -> agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
-	133, // 64: agentpaas.control.v1.DeploymentRecord.nested_package_digests:type_name -> agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
-	134, // 65: agentpaas.control.v1.DeploymentRecord.created_at:type_name -> google.protobuf.Timestamp
-	134, // 66: agentpaas.control.v1.DeploymentRecord.activated_at:type_name -> google.protobuf.Timestamp
-	134, // 67: agentpaas.control.v1.DeploymentRecord.deactivated_at:type_name -> google.protobuf.Timestamp
+	139, // 63: agentpaas.control.v1.CreateDeploymentRequest.nested_package_digests:type_name -> agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
+	140, // 64: agentpaas.control.v1.DeploymentRecord.nested_package_digests:type_name -> agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
+	141, // 65: agentpaas.control.v1.DeploymentRecord.created_at:type_name -> google.protobuf.Timestamp
+	141, // 66: agentpaas.control.v1.DeploymentRecord.activated_at:type_name -> google.protobuf.Timestamp
+	141, // 67: agentpaas.control.v1.DeploymentRecord.deactivated_at:type_name -> google.protobuf.Timestamp
 	89,  // 68: agentpaas.control.v1.CreateDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
 	78,  // 69: agentpaas.control.v1.CreateDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	89,  // 70: agentpaas.control.v1.GetDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
@@ -10930,7 +11527,7 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	89,  // 75: agentpaas.control.v1.DeactivateDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
 	78,  // 76: agentpaas.control.v1.DeactivateDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	3,   // 77: agentpaas.control.v1.CreateDeploymentAliasRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
-	134, // 78: agentpaas.control.v1.DeploymentAliasRecord.updated_at:type_name -> google.protobuf.Timestamp
+	141, // 78: agentpaas.control.v1.DeploymentAliasRecord.updated_at:type_name -> google.protobuf.Timestamp
 	98,  // 79: agentpaas.control.v1.CreateDeploymentAliasResponse.alias:type_name -> agentpaas.control.v1.DeploymentAliasRecord
 	78,  // 80: agentpaas.control.v1.CreateDeploymentAliasResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	98,  // 81: agentpaas.control.v1.GetDeploymentAliasResponse.alias:type_name -> agentpaas.control.v1.DeploymentAliasRecord
@@ -10943,126 +11540,138 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	4,   // 88: agentpaas.control.v1.InvokeDeploymentResponse.outcome:type_name -> agentpaas.control.v1.AdmissionOutcomeCode
 	107, // 89: agentpaas.control.v1.InvokeDeploymentResponse.ceilings:type_name -> agentpaas.control.v1.AbsoluteCeilingsSnapshot
 	78,  // 90: agentpaas.control.v1.InvokeDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	134, // 91: agentpaas.control.v1.InvokeDeploymentResponse.admitted_at:type_name -> google.protobuf.Timestamp
-	134, // 92: agentpaas.control.v1.WorkflowRecord.created_at:type_name -> google.protobuf.Timestamp
-	134, // 93: agentpaas.control.v1.WorkflowRecord.updated_at:type_name -> google.protobuf.Timestamp
-	134, // 94: agentpaas.control.v1.WorkflowRecord.terminated_at:type_name -> google.protobuf.Timestamp
-	110, // 95: agentpaas.control.v1.CreateWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
-	78,  // 96: agentpaas.control.v1.CreateWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	110, // 97: agentpaas.control.v1.GetWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
-	78,  // 98: agentpaas.control.v1.GetWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	3,   // 99: agentpaas.control.v1.CancelWorkflowRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
-	110, // 100: agentpaas.control.v1.CancelWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
-	78,  // 101: agentpaas.control.v1.CancelWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	6,   // 102: agentpaas.control.v1.SetWorkflowDesiredStateRequest.desired_command:type_name -> agentpaas.control.v1.ControlCommand
-	3,   // 103: agentpaas.control.v1.SetWorkflowDesiredStateRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
-	6,   // 104: agentpaas.control.v1.SetWorkflowDesiredStateResponse.desired_command:type_name -> agentpaas.control.v1.ControlCommand
-	78,  // 105: agentpaas.control.v1.SetWorkflowDesiredStateResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	3,   // 106: agentpaas.control.v1.RestartWorkflowRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
-	78,  // 107: agentpaas.control.v1.RestartWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	3,   // 108: agentpaas.control.v1.AmendLimitsRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
-	107, // 109: agentpaas.control.v1.AmendLimitsResponse.ceilings:type_name -> agentpaas.control.v1.AbsoluteCeilingsSnapshot
-	78,  // 110: agentpaas.control.v1.AmendLimitsResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	134, // 111: agentpaas.control.v1.WorkflowNodeStatus.created_at:type_name -> google.protobuf.Timestamp
-	134, // 112: agentpaas.control.v1.WorkflowNodeStatus.updated_at:type_name -> google.protobuf.Timestamp
-	134, // 113: agentpaas.control.v1.ServiceBindingStatus.created_at:type_name -> google.protobuf.Timestamp
-	134, // 114: agentpaas.control.v1.ServiceBindingStatus.updated_at:type_name -> google.protobuf.Timestamp
-	134, // 115: agentpaas.control.v1.HandoffMetadata.created_at:type_name -> google.protobuf.Timestamp
-	134, // 116: agentpaas.control.v1.ChildBatchStatus.created_at:type_name -> google.protobuf.Timestamp
-	134, // 117: agentpaas.control.v1.ChildBatchStatus.updated_at:type_name -> google.protobuf.Timestamp
-	134, // 118: agentpaas.control.v1.ChildResult.finished_at:type_name -> google.protobuf.Timestamp
-	110, // 119: agentpaas.control.v1.GetWorkflowGraphResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
-	122, // 120: agentpaas.control.v1.GetWorkflowGraphResponse.nodes:type_name -> agentpaas.control.v1.WorkflowNodeStatus
-	123, // 121: agentpaas.control.v1.GetWorkflowGraphResponse.services:type_name -> agentpaas.control.v1.ServiceBindingStatus
-	124, // 122: agentpaas.control.v1.GetWorkflowGraphResponse.handoffs:type_name -> agentpaas.control.v1.HandoffMetadata
-	125, // 123: agentpaas.control.v1.GetWorkflowGraphResponse.child_batches:type_name -> agentpaas.control.v1.ChildBatchStatus
-	126, // 124: agentpaas.control.v1.GetWorkflowGraphResponse.child_results:type_name -> agentpaas.control.v1.ChildResult
-	78,  // 125: agentpaas.control.v1.GetWorkflowGraphResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	7,   // 126: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
-	9,   // 127: agentpaas.control.v1.ControlService.ExportPreview:input_type -> agentpaas.control.v1.ExportPreviewRequest
-	12,  // 128: agentpaas.control.v1.ControlService.Export:input_type -> agentpaas.control.v1.ExportRequest
-	14,  // 129: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
-	17,  // 130: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
-	19,  // 131: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
-	21,  // 132: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
-	23,  // 133: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
-	25,  // 134: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
-	27,  // 135: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
-	29,  // 136: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
-	35,  // 137: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
-	37,  // 138: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
-	40,  // 139: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
-	47,  // 140: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
-	50,  // 141: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
-	52,  // 142: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
-	54,  // 143: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
-	56,  // 144: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
-	59,  // 145: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
-	62,  // 146: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
-	64,  // 147: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
-	66,  // 148: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
-	69,  // 149: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
-	88,  // 150: agentpaas.control.v1.ControlService.CreateDeployment:input_type -> agentpaas.control.v1.CreateDeploymentRequest
-	91,  // 151: agentpaas.control.v1.ControlService.GetDeployment:input_type -> agentpaas.control.v1.GetDeploymentRequest
-	93,  // 152: agentpaas.control.v1.ControlService.ListDeployments:input_type -> agentpaas.control.v1.ListDeploymentsRequest
-	95,  // 153: agentpaas.control.v1.ControlService.DeactivateDeployment:input_type -> agentpaas.control.v1.DeactivateDeploymentRequest
-	97,  // 154: agentpaas.control.v1.ControlService.CreateDeploymentAlias:input_type -> agentpaas.control.v1.CreateDeploymentAliasRequest
-	100, // 155: agentpaas.control.v1.ControlService.GetDeploymentAlias:input_type -> agentpaas.control.v1.GetDeploymentAliasRequest
-	102, // 156: agentpaas.control.v1.ControlService.ListDeploymentAliases:input_type -> agentpaas.control.v1.ListDeploymentAliasesRequest
-	104, // 157: agentpaas.control.v1.ControlService.CasDeploymentAlias:input_type -> agentpaas.control.v1.CasDeploymentAliasRequest
-	106, // 158: agentpaas.control.v1.ControlService.InvokeDeployment:input_type -> agentpaas.control.v1.InvokeDeploymentRequest
-	109, // 159: agentpaas.control.v1.ControlService.CreateWorkflow:input_type -> agentpaas.control.v1.CreateWorkflowRequest
-	112, // 160: agentpaas.control.v1.ControlService.GetWorkflow:input_type -> agentpaas.control.v1.GetWorkflowRequest
-	114, // 161: agentpaas.control.v1.ControlService.CancelWorkflow:input_type -> agentpaas.control.v1.CancelWorkflowRequest
-	116, // 162: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:input_type -> agentpaas.control.v1.SetWorkflowDesiredStateRequest
-	118, // 163: agentpaas.control.v1.ControlService.RestartWorkflow:input_type -> agentpaas.control.v1.RestartWorkflowRequest
-	120, // 164: agentpaas.control.v1.ControlService.AmendLimits:input_type -> agentpaas.control.v1.AmendLimitsRequest
-	127, // 165: agentpaas.control.v1.ControlService.GetWorkflowGraph:input_type -> agentpaas.control.v1.GetWorkflowGraphRequest
-	8,   // 166: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
-	11,  // 167: agentpaas.control.v1.ControlService.ExportPreview:output_type -> agentpaas.control.v1.ExportPreviewResponse
-	13,  // 168: agentpaas.control.v1.ControlService.Export:output_type -> agentpaas.control.v1.ExportResponse
-	16,  // 169: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
-	18,  // 170: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
-	20,  // 171: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
-	22,  // 172: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
-	24,  // 173: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
-	26,  // 174: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
-	28,  // 175: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
-	34,  // 176: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
-	36,  // 177: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
-	39,  // 178: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
-	42,  // 179: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
-	49,  // 180: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
-	51,  // 181: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
-	53,  // 182: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
-	55,  // 183: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
-	58,  // 184: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
-	60,  // 185: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
-	63,  // 186: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
-	65,  // 187: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
-	67,  // 188: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
-	70,  // 189: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
-	90,  // 190: agentpaas.control.v1.ControlService.CreateDeployment:output_type -> agentpaas.control.v1.CreateDeploymentResponse
-	92,  // 191: agentpaas.control.v1.ControlService.GetDeployment:output_type -> agentpaas.control.v1.GetDeploymentResponse
-	94,  // 192: agentpaas.control.v1.ControlService.ListDeployments:output_type -> agentpaas.control.v1.ListDeploymentsResponse
-	96,  // 193: agentpaas.control.v1.ControlService.DeactivateDeployment:output_type -> agentpaas.control.v1.DeactivateDeploymentResponse
-	99,  // 194: agentpaas.control.v1.ControlService.CreateDeploymentAlias:output_type -> agentpaas.control.v1.CreateDeploymentAliasResponse
-	101, // 195: agentpaas.control.v1.ControlService.GetDeploymentAlias:output_type -> agentpaas.control.v1.GetDeploymentAliasResponse
-	103, // 196: agentpaas.control.v1.ControlService.ListDeploymentAliases:output_type -> agentpaas.control.v1.ListDeploymentAliasesResponse
-	105, // 197: agentpaas.control.v1.ControlService.CasDeploymentAlias:output_type -> agentpaas.control.v1.CasDeploymentAliasResponse
-	108, // 198: agentpaas.control.v1.ControlService.InvokeDeployment:output_type -> agentpaas.control.v1.InvokeDeploymentResponse
-	111, // 199: agentpaas.control.v1.ControlService.CreateWorkflow:output_type -> agentpaas.control.v1.CreateWorkflowResponse
-	113, // 200: agentpaas.control.v1.ControlService.GetWorkflow:output_type -> agentpaas.control.v1.GetWorkflowResponse
-	115, // 201: agentpaas.control.v1.ControlService.CancelWorkflow:output_type -> agentpaas.control.v1.CancelWorkflowResponse
-	117, // 202: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:output_type -> agentpaas.control.v1.SetWorkflowDesiredStateResponse
-	119, // 203: agentpaas.control.v1.ControlService.RestartWorkflow:output_type -> agentpaas.control.v1.RestartWorkflowResponse
-	121, // 204: agentpaas.control.v1.ControlService.AmendLimits:output_type -> agentpaas.control.v1.AmendLimitsResponse
-	128, // 205: agentpaas.control.v1.ControlService.GetWorkflowGraph:output_type -> agentpaas.control.v1.GetWorkflowGraphResponse
-	166, // [166:206] is the sub-list for method output_type
-	126, // [126:166] is the sub-list for method input_type
-	126, // [126:126] is the sub-list for extension type_name
-	126, // [126:126] is the sub-list for extension extendee
-	0,   // [0:126] is the sub-list for field type_name
+	141, // 91: agentpaas.control.v1.InvokeDeploymentResponse.admitted_at:type_name -> google.protobuf.Timestamp
+	141, // 92: agentpaas.control.v1.InvocationRecord.admitted_at:type_name -> google.protobuf.Timestamp
+	109, // 93: agentpaas.control.v1.GetInvocationResponse.invocation:type_name -> agentpaas.control.v1.InvocationRecord
+	78,  // 94: agentpaas.control.v1.GetInvocationResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	78,  // 95: agentpaas.control.v1.GetRunStatusResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	141, // 96: agentpaas.control.v1.GetRunResultResponse.finished_at:type_name -> google.protobuf.Timestamp
+	78,  // 97: agentpaas.control.v1.GetRunResultResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	141, // 98: agentpaas.control.v1.WorkflowRecord.created_at:type_name -> google.protobuf.Timestamp
+	141, // 99: agentpaas.control.v1.WorkflowRecord.updated_at:type_name -> google.protobuf.Timestamp
+	141, // 100: agentpaas.control.v1.WorkflowRecord.terminated_at:type_name -> google.protobuf.Timestamp
+	117, // 101: agentpaas.control.v1.CreateWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	78,  // 102: agentpaas.control.v1.CreateWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	117, // 103: agentpaas.control.v1.GetWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	78,  // 104: agentpaas.control.v1.GetWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 105: agentpaas.control.v1.CancelWorkflowRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	117, // 106: agentpaas.control.v1.CancelWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	78,  // 107: agentpaas.control.v1.CancelWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	6,   // 108: agentpaas.control.v1.SetWorkflowDesiredStateRequest.desired_command:type_name -> agentpaas.control.v1.ControlCommand
+	3,   // 109: agentpaas.control.v1.SetWorkflowDesiredStateRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	6,   // 110: agentpaas.control.v1.SetWorkflowDesiredStateResponse.desired_command:type_name -> agentpaas.control.v1.ControlCommand
+	78,  // 111: agentpaas.control.v1.SetWorkflowDesiredStateResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 112: agentpaas.control.v1.RestartWorkflowRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	78,  // 113: agentpaas.control.v1.RestartWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	3,   // 114: agentpaas.control.v1.AmendLimitsRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
+	107, // 115: agentpaas.control.v1.AmendLimitsResponse.ceilings:type_name -> agentpaas.control.v1.AbsoluteCeilingsSnapshot
+	78,  // 116: agentpaas.control.v1.AmendLimitsResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	141, // 117: agentpaas.control.v1.WorkflowNodeStatus.created_at:type_name -> google.protobuf.Timestamp
+	141, // 118: agentpaas.control.v1.WorkflowNodeStatus.updated_at:type_name -> google.protobuf.Timestamp
+	141, // 119: agentpaas.control.v1.ServiceBindingStatus.created_at:type_name -> google.protobuf.Timestamp
+	141, // 120: agentpaas.control.v1.ServiceBindingStatus.updated_at:type_name -> google.protobuf.Timestamp
+	141, // 121: agentpaas.control.v1.HandoffMetadata.created_at:type_name -> google.protobuf.Timestamp
+	141, // 122: agentpaas.control.v1.ChildBatchStatus.created_at:type_name -> google.protobuf.Timestamp
+	141, // 123: agentpaas.control.v1.ChildBatchStatus.updated_at:type_name -> google.protobuf.Timestamp
+	141, // 124: agentpaas.control.v1.ChildResult.finished_at:type_name -> google.protobuf.Timestamp
+	117, // 125: agentpaas.control.v1.GetWorkflowGraphResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
+	129, // 126: agentpaas.control.v1.GetWorkflowGraphResponse.nodes:type_name -> agentpaas.control.v1.WorkflowNodeStatus
+	130, // 127: agentpaas.control.v1.GetWorkflowGraphResponse.services:type_name -> agentpaas.control.v1.ServiceBindingStatus
+	131, // 128: agentpaas.control.v1.GetWorkflowGraphResponse.handoffs:type_name -> agentpaas.control.v1.HandoffMetadata
+	132, // 129: agentpaas.control.v1.GetWorkflowGraphResponse.child_batches:type_name -> agentpaas.control.v1.ChildBatchStatus
+	133, // 130: agentpaas.control.v1.GetWorkflowGraphResponse.child_results:type_name -> agentpaas.control.v1.ChildResult
+	78,  // 131: agentpaas.control.v1.GetWorkflowGraphResponse.error:type_name -> agentpaas.control.v1.TypedControlError
+	7,   // 132: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
+	9,   // 133: agentpaas.control.v1.ControlService.ExportPreview:input_type -> agentpaas.control.v1.ExportPreviewRequest
+	12,  // 134: agentpaas.control.v1.ControlService.Export:input_type -> agentpaas.control.v1.ExportRequest
+	14,  // 135: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
+	17,  // 136: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
+	19,  // 137: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
+	21,  // 138: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
+	23,  // 139: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
+	25,  // 140: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
+	27,  // 141: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
+	29,  // 142: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
+	35,  // 143: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
+	37,  // 144: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
+	40,  // 145: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
+	47,  // 146: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
+	50,  // 147: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
+	52,  // 148: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
+	54,  // 149: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
+	56,  // 150: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
+	59,  // 151: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
+	62,  // 152: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
+	64,  // 153: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
+	66,  // 154: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
+	69,  // 155: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
+	88,  // 156: agentpaas.control.v1.ControlService.CreateDeployment:input_type -> agentpaas.control.v1.CreateDeploymentRequest
+	91,  // 157: agentpaas.control.v1.ControlService.GetDeployment:input_type -> agentpaas.control.v1.GetDeploymentRequest
+	93,  // 158: agentpaas.control.v1.ControlService.ListDeployments:input_type -> agentpaas.control.v1.ListDeploymentsRequest
+	95,  // 159: agentpaas.control.v1.ControlService.DeactivateDeployment:input_type -> agentpaas.control.v1.DeactivateDeploymentRequest
+	97,  // 160: agentpaas.control.v1.ControlService.CreateDeploymentAlias:input_type -> agentpaas.control.v1.CreateDeploymentAliasRequest
+	100, // 161: agentpaas.control.v1.ControlService.GetDeploymentAlias:input_type -> agentpaas.control.v1.GetDeploymentAliasRequest
+	102, // 162: agentpaas.control.v1.ControlService.ListDeploymentAliases:input_type -> agentpaas.control.v1.ListDeploymentAliasesRequest
+	104, // 163: agentpaas.control.v1.ControlService.CasDeploymentAlias:input_type -> agentpaas.control.v1.CasDeploymentAliasRequest
+	106, // 164: agentpaas.control.v1.ControlService.InvokeDeployment:input_type -> agentpaas.control.v1.InvokeDeploymentRequest
+	110, // 165: agentpaas.control.v1.ControlService.GetInvocation:input_type -> agentpaas.control.v1.GetInvocationRequest
+	112, // 166: agentpaas.control.v1.ControlService.GetRunStatus:input_type -> agentpaas.control.v1.GetRunStatusRequest
+	114, // 167: agentpaas.control.v1.ControlService.GetRunResult:input_type -> agentpaas.control.v1.GetRunResultRequest
+	116, // 168: agentpaas.control.v1.ControlService.CreateWorkflow:input_type -> agentpaas.control.v1.CreateWorkflowRequest
+	119, // 169: agentpaas.control.v1.ControlService.GetWorkflow:input_type -> agentpaas.control.v1.GetWorkflowRequest
+	121, // 170: agentpaas.control.v1.ControlService.CancelWorkflow:input_type -> agentpaas.control.v1.CancelWorkflowRequest
+	123, // 171: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:input_type -> agentpaas.control.v1.SetWorkflowDesiredStateRequest
+	125, // 172: agentpaas.control.v1.ControlService.RestartWorkflow:input_type -> agentpaas.control.v1.RestartWorkflowRequest
+	127, // 173: agentpaas.control.v1.ControlService.AmendLimits:input_type -> agentpaas.control.v1.AmendLimitsRequest
+	134, // 174: agentpaas.control.v1.ControlService.GetWorkflowGraph:input_type -> agentpaas.control.v1.GetWorkflowGraphRequest
+	8,   // 175: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
+	11,  // 176: agentpaas.control.v1.ControlService.ExportPreview:output_type -> agentpaas.control.v1.ExportPreviewResponse
+	13,  // 177: agentpaas.control.v1.ControlService.Export:output_type -> agentpaas.control.v1.ExportResponse
+	16,  // 178: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
+	18,  // 179: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
+	20,  // 180: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
+	22,  // 181: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
+	24,  // 182: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
+	26,  // 183: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
+	28,  // 184: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
+	34,  // 185: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
+	36,  // 186: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
+	39,  // 187: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
+	42,  // 188: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
+	49,  // 189: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
+	51,  // 190: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
+	53,  // 191: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
+	55,  // 192: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
+	58,  // 193: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
+	60,  // 194: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
+	63,  // 195: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
+	65,  // 196: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
+	67,  // 197: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
+	70,  // 198: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
+	90,  // 199: agentpaas.control.v1.ControlService.CreateDeployment:output_type -> agentpaas.control.v1.CreateDeploymentResponse
+	92,  // 200: agentpaas.control.v1.ControlService.GetDeployment:output_type -> agentpaas.control.v1.GetDeploymentResponse
+	94,  // 201: agentpaas.control.v1.ControlService.ListDeployments:output_type -> agentpaas.control.v1.ListDeploymentsResponse
+	96,  // 202: agentpaas.control.v1.ControlService.DeactivateDeployment:output_type -> agentpaas.control.v1.DeactivateDeploymentResponse
+	99,  // 203: agentpaas.control.v1.ControlService.CreateDeploymentAlias:output_type -> agentpaas.control.v1.CreateDeploymentAliasResponse
+	101, // 204: agentpaas.control.v1.ControlService.GetDeploymentAlias:output_type -> agentpaas.control.v1.GetDeploymentAliasResponse
+	103, // 205: agentpaas.control.v1.ControlService.ListDeploymentAliases:output_type -> agentpaas.control.v1.ListDeploymentAliasesResponse
+	105, // 206: agentpaas.control.v1.ControlService.CasDeploymentAlias:output_type -> agentpaas.control.v1.CasDeploymentAliasResponse
+	108, // 207: agentpaas.control.v1.ControlService.InvokeDeployment:output_type -> agentpaas.control.v1.InvokeDeploymentResponse
+	111, // 208: agentpaas.control.v1.ControlService.GetInvocation:output_type -> agentpaas.control.v1.GetInvocationResponse
+	113, // 209: agentpaas.control.v1.ControlService.GetRunStatus:output_type -> agentpaas.control.v1.GetRunStatusResponse
+	115, // 210: agentpaas.control.v1.ControlService.GetRunResult:output_type -> agentpaas.control.v1.GetRunResultResponse
+	118, // 211: agentpaas.control.v1.ControlService.CreateWorkflow:output_type -> agentpaas.control.v1.CreateWorkflowResponse
+	120, // 212: agentpaas.control.v1.ControlService.GetWorkflow:output_type -> agentpaas.control.v1.GetWorkflowResponse
+	122, // 213: agentpaas.control.v1.ControlService.CancelWorkflow:output_type -> agentpaas.control.v1.CancelWorkflowResponse
+	124, // 214: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:output_type -> agentpaas.control.v1.SetWorkflowDesiredStateResponse
+	126, // 215: agentpaas.control.v1.ControlService.RestartWorkflow:output_type -> agentpaas.control.v1.RestartWorkflowResponse
+	128, // 216: agentpaas.control.v1.ControlService.AmendLimits:output_type -> agentpaas.control.v1.AmendLimitsResponse
+	135, // 217: agentpaas.control.v1.ControlService.GetWorkflowGraph:output_type -> agentpaas.control.v1.GetWorkflowGraphResponse
+	175, // [175:218] is the sub-list for method output_type
+	132, // [132:175] is the sub-list for method input_type
+	132, // [132:132] is the sub-list for extension type_name
+	132, // [132:132] is the sub-list for extension extendee
+	0,   // [0:132] is the sub-list for field type_name
 }
 
 func init() { file_control_v1_control_proto_init() }
@@ -11076,7 +11685,7 @@ func file_control_v1_control_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_v1_control_proto_rawDesc), len(file_control_v1_control_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   127,
+			NumMessages:   134,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
