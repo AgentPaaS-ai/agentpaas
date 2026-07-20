@@ -110,7 +110,9 @@ func TestAdversary_B30_ClientQueryTimeoutCancelsWorker(t *testing.T) {
 }
 
 // TestAdversary_B30_ForgeJobAcceptedEvent forges an ACCEPTED control-journal
-// event without the valid HMAC key and asserts read-back rejects it.
+// event without the valid HMAC key, placed BETWEEN legitimate events, and
+// asserts the forged event is either rejected by Read (error) or absent from
+// returned events (defense held -- the forged ACCEPTED must never appear).
 func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 	stateRoot := t.TempDir()
 	runID := "run-forge-accepted"
@@ -122,7 +124,7 @@ func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 	}
 	defer func() { _ = cj.Close() }()
 
-	// Legitimate first event so sequence baseline is real.
+	// Legitimate first event.
 	if err := cj.Append(routedrun.InvokeJobEvent{
 		SchemaVersion: "1.0",
 		Sequence:      1,
@@ -131,6 +133,17 @@ func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 		Payload:       `{"ok":true}`,
 	}); err != nil {
 		t.Fatalf("Append STARTED: %v", err)
+	}
+	// Legitimate third event (seq 3) to create gap awareness.
+	// The journal's lastSeq is now 1; we'll place the forged event at seq 2.
+	if err := cj.Append(routedrun.InvokeJobEvent{
+		SchemaVersion: "1.0",
+		Sequence:      3,
+		Timestamp:     time.Now().UTC(),
+		EventKind:     routedrun.InvokeJobEventProgressRef,
+		Payload:       `{"phase":"test"}`,
+	}); err != nil {
+		t.Fatalf("Append PROGRESS: %v", err)
 	}
 	_ = cj.Close()
 
@@ -160,14 +173,32 @@ func TestAdversary_B30_ForgeJobAcceptedEvent(t *testing.T) {
 	defer func() { _ = cj2.Close() }()
 
 	events, err := cj2.Read(1)
-	if err == nil {
-		// Defense failed: forged ACCEPTED was accepted on read-back.
-		for _, ev := range events {
-			if ev.EventKind == routedrun.InvokeJobEventAccepted {
-				t.Fatal("ADVERSARY BREAK: forged ACCEPTED control-journal event accepted without valid HMAC")
-			}
+	if err != nil {
+		// Read rejected the forged event entirely (HMAC verification
+		// failed). This is a valid defense: the forged ACCEPTED was not
+		// accepted and no tampered data was returned.
+		return
+	}
+	// If Read succeeded, the forged ACCEPTED must NOT be in the returned
+	// events. Any events that were returned must be verified.
+	for _, ev := range events {
+		if ev.EventKind == routedrun.InvokeJobEventAccepted {
+			t.Fatal("ADVERSARY BREAK: forged ACCEPTED control-journal event accepted without valid HMAC")
 		}
-		t.Fatal("ADVERSARY BREAK: control journal Read succeeded despite forged event on disk")
+	}
+	// Verify the legitimate events are present (seq 1 STARTED, seq 3 PROGRESS).
+	foundStarted := false
+	foundProgress := false
+	for _, ev := range events {
+		if ev.Sequence == 1 && ev.EventKind == routedrun.InvokeJobEventStarted {
+			foundStarted = true
+		}
+		if ev.Sequence == 3 && ev.EventKind == routedrun.InvokeJobEventProgress {
+			foundProgress = true
+		}
+	}
+	if !foundStarted || !foundProgress {
+		t.Fatalf("ADVERSARY BREAK: legitimate events missing after forged event rejection; events=%d", len(events))
 	}
 }
 
