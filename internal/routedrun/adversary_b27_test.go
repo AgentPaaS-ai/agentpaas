@@ -405,11 +405,13 @@ func TestAdversary_B27_CheckpointDigestMismatch(t *testing.T) {
 		SafeToResume:  true,
 		Sequence:      1,
 		CreatedAt:     time.Now().UTC(),
-		CheckpointDigest: "tampered-digest",
 	}
 	if err := store.SaveCheckpoint(ctx, cp); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
+
+	// Tamper with the checkpoint file on disk: inject a bad digest.
+	tamperDigest(t, store, CheckpointID("cp-a1-1"), "tampered-digest")
 
 	loader := NewResumeCheckpointLoader(store)
 	_, err := loader.LoadResumeCheckpoint(ctx, AttemptID("a1"), RunID("r1"), ResumeReasonFailureContinuation)
