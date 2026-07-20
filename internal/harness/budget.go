@@ -9,11 +9,17 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
 
 const (
 	StatusBudgetExceeded = "BUDGET_EXCEEDED"
 
+	// defaultWallClockBudget is the legacy v0.2.3 wall-clock budget fallback.
+	// It is used ONLY when no TimeEnvelope is available on the durable path
+	// (v0.2.3 compat) and no explicit WallClockSeconds override is set.
+	// On the durable path the budget is derived from the TimeEnvelope's
+	// ActiveTimeRemainingMs (B30-T03 Part B, ceiling 4).
 	defaultWallClockBudget = 120 * time.Second
 	defaultMaxIterations   = 10000
 	defaultMaxTokens       = 100000
@@ -33,6 +39,16 @@ type BudgetConfig struct {
 	WallClockSeconds int64 `json:"wall_clock_seconds,omitempty"`
 	MaxIterations    int64 `json:"max_iterations,omitempty"`
 	MaxTokens        int64 `json:"max_tokens,omitempty"`
+
+	// TimeEnvelope is the authoritative active-time envelope (B30-T03 Part B,
+	// ceiling 4). When present and WallClockSeconds is not explicitly set, the
+	// wall-clock budget is derived from env.ActiveTimeRemainingMs(nowMs) rather
+	// than the legacy 120s default. nil = legacy v0.2.3 compat path.
+	TimeEnvelope *routedrun.TimeEnvelope `json:"-"`
+
+	// NowMonotonicMs supplies the monotonic millisecond timestamp used to
+	// evaluate the envelope. When nil, time.Now().UnixMilli() is used.
+	NowMonotonicMs func() int64 `json:"-"`
 }
 
 type budgetExceededError struct {
@@ -83,7 +99,13 @@ func newBudgetEnforcer(cfg BudgetConfig, runID, invokeID string, appender AuditA
 }
 
 func normalizeBudgetConfig(cfg BudgetConfig) BudgetConfig {
-	if cfg.WallClockSeconds <= 0 {
+	// Explicit WallClockSeconds override wins over everything (policy can still
+	// pin the budget). When unset and a TimeEnvelope is present, the envelope
+	// drives the budget via ActiveTimeRemainingMs (computed at read time in
+	// WallClockBudget), so we do NOT assign the legacy default here. Only when
+	// neither override nor envelope is present do we fall back to the legacy
+	// 120s defaultWallClockBudget (v0.2.3 compat).
+	if cfg.WallClockSeconds <= 0 && cfg.TimeEnvelope == nil {
 		cfg.WallClockSeconds = int64(defaultWallClockBudget / time.Second)
 	}
 	if cfg.MaxIterations <= 0 {
@@ -91,6 +113,9 @@ func normalizeBudgetConfig(cfg BudgetConfig) BudgetConfig {
 	}
 	if cfg.MaxTokens <= 0 {
 		cfg.MaxTokens = defaultMaxTokens
+	}
+	if cfg.NowMonotonicMs == nil {
+		cfg.NowMonotonicMs = func() int64 { return time.Now().UnixMilli() }
 	}
 	return cfg
 }
@@ -103,7 +128,19 @@ func (b *BudgetEnforcer) Start() {
 }
 
 func (b *BudgetEnforcer) WallClockBudget() time.Duration {
-	return time.Duration(b.cfg.WallClockSeconds) * time.Second
+	return time.Duration(b.WallClockBudgetMs()) * time.Millisecond
+}
+
+// WallClockBudgetMs returns the wall-clock budget in milliseconds. When a
+// TimeEnvelope is attached and no explicit WallClockSeconds override is set,
+// the budget is the envelope's ActiveTimeRemainingMs(nowMs) (B30-T03 Part B,
+// ceiling 4). Otherwise the explicit override (or the legacy 120s default)
+// applies.
+func (b *BudgetEnforcer) WallClockBudgetMs() int64 {
+	if b.cfg.TimeEnvelope != nil && b.cfg.WallClockSeconds <= 0 {
+		return b.cfg.TimeEnvelope.ActiveTimeRemainingMs(b.cfg.NowMonotonicMs())
+	}
+	return b.cfg.WallClockSeconds * int64(time.Second/time.Millisecond)
 }
 
 func (b *BudgetEnforcer) Elapsed() time.Duration {
