@@ -28,6 +28,7 @@ var (
 	ErrUnknownSchemaVersion  = errors.New("routedrun: unknown or unsupported schema version")
 	ErrInvalidArgument       = errors.New("routedrun: invalid argument")
 	ErrLeaseCallerSelected   = errors.New("routedrun: caller-selected lease id rejected")
+	ErrJournalSequenceConflict = errors.New("routedrun: journal sequence conflict")
 )
 
 const (

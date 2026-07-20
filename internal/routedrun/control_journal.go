@@ -222,7 +222,7 @@ func (cj *ControlJournal) Append(event InvokeJobEvent) error {
 		event.Sequence = wantSeq
 	}
 	if event.Sequence != wantSeq {
-		return fmt.Errorf("%w: sequence %d want %d (monotonic, no gaps)", ErrInvalidArgument, event.Sequence, wantSeq)
+		return fmt.Errorf("%w: sequence %d want %d (monotonic, no gaps)", ErrJournalSequenceConflict, event.Sequence, wantSeq)
 	}
 	// Compute HMAC over (sequence || timestamp || event_kind || payload).
 	event.HMAC = cj.computeHMAC(event)

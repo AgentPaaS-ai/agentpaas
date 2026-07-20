@@ -221,20 +221,29 @@ func (s *Supervisor) revokeLeaseAndFail(ctx context.Context, att *routedrun.Atte
 			return err
 		}
 		// Append the FAILED control-journal event (durable evidence of the
-		// restart reconciliation).
+		// restart reconciliation). Retry on sequence conflicts (F17).
 		journal, err := s.journals.OpenControlJournal(att.RunID, att.AttemptID)
 		if err == nil {
-			next := int64(1)
-			if evs, rerr := journal.Read(1); rerr == nil && len(evs) > 0 {
-				next = evs[len(evs)-1].Sequence + 1
+			for attempt := 0; attempt < 3; attempt++ {
+				next := int64(1)
+				if evs, rerr := journal.Read(1); rerr == nil && len(evs) > 0 {
+					next = evs[len(evs)-1].Sequence + 1
+				}
+				aerr := journal.Append(routedrun.InvokeJobEvent{
+					SchemaVersion: "1.0",
+					Sequence:      next,
+					Timestamp:     now,
+					EventKind:     routedrun.InvokeJobEventFailed,
+					Payload:       `{"reason":"daemon_restart"}`,
+				})
+				if aerr == nil {
+					break
+				}
+				if !errors.Is(aerr, routedrun.ErrJournalSequenceConflict) {
+					_ = journal.Close()
+					return fmt.Errorf("reconcile: append FAILED journal event: %w", aerr)
+				}
 			}
-			_ = journal.Append(routedrun.InvokeJobEvent{
-				SchemaVersion: "1.0",
-				Sequence:      next,
-				Timestamp:     now,
-				EventKind:     routedrun.InvokeJobEventFailed,
-				Payload:       `{"reason":"daemon_restart"}`,
-			})
 			_ = journal.Close()
 		}
 		s.markTerminalForRestart(att)
