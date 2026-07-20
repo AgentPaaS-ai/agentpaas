@@ -211,7 +211,14 @@ type ActiveTimeLedger struct {
 	ConsumedMs int64 `json:"consumed_ms"`
 
 	// Currently running segment start (nil if frozen/paused).
+	// Monotonic millisecond timestamp.
 	RunningSegmentStartMs *int64 `json:"running_segment_start_ms,omitempty"`
+
+	// SegmentStartWallMs is the wall-clock time (Unix millis) recorded
+	// alongside RunningSegmentStartMs. On daemon restart, if the monotonic
+	// clock has reset (nowMs < segStart), the wall-clock delta is used
+	// instead to avoid charging an arbitrary duration (F20).
+	SegmentStartWallMs *int64 `json:"segment_start_wall_ms,omitempty"`
 
 	// Frozen state: when PAUSED or NEEDS_REPLAN, the consumed time at freeze.
 	FrozenConsumedMs int64 `json:"frozen_consumed_ms,omitempty"`

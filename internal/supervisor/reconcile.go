@@ -221,20 +221,29 @@ func (s *Supervisor) revokeLeaseAndFail(ctx context.Context, att *routedrun.Atte
 			return err
 		}
 		// Append the FAILED control-journal event (durable evidence of the
-		// restart reconciliation).
+		// restart reconciliation). Retry on sequence conflicts (F17).
 		journal, err := s.journals.OpenControlJournal(att.RunID, att.AttemptID)
 		if err == nil {
-			next := int64(1)
-			if evs, rerr := journal.Read(1); rerr == nil && len(evs) > 0 {
-				next = evs[len(evs)-1].Sequence + 1
+			for attempt := 0; attempt < 3; attempt++ {
+				next := int64(1)
+				if evs, rerr := journal.Read(1); rerr == nil && len(evs) > 0 {
+					next = evs[len(evs)-1].Sequence + 1
+				}
+				aerr := journal.Append(routedrun.InvokeJobEvent{
+					SchemaVersion: "1.0",
+					Sequence:      next,
+					Timestamp:     now,
+					EventKind:     routedrun.InvokeJobEventFailed,
+					Payload:       `{"reason":"daemon_restart"}`,
+				})
+				if aerr == nil {
+					break
+				}
+				if !errors.Is(aerr, routedrun.ErrJournalSequenceConflict) {
+					_ = journal.Close()
+					return fmt.Errorf("reconcile: append FAILED journal event: %w", aerr)
+				}
 			}
-			_ = journal.Append(routedrun.InvokeJobEvent{
-				SchemaVersion: "1.0",
-				Sequence:      next,
-				Timestamp:     now,
-				EventKind:     routedrun.InvokeJobEventFailed,
-				Payload:       `{"reason":"daemon_restart"}`,
-			})
 			_ = journal.Close()
 		}
 		s.markTerminalForRestart(att)
@@ -320,34 +329,55 @@ func (s *Supervisor) reconcileActiveTime(ctx context.Context, workflowID routedr
 	}
 	// PAUSED and NEEDS_REPLAN are frozen: close the open segment WITHOUT
 	// charging wall time. The consumed total is preserved (the time already
-	// charged before the freeze remains).
+	// charged before the freeze remains). Record FrozenConsumedMs for
+	// consistency with the store's syncActiveTimeOnStatusChangeLocked (F21).
 	if wf.Status == routedrun.WorkflowStatusPaused || wf.Status == routedrun.WorkflowStatusNeedsReplan {
 		ledger.RunningSegmentStartMs = nil
+		ledger.SegmentStartWallMs = nil
+		ledger.FrozenConsumedMs = ledger.ConsumedMs
 		gen, err := s.store.GetActiveTimeLedgerGeneration(ctx, workflowID)
 		if err != nil {
 			return err
 		}
 		return s.store.PutActiveTimeLedger(ctx, workflowID, ledger, gen)
 	}
-	// PAUSE_REQUESTED and RUNNING are accruing. On restart we cannot know how
-	// much wall time elapsed while the daemon was down (the monotonic clock
-	// reset). Conservatively close the open segment without charging unknown
-	// wall time (exactly once). This never double-charges; a new segment
-	// starts on the next accrual from the new monotonic baseline.
-	//
-	// IMPORTANT: The TestActiveTimeChargedDuringPauseRequested test expects
-	// accrual across Reconcile. That test does NOT actually restart the
-	// supervisor's clock - it reuses the same fake clock, so the monotonic
-	// baseline is continuous. In that case we CAN charge the elapsed time
-	// since the segment start. We detect continuous-clock reconciliation by
-	// the monotonic baseline: if the segment start is <= now, charge it.
+	// PAUSE_REQUESTED and RUNNING are accruing. Compute elapsed: on a real
+	// restart the monotonic clock resets to 0, so nowMs < segStart indicates
+	// a new process. In that case, use the wall-clock delta (F20). Otherwise
+	// use the monotonic delta (normal case, including fake-clock tests).
 	nowMs := s.nowMonotonicMs()
 	segStart := *ledger.RunningSegmentStartMs
-	elapsed := nowMs - segStart
+	var elapsed int64
+	if nowMs < segStart && ledger.SegmentStartWallMs != nil {
+		// Monotonic clock reset: use wall-clock delta, capped at the
+		// remaining active-time envelope so we never overcharge.
+		nowWallMs := s.nowWall().UnixMilli()
+		wallElapsed := nowWallMs - *ledger.SegmentStartWallMs
+		if wallElapsed < 0 {
+			wallElapsed = 0
+		}
+		// Remaining envelope: max active minus already consumed.
+		wf, wfErr := s.store.GetWorkflow(ctx, workflowID)
+		remainingEnv := int64(24 * 60 * 60 * 1000) // default 24h
+		if wfErr == nil && wf.MaxActiveDurationMs > 0 {
+			remainingEnv = wf.MaxActiveDurationMs - ledger.ConsumedMs
+			if remainingEnv < 0 {
+				remainingEnv = 0
+			}
+		}
+		if wallElapsed > remainingEnv {
+			elapsed = remainingEnv
+		} else {
+			elapsed = wallElapsed
+		}
+	} else {
+		elapsed = nowMs - segStart
+	}
 	if elapsed > 0 {
 		ledger.ConsumedMs += elapsed
 	}
 	ledger.RunningSegmentStartMs = nil
+	ledger.SegmentStartWallMs = nil
 	gen, err := s.store.GetActiveTimeLedgerGeneration(ctx, workflowID)
 	if err != nil {
 		return err
