@@ -2,13 +2,16 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"google.golang.org/grpc/codes"
@@ -434,6 +437,99 @@ func TestFailClosedRoutedRun_NoDocker(t *testing.T) {
 	}
 	if len(runs) != 0 {
 		t.Fatalf("runs leaked: %d", len(runs))
+	}
+}
+
+// TestFailClosedRoutedRun_PromotionGateRejectsUnpromotedPackage exercises the
+// real deploy path: when a workflow.yaml references an installed but
+// un-promoted package, failClosedRoutedRun must return an actionable error
+// mentioning the promotion gate (F4 integration test).
+func TestFailClosedRoutedRun_PromotionGateRejectsUnpromotedPackage(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	// Install an agent (weather@a1b2c3d4, version 1.0.0) in the state dir
+	// WITHOUT promoting it.
+	ref := "weather@a1b2c3d4"
+	agentDir := filepath.Join(s.homePaths.State, "agents", ref)
+	if err := os.MkdirAll(agentDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pub8 := "a1b2c3d4"
+	fp := strings.Repeat(pub8, 8)[:64]
+	manifest := install.InstallManifest{
+		PublisherFingerprint: fp,
+		PublisherName:        "weather-pub",
+		AgentName:            "weather",
+		AgentVersion:         "1.0.0",
+		AcceptedPolicyDigest: "sha256:" + strings.Repeat("aa", 32),
+		InstallMode:          "local-rebuild",
+		LocalImageDigest:     "sha256:" + strings.Repeat("bb", 32),
+		InstalledAt:          time.Now().UTC(),
+		Promoted:             false,
+	}
+	raw, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(agentDir, "install-manifest.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Also write a minimal agent.lock for lock loading.
+	lock := &pack.AgentLock{
+		SchemaVersion: pack.LockSchemaVersion,
+		AgentName:     "weather",
+		AgentVersion:  "1.0.0",
+		ImageDigest:   "sha256:" + strings.Repeat("cc", 32),
+		PolicyDigest:  "sha256:" + strings.Repeat("dd", 32),
+		Publisher: &pack.PublisherInfo{
+			Name:        "weather-pub",
+			Fingerprint: fp,
+		},
+	}
+	lockRaw, _ := json.Marshal(lock)
+	_ = os.WriteFile(filepath.Join(agentDir, "agent.lock"), lockRaw, 0o600)
+
+	// Write a minimal workflow.yaml to the deployed agent directory.
+	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, "demo")
+	if err := os.MkdirAll(deployedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	wfYAML := `kind: pipeline
+pipeline:
+  stages:
+    - name: s1
+      package_name: weather
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc123
+      handoff: public
+`
+	if err := os.WriteFile(filepath.Join(deployedDir, "workflow.yaml"), []byte(wfYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Call failClosedRoutedRun — promotion gate must fire before the
+	// not-enabled switch because the workflow references an installed
+	// but un-promoted package (weather 1.0.0).
+	sig := &routedProjectSignals{
+		HasWorkflow:  true,
+		WorkflowKind: "pipeline",
+		HasPipeline:  true,
+	}
+	err = s.failClosedRoutedRun(ctx, "demo", sig)
+
+	if err == nil {
+		t.Fatal("expected promotion gate error, got nil")
+	}
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("code=%v want FailedPrecondition", status.Code(err))
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "agentpaas registry promote") {
+		t.Fatalf("error message must mention 'agentpaas registry promote', got: %s", msg)
+	}
+	if !strings.Contains(msg, "promotion gate") {
+		t.Fatalf("error message must mention 'promotion gate', got: %s", msg)
 	}
 }
 

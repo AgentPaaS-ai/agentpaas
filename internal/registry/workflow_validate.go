@@ -168,14 +168,18 @@ func isPackagePromoted(stateRoot, name, version string) (bool, error) {
 	return false, nil
 }
 
-// hasPromotionAudit checks whether a package_promoted audit event exists for
-// the given agent ref in the audit log.
+// hasPromotionAudit checks the full audit log for the given agent ref and
+// returns true only if the LAST promotion-relevant event (package_promoted or
+// package_demoted) is package_promoted. A promote-then-demote sequence (or
+// demoted after promote) must not pass the gate. Only the last event matters.
 func hasPromotionAudit(stateRoot, agentRef string) bool {
 	auditPath := filepath.Join(stateRoot, "audit.jsonl")
 	data, err := os.ReadFile(auditPath)
 	if err != nil {
 		return false
 	}
+	// Track the last promotion-relevant event for this ref.
+	var lastEventType string
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -185,13 +189,13 @@ func hasPromotionAudit(stateRoot, agentRef string) bool {
 		if err := json.Unmarshal([]byte(line), &rec); err != nil {
 			continue
 		}
-		if rec.EventType != audit.EventTypePackagePromoted {
+		if rec.EventType != audit.EventTypePackagePromoted && rec.EventType != audit.EventTypePackageDemoted {
 			continue
 		}
 		ref, _ := rec.Payload["agent_ref"].(string)
 		if ref == agentRef {
-			return true
+			lastEventType = rec.EventType
 		}
 	}
-	return false
+	return lastEventType == audit.EventTypePackagePromoted
 }

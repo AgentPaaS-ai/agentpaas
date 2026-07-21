@@ -30,6 +30,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/registry"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
@@ -114,6 +115,23 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	}
 	if agentVersion == "" {
 		agentVersion = "latest"
+	}
+
+	// B31: Validate workflow.yaml and promotion gate at pack time.
+	workflowPath := filepath.Join(absProjectDir, "workflow.yaml")
+	if data, err := os.ReadFile(workflowPath); err == nil && len(data) > 0 {
+		var wf pack.WorkflowYAML
+		if uerr := yaml.Unmarshal(data, &wf); uerr != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "parse workflow.yaml: %v", uerr)
+		}
+		if errs := pack.ValidateWorkflowYAML(&wf); len(errs) > 0 {
+			return nil, status.Errorf(codes.InvalidArgument, "workflow.yaml validation: %s", strings.Join(errs, "; "))
+		}
+		if s.homePaths != nil && s.homePaths.State != "" {
+			if errs := registry.ValidateWorkflowPromotedPackages(s.homePaths.State, &wf); len(errs) > 0 {
+				return nil, status.Errorf(codes.FailedPrecondition, "promotion gate: %s", strings.Join(errs, "; "))
+			}
+		}
 	}
 
 	var policyYAML []byte
