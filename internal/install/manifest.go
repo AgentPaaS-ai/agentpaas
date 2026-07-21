@@ -20,6 +20,13 @@ type InstallManifest struct {
 	ParentBundleRef     *ParentBundleRef  `json:"parent_bundle_ref,omitempty"`
 	InstalledAt         time.Time         `json:"installed_at,omitempty"`
 	Alias               string            `json:"alias,omitempty"`
+
+	// B31-T01 promotion fields.
+	// Promoted defaults to false; existing manifests without this field
+	// unmarshal with zero values (migration is automatic).
+	Promoted   bool       `json:"promoted,omitempty"`
+	PromotedAt *time.Time `json:"promoted_at,omitempty"`
+	PromotedBy string     `json:"promoted_by,omitempty"`
 }
 
 // ParentBundleRef records the originating bundle for fork lineage (B24).

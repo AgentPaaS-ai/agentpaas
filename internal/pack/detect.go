@@ -44,7 +44,10 @@ type AgentYAML struct {
 	Description string    `yaml:"description"`
 	Kind        string    `yaml:"kind"` // v0.3: "worker" or "mcp_service" (legacy absence means worker)
 	LLM         LLMConfig `yaml:"llm"`
-	Metadata    struct {
+	// Capabilities is additive optional metadata from the package manifest (B31-T01).
+	// Stored verbatim; not schema-validated against other packages in v0.3.
+	Capabilities []DeclaredCapability `yaml:"capabilities,omitempty"`
+	Metadata     struct {
 		Name        string `yaml:"name"`
 		Version     string `yaml:"version"`
 		Description string `yaml:"description"`
@@ -54,6 +57,13 @@ type AgentYAML struct {
 		Entrypoint string `yaml:"entrypoint"`
 		Entry      string `yaml:"entry"`
 	} `yaml:"spec"`
+}
+
+// DeclaredCapability is a single capability entry from the agent.yaml manifest.
+// Stored verbatim in the lockfile; not schema-matched in v0.3.
+type DeclaredCapability struct {
+	ID          string `json:"id" yaml:"id"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
 func (agent *AgentYAML) normalize() {
