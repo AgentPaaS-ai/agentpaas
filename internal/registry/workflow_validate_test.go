@@ -8,11 +8,41 @@ import (
 	"testing"
 	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/registry"
 	"gopkg.in/yaml.v3"
 )
+
+// writePromotionAudit writes a package_promoted audit event for tests
+// that need to simulate a properly audited promotion without going through the
+// full Promote() path. Uses the real audit writer to maintain chain integrity.
+func writePromotionAudit(t *testing.T, stateRoot, agentRef, fingerprint, digest, actor string) {
+	t.Helper()
+	auditPath := filepath.Join(stateRoot, "audit.jsonl")
+	w, err := audit.NewAuditWriter(auditPath)
+	if err != nil {
+		t.Fatalf("new audit writer: %v", err)
+	}
+	defer func() { _ = w.Close() }()
+
+	rec := audit.AuditRecord{
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+		EventType:      audit.EventTypePackagePromoted,
+		DeploymentMode: "local",
+		Actor:          actor,
+		Payload: map[string]interface{}{
+			"agent_ref":   agentRef,
+			"fingerprint": fingerprint,
+			"digest":      digest,
+			"actor":       actor,
+		},
+	}
+	if err := w.Append(rec); err != nil {
+		t.Fatalf("append audit: %v", err)
+	}
+}
 
 func TestValidateWorkflowPromoted_Nil(t *testing.T) {
 	errs := registry.ValidateWorkflowPromotedPackages("", nil)
@@ -167,6 +197,9 @@ func TestValidateWorkflowPromoted_PromotedPackagePasses(t *testing.T) {
 	raw, _ := json.MarshalIndent(m, "", "  ")
 	_ = os.WriteFile(filepath.Join(dir, "install-manifest.json"), raw, 0o600)
 
+	// Write a matching audit event so the promotion gate accepts it.
+	writePromotionAudit(t, stateRoot, ref, m.PublisherFingerprint, m.LocalImageDigest, "admin")
+
 	yml := `kind: pipeline
 pipeline:
   stages:
@@ -213,6 +246,9 @@ func TestValidateWorkflowPromoted_DemoteThenFail(t *testing.T) {
 	}
 	raw, _ := json.MarshalIndent(m, "", "  ")
 	_ = os.WriteFile(filepath.Join(dir, "install-manifest.json"), raw, 0o600)
+
+	// Write a matching audit event so the promotion gate accepts it.
+	writePromotionAudit(t, stateRoot, ref, m.PublisherFingerprint, m.LocalImageDigest, "admin")
 
 	// Verify promoted passes.
 	yml := `kind: pipeline
