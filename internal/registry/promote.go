@@ -194,25 +194,52 @@ func lockAndLoadManifest(manifestPath, lockPath string) (*install.InstallManifes
 	return &m, unlock, nil
 }
 
-// saveManifestAtomic writes the manifest to a temp file and atomically
-// renames it over the target. The lock file (separate inode) ensures
-// mutual exclusion even across renames. Readers using os.ReadFile see
-// either the old or new content, never a partial write.
+// saveManifestAtomic writes the manifest to a temp file, fsyncs it, and
+// atomically renames it over the target. After rename, it fsyncs the parent
+// directory for durability. The lock file (separate inode) ensures mutual
+// exclusion even across renames. Readers using os.ReadFile see either the old
+// or new content, never a partial write.
 func saveManifestAtomic(path string, m *install.InstallManifest) error {
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
 
-	// Write to a temp file on the same filesystem, then rename atomically.
+	// Write to a temp file on the same filesystem.
 	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, raw, 0o600); err != nil {
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return fmt.Errorf("create manifest tmp: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	if _, err := f.Write(raw); err != nil {
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("write manifest tmp: %w", err)
 	}
+	// F7: fsync the tmp file before close to ensure data is durable on disk.
+	if err := f.Sync(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("fsync manifest tmp: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close manifest tmp: %w", err)
+	}
+
+	// Atomically rename over the target.
 	if err := os.Rename(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath)
 		return fmt.Errorf("rename manifest: %w", err)
 	}
+
+	// F7: fsync the parent directory after rename to ensure rename is durable.
+	dir, err := os.Open(filepath.Dir(path))
+	if err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
+
 	return nil
 }
 
@@ -270,9 +297,26 @@ func validatePathNoSymlinks(path, stateRoot string) error {
 }
 
 // emitPromotionAudit opens the audit JSONL at stateRoot/audit.jsonl and appends
-// a package_promoted or package_demoted event.
+// a package_promoted or package_demoted event. It acquires a POSIX advisory
+// lock on a sidecar lock file to ensure multi-process safety.
 func emitPromotionAudit(stateRoot, eventType, agentRef, fingerprint, digest, actor string) error {
 	auditPath := filepath.Join(stateRoot, "audit.jsonl")
+
+	// F6: acquire flock on audit.jsonl.lock to prevent two processes from
+	// forking the hash chain by writing concurrently. The audit writer
+	// replays the file to reconstruct (seq, hash) head with only an
+	// in-process mutex, so external flock is needed for multi-process safety.
+	lockPath := auditPath + ".lock"
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("open audit lock: %w", err)
+	}
+	defer func() { _ = lockFile.Close() }()
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock audit: %w", err)
+	}
+	defer func() { _ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) }()
+
 	w, err := audit.NewAuditWriter(auditPath)
 	if err != nil {
 		return fmt.Errorf("open audit writer: %w", err)

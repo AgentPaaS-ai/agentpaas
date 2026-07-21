@@ -12,6 +12,7 @@ import (
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/AgentPaaS-ai/agentpaas/internal/registry"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -870,6 +871,40 @@ func parseInstalledDir(agentName string) (name, pub8 string, ok bool) {
 	return agentName[:at], agentName[at+1:], true
 }
 
+// checkWorkflowPromotionGate reads the workflow.yaml from the deployed/installed
+// agent directory and checks that all referenced packages are promoted. Returns
+// actionable error messages listing un-promoted packages.
+func (s *controlServer) checkWorkflowPromotionGate(agentName string) []string {
+	if s.homePaths == nil {
+		return nil
+	}
+	var deployedDir string
+	_, pub8, ok := parseInstalledDir(agentName)
+	if ok {
+		deployedDir = filepath.Join(s.homePaths.State, "installed", agentName)
+		if _, err := os.Stat(deployedDir); err != nil {
+			deployedDir = pack.DeployedAgentPath(s.homePaths.Home, agentName)
+		}
+	} else {
+		deployedDir = pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	}
+	_ = pub8
+
+	wfPath := filepath.Join(deployedDir, "workflow.yaml")
+	data, err := os.ReadFile(wfPath)
+	if err != nil || len(data) == 0 {
+		return nil
+	}
+	var wf pack.WorkflowYAML
+	if uerr := yaml.Unmarshal(data, &wf); uerr != nil {
+		return nil
+	}
+	if errs := pack.ValidateWorkflowYAML(&wf); len(errs) > 0 {
+		return errs
+	}
+	return registry.ValidateWorkflowPromotedPackages(s.homePaths.State, &wf)
+}
+
 // failClosedRoutedRun validates and (best-effort) records route/workflow
 // placeholders then returns a typed not-enabled error. Never creates Docker
 // resources or synthetic MCP/handoff results.
@@ -879,6 +914,15 @@ func (s *controlServer) failClosedRoutedRun(ctx context.Context, agentName strin
 	if s.workflowStore != nil && sig != nil {
 		if err := s.persistRoutedInspectPlaceholder(ctx, agentName, sig); err != nil {
 			log.Printf("daemon: %s failed: %v", "s.persistRoutedInspectPlaceholder", err)
+		}
+	}
+
+	// B31: Promotion gate — if the workflow references un-promoted packages,
+	// return an actionable error before the not-enabled switch. This must
+	// happen at deploy-time (here) in addition to pack-time.
+	if sig != nil && sig.HasWorkflow && s.homePaths != nil && s.homePaths.State != "" {
+		if errs := s.checkWorkflowPromotionGate(agentName); len(errs) > 0 {
+			return status.Errorf(codes.FailedPrecondition, "promotion gate: %s", strings.Join(errs, "; "))
 		}
 	}
 
