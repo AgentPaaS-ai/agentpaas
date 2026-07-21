@@ -199,6 +199,16 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		publisherKeyStore = store
 	}
 
+	// Re-read and re-validate workflow.yaml promotion gate immediately
+	// before assembling/signing the AgentLock. The initial validation
+	// (above) ran before BuildImage, which can take significant time;
+	// between the two checks the workflow.yaml could have been modified,
+	// allowing a gated project to sign content that no longer passes the
+	// promotion gate.
+	if err := recheckWorkflowPromotion(absProjectDir, s.homePaths.State); err != nil {
+		return nil, status.Errorf(codes.FailedPrecondition, "promotion gate (recheck): %v", err)
+	}
+
 	lock, err := pack.CreateAgentLock(ctx, pack.LockConfig{
 		BuildResult:       result,
 		AgentYAML:         agentYAML,
@@ -233,6 +243,41 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		ImageDigest: result.ImageDigest,
 		BuildLog:    fmt.Sprintf("Built %s, digest: %s", result.ImageRef, result.ImageDigest),
 	}, nil
+}
+
+// recheckWorkflowPromotion re-reads workflow.yaml from projectDir
+// and re-runs the promotion gate validation. It is called twice during
+// Pack: once early (before BuildImage) and once late (just before
+// CreateAgentLock) to prevent TOCTOU where workflow.yaml is modified
+// between validation and signing.
+//
+// If no workflow.yaml exists, this is a no-op (returns nil).
+func recheckWorkflowPromotion(projectDir, stateRoot string) error {
+	workflowPath := filepath.Join(projectDir, "workflow.yaml")
+	data, err := os.ReadFile(workflowPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read workflow.yaml: %w", err)
+	}
+	if len(data) == 0 {
+		return nil
+	}
+
+	var wf pack.WorkflowYAML
+	if err := yaml.Unmarshal(data, &wf); err != nil {
+		return fmt.Errorf("parse workflow.yaml: %w", err)
+	}
+	if errs := pack.ValidateWorkflowYAML(&wf); len(errs) > 0 {
+		return fmt.Errorf("workflow.yaml validation: %s", strings.Join(errs, "; "))
+	}
+	if stateRoot != "" {
+		if errs := registry.ValidateWorkflowPromotedPackages(stateRoot, &wf); len(errs) > 0 {
+			return fmt.Errorf("promotion gate: %s", strings.Join(errs, "; "))
+		}
+	}
+	return nil
 }
 
 // gatewaySubnetFromIP derives the /16 subnet CIDR from a gateway IP address.

@@ -554,3 +554,94 @@ func TestReconstructHeadOnOpen(t *testing.T) {
 		t.Fatalf("expected seq=6 after reopen+append, got %d", seq)
 	}
 }
+
+// TestConcurrentAppend verifies that concurrent goroutines appending through
+// a single AuditWriter serialize correctly: no panics, no hash chain forks,
+// and every record gets a unique sequence number. This exercises the in-process
+// mutex path; multi-process flock serialization is verified by the registry
+// adversary tests.
+func TestConcurrentAppend(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "audit.jsonl")
+
+	w, err := NewAuditWriter(path)
+	if err != nil {
+		t.Fatalf("NewAuditWriter: %v", err)
+	}
+	defer func() { _ = w.Close() }()
+
+	const numRecords = 50
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2*numRecords)
+
+	emit := func(prefix string) {
+		defer wg.Done()
+		for i := 0; i < numRecords; i++ {
+			rec := AuditRecord{
+				Timestamp:      "2025-01-01T00:00:00Z",
+				EventType:      "concurrent",
+				DeploymentMode: "local",
+				Actor:          prefix,
+				Payload:        map[string]interface{}{"n": i, "writer": prefix},
+			}
+			if err := w.Append(rec); err != nil {
+				errCh <- fmt.Errorf("%s append %d: %w", prefix, i, err)
+				return
+			}
+		}
+	}
+
+	wg.Add(2)
+	go emit("w1")
+	go emit("w2")
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		t.Error(err)
+	}
+
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Verify the chain: all seqs 1..(2*numRecords) present, no gaps, no duplicates.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+
+	seen := make(map[int64]bool)
+	var lastHash string
+	for _, line := range splitLines(string(data)) {
+		if line == "" {
+			continue
+		}
+		var rec AuditRecord
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("Unmarshal: %v", err)
+		}
+		if seen[rec.Seq] {
+			t.Errorf("duplicate seq=%d", rec.Seq)
+		}
+		seen[rec.Seq] = true
+		if rec.Seq > 1 && rec.PrevHash != lastHash {
+			t.Errorf("seq=%d prev_hash %q != expected %q", rec.Seq, rec.PrevHash, lastHash)
+		}
+		lastHash = rec.RecordHash
+	}
+
+	expectedMax := int64(2 * numRecords)
+	for seq := int64(1); seq <= expectedMax; seq++ {
+		if !seen[seq] {
+			t.Errorf("missing seq=%d", seq)
+		}
+	}
+
+	// Verify unique seq count equals expected
+	if len(seen) != int(expectedMax) {
+		t.Errorf("expected %d unique records, got %d", expectedMax, len(seen))
+	}
+
+	t.Logf("concurrent append: %d records, chain intact", len(seen))
+}
