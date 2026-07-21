@@ -69,7 +69,6 @@ docs/execution/archive/
 docs/execution/resume-prompts/
 docs/execution/session-resume-prompt-*.md
 docs/execution/testing-results.md
-docs/execution/golden-loop-test.md
 docs/execution/prompts/b*-restart-prompt.md
 docs/execution/prompts/b*-start-prompt.md
 
