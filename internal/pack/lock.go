@@ -109,6 +109,9 @@ type AgentLock struct {
 	// local-only packs or pre-v2 schema. Each entry carries its own
 	// signature from the publisher that created it.
 	Provenance []ProvenanceEntry `json:"provenance,omitempty"`
+	// Capabilities are declared capabilities from the agent.yaml manifest.
+	// Stored verbatim in the lockfile; not schema-validated in v0.3.
+	Capabilities []DeclaredCapability `json:"capabilities,omitempty"`
 }
 
 // ReproducibilityMeta holds metadata for verifying build reproducibility.
@@ -646,6 +649,10 @@ func preparePackageSigningMaterial(cfg LockConfig) (privateKey *ecdsa.PrivateKey
 
 // assembleAgentLock builds the unsigned lock struct fields from pack inputs.
 func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID string, privateKey *ecdsa.PrivateKey, signatureReferrer, policyDigest string) *AgentLock {
+	var caps []DeclaredCapability
+	if cfg.AgentYAML != nil {
+		caps = cfg.AgentYAML.Capabilities
+	}
 	return &AgentLock{
 		SchemaVersion:        LockSchemaVersion,
 		AgentName:            agentYAMLString(cfg.AgentYAML, "Name", "AgentName"),
@@ -672,6 +679,7 @@ func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID strin
 		},
 		CreatedAt: cfg.SourceDateEpoch.UTC(),
 		AgentYAML: cfg.AgentYAML,
+		Capabilities: caps,
 	}
 }
 
