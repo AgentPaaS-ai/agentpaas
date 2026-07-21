@@ -461,6 +461,29 @@ block30-gate: block29-gate block28-ci
 	@echo "  AGENTPAAS_DOCKER_TESTS=1 make block28-long"
 	@echo "  B30 is not fully complete until block28-long passes with Docker."
 
+.PHONY: block31-gate
+block31-gate: block30-gate
+	@echo "==> Running Block 31 gate"
+	@echo "  T01: registry read API + promoted flag"
+	@go test ./internal/registry/... -count=1 -race
+	@echo "  T01: CLI registry tests"
+	@go test ./internal/cli/... -run TestRegistry -count=1 -race
+	@echo "  T02: promote/demote operations"
+	@go test ./internal/registry/... -run TestPromote -count=1 -race
+	@go test ./internal/registry/... -run TestDemote -count=1 -race
+	@echo "  T02: workflow promotion validation"
+	@go test ./internal/registry/... -run TestValidateWorkflow -count=1 -race
+	@echo "  T02: audit event types"
+	@go test ./internal/audit/... -count=1 -race
+	@echo "  Compat v0.2.3 regression"
+	@go test ./test/compat/v0.2.3/... -count=1 -race
+	@echo "  vet + lint"
+	@go vet ./...
+	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m
+	@echo "  golden-fast"
+	@$(MAKE) golden-fast
+	@echo "Block 31 gate: PASS"
+
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
 	@echo "==> Block 28 Kubernetes integration tests (requires kind cluster)"
@@ -551,6 +574,7 @@ gates: ## List all available gate targets
 	@echo "  block28-gate - Runtime portability and managed-PaaS feasibility"
 	@echo "  block29-gate - Real-time stream, durable eventing, integrated adversary"
 	@echo "  block30-gate - Durable runtime: supervisor, liveness, reference worker, longevity"
+	@echo "  block31-gate - Local package registry: read API, promotion, delegation gate"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
