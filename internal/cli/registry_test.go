@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/registry"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/spf13/cobra"
 )
 
@@ -412,5 +414,60 @@ func TestRegistryDemote_Idempotent(t *testing.T) {
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("registry demote idempotent failed: %v", err)
+	}
+}
+
+func TestRegistryList_WithDeploymentStore(t *testing.T) {
+	stateRoot := setupRegistryTestState(t)
+
+	// Open a LocalStore and create a deployment so the registry join
+	// populates deployment status/ID for the test agent.
+	storeRoot := filepath.Join(stateRoot, "routed")
+	store, err := routedrun.OpenLocalStore(storeRoot)
+	if err != nil {
+		t.Fatalf("OpenLocalStore: %v", err)
+	}
+
+	ctx := context.Background()
+	// Create a deployment matching the installed "weather" agent.
+	dep := &routedrun.DeploymentRecord{
+		PackageName:    "weather",
+		PackageVersion: "1.0.0",
+		BundleDigest:   "sha256:bundle1",
+		PolicyDigest:   "sha256:" + strings.Repeat("aa", 32),
+		CreatedBy:      "tester",
+	}
+	if err := store.CreateDeployment(ctx, dep); err != nil {
+		t.Fatalf("CreateDeployment: %v", err)
+	}
+
+	// Call ListEntries with the store to verify deployment join.
+	entries, err := registry.ListEntries(stateRoot, store)
+	if err != nil {
+		t.Fatalf("ListEntries: %v", err)
+	}
+
+	// Find the weather entry and verify deployment fields are populated.
+	var weatherEntry *registry.RegistryEntry
+	for i := range entries {
+		if entries[i].Name == "weather" {
+			weatherEntry = &entries[i]
+			break
+		}
+	}
+	if weatherEntry == nil {
+		t.Fatal("weather entry not found in registry list")
+	}
+	if weatherEntry.DeploymentID == nil {
+		t.Error("expected DeploymentID to be populated from store join, got nil")
+	}
+	if weatherEntry.DeploymentStatus != "ACTIVE" {
+		t.Errorf("DeploymentStatus = %q, want ACTIVE", weatherEntry.DeploymentStatus)
+	}
+	if weatherEntry.Generation != 1 {
+		t.Errorf("Generation = %d, want 1", weatherEntry.Generation)
+	}
+	if weatherEntry.BundleDigest != "sha256:bundle1" {
+		t.Errorf("BundleDigest = %q, want sha256:bundle1", weatherEntry.BundleDigest)
 	}
 }
