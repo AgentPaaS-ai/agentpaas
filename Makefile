@@ -479,6 +479,8 @@ block31-gate: block30-gate
 	@go test ./internal/daemon/... -run Registry -count=1 -race
 	@echo "  T02: adversary B31"
 	@go test ./internal/registry/... -run TestAdversary_B31 -count=1 -race
+	@echo "  F3: pack capabilities signature coverage"
+	@go test -tags=adversary ./internal/pack/... -run TestAdversaryB31 -count=1 -race
 	@echo "  T02: pack path promotion integration (if present)"
 	@go test ./internal/daemon/... -run 'Promote|Promotion|WorkflowPromoted' -count=1 -race || true
 	@echo "  Compat v0.2.3 regression"
