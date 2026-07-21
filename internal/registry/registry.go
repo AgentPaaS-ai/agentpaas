@@ -213,6 +213,12 @@ func ShowEntry(stateRoot, ref string, store DeploymentStoreReader) (*RegistryEnt
 		return nil, fmt.Errorf("empty reference")
 	}
 
+	// Reject refs containing path separators, null bytes, newlines, or ".."
+	// to prevent path traversal attacks.
+	if err := validateRefSafe(ref); err != nil {
+		return nil, err
+	}
+
 	agentsDir := filepath.Join(stateRoot, "agents")
 
 	// Try exact ref (name@pub8) first.
@@ -357,6 +363,9 @@ func showByExactRef(agentsDir, ref string, store DeploymentStoreReader) (*Regist
 }
 
 func loadManifest(agentsDir, ref string) (*install.InstallManifest, error) {
+	if err := validateRefSafe(ref); err != nil {
+		return nil, err
+	}
 	manifestPath := filepath.Join(agentsDir, ref, "install-manifest.json")
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -370,6 +379,9 @@ func loadManifest(agentsDir, ref string) (*install.InstallManifest, error) {
 }
 
 func loadLock(agentsDir, ref string) (*pack.AgentLock, error) {
+	if err := validateRefSafe(ref); err != nil {
+		return nil, err
+	}
 	lockPath := filepath.Join(agentsDir, ref, "agent.lock")
 	raw, err := os.ReadFile(lockPath)
 	if err != nil {
@@ -380,6 +392,26 @@ func loadLock(agentsDir, ref string) (*pack.AgentLock, error) {
 		return nil, fmt.Errorf("parse lock: %w", err)
 	}
 	return &lock, nil
+}
+
+// validateRefSafe rejects refs containing path separators, null bytes,
+// newlines, or ".." components that could enable path traversal.
+func validateRefSafe(ref string) error {
+	if strings.Contains(ref, "/") || strings.Contains(ref, "\\") {
+		return fmt.Errorf("invalid ref %q: contains path separator", ref)
+	}
+	if strings.Contains(ref, "\x00") {
+		return fmt.Errorf("invalid ref %q: contains null byte", ref)
+	}
+	if strings.Contains(ref, "\n") || strings.Contains(ref, "\r") {
+		return fmt.Errorf("invalid ref %q: contains newline", ref)
+	}
+	// Check for ".." as a path component (not as part of a name like "foo..bar").
+	// Since we already reject "/" and "\\", ".." anywhere in the ref is dangerous.
+	if strings.Contains(ref, "..") {
+		return fmt.Errorf("invalid ref %q: contains parent directory traversal", ref)
+	}
+	return nil
 }
 
 func parseRef(ref string) (name, pub8 string, ok bool) {
