@@ -77,7 +77,10 @@ code-level risks (R2, R3) are low and mitigated by existing tests.
 ## Recommendation
 
 B30 is complete pending:
-1. Verifier pass (in progress)
-2. CI green (queued)
+1. Verifier pass (DONE — VERIFY PASS, 8 segments green)
+2. CI green (DONE — CI + Release Verify success on 88e470c)
 3. block28-long with Docker (required for R30 prerelease, not for B30 completion)
-4. Human manual testing deferred to after B30 (per user decision)
+4. Human manual testing deferred to pre-v0.3.0-release (per founder decision
+   2026-07-20: B30 ships durable runtime contracts but not end-to-end daemon
+   wiring; manual testing is not useful until v0.3.0 release candidate is
+   ready. Re-deferred from "after B30" to "just before v0.3.0 release".)
