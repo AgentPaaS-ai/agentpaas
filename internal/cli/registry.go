@@ -19,6 +19,12 @@ var registryListFactory = defaultRegistryList
 // registryShowFactory is overridden in tests.
 var registryShowFactory = defaultRegistryShow
 
+// registryPromoteFactory is overridden in tests.
+var registryPromoteFactory = defaultRegistryPromote
+
+// registryDemoteFactory is overridden in tests.
+var registryDemoteFactory = defaultRegistryDemote
+
 func defaultRegistryList(cmd *cobra.Command) ([]registry.RegistryEntry, error) {
 	homeDir, err := homeDirPath(cmd)
 	if err != nil {
@@ -35,6 +41,14 @@ func defaultRegistryShow(cmd *cobra.Command, ref string) (*registry.RegistryEntr
 	}
 	paths := home.NewHomePaths(homeDir)
 	return registry.ShowEntry(paths.State, ref, nil)
+}
+
+func defaultRegistryPromote(cmd *cobra.Command, stateRootDir, ref, actor string) error {
+	return registry.Promote(stateRootDir, ref, actor)
+}
+
+func defaultRegistryDemote(cmd *cobra.Command, stateRootDir, ref string) error {
+	return registry.Demote(stateRootDir, ref)
 }
 
 // newRegistryCmd creates the `agentpaas registry` command group.
@@ -57,6 +71,8 @@ B26 deployment store; it does not require a running daemon.`,
 	}
 	cmd.AddCommand(newRegistryListCmd())
 	cmd.AddCommand(newRegistryShowCmd())
+	cmd.AddCommand(newRegistryPromoteCmd())
+	cmd.AddCommand(newRegistryDemoteCmd())
 	return cmd
 }
 
@@ -217,4 +233,68 @@ func truncateDigest(d string) string {
 		return d[:18] + "..."
 	}
 	return d
+}
+
+// newRegistryPromoteCmd creates the `agentpaas registry promote` subcommand.
+func newRegistryPromoteCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "promote <ref>",
+		Short: "Promote a package for use in workflows",
+		Long: `Mark an installed package as promoted so it can be referenced
+in workflow.yaml service bindings, pipeline stages, and child
+allowlists.
+
+Promotion is idempotent: promoting an already-promoted package is
+a no-op. An audit event is recorded.`,
+		Example: `  agentpaas registry promote weather@a1b2c3d4
+  agentpaas registry promote my-alias`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := homeDirPath(cmd)
+			if err != nil {
+				return fmt.Errorf("registry promote: %w", err)
+			}
+			paths := home.NewHomePaths(homeDir)
+			actor := os.Getenv("USER")
+			if actor == "" {
+				actor = "local"
+			}
+			if err := registryPromoteFactory(cmd, paths.State, args[0], actor); err != nil {
+				return fmt.Errorf("registry promote: %w", err)
+			}
+			cmd.Printf("Promoted %s\n", args[0])
+			return nil
+		},
+	}
+	return cmd
+}
+
+// newRegistryDemoteCmd creates the `agentpaas registry demote` subcommand.
+func newRegistryDemoteCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "demote <ref>",
+		Short: "Demote a package, preventing future workflow references",
+		Long: `Clear the promoted flag on a package. After demotion, the package
+can no longer be referenced in new workflow.yaml service bindings,
+pipeline stages, or child allowlists.
+
+Demotion does NOT invalidate already-signed workflows — those remain
+immutable. An audit event is recorded.`,
+		Example: `  agentpaas registry demote weather@a1b2c3d4
+  agentpaas registry demote my-alias`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := homeDirPath(cmd)
+			if err != nil {
+				return fmt.Errorf("registry demote: %w", err)
+			}
+			paths := home.NewHomePaths(homeDir)
+			if err := registryDemoteFactory(cmd, paths.State, args[0]); err != nil {
+				return fmt.Errorf("registry demote: %w", err)
+			}
+			cmd.Printf("Demoted %s\n", args[0])
+			return nil
+		},
+	}
+	return cmd
 }
