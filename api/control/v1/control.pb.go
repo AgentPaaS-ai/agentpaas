@@ -10263,6 +10263,447 @@ func (x *GetWorkflowGraphResponse) GetError() *TypedControlError {
 	return nil
 }
 
+// RegistryCapability is a single declared capability from the package manifest.
+type RegistryCapability struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegistryCapability) Reset() {
+	*x = RegistryCapability{}
+	mi := &file_control_v1_control_proto_msgTypes[129]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegistryCapability) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegistryCapability) ProtoMessage() {}
+
+func (x *RegistryCapability) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[129]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegistryCapability.ProtoReflect.Descriptor instead.
+func (*RegistryCapability) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{129}
+}
+
+func (x *RegistryCapability) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *RegistryCapability) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+// RegistryEntry is a joined view of installed agent, deployment, alias,
+// and capability data.
+type RegistryEntry struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Package identity.
+	Ref                  string `protobuf:"bytes,1,opt,name=ref,proto3" json:"ref,omitempty"`
+	Name                 string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Pub8                 string `protobuf:"bytes,3,opt,name=pub8,proto3" json:"pub8,omitempty"`
+	Version              string `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`
+	PublisherName        string `protobuf:"bytes,5,opt,name=publisher_name,json=publisherName,proto3" json:"publisher_name,omitempty"`
+	PublisherFingerprint string `protobuf:"bytes,6,opt,name=publisher_fingerprint,json=publisherFingerprint,proto3" json:"publisher_fingerprint,omitempty"`
+	// Package digests.
+	PackageDigest string `protobuf:"bytes,7,opt,name=package_digest,json=packageDigest,proto3" json:"package_digest,omitempty"`
+	PolicyDigest  string `protobuf:"bytes,8,opt,name=policy_digest,json=policyDigest,proto3" json:"policy_digest,omitempty"`
+	// Install metadata.
+	InstallMode      string                 `protobuf:"bytes,9,opt,name=install_mode,json=installMode,proto3" json:"install_mode,omitempty"`
+	LocalImageDigest string                 `protobuf:"bytes,10,opt,name=local_image_digest,json=localImageDigest,proto3" json:"local_image_digest,omitempty"`
+	InstalledAt      *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=installed_at,json=installedAt,proto3" json:"installed_at,omitempty"`
+	CredentialIds    []string               `protobuf:"bytes,12,rep,name=credential_ids,json=credentialIds,proto3" json:"credential_ids,omitempty"`
+	Alias            string                 `protobuf:"bytes,13,opt,name=alias,proto3" json:"alias,omitempty"`
+	// Deployment info (joined from deployment store).
+	DeploymentId      *string  `protobuf:"bytes,14,opt,name=deployment_id,json=deploymentId,proto3,oneof" json:"deployment_id,omitempty"`
+	DeploymentStatus  string   `protobuf:"bytes,15,opt,name=deployment_status,json=deploymentStatus,proto3" json:"deployment_status,omitempty"`
+	Generation        int64    `protobuf:"varint,16,opt,name=generation,proto3" json:"generation,omitempty"`
+	BundleDigest      string   `protobuf:"bytes,17,opt,name=bundle_digest,json=bundleDigest,proto3" json:"bundle_digest,omitempty"`
+	AliasesDeployment []string `protobuf:"bytes,18,rep,name=aliases_deployment,json=aliasesDeployment,proto3" json:"aliases_deployment,omitempty"`
+	// Promotion.
+	Promoted   bool                   `protobuf:"varint,19,opt,name=promoted,proto3" json:"promoted,omitempty"`
+	PromotedAt *timestamppb.Timestamp `protobuf:"bytes,20,opt,name=promoted_at,json=promotedAt,proto3" json:"promoted_at,omitempty"`
+	PromotedBy string                 `protobuf:"bytes,21,opt,name=promoted_by,json=promotedBy,proto3" json:"promoted_by,omitempty"`
+	// Declared capabilities from the signed package manifest.
+	Capabilities  []*RegistryCapability `protobuf:"bytes,22,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegistryEntry) Reset() {
+	*x = RegistryEntry{}
+	mi := &file_control_v1_control_proto_msgTypes[130]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegistryEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegistryEntry) ProtoMessage() {}
+
+func (x *RegistryEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[130]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegistryEntry.ProtoReflect.Descriptor instead.
+func (*RegistryEntry) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{130}
+}
+
+func (x *RegistryEntry) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetPub8() string {
+	if x != nil {
+		return x.Pub8
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetPublisherName() string {
+	if x != nil {
+		return x.PublisherName
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetPublisherFingerprint() string {
+	if x != nil {
+		return x.PublisherFingerprint
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetPackageDigest() string {
+	if x != nil {
+		return x.PackageDigest
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetPolicyDigest() string {
+	if x != nil {
+		return x.PolicyDigest
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetInstallMode() string {
+	if x != nil {
+		return x.InstallMode
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetLocalImageDigest() string {
+	if x != nil {
+		return x.LocalImageDigest
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetInstalledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.InstalledAt
+	}
+	return nil
+}
+
+func (x *RegistryEntry) GetCredentialIds() []string {
+	if x != nil {
+		return x.CredentialIds
+	}
+	return nil
+}
+
+func (x *RegistryEntry) GetAlias() string {
+	if x != nil {
+		return x.Alias
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetDeploymentId() string {
+	if x != nil && x.DeploymentId != nil {
+		return *x.DeploymentId
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetDeploymentStatus() string {
+	if x != nil {
+		return x.DeploymentStatus
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetGeneration() int64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *RegistryEntry) GetBundleDigest() string {
+	if x != nil {
+		return x.BundleDigest
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetAliasesDeployment() []string {
+	if x != nil {
+		return x.AliasesDeployment
+	}
+	return nil
+}
+
+func (x *RegistryEntry) GetPromoted() bool {
+	if x != nil {
+		return x.Promoted
+	}
+	return false
+}
+
+func (x *RegistryEntry) GetPromotedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PromotedAt
+	}
+	return nil
+}
+
+func (x *RegistryEntry) GetPromotedBy() string {
+	if x != nil {
+		return x.PromotedBy
+	}
+	return ""
+}
+
+func (x *RegistryEntry) GetCapabilities() []*RegistryCapability {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+type ListRegistryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRegistryRequest) Reset() {
+	*x = ListRegistryRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[131]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRegistryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRegistryRequest) ProtoMessage() {}
+
+func (x *ListRegistryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[131]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRegistryRequest.ProtoReflect.Descriptor instead.
+func (*ListRegistryRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{131}
+}
+
+type ListRegistryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entries       []*RegistryEntry       `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRegistryResponse) Reset() {
+	*x = ListRegistryResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[132]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRegistryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRegistryResponse) ProtoMessage() {}
+
+func (x *ListRegistryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[132]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRegistryResponse.ProtoReflect.Descriptor instead.
+func (*ListRegistryResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{132}
+}
+
+func (x *ListRegistryResponse) GetEntries() []*RegistryEntry {
+	if x != nil {
+		return x.Entries
+	}
+	return nil
+}
+
+type ShowRegistryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ref           string                 `protobuf:"bytes,1,opt,name=ref,proto3" json:"ref,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShowRegistryRequest) Reset() {
+	*x = ShowRegistryRequest{}
+	mi := &file_control_v1_control_proto_msgTypes[133]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShowRegistryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShowRegistryRequest) ProtoMessage() {}
+
+func (x *ShowRegistryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[133]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShowRegistryRequest.ProtoReflect.Descriptor instead.
+func (*ShowRegistryRequest) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{133}
+}
+
+func (x *ShowRegistryRequest) GetRef() string {
+	if x != nil {
+		return x.Ref
+	}
+	return ""
+}
+
+type ShowRegistryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Entry         *RegistryEntry         `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ShowRegistryResponse) Reset() {
+	*x = ShowRegistryResponse{}
+	mi := &file_control_v1_control_proto_msgTypes[134]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ShowRegistryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ShowRegistryResponse) ProtoMessage() {}
+
+func (x *ShowRegistryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_control_v1_control_proto_msgTypes[134]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ShowRegistryResponse.ProtoReflect.Descriptor instead.
+func (*ShowRegistryResponse) Descriptor() ([]byte, []int) {
+	return file_control_v1_control_proto_rawDescGZIP(), []int{134}
+}
+
+func (x *ShowRegistryResponse) GetEntry() *RegistryEntry {
+	if x != nil {
+		return x.Entry
+	}
+	return nil
+}
+
 var File_control_v1_control_proto protoreflect.FileDescriptor
 
 const file_control_v1_control_proto_rawDesc = "" +
@@ -11180,7 +11621,46 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\bhandoffs\x18\x04 \x03(\v2%.agentpaas.control.v1.HandoffMetadataR\bhandoffs\x12K\n" +
 	"\rchild_batches\x18\x05 \x03(\v2&.agentpaas.control.v1.ChildBatchStatusR\fchildBatches\x12F\n" +
 	"\rchild_results\x18\x06 \x03(\v2!.agentpaas.control.v1.ChildResultR\fchildResults\x12=\n" +
-	"\x05error\x18\a \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error*w\n" +
+	"\x05error\x18\a \x01(\v2'.agentpaas.control.v1.TypedControlErrorR\x05error\"F\n" +
+	"\x12RegistryCapability\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\"\xfd\x06\n" +
+	"\rRegistryEntry\x12\x10\n" +
+	"\x03ref\x18\x01 \x01(\tR\x03ref\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04pub8\x18\x03 \x01(\tR\x04pub8\x12\x18\n" +
+	"\aversion\x18\x04 \x01(\tR\aversion\x12%\n" +
+	"\x0epublisher_name\x18\x05 \x01(\tR\rpublisherName\x123\n" +
+	"\x15publisher_fingerprint\x18\x06 \x01(\tR\x14publisherFingerprint\x12%\n" +
+	"\x0epackage_digest\x18\a \x01(\tR\rpackageDigest\x12#\n" +
+	"\rpolicy_digest\x18\b \x01(\tR\fpolicyDigest\x12!\n" +
+	"\finstall_mode\x18\t \x01(\tR\vinstallMode\x12,\n" +
+	"\x12local_image_digest\x18\n" +
+	" \x01(\tR\x10localImageDigest\x12=\n" +
+	"\finstalled_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\vinstalledAt\x12%\n" +
+	"\x0ecredential_ids\x18\f \x03(\tR\rcredentialIds\x12\x14\n" +
+	"\x05alias\x18\r \x01(\tR\x05alias\x12(\n" +
+	"\rdeployment_id\x18\x0e \x01(\tH\x00R\fdeploymentId\x88\x01\x01\x12+\n" +
+	"\x11deployment_status\x18\x0f \x01(\tR\x10deploymentStatus\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x10 \x01(\x03R\n" +
+	"generation\x12#\n" +
+	"\rbundle_digest\x18\x11 \x01(\tR\fbundleDigest\x12-\n" +
+	"\x12aliases_deployment\x18\x12 \x03(\tR\x11aliasesDeployment\x12\x1a\n" +
+	"\bpromoted\x18\x13 \x01(\bR\bpromoted\x12;\n" +
+	"\vpromoted_at\x18\x14 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"promotedAt\x12\x1f\n" +
+	"\vpromoted_by\x18\x15 \x01(\tR\n" +
+	"promotedBy\x12L\n" +
+	"\fcapabilities\x18\x16 \x03(\v2(.agentpaas.control.v1.RegistryCapabilityR\fcapabilitiesB\x10\n" +
+	"\x0e_deployment_id\"\x15\n" +
+	"\x13ListRegistryRequest\"U\n" +
+	"\x14ListRegistryResponse\x12=\n" +
+	"\aentries\x18\x01 \x03(\v2#.agentpaas.control.v1.RegistryEntryR\aentries\"'\n" +
+	"\x13ShowRegistryRequest\x12\x10\n" +
+	"\x03ref\x18\x01 \x01(\tR\x03ref\"Q\n" +
+	"\x14ShowRegistryResponse\x129\n" +
+	"\x05entry\x18\x01 \x01(\v2#.agentpaas.control.v1.RegistryEntryR\x05entry*w\n" +
 	"\bLogLevel\x12\x19\n" +
 	"\x15LOG_LEVEL_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fLOG_LEVEL_DEBUG\x10\x01\x12\x12\n" +
@@ -11240,7 +11720,7 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x16CONTROL_COMMAND_RESUME\x10\x03\x12\x1b\n" +
 	"\x17CONTROL_COMMAND_RESTART\x10\x04\x12\x1c\n" +
 	"\x18CONTROL_COMMAND_CONTINUE\x10\x05\x12 \n" +
-	"\x1cCONTROL_COMMAND_AMEND_LIMITS\x10\x062\xbf1\n" +
+	"\x1cCONTROL_COMMAND_AMEND_LIMITS\x10\x062\xd13\n" +
 	"\x0eControlService\x12j\n" +
 	"\x04Pack\x12!.agentpaas.control.v1.PackRequest\x1a\".agentpaas.control.v1.PackResponse\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/control/pack\x12\x8f\x01\n" +
 	"\rExportPreview\x12*.agentpaas.control.v1.ExportPreviewRequest\x1a+.agentpaas.control.v1.ExportPreviewResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/control/export:preview\x12r\n" +
@@ -11287,7 +11767,9 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x17SetWorkflowDesiredState\x124.agentpaas.control.v1.SetWorkflowDesiredStateRequest\x1a5.agentpaas.control.v1.SetWorkflowDesiredStateResponse\"<\x82\xd3\xe4\x93\x026:\x01*\"1/v1/control/workflows/{workflow_id}:desired-state\x12\xad\x01\n" +
 	"\x0fRestartWorkflow\x12,.agentpaas.control.v1.RestartWorkflowRequest\x1a-.agentpaas.control.v1.RestartWorkflowResponse\"=\x82\xd3\xe4\x93\x027:\x01*\"2/v1/control/workflows/{source_workflow_id}:restart\x12\x9f\x01\n" +
 	"\vAmendLimits\x12(.agentpaas.control.v1.AmendLimitsRequest\x1a).agentpaas.control.v1.AmendLimitsResponse\";\x82\xd3\xe4\x93\x025:\x01*\"0/v1/control/workflows/{workflow_id}:amend-limits\x12\xa4\x01\n" +
-	"\x10GetWorkflowGraph\x12-.agentpaas.control.v1.GetWorkflowGraphRequest\x1a..agentpaas.control.v1.GetWorkflowGraphResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/control/workflows/{workflow_id}/graphB\xd6\x01\n" +
+	"\x10GetWorkflowGraph\x12-.agentpaas.control.v1.GetWorkflowGraphRequest\x1a..agentpaas.control.v1.GetWorkflowGraphResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/control/workflows/{workflow_id}/graph\x12\x83\x01\n" +
+	"\fListRegistry\x12).agentpaas.control.v1.ListRegistryRequest\x1a*.agentpaas.control.v1.ListRegistryResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/control/registry\x12\x89\x01\n" +
+	"\fShowRegistry\x12).agentpaas.control.v1.ShowRegistryRequest\x1a*.agentpaas.control.v1.ShowRegistryResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/control/registry/{ref}B\xd6\x01\n" +
 	"\x18com.agentpaas.control.v1B\fControlProtoP\x01Z:github.com/AgentPaaS-ai/agentpaas/api/control/v1;controlv1\xa2\x02\x03ACX\xaa\x02\x14Agentpaas.Control.V1\xca\x02\x14Agentpaas\\Control\\V1\xe2\x02 Agentpaas\\Control\\V1\\GPBMetadata\xea\x02\x16Agentpaas::Control::V1b\x06proto3"
 
 var (
@@ -11303,7 +11785,7 @@ func file_control_v1_control_proto_rawDescGZIP() []byte {
 }
 
 var file_control_v1_control_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 134)
+var file_control_v1_control_proto_msgTypes = make([]protoimpl.MessageInfo, 140)
 var file_control_v1_control_proto_goTypes = []any{
 	(LogLevel)(0),                           // 0: agentpaas.control.v1.LogLevel
 	(EventType)(0),                          // 1: agentpaas.control.v1.EventType
@@ -11441,26 +11923,32 @@ var file_control_v1_control_proto_goTypes = []any{
 	(*ChildResult)(nil),                     // 133: agentpaas.control.v1.ChildResult
 	(*GetWorkflowGraphRequest)(nil),         // 134: agentpaas.control.v1.GetWorkflowGraphRequest
 	(*GetWorkflowGraphResponse)(nil),        // 135: agentpaas.control.v1.GetWorkflowGraphResponse
-	nil,                                     // 136: agentpaas.control.v1.LogEntry.FieldsEntry
-	nil,                                     // 137: agentpaas.control.v1.NextActionResponse.ParamsEntry
-	nil,                                     // 138: agentpaas.control.v1.TypedControlError.DetailsEntry
-	nil,                                     // 139: agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
-	nil,                                     // 140: agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
-	(*timestamppb.Timestamp)(nil),           // 141: google.protobuf.Timestamp
+	(*RegistryCapability)(nil),              // 136: agentpaas.control.v1.RegistryCapability
+	(*RegistryEntry)(nil),                   // 137: agentpaas.control.v1.RegistryEntry
+	(*ListRegistryRequest)(nil),             // 138: agentpaas.control.v1.ListRegistryRequest
+	(*ListRegistryResponse)(nil),            // 139: agentpaas.control.v1.ListRegistryResponse
+	(*ShowRegistryRequest)(nil),             // 140: agentpaas.control.v1.ShowRegistryRequest
+	(*ShowRegistryResponse)(nil),            // 141: agentpaas.control.v1.ShowRegistryResponse
+	nil,                                     // 142: agentpaas.control.v1.LogEntry.FieldsEntry
+	nil,                                     // 143: agentpaas.control.v1.NextActionResponse.ParamsEntry
+	nil,                                     // 144: agentpaas.control.v1.TypedControlError.DetailsEntry
+	nil,                                     // 145: agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
+	nil,                                     // 146: agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
+	(*timestamppb.Timestamp)(nil),           // 147: google.protobuf.Timestamp
 }
 var file_control_v1_control_proto_depIdxs = []int32{
 	10,  // 0: agentpaas.control.v1.ExportPreviewResponse.files:type_name -> agentpaas.control.v1.ExportFileEntry
 	15,  // 1: agentpaas.control.v1.RunRequest.budget:type_name -> agentpaas.control.v1.BudgetConfig
 	0,   // 2: agentpaas.control.v1.LogsRequest.min_level:type_name -> agentpaas.control.v1.LogLevel
-	141, // 3: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
-	136, // 4: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
+	147, // 3: agentpaas.control.v1.LogEntry.timestamp:type_name -> google.protobuf.Timestamp
+	142, // 4: agentpaas.control.v1.LogEntry.fields:type_name -> agentpaas.control.v1.LogEntry.FieldsEntry
 	2,   // 5: agentpaas.control.v1.SecretSetRequest.type:type_name -> agentpaas.control.v1.SecretType
 	1,   // 6: agentpaas.control.v1.AuditQueryRequest.event_type:type_name -> agentpaas.control.v1.EventType
 	30,  // 7: agentpaas.control.v1.AuditQueryRequest.time_range:type_name -> agentpaas.control.v1.TimeRange
-	141, // 8: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
-	141, // 9: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
+	147, // 8: agentpaas.control.v1.TimeRange.start:type_name -> google.protobuf.Timestamp
+	147, // 9: agentpaas.control.v1.TimeRange.end:type_name -> google.protobuf.Timestamp
 	1,   // 10: agentpaas.control.v1.AuditEntry.event_type:type_name -> agentpaas.control.v1.EventType
-	141, // 11: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
+	147, // 11: agentpaas.control.v1.AuditEntry.timestamp:type_name -> google.protobuf.Timestamp
 	32,  // 12: agentpaas.control.v1.AuditChainVerification.issues:type_name -> agentpaas.control.v1.AuditCheckpointIssue
 	31,  // 13: agentpaas.control.v1.AuditQueryResponse.entries:type_name -> agentpaas.control.v1.AuditEntry
 	33,  // 14: agentpaas.control.v1.AuditQueryResponse.chain_verification:type_name -> agentpaas.control.v1.AuditChainVerification
@@ -11470,10 +11958,10 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	43,  // 18: agentpaas.control.v1.ValidateAgentProjectResponse.issues:type_name -> agentpaas.control.v1.OperatorIssue
 	44,  // 19: agentpaas.control.v1.OperatorIssue.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	44,  // 20: agentpaas.control.v1.ConfirmationRequirement.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
-	141, // 21: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
+	147, // 21: agentpaas.control.v1.KeyEvent.timestamp:type_name -> google.protobuf.Timestamp
 	48,  // 22: agentpaas.control.v1.SummarizeRunResponse.key_events:type_name -> agentpaas.control.v1.KeyEvent
-	141, // 23: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
-	141, // 24: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
+	147, // 23: agentpaas.control.v1.SummarizeRunResponse.started_at:type_name -> google.protobuf.Timestamp
+	147, // 24: agentpaas.control.v1.SummarizeRunResponse.finished_at:type_name -> google.protobuf.Timestamp
 	44,  // 25: agentpaas.control.v1.SummarizeRunResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	77,  // 26: agentpaas.control.v1.SummarizeRunResponse.attempt_report:type_name -> agentpaas.control.v1.AttemptReport
 	45,  // 27: agentpaas.control.v1.ExplainFailureResponse.redacted_excerpts:type_name -> agentpaas.control.v1.RedactedExcerpt
@@ -11481,27 +11969,27 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	44,  // 29: agentpaas.control.v1.ExplainPolicyDenialResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	44,  // 30: agentpaas.control.v1.RecommendPolicyPatchResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	46,  // 31: agentpaas.control.v1.RecommendPolicyPatchResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
-	141, // 32: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
+	147, // 32: agentpaas.control.v1.TimelineEvent.timestamp:type_name -> google.protobuf.Timestamp
 	57,  // 33: agentpaas.control.v1.GetRunTimelineResponse.events:type_name -> agentpaas.control.v1.TimelineEvent
-	137, // 34: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
+	143, // 34: agentpaas.control.v1.NextActionResponse.params:type_name -> agentpaas.control.v1.NextActionResponse.ParamsEntry
 	44,  // 35: agentpaas.control.v1.NextActionResponse.evidence_refs:type_name -> agentpaas.control.v1.EvidenceRef
 	46,  // 36: agentpaas.control.v1.NextActionResponse.confirmation:type_name -> agentpaas.control.v1.ConfirmationRequirement
 	61,  // 37: agentpaas.control.v1.CronAddResponse.schedule:type_name -> agentpaas.control.v1.CronScheduleInfo
 	61,  // 38: agentpaas.control.v1.CronListResponse.schedules:type_name -> agentpaas.control.v1.CronScheduleInfo
-	141, // 39: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
+	147, // 39: agentpaas.control.v1.RunInfo.started_at:type_name -> google.protobuf.Timestamp
 	68,  // 40: agentpaas.control.v1.ListRunsResponse.runs:type_name -> agentpaas.control.v1.RunInfo
-	141, // 41: agentpaas.control.v1.CheckpointSummary.created_at:type_name -> google.protobuf.Timestamp
-	141, // 42: agentpaas.control.v1.ArtifactRef.created_at:type_name -> google.protobuf.Timestamp
-	141, // 43: agentpaas.control.v1.RouteDecision.timestamp:type_name -> google.protobuf.Timestamp
+	147, // 41: agentpaas.control.v1.CheckpointSummary.created_at:type_name -> google.protobuf.Timestamp
+	147, // 42: agentpaas.control.v1.ArtifactRef.created_at:type_name -> google.protobuf.Timestamp
+	147, // 43: agentpaas.control.v1.RouteDecision.timestamp:type_name -> google.protobuf.Timestamp
 	71,  // 44: agentpaas.control.v1.AttemptReport.progress:type_name -> agentpaas.control.v1.ProgressSummary
 	72,  // 45: agentpaas.control.v1.AttemptReport.checkpoint:type_name -> agentpaas.control.v1.CheckpointSummary
 	73,  // 46: agentpaas.control.v1.AttemptReport.artifacts:type_name -> agentpaas.control.v1.ArtifactRef
 	74,  // 47: agentpaas.control.v1.AttemptReport.time:type_name -> agentpaas.control.v1.TimeBudgetSummary
 	75,  // 48: agentpaas.control.v1.AttemptReport.llm_budget:type_name -> agentpaas.control.v1.LLMBudgetSummary
 	76,  // 49: agentpaas.control.v1.AttemptReport.route_decisions:type_name -> agentpaas.control.v1.RouteDecision
-	141, // 50: agentpaas.control.v1.AttemptReport.created_at:type_name -> google.protobuf.Timestamp
+	147, // 50: agentpaas.control.v1.AttemptReport.created_at:type_name -> google.protobuf.Timestamp
 	5,   // 51: agentpaas.control.v1.TypedControlError.code:type_name -> agentpaas.control.v1.TypedControlErrorCode
-	138, // 52: agentpaas.control.v1.TypedControlError.details:type_name -> agentpaas.control.v1.TypedControlError.DetailsEntry
+	144, // 52: agentpaas.control.v1.TypedControlError.details:type_name -> agentpaas.control.v1.TypedControlError.DetailsEntry
 	78,  // 53: agentpaas.control.v1.IdempotentReplayResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	16,  // 54: agentpaas.control.v1.IdempotentReplayResponse.original:type_name -> agentpaas.control.v1.RunResponse
 	78,  // 55: agentpaas.control.v1.AlreadyRunningResponse.error:type_name -> agentpaas.control.v1.TypedControlError
@@ -11512,11 +12000,11 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	78,  // 60: agentpaas.control.v1.ConcurrencyUnavailableResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	78,  // 61: agentpaas.control.v1.LimitAmendmentDeniedResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	78,  // 62: agentpaas.control.v1.FeatureNotEnabledResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	139, // 63: agentpaas.control.v1.CreateDeploymentRequest.nested_package_digests:type_name -> agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
-	140, // 64: agentpaas.control.v1.DeploymentRecord.nested_package_digests:type_name -> agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
-	141, // 65: agentpaas.control.v1.DeploymentRecord.created_at:type_name -> google.protobuf.Timestamp
-	141, // 66: agentpaas.control.v1.DeploymentRecord.activated_at:type_name -> google.protobuf.Timestamp
-	141, // 67: agentpaas.control.v1.DeploymentRecord.deactivated_at:type_name -> google.protobuf.Timestamp
+	145, // 63: agentpaas.control.v1.CreateDeploymentRequest.nested_package_digests:type_name -> agentpaas.control.v1.CreateDeploymentRequest.NestedPackageDigestsEntry
+	146, // 64: agentpaas.control.v1.DeploymentRecord.nested_package_digests:type_name -> agentpaas.control.v1.DeploymentRecord.NestedPackageDigestsEntry
+	147, // 65: agentpaas.control.v1.DeploymentRecord.created_at:type_name -> google.protobuf.Timestamp
+	147, // 66: agentpaas.control.v1.DeploymentRecord.activated_at:type_name -> google.protobuf.Timestamp
+	147, // 67: agentpaas.control.v1.DeploymentRecord.deactivated_at:type_name -> google.protobuf.Timestamp
 	89,  // 68: agentpaas.control.v1.CreateDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
 	78,  // 69: agentpaas.control.v1.CreateDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	89,  // 70: agentpaas.control.v1.GetDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
@@ -11527,7 +12015,7 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	89,  // 75: agentpaas.control.v1.DeactivateDeploymentResponse.deployment:type_name -> agentpaas.control.v1.DeploymentRecord
 	78,  // 76: agentpaas.control.v1.DeactivateDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	3,   // 77: agentpaas.control.v1.CreateDeploymentAliasRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
-	141, // 78: agentpaas.control.v1.DeploymentAliasRecord.updated_at:type_name -> google.protobuf.Timestamp
+	147, // 78: agentpaas.control.v1.DeploymentAliasRecord.updated_at:type_name -> google.protobuf.Timestamp
 	98,  // 79: agentpaas.control.v1.CreateDeploymentAliasResponse.alias:type_name -> agentpaas.control.v1.DeploymentAliasRecord
 	78,  // 80: agentpaas.control.v1.CreateDeploymentAliasResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	98,  // 81: agentpaas.control.v1.GetDeploymentAliasResponse.alias:type_name -> agentpaas.control.v1.DeploymentAliasRecord
@@ -11540,16 +12028,16 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	4,   // 88: agentpaas.control.v1.InvokeDeploymentResponse.outcome:type_name -> agentpaas.control.v1.AdmissionOutcomeCode
 	107, // 89: agentpaas.control.v1.InvokeDeploymentResponse.ceilings:type_name -> agentpaas.control.v1.AbsoluteCeilingsSnapshot
 	78,  // 90: agentpaas.control.v1.InvokeDeploymentResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	141, // 91: agentpaas.control.v1.InvokeDeploymentResponse.admitted_at:type_name -> google.protobuf.Timestamp
-	141, // 92: agentpaas.control.v1.InvocationRecord.admitted_at:type_name -> google.protobuf.Timestamp
+	147, // 91: agentpaas.control.v1.InvokeDeploymentResponse.admitted_at:type_name -> google.protobuf.Timestamp
+	147, // 92: agentpaas.control.v1.InvocationRecord.admitted_at:type_name -> google.protobuf.Timestamp
 	109, // 93: agentpaas.control.v1.GetInvocationResponse.invocation:type_name -> agentpaas.control.v1.InvocationRecord
 	78,  // 94: agentpaas.control.v1.GetInvocationResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	78,  // 95: agentpaas.control.v1.GetRunStatusResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	141, // 96: agentpaas.control.v1.GetRunResultResponse.finished_at:type_name -> google.protobuf.Timestamp
+	147, // 96: agentpaas.control.v1.GetRunResultResponse.finished_at:type_name -> google.protobuf.Timestamp
 	78,  // 97: agentpaas.control.v1.GetRunResultResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	141, // 98: agentpaas.control.v1.WorkflowRecord.created_at:type_name -> google.protobuf.Timestamp
-	141, // 99: agentpaas.control.v1.WorkflowRecord.updated_at:type_name -> google.protobuf.Timestamp
-	141, // 100: agentpaas.control.v1.WorkflowRecord.terminated_at:type_name -> google.protobuf.Timestamp
+	147, // 98: agentpaas.control.v1.WorkflowRecord.created_at:type_name -> google.protobuf.Timestamp
+	147, // 99: agentpaas.control.v1.WorkflowRecord.updated_at:type_name -> google.protobuf.Timestamp
+	147, // 100: agentpaas.control.v1.WorkflowRecord.terminated_at:type_name -> google.protobuf.Timestamp
 	117, // 101: agentpaas.control.v1.CreateWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
 	78,  // 102: agentpaas.control.v1.CreateWorkflowResponse.error:type_name -> agentpaas.control.v1.TypedControlError
 	117, // 103: agentpaas.control.v1.GetWorkflowResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
@@ -11566,14 +12054,14 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	3,   // 114: agentpaas.control.v1.AmendLimitsRequest.authority_scope:type_name -> agentpaas.control.v1.AuthorityScope
 	107, // 115: agentpaas.control.v1.AmendLimitsResponse.ceilings:type_name -> agentpaas.control.v1.AbsoluteCeilingsSnapshot
 	78,  // 116: agentpaas.control.v1.AmendLimitsResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	141, // 117: agentpaas.control.v1.WorkflowNodeStatus.created_at:type_name -> google.protobuf.Timestamp
-	141, // 118: agentpaas.control.v1.WorkflowNodeStatus.updated_at:type_name -> google.protobuf.Timestamp
-	141, // 119: agentpaas.control.v1.ServiceBindingStatus.created_at:type_name -> google.protobuf.Timestamp
-	141, // 120: agentpaas.control.v1.ServiceBindingStatus.updated_at:type_name -> google.protobuf.Timestamp
-	141, // 121: agentpaas.control.v1.HandoffMetadata.created_at:type_name -> google.protobuf.Timestamp
-	141, // 122: agentpaas.control.v1.ChildBatchStatus.created_at:type_name -> google.protobuf.Timestamp
-	141, // 123: agentpaas.control.v1.ChildBatchStatus.updated_at:type_name -> google.protobuf.Timestamp
-	141, // 124: agentpaas.control.v1.ChildResult.finished_at:type_name -> google.protobuf.Timestamp
+	147, // 117: agentpaas.control.v1.WorkflowNodeStatus.created_at:type_name -> google.protobuf.Timestamp
+	147, // 118: agentpaas.control.v1.WorkflowNodeStatus.updated_at:type_name -> google.protobuf.Timestamp
+	147, // 119: agentpaas.control.v1.ServiceBindingStatus.created_at:type_name -> google.protobuf.Timestamp
+	147, // 120: agentpaas.control.v1.ServiceBindingStatus.updated_at:type_name -> google.protobuf.Timestamp
+	147, // 121: agentpaas.control.v1.HandoffMetadata.created_at:type_name -> google.protobuf.Timestamp
+	147, // 122: agentpaas.control.v1.ChildBatchStatus.created_at:type_name -> google.protobuf.Timestamp
+	147, // 123: agentpaas.control.v1.ChildBatchStatus.updated_at:type_name -> google.protobuf.Timestamp
+	147, // 124: agentpaas.control.v1.ChildResult.finished_at:type_name -> google.protobuf.Timestamp
 	117, // 125: agentpaas.control.v1.GetWorkflowGraphResponse.workflow:type_name -> agentpaas.control.v1.WorkflowRecord
 	129, // 126: agentpaas.control.v1.GetWorkflowGraphResponse.nodes:type_name -> agentpaas.control.v1.WorkflowNodeStatus
 	130, // 127: agentpaas.control.v1.GetWorkflowGraphResponse.services:type_name -> agentpaas.control.v1.ServiceBindingStatus
@@ -11581,97 +12069,106 @@ var file_control_v1_control_proto_depIdxs = []int32{
 	132, // 129: agentpaas.control.v1.GetWorkflowGraphResponse.child_batches:type_name -> agentpaas.control.v1.ChildBatchStatus
 	133, // 130: agentpaas.control.v1.GetWorkflowGraphResponse.child_results:type_name -> agentpaas.control.v1.ChildResult
 	78,  // 131: agentpaas.control.v1.GetWorkflowGraphResponse.error:type_name -> agentpaas.control.v1.TypedControlError
-	7,   // 132: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
-	9,   // 133: agentpaas.control.v1.ControlService.ExportPreview:input_type -> agentpaas.control.v1.ExportPreviewRequest
-	12,  // 134: agentpaas.control.v1.ControlService.Export:input_type -> agentpaas.control.v1.ExportRequest
-	14,  // 135: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
-	17,  // 136: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
-	19,  // 137: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
-	21,  // 138: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
-	23,  // 139: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
-	25,  // 140: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
-	27,  // 141: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
-	29,  // 142: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
-	35,  // 143: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
-	37,  // 144: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
-	40,  // 145: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
-	47,  // 146: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
-	50,  // 147: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
-	52,  // 148: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
-	54,  // 149: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
-	56,  // 150: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
-	59,  // 151: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
-	62,  // 152: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
-	64,  // 153: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
-	66,  // 154: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
-	69,  // 155: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
-	88,  // 156: agentpaas.control.v1.ControlService.CreateDeployment:input_type -> agentpaas.control.v1.CreateDeploymentRequest
-	91,  // 157: agentpaas.control.v1.ControlService.GetDeployment:input_type -> agentpaas.control.v1.GetDeploymentRequest
-	93,  // 158: agentpaas.control.v1.ControlService.ListDeployments:input_type -> agentpaas.control.v1.ListDeploymentsRequest
-	95,  // 159: agentpaas.control.v1.ControlService.DeactivateDeployment:input_type -> agentpaas.control.v1.DeactivateDeploymentRequest
-	97,  // 160: agentpaas.control.v1.ControlService.CreateDeploymentAlias:input_type -> agentpaas.control.v1.CreateDeploymentAliasRequest
-	100, // 161: agentpaas.control.v1.ControlService.GetDeploymentAlias:input_type -> agentpaas.control.v1.GetDeploymentAliasRequest
-	102, // 162: agentpaas.control.v1.ControlService.ListDeploymentAliases:input_type -> agentpaas.control.v1.ListDeploymentAliasesRequest
-	104, // 163: agentpaas.control.v1.ControlService.CasDeploymentAlias:input_type -> agentpaas.control.v1.CasDeploymentAliasRequest
-	106, // 164: agentpaas.control.v1.ControlService.InvokeDeployment:input_type -> agentpaas.control.v1.InvokeDeploymentRequest
-	110, // 165: agentpaas.control.v1.ControlService.GetInvocation:input_type -> agentpaas.control.v1.GetInvocationRequest
-	112, // 166: agentpaas.control.v1.ControlService.GetRunStatus:input_type -> agentpaas.control.v1.GetRunStatusRequest
-	114, // 167: agentpaas.control.v1.ControlService.GetRunResult:input_type -> agentpaas.control.v1.GetRunResultRequest
-	116, // 168: agentpaas.control.v1.ControlService.CreateWorkflow:input_type -> agentpaas.control.v1.CreateWorkflowRequest
-	119, // 169: agentpaas.control.v1.ControlService.GetWorkflow:input_type -> agentpaas.control.v1.GetWorkflowRequest
-	121, // 170: agentpaas.control.v1.ControlService.CancelWorkflow:input_type -> agentpaas.control.v1.CancelWorkflowRequest
-	123, // 171: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:input_type -> agentpaas.control.v1.SetWorkflowDesiredStateRequest
-	125, // 172: agentpaas.control.v1.ControlService.RestartWorkflow:input_type -> agentpaas.control.v1.RestartWorkflowRequest
-	127, // 173: agentpaas.control.v1.ControlService.AmendLimits:input_type -> agentpaas.control.v1.AmendLimitsRequest
-	134, // 174: agentpaas.control.v1.ControlService.GetWorkflowGraph:input_type -> agentpaas.control.v1.GetWorkflowGraphRequest
-	8,   // 175: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
-	11,  // 176: agentpaas.control.v1.ControlService.ExportPreview:output_type -> agentpaas.control.v1.ExportPreviewResponse
-	13,  // 177: agentpaas.control.v1.ControlService.Export:output_type -> agentpaas.control.v1.ExportResponse
-	16,  // 178: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
-	18,  // 179: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
-	20,  // 180: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
-	22,  // 181: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
-	24,  // 182: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
-	26,  // 183: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
-	28,  // 184: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
-	34,  // 185: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
-	36,  // 186: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
-	39,  // 187: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
-	42,  // 188: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
-	49,  // 189: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
-	51,  // 190: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
-	53,  // 191: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
-	55,  // 192: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
-	58,  // 193: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
-	60,  // 194: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
-	63,  // 195: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
-	65,  // 196: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
-	67,  // 197: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
-	70,  // 198: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
-	90,  // 199: agentpaas.control.v1.ControlService.CreateDeployment:output_type -> agentpaas.control.v1.CreateDeploymentResponse
-	92,  // 200: agentpaas.control.v1.ControlService.GetDeployment:output_type -> agentpaas.control.v1.GetDeploymentResponse
-	94,  // 201: agentpaas.control.v1.ControlService.ListDeployments:output_type -> agentpaas.control.v1.ListDeploymentsResponse
-	96,  // 202: agentpaas.control.v1.ControlService.DeactivateDeployment:output_type -> agentpaas.control.v1.DeactivateDeploymentResponse
-	99,  // 203: agentpaas.control.v1.ControlService.CreateDeploymentAlias:output_type -> agentpaas.control.v1.CreateDeploymentAliasResponse
-	101, // 204: agentpaas.control.v1.ControlService.GetDeploymentAlias:output_type -> agentpaas.control.v1.GetDeploymentAliasResponse
-	103, // 205: agentpaas.control.v1.ControlService.ListDeploymentAliases:output_type -> agentpaas.control.v1.ListDeploymentAliasesResponse
-	105, // 206: agentpaas.control.v1.ControlService.CasDeploymentAlias:output_type -> agentpaas.control.v1.CasDeploymentAliasResponse
-	108, // 207: agentpaas.control.v1.ControlService.InvokeDeployment:output_type -> agentpaas.control.v1.InvokeDeploymentResponse
-	111, // 208: agentpaas.control.v1.ControlService.GetInvocation:output_type -> agentpaas.control.v1.GetInvocationResponse
-	113, // 209: agentpaas.control.v1.ControlService.GetRunStatus:output_type -> agentpaas.control.v1.GetRunStatusResponse
-	115, // 210: agentpaas.control.v1.ControlService.GetRunResult:output_type -> agentpaas.control.v1.GetRunResultResponse
-	118, // 211: agentpaas.control.v1.ControlService.CreateWorkflow:output_type -> agentpaas.control.v1.CreateWorkflowResponse
-	120, // 212: agentpaas.control.v1.ControlService.GetWorkflow:output_type -> agentpaas.control.v1.GetWorkflowResponse
-	122, // 213: agentpaas.control.v1.ControlService.CancelWorkflow:output_type -> agentpaas.control.v1.CancelWorkflowResponse
-	124, // 214: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:output_type -> agentpaas.control.v1.SetWorkflowDesiredStateResponse
-	126, // 215: agentpaas.control.v1.ControlService.RestartWorkflow:output_type -> agentpaas.control.v1.RestartWorkflowResponse
-	128, // 216: agentpaas.control.v1.ControlService.AmendLimits:output_type -> agentpaas.control.v1.AmendLimitsResponse
-	135, // 217: agentpaas.control.v1.ControlService.GetWorkflowGraph:output_type -> agentpaas.control.v1.GetWorkflowGraphResponse
-	175, // [175:218] is the sub-list for method output_type
-	132, // [132:175] is the sub-list for method input_type
-	132, // [132:132] is the sub-list for extension type_name
-	132, // [132:132] is the sub-list for extension extendee
-	0,   // [0:132] is the sub-list for field type_name
+	147, // 132: agentpaas.control.v1.RegistryEntry.installed_at:type_name -> google.protobuf.Timestamp
+	147, // 133: agentpaas.control.v1.RegistryEntry.promoted_at:type_name -> google.protobuf.Timestamp
+	136, // 134: agentpaas.control.v1.RegistryEntry.capabilities:type_name -> agentpaas.control.v1.RegistryCapability
+	137, // 135: agentpaas.control.v1.ListRegistryResponse.entries:type_name -> agentpaas.control.v1.RegistryEntry
+	137, // 136: agentpaas.control.v1.ShowRegistryResponse.entry:type_name -> agentpaas.control.v1.RegistryEntry
+	7,   // 137: agentpaas.control.v1.ControlService.Pack:input_type -> agentpaas.control.v1.PackRequest
+	9,   // 138: agentpaas.control.v1.ControlService.ExportPreview:input_type -> agentpaas.control.v1.ExportPreviewRequest
+	12,  // 139: agentpaas.control.v1.ControlService.Export:input_type -> agentpaas.control.v1.ExportRequest
+	14,  // 140: agentpaas.control.v1.ControlService.Run:input_type -> agentpaas.control.v1.RunRequest
+	17,  // 141: agentpaas.control.v1.ControlService.Stop:input_type -> agentpaas.control.v1.StopRequest
+	19,  // 142: agentpaas.control.v1.ControlService.Logs:input_type -> agentpaas.control.v1.LogsRequest
+	21,  // 143: agentpaas.control.v1.ControlService.PolicyApply:input_type -> agentpaas.control.v1.PolicyApplyRequest
+	23,  // 144: agentpaas.control.v1.ControlService.SecretSet:input_type -> agentpaas.control.v1.SecretSetRequest
+	25,  // 145: agentpaas.control.v1.ControlService.SecretGrant:input_type -> agentpaas.control.v1.SecretGrantRequest
+	27,  // 146: agentpaas.control.v1.ControlService.SecretRevoke:input_type -> agentpaas.control.v1.SecretRevokeRequest
+	29,  // 147: agentpaas.control.v1.ControlService.AuditQuery:input_type -> agentpaas.control.v1.AuditQueryRequest
+	35,  // 148: agentpaas.control.v1.ControlService.AuditExport:input_type -> agentpaas.control.v1.AuditExportRequest
+	37,  // 149: agentpaas.control.v1.ControlService.Doctor:input_type -> agentpaas.control.v1.DoctorRequest
+	40,  // 150: agentpaas.control.v1.ControlService.ValidateAgentProject:input_type -> agentpaas.control.v1.ValidateAgentProjectRequest
+	47,  // 151: agentpaas.control.v1.ControlService.SummarizeRun:input_type -> agentpaas.control.v1.SummarizeRunRequest
+	50,  // 152: agentpaas.control.v1.ControlService.ExplainFailure:input_type -> agentpaas.control.v1.ExplainFailureRequest
+	52,  // 153: agentpaas.control.v1.ControlService.ExplainPolicyDenial:input_type -> agentpaas.control.v1.ExplainPolicyDenialRequest
+	54,  // 154: agentpaas.control.v1.ControlService.RecommendPolicyPatch:input_type -> agentpaas.control.v1.RecommendPolicyPatchRequest
+	56,  // 155: agentpaas.control.v1.ControlService.GetRunTimeline:input_type -> agentpaas.control.v1.GetRunTimelineRequest
+	59,  // 156: agentpaas.control.v1.ControlService.NextAction:input_type -> agentpaas.control.v1.NextActionRequest
+	62,  // 157: agentpaas.control.v1.ControlService.CronAdd:input_type -> agentpaas.control.v1.CronAddRequest
+	64,  // 158: agentpaas.control.v1.ControlService.CronList:input_type -> agentpaas.control.v1.CronListRequest
+	66,  // 159: agentpaas.control.v1.ControlService.CronRemove:input_type -> agentpaas.control.v1.CronRemoveRequest
+	69,  // 160: agentpaas.control.v1.ControlService.ListRuns:input_type -> agentpaas.control.v1.ListRunsRequest
+	88,  // 161: agentpaas.control.v1.ControlService.CreateDeployment:input_type -> agentpaas.control.v1.CreateDeploymentRequest
+	91,  // 162: agentpaas.control.v1.ControlService.GetDeployment:input_type -> agentpaas.control.v1.GetDeploymentRequest
+	93,  // 163: agentpaas.control.v1.ControlService.ListDeployments:input_type -> agentpaas.control.v1.ListDeploymentsRequest
+	95,  // 164: agentpaas.control.v1.ControlService.DeactivateDeployment:input_type -> agentpaas.control.v1.DeactivateDeploymentRequest
+	97,  // 165: agentpaas.control.v1.ControlService.CreateDeploymentAlias:input_type -> agentpaas.control.v1.CreateDeploymentAliasRequest
+	100, // 166: agentpaas.control.v1.ControlService.GetDeploymentAlias:input_type -> agentpaas.control.v1.GetDeploymentAliasRequest
+	102, // 167: agentpaas.control.v1.ControlService.ListDeploymentAliases:input_type -> agentpaas.control.v1.ListDeploymentAliasesRequest
+	104, // 168: agentpaas.control.v1.ControlService.CasDeploymentAlias:input_type -> agentpaas.control.v1.CasDeploymentAliasRequest
+	106, // 169: agentpaas.control.v1.ControlService.InvokeDeployment:input_type -> agentpaas.control.v1.InvokeDeploymentRequest
+	110, // 170: agentpaas.control.v1.ControlService.GetInvocation:input_type -> agentpaas.control.v1.GetInvocationRequest
+	112, // 171: agentpaas.control.v1.ControlService.GetRunStatus:input_type -> agentpaas.control.v1.GetRunStatusRequest
+	114, // 172: agentpaas.control.v1.ControlService.GetRunResult:input_type -> agentpaas.control.v1.GetRunResultRequest
+	116, // 173: agentpaas.control.v1.ControlService.CreateWorkflow:input_type -> agentpaas.control.v1.CreateWorkflowRequest
+	119, // 174: agentpaas.control.v1.ControlService.GetWorkflow:input_type -> agentpaas.control.v1.GetWorkflowRequest
+	121, // 175: agentpaas.control.v1.ControlService.CancelWorkflow:input_type -> agentpaas.control.v1.CancelWorkflowRequest
+	123, // 176: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:input_type -> agentpaas.control.v1.SetWorkflowDesiredStateRequest
+	125, // 177: agentpaas.control.v1.ControlService.RestartWorkflow:input_type -> agentpaas.control.v1.RestartWorkflowRequest
+	127, // 178: agentpaas.control.v1.ControlService.AmendLimits:input_type -> agentpaas.control.v1.AmendLimitsRequest
+	134, // 179: agentpaas.control.v1.ControlService.GetWorkflowGraph:input_type -> agentpaas.control.v1.GetWorkflowGraphRequest
+	138, // 180: agentpaas.control.v1.ControlService.ListRegistry:input_type -> agentpaas.control.v1.ListRegistryRequest
+	140, // 181: agentpaas.control.v1.ControlService.ShowRegistry:input_type -> agentpaas.control.v1.ShowRegistryRequest
+	8,   // 182: agentpaas.control.v1.ControlService.Pack:output_type -> agentpaas.control.v1.PackResponse
+	11,  // 183: agentpaas.control.v1.ControlService.ExportPreview:output_type -> agentpaas.control.v1.ExportPreviewResponse
+	13,  // 184: agentpaas.control.v1.ControlService.Export:output_type -> agentpaas.control.v1.ExportResponse
+	16,  // 185: agentpaas.control.v1.ControlService.Run:output_type -> agentpaas.control.v1.RunResponse
+	18,  // 186: agentpaas.control.v1.ControlService.Stop:output_type -> agentpaas.control.v1.StopResponse
+	20,  // 187: agentpaas.control.v1.ControlService.Logs:output_type -> agentpaas.control.v1.LogEntry
+	22,  // 188: agentpaas.control.v1.ControlService.PolicyApply:output_type -> agentpaas.control.v1.PolicyApplyResponse
+	24,  // 189: agentpaas.control.v1.ControlService.SecretSet:output_type -> agentpaas.control.v1.SecretSetResponse
+	26,  // 190: agentpaas.control.v1.ControlService.SecretGrant:output_type -> agentpaas.control.v1.SecretGrantResponse
+	28,  // 191: agentpaas.control.v1.ControlService.SecretRevoke:output_type -> agentpaas.control.v1.SecretRevokeResponse
+	34,  // 192: agentpaas.control.v1.ControlService.AuditQuery:output_type -> agentpaas.control.v1.AuditQueryResponse
+	36,  // 193: agentpaas.control.v1.ControlService.AuditExport:output_type -> agentpaas.control.v1.AuditExportResponse
+	39,  // 194: agentpaas.control.v1.ControlService.Doctor:output_type -> agentpaas.control.v1.DoctorResponse
+	42,  // 195: agentpaas.control.v1.ControlService.ValidateAgentProject:output_type -> agentpaas.control.v1.ValidateAgentProjectResponse
+	49,  // 196: agentpaas.control.v1.ControlService.SummarizeRun:output_type -> agentpaas.control.v1.SummarizeRunResponse
+	51,  // 197: agentpaas.control.v1.ControlService.ExplainFailure:output_type -> agentpaas.control.v1.ExplainFailureResponse
+	53,  // 198: agentpaas.control.v1.ControlService.ExplainPolicyDenial:output_type -> agentpaas.control.v1.ExplainPolicyDenialResponse
+	55,  // 199: agentpaas.control.v1.ControlService.RecommendPolicyPatch:output_type -> agentpaas.control.v1.RecommendPolicyPatchResponse
+	58,  // 200: agentpaas.control.v1.ControlService.GetRunTimeline:output_type -> agentpaas.control.v1.GetRunTimelineResponse
+	60,  // 201: agentpaas.control.v1.ControlService.NextAction:output_type -> agentpaas.control.v1.NextActionResponse
+	63,  // 202: agentpaas.control.v1.ControlService.CronAdd:output_type -> agentpaas.control.v1.CronAddResponse
+	65,  // 203: agentpaas.control.v1.ControlService.CronList:output_type -> agentpaas.control.v1.CronListResponse
+	67,  // 204: agentpaas.control.v1.ControlService.CronRemove:output_type -> agentpaas.control.v1.CronRemoveResponse
+	70,  // 205: agentpaas.control.v1.ControlService.ListRuns:output_type -> agentpaas.control.v1.ListRunsResponse
+	90,  // 206: agentpaas.control.v1.ControlService.CreateDeployment:output_type -> agentpaas.control.v1.CreateDeploymentResponse
+	92,  // 207: agentpaas.control.v1.ControlService.GetDeployment:output_type -> agentpaas.control.v1.GetDeploymentResponse
+	94,  // 208: agentpaas.control.v1.ControlService.ListDeployments:output_type -> agentpaas.control.v1.ListDeploymentsResponse
+	96,  // 209: agentpaas.control.v1.ControlService.DeactivateDeployment:output_type -> agentpaas.control.v1.DeactivateDeploymentResponse
+	99,  // 210: agentpaas.control.v1.ControlService.CreateDeploymentAlias:output_type -> agentpaas.control.v1.CreateDeploymentAliasResponse
+	101, // 211: agentpaas.control.v1.ControlService.GetDeploymentAlias:output_type -> agentpaas.control.v1.GetDeploymentAliasResponse
+	103, // 212: agentpaas.control.v1.ControlService.ListDeploymentAliases:output_type -> agentpaas.control.v1.ListDeploymentAliasesResponse
+	105, // 213: agentpaas.control.v1.ControlService.CasDeploymentAlias:output_type -> agentpaas.control.v1.CasDeploymentAliasResponse
+	108, // 214: agentpaas.control.v1.ControlService.InvokeDeployment:output_type -> agentpaas.control.v1.InvokeDeploymentResponse
+	111, // 215: agentpaas.control.v1.ControlService.GetInvocation:output_type -> agentpaas.control.v1.GetInvocationResponse
+	113, // 216: agentpaas.control.v1.ControlService.GetRunStatus:output_type -> agentpaas.control.v1.GetRunStatusResponse
+	115, // 217: agentpaas.control.v1.ControlService.GetRunResult:output_type -> agentpaas.control.v1.GetRunResultResponse
+	118, // 218: agentpaas.control.v1.ControlService.CreateWorkflow:output_type -> agentpaas.control.v1.CreateWorkflowResponse
+	120, // 219: agentpaas.control.v1.ControlService.GetWorkflow:output_type -> agentpaas.control.v1.GetWorkflowResponse
+	122, // 220: agentpaas.control.v1.ControlService.CancelWorkflow:output_type -> agentpaas.control.v1.CancelWorkflowResponse
+	124, // 221: agentpaas.control.v1.ControlService.SetWorkflowDesiredState:output_type -> agentpaas.control.v1.SetWorkflowDesiredStateResponse
+	126, // 222: agentpaas.control.v1.ControlService.RestartWorkflow:output_type -> agentpaas.control.v1.RestartWorkflowResponse
+	128, // 223: agentpaas.control.v1.ControlService.AmendLimits:output_type -> agentpaas.control.v1.AmendLimitsResponse
+	135, // 224: agentpaas.control.v1.ControlService.GetWorkflowGraph:output_type -> agentpaas.control.v1.GetWorkflowGraphResponse
+	139, // 225: agentpaas.control.v1.ControlService.ListRegistry:output_type -> agentpaas.control.v1.ListRegistryResponse
+	141, // 226: agentpaas.control.v1.ControlService.ShowRegistry:output_type -> agentpaas.control.v1.ShowRegistryResponse
+	182, // [182:227] is the sub-list for method output_type
+	137, // [137:182] is the sub-list for method input_type
+	137, // [137:137] is the sub-list for extension type_name
+	137, // [137:137] is the sub-list for extension extendee
+	0,   // [0:137] is the sub-list for field type_name
 }
 
 func init() { file_control_v1_control_proto_init() }
@@ -11679,13 +12176,14 @@ func file_control_v1_control_proto_init() {
 	if File_control_v1_control_proto != nil {
 		return
 	}
+	file_control_v1_control_proto_msgTypes[130].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_control_v1_control_proto_rawDesc), len(file_control_v1_control_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   134,
+			NumMessages:   140,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

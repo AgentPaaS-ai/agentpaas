@@ -82,6 +82,8 @@ const (
 	ControlService_RestartWorkflow_FullMethodName         = "/agentpaas.control.v1.ControlService/RestartWorkflow"
 	ControlService_AmendLimits_FullMethodName             = "/agentpaas.control.v1.ControlService/AmendLimits"
 	ControlService_GetWorkflowGraph_FullMethodName        = "/agentpaas.control.v1.ControlService/GetWorkflowGraph"
+	ControlService_ListRegistry_FullMethodName            = "/agentpaas.control.v1.ControlService/ListRegistry"
+	ControlService_ShowRegistry_FullMethodName            = "/agentpaas.control.v1.ControlService/ShowRegistry"
 )
 
 // ControlServiceClient is the client API for ControlService service.
@@ -162,6 +164,10 @@ type ControlServiceClient interface {
 	RestartWorkflow(ctx context.Context, in *RestartWorkflowRequest, opts ...grpc.CallOption) (*RestartWorkflowResponse, error)
 	AmendLimits(ctx context.Context, in *AmendLimitsRequest, opts ...grpc.CallOption) (*AmendLimitsResponse, error)
 	GetWorkflowGraph(ctx context.Context, in *GetWorkflowGraphRequest, opts ...grpc.CallOption) (*GetWorkflowGraphResponse, error)
+	// ListRegistry returns all installed registry entries with joined deployment data.
+	ListRegistry(ctx context.Context, in *ListRegistryRequest, opts ...grpc.CallOption) (*ListRegistryResponse, error)
+	// ShowRegistry returns a single registry entry by ref (name@pub8 or alias).
+	ShowRegistry(ctx context.Context, in *ShowRegistryRequest, opts ...grpc.CallOption) (*ShowRegistryResponse, error)
 }
 
 type controlServiceClient struct {
@@ -611,6 +617,26 @@ func (c *controlServiceClient) GetWorkflowGraph(ctx context.Context, in *GetWork
 	return out, nil
 }
 
+func (c *controlServiceClient) ListRegistry(ctx context.Context, in *ListRegistryRequest, opts ...grpc.CallOption) (*ListRegistryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRegistryResponse)
+	err := c.cc.Invoke(ctx, ControlService_ListRegistry_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *controlServiceClient) ShowRegistry(ctx context.Context, in *ShowRegistryRequest, opts ...grpc.CallOption) (*ShowRegistryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ShowRegistryResponse)
+	err := c.cc.Invoke(ctx, ControlService_ShowRegistry_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ControlServiceServer is the server API for ControlService service.
 // All implementations must embed UnimplementedControlServiceServer
 // for forward compatibility.
@@ -689,6 +715,10 @@ type ControlServiceServer interface {
 	RestartWorkflow(context.Context, *RestartWorkflowRequest) (*RestartWorkflowResponse, error)
 	AmendLimits(context.Context, *AmendLimitsRequest) (*AmendLimitsResponse, error)
 	GetWorkflowGraph(context.Context, *GetWorkflowGraphRequest) (*GetWorkflowGraphResponse, error)
+	// ListRegistry returns all installed registry entries with joined deployment data.
+	ListRegistry(context.Context, *ListRegistryRequest) (*ListRegistryResponse, error)
+	// ShowRegistry returns a single registry entry by ref (name@pub8 or alias).
+	ShowRegistry(context.Context, *ShowRegistryRequest) (*ShowRegistryResponse, error)
 	mustEmbedUnimplementedControlServiceServer()
 }
 
@@ -827,6 +857,12 @@ func (UnimplementedControlServiceServer) AmendLimits(context.Context, *AmendLimi
 }
 func (UnimplementedControlServiceServer) GetWorkflowGraph(context.Context, *GetWorkflowGraphRequest) (*GetWorkflowGraphResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetWorkflowGraph not implemented")
+}
+func (UnimplementedControlServiceServer) ListRegistry(context.Context, *ListRegistryRequest) (*ListRegistryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRegistry not implemented")
+}
+func (UnimplementedControlServiceServer) ShowRegistry(context.Context, *ShowRegistryRequest) (*ShowRegistryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ShowRegistry not implemented")
 }
 func (UnimplementedControlServiceServer) mustEmbedUnimplementedControlServiceServer() {}
 func (UnimplementedControlServiceServer) testEmbeddedByValue()                        {}
@@ -1616,6 +1652,42 @@ func _ControlService_GetWorkflowGraph_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ControlService_ListRegistry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRegistryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).ListRegistry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_ListRegistry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).ListRegistry(ctx, req.(*ListRegistryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ControlService_ShowRegistry_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ShowRegistryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ControlServiceServer).ShowRegistry(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ControlService_ShowRegistry_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ControlServiceServer).ShowRegistry(ctx, req.(*ShowRegistryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ControlService_ServiceDesc is the grpc.ServiceDesc for ControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1790,6 +1862,14 @@ var ControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetWorkflowGraph",
 			Handler:    _ControlService_GetWorkflowGraph_Handler,
+		},
+		{
+			MethodName: "ListRegistry",
+			Handler:    _ControlService_ListRegistry_Handler,
+		},
+		{
+			MethodName: "ShowRegistry",
+			Handler:    _ControlService_ShowRegistry_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
