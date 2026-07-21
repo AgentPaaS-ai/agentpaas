@@ -27,6 +27,10 @@ const EventTypeInstallAliasChanged     = "install_alias_changed"
 
 const EventTypeAgentForked = "agent_forked"
 
+// Promotion event type constants (B31-T02).
+const EventTypePackagePromoted = "package_promoted"
+const EventTypePackageDemoted = "package_demoted"
+
 // AuditAppender is implemented by audit sinks that accept audit records.
 type AuditAppender interface {
 	Append(record AuditRecord) error
