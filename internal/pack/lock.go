@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -1188,6 +1189,23 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 			entries = append(entries, entryMap)
 		}
 		m["provenance"] = entries
+	}
+	// Capabilities array: include when present. Sort by ID for determinism
+	// so the signed canonical form is reproducible.
+	if len(lock.Capabilities) > 0 {
+		sorted := make([]DeclaredCapability, len(lock.Capabilities))
+		copy(sorted, lock.Capabilities)
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].ID < sorted[j].ID
+		})
+		capEntries := make([]map[string]interface{}, 0, len(sorted))
+		for _, c := range sorted {
+			capEntries = append(capEntries, map[string]interface{}{
+				"id":          c.ID,
+				"description": c.Description,
+			})
+		}
+		m["capabilities"] = capEntries
 	}
 	if lock.AgentYAML != nil {
 		m["agent_yaml"] = lock.AgentYAML
