@@ -482,7 +482,7 @@ block31-gate: block30-gate
 	@echo "  F3: pack capabilities signature coverage"
 	@go test -tags=adversary ./internal/pack/... -run TestAdversaryB31 -count=1 -race
 	@echo "  T02: pack path promotion integration (if present)"
-	@go test ./internal/daemon/... -run 'Promote|Promotion|WorkflowPromoted' -count=1 -race || true
+	@go test ./internal/daemon/... -run 'Promote|Promotion|WorkflowPromoted' -count=1 -race
 	@echo "  Compat v0.2.3 regression"
 	@go test ./test/compat/v0.2.3/... -count=1 -race
 	@echo "  vet + lint"

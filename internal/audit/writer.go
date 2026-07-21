@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"syscall"
 )
 
 // auditJSONLNewline is a package-level newline used by Append to avoid
@@ -359,6 +360,11 @@ func (w *AuditWriter) recoverFromCorruption(replayErr error) error {
 // the current head hash. The caller-provided fields (Timestamp, EventType,
 // DeploymentMode, Actor, Payload, HostedContext) are preserved.
 //
+// Before writing, Append acquires an exclusive POSIX advisory lock on a
+// sidecar lock file (audit.jsonl.lock). This ensures multi-process safety:
+// both the daemon's long-lived writer and short-lived CLI writers (promote,
+// demote) serialize through the same lock file, preventing hash chain forks.
+//
 // If the writer has been closed, or if the write or fsync fails, an error is
 // returned and the head anchor is NOT updated (fail-closed).
 func (w *AuditWriter) Append(record AuditRecord) error {
@@ -368,6 +374,21 @@ func (w *AuditWriter) Append(record AuditRecord) error {
 	if w.file == nil {
 		return fmt.Errorf("audit writer: append on closed writer")
 	}
+
+	// Acquire exclusive POSIX advisory lock on audit.jsonl.lock for
+	// multi-process safety. Both CLI short-lived writers and daemon
+	// long-lived writers must serialize through this lock so that
+	// the replay-then-append cycle is atomic across processes.
+	lockPath := w.path + ".lock"
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("open audit lock: %w", err)
+	}
+	defer func() { _ = lockFile.Close() }()
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX); err != nil {
+		return fmt.Errorf("lock audit: %w", err)
+	}
+	defer func() { _ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) }()
 
 	// Assign chain fields
 	record.Seq = w.seq + 1
