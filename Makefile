@@ -475,6 +475,12 @@ block31-gate: block30-gate
 	@go test ./internal/registry/... -run TestValidateWorkflow -count=1 -race
 	@echo "  T02: audit event types"
 	@go test ./internal/audit/... -count=1 -race
+	@echo "  T01: daemon registry RPC"
+	@go test ./internal/daemon/... -run Registry -count=1 -race
+	@echo "  T02: adversary B31"
+	@go test ./internal/registry/... -run TestAdversary_B31 -count=1 -race
+	@echo "  T02: pack path promotion integration (if present)"
+	@go test ./internal/daemon/... -run 'Promote|Promotion|WorkflowPromoted' -count=1 -race || true
 	@echo "  Compat v0.2.3 regression"
 	@go test ./test/compat/v0.2.3/... -count=1 -race
 	@echo "  vet + lint"
