@@ -1367,6 +1367,68 @@ message GetWorkflowGraphResponse {
 }
 
 // ---------------------------------------------------------------------------
+// B31: Registry read surface
+// ---------------------------------------------------------------------------
+
+// RegistryCapability is a single declared capability from the package manifest.
+message RegistryCapability {
+  string id = 1;
+  string description = 2;
+}
+
+// RegistryEntry is a joined view of installed agent, deployment, alias,
+// and capability data.
+message RegistryEntry {
+  // Package identity.
+  string ref = 1;
+  string name = 2;
+  string pub8 = 3;
+  string version = 4;
+  string publisher_name = 5;
+  string publisher_fingerprint = 6;
+
+  // Package digests.
+  string package_digest = 7;
+  string policy_digest = 8;
+
+  // Install metadata.
+  string install_mode = 9;
+  string local_image_digest = 10;
+  google.protobuf.Timestamp installed_at = 11;
+  repeated string credential_ids = 12;
+  string alias = 13;
+
+  // Deployment info (joined from deployment store).
+  optional string deployment_id = 14;
+  string deployment_status = 15;
+  int64 generation = 16;
+  string bundle_digest = 17;
+  repeated string aliases_deployment = 18;
+
+  // Promotion.
+  bool promoted = 19;
+  google.protobuf.Timestamp promoted_at = 20;
+  string promoted_by = 21;
+
+  // Declared capabilities from the signed package manifest.
+  repeated RegistryCapability capabilities = 22;
+}
+
+message ListRegistryRequest {}
+
+message ListRegistryResponse {
+  repeated RegistryEntry entries = 1;
+}
+
+message ShowRegistryRequest {
+  string ref = 1;
+}
+
+message ShowRegistryResponse {
+  RegistryEntry entry = 1;
+}
+
+// ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
@@ -1686,6 +1748,20 @@ service ControlService {
   rpc GetWorkflowGraph(GetWorkflowGraphRequest) returns (GetWorkflowGraphResponse) {
     option (google.api.http) = {
       get: "/v1/control/workflows/{workflow_id}/graph"
+    };
+  }
+
+  // ListRegistry returns all installed registry entries with joined deployment data.
+  rpc ListRegistry(ListRegistryRequest) returns (ListRegistryResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/registry"
+    };
+  }
+
+  // ShowRegistry returns a single registry entry by ref (name@pub8 or alias).
+  rpc ShowRegistry(ShowRegistryRequest) returns (ShowRegistryResponse) {
+    option (google.api.http) = {
+      get: "/v1/control/registry/{ref}"
     };
   }
 }
