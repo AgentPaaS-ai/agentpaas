@@ -2,7 +2,7 @@
 
 ## Block: Local Package Registry and Promotion (Reduced)
 ## Date: 2026-07-21
-## Status: COMPLETE (pending push + verifier formal PASS)
+## Status: COMPLETE
 
 ## Tasks
 
@@ -21,7 +21,7 @@
 
 ## Verifier
 
-(filled after ap-verifier run)
+VERIFY PASS — docs/owa-records/b31-verifier-report.md (8 segments)
 
 ## Manual testing
 
