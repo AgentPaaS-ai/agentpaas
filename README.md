@@ -21,12 +21,12 @@ secrets stay safe.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    YOUR MACHINE                          │
-│                                                          │
+│                    YOUR MACHINE                         │
+│                                                         │
 │  ┌─────────────────────────────────────────┐            │
-│  │         INTERNAL-ONLY DOCKER NETWORK     │            │
-│  │         (no route to the internet)       │            │
-│  │                                          │            │
+│  │         INTERNAL-ONLY DOCKER NETWORK    │            │
+│  │         (no route to the internet)      │            │
+│  │                                         │            │
 │  │  ┌──────────────┐    ┌───────────────┐  │            │
 │  │  │   AGENT      │    │   GATEWAY     │  │            │
 │  │  │  CONTAINER   │    │   SIDECAR     │  │            │
@@ -41,21 +41,21 @@ secrets stay safe.
 │  │  └──────────────┘    └───────┼───────┘  │            │
 │  │                              │          │            │
 │  └──────────────────────────────┼──────────┘            │
-│                                 │                        │
-│                          ONLY ALLOWED                    │
-│                          EGRESS PATH                     │
-│                                 │                        │
-│                                 ▼                        │
-│                    ┌─────────────────────┐               │
-│                    │   APPROVED APIs     │               │
-│                    │  (api.x.ai, etc.)   │               │
-│                    └─────────────────────┘               │
-│                                                          │
+│                                 │                       │
+│                          ONLY ALLOWED                   │
+│                          EGRESS PATH                    │
+│                                 │                       │
+│                                 ▼                       │
+│                    ┌─────────────────────┐              │
+│                    │   APPROVED APIs     │              │
+│                    │  (api.x.ai, etc.)   │              │
+│                    └─────────────────────┘              │
+│                                                         │
 │  ┌──────────────────────────────────────────┐           │
-│  │              DAEMON (agentpaasd)           │           │
-│  │  · Tamper-evident audit trail              │           │
-│  │  · Signed checkpoints                      │           │
-│  │  · Hash-chained JSONL + SQLite index       │           │
+│  │              DAEMON (agentpaasd)         │           │
+│  │  · Tamper-evident audit trail            │           │
+│  │  · Signed checkpoints                    │           │
+│  │  · Hash-chained JSONL + SQLite index     │           │
 │  └──────────────────────────────────────────┘           │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -68,10 +68,7 @@ the only path out.
 container is on a Docker internal-only network with no default route to
 the internet. An additional iptables egress firewall runs inside the agent
 container as **defense-in-depth** — it applies `OUTPUT DROP` rules to the
-container's own network stack. This firewall may be unavailable in some
-container environments (e.g., when `iptables` is not installed or
-`CAP_NET_ADMIN` is absent), and the harness continues without it. Topology
-isolation remains the hard boundary regardless.
+container's own network stack. 
 
 ## Security Features
 
