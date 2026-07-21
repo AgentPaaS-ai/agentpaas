@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/registry"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +33,8 @@ func defaultRegistryList(cmd *cobra.Command) ([]registry.RegistryEntry, error) {
 		return nil, fmt.Errorf("default registry list: %w", err)
 	}
 	paths := home.NewHomePaths(homeDir)
-	return registry.ListEntries(paths.State, nil)
+	store := openRegistryDeploymentStore(paths)
+	return registry.ListEntries(paths.State, store)
 }
 
 func defaultRegistryShow(cmd *cobra.Command, ref string) (*registry.RegistryEntry, error) {
@@ -40,7 +43,8 @@ func defaultRegistryShow(cmd *cobra.Command, ref string) (*registry.RegistryEntr
 		return nil, fmt.Errorf("default registry show: %w", err)
 	}
 	paths := home.NewHomePaths(homeDir)
-	return registry.ShowEntry(paths.State, ref, nil)
+	store := openRegistryDeploymentStore(paths)
+	return registry.ShowEntry(paths.State, ref, store)
 }
 
 func defaultRegistryPromote(cmd *cobra.Command, stateRootDir, ref, actor string) error {
@@ -49,6 +53,23 @@ func defaultRegistryPromote(cmd *cobra.Command, stateRootDir, ref, actor string)
 
 func defaultRegistryDemote(cmd *cobra.Command, stateRootDir, ref string) error {
 	return registry.Demote(stateRootDir, ref)
+}
+
+// openRegistryDeploymentStore opens the B26 routed LocalStore if the
+// state/routed directory exists. Returns nil if the directory is missing
+// or OpenLocalStore fails, allowing the registry read to proceed without
+// deployment join (graceful degradation).
+func openRegistryDeploymentStore(paths *home.HomePaths) registry.DeploymentStoreReader {
+	root := filepath.Join(paths.State, "routed")
+	// Do not create the routed directory if the daemon has never run.
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return nil
+	}
+	store, err := routedrun.OpenLocalStore(root)
+	if err != nil {
+		return nil
+	}
+	return store
 }
 
 // newRegistryCmd creates the `agentpaas registry` command group.
@@ -63,7 +84,11 @@ aliases, and the promoted flag. Show a single entry by name@pub8
 or alias, including declared capability metadata.
 
 This is a local read API over the B23 installed-agent store and
-B26 deployment store; it does not require a running daemon.`,
+B26 deployment store; it does not require a running daemon.
+Deployment status and deployment-level aliases are sourced from
+the local routed store (state/routed). When that store is absent
+(e.g., no daemon has ever deployed), the columns appear as "-" or
+"none" rather than failing.`,
 		Example: `  agentpaas registry list
   agentpaas registry list --json
   agentpaas registry show weather@a1b2c3d4

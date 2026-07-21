@@ -42,15 +42,15 @@ func ValidateWorkflowPromotedPackages(stateRoot string, wf *pack.WorkflowYAML) [
 			// resolution, version mismatch across installed agents) must fail
 			// the gate, not silently skip it.
 			errs = append(errs, fmt.Sprintf(
-				"package %q version %q is not promoted: %v; promote it first: `agentpaas registry promote %s`",
-				pkg.name, pkg.version, err, pkg.name,
+				"package %q version %q is not promoted: %v; promote it first: `agentpaas registry promote %s@%s`",
+				pkg.name, pkg.version, err, pkg.name, pkg.version,
 			))
 			continue
 		}
 		if !promoted {
 			errs = append(errs, fmt.Sprintf(
-				"package %q version %q is not promoted; promote it first: `agentpaas registry promote %s`",
-				pkg.name, pkg.version, pkg.name,
+				"package %q version %q is not promoted; promote it first: `agentpaas registry promote %s@%s`",
+				pkg.name, pkg.version, pkg.name, pkg.version,
 			))
 		}
 	}
