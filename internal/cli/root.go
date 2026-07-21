@@ -145,6 +145,7 @@ output, and --home / --socket to override local paths.`,
 	rootCmd.AddCommand(newForkCmd())
 	rootCmd.AddCommand(newProvenanceCmd())
 	rootCmd.AddCommand(newDeployCmd())
+	rootCmd.AddCommand(newRegistryCmd())
 
 	return rootCmd
 }
