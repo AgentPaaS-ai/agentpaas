@@ -299,3 +299,118 @@ func TestRegistryList_Empty(t *testing.T) {
 		t.Errorf("expected 'No installed packages', got: %s", out)
 	}
 }
+
+func TestRegistryPromote_SetsPromotedFlag(t *testing.T) {
+	stateRoot := setupRegistryTestState(t)
+
+	// Override the promote factory.
+	origPromote := registryPromoteFactory
+	defer func() { registryPromoteFactory = origPromote }()
+
+	registryPromoteFactory = func(cmd *cobra.Command, stateRootDir, ref, actor string) error {
+		_ = stateRootDir // command's state root; use test stateRoot instead
+		return registry.Promote(stateRoot, ref, actor)
+	}
+
+	cmd := newRegistryPromoteCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"weather@a1b2c3d4"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("registry promote failed: %v", err)
+	}
+
+	// Verify the manifest is now promoted.
+	manifestPath := filepath.Join(stateRoot, "agents", "weather@a1b2c3d4", "install-manifest.json")
+	raw, _ := os.ReadFile(manifestPath)
+	var m install.InstallManifest
+	_ = json.Unmarshal(raw, &m)
+	if !m.Promoted {
+		t.Error("expected promoted=true after CLI promote")
+	}
+}
+
+func TestRegistryDemote_ClearsPromotedFlag(t *testing.T) {
+	stateRoot := setupRegistryTestState(t)
+
+	// First, promote via API to have something to demote.
+	if err := registry.Promote(stateRoot, "weather@a1b2c3d4", "admin"); err != nil {
+		t.Fatalf("Promote setup: %v", err)
+	}
+
+	// Override the demote factory.
+	origDemote := registryDemoteFactory
+	defer func() { registryDemoteFactory = origDemote }()
+
+	registryDemoteFactory = func(cmd *cobra.Command, stateRootDir, ref string) error {
+		_ = stateRootDir // command's state root; use test stateRoot instead
+		return registry.Demote(stateRoot, ref)
+	}
+
+	cmd := newRegistryDemoteCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"weather@a1b2c3d4"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("registry demote failed: %v", err)
+	}
+
+	// Verify the manifest is now not promoted.
+	manifestPath := filepath.Join(stateRoot, "agents", "weather@a1b2c3d4", "install-manifest.json")
+	raw, _ := os.ReadFile(manifestPath)
+	var m install.InstallManifest
+	_ = json.Unmarshal(raw, &m)
+	if m.Promoted {
+		t.Error("expected promoted=false after CLI demote")
+	}
+}
+
+func TestRegistryPromote_UnknownRef(t *testing.T) {
+	stateRoot := t.TempDir()
+
+	origPromote := registryPromoteFactory
+	defer func() { registryPromoteFactory = origPromote }()
+
+	registryPromoteFactory = func(cmd *cobra.Command, stateRootDir, ref, actor string) error {
+		_ = stateRootDir // command's state root; use test stateRoot instead
+		return registry.Promote(stateRoot, ref, actor)
+	}
+
+	cmd := newRegistryPromoteCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"nobody@deadbeef"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Error("expected error for unknown ref, got nil")
+	}
+}
+
+func TestRegistryDemote_Idempotent(t *testing.T) {
+	stateRoot := setupRegistryTestState(t)
+
+	// Demote a package that isn't promoted (idempotent).
+	origDemote := registryDemoteFactory
+	defer func() { registryDemoteFactory = origDemote }()
+
+	registryDemoteFactory = func(cmd *cobra.Command, stateRootDir, ref string) error {
+		_ = stateRootDir // command's state root; use test stateRoot instead
+		return registry.Demote(stateRoot, ref)
+	}
+
+	cmd := newRegistryDemoteCmd()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	cmd.SetArgs([]string{"calculator@f1e2d3c4"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("registry demote idempotent failed: %v", err)
+	}
+}
