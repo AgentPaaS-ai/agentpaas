@@ -224,13 +224,6 @@ agentpaas audit verify
 # Audit chain valid: N records, N checkpoints
 ```
 
-Works while the daemon is up and after shutdown. That is the local proof
-that the log on this machine was not quietly edited.
-
-Honest limit: deleting the last N records still leaves a valid shorter
-prefix. Catching that kind of tail cut needs an external anchor (planned
-as P2). In-chain edits, reorders, and mid-log inserts already fail verify.
-
 Hand a signed export to someone else (or yourself on another box):
 
 ```bash
