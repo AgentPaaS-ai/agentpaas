@@ -12,12 +12,9 @@ AgentPaaS is the runtime that sits under those agents. You keep writing and
 running them the way you already do (usually through Hermes). Under the hood
 each agent is packed into a locked-down container on a default-deny network.
 Outbound traffic only leaves through a sidecar gateway that enforces your
-policy: approved hosts only. That same gateway is where run controls live:
-token limits, turn budgets, and cost caps for a run (coming soon across
-v0.3 and v0.4; hard shared spend lands later in the train). Secrets stay in
-the macOS Keychain and are injected by that gateway at request time, so the
-agent process never holds them. Every allow and deny is written to a
-tamper-evident audit log.
+policy: approved hosts only. Secrets stay in the macOS Keychain and are
+injected by that gateway at request time, so the agent process never holds
+them. Every allow and deny is written to a tamper-evident audit log.
 
 When an agent tries an unknown host, the call is blocked, you see the denial
 in the log, and your secrets are never leaked. When you hand an agent to a
@@ -28,6 +25,13 @@ forks that agent, changes the code or policy, and re-shares it, the bundle
 records each hop: who published the original, who forked it, and what egress
 or credentials they added. Receivers can verify the provenance chain before
 accepting and running the agent.
+
+**Coming soon (v0.3–v0.4):**
+- Long-running multi-turn agents with durable invocation and checkpoints
+- Private agent catalog and capability resolution
+- Secure agent-to-agent delegation and encrypted artifact handoff
+- Governed MCP services inside AgentPaaS containers
+- Bounded parent/child workflows and linear pipelines
 
 ## How it works
 
