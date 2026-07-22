@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/delegation"
 	"github.com/AgentPaaS-ai/agentpaas/internal/money"
 )
 
@@ -43,6 +44,7 @@ type WorkflowYAML struct {
 	Pipeline              *PipelineConfig    `yaml:"pipeline,omitempty"`
 	ParentChild           *ParentChildConfig `yaml:"parent_child,omitempty"`
 	Services              []ServiceBinding   `yaml:"services,omitempty"`
+	Delegations           []Delegation       `yaml:"delegations,omitempty"`
 	MaxActiveDuration     string             `yaml:"max_active_duration,omitempty"`
 	HandoffByteLimit      int                `yaml:"handoff_byte_limit,omitempty"`
 	ArtifactLimit         int                `yaml:"artifact_limit,omitempty"`
@@ -88,6 +90,21 @@ type ServiceBinding struct {
 	PackageVersion  string   `yaml:"package_version"`
 	BundleDigest    string   `yaml:"bundle_digest"`
 	AllowedTools    []string `yaml:"allowed_tools,omitempty"`
+}
+
+// Delegation defines a delegation binding in a workflow.yaml (v0.3).
+// Maps to delegation.WorkflowDelegationBinding at snapshot graph time.
+type Delegation struct {
+	BindingID           string   `yaml:"binding_id"`
+	Operation           string   `yaml:"operation,omitempty"`
+	PackageName         string   `yaml:"package_name"`
+	PackageVersion      string   `yaml:"package_version"`
+	BundleDigest        string   `yaml:"bundle_digest"`
+	CallerPackageName   string   `yaml:"caller_package_name,omitempty"`
+	MaxDataClass        string   `yaml:"max_data_class"`
+	ArtifactAudience    []string `yaml:"artifact_audience,omitempty"`
+	DeadlineMs          int64    `yaml:"deadline_ms,omitempty"`
+	MaxCostUSDDecimal   string   `yaml:"max_cost_usd_decimal,omitempty"`
 }
 
 // ValidateWorkflowYAML validates a workflow.yaml configuration.
@@ -146,6 +163,9 @@ func ValidateWorkflowYAML(wf *WorkflowYAML) []string {
 
 	// Service validation
 	errs = append(errs, validateServices(wf.Services)...)
+
+	// Delegation validation
+	errs = append(errs, validateDelegations(wf.Delegations)...)
 
 	// MCP service kind check
 	// For mcp_service kind: require a service declaration.
@@ -325,4 +345,99 @@ func ValidateWorkflowServiceDeclaration(wf *WorkflowYAML, kind string) []string 
 		}
 	}
 	return errs
+}
+
+// validateDelegations validates the delegations section of a workflow.yaml.
+func validateDelegations(delegations []Delegation) []string {
+	var errs []string
+	if len(delegations) == 0 {
+		return nil
+	}
+
+	bindingIDs := make(map[string]bool)
+	for i, d := range delegations {
+		prefix := fmt.Sprintf("delegations[%d]", i)
+
+		if d.BindingID == "" {
+			errs = append(errs, prefix+".binding_id is required")
+		} else {
+			if bindingIDs[d.BindingID] {
+				errs = append(errs, fmt.Sprintf("%s: duplicate binding_id %q", prefix, d.BindingID))
+			}
+			bindingIDs[d.BindingID] = true
+		}
+
+		if d.PackageName == "" {
+			errs = append(errs, prefix+".package_name is required")
+		}
+		if d.PackageVersion == "" {
+			errs = append(errs, prefix+".package_version is required")
+		}
+		if d.BundleDigest == "" {
+			errs = append(errs, prefix+".bundle_digest is required")
+		}
+
+		// MaxDataClass must be a valid classification.
+		if d.MaxDataClass == "" {
+			errs = append(errs, prefix+".max_data_class is required")
+		} else if handoffClassificationRank(d.MaxDataClass) == -1 {
+			errs = append(errs, fmt.Sprintf("%s: invalid max_data_class %q; must be one of %v",
+				prefix, d.MaxDataClass, validHandoffClassifications))
+		}
+
+		if d.MaxCostUSDDecimal != "" {
+			if _, err := money.Parse(d.MaxCostUSDDecimal); err != nil {
+				errs = append(errs, fmt.Sprintf("%s.max_cost_usd_decimal: %v", prefix, err))
+			}
+		}
+	}
+
+	return errs
+}
+
+// BuildCommunicationSnapshot constructs a delegation.CommunicationSnapshot
+// from a WorkflowYAML + caller identity.
+func BuildCommunicationSnapshot(
+	wf *WorkflowYAML,
+	workflowID string,
+	tenantID string,
+	callerDeploymentID string,
+	callerPackageName string,
+	callerPackageDigest string,
+	snapshotGeneration int64,
+) (*delegation.CommunicationSnapshot, error) {
+	bindings := make([]delegation.WorkflowDelegationBinding, 0, len(wf.Delegations))
+	for _, d := range wf.Delegations {
+		bindings = append(bindings, delegation.WorkflowDelegationBinding{
+			BindingID:            d.BindingID,
+			Operation:            d.Operation,
+			CalleePackageName:    d.PackageName,
+			CalleePackageVersion: d.PackageVersion,
+			CalleeBundleDigest:   d.BundleDigest,
+			CallerPackageName:    d.CallerPackageName,
+			MaxDataClass:         d.MaxDataClass,
+			ArtifactAudience:     d.ArtifactAudience,
+			DeadlineMs:           d.DeadlineMs,
+			MaxCostUSDDecimal:    d.MaxCostUSDDecimal,
+		})
+	}
+
+	snap := &delegation.CommunicationSnapshot{
+		SchemaVersion:       delegation.CurrentSchemaVersion,
+		SnapshotGeneration:  snapshotGeneration,
+		WorkflowID:          workflowID,
+		TenantID:            tenantID,
+		CallerDeploymentID:  callerDeploymentID,
+		CallerPackageName:   callerPackageName,
+		CallerPackageDigest: callerPackageDigest,
+		Bindings:            bindings,
+	}
+
+	dg, err := delegation.ComputeSnapshotDigest(snap)
+	if err != nil {
+		return nil, fmt.Errorf("build communication snapshot: %w", err)
+	}
+	snap.SnapshotDigest = dg
+
+	return snap, nil
 }
