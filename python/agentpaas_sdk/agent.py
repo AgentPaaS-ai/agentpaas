@@ -300,6 +300,7 @@ class Agent:
         *,
         idempotency_key: str | None = None,
         operation: str = "",
+        data_class: str = "internal",
     ) -> TaskHandle:
         """Delegate a task to another agent by logical capability name.
 
@@ -314,6 +315,8 @@ class Agent:
                 that is coerced to a user text part.
             idempotency_key: Optional stable key for idempotent delegation.
             operation: Optional operation qualifier.
+            data_class: Data classification level (public, internal,
+                confidential, restricted). Default \"internal\".
 
         Returns:
             A TaskHandle for polling events and results.
@@ -343,6 +346,7 @@ class Agent:
             "operation": operation,
             "message": normalized_message,
             "idempotency_key": idempotency_key,
+            "data_class": data_class,
         })
         _validate_response_no_leaks(result)
         task_id = result.get("task_id")

@@ -43,28 +43,36 @@ func (g *GatewayEnforcer) Attach(token string) map[string]string {
 }
 
 // ValidateAndStrip checks that headers contain a valid capability matching
-// the expectation, then removes the CapabilityHeader from headers in place.
+// the expectedToken, then removes the CapabilityHeader from headers in place.
+//
+// In production, expectedToken is the random token from BindingCapabilities.
+// In tests, callers may use DeriveCapabilityTokenForTest to produce a
+// deterministic token.
 //
 // Returns an error if:
 //   - CapabilityHeader is missing
-//   - The token does not match the expected capability
+//   - The token does not match the expectedToken
 //
 // The error message MUST NOT contain the actual token value.
-func (g *GatewayEnforcer) ValidateAndStrip(headers map[string]string, expect BindingExpectation) error {
+func (g *GatewayEnforcer) ValidateAndStrip(headers map[string]string, expectedToken string) error {
 	capToken, ok := headers[CapabilityHeader]
 	if !ok {
 		return fmt.Errorf("delegation: gateway enforce: missing %s header", CapabilityHeader)
 	}
 	delete(headers, CapabilityHeader)
 
-	// For the stub, we derive the expected token from the expectation.
-	// In production, the gateway maps tokens cryptographically.
-	expected := deriveCapabilityToken(expect)
-	if capToken != expected {
+	if capToken != expectedToken {
 		return fmt.Errorf("delegation: gateway enforce: invalid capability token (header stripped)")
 	}
 
 	return nil
+}
+
+// DeriveCapabilityTokenForTest derives a deterministic capability token from a
+// BindingExpectation. This is for tests only — production MUST use randomly
+// generated tokens from GenerateCapabilityToken stored in BindingCapabilities.
+func DeriveCapabilityTokenForTest(expect BindingExpectation) string {
+	return deriveCapabilityToken(expect)
 }
 
 // GenerateCapabilityToken produces a cryptographically random unguessable

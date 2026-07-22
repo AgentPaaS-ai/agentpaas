@@ -114,6 +114,25 @@ func AuthorizeDelegation(req *AuthorizeRequest) AuthzDecision {
 		return decision
 	}
 
+	// ---- Snapshot digest integrity (W2) ----
+	// Recompute and compare to detect tampered bindings with stale digest.
+	if req.Snapshot.SnapshotDigest != "" {
+		recomputed, err := ComputeSnapshotDigest(req.Snapshot)
+		if err != nil {
+			decision.DenialCode = DenySnapshotMismatch
+			return decision
+		}
+		if recomputed != req.Snapshot.SnapshotDigest {
+			decision.DenialCode = DenySnapshotMismatch
+			return decision
+		}
+	} else {
+		// Empty digest on non-empty bindings is a fail-closed condition.
+		// The snapshot must always carry a valid digest.
+		decision.DenialCode = DenySnapshotMismatch
+		return decision
+	}
+
 	// Verify caller identity matches snapshot pin.
 	if req.CallerDeploymentID != req.Snapshot.CallerDeploymentID {
 		decision.DenialCode = DenySnapshotMismatch

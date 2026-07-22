@@ -34,8 +34,8 @@ func TestGatewayEnforcer_AttachAndValidate(t *testing.T) {
 		t.Errorf("capability header = %q, want %q", capHeader, expectedToken)
 	}
 
-	// ValidateAndStrip with correct expectation passes.
-	if err := e.ValidateAndStrip(headers, expect); err != nil {
+	// ValidateAndStrip with correct token passes.
+	if err := e.ValidateAndStrip(headers, expectedToken); err != nil {
 		t.Fatalf("ValidateAndStrip: unexpected error: %v", err)
 	}
 }
@@ -45,13 +45,7 @@ func TestGatewayEnforcer_MissingCapabilityHeader(t *testing.T) {
 	headers := map[string]string{
 		"X-Unrelated": "value",
 	}
-	expect := BindingExpectation{
-		BindingID:   "report.verify",
-		WorkflowID:  "wf-test",
-		CallerLease: "lease-caller",
-		CalleeLease: "lease-callee",
-	}
-	err := e.ValidateAndStrip(headers, expect)
+	err := e.ValidateAndStrip(headers, "some-token")
 	if err == nil {
 		t.Fatal("expected error for missing capability header")
 	}
@@ -62,20 +56,13 @@ func TestGatewayEnforcer_MissingCapabilityHeader(t *testing.T) {
 
 func TestGatewayEnforcer_WrongToken(t *testing.T) {
 	e := &GatewayEnforcer{}
-	// Attach one token, validate with a different expectation that
-	// doesn't match the token.
+	// Attach one token, validate with a different one.
 	token := "cap-test-token-123"
 	headers := e.Attach(token)
 	// Tamper: replace with wrong token.
 	headers[CapabilityHeader] = "wrong-token"
 
-	expect := BindingExpectation{
-		BindingID:   "report.verify",
-		WorkflowID:  "wf-test",
-		CallerLease: "lease-caller",
-		CalleeLease: "lease-callee",
-	}
-	err := e.ValidateAndStrip(headers, expect)
+	err := e.ValidateAndStrip(headers, token)
 	if err == nil {
 		t.Fatal("expected error for wrong token")
 	}
@@ -86,17 +73,11 @@ func TestGatewayEnforcer_WrongToken(t *testing.T) {
 
 func TestGatewayEnforcer_StripRemovesCapability(t *testing.T) {
 	e := &GatewayEnforcer{}
-	expect := BindingExpectation{
-		BindingID:   "report.verify",
-		WorkflowID:  "wf-test",
-		CallerLease: "lease-caller",
-		CalleeLease: "lease-callee",
-	}
-	token := deriveCapabilityToken(expect)
+	token := "test-cap-token-deterministic"
 	headers := e.Attach(token)
 	headers["X-Keep-Me"] = "keep-value"
 
-	if err := e.ValidateAndStrip(headers, expect); err != nil {
+	if err := e.ValidateAndStrip(headers, token); err != nil {
 		t.Fatalf("ValidateAndStrip: %v", err)
 	}
 
@@ -120,13 +101,7 @@ func TestGatewayEnforcer_NoTokenLeakage(t *testing.T) {
 	// Overwrite with an invalid token prefix to trigger error.
 	headers[CapabilityHeader] = "evil-token"
 
-	expect := BindingExpectation{
-		BindingID:   "report.verify",
-		WorkflowID:  "wf-test",
-		CallerLease: "lease-caller",
-		CalleeLease: "lease-callee",
-	}
-	err := e.ValidateAndStrip(headers, expect)
+	err := e.ValidateAndStrip(headers, token)
 	if err == nil {
 		t.Fatal("expected error")
 	}
