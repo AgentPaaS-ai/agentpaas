@@ -1,0 +1,14 @@
+{
+  "artifact_id": "artif-001",
+  "digest": "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+  "workflow_id": "wf-test",
+  "producer_run_id": "run-producer",
+  "producer_attempt_id": "at-producer",
+  "producer_task_id": "task-producer",
+  "media_type": "application/json",
+  "byte_size": 1024,
+  "classification": "internal",
+  "audience": ["report-verifier"],
+  "expires_at": "2026-07-22T00:00:00Z",
+  "logical_ref": "outputs/report.json"
+}
