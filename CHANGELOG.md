@@ -3,6 +3,22 @@
 All notable changes to AgentPaaS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased] — v0.3.0-dev
+
+### Changed
+- **Bumped dev version to 0.3.0-dev**: default `CLIVersion`/`DaemonVersion`
+  constants, Makefile ldflags, Formula template, docs, and tests all
+  reference 0.3.0. Old 0.1.x/0.2.x version strings removed or updated.
+- **Homebrew tap path corrected**: docs now point to
+  `AgentPaaS-ai/homebrew-tap` (not `agentpaas-ai/tap`).
+- **Version hygiene script**: `scripts/check-release-versions.sh` gate
+  fails CI if any binary embeds a stale 0.1.x or 0.2.x version string.
+
+### Added
+- **B32 delegation adversary break tests**: 14-pass gate proving
+  delegation RPC correctness, freshness, replay rejection, scope
+  isolation, and multi-tenant safety.
+
 ## [0.2.3] — 2026-07-13
 
 ### Added
