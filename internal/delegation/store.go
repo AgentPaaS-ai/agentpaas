@@ -39,4 +39,11 @@ type Store interface {
 	// ListEvents returns events for a task with sequence > afterSeq,
 	// ordered by sequence ascending.
 	ListEvents(ctx context.Context, taskID TaskID, afterSeq int64) ([]TaskEvent, error)
+
+	// SubscribeEvents returns a channel of events for a task, replaying
+	// existing events with sequence > afterSeq before delivering new events.
+	// The channel is closed when the context is cancelled or the task's
+	// event stream is closed (terminal event delivered). The returned cancel
+	// function unsubscribes the channel; it is safe to call more than once.
+	SubscribeEvents(ctx context.Context, taskID TaskID, afterSeq int64) (<-chan TaskEvent, func(), error)
 }
