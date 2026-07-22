@@ -51,22 +51,23 @@ accepting and running the agent.
 │  │                              │          │            │
 │  └──────────────────────────────┼──────────┘            │
 │                                 │                       │
-│                          ONLY ALLOWED                   │
-│                          EGRESS PATH                    │
-│                                 │                       │
-│                                 ▼                       │
-│                    ┌─────────────────────┐              │
-│                    │   APPROVED APIs     │              │
-│                    │  (api.x.ai, etc.)   │              │
-│                    └─────────────────────┘              │
-│                                                         │
 │  ┌──────────────────────────────────────────┐           │
 │  │              DAEMON (agentpaasd)         │           │
 │  │  · Tamper-evident audit trail            │           │
 │  │  · Signed checkpoints                    │           │
 │  │  · Hash-chained JSONL + SQLite index     │           │
 │  └──────────────────────────────────────────┘           │
-└─────────────────────────────────────────────────────────┘
+│                                 │                       │
+│                          ONLY ALLOWED                   │
+│                          EGRESS PATH                    │
+└─────────────────────────────────┼───────────────────────┘
+                                  │
+                                  ▼
+                     ┌─────────────────────┐
+                     │   APPROVED APIs     │
+                     │  (api.x.ai, etc.)   │
+                     │     (internet)      │
+                     └─────────────────────┘
 ```
 
 The agent container has no direct internet path. Traffic goes through the
