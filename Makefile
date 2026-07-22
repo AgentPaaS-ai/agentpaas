@@ -98,7 +98,7 @@ install-plugin:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -492,6 +492,19 @@ block31-gate: block30-gate
 	@$(MAKE) golden-fast
 	@echo "Block 31 gate: PASS"
 
+.PHONY: block32-gate
+block32-gate: block31-gate
+	@echo "==> Running Block 32 gate: delegation adversary tests"
+	@echo "  T06-A: delegation unit tests with race"
+	@go test ./internal/delegation/... -count=1 -race
+	@echo "  T06-B: harness delegation/gateway/artifact tests"
+	@go test ./internal/harness/... -run 'Delegate|Task|Gateway|Artifact|B32' -count=1 -race
+	@echo "  T06-C: B32 adversary break tests"
+	@go test -run TestAdversary_B32 ./internal/delegation/... ./internal/harness/... -count=1 -race
+	@echo "  T06-D: golden-fast regression"
+	@$(MAKE) golden-fast
+	@echo "Block 32 gate: PASS"
+
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
 	@echo "==> Block 28 Kubernetes integration tests (requires kind cluster)"
@@ -583,6 +596,7 @@ gates: ## List all available gate targets
 	@echo "  block29-gate - Real-time stream, durable eventing, integrated adversary"
 	@echo "  block30-gate - Durable runtime: supervisor, liveness, reference worker, longevity"
 	@echo "  block31-gate - Local package registry: read API, promotion, delegation gate"
+	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
