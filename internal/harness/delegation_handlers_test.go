@@ -346,20 +346,50 @@ func TestDelegateTaskResponse_NoEndpointLeakage(t *testing.T) {
 		},
 	})
 
-	// Marshal to JSON and verify no forbidden patterns.
+	// Marshal to JSON and verify no forbidden KEYS or network literals.
+	// Do NOT substring-match short tokens like "ip" against values — random
+	// task IDs can contain those letters (false positive flake).
 	b, err := json.Marshal(resp)
 	if err != nil {
 		t.Fatalf("marshal response: %v", err)
 	}
 	respStr := string(b)
+	lower := strings.ToLower(respStr)
 
-	forbidden := []string{
-		"capability_token", "endpoint", "host", "ip", "port",
-		"network_alias", "token", "secret",
+	// Network / secret literals must never appear in agent-facing JSON values.
+	forbiddenLiterals := []string{
+		"127.0.0.1", "localhost", "0.0.0.0",
+		"capability_token", "network_alias", "capability_header",
 	}
-	for _, f := range forbidden {
-		if strings.Contains(strings.ToLower(respStr), f) {
-			t.Errorf("response contains forbidden pattern %q: %s", f, respStr)
+	for _, f := range forbiddenLiterals {
+		if strings.Contains(lower, f) {
+			t.Errorf("response contains forbidden literal %q: %s", f, respStr)
+		}
+	}
+
+	// Result object keys must be only the allowlist (task_id, status).
+	if resp.Result == nil {
+		// error responses still must not leak literals (checked above)
+		return
+	}
+	var top map[string]any
+	if err := json.Unmarshal(b, &top); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	result, _ := top["result"].(map[string]any)
+	if result == nil {
+		t.Fatalf("expected result object, got %s", respStr)
+	}
+	allowed := map[string]bool{"task_id": true, "status": true}
+	for k := range result {
+		if !allowed[k] {
+			t.Errorf("unexpected result key %q in %s", k, respStr)
+		}
+		lk := strings.ToLower(k)
+		for _, bad := range []string{"endpoint", "host", "ip", "port", "token", "secret", "alias"} {
+			if lk == bad || strings.Contains(lk, bad+"_") || strings.HasSuffix(lk, "_"+bad) {
+				t.Errorf("forbidden key pattern %q in key %q", bad, k)
+			}
 		}
 	}
 }
