@@ -352,6 +352,23 @@ Full guide: [docs/sharing.md](docs/sharing.md).
 - [Known limitations](docs/known-limitations.md)
 - [Changelog](CHANGELOG.md)
 
+## Tech stack
+
+AgentPaaS is mostly Go. The CLI (`agentpaas`), daemon (`agentpaasd`), and
+Linux harness are Go binaries. Control and trigger APIs are protobuf over
+gRPC (with grpc-gateway where HTTP is useful). Policy and agent config are
+YAML. Runtime isolation is Docker (Desktop or Colima on macOS): the agent
+sits on an internal-only network; egress goes through a dual-homed
+[agentgateway](https://github.com/agentgateway/agentgateway) sidecar we
+vendor and configure per run. Agent code is usually Python, talking to the
+runtime through `python/agentpaas_sdk`. Dependencies install from locked
+`uv` lockfiles at pack time. Secrets stay in the macOS Keychain and are
+injected by the gateway, not the agent process. Images and bundles can be
+cosign-signed; every pack gets an SBOM. Audit is hash-chained JSONL with a
+SQLite index and signed checkpoints. The day-to-day UX is a Hermes plugin
+that drives pack, run, trigger, and audit from a chat session. Local-first
+on your machine; no phone-home control plane in this path.
+
 ## Repository layout
 
 ```text
