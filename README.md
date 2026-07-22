@@ -2,10 +2,11 @@
 
 **Run AI agents so that even a compromised one can't leak your data.**
 
-Building an agent is easy now. You prompt an LLM, drop in a skill from the
-internet, and something that can call APIs is running on your machine. The
-hard part is trust. That code might be buggy, prompt-injected, or straight-up
-hostile. One bad outbound call and your API keys, files, or PII are gone.
+Building an agent is easy now. In Hermes you write a prompt, attach a skill,
+and wire up an MCP server. Minutes later you have a full agent on your machine
+that can call tools and hit the network. The hard part is trust. That stack
+might be buggy, prompt-injected, or straight-up hostile. One bad outbound call
+and your API keys, files, or PII are gone.
 
 AgentPaaS is the runtime that sits under those agents. You keep writing and
 running them the way you already do (usually through Hermes). Under the hood
