@@ -16,12 +16,33 @@ var Executable = os.Executable
 
 // HarnessBinary finds the agentpaas-harness binary for container images.
 // It prefers the linux/arm64 cross-compile (agentpaas-harness-linux) over the
-// darwin/arm64 Mac binary (agentpaas-harness). Returns an empty string if not
-// found; callers fall back to pack.BuildImage's own exec.LookPath and clear
-// error.
+// darwin/arm64 Mac binary (agentpaas-harness).
+//
+// Resolution order:
+//  1. Sibling in the same directory as the running executable (preferred —
+//     keeps the harness bundled with the daemon, avoiding stale brew
+//     installations when running from a repo build).
+//  2. ../bin/ relative to the executable (repo build layout).
+//  3. The darwin binary as a fallback sibling.
+//  4. PATH lookup for agentpaas-harness-linux.
+//  5. PATH lookup for agentpaas-harness.
+//
+// Returns an empty string if not found; callers fall back to pack.BuildImage's
+// own exec.LookPath and clear error.
 func HarnessBinary() string {
 	exePath, err := Executable()
 	if err == nil {
+		// If the executable is itself a symlink (common with brew
+		// installations: /opt/homebrew/bin/agentpaasd -> Cellar path),
+		// resolve it so we look for the harness next to the real binary,
+		// not next to the symlink. We only resolve the leaf file, not
+		// every component of the path (avoids /var -> /private/var on
+		// macOS breaking path comparisons).
+		if fi, lerr := os.Lstat(exePath); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if realExe, rerr := filepath.EvalSymlinks(exePath); rerr == nil {
+				exePath = realExe
+			}
+		}
 		exeDir := filepath.Dir(exePath)
 		if p := harnessCandidate(filepath.Join(exeDir, "agentpaas-harness-linux")); p != "" {
 			return p

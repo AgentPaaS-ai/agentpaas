@@ -730,6 +730,32 @@ func TestVersionCommand_ExecuteDirect(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// TestVersionCommand_ContainsCurrentDevVersion verifies that the version
+// command output reports 0.3.0-dev when built with the default ldflags
+// (or the Makefile-injected version). This gate catches stale version
+// strings at test time — if someone reverts the constant, this fails.
+// ---------------------------------------------------------------------------
+func TestVersionCommand_ContainsCurrentDevVersion(t *testing.T) {
+	resetAgentCmd()
+
+	stdout, stderr, err := executeCmd("version")
+	if err != nil {
+		t.Fatalf("'agent version' should not return an error: %v\nstderr: %s", err, stderr)
+	}
+
+	// The version must contain 0.3.0 — stale 0.1.x or 0.2.x strings are rejected.
+	if !strings.Contains(stdout, "0.3.0") {
+		t.Errorf("version output should contain 0.3.0 (dev or tagged), got:\n%s", stdout)
+	}
+	// Additional hygiene: reject any 0.1.x or 0.2.x version strings.
+	for _, stale := range []string{"0.1.", "0.2."} {
+		if strings.Contains(stdout, stale) {
+			t.Errorf("version output contains stale version prefix %q:\n%s", stale, stdout)
+		}
+	}
+}
+
 func TestSecretSetReadsFromStdinNeverArgv(t *testing.T) {
 	store := secrets.NewFakeKeyStore()
 	secretValue := "sensitive-value-from-stdin"

@@ -128,7 +128,7 @@ Six attack fixtures through the real pack → run → gateway → audit pipeline
 
 **IMPORTANT: Install via Homebrew. Do NOT build from source.** Even if
 you have the repo cloned, `make build-all` produces dev binaries
-(`0.1.0-dev`, unknown commit, no version stamp). The brew cask ships
+(`0.3.0-dev`, unknown commit, no version stamp). The brew cask ships
 proper versioned binaries with the Linux harness bundled. A new user
 should never need Go, `make`, or the source repo.
 
@@ -150,10 +150,12 @@ colima start
 ### 3. Install AgentPaaS
 
 ```bash
-brew install agentpaas-ai/tap/agentpaas
+brew tap AgentPaaS-ai/homebrew-tap
+brew install agentpaas
 xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux
 agentpaas daemon start
 agentpaas doctor
+agentpaas version
 ```
 
 **Important:** The brew cask is not notarized. Run `xattr -cr` BEFORE any
