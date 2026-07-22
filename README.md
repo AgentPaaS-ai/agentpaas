@@ -354,20 +354,26 @@ Full guide: [docs/sharing.md](docs/sharing.md).
 
 ## Tech stack
 
-AgentPaaS is mostly Go. The CLI (`agentpaas`), daemon (`agentpaasd`), and
-Linux harness are Go binaries. Control and trigger APIs are protobuf over
-gRPC (with grpc-gateway where HTTP is useful). Policy and agent config are
-YAML. Runtime isolation is Docker (Desktop or Colima on macOS): the agent
-sits on an internal-only network; egress goes through a dual-homed
+Most of AgentPaaS is Go: the CLI, the daemon, and the Linux harness.
+
+APIs are protobuf over gRPC. Policy and agent config are plain YAML.
+Agents themselves are usually Python, wired in through
+`python/agentpaas_sdk`, with deps pinned by `uv` lockfiles at pack time.
+
+Runtime is Docker (Desktop or Colima on a Mac). The agent lands on an
+internal-only network. The only way out is a dual-homed
 [agentgateway](https://github.com/agentgateway/agentgateway) sidecar we
-vendor and configure per run. Agent code is usually Python, talking to the
-runtime through `python/agentpaas_sdk`. Dependencies install from locked
-`uv` lockfiles at pack time. Secrets stay in the macOS Keychain and are
-injected by the gateway, not the agent process. Images and bundles can be
-cosign-signed; every pack gets an SBOM. Audit is hash-chained JSONL with a
-SQLite index and signed checkpoints. The day-to-day UX is a Hermes plugin
-that drives pack, run, trigger, and audit from a chat session. Local-first
-on your machine; no phone-home control plane in this path.
+vendor and configure for that run.
+
+Secrets live in the macOS Keychain. The gateway injects them at request
+time; the agent process never sees them. Images and shareable bundles can
+be cosign-signed, and every pack ships an SBOM.
+
+Audit is a hash-chained JSONL log, indexed in SQLite, with signed
+checkpoints on each write.
+
+Day to day you drive it from Hermes: pack, run, trigger, audit. Everything
+above runs on your machine. No phone-home control plane on this path.
 
 ## Repository layout
 
