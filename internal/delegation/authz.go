@@ -32,6 +32,13 @@ type AuthorizeRequest struct {
 	// PromotedLookup is an optional hook: if set and returns false, DENY_UNPROMOTED.
 	PromotedLookup func(packageName, version, digest string) (bool, error)
 
+	// ExpectedSnapshotGeneration is the snapshot generation the caller
+	// asserts. When non-zero, AuthorizeDelegation rejects with
+	// DENY_SNAPSHOT_MISMATCH if it doesn't match the snapshot. Zero
+	// value means "not enforced" (backward compat for tests that don't
+	// set it).
+	ExpectedSnapshotGeneration int64
+
 	Now time.Time
 }
 
@@ -113,6 +120,13 @@ func AuthorizeDelegation(req *AuthorizeRequest) AuthzDecision {
 		return decision
 	}
 	if req.CallerPackageDigest != req.Snapshot.CallerPackageDigest {
+		decision.DenialCode = DenySnapshotMismatch
+		return decision
+	}
+
+	// Verify snapshot generation matches when caller asserts one.
+	if req.ExpectedSnapshotGeneration != 0 &&
+		req.ExpectedSnapshotGeneration != req.Snapshot.SnapshotGeneration {
 		decision.DenialCode = DenySnapshotMismatch
 		return decision
 	}
