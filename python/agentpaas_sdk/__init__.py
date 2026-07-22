@@ -1,6 +1,6 @@
 """AgentPaaS Python SDK."""
 
-from .agent import Agent, agent
+from .agent import Agent, TaskHandle, agent
 from ._rpc import (
     ArtifactRejected,
     BudgetExceeded,
@@ -15,6 +15,7 @@ from .runner import run
 
 __all__ = [
     "Agent",
+    "TaskHandle",
     "ArtifactRejected",
     "BudgetExceeded",
     "CheckpointRejected",
