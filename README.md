@@ -2,23 +2,25 @@
 
 **Run AI agents so that even a compromised one can't leak your data.**
 
-You built an agent with an LLM. Or you installed a skill off the internet.
-Or the model itself was told to be malicious. How do you know it won't
-ship your API keys, files, or PII somewhere you never approved?
+Building an agent is easy now. You prompt an LLM, drop in a skill from the
+internet, and something that can call APIs is running on your machine. The
+hard part is trust. That code might be buggy, prompt-injected, or straight-up
+hostile. One bad outbound call and your API keys, files, or PII are gone.
 
-AgentPaaS runs each agent in a locked-down container with a default-deny
-network. It can only reach the endpoints you list. Credentials go through
-a gateway sidecar and never sit in the agent process. Every call lands in
-a tamper-evident audit trail.
+AgentPaaS is the runtime that sits under those agents. You keep writing and
+running them the way you already do (usually through Hermes). Under the hood
+each agent is packed into a locked-down container with a default-deny network.
+It can only reach the hosts you put on the allow list. Secrets stay in the
+macOS Keychain and are injected by a gateway sidecar at request time, so the
+agent process never holds them. Every allow and deny is written to a
+tamper-evident audit log.
 
-If a prompt-injected agent tries an unknown host, the gateway blocks it,
-the denial shows up in the audit log, and your secrets stay put.
-
-It also covers handing agents to coworkers and friends. You ship a signed
-bundle with your publisher fingerprint; they inspect policy and provenance
-before install, map credentials to their own Keychain, and keep their own
-audit trail. Forks append lineage so later receivers can see who changed
-what.
+When something tries an unknown host, the call is blocked, you see the denial
+in the log, and the secrets stay put. When you hand an agent to a coworker or
+a friend, you ship a signed bundle with your publisher fingerprint. They
+inspect policy and provenance before install, map credentials to their own
+Keychain, and keep their own audit trail. Forks append lineage, so later
+receivers can see who changed what.
 
 ## How it works
 
