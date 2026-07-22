@@ -1,6 +1,6 @@
 import unittest
 
-from agentpaas_sdk import Agent, BudgetExceeded, RPCError
+from agentpaas_sdk import Agent, BudgetExceeded, RPCError, TaskHandle
 
 
 class FakeRPC:
@@ -81,6 +81,163 @@ class AgentTests(unittest.TestCase):
 
         with self.assertRaises(BudgetExceeded):
             sdk_agent.llm("too many tokens")
+
+
+# --- B32-T03 delegation tests -----------------------------------------------
+
+
+class DelegationTests(unittest.TestCase):
+    def setUp(self):
+        self.sdk_agent = Agent()
+
+    def test_delegate_happy_path_returns_task_handle(self):
+        rpc = FakeRPC({"task_id": "task-abc", "status": "ADMITTED"})
+        self.sdk_agent.set_rpc(rpc)
+
+        handle = self.sdk_agent.delegate(
+            "report.verify",
+            {"role": "user", "parts": [{"kind": "text", "text": "hello"}]},
+        )
+        self.assertIsInstance(handle, TaskHandle)
+        self.assertEqual(handle.task_id, "task-abc")
+
+        # Verify RPC params.
+        _, params = rpc.calls[0]
+        self.assertEqual(params["capability"], "report.verify")
+        self.assertIn("idempotency_key", params)
+        self.assertNotIn("host", params)
+        self.assertNotIn("port", params)
+        self.assertNotIn("endpoint", params)
+        self.assertNotIn("url", params)
+
+    def test_delegate_with_operation(self):
+        rpc = FakeRPC({"task_id": "task-op", "status": "ADMITTED"})
+        self.sdk_agent.set_rpc(rpc)
+
+        handle = self.sdk_agent.delegate(
+            "report.verify",
+            {"role": "user", "parts": [{"kind": "text", "text": "check"}]},
+            operation="verify_draft",
+        )
+        self.assertEqual(handle.task_id, "task-op")
+        _, params = rpc.calls[0]
+        self.assertEqual(params["operation"], "verify_draft")
+
+    def test_delegate_with_explicit_idempotency_key(self):
+        rpc = FakeRPC({"task_id": "task-abc", "status": "ADMITTED"})
+        self.sdk_agent.set_rpc(rpc)
+
+        self.sdk_agent.delegate(
+            "report.verify",
+            {"role": "user", "parts": []},
+            idempotency_key="my-stable-key",
+        )
+        _, params = rpc.calls[0]
+        self.assertEqual(params["idempotency_key"], "my-stable-key")
+
+    def test_delegate_fails_on_missing_task_id(self):
+        rpc = FakeRPC({"status": "ADMITTED"})  # no task_id
+        self.sdk_agent.set_rpc(rpc)
+
+        with self.assertRaises(RPCError) as ctx:
+            self.sdk_agent.delegate("report.verify", {"text": "hello"})
+        self.assertEqual(ctx.exception.code, "invalid_response")
+
+    def test_delegate_rejects_forbidden_response_keys(self):
+        # Response containing 'capability_token' key must be rejected.
+        rpc = FakeRPC({"task_id": "task-abc", "capability_token": "secret"})
+        self.sdk_agent.set_rpc(rpc)
+
+        with self.assertRaises(RPCError) as ctx:
+            self.sdk_agent.delegate("report.verify", {"text": "hello"})
+        self.assertEqual(ctx.exception.code, "forbidden_response_key")
+
+    def test_delegate_rejects_endpoint_key_in_response(self):
+        rpc = FakeRPC({"task_id": "task-abc", "endpoint": "http://evil.test"})
+        self.sdk_agent.set_rpc(rpc)
+
+        with self.assertRaises(RPCError) as ctx:
+            self.sdk_agent.delegate("report.verify", {"text": "hello"})
+        self.assertEqual(ctx.exception.code, "forbidden_response_key")
+
+    def test_delegate_rejects_host_key_in_response(self):
+        rpc = FakeRPC({"task_id": "task-abc", "host": "1.2.3.4"})
+        self.sdk_agent.set_rpc(rpc)
+
+        with self.assertRaises(RPCError) as ctx:
+            self.sdk_agent.delegate("report.verify", {"text": "hello"})
+        self.assertEqual(ctx.exception.code, "forbidden_response_key")
+
+    def test_delegate_rejects_empty_capability(self):
+        rpc = FakeRPC({"task_id": "task-abc", "status": "ADMITTED"})
+        self.sdk_agent.set_rpc(rpc)
+
+        with self.assertRaises(RPCError) as ctx:
+            self.sdk_agent.delegate("", {"text": "hello"})
+        self.assertEqual(ctx.exception.code, "invalid_params")
+
+    def test_delegate_rejects_capability_with_newline(self):
+        rpc = FakeRPC({"task_id": "task-abc", "status": "ADMITTED"})
+        self.sdk_agent.set_rpc(rpc)
+
+        with self.assertRaises(RPCError) as ctx:
+            self.sdk_agent.delegate("bad\ncap", {"text": "hello"})
+        self.assertEqual(ctx.exception.code, "invalid_params")
+
+    def test_delegate_coerces_simple_dict_to_user_message(self):
+        rpc = FakeRPC({"task_id": "task-xyz", "status": "ADMITTED"})
+        self.sdk_agent.set_rpc(rpc)
+
+        self.sdk_agent.delegate("report.verify", {"text": "simple message"})
+        _, params = rpc.calls[0]
+        msg = params["message"]
+        self.assertEqual(msg["role"], "user")
+        self.assertEqual(len(msg["parts"]), 1)
+        self.assertEqual(msg["parts"][0]["kind"], "text")
+        self.assertEqual(msg["parts"][0]["text"], "simple message")
+
+    def test_delegate_never_accepts_host_param(self):
+        """Agent.delegate MUST NOT have a host parameter."""
+        import inspect
+
+        sig = inspect.signature(Agent.delegate)
+        for param_name in sig.parameters:
+            self.assertNotIn(param_name.lower(), ["host", "port", "url", "endpoint", "token"])
+
+    def test_task_handle_events(self):
+        rpc = FakeRPC({"events": [
+            {"event_id": "evt-1", "task_id": "task-abc", "type": "TASK_ADMITTED", "sequence": 1},
+        ]})
+        self.sdk_agent.set_rpc(rpc)
+
+        # Manually create a TaskHandle (avoids needing a real delegate call).
+        handle = TaskHandle("task-abc", rpc)
+        events = handle.events(after_sequence=0)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["type"], "TASK_ADMITTED")
+
+    def test_task_handle_events_rejects_forbidden_keys(self):
+        rpc = FakeRPC({"events": [], "capability_token": "leaked"})
+        handle = TaskHandle("task-abc", rpc)
+
+        with self.assertRaises(RPCError) as ctx:
+            handle.events(after_sequence=0)
+        self.assertEqual(ctx.exception.code, "forbidden_response_key")
+
+    def test_task_handle_result(self):
+        rpc = FakeRPC({"task_id": "task-abc", "status": "SUCCEEDED"})
+        handle = TaskHandle("task-abc", rpc)
+
+        result = handle.result()
+        self.assertIsNotNone(result)
+        self.assertEqual(result["status"], "SUCCEEDED")
+
+    def test_task_handle_result_none_for_nonterminal(self):
+        rpc = FakeRPC({"task_id": "task-abc", "status": "ADMITTED"})
+        handle = TaskHandle("task-abc", rpc)
+
+        result = handle.result()
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

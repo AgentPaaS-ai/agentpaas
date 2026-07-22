@@ -37,6 +37,10 @@ type harnessRPCServer struct {
 	router      *mcpmanager.Router
 	credentials map[string]rpcCredential // Pre-loaded credential values (from sidecar file)
 
+	// Delegation trust state (B32-T03) — injected at invoke bootstrap.
+	// NEVER serialized to agent responses.
+	delegationTrust *DelegationTrustState
+
 	// Progress journal (B27) — pre-loaded at startup, wired into invoke state
 	// by SetInvoke. Stored on the server so LoadProgressMetadata can populate
 	// them before the first invoke.
@@ -262,6 +266,13 @@ func (s *harnessRPCServer) handleConn(conn net.Conn) {
 }
 
 func (s *harnessRPCServer) handleRequest(req rpcRequest) rpcResponse {
+	// Delegation methods are invoked during an active agent run but
+	// have their own trust state — they don't require invoke state.
+	switch req.Method {
+	case "delegate_task", "get_task", "list_task_events":
+		return s.handleDelegationMethod(req)
+	}
+
 	state := s.currentInvoke()
 	if state == nil {
 		return rpcError(req.ID, "no active invoke", "no_active_invoke")
@@ -281,6 +292,19 @@ func (s *harnessRPCServer) handleRequest(req rpcRequest) rpcResponse {
 		return s.handleProgress(req, state)
 	default:
 		return rpcError(req.ID, fmt.Sprintf("unknown method %q", req.Method), "unknown_method")
+	}
+}
+
+func (s *harnessRPCServer) handleDelegationMethod(req rpcRequest) rpcResponse {
+	switch req.Method {
+	case "delegate_task":
+		return s.handleDelegateTask(req)
+	case "get_task":
+		return s.handleGetTask(req)
+	case "list_task_events":
+		return s.handleListTaskEvents(req)
+	default:
+		return rpcError(req.ID, fmt.Sprintf("unknown delegation method %q", req.Method), "unknown_method")
 	}
 }
 
