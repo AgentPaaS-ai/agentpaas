@@ -9,11 +9,11 @@ hostile. One bad outbound call and your API keys, files, or PII are gone.
 
 AgentPaaS is the runtime that sits under those agents. You keep writing and
 running them the way you already do (usually through Hermes). Under the hood
-each agent is packed into a locked-down container with a default-deny network.
-It can only reach the hosts you put on the allow list. Secrets stay in the
-macOS Keychain and are injected by a gateway sidecar at request time, so the
-agent process never holds them. Every allow and deny is written to a
-tamper-evident audit log.
+each agent is packed into a locked-down container on a default-deny network.
+Outbound traffic only leaves through a sidecar gateway that enforces your
+policy: approved hosts only. Secrets stay in the macOS Keychain and are
+injected by that gateway at request time, so the agent process never holds
+them. Every allow and deny is written to a tamper-evident audit log.
 
 When something tries an unknown host, the call is blocked, you see the denial
 in the log, and the secrets stay put. When you hand an agent to a coworker or
