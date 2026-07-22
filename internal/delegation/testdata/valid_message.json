@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.3.0",
+  "message_id": "msg-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "task_id": "task-aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "workflow_id": "wf-test",
+  "tenant_id": "tenant-test",
+  "sequence": 1,
+  "role": "user",
+  "sender_logical_id": "weather-agent",
+  "recipient_logical_id": "report-verifier",
+  "parts": [
+    {
+      "kind": "text",
+      "text": "Please verify the weather report for tomorrow.",
+      "media_type": "text/plain"
+    },
+    {
+      "kind": "json",
+      "json": "{\"location\":\"San Francisco\",\"date\":\"2026-07-22\"}",
+      "media_type": "application/json"
+    }
+  ],
+  "content_digest": "sha256:placeholder",
+  "byte_size": 200,
+  "classification": "internal",
+  "created_at": "2026-07-21T00:00:01Z"
+}
