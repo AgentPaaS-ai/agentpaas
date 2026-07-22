@@ -16,14 +16,14 @@ reach arbitrary hosts or steal raw API keys.
 | Requirement | Exact expectation |
 |---|---|
 | **OS** | macOS (Apple Silicon or Intel) |
-| **AgentPaaS** | Homebrew cask `agentpaas-ai/tap/agentpaas` **v0.2.3** (ships `agentpaas`, `agentpaasd`, `agentpaas-harness-linux`) |
+| **AgentPaaS** | Homebrew cask `AgentPaaS-ai/homebrew-tap/agentpaas` (ships `agentpaas`, `agentpaasd`, `agentpaas-harness-linux`) |
 | **Docker** | Docker CLI + a running daemon. Recommended: Colima (`brew install colima docker` then `colima start`). Docker Desktop also works. |
 | **LLM API key** (optional for the hello agent below; required for LLM agents) | OpenRouter free-tier key from https://openrouter.ai/keys (recommended). OpenAI, Anthropic, xAI, and Nous also work. |
 | **Hermes Agent** (optional) | Only if you want the conversational plugin flow. Install: `brew install nousresearch/tap/hermes-agent`. |
 
 You do **not** need Go, `make`, or a source checkout to use AgentPaaS as an
 operator. Install the Homebrew cask — do not run `make build-all` for day-to-day
-use (dev builds are stamped `0.1.0-dev` and may omit a proper harness bundle).
+use (dev builds are stamped `0.3.0-dev` and may omit a proper harness bundle).
 
 ## Install
 
@@ -40,7 +40,8 @@ docker info >/dev/null && echo "Docker OK"
 ### 2. AgentPaaS
 
 ```bash
-brew install agentpaas-ai/tap/agentpaas
+brew tap AgentPaaS-ai/homebrew-tap
+brew install agentpaas
 ```
 
 The cask is not notarized. Clear quarantine **before** any `agentpaas`
@@ -71,7 +72,7 @@ when missing):
 agentpaas doctor
 ===============
 Version:           ok
-                   0.2.3 (darwin/arm64)
+                   0.3.0 (darwin/arm64)
 Docker CLI:        ok
                    (29.x.x)
 Docker daemon:     ok
@@ -90,7 +91,7 @@ Overall: 7/7 checks passed
 Expected `version` shape:
 
 ```text
-CLI: 0.2.3 | Proto: v1 | Commit: <hex> | OS/Arch: darwin/arm64 | ...
+CLI: 0.3.0 | Proto: v1 | Commit: <hex> | OS/Arch: darwin/arm64 | ...
 ```
 
 If the daemon will not start after an upgrade:

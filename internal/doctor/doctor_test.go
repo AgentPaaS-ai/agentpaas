@@ -50,7 +50,7 @@ func TestDoctorWithRealDaemon(t *testing.T) {
 	doc, err := New(
 		WithHomeDir(hp.Home),
 		WithSocketPath(hp.Socket),
-		WithCLIVersion("0.1.0-dev"),
+		WithCLIVersion("0.3.0-dev"),
 		WithCLIProtoVersion("v1"),
 	)
 	if err != nil {
@@ -309,7 +309,7 @@ func TestDoctorVersionCompatibility(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Verify daemon returns version via proto_compatible check.
-	result := CheckProtoCompatible(hp.Socket, "0.1.0-dev", "v1")
+	result := CheckProtoCompatible(hp.Socket, "0.3.0-dev", "v1")
 	t.Logf("Proto compatible result: status=%s, msg=%s", result.Status, result.Message)
 }
 
@@ -634,8 +634,8 @@ func shortTempPaths(t *testing.T) *home.HomePaths {
 // testDaemonVersion returns a VersionInfo for integration tests.
 func testDaemonVersion() daemon.VersionInfo {
 	return daemon.VersionInfo{
-		CLIVersion:    "0.1.0-dev",
-		DaemonVersion: "0.1.0-dev",
+		CLIVersion:    "0.3.0-dev",
+		DaemonVersion: "0.3.0-dev",
 		ProtoVersion:  "v1",
 		GitCommit:     "test-commit",
 		GoVersion:     runtime.Version(),

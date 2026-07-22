@@ -134,3 +134,35 @@ func TestSDKDir_NotFound(t *testing.T) {
 		t.Fatalf("SDKDir() = %q, want \"\"", got)
 	}
 }
+
+func TestHarnessBinary_ResolvesExeSymlink(t *testing.T) {
+	// Simulate a brew-installed setup where the binary is symlinked from
+	// /opt/homebrew/bin/agentpaasd -> /opt/homebrew/Cellar/agentpaas/0.3.0/bin/agentpaasd,
+	// and the harness lives next to the real binary in the Cellar.
+	cellarDir := t.TempDir()
+	brewDir := t.TempDir()
+
+	realDaemon := filepath.Join(cellarDir, "agentpaasd")
+	harnessLinux := filepath.Join(cellarDir, "agentpaas-harness-linux")
+	symlinkDaemon := filepath.Join(brewDir, "agentpaasd")
+
+	writeStub(t, realDaemon)
+	writeStub(t, harnessLinux)
+
+	if err := os.Symlink(realDaemon, symlinkDaemon); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	oldExe := Executable
+	Executable = func() (string, error) { return symlinkDaemon, nil }
+	t.Cleanup(func() { Executable = oldExe })
+
+	got := HarnessBinary()
+	// Resolve both paths through EvalSymlinks for comparison — on macOS
+	// /var is a symlink to /private/var, so TempDir paths may differ.
+	gotResolved, _ := filepath.EvalSymlinks(got)
+	wantResolved, _ := filepath.EvalSymlinks(harnessLinux)
+	if gotResolved != wantResolved {
+		t.Fatalf("HarnessBinary() = %q, want %q (should resolve symlink and find sibling in Cellar)", got, harnessLinux)
+	}
+}

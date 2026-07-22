@@ -1,18 +1,19 @@
 class Agentpaas < Formula
   desc "Governed, local-first runtime for AI-generated agents"
   homepage "https://github.com/AgentPaaS-ai/agentpaas"
-  version "0.1.0"
+  # version, url, and sha256 are placeholders filled by goreleaser at tag time.
+  # The formula in this repo is a template for review; the published formula
+  # lives in AgentPaaS-ai/homebrew-tap and is updated by the release workflow.
+  version "0.3.0"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.1.0/agentpaas_0.1.0_darwin_arm64.tar.gz"
-      # SHA256 is a placeholder — goreleaser fills the real checksum during the first release (v0.1.0 tag push).
+      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.3.0/agentpaas_0.3.0_darwin_arm64.tar.gz"
       sha256 "PLACEHOLDER_SHA256"
     end
     on_intel do
-      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.1.0/agentpaas_0.1.0_darwin_amd64.tar.gz"
-      # SHA256 is a placeholder — goreleaser fills the real checksum during the first release (v0.1.0 tag push).
+      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.3.0/agentpaas_0.3.0_darwin_amd64.tar.gz"
       sha256 "PLACEHOLDER_SHA256"
     end
   end
@@ -24,6 +25,10 @@ class Agentpaas < Formula
   end
 
   test do
-    assert_match "0.1.0", shell_output("#{bin}/agentpaas version")
+    # The version check is flexible: when built with ldflags (Makefile / goreleaser),
+    # the binary reports the stamped version. When built without ldflags, defaults
+    # report "0.3.0-dev". The test accepts either.
+    output = shell_output("#{bin}/agentpaas version")
+    assert_match(/0\.3\.0/, output)
   end
 end
