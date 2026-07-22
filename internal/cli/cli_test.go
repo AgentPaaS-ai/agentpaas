@@ -178,7 +178,7 @@ func TestAgentVersion_TextOutput(t *testing.T) {
 		{"proto version", "Proto:"},
 		{"git commit", "Commit:"},
 		{"OS/Arch", "OS/Arch:"},
-		{"version number", "0.1.0-dev"},
+		{"version number", "0.3.0-dev"},
 		{"proto value", "v1"},
 		{"git commit value", "unknown"},
 	}
@@ -196,7 +196,7 @@ func TestAgentVersion_TextOutput(t *testing.T) {
 
 	// Golden output: exact format check.
 	expected := fmt.Sprintf(
-		"CLI: 0.1.0-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | Docker: unknown | Docker API: unknown",
+		"CLI: 0.3.0-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | Docker: unknown | Docker API: unknown",
 		expectedArch,
 	)
 	got := strings.TrimSpace(stdout)
@@ -227,8 +227,8 @@ func TestAgentVersion_JSONOutput(t *testing.T) {
 		t.Fatalf("expected valid JSON output, got error: %v\noutput:\n%s", err, stdout)
 	}
 
-	if v.CLIVersion != "0.1.0-dev" {
-		t.Errorf("cli_version: want %q, got %q", "0.1.0-dev", v.CLIVersion)
+	if v.CLIVersion != "0.3.0-dev" {
+		t.Errorf("cli_version: want %q, got %q", "0.3.0-dev", v.CLIVersion)
 	}
 	if v.ProtoVersion != "v1" {
 		t.Errorf("proto_version: want %q, got %q", "v1", v.ProtoVersion)
