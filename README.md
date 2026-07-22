@@ -29,45 +29,32 @@ accepting and running the agent.
 ## How it works
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    YOUR MACHINE                         │
-│                                                         │
-│  ┌─────────────────────────────────────────┐            │
-│  │         INTERNAL-ONLY DOCKER NETWORK    │            │
-│  │         (no route to the internet)      │            │
-│  │                                         │            │
-│  │  ┌──────────────┐    ┌───────────────┐  │            │
-│  │  │   AGENT      │    │   GATEWAY     │  │            │
-│  │  │  CONTAINER   │    │   SIDECAR     │  │            │
-│  │  │              │    │               │  │            │
-│  │  │  · Python    │    │  · Policy     │  │            │
-│  │  │    agent     │───▶│    enforcer   │  │            │
-│  │  │  · No shell  │    │  · Credential │  │            │
-│  │  │  · Non-root  │    │    broker     │  │            │
-│  │  │  · Read-only │    │  · DNS stub   │  │            │
-│  │  │    rootfs    │    │               │  │            │
-│  │  │  · No caps   │    │       │       │  │            │
-│  │  └──────────────┘    └───────┼───────┘  │            │
-│  │                              │          │            │
-│  └──────────────────────────────┼──────────┘            │
-│                                 │                       │
-│  ┌──────────────────────────────────────────┐           │
-│  │              DAEMON (agentpaasd)         │           │
-│  │  · Tamper-evident audit trail            │           │
-│  │  · Signed checkpoints                    │           │
-│  │  · Hash-chained JSONL + SQLite index     │           │
-│  └──────────────────────────────────────────┘           │
-│                                 │                       │
-│                          ONLY ALLOWED                   │
-│                          EGRESS PATH                    │
-└─────────────────────────────────┼───────────────────────┘
-                                  │
-                                  ▼
-                     ┌─────────────────────┐
-                     │   APPROVED APIs     │
-                     │  (api.x.ai, etc.)   │
-                     │     (internet)      │
-                     └─────────────────────┘
+┌────────────────────────────────────────────────────┐
+│                   YOUR MACHINE                     │
+│                                                    │
+│  ┌──────────────────────────────────────┐          │      ┌──────────────────┐
+│  │   INTERNAL-ONLY DOCKER NETWORK       │          │      │  APPROVED APIs   │
+│  │   (no direct internet route)         │          │      │ (api.x.ai, etc.) │
+│  │                                      │          │      │   (internet)     │
+│  │  ┌────────────┐    ┌──────────────┐  │  only    │      │                  │
+│  │  │   AGENT    │    │   GATEWAY    │  │  allowed │      │                  │
+│  │  │  CONTAINER │◄──►│   SIDECAR    │◄─┼──────────┼─────►│                  │
+│  │  │            │    │              │  │  egress  │      │                  │
+│  │  │ · Python   │    │ · Policy     │  │          │      └──────────────────┘
+│  │  │ · No shell │    │ · Credential │  │          │
+│  │  │ · Non-root │    │   broker     │  │          │
+│  │  │ · Read-only│    │ · DNS stub   │  │          │
+│  │  │ · No caps  │    │              │  │          │
+│  │  └────────────┘    └──────────────┘  │          │
+│  └──────────────────────────────────────┘          │
+│                                                    │
+│  ┌──────────────────────────────────────┐          │
+│  │           DAEMON (agentpaasd)        │          │
+│  │  · Tamper-evident audit trail        │          │
+│  │  · Signed checkpoints                │          │
+│  │  · Hash-chained JSONL + SQLite index │          │
+│  └──────────────────────────────────────┘          │
+└────────────────────────────────────────────────────┘
 ```
 
 The agent container has no direct internet path. Traffic goes through the
