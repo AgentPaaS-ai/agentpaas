@@ -52,29 +52,46 @@ func TestAdversary_B32_SnapshotForgeryMutatedDigest(t *testing.T) {
 // TestAdversary_B32_SnapshotWrongGeneration verifies that authorization
 // fails when the caller asserts a generation that doesn't match the snapshot.
 func TestAdversary_B32_SnapshotWrongGeneration(t *testing.T) {
-	snap := makeTestSnapshot()
-	// The snapshot was created with generation 3. Try to use a task that
-	// references generation 1 — that's a stale/forged generation.
+	snap := makeTestSnapshot() // SnapshotGeneration = 3
+
+	// Attack: build a valid-looking request but assert a stale generation.
 	req := makeAuthzRequest(snap)
+	req.ExpectedSnapshotGeneration = 1 // stale — snapshot is generation 3
 
-	// Create a task whose CommunicationSnapshotGeneration is wrong.
-	task := makeValidTask()
-	task.CommunicationSnapshotGeneration = 1 // stale — snapshot is generation 3
-
-	// The real defense: when a task is admitted, its CommunicationSnapshotGeneration
-	// must equal the snapshot's SnapshotGeneration.
-	if task.CommunicationSnapshotGeneration != snap.SnapshotGeneration {
-		// This is the expected path: the adversary's forged generation is
-		// detected. The task's claimed generation (1) doesn't match the
-		// snapshot's actual generation (3).
-		return // Defense holds — test passes.
-	}
-	// The request still passes authorization since auth checks identity, not generation.
 	decision := AuthorizeDelegation(&req)
-	if !decision.Allowed {
-		t.Fatalf("expected allowed, got denial=%s", decision.DenialCode)
+	if decision.Allowed {
+		t.Fatal("ADVERSARY BREAK: authorization allowed with wrong ExpectedSnapshotGeneration (1 vs 3)")
 	}
-	t.Fatal("ADVERSARY BREAK: task with wrong communication_snapshot_generation was admitted without generation check")
+	if decision.DenialCode != DenySnapshotMismatch {
+		t.Fatalf("expected %s, got %s", DenySnapshotMismatch, decision.DenialCode)
+	}
+
+	// Also try zero as a wrong generation.
+	req2 := makeAuthzRequest(snap)
+	req2.ExpectedSnapshotGeneration = 0 // zero means "not enforced" — this must PASS
+	decision2 := AuthorizeDelegation(&req2)
+	if !decision2.Allowed {
+		t.Fatalf("expected Allowed=true when ExpectedSnapshotGeneration=0 (not enforced), got denial=%s", decision2.DenialCode)
+	}
+
+	// Correct generation must pass.
+	req3 := makeAuthzRequest(snap)
+	req3.ExpectedSnapshotGeneration = snap.SnapshotGeneration // 3 — matches
+	decision3 := AuthorizeDelegation(&req3)
+	if !decision3.Allowed {
+		t.Fatalf("expected Allowed=true with correct ExpectedSnapshotGeneration, got denial=%s", decision3.DenialCode)
+	}
+
+	// Negative generation attack.
+	req4 := makeAuthzRequest(snap)
+	req4.ExpectedSnapshotGeneration = -1
+	decision4 := AuthorizeDelegation(&req4)
+	if decision4.Allowed {
+		t.Fatal("ADVERSARY BREAK: authorization allowed with negative ExpectedSnapshotGeneration")
+	}
+	if decision4.DenialCode != DenySnapshotMismatch {
+		t.Fatalf("expected %s for negative generation, got %s", DenySnapshotMismatch, decision4.DenialCode)
+	}
 }
 
 // ---------------------------------------------------------------------------

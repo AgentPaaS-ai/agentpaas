@@ -148,18 +148,19 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 
 	// Build authorization request from trust state.
 	authReq := delegation.AuthorizeRequest{
-		Snapshot:             &dts.Snapshot,
-		BindingID:            capability,
-		Operation:            operation,
-		CallerDeploymentID:   dts.Snapshot.CallerDeploymentID,
-		CallerPackageDigest:  dts.Snapshot.CallerPackageDigest,
-		CalleePackageName:    lookupBindingCallee(dts.Snapshot, capability, "package_name"),
-		CalleePackageVersion: lookupBindingCallee(dts.Snapshot, capability, "package_version"),
-		CalleeBundleDigest:   lookupBindingCallee(dts.Snapshot, capability, "bundle_digest"),
-		DataClass:            string(delegation.ClassificationInternal),
-		CalleeIngressAllow:   dts.CalleeIngressAllow,
-		PromotedLookup:       dts.PromotedLookup,
-		Now:                  now,
+		Snapshot:                     &dts.Snapshot,
+		BindingID:                    capability,
+		Operation:                    operation,
+		CallerDeploymentID:           dts.Snapshot.CallerDeploymentID,
+		CallerPackageDigest:          dts.Snapshot.CallerPackageDigest,
+		CalleePackageName:            lookupBindingCallee(dts.Snapshot, capability, "package_name"),
+		CalleePackageVersion:         lookupBindingCallee(dts.Snapshot, capability, "package_version"),
+		CalleeBundleDigest:           lookupBindingCallee(dts.Snapshot, capability, "bundle_digest"),
+		DataClass:                    string(delegation.ClassificationInternal),
+		CalleeIngressAllow:           dts.CalleeIngressAllow,
+		PromotedLookup:               dts.PromotedLookup,
+		ExpectedSnapshotGeneration:   dts.Snapshot.SnapshotGeneration,
+		Now:                          now,
 	}
 
 	// Authorize.
