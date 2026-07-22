@@ -3,13 +3,22 @@
 build:
 	go build ./...
 
+# LDFLAGS_VERSION stamps the dev version into all binaries when building without
+# a release tag. goreleaser overrides these at tag time with the actual version.
+LDFLAGS_VERSION := -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion=0.3.0-dev
+LDFLAGS_VERSION += -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion=0.3.0-dev
+LDFLAGS_VERSION += -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+
+BUILD_FLAGS := -trimpath -ldflags "$(LDFLAGS_VERSION)"
+BUILD_FLAGS_HARNESS := -trimpath -ldflags "$(LDFLAGS_VERSION) -s -w"
+
 build-harness-linux:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -trimpath -o bin/agentpaas-harness-linux ./cmd/harness
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness-linux ./cmd/harness
 
 build-all: build build-harness-linux
-	go build -o bin/agentpaas ./cmd/agent
-	go build -o bin/agentpaasd ./cmd/agentpaasd
-	go build -o bin/agentpaas-harness ./cmd/harness
+	go build $(BUILD_FLAGS) -o bin/agentpaas ./cmd/agent
+	go build $(BUILD_FLAGS) -o bin/agentpaasd ./cmd/agentpaasd
+	go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness ./cmd/harness
 
 test:
 	go test ./...

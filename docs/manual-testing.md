@@ -37,7 +37,7 @@ What we deliberately do **not** treat as a pass:
 
 - Agent self-report (“I blocked exfil”) without harness/audit evidence
 - Green unit tests alone as proof of network isolation
-- Dev binaries (`0.1.0-dev`) as a substitute for the release cask in
+- Dev binaries (`0.3.0-dev`) as a substitute for the release cask in
   operator golden loops
 
 ## Test Categories

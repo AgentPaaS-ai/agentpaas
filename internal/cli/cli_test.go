@@ -178,7 +178,7 @@ func TestAgentVersion_TextOutput(t *testing.T) {
 		{"proto version", "Proto:"},
 		{"git commit", "Commit:"},
 		{"OS/Arch", "OS/Arch:"},
-		{"version number", "0.1.0-dev"},
+		{"version number", "0.3.0-dev"},
 		{"proto value", "v1"},
 		{"git commit value", "unknown"},
 	}
@@ -196,7 +196,7 @@ func TestAgentVersion_TextOutput(t *testing.T) {
 
 	// Golden output: exact format check.
 	expected := fmt.Sprintf(
-		"CLI: 0.1.0-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | Docker: unknown | Docker API: unknown",
+		"CLI: 0.3.0-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | Docker: unknown | Docker API: unknown",
 		expectedArch,
 	)
 	got := strings.TrimSpace(stdout)
@@ -227,8 +227,8 @@ func TestAgentVersion_JSONOutput(t *testing.T) {
 		t.Fatalf("expected valid JSON output, got error: %v\noutput:\n%s", err, stdout)
 	}
 
-	if v.CLIVersion != "0.1.0-dev" {
-		t.Errorf("cli_version: want %q, got %q", "0.1.0-dev", v.CLIVersion)
+	if v.CLIVersion != "0.3.0-dev" {
+		t.Errorf("cli_version: want %q, got %q", "0.3.0-dev", v.CLIVersion)
 	}
 	if v.ProtoVersion != "v1" {
 		t.Errorf("proto_version: want %q, got %q", "v1", v.ProtoVersion)
@@ -727,6 +727,32 @@ func TestVersionCommand_ExecuteDirect(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "CLI:") {
 		t.Errorf("expected stdout to contain 'CLI:'; got:\n%s", stdout)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestVersionCommand_ContainsCurrentDevVersion verifies that the version
+// command output reports 0.3.0-dev when built with the default ldflags
+// (or the Makefile-injected version). This gate catches stale version
+// strings at test time — if someone reverts the constant, this fails.
+// ---------------------------------------------------------------------------
+func TestVersionCommand_ContainsCurrentDevVersion(t *testing.T) {
+	resetAgentCmd()
+
+	stdout, stderr, err := executeCmd("version")
+	if err != nil {
+		t.Fatalf("'agent version' should not return an error: %v\nstderr: %s", err, stderr)
+	}
+
+	// The version must contain 0.3.0 — stale 0.1.x or 0.2.x strings are rejected.
+	if !strings.Contains(stdout, "0.3.0") {
+		t.Errorf("version output should contain 0.3.0 (dev or tagged), got:\n%s", stdout)
+	}
+	// Additional hygiene: reject any 0.1.x or 0.2.x version strings.
+	for _, stale := range []string{"0.1.", "0.2."} {
+		if strings.Contains(stdout, stale) {
+			t.Errorf("version output contains stale version prefix %q:\n%s", stale, stdout)
+		}
 	}
 }
 
