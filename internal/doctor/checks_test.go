@@ -310,7 +310,7 @@ func TestCheckDaemonReady_EmptySocket(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCheckProtoCompatible_NoDaemon(t *testing.T) {
-	result := CheckProtoCompatible("/nonexistent/daemon.sock", "0.1.0-dev", "v1")
+	result := CheckProtoCompatible("/nonexistent/daemon.sock", "0.3.0-dev", "v1")
 
 	// Should be ok with a message about daemon not running (check skipped).
 	if result.Status != "ok" && result.Status != "warning" {
@@ -454,7 +454,7 @@ func TestCheckNames_Unique(t *testing.T) {
 		func() CheckResult { return CheckSocketPerms(t.TempDir()) },
 		func() CheckResult { return CheckHomeDirPerms(t.TempDir()) },
 		func() CheckResult { return CheckDaemonReady("") },
-		func() CheckResult { return CheckProtoCompatible("", "0.1.0-dev", "v1") },
+		func() CheckResult { return CheckProtoCompatible("", "0.3.0-dev", "v1") },
 		func() CheckResult { return CheckHarnessCopies() },
 	}
 
@@ -1063,7 +1063,7 @@ func TestDoctorVersionInfo(t *testing.T) {
 
 	// The doctor's cliVersion must match daemon.CLIVersion — i.e., it
 	// pulls from the ldflags-settable variable, not a separate hardcoded
-	// constant.  daemon.CLIVersion defaults to "0.1.0-dev" when not
+	// constant.  daemon.CLIVersion defaults to "0.3.0-dev" when not
 	// injected via ldflags.
 	if d.cliVersion != daemon.CLIVersion {
 		t.Errorf("doctor cliVersion %q != daemon.CLIVersion %q — version is NOT dynamic", d.cliVersion, daemon.CLIVersion)
