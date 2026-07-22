@@ -19,8 +19,11 @@ When an agent tries an unknown host, the call is blocked, you see the denial
 in the log, and your secrets are never leaked. When you hand an agent to a
 coworker or a friend, you ship a signed bundle with your publisher
 fingerprint. They inspect policy and provenance before install, map
-credentials to their own Keychain, and keep their own audit trail. Forks
-append lineage, so later receivers can see who changed what.
+credentials to their own Keychain, and keep their own audit trail. If someone
+forks that agent, changes the code or policy, and re-shares it, the bundle
+records each hop: who published the original, who forked it, and what egress
+or credentials they added. Receivers can walk that chain before they trust
+the next copy.
 
 ## How it works
 
