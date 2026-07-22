@@ -56,15 +56,15 @@ var delegateTaskResponseFields = map[string]bool{
 
 // getTaskResponseFields is the explicit allowlist for get_task responses.
 var getTaskResponseFields = map[string]bool{
-	"task_id":      true,
-	"status":       true,
-	"workflow_id":  true,
-	"tenant_id":    true,
-	"binding_id":   true,
-	"capability":   true,
-	"operation":    true,
-	"created_at":   true,
-	"updated_at":   true,
+	"task_id":       true,
+	"status":        true,
+	"workflow_id":   true,
+	"tenant_id":     true,
+	"binding_id":    true,
+	"capability":    true,
+	"operation":     true,
+	"created_at":    true,
+	"updated_at":    true,
 	"denial_reason": true,
 	"failure_reason": true,
 }
@@ -138,6 +138,16 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 		return rpcError(req.ID, "idempotency_key is required", "invalid_params")
 	}
 
+	// W4: Accept optional data_class parameter, default to "internal".
+	dataClass := stringParam(req.Params, "data_class")
+	if dataClass == "" {
+		dataClass = string(delegation.ClassificationInternal)
+	}
+	dataClassEnum := delegation.Classification(dataClass)
+	if !dataClassEnum.Valid() {
+		return rpcError(req.ID, "invalid data_class: "+dataClass, "invalid_params")
+	}
+
 	// Build a task ID for this delegate call.
 	taskID, err := delegation.NewTaskID()
 	if err != nil {
@@ -148,23 +158,32 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 
 	// Build authorization request from trust state.
 	authReq := delegation.AuthorizeRequest{
-		Snapshot:                     &dts.Snapshot,
-		BindingID:                    capability,
-		Operation:                    operation,
-		CallerDeploymentID:           dts.Snapshot.CallerDeploymentID,
-		CallerPackageDigest:          dts.Snapshot.CallerPackageDigest,
-		CalleePackageName:            lookupBindingCallee(dts.Snapshot, capability, "package_name"),
-		CalleePackageVersion:         lookupBindingCallee(dts.Snapshot, capability, "package_version"),
-		CalleeBundleDigest:           lookupBindingCallee(dts.Snapshot, capability, "bundle_digest"),
-		DataClass:                    string(delegation.ClassificationInternal),
-		CalleeIngressAllow:           dts.CalleeIngressAllow,
-		PromotedLookup:               dts.PromotedLookup,
-		ExpectedSnapshotGeneration:   dts.Snapshot.SnapshotGeneration,
-		Now:                          now,
+		Snapshot:                   &dts.Snapshot,
+		BindingID:                  capability,
+		Operation:                  operation,
+		CallerDeploymentID:         dts.Snapshot.CallerDeploymentID,
+		CallerPackageDigest:        dts.Snapshot.CallerPackageDigest,
+		CalleePackageName:          lookupBindingCallee(dts.Snapshot, capability, "package_name"),
+		CalleePackageVersion:       lookupBindingCallee(dts.Snapshot, capability, "package_version"),
+		CalleeBundleDigest:         lookupBindingCallee(dts.Snapshot, capability, "bundle_digest"),
+		DataClass:                  dataClass, // W4: from request, not hardcoded
+		CalleeIngressAllow:         dts.CalleeIngressAllow,
+		PromotedLookup:             dts.PromotedLookup,
+		ExpectedSnapshotGeneration: dts.Snapshot.SnapshotGeneration,
+		Now:                        now,
 	}
 
 	// Authorize.
 	decision := delegation.AuthorizeDelegation(&authReq)
+
+	// N1: Caller ref with harness run/attempt IDs.
+	callerRef := delegation.CallerRef{
+		DeploymentID:  dts.Snapshot.CallerDeploymentID,
+		RunID:         "run-harness",
+		AttemptID:     "at-harness",
+		PackageName:   dts.Snapshot.CallerPackageName,
+		PackageDigest: dts.Snapshot.CallerPackageDigest,
+	}
 
 	if !decision.Allowed {
 		// Create DENIED task.
@@ -173,7 +192,7 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 			TaskID:                          taskID,
 			WorkflowID:                      dts.Snapshot.WorkflowID,
 			TenantID:                        dts.Snapshot.TenantID,
-			Caller:                          delegation.CallerRef{DeploymentID: dts.Snapshot.CallerDeploymentID, RunID: "", AttemptID: "", PackageName: dts.Snapshot.CallerPackageName, PackageDigest: dts.Snapshot.CallerPackageDigest},
+			Caller:                          callerRef,
 			Callee:                          delegation.CalleeRef{PackageName: authReq.CalleePackageName, PackageVersion: authReq.CalleePackageVersion, PackageDigest: authReq.CalleeBundleDigest},
 			BindingID:                       capability,
 			Capability:                      capability,
@@ -188,6 +207,8 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 			UpdatedAt:                       now,
 		}
 
+		// Denied task goes straight to store without validation;
+		// callee fields may be empty when binding is unknown.
 		if err := dts.Store.CreateTask(context.Background(), deniedTask); err != nil {
 			// On idempotent replay, don't fail — return the existing.
 			log.Printf("harness: delegate_task create denied task: %v", err)
@@ -215,13 +236,46 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 		}
 	}
 
+	// W1: Gateway self-check — lookup binding capability token, Attach + ValidateAndStrip.
+	capToken, hasCap := dts.BindingCapabilities[capability]
+	if !hasCap || capToken == "" {
+		log.Printf("harness: delegate_task W1: missing capability token for binding %s", capability)
+		return rpcError(req.ID, "delegation: missing capability token for binding", "internal_error")
+	}
+	enforcer := &delegation.GatewayEnforcer{}
+	headers := enforcer.Attach(capToken)
+	if err := enforcer.ValidateAndStrip(headers, capToken); err != nil {
+		log.Printf("harness: delegate_task W1: gateway self-check failed: %v", err)
+		return rpcError(req.ID, "delegation: gateway capability check failed", "internal_error")
+	}
+
+	// W3: Apply deadline and budget from binding.
+	var deadlineAt *time.Time
+	var maxActiveDurationMs int64
+	var maxCostUsdDecimal string
+	binding := lookupBinding(dts.Snapshot, capability)
+	if binding != nil {
+		if binding.DeadlineMs > 0 {
+			dl := now.Add(time.Duration(binding.DeadlineMs) * time.Millisecond)
+			deadlineAt = &dl
+			maxActiveDurationMs = binding.DeadlineMs
+		}
+		if binding.MaxCostUSDDecimal != "" {
+			maxCostUsdDecimal = binding.MaxCostUSDDecimal
+		}
+		// W3: Reject admit if deadline already past.
+		if deadlineAt != nil && now.After(*deadlineAt) {
+			return rpcError(req.ID, "delegation: task deadline already past", "expired")
+		}
+	}
+
 	// Allowed — create ADMITTED task.
 	admittedTask := delegation.Task{
 		SchemaVersion:                   delegation.CurrentSchemaVersion,
 		TaskID:                          taskID,
 		WorkflowID:                      dts.Snapshot.WorkflowID,
 		TenantID:                        dts.Snapshot.TenantID,
-		Caller:                          delegation.CallerRef{DeploymentID: dts.Snapshot.CallerDeploymentID, RunID: "", AttemptID: "", PackageName: dts.Snapshot.CallerPackageName, PackageDigest: dts.Snapshot.CallerPackageDigest},
+		Caller:                          callerRef,
 		Callee:                          delegation.CalleeRef{PackageName: authReq.CalleePackageName, PackageVersion: authReq.CalleePackageVersion, PackageDigest: authReq.CalleeBundleDigest},
 		BindingID:                       capability,
 		Capability:                      capability,
@@ -231,27 +285,42 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 		IdempotencyKey:                  idempotencyKey,
 		CallerIdentity:                  dts.Snapshot.CallerDeploymentID,
 		CommunicationSnapshotGeneration: dts.Snapshot.SnapshotGeneration,
+		DeadlineAt:                      deadlineAt,          // W3
+		MaxActiveDurationMs:             maxActiveDurationMs, // W3
+		MaxCostUsdDecimal:               maxCostUsdDecimal,   // W3
 		CreatedAt:                       now,
 		UpdatedAt:                       now,
 	}
 
+	// N1: Validate before CreateTask.
+	if err := delegation.ValidateTask(&admittedTask); err != nil {
+		return rpcError(req.ID, "task validation failed: "+err.Error(), "internal_error")
+	}
+
 	if err := dts.Store.CreateTask(context.Background(), admittedTask); err != nil {
-		// Idempotent replay — get the existing task.
+		// N4: Idempotent replay — lookup original task and return its ID.
 		log.Printf("harness: delegate_task idempotent replay for key=%s: %v", idempotencyKey, err)
-		// The store already has this idempotency key. We need to find the
-		// existing task and return its ID.
-		// Since MemoryStore doesn't expose idempotency-key lookup directly,
-		// we use GetTask with the existing task ID.
-		// For now, return the error — the caller can retry with the same key.
-		return rpcError(req.ID, "idempotent task creation conflict: "+err.Error(), "idempotency_conflict")
+		existing, lookupErr := dts.Store.GetTaskByIdempotencyKey(context.Background(), dts.Snapshot.CallerDeploymentID, idempotencyKey)
+		if lookupErr != nil || existing == nil {
+			return rpcError(req.ID, "idempotent task creation conflict: "+err.Error(), "idempotency_conflict")
+		}
+		// Return the original task ID.
+		return rpcResponse{
+			ID: req.ID,
+			OK: true,
+			Result: scrubResponse(map[string]any{
+				"task_id": string(existing.TaskID),
+				"status":  existing.Status.String(),
+			}, delegateTaskResponseFields),
+		}
 	}
 
 	// Append TASK_ADMITTED event.
 	appendDelegateEvent(dts.Store, taskID, dts.Snapshot.WorkflowID, dts.Snapshot.TenantID, delegation.EventTaskAdmitted)
 
 	// Audit the admission.
-	log.Printf("harness: delegate_task ADMITTED: task_id=%s capability=%s operation=%s",
-		taskID, capability, operation)
+	log.Printf("harness: delegate_task ADMITTED: task_id=%s capability=%s operation=%s data_class=%s",
+		taskID, capability, operation, dataClass)
 
 	return rpcResponse{
 		ID: req.ID,
@@ -261,6 +330,16 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 			"status":  delegation.TaskStatusAdmitted.String(),
 		}, delegateTaskResponseFields),
 	}
+}
+
+// lookupBinding returns the full binding from the snapshot by ID, or nil.
+func lookupBinding(snap delegation.CommunicationSnapshot, bindingID string) *delegation.WorkflowDelegationBinding {
+	for i := range snap.Bindings {
+		if snap.Bindings[i].BindingID == bindingID {
+			return &snap.Bindings[i]
+		}
+	}
+	return nil
 }
 
 // lookupBindingCallee looks up a field from the snapshot binding by ID.
@@ -298,6 +377,14 @@ func (s *harnessRPCServer) handleGetTask(req rpcRequest) rpcResponse {
 	task, err := dts.Store.GetTask(context.Background(), delegation.TaskID(taskIDStr))
 	if err != nil {
 		return rpcError(req.ID, fmt.Sprintf("task not found: %v", err), "not_found")
+	}
+
+	// W5: Tenancy check — reject cross-workflow or cross-tenant access.
+	if task.WorkflowID != dts.Snapshot.WorkflowID {
+		return rpcError(req.ID, "task belongs to a different workflow", "not_found")
+	}
+	if task.TenantID != dts.Snapshot.TenantID {
+		return rpcError(req.ID, "task belongs to a different tenant", "not_found")
 	}
 
 	result := map[string]any{
@@ -338,6 +425,18 @@ func (s *harnessRPCServer) handleListTaskEvents(req rpcRequest) rpcResponse {
 	taskIDStr := stringParam(req.Params, "task_id")
 	if taskIDStr == "" {
 		return rpcError(req.ID, "task_id is required", "invalid_params")
+	}
+
+	// W5: Tenancy check — verify the task belongs to this workflow.
+	task, err := dts.Store.GetTask(context.Background(), delegation.TaskID(taskIDStr))
+	if err != nil {
+		return rpcError(req.ID, fmt.Sprintf("task not found: %v", err), "not_found")
+	}
+	if task.WorkflowID != dts.Snapshot.WorkflowID {
+		return rpcError(req.ID, "task belongs to a different workflow", "not_found")
+	}
+	if task.TenantID != dts.Snapshot.TenantID {
+		return rpcError(req.ID, "task belongs to a different tenant", "not_found")
 	}
 
 	afterSeq := int64Param(req.Params, "after_sequence")

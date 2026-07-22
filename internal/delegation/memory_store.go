@@ -123,6 +123,27 @@ func (s *MemoryStore) CreateTask(ctx context.Context, t Task) error {
 	return nil
 }
 
+// GetTaskByIdempotencyKey returns the task matching callerIdentity and idempotencyKey,
+// or nil if not found.
+func (s *MemoryStore) GetTaskByIdempotencyKey(ctx context.Context, callerIdentity, idempotencyKeyStr string) (*Task, error) {
+	_ = ctx
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	key := idempotencyKey(callerIdentity, idempotencyKeyStr)
+	existingID, ok := s.idempotency[key]
+	if !ok {
+		return nil, nil
+	}
+	t, ok := s.tasks[existingID]
+	if !ok {
+		return nil, nil
+	}
+	cp := *t
+	return &cp, nil
+}
+
 // GetTask returns the task by ID.
 func (s *MemoryStore) GetTask(ctx context.Context, taskID TaskID) (*Task, error) {
 	_ = ctx

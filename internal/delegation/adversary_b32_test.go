@@ -1027,14 +1027,7 @@ func TestAdversary_B32_CapabilityTokenNotInValidateError(t *testing.T) {
 	headers := enforcer.Attach(token)
 	headers[CapabilityHeader] = "wrong-token-value"
 
-	expect := BindingExpectation{
-		BindingID:   "report.verify",
-		WorkflowID:  "wf-test",
-		CallerLease: "lease-caller",
-		CalleeLease: "lease-callee",
-	}
-
-	err = enforcer.ValidateAndStrip(headers, expect)
+	err = enforcer.ValidateAndStrip(headers, token)
 	if err == nil {
 		t.Fatal("expected error for wrong token")
 	}

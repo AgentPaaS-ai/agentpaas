@@ -12,6 +12,10 @@ type Store interface {
 	// GetTask returns the task by ID, or an error if not found.
 	GetTask(ctx context.Context, taskID TaskID) (*Task, error)
 
+	// GetTaskByIdempotencyKey returns the task by caller identity and idempotency key,
+	// or nil if not found.
+	GetTaskByIdempotencyKey(ctx context.Context, callerIdentity, idempotencyKey string) (*Task, error)
+
 	// CASTask updates a task atomically. Succeeds only if the current
 	// generation matches expectedGen. Returns the new generation on success.
 	CASTask(ctx context.Context, t Task, expectedGen int64) error
