@@ -22,8 +22,8 @@ fingerprint. They inspect policy and provenance before install, map
 credentials to their own Keychain, and keep their own audit trail. If someone
 forks that agent, changes the code or policy, and re-shares it, the bundle
 records each hop: who published the original, who forked it, and what egress
-or credentials they added. Receivers can walk that chain before they trust
-the next copy.
+or credentials they added. Receivers can verify the audit chain before
+accepting and running the agent.
 
 ## How it works
 
