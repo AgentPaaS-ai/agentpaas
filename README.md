@@ -14,6 +14,12 @@ a tamper-evident audit trail.
 If a prompt-injected agent tries an unknown host, the gateway blocks it,
 the denial shows up in the audit log, and your secrets stay put.
 
+It also covers handing agents to coworkers and friends. You ship a signed
+bundle with your publisher fingerprint; they inspect policy and provenance
+before install, map credentials to their own Keychain, and keep their own
+audit trail. Forks append lineage so later receivers can see who changed
+what.
+
 ## How it works
 
 ```
