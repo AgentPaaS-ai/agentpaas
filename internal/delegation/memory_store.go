@@ -9,15 +9,39 @@ import (
 
 // MemoryStore is an in-memory implementation of Store for unit tests.
 type MemoryStore struct {
-	mu  sync.RWMutex
-	now func() time.Time
+	mu     sync.RWMutex
+	cond   *sync.Cond
+	now    func() time.Time
 
-	tasks    map[TaskID]*Task
+	tasks       map[TaskID]*Task
 	// idempotency: callerIdentity\x00idempotencyKey -> TaskID
 	idempotency map[string]TaskID
 	messages    map[TaskID][]Message
 	results     map[TaskID]*Result
 	events      map[TaskID][]TaskEvent
+
+	// eventIDs tracks EventIDs per task for duplicate detection.
+	eventIDs map[TaskID]map[EventID]bool
+
+	// subscribers tracks channel subscribers per task.
+	subscribers map[TaskID][]*eventSubscriber
+
+	// terminalSignaled tracks tasks that have had a terminal event appended.
+	terminalSignaled map[TaskID]bool
+}
+
+// eventSubscriber is a single subscriber channel for a task.
+type eventSubscriber struct {
+	ch       chan TaskEvent
+	canceled bool
+	closeOnce sync.Once
+}
+
+func (s *eventSubscriber) close() {
+	s.closeOnce.Do(func() {
+		s.canceled = true
+		close(s.ch)
+	})
 }
 
 // MemoryStoreOption configures a MemoryStore.
@@ -35,13 +59,17 @@ func WithMemoryClock(now func() time.Time) MemoryStoreOption {
 // NewMemoryStore constructs an empty in-memory store.
 func NewMemoryStore(opts ...MemoryStoreOption) *MemoryStore {
 	s := &MemoryStore{
-		now:         func() time.Time { return time.Now().UTC() },
-		tasks:       make(map[TaskID]*Task),
-		idempotency: make(map[string]TaskID),
-		messages:    make(map[TaskID][]Message),
-		results:     make(map[TaskID]*Result),
-		events:      make(map[TaskID][]TaskEvent),
+		now:              func() time.Time { return time.Now().UTC() },
+		tasks:            make(map[TaskID]*Task),
+		idempotency:      make(map[string]TaskID),
+		messages:         make(map[TaskID][]Message),
+		results:          make(map[TaskID]*Result),
+		events:           make(map[TaskID][]TaskEvent),
+		eventIDs:         make(map[TaskID]map[EventID]bool),
+		subscribers:      make(map[TaskID][]*eventSubscriber),
+		terminalSignaled: make(map[TaskID]bool),
 	}
+	s.cond = sync.NewCond(&s.mu)
 	for _, o := range opts {
 		o(s)
 	}
@@ -91,6 +119,7 @@ func (s *MemoryStore) CreateTask(ctx context.Context, t Task) error {
 	s.tasks[t.TaskID] = &cp
 	s.messages[t.TaskID] = nil
 	s.events[t.TaskID] = nil
+	s.eventIDs[t.TaskID] = make(map[EventID]bool)
 	return nil
 }
 
@@ -232,9 +261,17 @@ func (s *MemoryStore) AppendEvent(ctx context.Context, ev TaskEvent) (int64, err
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer s.cond.Broadcast() // Wake all waiters after append.
 
 	if _, ok := s.tasks[ev.TaskID]; !ok {
 		return 0, fmt.Errorf("delegation: task %q not found", ev.TaskID)
+	}
+
+	// Duplicate EventID detection.
+	if ids, ok := s.eventIDs[ev.TaskID]; ok {
+		if ids[ev.EventID] {
+			return 0, fmt.Errorf("delegation: duplicate event_id %q for task %q", ev.EventID, ev.TaskID)
+		}
 	}
 
 	existing := s.events[ev.TaskID]
@@ -246,6 +283,34 @@ func (s *MemoryStore) AppendEvent(ctx context.Context, ev TaskEvent) (int64, err
 	cp := ev
 	cp.Sequence = nextSeq
 	s.events[ev.TaskID] = append(existing, cp)
+	if s.eventIDs[ev.TaskID] == nil {
+		s.eventIDs[ev.TaskID] = make(map[EventID]bool)
+	}
+	s.eventIDs[ev.TaskID][ev.EventID] = true
+
+	// Mark terminal if this is a terminal event.
+	if isTerminalEventType(ev.Type) {
+		s.terminalSignaled[ev.TaskID] = true
+	}
+
+	// Deliver to subscribers (non-blocking).
+	subs := s.subscribers[ev.TaskID]
+	for _, sub := range subs {
+		select {
+		case sub.ch <- cp:
+		default:
+			// Slow consumer — drop. The subscriber channel is buffered.
+		}
+	}
+
+	// If terminal, close subscriber channels and remove them.
+	if isTerminalEventType(ev.Type) {
+		for _, sub := range subs {
+			sub.close()
+		}
+		s.subscribers[ev.TaskID] = nil
+	}
+
 	return nextSeq, nil
 }
 
@@ -265,6 +330,74 @@ func (s *MemoryStore) ListEvents(ctx context.Context, taskID TaskID, afterSeq in
 		}
 	}
 	return result, nil
+}
+
+// SubscribeEvents returns a channel of events for a task, replaying existing
+// events with sequence > afterSeq. The channel is closed when the context is
+// cancelled or the task's event stream reaches a terminal event.
+func (s *MemoryStore) SubscribeEvents(ctx context.Context, taskID TaskID, afterSeq int64) (<-chan TaskEvent, func(), error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// If task doesn't exist, return a closed channel.
+	if _, ok := s.tasks[taskID]; !ok {
+		ch := make(chan TaskEvent)
+		close(ch)
+		return ch, func() {}, nil
+	}
+
+	// Replay existing events > afterSeq.
+	existing := make([]TaskEvent, 0)
+	for _, e := range s.events[taskID] {
+		if e.Sequence > afterSeq {
+			existing = append(existing, e)
+		}
+	}
+
+	// Buffer enough for replay + some extra.
+	bufSize := len(existing) + 64
+	if bufSize < 64 {
+		bufSize = 64
+	}
+	ch := make(chan TaskEvent, bufSize)
+
+	// Replay into channel (non-blocking; buffer is sized for it).
+	for _, e := range existing {
+		ch <- e
+	}
+
+	// If terminal already signaled, close the channel.
+	if s.terminalSignaled[taskID] {
+		close(ch)
+		return ch, func() {}, nil
+	}
+
+	// Register subscriber.
+	sub := &eventSubscriber{ch: ch}
+	s.subscribers[taskID] = append(s.subscribers[taskID], sub)
+
+	// Start a goroutine that waits for context cancel or new events.
+	cancel := func() {
+		sub.close()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		// Remove from subscribers list.
+		subs := s.subscribers[taskID]
+		for i, s2 := range subs {
+			if s2 == sub {
+				s.subscribers[taskID] = append(subs[:i], subs[i+1:]...)
+				break
+			}
+		}
+	}
+
+	// Context watcher goroutine.
+	go func() {
+		<-ctx.Done()
+		cancel()
+	}()
+
+	return ch, cancel, nil
 }
 
 // Compile-time interface check.
