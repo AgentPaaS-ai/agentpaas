@@ -39,8 +39,8 @@ accepting and running the agent.
 │  │  ┌────────────┐    ┌──────────────┐  │  only    │      │                  │
 │  │  │   AGENT    │    │   GATEWAY    │  │  allowed │      │                  │
 │  │  │  CONTAINER │◄──►│   SIDECAR    │◄─┼──────────┼─────►│                  │
-│  │  │            │    │              │  │  egress  │      │                  │
-│  │  │ · Python   │    │ · Policy     │  │          │      └──────────────────┘
+│  │  │            │    │              │  │  egress/ │      │                  │
+│  │  │ · Python   │    │ · Policy     │  │  ingress │      └──────────────────┘
 │  │  │ · No shell │    │ · Credential │  │          │
 │  │  │ · Non-root │    │   broker     │  │          │
 │  │  │ · Read-only│    │ · DNS stub   │  │          │
