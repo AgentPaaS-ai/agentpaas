@@ -395,34 +395,29 @@ func TestAdversary_B32_ArtifactTamperByteFlip(t *testing.T) {
 // ValidateAndStrip with empty/missing capability headers is rejected.
 func TestAdversary_B32_GatewayBypassEmptyHeaders(t *testing.T) {
 	enforcer := &GatewayEnforcer{}
-	expect := BindingExpectation{
-		BindingID:   "report.verify",
-		WorkflowID:  "wf-test",
-		CallerLease: "lease-caller",
-		CalleeLease: "lease-callee",
-	}
+	validToken := "valid-random-cap-token"
 
 	// Attack 1: empty headers map.
-	if err := enforcer.ValidateAndStrip(map[string]string{}, expect); err == nil {
+	if err := enforcer.ValidateAndStrip(map[string]string{}, validToken); err == nil {
 		t.Fatal("ADVERSARY BREAK: ValidateAndStrip accepted empty headers")
 	}
 
 	// Attack 2: headers without the capability header.
 	headers := map[string]string{"X-Unrelated": "value"}
-	if err := enforcer.ValidateAndStrip(headers, expect); err == nil {
+	if err := enforcer.ValidateAndStrip(headers, validToken); err == nil {
 		t.Fatal("ADVERSARY BREAK: ValidateAndStrip accepted headers without capability header")
 	}
 
 	// Attack 3: empty capability header value.
 	headers2 := map[string]string{CapabilityHeader: ""}
-	err := enforcer.ValidateAndStrip(headers2, expect)
+	err := enforcer.ValidateAndStrip(headers2, validToken)
 	if err == nil {
 		t.Fatal("ADVERSARY BREAK: ValidateAndStrip accepted empty capability token")
 	}
 
 	// Attack 4: wrong token.
 	headers3 := map[string]string{CapabilityHeader: "wrong-token-value"}
-	if err := enforcer.ValidateAndStrip(headers3, expect); err == nil {
+	if err := enforcer.ValidateAndStrip(headers3, validToken); err == nil {
 		t.Fatal("ADVERSARY BREAK: ValidateAndStrip accepted wrong capability token")
 	}
 }
@@ -1093,6 +1088,94 @@ func TestAdversary_B32_OutboxCrossTaskEventInjection(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// 10. Deterministic forge fails against random token (W1)
+// ---------------------------------------------------------------------------
+
+// TestAdversary_B32_DeterministicForgeFails ensures that a token derived from
+// public binding fields (via DeriveCapabilityTokenForTest) is NOT accepted
+// when the expected token is a randomly generated one.
+func TestAdversary_B32_DeterministicForgeFails(t *testing.T) {
+	enforcer := &GatewayEnforcer{}
+
+	// Generate a real random token (production path).
+	randomToken, err := GenerateCapabilityToken()
+	if err != nil {
+		t.Fatalf("GenerateCapabilityToken: %v", err)
+	}
+
+	// Attacker derives a token from public binding fields.
+	expect := BindingExpectation{
+		BindingID:   "report.verify",
+		WorkflowID:  "wf-test",
+		CallerLease: "lease-caller",
+		CalleeLease: "lease-callee",
+	}
+	deterministicToken := DeriveCapabilityTokenForTest(expect)
+
+	// Deterministic token must NOT equal the random token.
+	if deterministicToken == randomToken {
+		t.Fatal("ADVERSARY BREAK: deterministic token equals random token (1 in 2^256)")
+	}
+
+	// Attach the deterministic token, validate against random token → must fail.
+	headers := enforcer.Attach(deterministicToken)
+	err = enforcer.ValidateAndStrip(headers, randomToken)
+	if err == nil {
+		t.Fatal("ADVERSARY BREAK: ValidateAndStrip accepted deterministic forge against random token")
+	}
+
+	// But validate with the deterministic token against itself must pass (test path).
+	headers2 := enforcer.Attach(deterministicToken)
+	if err := enforcer.ValidateAndStrip(headers2, deterministicToken); err != nil {
+		t.Fatalf("ValidateAndStrip with correct deterministic token: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 11. Snapshot digest tampered binding list with stale digest (W2)
+// ---------------------------------------------------------------------------
+
+// TestAdversary_B32_TamperedBindingListWithStaleDigest ensures that a
+// snapshot with tampered bindings but a stale digest is rejected at admission.
+func TestAdversary_B32_TamperedBindingListWithStaleDigest(t *testing.T) {
+	snap := makeTestSnapshot()
+	// Save the original digest.
+	originalDigest := snap.SnapshotDigest
+
+	// Tamper: add a binding that wasn't in the original snapshot.
+	tamperedBinding := WorkflowDelegationBinding{
+		BindingID:            "evil.binding",
+		Operation:            "destroy",
+		CalleePackageName:    "evil-agent",
+		CalleePackageVersion: "1.0.0",
+		CalleeBundleDigest:   "sha256:evil",
+		MaxDataClass:         "restricted",
+	}
+	snap.Bindings = append(snap.Bindings, tamperedBinding)
+
+	// Recompute digest — it will differ from the stale SnapshotDigest.
+	recomputed, err := ComputeSnapshotDigest(snap)
+	if err != nil {
+		t.Fatalf("ComputeSnapshotDigest: %v", err)
+	}
+	if recomputed == originalDigest {
+		t.Fatal("ADVERSARY BREAK: recomputed digest matches stale digest after tampering")
+	}
+
+	// The stale digest is still on the snapshot. Build an authz request.
+	req := makeAuthzRequest(snap)
+	// The request has tampered bindings but stale SnapshotDigest.
+	// AuthorizeDelegation must now recompute and compare.
+	decision := AuthorizeDelegation(&req)
+	if decision.Allowed {
+		t.Fatal("ADVERSARY BREAK: authorization allowed with tampered binding list and stale digest")
+	}
+	if decision.DenialCode != DenySnapshotMismatch {
+		t.Fatalf("expected %s, got %s", DenySnapshotMismatch, decision.DenialCode)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Test runner for all B32 adversary tests
 // ---------------------------------------------------------------------------
 
@@ -1122,4 +1205,6 @@ func TestAdversary_B32(t *testing.T) {
 	t.Run("CapabilityTokenUniqueness", TestAdversary_B32_CapabilityTokenUniqueness)
 	t.Run("CapabilityTokenNotInValidateError", TestAdversary_B32_CapabilityTokenNotInValidateError)
 	t.Run("OutboxCrossTaskEventInjection", TestAdversary_B32_OutboxCrossTaskEventInjection)
+	t.Run("DeterministicForgeFails", TestAdversary_B32_DeterministicForgeFails)
+	t.Run("TamperedBindingListWithStaleDigest", TestAdversary_B32_TamperedBindingListWithStaleDigest)
 }
