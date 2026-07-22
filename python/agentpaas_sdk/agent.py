@@ -19,6 +19,54 @@ from .streaming import StreamEvent
 
 InvokeHandler = Callable[[dict[str, Any]], dict[str, Any]]
 
+# --- TaskHandle (B32-T03) ---------------------------------------------------
+
+# Forbidden response key patterns — must never appear in agent-visible DTOs.
+_FORBIDDEN_RESPONSE_KEYS = (
+    "endpoint", "host", "ip", "port", "capability_token",
+    "network_alias", "token", "secret", "capability_header",
+)
+
+
+def _validate_response_no_leaks(result: dict[str, Any]) -> None:
+    """Reject any response that contains forbidden key patterns."""
+    for key in result:
+        key_lower = key.lower()
+        for forbidden in _FORBIDDEN_RESPONSE_KEYS:
+            if forbidden in key_lower:
+                raise RPCError(
+                    f"response contains forbidden key {key!r}",
+                    "forbidden_response_key",
+                )
+
+
+class TaskHandle:
+    """Handle to a delegated task. Agent code never sees endpoints or tokens."""
+
+    def __init__(self, task_id: str, rpc: "RPCClient") -> None:
+        self.task_id = task_id
+        self._rpc = rpc
+
+    def events(self, after_sequence: int = 0) -> list[dict[str, Any]]:
+        """List events for this task after the given sequence number."""
+        result = self._rpc.call("list_task_events", {
+            "task_id": self.task_id,
+            "after_sequence": after_sequence,
+        })
+        _validate_response_no_leaks(result)
+        return result.get("events", [])
+
+    def result(self, timeout_s: float | None = None) -> dict[str, Any] | None:
+        """Poll for the task result. Returns None if not yet terminal.
+        timeout_s is a stub for T05 wait/wake.
+        """
+        result = self._rpc.call("get_task", {"task_id": self.task_id})
+        _validate_response_no_leaks(result)
+        status = result.get("status")
+        if status in ("SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED", "DENIED"):
+            return result
+        return None
+
 # --- v0.3 safety bounds (Block 27) -------------------------------------------
 
 _PHASE_MAX = 128
@@ -242,6 +290,94 @@ class Agent:
 
     def mcp(self, server_id: str, tool: str, input: dict[str, Any]) -> dict[str, Any]:
         return self._call("mcp", {"server_id": server_id, "tool": tool, "input": input})
+
+    # ---- delegation (B32-T03) ------------------------------------------------
+
+    def delegate(
+        self,
+        capability: str,
+        message: dict[str, Any] | list[Any],
+        *,
+        idempotency_key: str | None = None,
+        operation: str = "",
+    ) -> TaskHandle:
+        """Delegate a task to another agent by logical capability name.
+
+        Agent code NEVER provides or receives endpoints, addresses, ports,
+        or capability tokens. The trusted harness/gateway resolves the
+        logical identity to a real endpoint.
+
+        Args:
+            capability: Logical binding name from the signed workflow
+                (e.g. \"report.verify\").
+            message: A dict with \"role\"/\"parts\" keys or a simple dict
+                that is coerced to a user text part.
+            idempotency_key: Optional stable key for idempotent delegation.
+            operation: Optional operation qualifier.
+
+        Returns:
+            A TaskHandle for polling events and results.
+        """
+        if not isinstance(capability, str) or not capability.strip():
+            raise RPCError("capability must be a non-empty string", "invalid_params")
+        if " " in capability or "\n" in capability or "\x00" in capability:
+            raise RPCError("capability contains forbidden characters", "invalid_params")
+
+        # Normalize message.
+        normalized_message = self._normalize_delegate_message(message)
+        if normalized_message is None:
+            raise RPCError(
+                "message must be a dict with 'role'/'parts' or a simple dict",
+                "invalid_message",
+            )
+
+        # Coerce idempotency_key from message if not provided.
+        if idempotency_key is None:
+            idempotency_key = normalized_message.get("idempotency_key")
+        if not idempotency_key:
+            import uuid
+            idempotency_key = uuid.uuid4().hex
+
+        result = self._call("delegate_task", {
+            "capability": capability,
+            "operation": operation,
+            "message": normalized_message,
+            "idempotency_key": idempotency_key,
+        })
+        _validate_response_no_leaks(result)
+        task_id = result.get("task_id")
+        if not task_id:
+            raise RPCError("delegate_task response missing task_id", "invalid_response")
+        # _rpc is guaranteed non-None because _call would have raised.
+        assert self._rpc is not None
+        return TaskHandle(task_id, self._rpc)
+
+    @staticmethod
+    def _normalize_delegate_message(
+        message: dict[str, Any] | list[Any],
+    ) -> dict[str, Any] | None:
+        """Normalize a delegate message to the canonical {role, parts} form."""
+        if isinstance(message, dict):
+            if "role" in message and "parts" in message:
+                # Already canonical.
+                return message
+            # Coerce simple dict to user text part.
+            text = message.get("text") or message.get("content") or ""
+            if text and isinstance(text, str):
+                return {
+                    "role": "user",
+                    "parts": [{"kind": "text", "text": text}],
+                }
+            # Fallback: JSON part.
+            import json as _json
+            return {
+                "role": "user",
+                "parts": [{"kind": "json", "json": _json.dumps(message)}],
+            }
+        if isinstance(message, list):
+            # List of parts — wrap as user message.
+            return {"role": "user", "parts": list(message)}
+        return None
 
     # ---- progress (B27) -----------------------------------------------------
 
