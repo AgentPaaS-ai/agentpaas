@@ -64,13 +64,13 @@ accepting and running the agent.
 └────────────────────────────────────────────────────┘
 ```
 
-The agent container has no direct internet path. Traffic goes through the
-gateway sidecar, which applies your policy. That sidecar is the only way
+The agent container has no direct path to the internet. Every packet goes
+through the gateway sidecar, which applies your policy. That is the only way
 out.
 
-Main control is network topology: the agent sits on a Docker internal-only
-network with no default route to the internet. An iptables egress firewall
-inside the agent container is extra depth. It drops unexpected OUTPUT
+The real fence is how the network is wired. The agent lives on a Docker
+internal-only network with no default route off the box. On top of that, an
+iptables egress firewall inside the container drops unexpected outbound
 traffic on the container's own stack.
 
 ## Security features
