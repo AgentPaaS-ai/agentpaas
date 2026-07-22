@@ -267,22 +267,14 @@ agentpaas provenance show weather-agent
 agentpaas bundle inspect weather-agent.agentpaas
 ```
 
-Inspect runs nine checks. All should PASS:
+Inspect runs nine offline integrity checks on the bundle: does the
+manifest parse and verify under the publisher key, do lock/provenance
+signatures hold, and do the digests for policy, SBOM, source, and image
+match what the lock claims. All of them should PASS before you install.
+The full checklist is in [docs/bundle-format.md](docs/bundle-format.md#5-verification-checklist-9-checks).
 
-| Check | What it verifies |
-|---|---|
-| manifest_parse | Bundle manifest is valid |
-| manifest_signature | Manifest signed by the publisher |
-| publisher_match | Manifest and lock publisher match |
-| lock_provenance | Lock file and provenance chain verified |
-| content_sha256 | Content digests match the manifest |
-| policy_digest | Policy digest matches the lock |
-| sbom_digest | SBOM digest matches the lock |
-| source_digest | Source digest matches manifest and lock |
-| image_digest | Image digest matches (or "no image" for source-only) |
-
-The policy summary lists every egress domain and every declared credential.
-Read that before you trust the agent.
+Inspect also prints a policy summary (egress domains and declared
+credentials). Read that before you trust the agent.
 
 ```bash
 # Compare the fingerprint from `bundle inspect` with what the sender
