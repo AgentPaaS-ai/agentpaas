@@ -538,3 +538,237 @@ aggregate_max_llm_spend: "not-a-number"
 		t.Fatal("expected validation errors for invalid aggregate_max_llm_spend, got none")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Delegation validation
+// ---------------------------------------------------------------------------
+
+func TestWorkflowDelegationsValid(t *testing.T) {
+	yml := `kind: standalone
+delegations:
+  - binding_id: report.verify
+    package_name: report-verifier
+    package_version: "1.0.0"
+    bundle_digest: sha256:abc123
+    max_data_class: internal
+    artifact_audience:
+      - orchestrator
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected validation errors: %v", errs)
+	}
+	if len(wf.Delegations) != 1 {
+		t.Errorf("expected 1 delegation, got %d", len(wf.Delegations))
+	}
+	if wf.Delegations[0].BindingID != "report.verify" {
+		t.Errorf("expected binding_id=report.verify, got %q", wf.Delegations[0].BindingID)
+	}
+}
+
+func TestWorkflowDelegationsDuplicateBindingID(t *testing.T) {
+	yml := `kind: standalone
+delegations:
+  - binding_id: report.verify
+    package_name: report-verifier
+    package_version: "1.0.0"
+    bundle_digest: sha256:abc123
+    max_data_class: internal
+  - binding_id: report.verify
+    package_name: report-verifier
+    package_version: "1.0.0"
+    bundle_digest: sha256:def456
+    max_data_class: internal
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for duplicate binding_id, got none")
+	}
+}
+
+func TestWorkflowDelegationsEmptyBindingID(t *testing.T) {
+	yml := `kind: standalone
+delegations:
+  - binding_id: ""
+    package_name: report-verifier
+    package_version: "1.0.0"
+    bundle_digest: sha256:abc123
+    max_data_class: internal
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for empty binding_id, got none")
+	}
+}
+
+func TestWorkflowDelegationsMissingRequiredFields(t *testing.T) {
+	yml := `kind: standalone
+delegations:
+  - binding_id: report.verify
+    max_data_class: internal
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for missing required fields, got none")
+	}
+}
+
+func TestWorkflowDelegationsInvalidMaxDataClass(t *testing.T) {
+	yml := `kind: standalone
+delegations:
+  - binding_id: report.verify
+    package_name: report-verifier
+    package_version: "1.0.0"
+    bundle_digest: sha256:abc123
+    max_data_class: top_secret
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for invalid max_data_class, got none")
+	}
+}
+
+func TestWorkflowDelegationsInvalidMaxCost(t *testing.T) {
+	yml := `kind: standalone
+delegations:
+  - binding_id: report.verify
+    package_name: report-verifier
+    package_version: "1.0.0"
+    bundle_digest: sha256:abc123
+    max_data_class: internal
+    max_cost_usd_decimal: "not-money"
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for invalid max_cost_usd_decimal, got none")
+	}
+}
+
+func TestWorkflowDelegationsSnapshotBuilder_GoldenDigest(t *testing.T) {
+	yml := `kind: standalone
+delegations:
+  - binding_id: report.verify
+    package_name: report-verifier
+    package_version: "1.0.0"
+    bundle_digest: sha256:abc123
+    max_data_class: internal
+    artifact_audience:
+      - orchestrator
+  - binding_id: data.analyze
+    operation: analyze
+    package_name: data-analyzer
+    package_version: "2.0.0"
+    bundle_digest: sha256:def456
+    max_data_class: confidential
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	snap1, err := BuildCommunicationSnapshot(
+		&wf,
+		"wf-snap-test",
+		"tenant-test",
+		"dep-caller-1",
+		"weather-agent",
+		"sha256:caller-digest",
+		1,
+	)
+	if err != nil {
+		t.Fatalf("BuildCommunicationSnapshot: %v", err)
+	}
+
+	// Same input should produce same digest.
+	snap2, err := BuildCommunicationSnapshot(
+		&wf,
+		"wf-snap-test",
+		"tenant-test",
+		"dep-caller-1",
+		"weather-agent",
+		"sha256:caller-digest",
+		1,
+	)
+	if err != nil {
+		t.Fatalf("BuildCommunicationSnapshot 2: %v", err)
+	}
+
+	if snap1.SnapshotDigest != snap2.SnapshotDigest {
+		t.Errorf("expected deterministic digest, got %s != %s", snap1.SnapshotDigest, snap2.SnapshotDigest)
+	}
+
+	// Different caller digest produces different digest.
+	snap3, err := BuildCommunicationSnapshot(
+		&wf,
+		"wf-snap-test",
+		"tenant-test",
+		"dep-caller-1",
+		"weather-agent",
+		"sha256:different-digest",
+		1,
+	)
+	if err != nil {
+		t.Fatalf("BuildCommunicationSnapshot 3: %v", err)
+	}
+	if snap1.SnapshotDigest == snap3.SnapshotDigest {
+		t.Error("expected different digest for different caller digest")
+	}
+
+	// Verify bindings are populated correctly.
+	if len(snap1.Bindings) != 2 {
+		t.Errorf("expected 2 bindings, got %d", len(snap1.Bindings))
+	}
+	found := false
+	for _, b := range snap1.Bindings {
+		if b.BindingID == "report.verify" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected binding report.verify in snapshot")
+	}
+}
+
+func TestWorkflowWithoutDelegationsStillValidates(t *testing.T) {
+	// v0.2.3 workflows without delegations must still validate.
+	yml := `kind: standalone
+services:
+  - service_id: rag-ingest
+    package_name: rag-service
+    package_version: "1.0.0"
+    bundle_digest: sha256:rag123
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) > 0 {
+		t.Fatalf("unexpected validation errors for v0.2.3 workflow: %v", errs)
+	}
+}
