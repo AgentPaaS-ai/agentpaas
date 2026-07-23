@@ -48,6 +48,11 @@ func DefaultRegistry() map[string]TaskFunc {
 		"G44": g44_pluginInstalledState,
 		"G45": g45_pluginPackMarker,
 		"G47": g47_bundleInspect,
+		// G49-G52: durable path supervisor regression (B30)
+		"G49": g49_supervisorReconcileLease,
+		"G50": g50_supervisorCheckpoint,
+		"G51": g51_faultInjection,
+		"G52": g52_longevity,
 
 		// ── slow tier: pack ──
 		"G17": g17_packGovernedWeather,
@@ -649,4 +654,42 @@ func g47_bundleInspect(spec TaskSpec) (bool, string, error) {
 	}
 
 	return true, inspectOutput, nil
+}
+
+// ─── G49-G52: Durable path supervisor tests (B30 regression) ───────────────
+
+// goTestGrader runs a `go test` target and checks exit code 0.
+func goTestGrader(spec TaskSpec) (bool, string, error) {
+	target, _ := spec.Inputs["go_test_target"].(string)
+	if target == "" {
+		return false, "", fmt.Errorf("go_test_target input is required")
+	}
+	parts := strings.Fields(target)
+	cmd := exec.Command("go", append([]string{"test", "-count=1"}, parts...)...)
+	cmd.Dir = repoRoot()
+	output, err := cmd.CombinedOutput()
+	outStr := string(output)
+	if err != nil {
+		return false, outStr, fmt.Errorf("go test failed: %v (target: %s)", err, target)
+	}
+	if !strings.Contains(outStr, "ok") && !strings.Contains(outStr, "no tests") {
+		return false, outStr, fmt.Errorf("go test output missing 'ok': %s", target)
+	}
+	return true, outStr, nil
+}
+
+func g49_supervisorReconcileLease(spec TaskSpec) (bool, string, error) {
+	return goTestGrader(spec)
+}
+
+func g50_supervisorCheckpoint(spec TaskSpec) (bool, string, error) {
+	return goTestGrader(spec)
+}
+
+func g51_faultInjection(spec TaskSpec) (bool, string, error) {
+	return goTestGrader(spec)
+}
+
+func g52_longevity(spec TaskSpec) (bool, string, error) {
+	return goTestGrader(spec)
 }

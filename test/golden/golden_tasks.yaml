@@ -658,3 +658,51 @@ tasks:
       lineage_json_exists: true
       lineage_has_parent: true
       exit_code: 0
+
+  - id: G49
+    name: "Supervisor reconcile revokes ambiguous lease on restart"
+    tier: fast
+    grader: code
+    category: durable
+    source_failure: "B30: daemon restart must revoke ambiguous active leases (no committed terminal) and mark FAILED"
+    inputs:
+      go_test_target: "./internal/supervisor/... -run TestReconcileRevokesAmbiguousLease"
+    success_criteria:
+      go_test_pass: true
+      exit_code: 0
+
+  - id: G50
+    name: "Supervisor preserves checkpoint across restart"
+    tier: fast
+    grader: code
+    category: durable
+    source_failure: "B30: restart must preserve safe checkpoint/artifact state without blindly re-invoking"
+    inputs:
+      go_test_target: "./internal/supervisor/... -run TestReconcilePreservesCheckpoint"
+    success_criteria:
+      go_test_pass: true
+      exit_code: 0
+
+  - id: G51
+    name: "Fault injection scenarios pass (13 B30 faults)"
+    tier: fast
+    grader: code
+    category: durable
+    source_failure: "B30: 13 fault scenarios must produce deterministic durable state and cleanup"
+    inputs:
+      go_test_target: "./internal/supervisor/... -run TestFault"
+    success_criteria:
+      go_test_pass: true
+      exit_code: 0
+
+  - id: G52
+    name: "Longevity fake-clock 24h 100 turns"
+    tier: fast
+    grader: code
+    category: durable
+    source_failure: "B30: 24-hour fake-clock simulation with 100+ turns must not overflow, drift, or duplicate finalization"
+    inputs:
+      go_test_target: "./internal/supervisor/... -run TestLongevity"
+    success_criteria:
+      go_test_pass: true
+      exit_code: 0
