@@ -810,8 +810,24 @@ func (s *controlServer) detectRoutedProject(agentName string, isInstalled bool) 
 
 	sig := &routedProjectSignals{}
 
-	// Prefer lockfile metadata when present.
-	if lock, err := pack.LoadDeployedLock(s.homePaths.Home, agentName); err == nil && lock != nil {
+	// Prefer lockfile metadata when present. If the lock exists but fails
+	// to load, return an error rather than silently treating the agent as
+	// non-routed (which would bypass the fail-closed gate).
+	// Exception: if the agent dir exists but has no lock (e.g. a deployed
+	// agent whose lock was lost), fall through to the disk-based checks
+	// below so workflow.yaml on disk is still detected.
+	lock, lockErr := pack.LoadDeployedLock(s.homePaths.Home, agentName)
+	if lockErr != nil {
+		// Check if the lock file actually exists. If it does but can't be
+		// read/parsed, that's a real error (corruption). If it doesn't exist,
+		// fall through to disk checks (the agent may have workflow.yaml on
+		// disk without a lock, or may not be deployed at all).
+		lockPath := filepath.Join(deployedDir, "agent.lock")
+		if _, statErr := os.Stat(lockPath); statErr == nil {
+			return nil, fmt.Errorf("load deployed lock for routed check: %w", lockErr)
+		}
+	}
+	if lock != nil {
 		if lock.AgentYAML != nil && lock.AgentYAML.LLM.Route != "" {
 			sig.HasRoute = true
 			sig.RouteID = lock.AgentYAML.LLM.Route
