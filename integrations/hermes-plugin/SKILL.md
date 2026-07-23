@@ -202,6 +202,8 @@ If the agent has no LLM: confirm hostnames (and any API keys), then code.
 
 ### Step 0: Publisher Identity (REQUIRED before packing)
 
+**NEVER run `agentpaas identity init` via the terminal tool. ALWAYS tell the user to run it in their own terminal. Creating the identity yourself bypasses user consent and key sovereignty.**
+
 Every agent MUST be signed with a publisher identity. Pack will fail
 with "no publisher identity" if this hasn't been done. Check first:
 
@@ -210,15 +212,15 @@ agentpaas identity show
 ```
 
 If it returns "no publisher identity", tell the user to run in their
-terminal:
+own terminal (NEVER via your terminal tool):
 
 ```
-agentpaas identity init
+agentpaas identity init --name <your-name>
 ```
 
 They'll be prompted for a publisher name (GitHub-style slug, 1-39 chars).
-After they confirm, verify with `agentpaas identity show`. This is a
-one-time setup — subsequent packs reuse the same identity.
+After they confirm they've done it, verify with `agentpaas identity show`.
+This is a one-time setup — subsequent packs reuse the same identity.
 
 This step MUST happen before `agentpaas_pack`. Do NOT skip it.
 
@@ -311,7 +313,9 @@ policy.yaml with hostnames + port 443, configure LLM, pack, run.
 ### Pre-Pack Gate (silent checks — do not dump this list to the user)
 
 Before `agentpaas_pack`, verify:
-1. Publisher identity exists (`agentpaas identity show` — must not error).
+1. **Publisher identity exists** — call `agentpaas_identity_show`. If it returns
+   an error, STOP and tell the user: "Run `agentpaas identity init --name <your-name>`
+   in your terminal, then tell me when done." Do NOT proceed to pack without it.
 2. Egress policy lists every external hostname the agent will access.
 3. Every credential is in Keychain (`agentpaas_secret_list` — never
    `agentpaas_secret_add` with the key value as a tool parameter).
@@ -392,8 +396,8 @@ use xAI or Nous, extract a fresh token immediately before storing it.
 When a user wants to share an agent with someone else:
 
 1. **Verify identity exists** — call `agentpaas_identity_show`. If no identity,
-   tell the USER to run in their terminal: `agentpaas identity init` and follow
-   the prompts. Do NOT create the identity yourself.
+   tell the USER to run in their own terminal: `agentpaas identity init --name <your-name>`
+   and follow the prompts. Do NOT create the identity yourself.
 
 2. **Export the bundle** — call `agentpaas_export` with the project directory.
    The tool returns the bundle path, digest, and publisher fingerprint.
