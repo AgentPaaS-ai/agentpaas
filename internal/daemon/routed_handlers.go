@@ -348,6 +348,15 @@ func (s *controlServer) InvokeDeployment(ctx context.Context, req *controlv1.Inv
 		outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_IDEMPOTENT_REPLAY
 	}
 
+	if outcome == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
+		// BUG-043: launch the container in a goroutine so the RPC
+		// response is not blocked on Docker operations.
+		// Skip in test environments where Docker is unavailable.
+		if !s.disableContainerLaunch {
+			go s.startDurableRun(receipt, string(req.GetInputJson()))
+		}
+	}
+
 	return s.invokeDeploymentReceiptResponse(req, receipt, outcome), nil
 }
 

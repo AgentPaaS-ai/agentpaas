@@ -25,7 +25,7 @@ func newTestControlServer(t *testing.T) *controlServer {
 	if err := home.Ensure(paths); err != nil {
 		t.Fatal(err)
 	}
-	s := &controlServer{homePaths: paths, version: VersionInfo{DaemonVersion: "test"}}
+	s := &controlServer{homePaths: paths, version: VersionInfo{DaemonVersion: "test"}, disableContainerLaunch: true}
 	if err := s.initRoutedStores(routedStoreRoot(paths)); err != nil {
 		t.Fatalf("initRoutedStores: %v", err)
 	}
