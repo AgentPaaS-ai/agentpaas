@@ -533,6 +533,48 @@ pipeline:
 	}
 }
 
+// TestFailClosedRoutedRun_StandaloneAllowed verifies that a standalone workflow
+// (with or without delegations) is allowed to run through failClosedRoutedRun.
+// Delegation trust state is wired via sidecar (BUG-040), so standalone should
+// not be blocked by the not-enabled gate.
+func TestFailClosedRoutedRun_StandaloneAllowed(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	// Standalone with delegations.
+	sig := &routedProjectSignals{
+		HasWorkflow:  true,
+		WorkflowKind: pack.WorkflowKindStandalone,
+	}
+	err := s.failClosedRoutedRun(ctx, "demo-standalone", sig)
+	if err != nil {
+		t.Fatalf("standalone workflow should be allowed: %v", err)
+	}
+
+	// Standalone without delegations (no workflow at all) — nil sig is also fine.
+	sigNil := &routedProjectSignals{}
+	if err := s.failClosedRoutedRun(ctx, "demo-nil", sigNil); err != nil {
+		t.Fatalf("nil-signal should be allowed: %v", err)
+	}
+
+	// But pipeline should still be blocked.
+	sigPipeline := &routedProjectSignals{
+		HasWorkflow:  true,
+		WorkflowKind: pack.WorkflowKindPipeline,
+		HasPipeline:  true,
+	}
+	err = s.failClosedRoutedRun(ctx, "demo-pipeline", sigPipeline)
+	if err == nil {
+		t.Fatal("pipeline should still be blocked")
+	}
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("code=%v want FailedPrecondition", status.Code(err))
+	}
+	if !strings.Contains(err.Error(), "agentpaas_pipeline_not_enabled") {
+		t.Fatalf("error should mention pipeline_not_enabled: %s", err.Error())
+	}
+}
+
 func TestNotEnabledErrorHelpers(t *testing.T) {
 	te := featureNotEnabled("feature_x", "B99", "feature_x_not_enabled")
 	if te.Code != controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED {

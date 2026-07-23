@@ -935,8 +935,13 @@ func (s *controlServer) failClosedRoutedRun(ctx context.Context, agentName strin
 		return notEnabledFailedPrecondition("child_spawn", "B31", "agentpaas_child_spawn_not_enabled")
 	case sig != nil && sig.HasRoute:
 		return notEnabledFailedPrecondition("routed_run", "B32", "routed_run_routing_not_enabled")
-	default:
+	case sig != nil && sig.HasWorkflow && sig.WorkflowKind != pack.WorkflowKindStandalone:
+		// Non-standalone workflows still need routed-run runtime (not yet enabled).
 		return notEnabledFailedPrecondition("routed_run", "B28", "routed_run_not_enabled")
+	default:
+		// Standalone workflow (with or without delegations) is allowed —
+		// delegation trust state is wired via sidecar (BUG-040).
+		return nil
 	}
 }
 
