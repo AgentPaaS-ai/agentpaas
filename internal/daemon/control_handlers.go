@@ -539,10 +539,17 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	}
 
 	// B26: routed projects (Route or workflow.yaml) fail closed before Docker.
+	// BUG-040: standalone workflow with delegations is allowed to run —
+	// failClosedRoutedRun returns nil for standalone kind, and we fall through
+	// to the normal run path (delegation trust state wired via sidecar).
 	if sig, derr := s.detectRoutedProject(agentName, isInstalled); derr != nil {
 		return nil, status.Errorf(codes.Internal, "detect routed project: %v", derr)
 	} else if sig != nil {
-		return nil, s.failClosedRoutedRun(ctx, agentName, sig)
+		if err := s.failClosedRoutedRun(ctx, agentName, sig); err != nil {
+			return nil, err
+		}
+		// err == nil means this workflow kind is allowed (standalone with delegations).
+		// Fall through to the normal run path below.
 	}
 
 	var imageDigest string
@@ -2074,16 +2081,34 @@ func (s *controlServer) writeDelegationSnapshotForRun(deployedDir, gatewayConfig
 		bindingCapabilities[b.BindingID] = token
 	}
 
+	// Build CalleeIngressAllow from the snapshot bindings.
+	// In production, the callee's own policy would declare ingress rules.
+	// For the v0.3.0 operator path, we derive callee ingress from the
+	// caller's signed snapshot: each binding implicitly allows the caller
+	// that declared it. This is safe because the snapshot is signed and
+	// the caller's package digest is pinned in the binding.
+	calleeIngressAllow := make([]delegation.CalleeIngressRule, 0, len(snap.Bindings))
+	for _, b := range snap.Bindings {
+		calleeIngressAllow = append(calleeIngressAllow, delegation.CalleeIngressRule{
+			CallerPackageName:   snap.CallerPackageName,
+			CallerPackageDigest: snap.CallerPackageDigest,
+			AllowedBindings:     []string{b.BindingID},
+			MaxDataClass:        b.MaxDataClass,
+		})
+	}
+
 	sidecar := struct {
-		Snapshot            delegation.CommunicationSnapshot `json:"snapshot"`
-		BindingCapabilities map[string]string                `json:"binding_capabilities"`
-		NetworkAlias        string                           `json:"network_alias"`
-		WorkflowID          string                           `json:"workflow_id"`
+		Snapshot            delegation.CommunicationSnapshot    `json:"snapshot"`
+		BindingCapabilities map[string]string                   `json:"binding_capabilities"`
+		NetworkAlias        string                              `json:"network_alias"`
+		WorkflowID          string                              `json:"workflow_id"`
+		CalleeIngressAllow  []delegation.CalleeIngressRule     `json:"callee_ingress_allow"`
 	}{
 		Snapshot:            *snap,
 		BindingCapabilities: bindingCapabilities,
 		NetworkAlias:        snap.CallerDeploymentID,
 		WorkflowID:          snap.WorkflowID,
+		CalleeIngressAllow:  calleeIngressAllow,
 	}
 
 	data, err := json.MarshalIndent(sidecar, "", "  ")

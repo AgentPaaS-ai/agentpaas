@@ -422,6 +422,7 @@ func (s *harnessRPCServer) LoadDelegationSnapshot(path string) error {
 		BindingCapabilities map[string]string                `json:"binding_capabilities"`
 		NetworkAlias        string                           `json:"network_alias"`
 		WorkflowID          string                           `json:"workflow_id"`
+		CalleeIngressAllow  []delegation.CalleeIngressRule   `json:"callee_ingress_allow"`
 	}
 	if err := json.Unmarshal(data, &sidecar); err != nil {
 		return fmt.Errorf("unmarshal delegation snapshot file: %w", err)
@@ -432,6 +433,7 @@ func (s *harnessRPCServer) LoadDelegationSnapshot(path string) error {
 		BindingCapabilities: sidecar.BindingCapabilities,
 		NetworkAlias:        sidecar.NetworkAlias,
 		Store:               delegation.NewMemoryStore(),
+		CalleeIngressAllow:  sidecar.CalleeIngressAllow,
 	}
 
 	s.setDelegationTrustState(dts)
