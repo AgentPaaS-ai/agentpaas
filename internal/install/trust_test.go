@@ -666,6 +666,69 @@ func TestResolveTrust_ConflictNoAuditEmitter(t *testing.T) {
 	}
 }
 
+func TestResolveTrust_SpacedLast8(t *testing.T) {
+	// BUG-038: Display format "2bc8 ae1e" has a space, but the user
+	// types it with a space. The matcher should strip all whitespace
+	// before comparing against the last 8 hex chars.
+	tk := generateTestKey(t)
+	store, storePath := newTestStore(t)
+
+	last8 := tk.fp[len(tk.fp)-8:]
+	// Split the last8 at position 4 to simulate "2bc8 ae1e" input
+	spacedLast8 := last8[:4] + " " + last8[4:]
+
+	var events []auditEvent
+	result, err := ResolveTrust(TrustResolveOpts{
+		PublisherName:         "parvez",
+		PublisherFingerprint:   tk.fp,
+		PublisherPublicKeyPEM:  tk.pemData,
+		Store:                  store,
+		IsTTY:                  true,
+		Prompt:                 promptSingle(spacedLast8),
+		EmitAudit:              auditCollector(&events),
+	})
+	if err != nil {
+		t.Fatalf("spaced last-8 should be accepted: %v", err)
+	}
+	if !result.WasPinned {
+		t.Error("WasPinned should be true when spaced last-8 matches after whitespace stripping")
+	}
+
+	// Verify store persisted.
+	store2, err := trust.Load(storePath)
+	if err != nil {
+		t.Fatalf("reload store: %v", err)
+	}
+	if _, ok := store2.Get(tk.fp); !ok {
+		t.Fatal("publisher not found after TOFU pin with spaced last-8")
+	}
+}
+
+func TestResolveTrust_SpacedLast8_WithTabs(t *testing.T) {
+	// BUG-038: Also test tab and newline whitespace variants.
+	tk := generateTestKey(t)
+	store, _ := newTestStore(t)
+
+	last8 := tk.fp[len(tk.fp)-8:]
+	// "2bc8	 ae1e"  — tab + space
+	spacedLast8 := last8[:4] + "	 " + last8[4:]
+
+	result, err := ResolveTrust(TrustResolveOpts{
+		PublisherName:         "parvez",
+		PublisherFingerprint:   tk.fp,
+		PublisherPublicKeyPEM:  tk.pemData,
+		Store:                  store,
+		IsTTY:                  true,
+		Prompt:                 promptSingle(spacedLast8),
+	})
+	if err != nil {
+		t.Fatalf("tab+space last-8 should be accepted: %v", err)
+	}
+	if !result.WasPinned {
+		t.Error("WasPinned should be true when tab+space last-8 matches after whitespace stripping")
+	}
+}
+
 func TestResolveTrust_Last8HexHelper(t *testing.T) {
 	if got := last8Hex("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"); got != "23456789" {
 		t.Errorf("last8Hex = %q, want 23456789", got)
