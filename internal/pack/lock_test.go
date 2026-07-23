@@ -653,6 +653,139 @@ func cosignArgsContainFlag(args []string, flag string) bool {
 	return false
 }
 
+func TestCreateAgentLock_DelegationSnapshot(t *testing.T) {
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+
+	// Lock with no WorkflowYAML → snapshot should be nil.
+	lockNoWF, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         &AgentYAML{Name: "test-agent", Version: "0.1.0"},
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock (no wf): %v", err)
+	}
+	if lockNoWF.CommunicationSnapshot != nil {
+		t.Fatalf("expected nil CommunicationSnapshot without WorkflowYAML, got %+v", lockNoWF.CommunicationSnapshot)
+	}
+
+	// Lock with WorkflowYAML but no delegations → snapshot should be nil.
+	lockNoDeleg, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image2"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input2"),
+			DepsLocked:       []string{"dep==2.0.0"},
+		},
+		AgentYAML:         &AgentYAML{Name: "test-agent", Version: "0.2.0"},
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		WorkflowYAML:      &WorkflowYAML{Kind: WorkflowKindStandalone},
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock (no delegations): %v", err)
+	}
+	if lockNoDeleg.CommunicationSnapshot != nil {
+		t.Fatalf("expected nil CommunicationSnapshot with WorkflowYAML but no delegations, got %+v", lockNoDeleg.CommunicationSnapshot)
+	}
+
+	// Lock with WorkflowYAML and delegations → snapshot should be present.
+	lockWithDeleg, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image3"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input3"),
+			DepsLocked:       []string{"dep==3.0.0"},
+		},
+		AgentYAML:       &AgentYAML{Name: "caller-agent", Version: "0.3.0"},
+		Runtime:         RuntimeType("python"),
+		BaseImageDigest: "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:  "test",
+		Platform:        "linux/arm64",
+		SourceDateEpoch: testTime(),
+		KeyStore:        store,
+		KeyID:           store.keyID,
+		WorkflowYAML: &WorkflowYAML{
+			Kind: WorkflowKindStandalone,
+			Delegations: []Delegation{
+				{
+					BindingID:         "report.verify",
+					PackageName:       "report-verifier",
+					PackageVersion:    "1.0.0",
+					BundleDigest:      "sha256:" + digestString("callee-bundle"),
+					CallerPackageName: "caller-agent",
+					MaxDataClass:      "internal",
+				},
+				{
+					BindingID:      "data.analyze",
+					Operation:      "analyze",
+					PackageName:    "data-analyzer",
+					PackageVersion: "2.0.0",
+					BundleDigest:   "sha256:" + digestString("analyzer-bundle"),
+					MaxDataClass:   "confidential",
+				},
+			},
+		},
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock (with delegations): %v", err)
+	}
+	snap := lockWithDeleg.CommunicationSnapshot
+	if snap == nil {
+		t.Fatal("expected non-nil CommunicationSnapshot with delegations")
+	}
+	if len(snap.Bindings) != 2 {
+		t.Fatalf("expected 2 bindings in snapshot, got %d", len(snap.Bindings))
+	}
+	if snap.CallerPackageName != "caller-agent" {
+		t.Fatalf("snapshot caller package = %q, want caller-agent", snap.CallerPackageName)
+	}
+	if snap.CallerPackageDigest != digestString("image3") {
+		t.Fatalf("snapshot caller digest = %q, want %q", snap.CallerPackageDigest, digestString("image3"))
+	}
+	if snap.SnapshotDigest == "" {
+		t.Fatal("snapshot digest is empty")
+	}
+	if snap.WorkflowID == "" {
+		t.Fatal("snapshot workflow ID is empty")
+	}
+	if snap.TenantID != "default" {
+		t.Fatalf("snapshot tenant = %q, want default", snap.TenantID)
+	}
+	// Verify that the lockfile still verifies correctly with the snapshot included.
+	if err := VerifyLockfileSignature(lockWithDeleg); err != nil {
+		t.Fatalf("VerifyLockfileSignature (with snapshot): %v", err)
+	}
+	if err := VerifyPublisherSignature(lockWithDeleg); err != nil {
+		t.Fatalf("VerifyPublisherSignature (with snapshot): %v", err)
+	}
+}
+
 func TestIsRetryableSignError(t *testing.T) {
 	tests := []struct {
 		name string
