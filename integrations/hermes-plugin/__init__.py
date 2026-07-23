@@ -120,6 +120,9 @@ def _ensure_local_skill_pointer():
     skipped onboarding and copied the demo weather agent with pre-filled
     OpenRouter config and no secret. Writing the full SKILL.md as
     agentpaas-build makes onboarding loadable from available_skills.
+
+    Bug 042: Remove stale nested skills/agentpaas-build-skills/ directory
+    left by older plugin versions to prevent ambiguous skill_view matches.
     """
     try:
         from hermes_constants import get_hermes_home
@@ -130,6 +133,13 @@ def _ensure_local_skill_pointer():
         if profile not in ("default", "custom"):
             if profile_dir.name != profile:
                 profile_dir = profile_dir / "profiles" / profile
+
+        # 0. Remove stale nested skill directory (BUG-042: prevents collision)
+        nested_skill_dir = profile_dir / "skills" / "agentpaas" / f"{_POINTER_NAME}-skills"
+        if nested_skill_dir.exists():
+            import shutil
+            shutil.rmtree(nested_skill_dir)
+            logger.info("Removed stale nested skill dir: %s", nested_skill_dir)
 
         # 1. Full skill body (not a broken pointer to agentpaas:deploy)
         skills_dir = profile_dir / "skills" / "agentpaas"
@@ -457,6 +467,11 @@ def _cmd_doctor(args_str, ctx=None):
     result = json.loads(tools.agentpaas_doctor({}))
     err = _format_error(result, "Doctor failed")
     if err:
+        # If CLI not found, include the hint block
+        if isinstance(result, dict) and result.get("error_category") == "cli_not_found":
+            hint = result.get("hint", "")
+            if hint:
+                return f"{err}\n\n{hint}"
         return err
     checks = result.get("checks", []) if isinstance(result, dict) else []
     if not checks:

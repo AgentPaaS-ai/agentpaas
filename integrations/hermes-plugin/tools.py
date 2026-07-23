@@ -454,7 +454,12 @@ def _resolve_agentpaas_binary():
         c = os.path.abspath(c)
         if os.path.isfile(c) and os.access(c, os.X_OK):
             return c
-    return "agentpaas"
+    raise FileNotFoundError(
+        "AgentPaaS CLI binary not found on PATH. "
+        "1. brew install --cask agentpaas\n"
+        "2. Or set AGENTPAAS_CLI=/abs/path in profile .env\n"
+        "3. Plugin install ≠ CLI install"
+    )
 
 
 def _resolve_agent_binary():
@@ -467,6 +472,25 @@ def _resolve_agent_binary():
         if p := shutil.which(env_override):
             return p
     return _resolve_agentpaas_binary()
+
+
+def _resolve_agent_binary_for_display():
+    """Resolve CLI binary for display in terminal instructions.
+
+    Returns a string safe to show the user. Returns None if the binary
+    cannot be resolved at all (not on PATH, no candidates).
+    """
+    try:
+        binary = _resolve_agent_binary()
+        if binary and binary != "agentpaas":
+            return binary
+    except (ValueError, FileNotFoundError):
+        pass
+    # Try shutil.which as a fallback for display
+    p = shutil.which("agentpaas")
+    if p:
+        return p
+    return None
 
 
 _STDOUT_CAP = 51200  # 50KB
@@ -496,7 +520,18 @@ def _run_cli(cmd_args):
         if not sock_available:
             return sock_err
 
-    binary = _resolve_agent_binary()
+    try:
+        binary = _resolve_agent_binary()
+    except (FileNotFoundError, ValueError) as e:
+        return {
+            "error": str(e),
+            "error_category": "cli_not_found",
+            "hint": (
+                "1. brew install --cask agentpaas\n"
+                "2. Or set AGENTPAAS_CLI=/abs/path in profile .env\n"
+                "3. Plugin install ≠ CLI install"
+            ),
+        }
     full = [binary, "--json"]
     sock = _resolve_socket_path()
     full.extend(["--socket", sock])
@@ -572,7 +607,18 @@ def _run_cli_with_stdin(cmd_args, stdin_input):
         sock_available, sock_err = _check_daemon_socket()
         if not sock_available:
             return sock_err
-    binary = _resolve_agent_binary()
+    try:
+        binary = _resolve_agent_binary()
+    except (FileNotFoundError, ValueError) as e:
+        return {
+            "error": str(e),
+            "error_category": "cli_not_found",
+            "hint": (
+                "1. brew install --cask agentpaas\n"
+                "2. Or set AGENTPAAS_CLI=/abs/path in profile .env\n"
+                "3. Plugin install ≠ CLI install"
+            ),
+        }
     full = [binary, "--json"]
     sock = _resolve_socket_path()
     full.extend(["--socket", sock])
@@ -1517,11 +1563,12 @@ def agentpaas_export(args, **kwargs):
     is_valid, resolved, err = _validate_project_path(project_dir)
     if not is_valid:
         return json.dumps(err)
-    cmd = ["export", "--yes", "--project-dir", resolved]
+    cmd = ["export", "--yes"]
     if args.get("with_image"):
         cmd.append("--with-image")
     if args.get("output"):
         cmd.extend(["--output", args["output"]])
+    cmd.append(resolved)  # positional arg, NOT --project-dir
     try:
         result = _run_cli(cmd)
         if isinstance(result, dict) and result.get("publisher_fingerprint"):
@@ -1572,9 +1619,6 @@ def agentpaas_install(args, **kwargs):
             "error_category": "tool_invocation_failed",
         })
     cmd = ["install", "--yes", bundle_path]
-    alias = args.get("alias")
-    if alias:
-        cmd.extend(["--alias", alias])
     map_credential = args.get("map_credential")
     if map_credential:
         if isinstance(map_credential, list):
@@ -1585,19 +1629,38 @@ def agentpaas_install(args, **kwargs):
     try:
         result = _run_cli(cmd)
         if isinstance(result, dict) and "error" in result:
-            result["terminal_instruction"] = (
-                "Run in your terminal: `agentpaas install <file>` "
-                "and follow the prompts. The agent explains but NEVER approves consent."
-            )
+            binary = _resolve_agent_binary_for_display()
+            if binary:
+                result["terminal_instruction"] = (
+                    f"Run in your terminal: `{binary} install {bundle_path}` "
+                    f"and follow the prompts. The agent explains but NEVER approves consent."
+                )
+            else:
+                result["terminal_instruction"] = (
+                    "Run in your terminal: `agentpaas install <file>` "
+                    "and follow the prompts. The agent explains but NEVER approves consent.\n\n"
+                    "agentpaas not on PATH. Run: brew install --cask agentpaas, "
+                    "or set AGENTPAAS_CLI=/abs/path, or open a login terminal."
+                )
         return json.dumps(result)
     except Exception as e:
+        binary = _resolve_agent_binary_for_display()
+        if binary:
+            hint = (
+                f"Run in your terminal: `{binary} install {bundle_path}` "
+                f"and follow the prompts."
+            )
+        else:
+            hint = (
+                "Run in your terminal: `agentpaas install <file>` "
+                "and follow the prompts.\n\n"
+                "agentpaas not on PATH. Run: brew install --cask agentpaas, "
+                "or set AGENTPAAS_CLI=/abs/path, or open a login terminal."
+            )
         return json.dumps({
             "error": str(e),
             "error_category": "tool_invocation_failed",
-            "terminal_instruction": (
-                "Run in your terminal: `agentpaas install <file>` "
-                "and follow the prompts. The agent explains but NEVER approves consent."
-            ),
+            "terminal_instruction": hint,
         })
 
 
