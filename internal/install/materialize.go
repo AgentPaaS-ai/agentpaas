@@ -212,8 +212,15 @@ func acquireImage(ctx context.Context, stagingDir string, opts MaterializeOpts, 
 	}
 	if !SourceHasUVLock(sourceDir) {
 		depsUnlocked = true
-		if err := warnMissingUVLock(opts); err != nil {
-			return "", "", false, fmt.Errorf("acquire image: %w", err)
+		if SourceHasRequirementsTxt(sourceDir) {
+			// requirements.txt present: emit note, no interactive prompt.
+			if opts.PrintWarn != nil {
+				opts.PrintWarn("Note: using requirements.txt (no uv.lock). Dependencies may vary across rebuilds.")
+			}
+		} else {
+			if err := warnMissingUVLock(opts); err != nil {
+				return "", "", false, fmt.Errorf("acquire image: %w", err)
+			}
 		}
 	}
 	if opts.Builder == nil {
