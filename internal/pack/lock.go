@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/delegation"
 	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
@@ -113,6 +114,10 @@ type AgentLock struct {
 	// Capabilities are declared capabilities from the agent.yaml manifest.
 	// Stored verbatim in the lockfile; not schema-validated in v0.3.
 	Capabilities []DeclaredCapability `json:"capabilities,omitempty"`
+	// CommunicationSnapshot is the pre-built delegation communication snapshot
+	// (BUG-040). Populated at pack time when workflow.yaml contains delegations.
+	// It is signed into the lockfile and injected into the harness at run time.
+	CommunicationSnapshot *delegation.CommunicationSnapshot `json:"communication_snapshot,omitempty"`
 }
 
 // ReproducibilityMeta holds metadata for verifying build reproducibility.
@@ -432,6 +437,10 @@ type LockConfig struct {
 	// ProjectDir is the agent project directory; used to detect lineage.json
 	// for fork-aware provenance chain append.
 	ProjectDir string
+	// WorkflowYAML is the parsed workflow.yaml (v0.3). nil when absent.
+	// When set and delegations are non-empty, a CommunicationSnapshot is
+	// built and stored in the lock (BUG-040).
+	WorkflowYAML *WorkflowYAML
 }
 
 // identityKeyStore is a minimal interface for signing (subset of identity.KeyStore).
@@ -654,7 +663,7 @@ func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID strin
 	if cfg.AgentYAML != nil {
 		caps = cfg.AgentYAML.Capabilities
 	}
-	return &AgentLock{
+	lock := &AgentLock{
 		SchemaVersion:        LockSchemaVersion,
 		AgentName:            agentYAMLString(cfg.AgentYAML, "Name", "AgentName"),
 		AgentVersion:         agentYAMLString(cfg.AgentYAML, "Version", "AgentVersion"),
@@ -678,10 +687,34 @@ func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID strin
 			DepsLocked:      len(cfg.BuildResult.DepsLocked) > 0,
 			TarOrder:        "sorted",
 		},
-		CreatedAt: cfg.SourceDateEpoch.UTC(),
-		AgentYAML: cfg.AgentYAML,
+		CreatedAt:    cfg.SourceDateEpoch.UTC(),
+		AgentYAML:    cfg.AgentYAML,
 		Capabilities: caps,
+		WorkflowYAML: cfg.WorkflowYAML,
 	}
+
+	// BUG-040: Build and store the communication snapshot when workflow
+	// delegations are declared. The snapshot is signed into the lockfile
+	// and injected into the harness at run time.
+	if cfg.WorkflowYAML != nil && len(cfg.WorkflowYAML.Delegations) > 0 {
+		agentName := agentYAMLString(cfg.AgentYAML, "Name", "AgentName")
+		snap, err := BuildCommunicationSnapshot(
+			cfg.WorkflowYAML,
+			agentName,          // workflowID derived from agent name at pack time
+			agentName,          // tenantID defaulted to agent name at pack time
+			agentName,          // callerDeploymentID placeholder (set at deploy time)
+			agentName,          // callerPackageName from lock
+			lock.PublicKeyFingerprint, // callerPackageDigest from package AID
+			0,                          // snapshotGeneration starts at 0
+		)
+		if err != nil {
+			log.Printf("pack: build communication snapshot for agent %s: %v", agentName, err)
+		} else {
+			lock.CommunicationSnapshot = snap
+		}
+	}
+
+	return lock
 }
 
 // loadRequiredPublisherIdentity loads the publisher identity. Publisher
@@ -1212,6 +1245,9 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 	}
 	if lock.WorkflowYAML != nil {
 		m["workflow_yaml"] = lock.WorkflowYAML
+	}
+	if lock.CommunicationSnapshot != nil {
+		m["communication_snapshot"] = lock.CommunicationSnapshot
 	}
 	return m
 }

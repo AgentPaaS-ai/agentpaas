@@ -51,6 +51,15 @@ type Config struct {
 	LeaseID        string // Lease ID for journal records
 	RunID          string // Run ID for journal records (must match tailer's run ID)
 
+	// DelegationSnapshotPath is the path to the delegation snapshot sidecar
+	// file (BUG-040). The daemon writes the pre-built CommunicationSnapshot
+	// and per-binding capability tokens to a JSON file, bind-mounts it
+	// read-only into the harness container, and sets the env var. The
+	// harness reads the file at startup, constructs the DelegationTrustState,
+	// and injects it into the RPC server. Empty when no delegations are
+	// declared (backward compat).
+	DelegationSnapshotPath string
+
 	// B30-T04: policy-derived resource ceilings. On the durable path
 	// (InvokeDeployment), the daemon populates these from the deployment
 	// policy and the harness propagates them to the Python worker via

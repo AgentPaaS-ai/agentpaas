@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/delegation"
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
@@ -399,6 +400,41 @@ func (s *harnessRPCServer) LoadProgressMetadata(cfg Config) error {
 	s.progressJournal = writer
 	s.progressIdentity = identity
 	s.mu.Unlock()
+	return nil
+}
+
+// LoadDelegationSnapshot reads the delegation snapshot sidecar file
+// (BUG-040) and constructs the DelegationTrustState. The daemon writes
+// the pre-built CommunicationSnapshot and per-binding capability tokens
+// to a JSON file and bind-mounts it read-only. The harness reads it at
+// startup and injects it into the RPC server.
+func (s *harnessRPCServer) LoadDelegationSnapshot(path string) error {
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("harness rpcserver load delegation snapshot: %w", err)
+	}
+
+	var sidecar struct {
+		Snapshot            delegation.CommunicationSnapshot `json:"snapshot"`
+		BindingCapabilities map[string]string                `json:"binding_capabilities"`
+		NetworkAlias        string                           `json:"network_alias"`
+		WorkflowID          string                           `json:"workflow_id"`
+	}
+	if err := json.Unmarshal(data, &sidecar); err != nil {
+		return fmt.Errorf("unmarshal delegation snapshot file: %w", err)
+	}
+
+	dts := &DelegationTrustState{
+		Snapshot:            sidecar.Snapshot,
+		BindingCapabilities: sidecar.BindingCapabilities,
+		NetworkAlias:        sidecar.NetworkAlias,
+		Store:               delegation.NewMemoryStore(),
+	}
+
+	s.setDelegationTrustState(dts)
 	return nil
 }
 

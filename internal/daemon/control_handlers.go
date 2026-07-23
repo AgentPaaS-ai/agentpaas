@@ -25,6 +25,7 @@ import (
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/binresolve"
+	"github.com/AgentPaaS-ai/agentpaas/internal/delegation"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
@@ -205,7 +206,8 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	// between the two checks the workflow.yaml could have been modified,
 	// allowing a gated project to sign content that no longer passes the
 	// promotion gate.
-	if err := recheckWorkflowPromotion(absProjectDir, s.homePaths.State); err != nil {
+	wf, err := recheckWorkflowPromotion(absProjectDir, s.homePaths.State)
+	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "promotion gate (recheck): %v", err)
 	}
 
@@ -222,6 +224,7 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		PolicyYAML:        policyYAML,
 		PublisherKeyStore: publisherKeyStore,
 		ProjectDir:        absProjectDir,
+		WorkflowYAML:      wf,
 	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "create agent lock: %v", err)
@@ -251,33 +254,34 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 // CreateAgentLock) to prevent TOCTOU where workflow.yaml is modified
 // between validation and signing.
 //
-// If no workflow.yaml exists, this is a no-op (returns nil).
-func recheckWorkflowPromotion(projectDir, stateRoot string) error {
+// Returns the parsed WorkflowYAML (may be nil) and any error.
+// If no workflow.yaml exists, this is a no-op (returns nil, nil).
+func recheckWorkflowPromotion(projectDir, stateRoot string) (*pack.WorkflowYAML, error) {
 	workflowPath := filepath.Join(projectDir, "workflow.yaml")
 	data, err := os.ReadFile(workflowPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil
+			return nil, nil
 		}
-		return fmt.Errorf("read workflow.yaml: %w", err)
+		return nil, fmt.Errorf("read workflow.yaml: %w", err)
 	}
 	if len(data) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	var wf pack.WorkflowYAML
 	if err := yaml.Unmarshal(data, &wf); err != nil {
-		return fmt.Errorf("parse workflow.yaml: %w", err)
+		return nil, fmt.Errorf("parse workflow.yaml: %w", err)
 	}
 	if errs := pack.ValidateWorkflowYAML(&wf); len(errs) > 0 {
-		return fmt.Errorf("workflow.yaml validation: %s", strings.Join(errs, "; "))
+		return nil, fmt.Errorf("workflow.yaml validation: %s", strings.Join(errs, "; "))
 	}
 	if stateRoot != "" {
 		if errs := registry.ValidateWorkflowPromotedPackages(stateRoot, &wf); len(errs) > 0 {
-			return fmt.Errorf("promotion gate: %s", strings.Join(errs, "; "))
+			return nil, fmt.Errorf("promotion gate: %s", strings.Join(errs, "; "))
 		}
 	}
-	return nil
+	return &wf, nil
 }
 
 // gatewaySubnetFromIP derives the /16 subnet CIDR from a gateway IP address.
@@ -903,6 +907,19 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	if artifactDir != "" {
 		agentBinds = append(agentBinds, fmt.Sprintf("%s:/workspace/artifacts", artifactDir))
 		proxyEnv = append(proxyEnv, "AGENTPAAS_ARTIFACT_DIR=/workspace/artifacts")
+	}
+
+	// BUG-040: Write delegation snapshot sidecar and bind-mount it.
+	// If the deployed agent lock carries a CommunicationSnapshot (workflow
+	// delegations declared at pack time), the daemon generates per-binding
+	// capability tokens, writes a sidecar JSON file, bind-mounts it
+	// read-only, and sets AGENTPAAS_DELEGATION_SNAPSHOT_PATH so the
+	// harness can load the trust state at startup. If nil (no
+	// delegations), this is skipped (backward compat).
+	delegationSnapshotPath, delegationSnapshotWritten := s.writeDelegationSnapshotForRun(deployedDir, gatewayConfigDir)
+	if delegationSnapshotWritten {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/delegation-snapshot.json:ro", delegationSnapshotPath))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_DELEGATION_SNAPSHOT_PATH=/agentpaas/delegation-snapshot.json")
 	}
 
 	agentSpec := runtime.ContainerSpec{
@@ -2019,6 +2036,69 @@ func (s *controlServer) writeCredentialsForRun(runID string, deployedDir string,
 	}
 
 	return credsPath, true
+}
+
+// writeDelegationSnapshotForRun reads the deployed agent lock, and if it
+// carries a CommunicationSnapshot (workflow delegations declared at pack
+// time), generates per-binding capability tokens, writes a sidecar JSON
+// file to the gateway config directory, and returns the host path and true.
+// Returns ("", false) if the lock has no CommunicationSnapshot, the lock
+// cannot be read, or there are no bindings (graceful degradation — backward
+// compat with agents that declare no delegations).
+func (s *controlServer) writeDelegationSnapshotForRun(deployedDir, gatewayConfigDir string) (string, bool) {
+	if gatewayConfigDir == "" || deployedDir == "" {
+		return "", false
+	}
+
+	lockPath := filepath.Join(deployedDir, "agent.lock")
+	lock, err := pack.ReadAgentLock(lockPath)
+	if err != nil || lock == nil {
+		return "", false
+	}
+	if lock.CommunicationSnapshot == nil {
+		return "", false
+	}
+	snap := lock.CommunicationSnapshot
+	if len(snap.Bindings) == 0 {
+		return "", false
+	}
+
+	// Generate per-binding capability tokens.
+	bindingCapabilities := make(map[string]string, len(snap.Bindings))
+	for _, b := range snap.Bindings {
+		token, err := delegation.GenerateCapabilityToken()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: generate capability token for binding %s: %v\n", b.BindingID, err)
+			return "", false
+		}
+		bindingCapabilities[b.BindingID] = token
+	}
+
+	sidecar := struct {
+		Snapshot            delegation.CommunicationSnapshot `json:"snapshot"`
+		BindingCapabilities map[string]string                `json:"binding_capabilities"`
+		NetworkAlias        string                           `json:"network_alias"`
+		WorkflowID          string                           `json:"workflow_id"`
+	}{
+		Snapshot:            *snap,
+		BindingCapabilities: bindingCapabilities,
+		NetworkAlias:        snap.CallerDeploymentID,
+		WorkflowID:          snap.WorkflowID,
+	}
+
+	data, err := json.MarshalIndent(sidecar, "", "  ")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: marshal delegation snapshot file: %v\n", err)
+		return "", false
+	}
+
+	snapshotPath := filepath.Join(gatewayConfigDir, "delegation-snapshot.json")
+	if err := os.WriteFile(snapshotPath, data, 0o600); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: write delegation snapshot file: %v\n", err)
+		return "", false
+	}
+
+	return snapshotPath, true
 }
 
 // secretServiceName derives a deterministic macOS Keychain service name from the

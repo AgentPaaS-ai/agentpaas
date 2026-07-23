@@ -101,6 +101,21 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		}
 	}
 
+	// Load delegation trust state from the sidecar file before starting
+	// the Python worker (BUG-040). The daemon writes the pre-built
+	// CommunicationSnapshot and per-binding capability tokens to a JSON
+	// file and bind-mounts it read-only. The harness reads it at startup
+	// and injects it into the RPC server. If no delegation snapshot path
+	// is set, delegation is disabled (backward compat).
+	if cfg.DelegationSnapshotPath != "" {
+		if err := rpcServer.LoadDelegationSnapshot(cfg.DelegationSnapshotPath); err != nil {
+			_ = rpcServer.Close()     // best-effort cleanup
+			_ = stderrCapture.Close() // best-effort cleanup
+			errResp := &ErrorResponse{Status: "FAILED", Reason: "delegation_snapshot_load_failed", Detail: err.Error()}
+			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+		}
+	}
+
 	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
 	cmd.Env = appendPolicyResourceEnv(workerEnv(os.Environ(), rpcServer.Addr()), cfg.DurablePath, cfg.CPUQuotaSeconds, cfg.MaxPIDs)
