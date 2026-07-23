@@ -84,3 +84,17 @@ func TestSourceHasUVLock(t *testing.T) {
 		t.Fatal("want true with uv.lock")
 	}
 }
+
+func TestSourceHasRequirementsTxt(t *testing.T) {
+	dir := t.TempDir()
+	if SourceHasRequirementsTxt(dir) {
+		t.Fatal("want false without requirements.txt")
+	}
+	p := filepath.Join(dir, "requirements.txt")
+	if err := os.WriteFile(p, []byte("requests>=2.0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !SourceHasRequirementsTxt(dir) {
+		t.Fatal("want true with requirements.txt")
+	}
+}
