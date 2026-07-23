@@ -93,6 +93,11 @@ type controlServer struct {
 	deploymentStore  routedrun.DeploymentStore
 	runStore         routedrun.RunStore
 	workflowStore    routedrun.WorkflowStore
+
+	// disableContainerLaunch prevents startDurableRun from launching
+	// Docker containers. Set by unit tests that don't have a Docker
+	// runtime available. Production daemons always leave this false.
+	disableContainerLaunch bool
 }
 
 // compile-time interface check.
