@@ -191,6 +191,61 @@ func TestMaterializeMissingUVLockWarn(t *testing.T) {
 	}
 }
 
+func TestMaterializeRequirementsTxtNoPrompt(t *testing.T) {
+	// Bundle has requirements.txt but no uv.lock — should emit an
+	// informational note and proceed without interactive prompt.
+	fix := writeConsentFixtureBundleWithRequirementsTxt(t)
+	b, err := bundle.Open(fix.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close() }()
+	var warns []string
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	// Note: no AllowUnlockedDeps set, and no PromptUnlocked — the
+	// requirements.txt path should not require either.
+	res, err := MaterializeInstall(context.Background(), MaterializeOpts{
+		StateRoot: stateRoot,
+		Bundle:    b,
+		Manifest: InstallManifest{
+			PublisherFingerprint: fix.PublisherFP,
+			PublisherName:        fix.PublisherName,
+			AgentName:            fix.AgentName,
+			AgentVersion:         fix.AgentVersion,
+			AcceptedPolicyDigest: fix.PolicyDigest,
+		},
+		PrintWarn: func(msg string) { warns = append(warns, msg) },
+		Builder:   &fakeImageBuilder{},
+	})
+	if err != nil {
+		t.Fatalf("materialize: %v", err)
+	}
+	if !res.Manifest.DepsUnlockedRebuild {
+		t.Fatal("want deps_unlocked_rebuild true")
+	}
+	if res.Manifest.InstallMode != "local-rebuild" {
+		t.Fatalf("mode = %q", res.Manifest.InstallMode)
+	}
+	// Should have the info note, not the old uv.lock warning.
+	found := false
+	for _, w := range warns {
+		if strings.Contains(w, "requirements.txt") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected requirements.txt note in warns, got: %v", warns)
+	}
+	// Must NOT contain the old uv.lock warning.
+	for _, w := range warns {
+		if strings.Contains(w, "WARNING: uv.lock missing") {
+			t.Fatalf("unexpected uv.lock warning when requirements.txt present: %v", warns)
+		}
+	}
+	assertInstalledArtifacts(t, res.InstalledPath)
+}
+
 func TestMaterializePostWriteTamperRollback(t *testing.T) {
 	fix := writeConsentFixtureBundle(t, nil, "0.1.0")
 	b, err := bundle.Open(fix.Path)

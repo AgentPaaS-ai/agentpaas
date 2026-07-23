@@ -241,3 +241,118 @@ func stateFileCount(t *testing.T, root string) int {
 	}
 	return n
 }
+
+// writeConsentFixtureBundleWithRequirementsTxt builds a verified bundle whose
+// source includes requirements.txt (no uv.lock). Used by tests that verify the
+// requirements.txt path skips the interactive unlocked-deps prompt.
+func writeConsentFixtureBundleWithRequirementsTxt(t *testing.T) consentBundleFixture {
+	t.Helper()
+	// Create a standard consent fixture, but write requirements.txt into the
+	// project dir before bundling.
+	dir := t.TempDir()
+	writeConsentProjectFile(t, dir, "agent.yaml", []byte("name: consent-test-agent\nversion: 0.1.0\nruntime: python\nentry: main.py\n"))
+	writeConsentProjectFile(t, dir, "main.py", []byte("print('ok')\n"))
+	writeConsentProjectFile(t, dir, "requirements.txt", []byte("requests>=2.0\n"))
+	return consentBundleFromDir(t, dir, nil, "0.1.0", "consent-publisher", "consent.agentpaas")
+}
+
+// consentBundleFromDir bundles a project dir into a verified agentpaas bundle.
+func consentBundleFromDir(t *testing.T, dir string, policyYAML []byte, agentVersion, publisherName, outName string) consentBundleFixture {
+	t.Helper()
+	if policyYAML == nil {
+		policyYAML = []byte(consentBasePolicyYAML)
+	}
+	if agentVersion == "" {
+		agentVersion = "0.1.0"
+	}
+	sbom := []byte(consentSBOM)
+	aidKey := consentDetKey(t, "aid")
+	pubKey := consentDetKey(t, "pub")
+	buildDigest, err := pack.ComputeBuildInputDigest(dir, nil)
+	if err != nil {
+		t.Fatalf("build digest: %v", err)
+	}
+	polDigest, err := pack.ComputePolicyDigest(policyYAML)
+	if err != nil {
+		t.Fatalf("policy digest: %v", err)
+	}
+	aidPEM, _ := consentPubPEM(&aidKey.PublicKey)
+	lock := &pack.AgentLock{
+		SchemaVersion:        pack.LockSchemaVersion,
+		AgentName:            "consent-test-agent",
+		AgentVersion:         agentVersion,
+		Runtime:              "python",
+		Platform:             "linux/arm64",
+		BaseImageDigest:      "gcr.io/distroless/python3-debian12@sha256:0000000000000000000000000000000000000000000000000000000000000001",
+		HarnessVersion:       "test",
+		BuildInputDigest:     buildDigest,
+		ImageDigest:          consentSHA256([]byte("img")),
+		SBOMDigest:           consentSHA256(sbom),
+		PolicyDigest:         polDigest,
+		PackageAID:           string(aidPEM),
+		PublicKeyFingerprint: pack.PublicKeyFingerprint(&aidKey.PublicKey),
+		Reproducibility: pack.ReproducibilityMeta{
+			SourceDateEpoch: time.Unix(0, 0).UTC(),
+			BaseImagePinned: true,
+			DepsLocked:      true,
+			TarOrder:        "sorted",
+		},
+		CreatedAt: time.Unix(0, 0).UTC(),
+	}
+	pubPEM, _ := consentPubPEM(&pubKey.PublicKey)
+	fp := identity.PublisherFingerprint(&pubKey.PublicKey)
+	now := time.Unix(0, 0).UTC()
+	lock.Publisher = &pack.PublisherInfo{
+		Name: publisherName, Fingerprint: fp, PublicKeyPEM: string(pubPEM), SignedAt: now,
+	}
+	entry := pack.ProvenanceEntry{
+		Action: "created", PublisherFingerprint: fp, PublisherName: publisherName,
+		PublisherPublicKeyPEM: string(pubPEM), AgentName: lock.AgentName, AgentVersion: lock.AgentVersion,
+		Timestamp: now,
+	}
+	if err := pack.SignProvenanceEntryWithKey(&entry, pubKey); err != nil {
+		t.Fatalf("sign provenance: %v", err)
+	}
+	lock.Provenance = []pack.ProvenanceEntry{entry}
+	if err := pack.SignLockfileWithKey(lock, aidKey); err != nil {
+		t.Fatalf("sign lock: %v", err)
+	}
+	if err := pack.SignPublisherWithKey(lock, pubKey); err != nil {
+		t.Fatalf("sign publisher: %v", err)
+	}
+	manifest := &bundle.Manifest{
+		BundleSchemaVersion: bundle.BundleSchemaVersion,
+		Publisher: bundle.ManifestPublisherInfo{
+			Name: publisherName, Fingerprint: fp, PublicKeyPEM: string(pubPEM),
+		},
+		CreatedAt: now,
+	}
+	out := filepath.Join(t.TempDir(), outName)
+	if _, err := bundle.WriteToFile(bundle.BundleConfig{
+		ProjectDir: dir, Manifest: manifest, Lock: lock, PolicyYAML: policyYAML, SBOM: sbom,
+		PublisherKey: pubKey, SourceDateEpoch: now,
+	}, out); err != nil {
+		t.Fatalf("WriteToFile: %v", err)
+	}
+	b, err := bundle.Open(out)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = b.Close() }()
+	vr, err := bundle.Verify(b)
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if !vr.Verified {
+		t.Fatal("bundle not verified")
+	}
+	report, err := bundle.Inspect(out, b, vr)
+	if err != nil {
+		t.Fatalf("Inspect: %v", err)
+	}
+	return consentBundleFixture{
+		Path: out, PolicyDigest: polDigest, PolicyYAML: policyYAML, PublisherFP: fp,
+		PublisherName: publisherName, AgentName: "consent-test-agent", AgentVersion: agentVersion,
+		InspectReport: report,
+	}
+}
