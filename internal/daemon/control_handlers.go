@@ -1171,6 +1171,530 @@ func (s *controlServer) cleanupRun(ctx context.Context, tr *trackedRun) {
 	}
 }
 
+// startDurableRun launches a container for a durable (routed) invocation.
+// Called asynchronously from InvokeDeployment after admission succeeds
+// with ACCEPTED outcome (BUG-043).
+//
+// It follows the same container creation path as Run but uses the
+// receipt's RunID, resolved deployment ID, and input JSON instead of
+// generating new identities.
+func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, inputJSON string) {
+	ctx := context.Background()
+	runID := string(receipt.RunID)
+	depID := receipt.ResolvedDeploymentID
+
+	// 1. Resolve deployment → agent name.
+	dep, err := s.deploymentStore.GetDeployment(ctx, depID)
+	if err != nil {
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":          runID,
+			"deployment_id":   string(depID),
+			"fail_reason":     "deployment_not_found",
+			"error":           err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+	agentName := dep.PackageName
+
+	// 2. Load deployed agent metadata to get image digest.
+	deployed, err := pack.LoadDeployedAgent(s.homePaths.Home, agentName)
+	if err != nil {
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "agent_not_deployed",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+	imageDigest := deployed.ImageDigest
+
+	// 3. Verify deployed agent integrity, lockfile signature, and policy digest.
+	if err := verifyDeployedAgent(s.homePaths.Home, agentName, s.auditWriter); err != nil {
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "deployed_agent_verification_failed",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	// 4. Validate credentials exist in Keychain before creating Docker resources.
+	if err := validateCredentialsExist(s, agentName, false, nil); err != nil {
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "credentials_missing",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	// 5. Validate receipt input JSON.
+	triggerPayload := []byte(inputJSON)
+	if len(triggerPayload) > 0 {
+		var dummy map[string]any
+		if err := json.Unmarshal(triggerPayload, &dummy); err != nil {
+			s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+				"run_id":      runID,
+				"agent_name":  agentName,
+				"fail_reason": "invalid_input_json",
+				"error":       err.Error(),
+			})
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+	}
+
+	// 6. Get runtime and check Docker Engine version.
+	rt, err := s.getOrCreateRuntime()
+	if err != nil {
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "docker_runtime_unavailable",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+	if os.Getenv("AGENTPAAS_ALLOW_VULNERABLE_DOCKER") != "1" {
+		if err := checkDockerEngineVersion(ctx, rt); err != nil {
+			s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+				"run_id":      runID,
+				"agent_name":  agentName,
+				"fail_reason": "vulnerable_docker_engine",
+				"error":       err.Error(),
+			})
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+	}
+
+	// 7. Create networks.
+	netID, err := rt.CreateNetwork(ctx, runtime.NetworkSpec{
+		Name:     runtime.NetworkName("internal", runID),
+		Internal: true,
+		Labels:   runtime.Labels(runtime.ResourceTypeNetInternal, runID),
+	})
+	if err != nil {
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "create_network",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	egressNetID, err := rt.CreateNetwork(ctx, runtime.NetworkSpec{
+		Name:     runtime.NetworkName("egress", runID),
+		Internal: false,
+		Labels:   runtime.Labels(runtime.ResourceTypeNetEgress, runID),
+	})
+	if err != nil {
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "create_egress_network",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	// 8. Create host audit directory.
+	hostAuditDir := filepath.Join(s.homePaths.State, "runs", runID, "harness-audit")
+	if err := os.MkdirAll(hostAuditDir, 0o777); err != nil {
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+	if err := os.Chmod(hostAuditDir, 0o777); err != nil {
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	// 9. Create gateway container with agent's policy.
+	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	agentPolicyPath := filepath.Join(deployedDir, "policy.yaml")
+	var gatewayBinds []string
+	var gatewayConfigDir string
+
+	policyData, err := os.ReadFile(agentPolicyPath)
+	if err == nil && len(policyData) > 0 {
+		parsedPolicy, err := policy.ParsePolicy(bytes.NewReader(policyData))
+		if err != nil {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		if errs := policy.ValidatePolicy(parsedPolicy); policy.HasErrors(errs) {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		compiled, err := policy.CompileGatewayConfig(parsedPolicy)
+		if err != nil {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		perRunConfigDir := filepath.Join(s.homePaths.State, "runs", runID, "gateway-config")
+		if err := os.MkdirAll(perRunConfigDir, 0o700); err != nil {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		gatewayConfigPath := filepath.Join(perRunConfigDir, "config.yaml")
+		if err := os.WriteFile(gatewayConfigPath, compiled, 0o600); err != nil {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		if err := s.rewriteGatewayConfigSecrets(gatewayConfigPath, parsedPolicy); err != nil {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", gatewayConfigPath)}
+		gatewayConfigDir = perRunConfigDir
+	} else {
+		denyAllConfig := []byte("config:\n  dns:\n    lookupFamily: V4Only\nbinds: []\n")
+		perRunConfigDir := filepath.Join(s.homePaths.State, "runs", runID, "gateway-config")
+		if err := os.MkdirAll(perRunConfigDir, 0o700); err != nil {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		denyAllPath := filepath.Join(perRunConfigDir, "config.yaml")
+		if err := os.WriteFile(denyAllPath, denyAllConfig, 0o600); err != nil {
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
+		gatewayBinds = []string{fmt.Sprintf("%s:/config.yaml:ro", denyAllPath)}
+		gatewayConfigDir = perRunConfigDir
+	}
+
+	gatewayID, err := rt.Create(ctx, runtime.ContainerSpec{
+		Image:      runtime.GatewayImage,
+		Command:    []string{"-f", "/config.yaml"},
+		Labels:     runtime.Labels(runtime.ResourceTypeGateway, runID),
+		NetworkIDs: []string{string(netID), string(egressNetID)},
+		Binds:      gatewayBinds,
+		User:       "64000",
+	})
+	if err != nil {
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	if err := rt.Start(ctx, gatewayID); err != nil {
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	if os.Getenv("AGENTPAAS_SKIP_GATEWAY_WAIT") == "" {
+		if err := waitForGateway(ctx, rt, gatewayID, string(netID), 10*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: gateway readiness check: %v\n", err)
+		}
+	}
+
+	gatewayIP, err := rt.InspectContainerIP(ctx, gatewayID, string(netID))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: discover gateway IP: %v\n", err)
+	}
+	if gatewayIP != "" {
+		if ip := net.ParseIP(gatewayIP); ip == nil {
+			fmt.Fprintf(os.Stderr, "daemon: gateway IP %q is not a valid IP address, skipping proxy env\n", gatewayIP)
+			gatewayIP = ""
+		}
+	}
+
+	proxyEnv := make([]string, 0, 16)
+	proxyEnv = append(proxyEnv,
+		"AGENTPAAS_AUDIT_PATH=/audit/harness-audit.jsonl",
+		"AGENTPAAS_AGENT_PATH=/app/main.py",
+	)
+	if egressFirewallEnabled() {
+		proxyEnv = append(proxyEnv, "AGENTPAAS_EGRESS_FIREWALL=1")
+	} else {
+		proxyEnv = append(proxyEnv, "AGENTPAAS_EGRESS_FIREWALL=0")
+	}
+	if gatewayIP != "" {
+		gatewaySubnet := gatewaySubnetFromIP(gatewayIP)
+		gwURL := "http://" + gatewayIP + ":7799"
+		proxyEnv = append(proxyEnv,
+			"AGENTPAAS_GATEWAY_IP="+gatewayIP,
+			"AGENTPAAS_GATEWAY_SUBNET="+gatewaySubnet,
+			"AGENTPAAS_GATEWAY_URL="+gwURL,
+			"HTTP_PROXY="+gwURL,
+			"HTTPS_PROXY="+gwURL,
+			"http_proxy="+gwURL,
+			"https_proxy="+gwURL,
+			"NO_PROXY=localhost,127.0.0.1,"+gatewayIP,
+			"no_proxy=localhost,127.0.0.1,"+gatewayIP,
+		)
+	}
+
+	// Write credential sidecar.
+	credsPath, credsFileWritten := s.writeCredentialsForRun(runID, deployedDir, gatewayConfigDir, nil)
+
+	// Generate attempt ID for journal key and artifact workspace.
+	attemptID := ""
+	if aid, err := routedrun.NewAttemptID(); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: generate attempt ID: %v\n", err)
+	} else {
+		attemptID = string(aid)
+	}
+
+	// Generate journal key.
+	var journalKey []byte
+	journalKeyPath := ""
+	if attemptID != "" {
+		journalKeyPath = filepath.Join(s.homePaths.State, "runs", runID, "attempt-secrets", attemptID+".journal-key")
+		journalKey = make([]byte, 32)
+		if _, err := rand.Read(journalKey); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: generate journal key: %v\n", err)
+			journalKeyPath = ""
+			journalKey = nil
+		} else if err := os.MkdirAll(filepath.Dir(journalKeyPath), 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: create attempt-secrets dir: %v\n", err)
+			journalKeyPath = ""
+			journalKey = nil
+		} else if err := os.WriteFile(journalKeyPath, journalKey, 0o600); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: save journal key: %v\n", err)
+			journalKeyPath = ""
+			journalKey = nil
+		}
+	}
+
+	artifactDir := filepath.Join(s.homePaths.State, "runs", runID, "artifacts")
+	if err := os.MkdirAll(artifactDir, 0o700); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: create artifact dir: %v\n", err)
+		artifactDir = ""
+	}
+
+	journalHostPath := ""
+	if journalKey != nil && attemptID != "" {
+		journalHostPath = filepath.Join(s.homePaths.State, "runs", runID, "journals", attemptID+".jsonl")
+		if err := os.MkdirAll(filepath.Dir(journalHostPath), 0o700); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: create journal dir: %v\n", err)
+			journalHostPath = ""
+		}
+	}
+
+	agentBinds := []string{fmt.Sprintf("%s:/audit", hostAuditDir)}
+	if credsFileWritten {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/credentials.json:ro", credsPath))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_CREDENTIALS_PATH=/agentpaas/credentials.json")
+	}
+
+	if journalKeyPath != "" && journalKey != nil {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/journal-key", journalKeyPath))
+		proxyEnv = append(proxyEnv,
+			"AGENTPAAS_JOURNAL_KEY_PATH=/agentpaas/journal-key",
+			"AGENTPAAS_JOURNAL_PATH=/agentpaas/journals/"+attemptID+".jsonl",
+			"AGENTPAAS_ATTEMPT_ID="+attemptID,
+			"AGENTPAAS_RUN_ID="+runID,
+		)
+		if journalHostPath != "" {
+			journalMountDir := filepath.Dir(journalHostPath)
+			agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/journals", journalMountDir))
+		}
+	}
+	if artifactDir != "" {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/workspace/artifacts", artifactDir))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_ARTIFACT_DIR=/workspace/artifacts")
+	}
+
+	// Write delegation snapshot sidecar.
+	delegationSnapshotPath, delegationSnapshotWritten := s.writeDelegationSnapshotForRun(deployedDir, gatewayConfigDir)
+	if delegationSnapshotWritten {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/delegation-snapshot.json:ro", delegationSnapshotPath))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_DELEGATION_SNAPSHOT_PATH=/agentpaas/delegation-snapshot.json")
+	}
+
+	agentSpec := runtime.ContainerSpec{
+		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
+		NetworkIDs: []string{string(netID)},
+		Binds:      agentBinds,
+		Env:        proxyEnv,
+	}
+	if egressFirewallEnabled() {
+		agentSpec.CapAdd = []string{"NET_ADMIN"}
+	}
+
+	imageRef := pack.LocalImageRef(agentName, imageDigest)
+	agentSpec.Image = imageRef
+	containerID, err := rt.Create(ctx, agentSpec)
+	if err != nil {
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		if journalKeyPath != "" {
+			logBestEffort("remove", os.RemoveAll(journalKeyPath))
+		}
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "create_container",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	if err := rt.Start(ctx, containerID); err != nil {
+		logBestEffort("Remove", rt.Remove(ctx, containerID, true))
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		if journalKeyPath != "" {
+			logBestEffort("remove", os.RemoveAll(journalKeyPath))
+		}
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "start_container",
+			"error":       err.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+
+	// 10. Track the run.
+	tracked := &trackedRun{
+		Container:        containerID,
+		Network:          string(netID),
+		EgressNetwork:    string(egressNetID),
+		Gateway:          gatewayID,
+		AuditDir:         hostAuditDir,
+		GatewayConfigDir: gatewayConfigDir,
+		AgentName:        agentName,
+		StartedAt:        time.Now(),
+		Status:           "running",
+		InvokeDone:       make(chan struct{}),
+		JournalKeyPath:   journalKeyPath,
+		ArtifactDir:      artifactDir,
+		JournalHostPath:  journalHostPath,
+	}
+	s.trackRunPtr(runID, tracked)
+	if s.eventBus != nil {
+		s.eventBus.RegisterRun(runID)
+		s.eventBus.Publish(runID, trigger.EventRunStarted, map[string]interface{}{
+			"agent_name":   agentName,
+			"image_ref":    imageRef,
+			"container_id": string(containerID),
+			"network":      string(netID),
+		})
+	}
+
+	// Start audit tailer.
+	auditPath := filepath.Join(hostAuditDir, "harness-audit.jsonl")
+	tracked.Tailer = newAuditTailer(auditPath, runID, s.auditWriter, s.auditIndex, s.eventBus)
+	tracked.Tailer.start()
+
+	// Start progress journal tailer.
+	if journalKey != nil && journalHostPath != "" && s.localStore != nil {
+		tailer := routedrun.NewProgressTailer(
+			journalHostPath, journalKey,
+			s.localStore,
+			routedrun.AttemptID(attemptID), routedrun.RunID(runID),
+		)
+		if s.auditWriter != nil {
+			tailer.SetAuditAppender(s.auditWriter)
+		}
+		tailer.Start(context.Background())
+		tracked.ProgressTailer = tailer
+	}
+
+	// Mark run as RUNNING in the routed store.
+	s.updateLegacyRunStatus(ctx, runID, "running")
+
+	// Record audit event for durable run start.
+	s.recordAudit("invoke_deployment_start", "daemon", map[string]interface{}{
+		"run_id":          runID,
+		"agent_name":      agentName,
+		"deployment_id":   string(depID),
+		"image_ref":       imageRef,
+		"container_id":    string(containerID),
+		"network":         string(netID),
+		"invocation_id":   string(receipt.InvocationID),
+		"workflow_id":     string(receipt.WorkflowID),
+	})
+
+	// 11. Auto-invoke the agent.
+	invokeCtx, cancel := context.WithCancel(context.Background())
+	tracked.CancelInvoke = cancel
+	go func(tr *trackedRun) {
+		defer close(tr.InvokeDone)
+		timeoutCtx, timeoutCancel := context.WithTimeout(invokeCtx, s.invokeContextTimeout(tr))
+		defer timeoutCancel()
+		if stdout, err := s.invokeAgent(timeoutCtx, containerID, agentName, triggerPayload, tr.TimeEnvelope); err != nil {
+			failReason := invokeFailReason(err)
+			s.runMu.Lock()
+			tr.Status = "failed"
+			tr.InvokeErr = err
+			tr.FailReason = failReason
+			s.runMu.Unlock()
+			s.recordAudit("run_failed", "daemon", map[string]interface{}{
+				"run_id":       runID,
+				"agent_name":   agentName,
+				"container_id": string(containerID),
+				"fail_reason":  failReason,
+			})
+			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
+			s.finalizeRun(context.Background(), runID, tr)
+		} else {
+			s.runMu.Lock()
+			tr.Status = "succeeded"
+			tr.InvokeResponse = stdout
+			s.runMu.Unlock()
+			if s.homePaths != nil {
+				respPath := filepath.Join(s.homePaths.State, "runs", runID, "invoke-response.json")
+				if err := os.WriteFile(respPath, []byte(stdout), 0o644); err != nil {
+					fmt.Fprintf(os.Stderr, "daemon: persist invoke response (%s): %v\n", runID, err)
+				}
+			}
+			s.recordAudit("invoke", "daemon", map[string]interface{}{
+				"run_id":     runID,
+				"agent_name": agentName,
+			})
+			s.recordAudit("run_complete", "daemon", map[string]interface{}{
+				"run_id":     runID,
+				"agent_name": agentName,
+				"exit_code":  0,
+			})
+			s.finalizeRun(context.Background(), runID, tr)
+		}
+	}(tracked)
+}
+
 // finalizeRun ensures harness audit ingestion and resource cleanup happen
 // exactly once per run, regardless of the terminal path (auto-invoke success,
 // auto-invoke failure, Stop, or Cancel). It is idempotent via sync.Once:
