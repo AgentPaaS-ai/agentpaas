@@ -27,16 +27,17 @@ func main() {
 		// is derived from the TimeEnvelope carried in the invoke payload
 		// (see Server.invokeTimeoutForPayload). AGENTPAAS_INVOKE_TIMEOUT
 		// remains as a legacy compat override for the non-envelope path.
-		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy compat: durable path uses invokeTimeoutForPayload
-		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy compat: SIGTERM grace (not a lifetime ceiling)
-		StdoutPath:      envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
-		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
-		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
-		JournalKeyPath:  os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
-		JournalPath:     os.Getenv("AGENTPAAS_JOURNAL_PATH"),
-		AttemptID:       os.Getenv("AGENTPAAS_ATTEMPT_ID"),
-		LeaseID:         os.Getenv("AGENTPAAS_LEASE_ID"),
-		RunID:           os.Getenv("AGENTPAAS_RUN_ID"),
+		InvokeTimeout:            envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy compat: durable path uses invokeTimeoutForPayload
+		TerminateGrace:           envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy compat: SIGTERM grace (not a lifetime ceiling)
+		StdoutPath:               envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
+		StderrPath:               envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
+		CredentialsPath:          os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
+		JournalKeyPath:           os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
+		JournalPath:              os.Getenv("AGENTPAAS_JOURNAL_PATH"),
+		AttemptID:                os.Getenv("AGENTPAAS_ATTEMPT_ID"),
+		LeaseID:                  os.Getenv("AGENTPAAS_LEASE_ID"),
+		RunID:                    os.Getenv("AGENTPAAS_RUN_ID"),
+		DelegationSnapshotPath:   os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_PATH"),
 	}
 
 	// B30-T04: durable-path resource ceilings. On the durable
