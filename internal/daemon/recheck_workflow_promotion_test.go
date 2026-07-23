@@ -12,7 +12,7 @@ func TestRecheckWorkflowPromotion(t *testing.T) {
 	// No workflow.yaml → nil error.
 	t.Run("no-workflow", func(t *testing.T) {
 		dir := t.TempDir()
-		if err := recheckWorkflowPromotion(dir, ""); err != nil {
+		if _, err := recheckWorkflowPromotion(dir, ""); err != nil {
 			t.Fatalf("expected nil error for missing workflow.yaml, got: %v", err)
 		}
 	})
@@ -23,7 +23,7 @@ func TestRecheckWorkflowPromotion(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "workflow.yaml"), nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := recheckWorkflowPromotion(dir, ""); err != nil {
+		if _, err := recheckWorkflowPromotion(dir, ""); err != nil {
 			t.Fatalf("expected nil error for empty workflow.yaml, got: %v", err)
 		}
 	})
@@ -34,7 +34,7 @@ func TestRecheckWorkflowPromotion(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "workflow.yaml"), []byte(": bad yaml"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := recheckWorkflowPromotion(dir, ""); err == nil {
+		if _, err := recheckWorkflowPromotion(dir, ""); err == nil {
 			t.Fatal("expected error for malformed workflow.yaml")
 		}
 	})
@@ -46,7 +46,7 @@ func TestRecheckWorkflowPromotion(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "workflow.yaml"), []byte(yaml), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := recheckWorkflowPromotion(dir, ""); err != nil {
+		if _, err := recheckWorkflowPromotion(dir, ""); err != nil {
 			t.Fatalf("expected nil error with empty stateRoot, got: %v", err)
 		}
 	})
@@ -60,7 +60,7 @@ func TestRecheckWorkflowPromotion(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "workflow.yaml"), []byte(yaml), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := recheckWorkflowPromotion(dir, stateRoot); err != nil {
+		if _, err := recheckWorkflowPromotion(dir, stateRoot); err != nil {
 			t.Fatalf("expected nil error when packages not installed, got: %v", err)
 		}
 	})
