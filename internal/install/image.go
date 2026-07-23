@@ -140,3 +140,13 @@ func SourceHasUVLock(sourceDir string) bool {
 	}
 	return info.Mode().IsRegular()
 }
+
+// SourceHasRequirementsTxt reports whether requirements.txt exists under sourceDir.
+func SourceHasRequirementsTxt(sourceDir string) bool {
+	p := filepath.Join(sourceDir, "requirements.txt")
+	info, err := os.Lstat(p)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
+}
