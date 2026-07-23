@@ -271,7 +271,7 @@ func resolveTOFUInteractive(fp, displayFP string, opts TrustResolveOpts) (*Trust
 		if err != nil {
 			return nil, &TrustRefusedError{Reason: err.Error()}
 		}
-		response = strings.ToLower(strings.TrimSpace(response))
+		response = strings.ToLower(strings.Join(strings.Fields(response), ""))
 
 		if response == last8 {
 			return pinPublisher(fp, displayFP, opts)
