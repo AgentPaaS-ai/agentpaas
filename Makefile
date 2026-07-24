@@ -514,8 +514,16 @@ block32-gate: block31-gate
 	@$(MAKE) golden-fast
 	@echo "Block 32 gate: PASS"
 
+# ── MCP admission conformance (unit) ──────────────────────────────────────
+
+.PHONY: mcp-admission-conformance
+mcp-admission-conformance:
+	go test ./internal/routedrun/ -count=1 -race -run 'TestAdmissionConformance_Matrix' -timeout 5m
+
+# ── MCP container e2e (docker + admission gate) ──────────────────────────
+
 .PHONY: mcp-container-e2e
-mcp-container-e2e:
+mcp-container-e2e: mcp-admission-conformance
 	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/mcpmanager/ -count=1 -race \
 	  -run 'TestE2E_CrossContainer|TestE2E_Neg_' -timeout 20m
 
