@@ -178,6 +178,10 @@ func LoadAgentYAML(projectDir string) (*AgentYAML, error) {
 	}
 	agent.normalize()
 
+	if err := ValidateMCPServiceConfig(&agent); err != nil {
+		return nil, fmt.Errorf("validate agent.yaml: %w", err)
+	}
+
 	return &agent, nil
 }
 
