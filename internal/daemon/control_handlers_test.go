@@ -631,6 +631,8 @@ type mockRuntimeDriver struct {
 	execFunc           func(ctx context.Context, id runtime.ContainerID, cmd []string) (string, string, int, error)
 	createNetworkFunc  func(ctx context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error)
 	removeNetworkFunc  func(ctx context.Context, id runtime.NetworkID) error
+	attachNetworkFunc  func(ctx context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error
+	inspectNetworkFunc func(ctx context.Context, id runtime.NetworkID) (runtime.NetworkInfo, error)
 	listContainersFunc     func(ctx context.Context, labelFilters ...string) ([]runtime.ContainerInfo, error)
 	listNetworksFunc       func(ctx context.Context, labelFilters ...string) ([]runtime.NetworkInfo, error)
 	inspectContainerIPFunc func(ctx context.Context, id runtime.ContainerID, networkID string) (string, error)
@@ -700,11 +702,17 @@ func (m *mockRuntimeDriver) RemoveNetwork(ctx context.Context, id runtime.Networ
 	return fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) InspectNetwork(context.Context, runtime.NetworkID) (runtime.NetworkInfo, error) {
+func (m *mockRuntimeDriver) InspectNetwork(ctx context.Context, id runtime.NetworkID) (runtime.NetworkInfo, error) {
+	if m.inspectNetworkFunc != nil {
+		return m.inspectNetworkFunc(ctx, id)
+	}
 	return runtime.NetworkInfo{}, fmt.Errorf("not implemented")
 }
 
-func (m *mockRuntimeDriver) AttachNetwork(context.Context, runtime.ContainerID, runtime.NetworkID) error {
+func (m *mockRuntimeDriver) AttachNetwork(ctx context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error {
+	if m.attachNetworkFunc != nil {
+		return m.attachNetworkFunc(ctx, containerID, networkID)
+	}
 	return fmt.Errorf("not implemented")
 }
 
@@ -816,6 +824,12 @@ func defaultMockRuntimeDriver() *mockRuntimeDriver {
 		},
 		statusFunc: func(_ context.Context, _ runtime.ContainerID) (runtime.ContainerStatus, error) {
 			return runtime.ContainerStatusStopped, nil
+		},
+		attachNetworkFunc: func(_ context.Context, _ runtime.ContainerID, _ runtime.NetworkID) error {
+			return nil
+		},
+		inspectNetworkFunc: func(_ context.Context, _ runtime.NetworkID) (runtime.NetworkInfo, error) {
+			return runtime.NetworkInfo{ID: "network-internal", Name: "mcp-svc-net", Internal: true}, nil
 		},
 	}
 }

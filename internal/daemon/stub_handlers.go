@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"sync"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
@@ -110,6 +112,17 @@ type controlServer struct {
 // fail-closed gate. Thread-safe; matches existing server patterns.
 func (s *controlServer) SetMCPServiceRegistry(reg *mcpmanager.ServiceRegistry) {
 	s.mcpRegistry = reg
+}
+
+// EnsureWorkflowMCPServices declares and starts every service binding for a
+// workflow. Requires s.mcpRegistry != nil. Idempotent Start on already-READY
+// services. On first failure, best-effort Stop/cleanup already-started
+// services in this call and return error.
+func (s *controlServer) EnsureWorkflowMCPServices(ctx context.Context, workflowID string, services []pack.ServiceBinding) error {
+	if s.mcpRegistry == nil {
+		return fmt.Errorf("agentpaas mcp service not enabled")
+	}
+	return s.mcpRegistry.EnsureServices(ctx, workflowID, services)
 }
 
 // compile-time interface check.

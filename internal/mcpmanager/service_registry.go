@@ -122,6 +122,59 @@ func (r *ServiceRegistry) Declare(workflowID string, binding pack.ServiceBinding
 	return inst, nil
 }
 
+// EnsureServices declares and starts every service binding for a workflow.
+// Idempotent: already-READY services are skipped. On first failure, best-effort
+// Stop/cleanup of already-started services in this call and return error.
+func (r *ServiceRegistry) EnsureServices(ctx context.Context, workflowID string, services []pack.ServiceBinding) error {
+	if len(services) == 0 {
+		return nil
+	}
+
+	var started []string // serviceBindingIDs started by this call
+
+	for _, binding := range services {
+		// Check if the service already exists and is READY.
+		inst, err := r.Get(workflowID, binding.ServiceID)
+		if err == nil && inst.State == StateReady {
+			continue // already READY, idempotent
+		}
+
+		// If not found, declare it first.
+		if err != nil {
+			digest := binding.BundleDigest
+			tools := binding.AllowedTools
+			if _, declareErr := r.Declare(workflowID, binding, digest, tools); declareErr != nil {
+				_ = r.rollbackStartedServices(ctx, workflowID, started)
+				return fmt.Errorf("ensure services %q: %w", binding.ServiceID, declareErr)
+			}
+		}
+
+		// Start the service.
+		if _, startErr := r.Start(ctx, workflowID, binding.ServiceID); startErr != nil {
+			_ = r.rollbackStartedServices(ctx, workflowID, started)
+			return fmt.Errorf("ensure services %q: %w", binding.ServiceID, startErr)
+		}
+
+		started = append(started, binding.ServiceID)
+	}
+
+	return nil
+}
+
+// rollbackStartedServices stops all services in the list (best effort).
+func (r *ServiceRegistry) rollbackStartedServices(ctx context.Context, workflowID string, serviceIDs []string) error {
+	var errs []error
+	for _, id := range serviceIDs {
+		if err := r.Stop(ctx, workflowID, id); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("rollback: %v", errs)
+	}
+	return nil
+}
+
 // Start transitions a service from DECLARED/STOPPED/FAILED/UNHEALTHY to STARTING,
 // creates a container, and optionally runs readiness checks to reach READY.
 // If the service is already READY with the same generation, it is idempotent (no-op).

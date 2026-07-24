@@ -532,6 +532,12 @@ func (d *fakeRuntimeDriver) setStatus(id runtime.ContainerID, status runtime.Con
 	d.statuses[id] = status
 }
 
+func (d *fakeRuntimeDriver) createdCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.specs)
+}
+
 // labelsMatchSpec checks whether a set of labels matches the given label
 // filters. Each filter is a "key=value" pair.
 func labelsMatchSpec(labels map[string]string, filters []string) bool {
