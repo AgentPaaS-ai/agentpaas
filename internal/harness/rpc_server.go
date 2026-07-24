@@ -36,6 +36,7 @@ type harnessRPCServer struct {
 	invoke      *rpcInvokeState
 	audit       AuditAppender
 	router      *mcpmanager.Router
+	mcpManager  *mcpmanager.Manager
 	credentials map[string]rpcCredential // Pre-loaded credential values (from sidecar file)
 
 	// Delegation trust state (B32-T03) — injected at invoke bootstrap.
@@ -324,10 +325,11 @@ func (s *harnessRPCServer) currentInvoke() *rpcInvokeState {
 }
 
 // harnessRPCServer.SetRouter sets the router.
-func (s *harnessRPCServer) SetRouter(router *mcpmanager.Router) {
+func (s *harnessRPCServer) SetRouter(router *mcpmanager.Router, manager *mcpmanager.Manager) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.router = router
+	s.mcpManager = manager
 }
 
 // SetMCPMaxConcurrency sets the caller-side MCP concurrent call limit.

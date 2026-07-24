@@ -39,6 +39,7 @@ func main() {
 		LeaseID:                  os.Getenv("AGENTPAAS_LEASE_ID"),
 		RunID:                    os.Getenv("AGENTPAAS_RUN_ID"),
 		DelegationSnapshotPath:   os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_PATH"),
+		MCPBindingSidecarPath:    os.Getenv("AGENTPAAS_MCP_BINDING_SIDECAR_PATH"),
 	}
 
 	// B30-T04: durable-path resource ceilings. On the durable
@@ -81,8 +82,17 @@ func main() {
 	manager := mcpmanager.NewManager()
 	lifecycle := mcpmanager.NewLifecycle(manager, nil, "")
 	router := mcpmanager.NewRouter(manager, lifecycle, nil, cfg.Audit)
-	server.SetRouter(router)
+	server.SetRouter(router, manager)
 	log.Printf("harness: MCP router installed (production mode, fail-closed)")
+
+	// B33-T08 c3: Load MCP binding sidecar if the daemon provided one.
+	if cfg.MCPBindingSidecarPath != "" {
+		if err := server.InstallMCPBindingSidecar(cfg.MCPBindingSidecarPath); err != nil {
+			log.Printf("harness: MCP binding sidecar load failed: %v", err)
+		} else {
+			log.Printf("harness: MCP binding sidecar loaded from %s", cfg.MCPBindingSidecarPath)
+		}
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

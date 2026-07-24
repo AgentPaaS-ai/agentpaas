@@ -228,7 +228,7 @@ func TestMCP_WithRouter_FailsClosedDoesNotAffectRealRouter(t *testing.T) {
 	recorder := &recordingAuditAppender{}
 	payload := mcpPayload(mcpServerEntry("declared", "search"))
 	s, state := newMCPTestServer(t, recorder, payload)
-	s.SetRouter(router)
+	s.SetRouter(router, manager)
 
 	req := rpcRequest{
 		ID:     "1",
@@ -505,7 +505,7 @@ func TestMCP_OneCallOneAuditRecord(t *testing.T) {
 
 	recorder := &recordingAuditAppender{}
 	s := &harnessRPCServer{audit: recorder}
-	s.SetRouter(router)
+	s.SetRouter(router, manager)
 	state := &rpcInvokeState{
 		payload:    mcpPayload(mcpServerEntry("test-svc", "search")),
 		budget:     NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
@@ -597,7 +597,7 @@ func TestMCP_RouterDeliversManagedServiceResult(t *testing.T) {
 	// Wire the router into a harness RPC server via handleMCP.
 	recorder := &recordingAuditAppender{}
 	s := &harnessRPCServer{audit: recorder}
-	s.SetRouter(router)
+	s.SetRouter(router, manager)
 	state := &rpcInvokeState{
 		// Managed binding in the payload: transport=agentpaas-service.
 		payload: map[string]any{
@@ -653,7 +653,7 @@ func TestMCP_RouterDeliversManagedServiceResult(t *testing.T) {
 	s2 := &harnessRPCServer{audit: recorder}
 	router2 := mcpmanager.NewRouter(manager, nil, nil, nil)
 	// Intentionally do NOT call SetManagedResolver on router2.
-	s2.SetRouter(router2)
+	s2.SetRouter(router2, manager)
 	state2 := &rpcInvokeState{
 		payload: map[string]any{
 			"mcp_servers": []any{
