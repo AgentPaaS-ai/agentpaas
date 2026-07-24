@@ -523,7 +523,7 @@ block33-gate: block32-gate
 	@go test ./internal/mcpmanager/... ./internal/harness/... ./internal/daemon/... -count=1 -race
 	@go test ./internal/runtime/... ./internal/routedrun/... ./internal/policy/... ./internal/pack/... -count=1 -race
 	@echo "  Python SDK"
-	@python3 -m unittest discover -s python/agentpaas_sdk/tests -v
+	@cd python && PYTHONPATH=. python3 -m unittest discover -s agentpaas_sdk/tests -v
 	@echo "  MCP container e2e (docker)"
 	@$(MAKE) mcp-container-e2e
 	@echo "  B33 adversary matrix"
@@ -545,7 +545,7 @@ block33-gate-fast:
 	@go test ./internal/mcpmanager/... ./internal/harness/... ./internal/daemon/... -count=1 -race
 	@go test ./internal/runtime/... ./internal/routedrun/... ./internal/policy/... ./internal/pack/... -count=1 -race
 	@echo "  Python SDK"
-	@python3 -m unittest discover -s python/agentpaas_sdk/tests -v
+	@cd python && PYTHONPATH=. python3 -m unittest discover -s agentpaas_sdk/tests -v
 	@echo "  B33 adversary matrix"
 	@go test ./internal/mcpmanager/... ./internal/harness/... -count=1 -race -run 'TestAdversary_B33|TestAdversaryT07|TestMCP_|TestE2E_Neg'
 	@echo "  vet"

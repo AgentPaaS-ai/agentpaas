@@ -848,15 +848,6 @@ func (r *ServiceRegistry) getOrCreateNetworkState(workflowID string) (*serviceNe
 	return state, nil
 }
 
-// detachAndCleanupContainer detaches a container from its service network
-// and is used during rollback on failure.
-func detachAndCleanupContainer(ctx context.Context, driver runtime.RuntimeDriver, containerID runtime.ContainerID, state *serviceNetworkState) {
-	if driver == nil || state == nil {
-		return
-	}
-	_ = driver.DetachNetwork(ctx, containerID, state.NetworkID)
-}
-
 // cleanupNetworkIfEmpty removes the service network for a workflow if no
 // containers remain attached. Caller must hold r.mu (write lock).
 func (r *ServiceRegistry) cleanupNetworkIfEmpty(workflowID string) {

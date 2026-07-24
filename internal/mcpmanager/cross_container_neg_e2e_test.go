@@ -289,7 +289,9 @@ except Exception as ex:
 	if !strings.HasPrefix(statusLine, "HTTP_STATUS:") {
 		return 0, stdout, fmt.Errorf("unexpected status line: %s", statusLine)
 	}
-	fmt.Sscanf(statusLine, "HTTP_STATUS:%d", &status)
+	if n, err := fmt.Sscanf(statusLine, "HTTP_STATUS:%d", &status); n != 1 || err != nil {
+		return 0, stdout, fmt.Errorf("malformed status line: %s", statusLine)
+	}
 	return status, responseBody, nil
 }
 
