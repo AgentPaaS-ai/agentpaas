@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
@@ -676,3 +677,168 @@ func TestMCP_RouterDeliversManagedServiceResult(t *testing.T) {
 		t.Fatalf("error = %q, want 'managed service resolver not configured'", resp2.Error)
 	}
 }
+// ---------------------------------------------------------------------------
+// B33-T06: Per-caller MCP concurrency enforcement
+// ---------------------------------------------------------------------------
+
+// TestMCP_CallerConcurrency_AtMaxOK proves the caller-side semaphore allows
+// up to the configured limit concurrent MCP calls.
+func TestMCP_CallerConcurrency_AtMaxOK(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_MCP", "1")
+
+	recorder := &recordingAuditAppender{}
+	payload := mcpPayload(mcpServerEntry("declared", "search"))
+	s, state := newMCPTestServer(t, recorder, payload)
+	s.SetMCPMaxConcurrency(2)
+
+	sem := s.getMCPSemaphore()
+	if sem.Capacity() != 2 {
+		t.Fatalf("semaphore capacity = %d, want 2", sem.Capacity())
+	}
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "mcp",
+		Params: map[string]any{
+			"server_id": "declared",
+			"tool":      "search",
+			"input":     map[string]any{"q": "x"},
+		},
+	}
+
+	var wg sync.WaitGroup
+	errCh := make(chan string, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp := s.handleMCP(req, state)
+			if !resp.OK {
+				errCh <- resp.Error
+			}
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for e := range errCh {
+		t.Errorf("unexpected MCP error: %s", e)
+	}
+}
+
+// TestMCP_CallerConcurrency_MaxPlusOneRejected proves that exceeding the
+// per-caller concurrency limit returns mcp_overloaded.
+func TestMCP_CallerConcurrency_MaxPlusOneRejected(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_MCP", "1")
+
+	recorder := &recordingAuditAppender{}
+	payload := mcpPayload(mcpServerEntry("declared", "search"))
+	s, state := newMCPTestServer(t, recorder, payload)
+	s.SetMCPMaxConcurrency(1)
+
+	sem := s.getMCPSemaphore()
+	release, err := sem.Acquire()
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	defer release()
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "mcp",
+		Params: map[string]any{
+			"server_id": "declared",
+			"tool":      "search",
+			"input":     map[string]any{"q": "x"},
+		},
+	}
+	resp := s.handleMCP(req, state)
+	if resp.OK {
+		t.Fatalf("response OK = true, want false (overloaded)")
+	}
+	if resp.Code != mcpmanager.ErrCodeOverloaded {
+		t.Fatalf("response Code = %q, want %q; error=%q", resp.Code, mcpmanager.ErrCodeOverloaded, resp.Error)
+	}
+}
+
+// TestMCP_InputSizeExceeded_Rejected proves oversized requests are rejected
+// with mcp_body_too_large.
+func TestMCP_InputSizeExceeded_Rejected(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_MCP", "1")
+
+	recorder := &recordingAuditAppender{}
+	payload := mcpPayload(mcpServerEntry("declared", "search"))
+	s, state := newMCPTestServer(t, recorder, payload)
+
+	bigData := make([]byte, mcpmanager.MaxRequestBytes+1)
+	for i := range bigData {
+		bigData[i] = 'x'
+	}
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "mcp",
+		Params: map[string]any{
+			"server_id": "declared",
+			"tool":      "search",
+			"input":     map[string]any{"data": string(bigData)},
+		},
+	}
+	resp := s.handleMCP(req, state)
+
+	if resp.OK {
+		t.Fatalf("response OK = true, want false (body too large)")
+	}
+	if resp.Code != mcpmanager.ErrCodeBodyTooLarge {
+		t.Fatalf("response Code = %q, want %q; error=%q", resp.Code, mcpmanager.ErrCodeBodyTooLarge, resp.Error)
+	}
+}
+
+// TestMCP_InputSizeWithinBounds_OK proves that requests at the limit succeed.
+func TestMCP_InputSizeWithinBounds_OK(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_MCP", "1")
+
+	recorder := &recordingAuditAppender{}
+	payload := mcpPayload(mcpServerEntry("declared", "search"))
+	s, state := newMCPTestServer(t, recorder, payload)
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "mcp",
+		Params: map[string]any{
+			"server_id": "declared",
+			"tool":      "search",
+			"input":     map[string]any{"q": "normal-sized"},
+		},
+	}
+	resp := s.handleMCP(req, state)
+
+	if !resp.OK {
+		t.Fatalf("response OK = false, want true; error=%q code=%q", resp.Error, resp.Code)
+	}
+}
+
+// TestMCP_mcpErrorCode_NewBoundsCodes verifies the fallback heuristics in
+// mcpErrorCode for the new T06 error categories.
+func TestMCP_mcpErrorCode_NewBoundsCodes(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode string
+	}{
+		{"overloaded_typed", &mcpmanager.TypedError{Code: mcpmanager.ErrCodeOverloaded, Message: "overloaded"}, mcpmanager.ErrCodeOverloaded},
+		{"body_typed", &mcpmanager.TypedError{Code: mcpmanager.ErrCodeBodyTooLarge, Message: "too large"}, mcpmanager.ErrCodeBodyTooLarge},
+		{"depth_typed", &mcpmanager.TypedError{Code: mcpmanager.ErrCodeDepthTooDeep, Message: "too deep"}, mcpmanager.ErrCodeDepthTooDeep},
+		{"overloaded_string", errors.New("concurrency limit 1 reached"), mcpmanager.ErrCodeOverloaded},
+		{"body_string", errors.New("request body 300000 bytes exceeds 262144 byte limit"), mcpmanager.ErrCodeBodyTooLarge},
+		{"depth_string", errors.New("JSON depth 33 exceeds 32 limit"), mcpmanager.ErrCodeDepthTooDeep},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			code := mcpErrorCode(tt.err)
+			if code != tt.wantCode {
+				t.Errorf("mcpErrorCode(%v) = %q, want %q", tt.err, code, tt.wantCode)
+			}
+		})
+	}
+}
+
