@@ -13,6 +13,10 @@ import (
 const (
 	// networkAliasLength is the byte length for random network aliases.
 	networkAliasLength = 16
+
+	// DefaultMCPServicePort is the default HTTP port that MCP service
+	// containers listen on for JSON-RPC MCP calls.
+	DefaultMCPServicePort = 8080
 )
 
 // serviceNetworkState tracks the network resources for a workflow's
@@ -93,10 +97,12 @@ func EnsureServiceNetwork(ctx context.Context, driver runtime.RuntimeDriver, wor
 	return netID, alias, nil
 }
 
-// AttachToServiceNetwork attaches a container to the service network.
+// AttachToServiceNetwork attaches a container to the service network with
+// the given DNS aliases. The aliases are network-scoped DNS names that
+// resolve to the container (e.g., "svc-feedback").
 // This is idempotent — attaching a container that is already on the
 // network succeeds without error.
-func AttachToServiceNetwork(ctx context.Context, driver runtime.RuntimeDriver, containerID runtime.ContainerID, state *serviceNetworkState) error {
+func AttachToServiceNetwork(ctx context.Context, driver runtime.RuntimeDriver, containerID runtime.ContainerID, state *serviceNetworkState, aliases []string) error {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
@@ -112,7 +118,7 @@ func AttachToServiceNetwork(ctx context.Context, driver runtime.RuntimeDriver, c
 		return nil
 	}
 
-	if err := driver.AttachNetwork(ctx, containerID, state.NetworkID); err != nil {
+	if err := driver.AttachNetworkWithAliases(ctx, containerID, state.NetworkID, aliases); err != nil {
 		return fmt.Errorf("mcpmanager: attach container %q to network %q: %w",
 			containerID, state.NetworkID, err)
 	}

@@ -293,9 +293,19 @@ func TestNetwork_CreateIsIdempotent(t *testing.T) {
 	if inst2.NetworkAlias == "" {
 		t.Fatal("NetworkAlias not set on second instance")
 	}
-	// Same workflow should get same network alias.
-	if inst1.NetworkAlias != inst2.NetworkAlias {
-		t.Errorf("NetworkAlias mismatch: %s != %s", inst1.NetworkAlias, inst2.NetworkAlias)
+	// Same workflow should reuse the same service network.
+	// Each service gets its own per-instance DNS alias for routing.
+	if inst1.NetworkAlias == inst2.NetworkAlias {
+		t.Errorf("NetworkAlias should differ per service: got %q for both", inst1.NetworkAlias)
+	}
+	// Verify expected DNS alias format.
+	expectedAlias1 := serviceNetworkDNSAlias("feedback") // svc-feedback
+	expectedAlias2 := serviceNetworkDNSAlias("analyzer") // svc-analyzer
+	if inst1.NetworkAlias != expectedAlias1 {
+		t.Errorf("inst1.NetworkAlias = %q, want %q", inst1.NetworkAlias, expectedAlias1)
+	}
+	if inst2.NetworkAlias != expectedAlias2 {
+		t.Errorf("inst2.NetworkAlias = %q, want %q", inst2.NetworkAlias, expectedAlias2)
 	}
 	// But capabilities must be different (per-binding).
 	if inst1.Capability == inst2.Capability {
@@ -752,7 +762,7 @@ func TestAttach_DetachIdempotent_MultipleCalls(t *testing.T) {
 
 	// Multiple attaches should be idempotent.
 	for i := 0; i < 3; i++ {
-		if err := AttachToServiceNetwork(context.Background(), driver, containerID, state); err != nil {
+		if err := AttachToServiceNetwork(context.Background(), driver, containerID, state, nil); err != nil {
 			t.Fatalf("Attach #%d failed: %v", i+1, err)
 		}
 	}
@@ -774,7 +784,7 @@ func TestAttach_WithoutNetwork_CausesError(t *testing.T) {
 	state := newServiceNetworkState()
 	// NetworkID is empty — not created.
 
-	err := AttachToServiceNetwork(context.Background(), driver, runtime.ContainerID("c1"), state)
+	err := AttachToServiceNetwork(context.Background(), driver, runtime.ContainerID("c1"), state, nil)
 	if err == nil {
 		t.Fatal("Attach without network should fail")
 	}
