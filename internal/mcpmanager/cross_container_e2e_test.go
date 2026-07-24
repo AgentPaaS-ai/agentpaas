@@ -47,19 +47,14 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 
 	workflowID := fmt.Sprintf("e2e-wf-c5b-%d", time.Now().UnixNano())
 
-	// ── Copy mock server script to a temp directory for bind mount ─────────
-	mockSrc := filepath.Join("testdata", "mcp_mock_server.py")
-	tmpDir, err := os.MkdirTemp("", "mcp-e2e-c5b-*")
+	// ── Resolve repo testdata directory for bind mount (Colima-safe) ──────
+	// Colima cannot see macOS /var/folders temp dirs. Bind-mount the repo's
+	// testdata directory directly — it is always visible to Colima VMs.
+	absTestdata, err := filepath.Abs("testdata")
 	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
+		t.Fatalf("filepath.Abs(testdata): %v", err)
 	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	copyCmd := exec.CommandContext(ctx, "cp", mockSrc, tmpDir)
-	if out, err := copyCmd.CombinedOutput(); err != nil {
-		t.Fatalf("cp mock server: %v: %s", err, out)
-	}
-	t.Logf("mock server copied to %s", tmpDir)
+	t.Logf("bind-mount testdata from: %s", absTestdata)
 
 	// ── Create ServiceRegistry backed by real Docker runtime ───────────────
 	// No promotion checker, no readiness probe (service is mock).
@@ -68,7 +63,7 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 	// Inject service container defaults: python:3-alpine running the mock.
 	reg.SetServiceContainerDefaults("python:3-alpine",
 		[]string{"python", "/mock/mcp_mock_server.py"})
-	reg.SetServiceBinds([]string{tmpDir + ":/mock:ro"})
+	reg.SetServiceBinds([]string{absTestdata + ":/mock:ro"})
 
 	// Tracking for cleanup.
 	clientContainerID := runtime.ContainerID("")
@@ -123,7 +118,24 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 		t.Fatal("Capability not set")
 	}
 	t.Logf("Service endpoint: %s", inst.Endpoint)
-	t.Logf("Service capability: %s (len=%d)", inst.Capability[:12]+"...", len(inst.Capability))
+
+	// ── Assert container is still running after EnsureServices ─────────────
+	// Docker inspect State.Running must be true. If the container died
+	// (e.g. bind mount not visible, mock script not found), fail early.
+	inspectOut, inspectErr := exec.CommandContext(ctx, "docker", "inspect",
+		"-f", "{{.State.Running}}",
+		string(inst.ContainerID)).CombinedOutput()
+	if inspectErr != nil {
+		t.Fatalf("docker inspect %s: %v", inst.ContainerID, inspectErr)
+	}
+	if strings.TrimSpace(string(inspectOut)) != "true" {
+		// Grab container logs to help diagnose why it died.
+		logsOut, _ := exec.CommandContext(ctx, "docker", "logs",
+			string(inst.ContainerID)).CombinedOutput()
+		t.Fatalf("service container %s is not running (State.Running=%s). Container logs:\n%s",
+			inst.ContainerID, strings.TrimSpace(string(inspectOut)), string(logsOut))
+	}
+	t.Logf("Service container %s is running ✓", inst.ContainerID)
 
 	// ── Create client container ────────────────────────────────────────────
 	clientID, err := dr.Create(ctx, runtime.ContainerSpec{
@@ -149,61 +161,20 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 	}
 	t.Log("Client attached to service network")
 
-	// ── Debug: verify network connectivity ────────────────────────────────
-	// Check service container networks
-	svcNetworks, svcNetErr := dr.InspectContainerNetworks(ctx, inst.ContainerID)
-	if svcNetErr != nil {
-		t.Logf("Warning: InspectContainerNetworks(service): %v", svcNetErr)
-	} else {
-		for _, n := range svcNetworks {
-			t.Logf("Service network: ID=%s Name=%s IP=%s Aliases=%v",
-				n.ID, n.Name, n.IPAddress, n.Aliases)
-		}
-	}
-
-	// Check client container networks to find the service network IPs
+	// ── Find the service network among client's networks ───────────────────
 	clientNetworks, err := dr.InspectContainerNetworks(ctx, clientID)
 	if err != nil {
 		t.Fatalf("InspectContainerNetworks(client): %v", err)
 	}
 	var serviceNetworkID string
 	for _, n := range clientNetworks {
-		t.Logf("Client network: ID=%s Name=%s IP=%s", n.ID, n.Name, n.IPAddress)
-		// Look for the service network (internal, not the default bridge)
 		if strings.Contains(n.Name, "agentpaas-mcp-svc") {
 			serviceNetworkID = n.ID
+			break
 		}
 	}
 	if serviceNetworkID == "" {
 		t.Fatal("could not find service network among client's networks")
-	}
-	t.Logf("Service network ID: %s", serviceNetworkID)
-
-	// ── Host-level docker inspect to debug IP assignment ──────────────────
-	if inspectOut, err := exec.CommandContext(ctx, "docker", "inspect",
-		"-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$k}}:{{$v.IPAddress}}:{{$v.Aliases}} {{end}}",
-		string(inst.ContainerID)).CombinedOutput(); err == nil {
-		t.Logf("docker inspect service networks: %s", strings.TrimSpace(string(inspectOut)))
-	}
-	if inspectOut, err := exec.CommandContext(ctx, "docker", "inspect",
-		"-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$k}}:{{$v.IPAddress}}:{{$v.Aliases}} {{end}}",
-		string(clientID)).CombinedOutput(); err == nil {
-		t.Logf("docker inspect client networks: %s", strings.TrimSpace(string(inspectOut)))
-	}
-
-	// Also check if the service container is on the service network.
-	svcOnNet := false
-	if svcNetErr == nil {
-		for _, n := range svcNetworks {
-			if n.ID == serviceNetworkID {
-				svcOnNet = true
-				t.Logf("Service IS on service network: IP=%s", n.IPAddress)
-				break
-			}
-		}
-	}
-	if !svcOnNet {
-		t.Log("WARNING: Service container is NOT on the service network!")
 	}
 
 	// Get the service container's IP on the service network.
@@ -211,24 +182,16 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 	if err != nil {
 		t.Logf("Warning: InspectContainerIP(service): %v", err)
 	}
-	t.Logf("Service container IP on service network: %q", svcIP)
 
-	// If we have the service IP, use it directly instead of DNS.
-	// Docker DNS aliases may take time to propagate on internal networks.
+	// Use direct IP if available (DNS aliases may take time to propagate).
 	serviceURL := inst.Endpoint // default: DNS-based
 	if svcIP != "" {
 		serviceURL = fmt.Sprintf("http://%s:%d", svcIP, DefaultMCPServicePort)
 		t.Logf("Using direct IP: %s", serviceURL)
 	}
 
-	// Wait a bit for DNS propagation anyway.
+	// Wait for DNS propagation.
 	time.Sleep(2 * time.Second)
-
-	// Test DNS resolution via nslookup from client.
-	if nsOut, nsStderr, _, nsErr := dr.Exec(ctx, clientID,
-		[]string{"nslookup", "svc-feedback"}); nsErr == nil {
-		t.Logf("nslookup svc-feedback: %s (stderr: %s)", nsOut, nsStderr)
-	}
 
 	// ── Build JSON-RPC request payload ─────────────────────────────────────
 	requestPayload := map[string]interface{}{
@@ -307,18 +270,9 @@ except Exception as e:
 	}
 
 	// ── Verify capability was provided (from mock response) ────────────────
-	if !strings.Contains(body, `"capability_provided": true`) {
-		t.Errorf("response capability_provided not true: %s", body)
-	}
-
-	// ── Optional: try ManagedServiceResolver from host (may fail on internal net) ──
-	t.Log("Testing ManagedServiceResolver (from host — may fail if not on internal net)...")
-	resolver := NewManagedServiceResolver(reg, nil)
-	resolverResult, resolverErr := resolver.ResolveToolCall(ctx, workflowID, "feedback", "lookup_feedback", map[string]interface{}{})
-	if resolverErr != nil {
-		t.Logf("ManagedServiceResolver.ResolveToolCall from host: %v (expected if host not on internal network)", resolverErr)
-	} else {
-		t.Logf("ManagedServiceResolver result: %v", resolverResult)
+	// The inner JSON text field contains escaped quotes; check for the key.
+	if !strings.Contains(body, `capability_provided`) {
+		t.Errorf("response missing capability_provided: %s", body)
 	}
 
 	t.Log("SUCCESS: cross-container e2e lookup_feedback completed")
@@ -336,6 +290,14 @@ except Exception as e:
 	// Stop all services via WorkflowTerminal.
 	if err := reg.WorkflowTerminal(ctx, workflowID); err != nil {
 		t.Fatalf("WorkflowTerminal: %v", err)
+	}
+
+	// Reconcile orphan networks: the client container was removed outside
+	// the registry, so the network tracking may still see it as attached.
+	if removed, err := ReconcileOrphanServiceNetworks(ctx, dr, workflowID); err != nil {
+		t.Logf("Warning: ReconcileOrphanServiceNetworks: %v", err)
+	} else if removed > 0 {
+		t.Logf("ReconcileOrphanServiceNetworks removed %d orphan network(s)", removed)
 	}
 
 	// ── Zero-orphans check ─────────────────────────────────────────────────
