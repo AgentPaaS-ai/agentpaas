@@ -6,20 +6,14 @@
 ## B33 progress
 | Task | Status |
 |------|--------|
-| Preflight | DONE |
-| T01 Characterize MCP gap | DONE |
-| T02 Service package/SDK/runner | DONE |
-| T03 Durable service lifecycle | DONE |
-| T04 Service network + capability | DONE |
-| T05 Real MCP router e2e | DONE (unit e2e; daemon registry inject = T08) |
-| T06 Bounds/leases | NEXT |
-| T07 Evidence/restart | pending |
+| Preflight–T05 | DONE |
+| T06 Bounds/leases/concurrency | DONE |
+| T07 Evidence/restart/cleanup | NEXT |
 | T08 Cross-container proof | pending |
 | T09 block33-gate + adversary | pending |
 
 ## Suggested read order
 1. This file
 2. docs/execution/blocks/b33-summary.md
-3. docs/owa-records/b33-t0{1,2,3,4,5}.md
-4. internal/mcpmanager/{router,managed_resolver,service_*}.go
-5. cmd/harness/main.go (Router install)
+3. docs/owa-records/b33-t0{1..6}.md
+4. internal/mcpmanager/bounds.go
