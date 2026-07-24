@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
@@ -44,6 +45,8 @@ type AgentYAML struct {
 	Description string    `yaml:"description"`
 	Kind        string    `yaml:"kind"` // v0.3: "worker" or "mcp_service" (legacy absence means worker)
 	LLM         LLMConfig `yaml:"llm"`
+	// MCPService is the mcp_service block for kind=mcp_service packages (v0.4).
+	MCPService MCPServiceConfig `yaml:"mcp_service"`
 	// Capabilities is additive optional metadata from the package manifest (B31-T01).
 	// Stored verbatim; not schema-validated against other packages in v0.3.
 	Capabilities []DeclaredCapability `yaml:"capabilities,omitempty"`
@@ -64,6 +67,14 @@ type AgentYAML struct {
 type DeclaredCapability struct {
 	ID          string `json:"id" yaml:"id"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+}
+
+// MCPServiceConfig represents the mcp_service block in agent.yaml for
+// kind: mcp_service packages (v0.4).
+type MCPServiceConfig struct {
+	Transport      string   `yaml:"transport"`       // Only "streamable_http" is supported in v0.4.
+	Tools          []string `yaml:"tools"`           // Non-empty, unique tool names.
+	MaxConcurrency int      `yaml:"max_concurrency"` // 1..32, default 1 if omitted.
 }
 
 func (agent *AgentYAML) normalize() {
@@ -166,6 +177,10 @@ func LoadAgentYAML(projectDir string) (*AgentYAML, error) {
 		return nil, fmt.Errorf("parse agent.yaml: %w", err)
 	}
 	agent.normalize()
+
+	if err := ValidateMCPServiceConfig(&agent); err != nil {
+		return nil, fmt.Errorf("validate agent.yaml: %w", err)
+	}
 
 	return &agent, nil
 }
@@ -347,4 +362,71 @@ func rejectSymlinkPath(path string, allowMissingLeaf bool) error {
 		return fmt.Errorf("path component %s is a symlink (potential escape)", se.Path)
 	}
 	return err
+}
+
+// validMCPToolNameRegex matches the tool ID rules: [a-zA-Z][a-zA-Z0-9_.-]*
+var validMCPToolNameRegex = mkToolNameRegex()
+
+func mkToolNameRegex() *regexp.Regexp {
+	return regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_.-]*$`)
+}
+
+// ValidateMCPServiceConfig validates the mcp_service block of an agent.yaml.
+// Returns nil if the block is absent or valid; returns an error describing the
+// first violation otherwise.
+func ValidateMCPServiceConfig(agent *AgentYAML) error {
+	if agent == nil {
+		return nil
+	}
+	// If no mcp_service block and no kind=mcp_service, nothing to validate.
+	if agent.Kind != "mcp_service" && agent.MCPService.Transport == "" && len(agent.MCPService.Tools) == 0 {
+		return nil
+	}
+	// If kind=mcp_service, the mcp_service block is required.
+	if agent.Kind == "mcp_service" {
+		if agent.MCPService.Transport == "" {
+			return fmt.Errorf("mcp_service.transport is required for kind=mcp_service")
+		}
+	}
+	// If mcp_service block is present, kind must match (or be absent = legacy worker — then block is invalid).
+	if agent.MCPService.Transport != "" || len(agent.MCPService.Tools) > 0 {
+		if agent.Kind != "mcp_service" {
+			return fmt.Errorf("mcp_service block requires kind: mcp_service")
+		}
+	}
+
+	cfg := agent.MCPService
+
+	// Transport must be "streamable_http" in v0.4.
+	if cfg.Transport != "" && cfg.Transport != "streamable_http" {
+		return fmt.Errorf("mcp_service.transport must be \"streamable_http\" in v0.4, got %q", cfg.Transport)
+	}
+
+	// Tools must be non-empty and unique.
+	if len(cfg.Tools) == 0 {
+		return fmt.Errorf("mcp_service.tools must be non-empty")
+	}
+	seen := make(map[string]bool, len(cfg.Tools))
+	for _, t := range cfg.Tools {
+		if t == "" {
+			return fmt.Errorf("mcp_service.tools contains empty tool name")
+		}
+		if !validMCPToolNameRegex.MatchString(t) {
+			return fmt.Errorf("mcp_service.tools contains invalid tool name %q (must match [a-zA-Z][a-zA-Z0-9_.-]*)", t)
+		}
+		if seen[t] {
+			return fmt.Errorf("mcp_service.tools contains duplicate tool name %q", t)
+		}
+		seen[t] = true
+	}
+
+	// MaxConcurrency: 0 means default (1), validate range if set.
+	if cfg.MaxConcurrency < 0 {
+		return fmt.Errorf("mcp_service.max_concurrency must be >= 0, got %d", cfg.MaxConcurrency)
+	}
+	if cfg.MaxConcurrency > 32 {
+		return fmt.Errorf("mcp_service.max_concurrency must be <= 32, got %d", cfg.MaxConcurrency)
+	}
+
+	return nil
 }

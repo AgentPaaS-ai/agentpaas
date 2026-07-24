@@ -150,6 +150,7 @@ class Agent:
     def __init__(self) -> None:
         self._invoke_handler: InvokeHandler | None = None
         self._rpc: RPCClient | None = None
+        self._mcp_tools: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 
     def on_invoke(self, fn: InvokeHandler) -> InvokeHandler:
         self._invoke_handler = fn
@@ -519,6 +520,154 @@ class Agent:
         if isinstance(result, dict):
             return result
         return {"result": result}
+
+    # ---- MCP tool registration (B33-T02) -----------------------------------
+
+    def mcp_tool(self, name: str):
+        """Decorator that registers a callable as an MCP tool.
+
+        Raises RPCError at registration time if the name is invalid,
+        empty, or already registered.
+        """
+        import re
+
+        if not isinstance(name, str) or not name:
+            raise RPCError("tool name must be a non-empty string", "invalid_tool_name")
+
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_.-]*$", name):
+            raise RPCError(
+                f"invalid tool name {name!r} (must match [a-zA-Z][a-zA-Z0-9_.-]*)",
+                "invalid_tool_name",
+            )
+
+        if name in self._mcp_tools:
+            raise RPCError(
+                f"duplicate tool registration for {name!r}",
+                "duplicate_tool",
+            )
+
+        def decorator(fn: Callable[[dict[str, Any]], dict[str, Any]]):
+            self._mcp_tools[name] = fn
+            return fn
+
+        return decorator
+
+    def list_mcp_tools(self) -> list[str]:
+        """Return sorted list of registered MCP tool names.
+
+        Returns a copy, never the internal mutable dict keys view.
+        """
+        return sorted(self._mcp_tools.keys())
+
+    def call_mcp_tool(self, name: str, arguments: Any) -> dict[str, Any]:
+        """Dispatch an MCP tool call by name.
+
+        Raises RPCError (tool_error) if the tool raises, with bounded
+        error message (no traceback).
+
+        Args:
+            name: Registered tool name.
+            arguments: Must be a JSON object (dict). Rejects list/str/None.
+
+        Returns:
+            The tool's return value as a dict.
+        """
+        import json as _json
+
+        fn = self._mcp_tools.get(name)
+        if fn is None:
+            raise RPCError(
+                f"tool {name!r} is not registered", "unknown_tool",
+            )
+
+        if not isinstance(arguments, dict):
+            raise RPCError(
+                "arguments must be a JSON object (dict), got " + type(arguments).__name__,
+                "invalid_arguments",
+            )
+
+        # Reject reserved control fields in arguments.
+        for key in arguments:
+            if key.startswith("__agentpaas_"):
+                raise RPCError(
+                    f"arguments contain reserved key {key!r}", "reserved_key",
+                )
+
+        try:
+            result = fn(arguments)
+        except Exception as exc:
+            # Map to bounded error without traceback leakage.
+            msg = str(exc)
+            # Redact common secret patterns.
+            import re as _re
+            msg = _re.sub(r'sk-[a-zA-Z0-9]{16,}', '[REDACTED]', msg)
+            msg = _re.sub(r'[A-Za-z0-9+/]{40,}={0,2}', '[REDACTED]', msg)
+            msg = _re.sub(r'AKIA[0-9A-Z]{16}', '[REDACTED]', msg)
+            raise RPCError(f"tool {name!r} error: {msg}", "tool_error")
+
+        if not isinstance(result, dict):
+            raise RPCError(
+                "tool result must be a dict, got " + type(result).__name__,
+                "invalid_result",
+            )
+
+        # Validate JSON serializability.
+        try:
+            _json.dumps(result, separators=(",", ":"))
+        except (TypeError, ValueError) as e:
+            raise RPCError(
+                f"tool result is not JSON-serializable: {e}", "invalid_result",
+            )
+
+        # Reject reserved control fields in result.
+        for key in result:
+            if key.startswith("__agentpaas_"):
+                raise RPCError(
+                    f"result contains reserved key {key!r}", "reserved_key",
+                )
+        _validate_response_no_leaks(result)
+
+        return result
+
+    def validate_declared_tools(self, declared: list[str]) -> str | None:
+        """Validate exact set equality: every declared tool must be registered
+        AND every registered tool must be declared.
+
+        Returns None if valid, or an error message string describing the
+        mismatch.
+        """
+        registered = set(self._mcp_tools.keys())
+        declared_set = set(declared)
+
+        missing = declared_set - registered
+        if missing:
+            return f"declared tools not registered: {sorted(missing)}"
+
+        extra = registered - declared_set
+        if extra:
+            return f"registered tools not declared: {sorted(extra)}"
+
+        return None
+
+    def get_max_concurrency(self) -> int:
+        """Return the declared max_concurrency from env, or 1.
+
+        Capped to [1, 32].
+        """
+        import os as _os
+
+        raw = _os.environ.get("AGENTPAAS_MCP_MAX_CONCURRENCY", "")
+        if raw:
+            try:
+                val = int(raw)
+                if val < 1:
+                    return 1
+                if val > 32:
+                    return 32
+                return val
+            except ValueError:
+                pass
+        return 1
 
 
 agent = Agent()

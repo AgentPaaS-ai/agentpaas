@@ -119,6 +119,16 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
 	cmd.Env = appendPolicyResourceEnv(workerEnv(os.Environ(), rpcServer.Addr()), cfg.DurablePath, cfg.CPUQuotaSeconds, cfg.MaxPIDs)
+	// Service mode: set agent kind and declared tools from Config.
+	if cfg.AgentKind != "" {
+		cmd.Env = append(cmd.Env, "AGENTPAAS_AGENT_KIND="+cfg.AgentKind)
+	}
+	if cfg.MCPDeclaredTools != "" {
+		cmd.Env = append(cmd.Env, "AGENTPAAS_MCP_DECLARED_TOOLS="+cfg.MCPDeclaredTools)
+	}
+	if cfg.MCPMaxConcurrency > 0 {
+		cmd.Env = append(cmd.Env, "AGENTPAAS_MCP_MAX_CONCURRENCY="+strconv.Itoa(cfg.MCPMaxConcurrency))
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cancel()
@@ -622,11 +632,20 @@ for line in sys.stdin:
 `
 
 func workerEnv(base []string, rpcAddr string) []string {
-	env := make([]string, 0, len(base)+2)
+	env := make([]string, 0, len(base)+5)
 	pythonPath := pythonPackagePath()
 	var sawPythonPath bool
 	for _, item := range base {
 		if strings.HasPrefix(item, "AGENTPAAS_RPC_ADDR=") {
+			continue
+		}
+		if strings.HasPrefix(item, "AGENTPAAS_AGENT_KIND=") {
+			continue
+		}
+		if strings.HasPrefix(item, "AGENTPAAS_MCP_DECLARED_TOOLS=") {
+			continue
+		}
+		if strings.HasPrefix(item, "AGENTPAAS_MCP_MAX_CONCURRENCY=") {
 			continue
 		}
 		if strings.HasPrefix(item, "PYTHONPATH=") {
