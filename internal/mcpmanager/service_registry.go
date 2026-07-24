@@ -57,6 +57,10 @@ type ServiceRegistry struct {
 	// evidenceStore persists sanitized lifecycle events (B33-T07).
 	evidenceStore CallEvidenceStore
 
+	// serviceDefaults holds injectable overrides for service container
+	// image and command, intended for Docker e2e tests.
+	serviceDefaults *serviceDefaults
+
 	driver           runtime.RuntimeDriver
 	promotionChecker PromotionChecker
 	readinessProbe   ReadinessProbe
@@ -263,8 +267,10 @@ func (r *ServiceRegistry) Start(ctx context.Context, workflowID, serviceBindingI
 		return nil, fmt.Errorf("start service %q: ensure network: %w", serviceBindingID, err)
 	}
 
-	// Attach the service container to the service network.
-	if err := AttachToServiceNetwork(ctx, r.driver, containerID, networkState); err != nil {
+	// Attach the service container to the service network with DNS aliases.
+	serviceDNSAlias := serviceNetworkDNSAlias(serviceBindingID)
+	aliases := []string{serviceDNSAlias}
+	if err := AttachToServiceNetwork(ctx, r.driver, containerID, networkState, aliases); err != nil {
 		r.failInstance(key, gen, "attach network: "+err.Error())
 		_ = r.driver.Stop(context.Background(), containerID, nil)
 		_ = r.driver.Remove(context.Background(), containerID, true)
@@ -312,7 +318,8 @@ func (r *ServiceRegistry) Start(ctx context.Context, workflowID, serviceBindingI
 	}
 	inst2.mu.Lock()
 	inst2.State = StateReady
-	inst2.Endpoint = "internal://" + string(containerID) // trusted-only; T04 replaces with real endpoint
+	inst2.NetworkAlias = serviceDNSAlias
+	inst2.Endpoint = fmt.Sprintf("http://%s:%d", serviceDNSAlias, DefaultMCPServicePort)
 	inst2.UpdatedAt = time.Now().UTC()
 	// Capture lifecycle data before releasing locks.
 	wfID := inst2.WorkflowID
@@ -863,9 +870,22 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 	labels[runtime.LabelServiceGeneration] = strconv.FormatInt(gen, 10)
 	labels[runtime.LabelServiceRunID] = runID
 
+	image := "agentpaas-mcp-service:latest"
+	command := []string{"sleep", "infinity"}
+
+	// Allow test override for injectable service container defaults.
+	r.mu.RLock()
+	if r.serviceDefaults != nil && r.serviceDefaults.image != "" {
+		image = r.serviceDefaults.image
+	}
+	if r.serviceDefaults != nil && len(r.serviceDefaults.command) > 0 {
+		command = r.serviceDefaults.command
+	}
+	r.mu.RUnlock()
+
 	spec := runtime.ContainerSpec{
-		Image:   "agentpaas-mcp-service:latest", // TODO(T05): resolve from package digest
-		Command: []string{"sleep", "infinity"},
+		Image:   image,
+		Command: command,
 		Env: []string{
 			"AGENTPAAS_AGENT_KIND=mcp_service",
 			"AGENTPAAS_MCP_DECLARED_TOOLS=" + tools,
@@ -945,4 +965,56 @@ func (r *ServiceRegistry) recordLifecycleEvent(workflowID, serviceBindingID, run
 		Reason:           sanitizeEvidenceReason(reason),
 		Timestamp:        time.Now().UTC(),
 	})
+}
+
+// serviceNetworkDNSAlias sanitizes a serviceBindingID into a DNS-safe
+// network alias. Only lowercase letters, digits, and hyphens are
+// retained; everything else is replaced with "-". The result is prefixed
+// with "svc-" for stable service-level DNS within the MCP service network.
+func serviceNetworkDNSAlias(serviceBindingID string) string {
+	var b []byte
+	for _, r := range []byte(serviceBindingID) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			b = append(b, r)
+		} else if r >= 'A' && r <= 'Z' {
+			b = append(b, r+32) // lowercase
+		} else {
+			// Replace any other character with a hyphen.
+			if len(b) == 0 || b[len(b)-1] != '-' {
+				b = append(b, '-')
+			}
+		}
+	}
+	// Trim leading/trailing hyphens from the sanitized part.
+	for len(b) > 0 && b[0] == '-' {
+		b = b[1:]
+	}
+	for len(b) > 0 && b[len(b)-1] == '-' {
+		b = b[:len(b)-1]
+	}
+	if len(b) == 0 {
+		return "svc-unknown"
+	}
+	return "svc-" + string(b)
+}
+
+// serviceDefaults holds container image/command defaults for service
+// containers, overrideable for tests.
+type serviceDefaults struct {
+	image   string
+	command []string
+}
+
+// SetServiceContainerDefaults configures the default image and command
+// for MCP service containers. Intended for test injection (e.g., to
+// run a mock MCP server instead of the production image). The defaults
+// are used when no package-specific image resolution is active.
+func (r *ServiceRegistry) SetServiceContainerDefaults(image string, command []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.serviceDefaults == nil {
+		r.serviceDefaults = &serviceDefaults{}
+	}
+	r.serviceDefaults.image = image
+	r.serviceDefaults.command = command
 }
