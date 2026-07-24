@@ -113,6 +113,17 @@ func (b *MCPBridge) Start() error {
 	return nil
 }
 
+// Addr returns the listen address the bridge is bound to. Returns an empty
+// string if Start() has not been called yet.
+func (b *MCPBridge) Addr() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.listener != nil {
+		return b.listener.Addr().String()
+	}
+	return ""
+}
+
 // Close gracefully shuts down the HTTP server. It is safe to call multiple
 // times.
 func (b *MCPBridge) Close() error {
