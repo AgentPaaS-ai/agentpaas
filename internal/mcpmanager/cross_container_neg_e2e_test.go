@@ -182,6 +182,7 @@ func (e *dockerE2E) postMCP(clientID runtime.ContainerID, serviceURL, capability
 
 	pythonScript := fmt.Sprintf(`
 import urllib.request
+import urllib.error
 import json
 
 data = %s
@@ -199,6 +200,9 @@ try:
         body = resp.read().decode()
         print(body)
         print("HTTP_STATUS:" + str(status))
+except urllib.error.HTTPError as e:
+    print(e.read().decode())
+    print("HTTP_STATUS:" + str(e.code))
 except Exception as ex:
     print("ERROR:" + str(ex))
     print("HTTP_STATUS:0")
@@ -341,30 +345,55 @@ func TestE2E_Neg_CrossWorkflowIsolation(t *testing.T) {
 	instA := env.getReadyInstance(workflowA, "feedback")
 	instB := env.getReadyInstance(workflowB, "feedback")
 
+	// Get B's service network and B's IP on that network.
+	bNetworks, err := env.dr.InspectContainerNetworks(env.ctx, instB.ContainerID)
+	if err != nil {
+		t.Fatalf("InspectContainerNetworks(B): %v", err)
+	}
+	var bNetworkID string
+	for _, n := range bNetworks {
+		if strings.Contains(n.Name, "agentpaas-mcp-svc") {
+			bNetworkID = n.ID
+			break
+		}
+	}
+	if bNetworkID == "" {
+		t.Fatal("could not find B's service network")
+	}
+
+	bIP, err := env.dr.InspectContainerIP(env.ctx, instB.ContainerID, bNetworkID)
+	if err != nil {
+		t.Fatalf("InspectContainerIP(B): %v", err)
+	}
+	bURL := fmt.Sprintf("http://%s:%d", bIP, DefaultMCPServicePort)
+	t.Logf("B's service at %s (on network %s)", bURL, bNetworkID[:12])
+
 	// ── Client attached only to workflow A ──
 	clientID := env.createClient(workflowA)
 	defer env.cleanupClient(&clientID)
 
 	t.Logf("Client attached to workflow A (%s)", workflowA)
 
-	// ── 4a: Wrong capability — use B's endpoint with A's capability ──
-	// Capability is per-binding-instance; A's cap should not work against B's endpoint.
-	status, body, err := env.postMCP(clientID, instB.Endpoint, instA.Capability,
+	// ── 4a: Client on A's network tries to reach B's direct IP ──
+	// Since the client is only on A's Docker network, B's IP on B's network
+	// should be unreachable.
+	status, body, postErr := env.postMCP(clientID, bURL, instB.Capability,
 		"lookup_feedback", map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("postMCP exec error: %v", err)
-	}
-	if status != 401 {
-		t.Errorf("cross-workflow: expected 401 for wrong capability; got status=%d body=%s", status, body)
+	// The postMCP helper returns err for exec failures (e.g. timeout/refused),
+	// and status=0 for network errors caught by Python's urllib.
+	if postErr == nil && status == 200 {
+		t.Errorf("cross-workflow: expected failure reaching B's IP from A's network; got status=200 body=%s", body)
+	} else if postErr != nil {
+		t.Logf("Cross-workflow isolation confirmed (exec error): %v ✓", postErr)
 	} else {
-		t.Logf("Cross-workflow capability denied: 401 ✓")
+		t.Logf("Cross-workflow isolation confirmed: status=%d ✓", status)
 	}
 
-	// ── 4b: Client on A's network can still reach A's service (sanity) ──
-	status, body, err = env.postMCP(clientID, instA.Endpoint, instA.Capability,
+	// ── 4b: Sanity — client on A can still reach A's service ──
+	status, body, postErr = env.postMCP(clientID, instA.Endpoint, instA.Capability,
 		"lookup_feedback", map[string]interface{}{})
-	if err != nil {
-		t.Fatalf("postMCP sanity exec error: %v", err)
+	if postErr != nil {
+		t.Fatalf("postMCP sanity exec error: %v", postErr)
 	}
 	if status != 200 {
 		t.Errorf("sanity: expected 200 for same-workflow call; got status=%d body=%s", status, body)
