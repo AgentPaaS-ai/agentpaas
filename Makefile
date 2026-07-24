@@ -516,7 +516,8 @@ block32-gate: block31-gate
 
 .PHONY: mcp-container-e2e
 mcp-container-e2e:
-	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/mcpmanager/ -count=1 -race -run 'TestE2E_CrossContainer' -timeout 15m
+	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/mcpmanager/ -count=1 -race \
+	  -run 'TestE2E_CrossContainer|TestE2E_Neg_' -timeout 20m
 
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
