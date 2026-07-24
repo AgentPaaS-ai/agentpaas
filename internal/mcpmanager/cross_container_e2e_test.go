@@ -127,7 +127,7 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 
 	// ── Create client container ────────────────────────────────────────────
 	clientID, err := dr.Create(ctx, runtime.ContainerSpec{
-		Image:   "alpine:latest",
+		Image:   "python:3-alpine",
 		Command: []string{"sleep", "3600"},
 	})
 	if err != nil {
@@ -140,7 +140,7 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 		t.Fatalf("Start(client): %v", err)
 	}
 
-	// Wait for alpine to be ready.
+	// Wait for container to be ready.
 	time.Sleep(2 * time.Second)
 
 	// ── Attach client to the service network ──────────────────────────────
@@ -148,13 +148,6 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 		t.Fatalf("AttachClientContainer: %v", err)
 	}
 	t.Log("Client attached to service network")
-
-	// ── Install curl in the client container ──────────────────────────────
-	_, stderr, exitCode, err := dr.Exec(ctx, clientID,
-		[]string{"apk", "add", "--no-cache", "curl"})
-	if err != nil || exitCode != 0 {
-		t.Fatalf("apk add curl: exit=%d err=%v stderr=%s", exitCode, err, stderr)
-	}
 
 	// ── Build JSON-RPC request payload ─────────────────────────────────────
 	requestPayload := map[string]interface{}{
@@ -168,34 +161,55 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 	}
 	reqBytes, _ := json.Marshal(requestPayload)
 
-	// ── Exec curl from client to service DNS alias ─────────────────────────
-	curlCmd := []string{
-		"curl", "-s", "-w", "\n%{http_code}",
-		"-X", "POST",
-		"-H", "Content-Type: application/json",
-		"-H", CapabilityHeader + ": " + inst.Capability,
-		"-d", string(reqBytes),
-		inst.Endpoint,
-	}
+	// ── Use Python from the client container to POST to the service ────────
+	pythonScript := fmt.Sprintf(`
+import urllib.request
+import json
 
-	stdout, stderr, exitCode, err := dr.Exec(ctx, clientID, curlCmd)
-	t.Logf("curl stdout: %s", stdout)
+data = %s
+req = urllib.request.Request(
+    "%s",
+    data=json.dumps(data).encode(),
+    headers={
+        "Content-Type": "application/json",
+        "%s": "%s",
+    },
+)
+try:
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        status = resp.status
+        body = resp.read().decode()
+        print(body)
+        print("HTTP_STATUS:" + str(status))
+except Exception as e:
+    print("ERROR:" + str(e))
+    print("HTTP_STATUS:0")
+`, string(reqBytes), inst.Endpoint, CapabilityHeader, inst.Capability)
+
+	stdout, stderr, exitCode, err := dr.Exec(ctx, clientID,
+		[]string{"python", "-c", pythonScript})
+	t.Logf("Python HTTP response stdout: %s", stdout)
 	if stderr != "" {
-		t.Logf("curl stderr: %s", stderr)
+		t.Logf("Python stderr: %s", stderr)
 	}
 
 	if err != nil || exitCode != 0 {
-		// Docker exec itself failing (not curl HTTP code)
-		t.Fatalf("docker exec curl: exit=%d err=%v stderr=%s", exitCode, err, stderr)
+		// Docker exec itself failing (not HTTP code)
+		t.Fatalf("docker exec python: exit=%d err=%v stderr=%s", exitCode, err, stderr)
 	}
 
-	// Parse response: last line is HTTP status code
+	// Parse response: last line is HTTP_STATUS:<code>
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	if len(lines) < 2 {
-		t.Fatalf("unexpected curl output (expected body + status line): %s", stdout)
+		t.Fatalf("unexpected output (expected body + status line): %s", stdout)
 	}
-	httpStatus := strings.TrimSpace(lines[len(lines)-1])
+	httpStatusLine := strings.TrimSpace(lines[len(lines)-1])
 	body := strings.Join(lines[:len(lines)-1], "\n")
+
+	if !strings.HasPrefix(httpStatusLine, "HTTP_STATUS:") {
+		t.Fatalf("unexpected status line: %s", httpStatusLine)
+	}
+	httpStatus := strings.TrimPrefix(httpStatusLine, "HTTP_STATUS:")
 
 	if httpStatus != "200" {
 		t.Fatalf("HTTP status %s, body: %s", httpStatus, body)
