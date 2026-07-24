@@ -54,6 +54,9 @@ type ServiceRegistry struct {
 	// keyed by workflowID/serviceBindingID.
 	healthStates map[string]*healthState
 
+	// evidenceStore persists sanitized lifecycle events (B33-T07).
+	evidenceStore CallEvidenceStore
+
 	driver           runtime.RuntimeDriver
 	promotionChecker PromotionChecker
 	readinessProbe   ReadinessProbe
@@ -73,6 +76,14 @@ func NewServiceRegistry(driver runtime.RuntimeDriver, promotionChecker Promotion
 	}
 }
 
+// SetEvidenceStore installs the evidence store for persisting lifecycle
+// events (B33-T07). When nil, lifecycle event recording is disabled.
+func (r *ServiceRegistry) SetEvidenceStore(store CallEvidenceStore) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.evidenceStore = store
+}
+
 // Declare registers a new service instance in DECLARED state.
 // Validates that the package is promoted in the registry (when checker is available).
 // Returns an error if the service is already declared.
@@ -80,9 +91,9 @@ func (r *ServiceRegistry) Declare(workflowID string, binding pack.ServiceBinding
 	key := workflowID + "/" + binding.ServiceID
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	if _, exists := r.instances[key]; exists {
+		r.mu.Unlock()
 		return nil, fmt.Errorf("service %q already declared for workflow %q", binding.ServiceID, workflowID)
 	}
 
@@ -91,9 +102,11 @@ func (r *ServiceRegistry) Declare(workflowID string, binding pack.ServiceBinding
 		promoted, err := r.promotionChecker.IsPromoted(context.Background(),
 			binding.PackageName, binding.PackageVersion, packageDigest)
 		if err != nil {
+			r.mu.Unlock()
 			return nil, fmt.Errorf("declare service %q: promotion check: %w", binding.ServiceID, err)
 		}
 		if !promoted {
+			r.mu.Unlock()
 			return nil, fmt.Errorf("declare service %q: %w", binding.ServiceID, ErrServiceNotPromoted)
 		}
 	}
@@ -101,6 +114,10 @@ func (r *ServiceRegistry) Declare(workflowID string, binding pack.ServiceBinding
 	inst := NewServiceInstance(workflowID, binding.ServiceID,
 		binding.PackageName, binding.PackageVersion, packageDigest, declaredTools)
 	r.instances[key] = inst
+	r.mu.Unlock()
+
+	// B33-T07: record lifecycle event.
+	r.recordLifecycleEvent(workflowID, binding.ServiceID, "", "", "", 0, "", StateDeclared, "")
 
 	return inst, nil
 }
@@ -244,8 +261,18 @@ func (r *ServiceRegistry) Start(ctx context.Context, workflowID, serviceBindingI
 	inst2.State = StateReady
 	inst2.Endpoint = "internal://" + string(containerID) // trusted-only; T04 replaces with real endpoint
 	inst2.UpdatedAt = time.Now().UTC()
+	// Capture lifecycle data before releasing locks.
+	wfID := inst2.WorkflowID
+	sbID := inst2.ServiceBindingID
+	runID := inst2.RunID
+	attID := inst2.AttemptID
+	leaseID := inst2.LeaseID
+	gen = inst2.Generation
 	inst2.mu.Unlock()
 	r.mu.Unlock()
+
+	// B33-T07: record lifecycle event.
+	r.recordLifecycleEvent(wfID, sbID, runID, attID, leaseID, gen, StateStarting, StateReady, "")
 
 	return r.getCopy(key), nil
 }
@@ -259,11 +286,22 @@ func (r *ServiceRegistry) failInstance(key string, gen int64, errMsg string) {
 		return
 	}
 	inst.mu.Lock()
+	prevState := inst.State
 	inst.State = StateFailed
 	inst.LastError = sanitizeLastError(errMsg)
 	inst.UpdatedAt = time.Now().UTC()
+	// Capture lifecycle data before releasing locks.
+	wfID := inst.WorkflowID
+	sbID := inst.ServiceBindingID
+	runID := inst.RunID
+	attID := inst.AttemptID
+	leaseID := inst.LeaseID
+	gen2 := inst.Generation
 	inst.mu.Unlock()
 	r.mu.Unlock()
+
+	// B33-T07: record lifecycle event.
+	r.recordLifecycleEvent(wfID, sbID, runID, attID, leaseID, gen2, prevState, StateFailed, errMsg)
 }
 
 // Stop transitions a service to STOPPED, releasing all resources.
@@ -331,11 +369,22 @@ func (r *ServiceRegistry) Stop(ctx context.Context, workflowID, serviceBindingID
 		inst2.NetworkAlias = ""
 		inst2.Capability = ""
 		inst2.UpdatedAt = time.Now().UTC()
+		// Capture lifecycle data before releasing locks.
+		wfID := inst2.WorkflowID
+		sbID := inst2.ServiceBindingID
+		runID := inst2.RunID
+		attID := inst2.AttemptID
+		leaseID := inst2.LeaseID
+		gen2 := inst2.Generation
 		inst2.mu.Unlock()
 
 		// Check if this was the last attachment for the workflow network.
 		r.cleanupNetworkIfEmpty(workflowID)
 		r.mu.Unlock()
+
+		// B33-T07: record lifecycle event.
+		r.recordLifecycleEvent(wfID, sbID, runID, attID, leaseID, gen2, StateStopping, StateStopped, "")
+
 		return nil
 	}
 
@@ -351,18 +400,20 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	key := workflowID + "/" + serviceBindingID
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	inst, ok := r.instances[key]
 	if !ok {
+		r.mu.Unlock()
 		return fmt.Errorf("fence service %q: %w", serviceBindingID, ErrServiceNotFound)
 	}
 
 	inst.mu.Lock()
 
 	if inst.State != StateReady {
+		from := inst.State
 		inst.mu.Unlock()
-		return &ErrIllegalStateTransition{From: inst.State, To: StateFenced}
+		r.mu.Unlock()
+		return &ErrIllegalStateTransition{From: from, To: StateFenced}
 	}
 
 	inst.State = StateFenced
@@ -371,15 +422,27 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 		inst.LastError = sanitizeLastError(reason)
 	}
 
+	// Capture lifecycle data before releasing locks.
+	wfID := inst.WorkflowID
+	sbID := inst.ServiceBindingID
+	runID := inst.RunID
+	attID := inst.AttemptID
+	leaseID := inst.LeaseID
+	gen := inst.Generation
+
 	// Cancel all in-flight MCP calls for this service binding (B33-T06).
 	tracker := inst.cancelTracker
 	inst.cancelTracker = nil // release reference
 	inst.mu.Unlock()
+	r.mu.Unlock()
 
 	// Cancel outside the lock to avoid deadlocks with in-flight call cleanup.
 	if tracker != nil {
 		tracker.CancelAll()
 	}
+
+	// B33-T07: record lifecycle event.
+	r.recordLifecycleEvent(wfID, sbID, runID, attID, leaseID, gen, StateReady, StateFenced, reason)
 
 	return nil
 }
@@ -798,4 +861,28 @@ func stringsJoin(ss []string) string {
 		result += s
 	}
 	return result
+}
+
+// recordLifecycleEvent emits a lifecycle event to the evidence store.
+// Must be called WITHOUT holding r.mu or inst.mu (the store may lock).
+func (r *ServiceRegistry) recordLifecycleEvent(workflowID, serviceBindingID, runID, attemptID, leaseID string, generation int64, from, to ServiceState, reason string) {
+	r.mu.RLock()
+	store := r.evidenceStore
+	r.mu.RUnlock()
+	if store == nil {
+		return
+	}
+	_ = store.RecordLifecycleEvent(MCPServiceLifecycleEvent{
+		CorrelationID:    NewCorrelationID(),
+		WorkflowID:       workflowID,
+		ServiceBindingID: serviceBindingID,
+		RunID:            runID,
+		AttemptID:        attemptID,
+		LeaseID:          leaseID,
+		Generation:       generation,
+		FromState:        from,
+		ToState:          to,
+		Reason:           reason,
+		Timestamp:        time.Now().UTC(),
+	})
 }
