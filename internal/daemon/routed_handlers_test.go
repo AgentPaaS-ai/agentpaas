@@ -12,6 +12,7 @@ import (
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"google.golang.org/grpc/codes"
@@ -415,6 +416,10 @@ func TestWorkflowKindNotEnabledCodes(t *testing.T) {
 	if c != "agentpaas_mcp_service_not_enabled" {
 		t.Fatalf("%s", c)
 	}
+	_, b, _ = workflowKindNotEnabled("mcp_service")
+	if b != "B33" {
+		t.Fatalf("block=%s want B33", b)
+	}
 }
 
 func TestFailClosedRoutedRun_NoDocker(t *testing.T) {
@@ -653,5 +658,59 @@ func TestCreateWorkflow_NotEnabled(t *testing.T) {
 	}
 	if resp.GetError().GetCodeName() != "agentpaas_pipeline_not_enabled" {
 		t.Fatalf("code_name=%s", resp.GetError().GetCodeName())
+	}
+}
+
+func TestFailClosedRoutedRun_MCPService_DeniedWithoutRegistry(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	err := s.failClosedRoutedRun(ctx, "demo", &routedProjectSignals{
+		HasMCPService: true,
+		HasWorkflow:   true,
+		WorkflowKind:  pack.WorkflowKindStandalone,
+	})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("code=%v", status.Code(err))
+	}
+	if !strings.Contains(err.Error(), "agentpaas_mcp_service_not_enabled") {
+		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(err.Error(), "B33") {
+		t.Fatalf("err=%v should mention B33", err)
+	}
+	if strings.Contains(err.Error(), "B29") {
+		t.Fatalf("err=%v must not mention B29", err)
+	}
+	// No Docker resources created.
+	runs, lerr := s.runStore.ListRuns(ctx, "")
+	if lerr != nil {
+		t.Fatal(lerr)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("runs leaked: %d", len(runs))
+	}
+}
+
+func TestFailClosedRoutedRun_MCPService_AllowedWithRegistry(t *testing.T) {
+	s := newTestControlServer(t)
+	s.SetMCPServiceRegistry(mcpmanager.NewServiceRegistry(nil, nil, nil))
+	ctx := context.Background()
+
+	err := s.failClosedRoutedRun(ctx, "demo", &routedProjectSignals{
+		HasMCPService: true,
+		HasWorkflow:   true,
+		WorkflowKind:  pack.WorkflowKindStandalone,
+	})
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	// No Docker resources created.
+	runs, lerr := s.runStore.ListRuns(ctx, "")
+	if lerr != nil {
+		t.Fatal(lerr)
+	}
+	if len(runs) != 0 {
+		t.Fatalf("runs leaked: %d", len(runs))
 	}
 }
