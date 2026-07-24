@@ -140,16 +140,17 @@ func envInt(key string, defaultVal int) int {
 	return defaultVal
 }
 
-// buildConfig constructs a harness.Config from environment variables.
-// Extracted from main() to allow test coverage of env var wiring.
+// buildConfig constructs harness.Config from env.
+// Durable-path /invoke timeout is Server.invokeTimeoutForPayload (TimeEnvelope-derived).
+// Config.InvokeTimeout is only the v0.2.3 legacy/compat fallback when no envelope is present.
 func buildConfig() harness.Config {
 	return harness.Config{
 		Addr:            envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
 		AgentPath:       envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
 		Python:          detectPython(),
-		ImportTimeout:   envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),
-		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second),
-		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second),
+		ImportTimeout:   envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),  // legacy/compat default
+		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy/compat fallback; durable uses invokeTimeoutForPayload
+		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy/compat operational grace
 		StdoutPath:      envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
 		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
 		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
