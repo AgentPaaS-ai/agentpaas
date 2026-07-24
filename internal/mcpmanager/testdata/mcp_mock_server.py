@@ -9,6 +9,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import os
 import sys
+import time
 
 
 CAP_HEADER = os.environ.get("MCP_CAP_HEADER", "X-AgentPaaS-MCP-Capability")
@@ -98,6 +99,21 @@ class MockMCPHandler(BaseHTTPRequestHandler):
                                 ],
                                 "capability_provided": bool(cap_value),
                             }),
+                        }
+                    ]
+                },
+                "id": request_id,
+            }
+        elif tool_name == "slow_tool":
+            # sleep for 30 seconds to simulate a long-running tool call
+            time.sleep(30)
+            result = {
+                "jsonrpc": "2.0",
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps({"marker": "slow-tool-completed"}),
                         }
                     ]
                 },
