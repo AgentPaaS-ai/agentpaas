@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -266,10 +267,10 @@ func (s *Server) startWorker() {
 			Stdout: worker.stdout,
 		})
 		if err := bridge.Start(); err != nil {
-			// Bridge start failure is non-fatal — the harness still
-			// serves /invoke and /readyz. Log and continue.
+			log.Printf("harness: MCP bridge start failed: %v", err)
 			_ = bridge.Close()
 		} else {
+			log.Printf("harness: MCP bridge started on %s", bridge.Addr())
 			s.mcpBridge = bridge
 		}
 	}
