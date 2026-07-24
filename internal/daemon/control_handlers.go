@@ -991,6 +991,21 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Errorf(codes.Internal, "start container: %v", err)
 	}
 
+	// B33-T08 c5a: Attach client agent container to MCP service network
+	// so it can resolve service DNS aliases for cross-container calls.
+	if mcpOK && s.mcpRegistry != nil {
+		if err := s.mcpRegistry.AttachClientContainer(ctx, runID, containerID); err != nil {
+			logBestEffort("Remove", rt.Remove(ctx, containerID, true))
+			logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			if journalKeyPath != "" {
+				logBestEffort("remove", os.RemoveAll(journalKeyPath))
+			}
+			return nil, status.Errorf(codes.Internal, "attach client to MCP service network: %v", err)
+		}
+	}
+
 	tracked := &trackedRun{
 		Container:        containerID,
 		Network:          string(netID),
@@ -1626,6 +1641,27 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 		})
 		s.updateLegacyRunStatus(ctx, runID, "failed")
 		return
+	}
+
+	// B33-T08 c5a: Attach client agent container to MCP service network.
+	if mcpOK && s.mcpRegistry != nil {
+		if err := s.mcpRegistry.AttachClientContainer(ctx, runID, containerID); err != nil {
+			logBestEffort("Remove", rt.Remove(ctx, containerID, true))
+			logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+			if journalKeyPath != "" {
+				logBestEffort("remove", os.RemoveAll(journalKeyPath))
+			}
+			s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+				"run_id":      runID,
+				"agent_name":  agentName,
+				"fail_reason": "mcp_client_attach_failed",
+				"error":       err.Error(),
+			})
+			s.updateLegacyRunStatus(ctx, runID, "failed")
+			return
+		}
 	}
 
 	// 10. Track the run.
