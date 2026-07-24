@@ -314,14 +314,19 @@ type fakeRuntimeDriver struct {
 	removedIDs map[runtime.ContainerID]bool
 	networks   map[runtime.NetworkID]runtime.NetworkSpec
 	failCreate bool // when true, Create returns an error
+
+	// attachedAliases tracks DNS aliases set per container per network.
+	// Key: containerID, Value: map[networkID][]aliases.
+	attachedAliases map[runtime.ContainerID]map[runtime.NetworkID][]string
 }
 
 func newFakeRuntimeDriver() *fakeRuntimeDriver {
 	return &fakeRuntimeDriver{
-		specs:      make(map[runtime.ContainerID]runtime.ContainerSpec),
-		statuses:   make(map[runtime.ContainerID]runtime.ContainerStatus),
-		removedIDs: make(map[runtime.ContainerID]bool),
-		networks:   make(map[runtime.NetworkID]runtime.NetworkSpec),
+		specs:           make(map[runtime.ContainerID]runtime.ContainerSpec),
+		statuses:        make(map[runtime.ContainerID]runtime.ContainerStatus),
+		removedIDs:      make(map[runtime.ContainerID]bool),
+		networks:        make(map[runtime.NetworkID]runtime.NetworkSpec),
+		attachedAliases: make(map[runtime.ContainerID]map[runtime.NetworkID][]string),
 	}
 }
 
@@ -423,6 +428,14 @@ func (d *fakeRuntimeDriver) InspectNetwork(_ context.Context, id runtime.Network
 }
 
 func (d *fakeRuntimeDriver) AttachNetwork(_ context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error {
+	return d.attachNetworkWithAliases(containerID, networkID, nil)
+}
+
+func (d *fakeRuntimeDriver) AttachNetworkWithAliases(_ context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID, aliases []string) error {
+	return d.attachNetworkWithAliases(containerID, networkID, aliases)
+}
+
+func (d *fakeRuntimeDriver) attachNetworkWithAliases(containerID runtime.ContainerID, networkID runtime.NetworkID, aliases []string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	spec, ok := d.specs[containerID]
@@ -438,6 +451,25 @@ func (d *fakeRuntimeDriver) AttachNetwork(_ context.Context, containerID runtime
 	}
 	spec.NetworkIDs = append(spec.NetworkIDs, netStr)
 	d.specs[containerID] = spec
+
+	// Record aliases for this (container, network) pair.
+	if len(aliases) > 0 {
+		if d.attachedAliases[containerID] == nil {
+			d.attachedAliases[containerID] = make(map[runtime.NetworkID][]string)
+		}
+		d.attachedAliases[containerID][networkID] = append(
+			d.attachedAliases[containerID][networkID], aliases...)
+	}
+	return nil
+}
+
+// aliasesFor returns the DNS aliases recorded for a container on a network.
+func (d *fakeRuntimeDriver) aliasesFor(containerID runtime.ContainerID, networkID runtime.NetworkID) []string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if m, ok := d.attachedAliases[containerID]; ok {
+		return m[networkID]
+	}
 	return nil
 }
 

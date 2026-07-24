@@ -398,6 +398,10 @@ func (d *statusFakeRuntimeDriver) AttachNetwork(context.Context, runtime.Contain
 	return nil
 }
 
+func (d *statusFakeRuntimeDriver) AttachNetworkWithAliases(context.Context, runtime.ContainerID, runtime.NetworkID, []string) error {
+	return nil
+}
+
 func (d *statusFakeRuntimeDriver) DetachNetwork(context.Context, runtime.ContainerID, runtime.NetworkID) error {
 	return nil
 }

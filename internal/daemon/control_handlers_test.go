@@ -716,6 +716,13 @@ func (m *mockRuntimeDriver) AttachNetwork(ctx context.Context, containerID runti
 	return fmt.Errorf("not implemented")
 }
 
+func (m *mockRuntimeDriver) AttachNetworkWithAliases(ctx context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID, aliases []string) error {
+	if m.attachNetworkFunc != nil {
+		return m.attachNetworkFunc(ctx, containerID, networkID)
+	}
+	return fmt.Errorf("not implemented")
+}
+
 func (m *mockRuntimeDriver) DetachNetwork(context.Context, runtime.ContainerID, runtime.NetworkID) error {
 	return fmt.Errorf("not implemented")
 }

@@ -90,6 +90,9 @@ func (d *delayStopDriver) InspectNetwork(ctx context.Context, id runtime.Network
 func (d *delayStopDriver) AttachNetwork(ctx context.Context, c runtime.ContainerID, n runtime.NetworkID) error {
 	return d.inner.AttachNetwork(ctx, c, n)
 }
+func (d *delayStopDriver) AttachNetworkWithAliases(ctx context.Context, c runtime.ContainerID, n runtime.NetworkID, aliases []string) error {
+	return d.inner.AttachNetworkWithAliases(ctx, c, n, aliases)
+}
 func (d *delayStopDriver) DetachNetwork(ctx context.Context, c runtime.ContainerID, n runtime.NetworkID) error {
 	return d.inner.DetachNetwork(ctx, c, n)
 }
