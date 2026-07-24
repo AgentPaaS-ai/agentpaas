@@ -150,6 +150,17 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 	t.Log("Client attached to service network")
 
 	// ── Debug: verify network connectivity ────────────────────────────────
+	// Check service container networks
+	svcNetworks, svcNetErr := dr.InspectContainerNetworks(ctx, inst.ContainerID)
+	if svcNetErr != nil {
+		t.Logf("Warning: InspectContainerNetworks(service): %v", svcNetErr)
+	} else {
+		for _, n := range svcNetworks {
+			t.Logf("Service network: ID=%s Name=%s IP=%s Aliases=%v",
+				n.ID, n.Name, n.IPAddress, n.Aliases)
+		}
+	}
+
 	// Check client container networks to find the service network IPs
 	clientNetworks, err := dr.InspectContainerNetworks(ctx, clientID)
 	if err != nil {
@@ -167,6 +178,33 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 		t.Fatal("could not find service network among client's networks")
 	}
 	t.Logf("Service network ID: %s", serviceNetworkID)
+
+	// ── Host-level docker inspect to debug IP assignment ──────────────────
+	if inspectOut, err := exec.CommandContext(ctx, "docker", "inspect",
+		"-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$k}}:{{$v.IPAddress}}:{{$v.Aliases}} {{end}}",
+		string(inst.ContainerID)).CombinedOutput(); err == nil {
+		t.Logf("docker inspect service networks: %s", strings.TrimSpace(string(inspectOut)))
+	}
+	if inspectOut, err := exec.CommandContext(ctx, "docker", "inspect",
+		"-f", "{{range $k,$v := .NetworkSettings.Networks}}{{$k}}:{{$v.IPAddress}}:{{$v.Aliases}} {{end}}",
+		string(clientID)).CombinedOutput(); err == nil {
+		t.Logf("docker inspect client networks: %s", strings.TrimSpace(string(inspectOut)))
+	}
+
+	// Also check if the service container is on the service network.
+	svcOnNet := false
+	if svcNetErr == nil {
+		for _, n := range svcNetworks {
+			if n.ID == serviceNetworkID {
+				svcOnNet = true
+				t.Logf("Service IS on service network: IP=%s", n.IPAddress)
+				break
+			}
+		}
+	}
+	if !svcOnNet {
+		t.Log("WARNING: Service container is NOT on the service network!")
+	}
 
 	// Get the service container's IP on the service network.
 	svcIP, err := dr.InspectContainerIP(ctx, inst.ContainerID, serviceNetworkID)
