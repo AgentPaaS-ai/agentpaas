@@ -264,3 +264,44 @@ mcp_service:
 		t.Fatalf("MaxConcurrency = %d, want 4", agent.MCPService.MaxConcurrency)
 	}
 }
+
+func TestLoadAgentYAML_RejectsBadMCPService(t *testing.T) {
+	projectDir := t.TempDir()
+	// Wrong transport should be rejected.
+	writeTestFile(t, projectDir, "agent.yaml", `name: bad-svc
+kind: mcp_service
+mcp_service:
+  transport: stdio
+  tools:
+    - tool1
+`)
+
+	agent, err := LoadAgentYAML(projectDir)
+	if err == nil {
+		t.Fatalf("LoadAgentYAML() error = nil, agent = %#v, want error for bad transport", agent)
+	}
+	if !strings.Contains(err.Error(), "streamable_http") {
+		t.Fatalf("error %q does not contain 'streamable_http'", err.Error())
+	}
+}
+
+func TestLoadAgentYAML_AcceptsValidWorkerYAML(t *testing.T) {
+	projectDir := t.TempDir()
+	// A standard worker agent.yaml (no mcp_service) should load fine.
+	writeTestFile(t, projectDir, "agent.yaml", `name: worker-agent
+version: 1.0.0
+runtime: python3.12
+entry: main:app
+`)
+
+	agent, err := LoadAgentYAML(projectDir)
+	if err != nil {
+		t.Fatalf("LoadAgentYAML() error = %v, want nil", err)
+	}
+	if agent == nil {
+		t.Fatal("LoadAgentYAML() = nil, want non-nil")
+	}
+	if agent.Name != "worker-agent" {
+		t.Fatalf("Name = %q, want worker-agent", agent.Name)
+	}
+}
