@@ -11,8 +11,8 @@
 | T02 Service package/SDK/runner | DONE |
 | T03 Durable service lifecycle | DONE |
 | T04 Service network + capability | DONE |
-| T05 Real MCP router e2e | NEXT |
-| T06 Bounds/leases | pending |
+| T05 Real MCP router e2e | DONE (unit e2e; daemon registry inject = T08) |
+| T06 Bounds/leases | NEXT |
 | T07 Evidence/restart | pending |
 | T08 Cross-container proof | pending |
 | T09 block33-gate + adversary | pending |
@@ -20,6 +20,6 @@
 ## Suggested read order
 1. This file
 2. docs/execution/blocks/b33-summary.md
-3. docs/owa-records/b33-t0{1,2,3,4}.md
-4. internal/mcpmanager/service_{registry,network,capability}.go
-5. python/agentpaas_sdk/runner.py (service mode)
+3. docs/owa-records/b33-t0{1,2,3,4,5}.md
+4. internal/mcpmanager/{router,managed_resolver,service_*}.go
+5. cmd/harness/main.go (Router install)
