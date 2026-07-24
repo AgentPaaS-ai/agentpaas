@@ -25,6 +25,18 @@ const (
 
 	// LabelMCPServerID identifies which MCP server a container represents.
 	LabelMCPServerID = "agentpaas.mcp-server-id"
+
+	// LabelWorkflowID is the AgentPaaS workflow that owns this service instance.
+	LabelWorkflowID = "agentpaas.workflow_id"
+
+	// LabelServiceID is the logical service binding ID within the workflow.
+	LabelServiceID = "agentpaas.service_id"
+
+	// LabelServiceGeneration is the monotonic generation counter for CAS checks.
+	LabelServiceGeneration = "agentpaas.service_generation"
+
+	// LabelServiceRunID identifies the service run that owns this container.
+	LabelServiceRunID = "agentpaas.service_run_id"
 )
 
 // ManagedByValue is the value of LabelManagedBy for all AgentPaaS-managed
@@ -38,6 +50,10 @@ const (
 	ResourceTypeMCP         = "mcp"
 	ResourceTypeNetInternal = "net-internal"
 	ResourceTypeNetEgress   = "net-egress"
+	// ResourceTypeMCPServiceNet is the label value for workflow-scoped MCP
+	// service networks that carry no external route and are only attached
+	// to trusted gateway/service containers.
+	ResourceTypeMCPServiceNet = "mcp-service-net"
 )
 
 // ContainerPrefixes map role types to their container name prefixes.

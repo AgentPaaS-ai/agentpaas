@@ -704,6 +704,14 @@ func (m *mockRuntimeDriver) InspectNetwork(context.Context, runtime.NetworkID) (
 	return runtime.NetworkInfo{}, fmt.Errorf("not implemented")
 }
 
+func (m *mockRuntimeDriver) AttachNetwork(context.Context, runtime.ContainerID, runtime.NetworkID) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (m *mockRuntimeDriver) DetachNetwork(context.Context, runtime.ContainerID, runtime.NetworkID) error {
+	return fmt.Errorf("not implemented")
+}
+
 func (m *mockRuntimeDriver) InspectContainerNetworks(context.Context, runtime.ContainerID) ([]runtime.ContainerNetworkInfo, error) {
 	return nil, fmt.Errorf("not implemented")
 }
