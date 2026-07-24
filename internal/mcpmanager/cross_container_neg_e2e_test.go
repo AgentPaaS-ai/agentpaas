@@ -158,6 +158,67 @@ func (e *dockerE2E) cleanupWorkflow(workflowID string) {
 	}
 }
 
+// patchEndpointToIP replaces the service instance's Endpoint (DNS-based,
+// e.g. http://svc-feedback:8080) with a direct IP-based endpoint
+// (http://<container-ip>:8080) by inspecting the container's IP on the
+// workflow-scoped service network. This ensures ManagedServiceResolver
+// calls from the host reach the actual service instead of failing on
+// Docker DNS resolution.
+func (e *dockerE2E) patchEndpointToIP(workflowID, serviceID string) {
+	e.t.Helper()
+
+	// Get a copy to read ContainerID without extra locking.
+	inst, err := e.reg.Get(workflowID, serviceID)
+	if err != nil {
+		e.t.Fatalf("patchEndpointToIP: Get: %v", err)
+	}
+	if inst.ContainerID == "" {
+		e.t.Fatal("patchEndpointToIP: instance has no ContainerID")
+	}
+
+	// Find the service network.
+	networks, err := e.dr.InspectContainerNetworks(e.ctx, inst.ContainerID)
+	if err != nil {
+		e.t.Fatalf("patchEndpointToIP: InspectContainerNetworks: %v", err)
+	}
+	var networkID string
+	for _, n := range networks {
+		if strings.Contains(n.Name, "agentpaas-mcp-svc") {
+			networkID = n.ID
+			break
+		}
+	}
+	if networkID == "" {
+		e.t.Fatal("patchEndpointToIP: could not find service network")
+	}
+
+	// Get the container's IP on that network.
+	ip, err := e.dr.InspectContainerIP(e.ctx, inst.ContainerID, networkID)
+	if err != nil {
+		e.t.Fatalf("patchEndpointToIP: InspectContainerIP: %v", err)
+	}
+	if ip == "" {
+		e.t.Fatal("patchEndpointToIP: empty IP")
+	}
+
+	newEndpoint := fmt.Sprintf("http://%s:%d", ip, DefaultMCPServicePort)
+	e.t.Logf("Patching endpoint from %s to %s", inst.Endpoint, newEndpoint)
+
+	// Patch the real instance under proper locking.
+	key := workflowID + "/" + serviceID
+	e.reg.mu.RLock()
+	mapped := e.reg.instances[key]
+	e.reg.mu.RUnlock()
+
+	if mapped == nil {
+		e.t.Fatalf("patchEndpointToIP: instance not in map for key %s", key)
+	}
+
+	mapped.mu.Lock()
+	mapped.Endpoint = newEndpoint
+	mapped.mu.Unlock()
+}
+
 // postMCP sends a JSON-RPC tools/call from the client container via Python
 // and returns the HTTP status code and response body.
 func (e *dockerE2E) postMCP(clientID runtime.ContainerID, serviceURL, capability string,
@@ -477,6 +538,10 @@ func TestE2E_Neg_Timeout(t *testing.T) {
 	inst := env.getReadyInstance(workflowID, "feedback")
 	t.Logf("Service ready for timeout test at %s", inst.Endpoint)
 
+	// Patch endpoint from Docker DNS alias to direct IP so the host
+	// can reach the service without Docker DNS resolution.
+	env.patchEndpointToIP(workflowID, "feedback")
+
 	// Use ManagedServiceResolver with a tight HTTP client timeout.
 	httpClient := &http.Client{Timeout: 1 * time.Second}
 	resolver := TestManagedResolverHTTPClient(env.reg, httpClient)
@@ -490,7 +555,21 @@ func TestE2E_Neg_Timeout(t *testing.T) {
 	if resolverErr == nil {
 		t.Fatal("ResolveToolCall with slow_tool: error = nil, want timeout/deadline error")
 	}
-	t.Logf("Timeout honored: %v ✓", resolverErr)
+
+	errStr := resolverErr.Error()
+	t.Logf("Timeout error: %v", errStr)
+
+	// Must contain timeout/deadline/context — NOT mere DNS failure.
+	errLower := strings.ToLower(errStr)
+	hasTimeoutMarker := strings.Contains(errLower, "timeout") ||
+		strings.Contains(errLower, "deadline") ||
+		strings.Contains(errLower, "context")
+	if !hasTimeoutMarker {
+		t.Errorf("expected timeout/deadline/context marker in error, got: %v", resolverErr)
+	}
+	if strings.Contains(errLower, "no such host") || strings.Contains(errLower, "lookup") {
+		t.Errorf("error is DNS lookup failure, not timeout: %v", resolverErr)
+	}
 
 	env.cleanupWorkflow(workflowID)
 }
@@ -516,6 +595,10 @@ func TestE2E_Neg_FenceDuringCall(t *testing.T) {
 		t.Fatalf("EnsureServices: %v", err)
 	}
 	_ = env.getReadyInstance(workflowID, "feedback")
+
+	// Patch endpoint to direct IP so ResolveToolCall reaches the
+	// actual service instead of failing on Docker DNS resolution.
+	env.patchEndpointToIP(workflowID, "feedback")
 
 	// Use a resolver with a long client timeout (we want the fence, not HTTP timeout).
 	httpClient := &http.Client{Timeout: 60 * time.Second}
@@ -543,16 +626,44 @@ func TestE2E_Neg_FenceDuringCall(t *testing.T) {
 	}
 	t.Log("Fence applied to service")
 
+	// Verify service state is FENCED.
+	instAfter, getErr := env.reg.Get(workflowID, "feedback")
+	if getErr != nil {
+		t.Fatalf("Get after fence: %v", getErr)
+	}
+	if instAfter.State != StateFenced {
+		t.Errorf("after fence, expected state FENCED, got %s", instAfter.State)
+	} else {
+		t.Logf("Service state is FENCED ✓")
+	}
+
 	// Wait for the call to complete (cancelled by fence).
 	select {
 	case callErr := <-errCh:
 		if callErr == nil {
 			t.Error("slow_tool call succeeded after fence; expected cancellation/failure")
 		} else {
-			t.Logf("Slow call cancelled after fence: %v ✓", callErr)
+			errStr := callErr.Error()
+			errLower := strings.ToLower(errStr)
+			t.Logf("Slow call cancelled after fence: %v", errStr)
+			// Must not be a mere DNS lookup failure.
+			if strings.Contains(errLower, "no such host") || strings.Contains(errLower, "lookup") {
+				t.Errorf("fence error is DNS lookup failure, not fence/cancel: %v", callErr)
+			}
 		}
 	case <-time.After(15 * time.Second):
 		t.Log("slow_tool call did not return within 15s after fence (best-effort; may be flaky)")
+	}
+
+	// After fence, a new ResolveToolCall must fail with "not ready".
+	_, afterErr := resolver.ResolveToolCall(ctx, workflowID, "feedback",
+		"lookup_feedback", map[string]interface{}{})
+	if afterErr == nil {
+		t.Error("ResolveToolCall after fence succeeded; expected 'not ready' rejection")
+	} else if !strings.Contains(strings.ToLower(afterErr.Error()), "not ready") {
+		t.Logf("Post-fence ResolveToolCall error (expected 'not ready'): %v", afterErr)
+	} else {
+		t.Logf("Post-fence ResolveToolCall rejected: %v ✓", afterErr)
 	}
 
 	env.cleanupWorkflow(workflowID)
