@@ -312,6 +312,7 @@ type fakeRuntimeDriver struct {
 	specs      map[runtime.ContainerID]runtime.ContainerSpec
 	statuses   map[runtime.ContainerID]runtime.ContainerStatus
 	removedIDs map[runtime.ContainerID]bool
+	failCreate bool // when true, Create returns an error
 }
 
 func newFakeRuntimeDriver() *fakeRuntimeDriver {
@@ -325,6 +326,9 @@ func newFakeRuntimeDriver() *fakeRuntimeDriver {
 func (d *fakeRuntimeDriver) Create(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.failCreate {
+		return "", errors.New("fake create failure")
+	}
 	d.nextID++
 	id := runtime.ContainerID("cid-" + string(rune('0'+d.nextID)))
 	d.specs[id] = spec
