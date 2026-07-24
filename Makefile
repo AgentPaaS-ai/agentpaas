@@ -525,7 +525,7 @@ mcp-admission-conformance:
 .PHONY: mcp-container-e2e
 mcp-container-e2e: mcp-admission-conformance
 	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/mcpmanager/ -count=1 -race \
-	  -run 'TestE2E_CrossContainer|TestE2E_Neg_' -timeout 20m
+	  -run 'TestE2E_CrossContainer|TestE2E_Neg_|TestE2E_OperatorPack' -timeout 25m
 
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
