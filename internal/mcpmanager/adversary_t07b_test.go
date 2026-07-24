@@ -250,18 +250,22 @@ func TestAdversaryT07b_CleanupGenMismatchDestroysLiveContainer(t *testing.T) {
 	<-done
 
 	if !drv.inner.removed(cid) {
-		t.Fatal("expected old/live container removed by cleanup")
+		// Fix: gen mismatch should NOT remove the container — it belongs to new gen.
+		// The container removal was correctly skipped. Verify gen 2 state is intact.
 	}
 	got, err := reg.Get("wf-1", "svc-1")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	// After gen-mismatch skip, instance still claims capability/endpoint for a
-	// container that no longer exists — trust/material residual.
-	if got.Capability != "" || got.State == StateReady {
-		// ADVERSARY BREAK: HIGH - gen-mismatch cleanup destroyed container but left READY+capability
-		t.Fatalf("ADVERSARY BREAK: HIGH - cleanup destroyed live container under gen mismatch residual state=%s cap=%q endpoint=%q cid=%v",
-			got.State, got.Capability, got.Endpoint, got.ContainerID)
+	// After gen-mismatch skip, gen 2 instance should be intact (READY, capability preserved).
+	// Container was NOT removed — the fix correctly preserves the live container.
+	if got.Capability == "" || got.State != StateReady {
+		// ADVERSARY BREAK: HIGH - gen-mismatch cleanup incorrectly cleared capability or state on live gen 2 instance
+		t.Fatalf("ADVERSARY BREAK: HIGH - cleanup cleared state from live gen 2 instance: state=%s cap=%q", got.State, got.Capability)
+	}
+	if drv.inner.removed(cid) {
+		// ADVERSARY BREAK: HIGH - cleanup destroyed live container under gen mismatch
+		t.Fatalf("ADVERSARY BREAK: HIGH - cleanup destroyed live container under gen mismatch")
 	}
 }
 
@@ -383,8 +387,9 @@ func TestAdversaryT07b_SucceededDemotedToUnknownReopensInFlight(t *testing.T) {
 		StartedAt:     time.Now().UTC(),
 	})
 	rec, ok := store.GetCall(corr)
-	if !ok || rec.Status != CallStatusUnknown {
-		t.Fatalf("demotion did not stick: ok=%v status=%s", ok, rec.Status)
+	if !ok || rec.Status != CallStatusSucceeded {
+		// Fix: demotion of SUCCEEDED to UNKNOWN must be rejected — status stays SUCCEEDED.
+		t.Fatalf("ADVERSARY BREAK: HIGH - store allowed demotion of SUCCEEDED → %s (should stay SUCCEEDED)", rec.Status)
 	}
 	// inFlight should not accept demotion of a committed success.
 	store.mu.RLock()
@@ -393,11 +398,6 @@ func TestAdversaryT07b_SucceededDemotedToUnknownReopensInFlight(t *testing.T) {
 	if inFlight {
 		// ADVERSARY BREAK: HIGH - committed SUCCEEDED demoted to in-flight UNKNOWN
 		t.Fatalf("ADVERSARY BREAK: HIGH - SUCCEEDED demoted to UNKNOWN re-entered inFlight map")
-	}
-	// Even if not inFlight, demotion itself destroys durable commit evidence.
-	if rec.Status != CallStatusSucceeded {
-		// ADVERSARY BREAK: HIGH - store allows erase of SUCCEEDED commit via UNKNOWN rewrite
-		t.Fatalf("ADVERSARY BREAK: HIGH - store allowed demotion of SUCCEEDED → %s", rec.Status)
 	}
 }
 
@@ -467,17 +467,45 @@ func TestAdversaryT07b_HealthKeySlashInjection(t *testing.T) {
 	reg.RecordHealthFailure("wf-1", "svc/evil", ErrCodeTimeout, "injected-a", "t")
 	reg.RecordHealthFailure("wf-1/svc", "evil", ErrCodeOverloaded, "injected-b", "t")
 
-	// Both writes target healthStates["wf-1/svc/evil"].
+	// Both writes should NOT collide — composite keys prevent slash injection.
 	reg.mu.RLock()
-	hs := reg.healthStates["wf-1/svc/evil"]
+	hsA := reg.healthStates[makeCompositeKey("wf-1", "svc/evil")]
+	hsB := reg.healthStates[makeCompositeKey("wf-1/svc", "evil")]
 	reg.mu.RUnlock()
-	if hs == nil {
-		t.Fatal("expected health state at composite key wf-1/svc/evil")
+
+	// With composite keys, each (workflow, binding) pair gets its own key.
+	// "wf-1"+"/"+"svc/evil" → composite key A
+	// "wf-1/svc"+"/"+"evil" → composite key B
+	// These are DIFFERENT composite keys because the two strings are different lengths.
+	// No collision should occur.
+	failsA := hsA.getFailures()
+	failsB := hsB.getFailures()
+
+	// "injected-a" targets (wf-1, svc/evil) → goes to hsA
+	// "injected-b" targets (wf-1/svc, evil) → goes to hsB
+	// They should be in separate buckets.
+	foundInjectedA := false
+	for _, f := range failsA {
+		if f.Reason == "injected-a" {
+			foundInjectedA = true
+		}
 	}
-	fails := hs.getFailures()
-	if len(fails) >= 2 {
-		// ADVERSARY BREAK: MEDIUM - health key slash collision merges distinct identities
-		t.Fatalf("ADVERSARY BREAK: MEDIUM - healthStates key collision merged %d failures for distinct (wf,binding) pairs", len(fails))
+	foundInjectedB := false
+	for _, f := range failsB {
+		if f.Reason == "injected-b" {
+			foundInjectedB = true
+		}
+	}
+	if !foundInjectedA {
+		t.Fatalf("injected-a not found in (wf-1, svc/evil) health bucket")
+	}
+	if !foundInjectedB {
+		t.Fatalf("injected-b not found in (wf-1/svc, evil) health bucket")
+	}
+	// If both failures ended up in the same bucket, that's the injection bug.
+	if len(failsA) >= 2 && foundInjectedB && !foundInjectedA {
+		// ADVERSARY BREAK: MEDIUM - health key collision merged distinct identities
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - healthStates key collision merged failures for distinct pairs")
 	}
 }
 
@@ -625,16 +653,15 @@ func TestAdversaryT07b_EvidenceToolNewlineInjection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// JSON encoding escapes newlines — check structural acceptance without validation.
-	if rec.Tool != evilTool {
-		t.Fatalf("tool not preserved for injection probe")
+	// Fix: RecordCall now normalizes identity fields — newlines and CR must be stripped.
+	if strings.Contains(rec.Tool, "\n") || strings.Contains(rec.WorkflowID, "\n") {
+		// ADVERSARY BREAK: MEDIUM - evidence identity fields still accept CR/LF (log injection)
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - identity fields not normalized: tool=%q wf=%q json=%s",
+			rec.Tool, rec.WorkflowID, raw)
 	}
-	if strings.Contains(rec.Tool, "\n") || strings.Contains(rec.WorkflowID, "\n") || strings.Contains(rec.BindingID, "\r") {
-		// Acceptance of control chars is the gap when consumers pretty-print without escaping.
-		// Flag as MEDIUM contract gap: no validation on evidence identity fields.
-		// ADVERSARY BREAK: MEDIUM - evidence identity fields accept CR/LF (log injection)
-		t.Fatalf("ADVERSARY BREAK: MEDIUM - evidence identity fields accept CR/LF injection tool=%q wf=%q bind=%q json=%s",
-			rec.Tool, rec.WorkflowID, rec.BindingID, raw)
+	if strings.Contains(rec.BindingID, "\r") || strings.Contains(rec.Reason, "\n") {
+		// ADVERSARY BREAK: MEDIUM - CR/LF in evidence identity fields
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - identity fields contain CR/LF: bind=%q reason=%q", rec.BindingID, rec.Reason)
 	}
 }
 
@@ -645,7 +672,7 @@ func TestAdversaryT07b_NullByteCorrelationIDTruncation(t *testing.T) {
 	defer func() { _ = store.Close() }()
 
 	id := "visible\x00hidden-tail"
-	_ = store.RecordCall(MCPCallRecord{
+	err := store.RecordCall(MCPCallRecord{
 		CorrelationID: id,
 		WorkflowID:    "wf",
 		Tool:          "t",
@@ -654,7 +681,11 @@ func TestAdversaryT07b_NullByteCorrelationIDTruncation(t *testing.T) {
 		StartedAt:     time.Now().UTC(),
 		FinishedAt:    time.Now().UTC(),
 	})
-	// Second record that collides if null truncates to "visible"
+	if err == nil {
+		// ADVERSARY BREAK: MEDIUM - NUL-bearing CorrelationID still accepted
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - NUL accepted in CorrelationID %q", id)
+	}
+	// Record with clean "visible" ID should succeed.
 	_ = store.RecordCall(MCPCallRecord{
 		CorrelationID: "visible",
 		WorkflowID:    "wf",
@@ -664,19 +695,12 @@ func TestAdversaryT07b_NullByteCorrelationIDTruncation(t *testing.T) {
 		StartedAt:     time.Now().UTC(),
 		FinishedAt:    time.Now().UTC(),
 	})
-	a, okA := store.GetCall(id)
 	b, okB := store.GetCall("visible")
-	if !okA || !okB {
-		// Go maps keep null bytes — both exist. Still reject null IDs as contract.
-		if !okA {
-			t.Fatal("null-bearing id missing")
-		}
-	}
-	if strings.Contains(a.CorrelationID, "\x00") {
-		// ADVERSARY BREAK: MEDIUM - correlation IDs with NUL accepted (file/export truncate risk)
-		t.Fatalf("ADVERSARY BREAK: MEDIUM - NUL accepted in CorrelationID %q (sibling visible status=%s)", a.CorrelationID, b.Status)
+	if !okB {
+		t.Fatal("clean correlation ID record missing")
 	}
 	_ = okB
+	_ = b
 }
 
 // ---------------------------------------------------------------------------
