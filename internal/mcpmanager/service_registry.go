@@ -379,6 +379,43 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	return nil
 }
 
+// RegisterCall registers an in-flight MCP call's cancel function with the
+// service's CancelTracker (B33-T06). Returns a call ID for UnregisterCall.
+// The cancel function is invoked when Fence is called on the service.
+func (r *ServiceRegistry) RegisterCall(workflowID, serviceBindingID string, cancel context.CancelFunc) (string, error) {
+	key := workflowID + "/" + serviceBindingID
+	r.mu.RLock()
+	inst, ok := r.instances[key]
+	r.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("register call: %w", ErrServiceNotFound)
+	}
+
+	inst.mu.Lock()
+	tracker := inst.getCancelTracker()
+	callID := tracker.Register(cancel)
+	inst.mu.Unlock()
+	return callID, nil
+}
+
+// UnregisterCall removes an in-flight call from the service's CancelTracker.
+// Safe to call after the call has completed or been cancelled.
+func (r *ServiceRegistry) UnregisterCall(workflowID, serviceBindingID, callID string) {
+	key := workflowID + "/" + serviceBindingID
+	r.mu.RLock()
+	inst, ok := r.instances[key]
+	r.mu.RUnlock()
+	if !ok {
+		return
+	}
+	inst.mu.RLock()
+	tracker := inst.cancelTracker
+	inst.mu.RUnlock()
+	if tracker != nil {
+		tracker.Unregister(callID)
+	}
+}
+
 // Reconcile discovers labelled resources and validates their state.
 // After daemon restart, this revokes ambiguous leases and never trusts stale endpoints.
 //

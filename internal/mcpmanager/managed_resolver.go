@@ -39,6 +39,22 @@ func (r *ManagedServiceResolver) ResolveToolCall(ctx context.Context, workflowID
 		return nil, fmt.Errorf("managed service resolver: no registry configured")
 	}
 
+	// Marshal input early for bounds checks.
+	requestBody, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("managed service %q: marshal input: %w", bindingID, err)
+	}
+
+	// B33-T06: enforce request size bounds before dispatch.
+	if err := CheckRequestSize(requestBody); err != nil {
+		return nil, fmt.Errorf("managed service %q: %w", bindingID, err)
+	}
+
+	// B33-T06: enforce request JSON depth bounds.
+	if err := CheckJSONDepth(requestBody); err != nil {
+		return nil, fmt.Errorf("managed service %q: %w", bindingID, err)
+	}
+
 	// Get returns a deep copy — safe to read fields without locking.
 	inst, err := r.registry.Get(workflowID, bindingID)
 	if err != nil {
@@ -48,6 +64,24 @@ func (r *ManagedServiceResolver) ResolveToolCall(ctx context.Context, workflowID
 	if inst.State != StateReady {
 		return nil, fmt.Errorf("managed service %q: service not ready (state=%s)", bindingID, inst.State)
 	}
+
+	// B33-T06: service lease deadline check — if the service lease has a
+	// wall-clock deadline that has passed, reject the call.
+	if !inst.LeaseDeadline.IsZero() && time.Now().After(inst.LeaseDeadline) {
+		return nil, newTypedError(ErrCodeLeaseExpired,
+			fmt.Sprintf("managed service %q: service lease expired at %s", bindingID, inst.LeaseDeadline.Format(time.RFC3339)))
+	}
+
+	// B33-T06: register in-flight call with the service's CancelTracker so
+	// Fence can cancel it mid-flight. Use context cancellation as the cancel
+	// signal.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	callID, err := r.registry.RegisterCall(workflowID, bindingID, cancel)
+	if err != nil {
+		return nil, fmt.Errorf("managed service %q: register call: %w", bindingID, err)
+	}
+	defer r.registry.UnregisterCall(workflowID, bindingID, callID)
 
 	// Verify tool is in declared tools.
 	found := false
@@ -94,6 +128,11 @@ func (r *ManagedServiceResolver) ResolveToolCall(ctx context.Context, workflowID
 	responseBody, err := readLimitedHTTPResponseBody(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("managed service %q: read response: %w", bindingID, err)
+	}
+
+	// B33-T06: enforce response JSON depth bounds.
+	if err := CheckJSONDepth(responseBody); err != nil {
+		return nil, fmt.Errorf("managed service %q: %w", bindingID, err)
 	}
 
 	var response mcpResponse
