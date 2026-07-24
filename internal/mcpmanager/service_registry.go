@@ -725,6 +725,26 @@ func (r *ServiceRegistry) UnbindClient(ctx context.Context, workflowID, serviceB
 	return nil
 }
 
+// AttachClientContainer attaches a client agent container to the
+// workflow's MCP service network so it can resolve service DNS aliases
+// for cross-container MCP calls. No service capability is granted by
+// attachment alone — routing still requires per-binding capability tokens.
+//
+// A no-op if the workflow has no service network (no MCP services declared).
+// Idempotent: multiple calls for the same container are safe.
+func (r *ServiceRegistry) AttachClientContainer(ctx context.Context, workflowID string, clientContainerID runtime.ContainerID) error {
+	r.mu.RLock()
+	netState, ok := r.serviceNetworks[workflowID]
+	r.mu.RUnlock()
+	if !ok || netState == nil {
+		return nil // No service network, nothing to attach to.
+	}
+
+	// Use AttachToServiceNetwork with no aliases (client does not need
+	// DNS aliases on the service network — only services do).
+	return AttachToServiceNetwork(ctx, r.driver, clientContainerID, netState, nil)
+}
+
 // WorkflowTerminal stops all services for a workflow.
 func (r *ServiceRegistry) WorkflowTerminal(ctx context.Context, workflowID string) error {
 	r.mu.RLock()
