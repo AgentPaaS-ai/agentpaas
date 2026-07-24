@@ -87,6 +87,18 @@ type Config struct {
 	// Python runner so it applies policy-derived rlimits; when false,
 	// the runner falls back to the legacy fixed constants.
 	DurablePath bool
+
+	// AgentKind is the kind field from agent.yaml (e.g. "worker", "mcp_service").
+	// Set by the daemon/harness when constructing the worker. Empty means worker.
+	AgentKind string
+
+	// MCPDeclaredTools is the comma-separated list of declared tool names from
+	// the mcp_service block. Only set when AgentKind == "mcp_service".
+	MCPDeclaredTools string
+
+	// MCPMaxConcurrency is the max_concurrency from the mcp_service block.
+	// Defaults to 1 if unset. Only meaningful when AgentKind == "mcp_service".
+	MCPMaxConcurrency int
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.

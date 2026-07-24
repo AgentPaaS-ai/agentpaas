@@ -34,6 +34,19 @@ def _sanitize_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def run() -> None:
     agent_path = os.environ["AGENTPAAS_AGENT_PATH"]
     stdout_path = os.environ["AGENTPAAS_STDOUT_PATH"]
+
+    # Detect service mode from env (set by harness when agent.yaml kind=mcp_service).
+    agent_kind = os.environ.get("AGENTPAAS_AGENT_KIND", "")
+
+    if agent_kind == "mcp_service":
+        _run_service_mode(agent_path, stdout_path)
+        return
+
+    _run_worker_mode(agent_path, stdout_path)
+
+
+def _run_worker_mode(agent_path: str, stdout_path: str) -> None:
+    """Original worker/invoke mode (backward compatible)."""
     rpc_addr = os.environ["AGENTPAAS_RPC_ADDR"]
 
     protocol = os.fdopen(os.dup(1), "w", buffering=1)
@@ -79,6 +92,92 @@ def run() -> None:
                     "detail": traceback.format_exc(),
                 }
             )
+
+
+def _run_service_mode(agent_path: str, stdout_path: str) -> None:
+    """Service runner mode for kind=mcp_service (B33-T02).
+
+    No unix socket / RPC required. Reads line-delimited JSON on stdin.
+    Supports: mcp_tools_list, mcp_tools_call, shutdown.
+    Loops until EOF or shutdown; one tool returning does not exit.
+    """
+    protocol = os.fdopen(os.dup(1), "w", buffering=1)
+    sys.stdout = open(stdout_path, "a", buffering=1)
+
+    def send(value: dict[str, Any]) -> None:
+        protocol.write(json.dumps(value, separators=(",", ":")) + "\n")
+        protocol.flush()
+
+    # Load user module so @mcp_tool registrations run.
+    try:
+        _load_user_agent(agent_path)
+    except Exception:
+        send(
+            {
+                "type": "import_failed",
+                "reason": "import_failed",
+                "detail": traceback.format_exc(),
+            }
+        )
+        sys.exit(2)
+
+    # Validate tool-set equality: declared (from env) vs registered.
+    declared_raw = os.environ.get("AGENTPAAS_MCP_DECLARED_TOOLS", "")
+    declared = [t for t in declared_raw.split(",") if t] if declared_raw else []
+
+    err = agent.validate_declared_tools(declared)
+    if err:
+        send(
+            {
+                "type": "import_failed",
+                "reason": "tool_set_mismatch",
+                "detail": err,
+            }
+        )
+        sys.exit(2)
+
+    send({"type": "ready"})
+
+    # Main service loop.
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError:
+            send({
+                "type": "error", "id": "", "ok": False,
+                "error": {"code": "protocol_error", "message": "invalid JSON"},
+            })
+            continue
+
+        req_type = req.get("type", "")
+        req_id = req.get("id", "")
+
+        if req_type == "mcp_tools_list":
+            tools = agent.list_mcp_tools()
+            send({"type": "mcp_tools_list_result", "id": req_id, "ok": True, "tools": tools})
+        elif req_type == "mcp_tools_call":
+            tool = req.get("tool", "")
+            args = req.get("arguments", {})
+            try:
+                result = agent.call_mcp_tool(tool, args)
+                send({"type": "mcp_tools_result", "id": req_id, "ok": True, "result": result})
+            except Exception as e:
+                code = getattr(e, "code", "tool_error")
+                send({
+                    "type": "mcp_tools_result", "id": req_id, "ok": False,
+                    "error": {"code": code, "message": str(e)},
+                })
+        elif req_type == "shutdown":
+            send({"type": "shutdown_ack", "id": req_id})
+            break
+        else:
+            send({
+                "type": "error", "id": req_id, "ok": False,
+                "error": {"code": "unknown_type", "message": f"unknown message type {req_type!r}"},
+            })
 
 
 def _load_user_agent(agent_path: str) -> Any:
