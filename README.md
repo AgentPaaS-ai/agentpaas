@@ -26,12 +26,10 @@ records each hop: who published the original, who forked it, and what egress
 or credentials they added. Receivers can verify the provenance chain before
 accepting and running the agent.
 
-**Coming soon (v0.3–v0.4):**
-- Long-running multi-turn agents with durable invocation and checkpoints
-- Private agent catalog and capability resolution
-- Secure agent-to-agent delegation and encrypted artifact handoff
+**Coming soon (v0.4):**
 - Governed MCP services inside AgentPaaS containers
-- Bounded parent/child workflows and linear pipelines
+- Linear agent pipelines with durable stage handoffs
+- Bounded parent/child fan-out and result collation
 
 ## How it works
 
