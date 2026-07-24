@@ -339,7 +339,8 @@ func (r *ServiceRegistry) Stop(ctx context.Context, workflowID, serviceBindingID
 	return nil
 }
 
-// Fence blocks the service from accepting new calls.
+// Fence blocks the service from accepting new calls and cancels all
+// in-flight MCP calls for that service binding.
 // Only valid when READY.
 func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingID, reason string) error {
 	key := workflowID + "/" + serviceBindingID
@@ -353,9 +354,9 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	}
 
 	inst.mu.Lock()
-	defer inst.mu.Unlock()
 
 	if inst.State != StateReady {
+		inst.mu.Unlock()
 		return &ErrIllegalStateTransition{From: inst.State, To: StateFenced}
 	}
 
@@ -364,6 +365,17 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	if reason != "" {
 		inst.LastError = sanitizeLastError(reason)
 	}
+
+	// Cancel all in-flight MCP calls for this service binding (B33-T06).
+	tracker := inst.cancelTracker
+	inst.cancelTracker = nil // release reference
+	inst.mu.Unlock()
+
+	// Cancel outside the lock to avoid deadlocks with in-flight call cleanup.
+	if tracker != nil {
+		tracker.CancelAll()
+	}
+
 	return nil
 }
 
@@ -716,6 +728,8 @@ func copyInstance(inst *ServiceInstance) *ServiceInstance {
 		RunID:            inst.RunID,
 		AttemptID:        inst.AttemptID,
 		LeaseID:          inst.LeaseID,
+		LeaseDeadline:    inst.LeaseDeadline,
+		MaxConcurrency:   inst.MaxConcurrency,
 		ContainerID:      inst.ContainerID,
 		Endpoint:         inst.Endpoint,
 		NetworkAlias:     inst.NetworkAlias,
