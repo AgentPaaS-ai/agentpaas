@@ -1,34 +1,28 @@
-# Current State — As of Block 33 start
+# Current State — Block 33 in progress
 
 **Read this first** when starting work on AgentPaaS.
 
-**Shipped release:** v0.3.0 (B1–B32)  
-**Development head:** B33 in progress (v0.4 MCP services)  
-**Preflight:** `make block32-gate` dependency restored green after README topology
-truth + BUG-040 snapshot `CallerPackageDigest` fix (merge 5950bf0).  
-**Golden:** 23/23 fast tier PASS (G01–G16, G44–G45, G47, G49–G52).
+**Shipped release:** v0.3.0 (B1–B32)
+**Development head:** B33 (v0.4 AgentPaaS-container MCP services)
+**Merged:** B33-T01 baseline freeze; B33-T02 service package/SDK/runner
+**In flight:** B33-T03 durable service registry/lifecycle
 
-## What B32 added (shipped in v0.3.0)
-- `internal/delegation` — task/message/result schemas, two-sided snapshot authz,
-  gateway capability tokens, digest-bound artifact broker, TaskOutbox/TaskWaiter
-- Harness RPC: `delegate_task`, `get_task`, `list_task_events`
-- Python SDK: `Agent.delegate` / `TaskHandle`
-- `workflow.yaml` `delegations:` + `pack.BuildCommunicationSnapshot`
-- Live wiring fixes: BUG-036–043 (identity, install path, delegation trust state,
-  durable container start, doctor, plugin CLI/skill)
+## B33 progress
+| Task | Status |
+|------|--------|
+| T01 Characterize MCP gap | DONE — docs/owa-records/b33-t01-mcp-baseline.md |
+| T02 Service package/SDK/runner | DONE — mcp_tool, service mode, LoadAgentYAML validation |
+| T03 Durable service lifecycle | IN PROGRESS |
+| T04 Service network + capability | pending |
+| T05 Real MCP router e2e | pending |
+| T06 Bounds/leases | pending |
+| T07 Evidence/restart | pending |
+| T08 Cross-container proof | pending |
+| T09 block33-gate + adversary | pending |
 
-## Binaries
-Build with `make build` / `make build-all` so ldflags stamp **0.3.0-dev** until
-v0.4 version bump. Prefer `~/projects/agentpaas/bin` ahead of Homebrew.
-
-## Next
-1. **B33** — AgentPaaS-container MCP services (real router, no synthetic success)
-2. B34 — Runtime-native sequential pipelines
-3. B35 — Bounded parent/child workflows
-
-### Suggested read order
-1. This file  
-2. `docs/execution/blocks/b33-summary.md`  
-3. `docs/execution/blocks/b32-summary.md` + `b32-review-notes.md`  
-4. `docs/owa-records/b33-preflight-gate.md`  
-5. `internal/mcpmanager/` + `internal/harness/rpc_server.go` handleMCP  
+## Suggested read order
+1. This file
+2. docs/execution/blocks/b33-summary.md
+3. docs/owa-records/b33-t01-mcp-baseline.md
+4. docs/owa-records/b33-t02.md
+5. internal/mcpmanager/ + python/agentpaas_sdk/runner.py service mode
