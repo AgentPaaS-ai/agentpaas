@@ -66,10 +66,10 @@ The agent container has no direct path to the internet. Every packet goes
 through the gateway sidecar, which applies your policy. That is the only way
 out.
 
-The beauty is how the network is architected. The agent lives on a Docker
-internal-only network with no default route off the box. On top of that, an
-iptables egress firewall inside the container drops unexpected outbound
-traffic.
+The PRIMARY egress control is network topology isolation: the agent
+lives on a Docker internal-only network with no default route off the box.
+An iptables egress firewall inside the container is defense-in-depth —
+it drops unexpected outbound traffic on the container's own stack.
 
 ## Security features
 

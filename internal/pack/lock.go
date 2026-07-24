@@ -700,11 +700,11 @@ func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID strin
 		agentName := agentYAMLString(cfg.AgentYAML, "Name", "AgentName")
 		snap, err := BuildCommunicationSnapshot(
 			cfg.WorkflowYAML,
-			agentName,          // workflowID derived from agent name at pack time
-			agentName,          // tenantID defaulted to agent name at pack time
-			agentName,          // callerDeploymentID placeholder (set at deploy time)
-			agentName,          // callerPackageName from lock
-			lock.PublicKeyFingerprint, // callerPackageDigest from package AID
+			agentName,                   // workflowID derived from agent name at pack time
+			"default",                   // tenantID defaulted to "default" at pack time
+			agentName,                   // callerDeploymentID placeholder (set at deploy time)
+			agentName,                   // callerPackageName from lock
+			cfg.BuildResult.ImageDigest, // callerPackageDigest from image digest
 			0,                          // snapshotGeneration starts at 0
 		)
 		if err != nil {
