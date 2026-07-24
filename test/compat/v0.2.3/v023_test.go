@@ -505,8 +505,8 @@ func TestCharacterization_NoDurableContracts(t *testing.T) {
 // install the mcpmanager.Router.
 func TestCharacterization_MCPRouterNotInstalled(t *testing.T) {
 	t.Log("BOUNDARY: Production daemon does NOT install the mcpmanager.Router.")
-	t.Log("SOURCE: internal/harness/rpc_server.go:34 (router field, nil by default)")
-	t.Log("SOURCE: internal/harness/rpc_server.go:193 (SetRouter is test-only)")
+	t.Log("SOURCE: internal/harness/rpc_server.go:38 (router field, nil by default)")
+	t.Log("SOURCE: internal/harness/rpc_server.go:318 (SetRouter is test-only)")
 	t.Log("EVIDENCE: internal/daemon/control_handlers.go — no mcpmanager import.")
 	t.Log("EFFECT: A managed MCP call cannot be claimed from the synthetic harness fallback.")
 	t.Log("  The harness has no router; any mcp() RPC from the Python SDK fails.")
@@ -589,7 +589,7 @@ func TestCharacterization_SourceLocations(t *testing.T) {
 	t.Log("")
 	t.Log("MCP router absent in production:")
 	t.Log("  internal/daemon/control_handlers.go — no mcpmanager import")
-	t.Log("  internal/harness/rpc_server.go:193 — SetRouter, test-only")
+	t.Log("  internal/harness/rpc_server.go:318 — SetRouter, test-only")
 	t.Log("  internal/mcpmanager/router.go — Router type exists but unused by daemon")
 }
 
@@ -800,4 +800,45 @@ func TestCharacterization_MCPManagerExistsButDaemonDoesNotUseIt(t *testing.T) {
 	if info, err := os.Stat(mcpDir); err != nil || !info.IsDir() {
 		t.Fatalf("mcpmanager package directory not found (may have been removed)")
 	}
+}
+
+// TestCharacterization_MCPTimeoutInventory documents and freezes the
+// current MCP timeout constants. B33-T05 will replace the fixed 5s stdio
+// timeout with the B30 operation deadline; B33-T06 enforces call bounds.
+// This test fails if the constants are silently changed before T05/T06.
+func TestCharacterization_MCPTimeoutInventory(t *testing.T) {
+	rootDir := projectRoot(t)
+
+	// 1. stdioResponseTimeout in router.go must be exactly 5s.
+	routerSrc, err := os.ReadFile(filepath.Join(rootDir, "internal", "mcpmanager", "router.go"))
+	if err != nil {
+		t.Fatalf("read router.go: %v", err)
+	}
+	routerText := string(routerSrc)
+	if !strings.Contains(routerText, "stdioResponseTimeout       = 5 * time.Second") {
+		t.Fatal("router.go: stdioResponseTimeout constant not found or value changed from 5s — B33-T05 replaces this with B30 deadline; do not silently change before T05")
+	}
+	t.Log("router.go: stdioResponseTimeout = 5 * time.Second (frozen; T05 replaces with B30 deadline)")
+
+	// 2. Lifecycle CheckReadiness timeout (5s in lifecycle.go:333).
+	lifecycleSrc, err := os.ReadFile(filepath.Join(rootDir, "internal", "mcpmanager", "lifecycle.go"))
+	if err != nil {
+		t.Fatalf("read lifecycle.go: %v", err)
+	}
+	lifecycleText := string(lifecycleSrc)
+	if !strings.Contains(lifecycleText, "time.After(5 * time.Second)") {
+		t.Fatal("lifecycle.go: 5s readiness poll timeout not found — B33-T03 defines service readiness; document any change here")
+	}
+	t.Log("lifecycle.go: CheckReadiness poll interval = 5 * time.Second (frozen; T03 defines readiness)")
+
+	// 3. maxBodySize = 1<<20 (1 MiB) in router.go — B33-T06 enforces bounds.
+	if !strings.Contains(routerText, "maxBodySize          int64 = 1 << 20") {
+		t.Fatal("router.go: maxBodySize constant not found or value changed — B33-T06 enforces size bounds; document any change here")
+	}
+	t.Log("router.go: maxBodySize = 1 MiB (frozen; T06 enforces bounds)")
+
+	// 4. No HTTP client timeout configured on the default transport.
+	// The Router receives http.DefaultClient (no explicit timeout).
+	// T05/T06 must add explicit timeouts.
+	t.Log("router.go: No explicit HTTP client timeout configured (uses http.DefaultClient, nil transport timeout). T05/T06 must add explicit deadline propagation.")
 }
