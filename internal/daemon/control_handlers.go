@@ -929,6 +929,24 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		proxyEnv = append(proxyEnv, "AGENTPAAS_DELEGATION_SNAPSHOT_PATH=/agentpaas/delegation-snapshot.json")
 	}
 
+	// B33-T08 c4: Write MCP binding sidecar and bind-mount it read-only.
+	// If services are declared in workflow.yaml, ensure they are provisioned and
+	// write the trusted binding sidecar. If provisioning fails, fail the run.
+	mcpPath, mcpOK, mcpErr := s.prepareMCPBindingsForRun(ctx, runID, deployedDir, gatewayConfigDir)
+	if mcpErr != nil {
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		if journalKeyPath != "" {
+			logBestEffort("remove", os.RemoveAll(journalKeyPath))
+		}
+		return nil, status.Errorf(codes.Internal, "prepare MCP bindings: %v", mcpErr)
+	}
+	if mcpOK {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/mcp-bindings.json:ro", mcpPath))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_MCP_BINDING_SIDECAR_PATH=/agentpaas/mcp-bindings.json")
+	}
+
 	agentSpec := runtime.ContainerSpec{
 		Labels:     runtime.LabelsWithAgentRef(runtime.ResourceTypeAgent, runID, agentRefLabel),
 		NetworkIDs: []string{string(netID)},
@@ -1539,6 +1557,29 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 		proxyEnv = append(proxyEnv, "AGENTPAAS_DELEGATION_SNAPSHOT_PATH=/agentpaas/delegation-snapshot.json")
 	}
 
+	// B33-T08 c4: Write MCP binding sidecar and bind-mount it read-only.
+	mcpPath, mcpOK, mcpErr := s.prepareMCPBindingsForRun(ctx, runID, deployedDir, gatewayConfigDir)
+	if mcpErr != nil {
+		logBestEffort("Remove", rt.Remove(ctx, gatewayID, true))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
+		logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
+		if journalKeyPath != "" {
+			logBestEffort("remove", os.RemoveAll(journalKeyPath))
+		}
+		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
+			"run_id":      runID,
+			"agent_name":  agentName,
+			"fail_reason": "mcp_bindings_failed",
+			"error":       mcpErr.Error(),
+		})
+		s.updateLegacyRunStatus(ctx, runID, "failed")
+		return
+	}
+	if mcpOK {
+		agentBinds = append(agentBinds, fmt.Sprintf("%s:/agentpaas/mcp-bindings.json:ro", mcpPath))
+		proxyEnv = append(proxyEnv, "AGENTPAAS_MCP_BINDING_SIDECAR_PATH=/agentpaas/mcp-bindings.json")
+	}
+
 	agentSpec := runtime.ContainerSpec{
 		Labels:     runtime.Labels(runtime.ResourceTypeAgent, runID),
 		NetworkIDs: []string{string(netID)},
@@ -1714,6 +1755,8 @@ func (s *controlServer) finalizeRun(ctx context.Context, runID string, tr *track
 		if tr.JournalKeyPath != "" {
 			logBestEffort("remove", os.RemoveAll(tr.JournalKeyPath))
 		}
+		// 1c. Best-effort cleanup MCP service resources (B33-T08 c4).
+		s.cleanupMCPForRun(runID)
 		// 2. Ingest harness audit records into the daemon audit chain.
 		//    This reads harness-audit.jsonl, verifies the hash chain,
 		//    appends valid records to s.auditWriter, and rebuilds the
