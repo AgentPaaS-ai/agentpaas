@@ -73,8 +73,8 @@ func (m *Manager) Validate(servers []policy.MCPServer) error {
 		if s.Transport == "" {
 			return fmt.Errorf("MCP server %q: empty transport", s.Name)
 		}
-		if s.Transport != "stdio" && s.Transport != "http" {
-			return fmt.Errorf("MCP server %q: invalid transport %q (must be stdio or http)", s.Name, s.Transport)
+		if s.Transport != "stdio" && s.Transport != "http" && s.Transport != "agentpaas-service" {
+			return fmt.Errorf("MCP server %q: invalid transport %q (must be stdio, http, or agentpaas-service)", s.Name, s.Transport)
 		}
 		if s.Transport == "stdio" && s.Command == "" {
 			return fmt.Errorf("MCP server %q: stdio transport requires command", s.Name)

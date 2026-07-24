@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/httpjson"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
 
@@ -129,6 +130,7 @@ type Server struct {
 	ready       bool
 	importError *ErrorResponse
 	closed      bool
+	rpcServer   *harnessRPCServer
 
 	invokeMu sync.Mutex
 
@@ -225,7 +227,19 @@ func (s *Server) startWorker() {
 		return
 	}
 	s.worker = worker
+	s.rpcServer = worker.rpc
 	s.ready = true
+}
+
+// SetRouter installs the MCP protocol router on the harness RPC server.
+// Must be called before the Python worker starts invoking MCP tools.
+// When nil, the harness fails closed (no synthetic success for managed bindings).
+func (s *Server) SetRouter(router *mcpmanager.Router) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rpcServer != nil {
+		s.rpcServer.SetRouter(router)
+	}
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
