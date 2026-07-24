@@ -1,25 +1,27 @@
-# Current State — Block 33 in progress
+# Current State — Block 33 complete; B34 next
 
 **Shipped release:** v0.3.0 (B1–B32)
-**Development head:** B33 (v0.4 AgentPaaS-container MCP services)
+**Development head:** B33 DONE locally (v0.4 AgentPaaS-container MCP services)
 
 ## B33 progress
 | Task | Status |
 |------|--------|
 | Preflight–T07 | DONE |
-| T08 Cross-container proof | DONE (c1–c5c + stretch S1/S2) |
-| T09 block33-gate + adversary | NEXT |
+| T08 Cross-container + stretch | DONE |
+| T09 block33-gate + adversary | DONE |
 
-## T08 complete evidence (local, 2026-07-24)
-- B26 admission matrix includes mcp_client + mcp_service topologies PASS
-- make mcp-container-e2e PASS (admission + cross-container + negatives + operator pack)
-- TestE2E_OperatorPack_MCPFeedbackService PASS — pack service/client, real image digest, HTTP bridge, fixture marker, undeclared tool denied, zero orphans
-- Port model: MCP bridge 0.0.0.0:8080 inside service container; harness admin 127.0.0.1:8090; no host port publish; per-workflow internal DNS
+## T09 evidence (local, 2026-07-24)
+- `make block33-gate-fast` PASS (packages race, python SDK, adversary matrix, mcp-container-e2e, vet, lint, golden-fast 23/23)
+- Adversary matrix 14 rows + gap regressions
+- Pack lock: agentYAMLCanonicalMap + restart-local-daemon after build-all (G47 stable)
+- Full `make block33-gate` also runs block32 chain (long); fast gate is the B33 delta proof
+
+## Operator notes
+- After `make build`/`build-all`: `make restart-local-daemon` (or use golden-fast which does it)
 - CI is local-only (no GH runners)
+- MCP: per-workflow internal net; bridge :8080; harness admin 127.0.0.1:8090; no host publish
 
 ## Suggested read order
 1. This file
-2. docs/owa-records/b33-t08.md
-3. internal/mcpmanager/operator_pack_e2e_test.go
-4. internal/harness/mcp_bridge.go
-5. docs/execution/blocks/b33-summary.md → T09
+2. docs/owa-records/b33-t09.md
+3. docs/execution/blocks/b34-summary.md (next)
