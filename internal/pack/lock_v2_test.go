@@ -604,3 +604,201 @@ printf '{"spdxVersion":"SPDX-2.3","name":"agentpaas-v2-test"}'
 	}
 	return lock
 }
+
+// TestV2_AgentYAML_CanonicalStability verifies that an AgentLock containing
+// AgentYAML survives a WriteAgentLock→ReadAgentLock roundtrip with stable
+// canonical JSON and passing signature verification.
+// Regression test for lockCanonicalMap embedding *AgentYAML directly, which
+// caused JSON zero-value drift (nil slices → empty, missing MCPService fields)
+// that broke signature verification on roundtrip.
+func TestV2_AgentYAML_CanonicalStability(t *testing.T) {
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '{"spdxVersion":"SPDX-2.3","name":"agentpaas-canonical-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+
+	// Create AgentYAML with MCPService (nil Tools) and LLM config.
+	ay := &AgentYAML{
+		Name:    "canonical-agent",
+		Version: "1.0.0",
+		Runtime: "python3.12",
+		Entry:   "main.py",
+		LLM: LLMConfig{
+			Provider:   "openrouter",
+			Model:      "deepseek/deepseek-v4-flash",
+			Credential: "test-key",
+		},
+		MCPService: MCPServiceConfig{
+			Transport:      "streamable_http",
+			Tools:          nil, // nil slice — must be stable across roundtrip
+			MaxConcurrency: 0,
+		},
+	}
+
+	lock, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("canonical-image"),
+			ImageRef:         "canonical-test:latest",
+			BuildInputDigest: digestString("canonical-input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         ay,
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("canonical-base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock: %v", err)
+	}
+
+	// Phase 1: Pre-roundtrip signatures must verify.
+	if err := VerifyLockfileSignature(lock); err != nil {
+		t.Fatalf("VerifyLockfileSignature before roundtrip: %v", err)
+	}
+	if err := VerifyPublisherSignature(lock); err != nil {
+		t.Fatalf("VerifyPublisherSignature before roundtrip: %v", err)
+	}
+
+	// Phase 2: Capture canonical JSON before roundtrip.
+	before, err := canonicalJSON(lock)
+	if err != nil {
+		t.Fatalf("canonicalJSON before roundtrip: %v", err)
+	}
+
+	// Phase 3: Write → Read roundtrip.
+	path := filepath.Join(testSecureTempDir(t), "agent-canonical.lock")
+	if err := WriteAgentLock(lock, path); err != nil {
+		t.Fatalf("WriteAgentLock: %v", err)
+	}
+	got, err := ReadAgentLock(path)
+	if err != nil {
+		t.Fatalf("ReadAgentLock: %v", err)
+	}
+
+	// Phase 4: Post-roundtrip canonical JSON must be identical.
+	after, err := canonicalJSON(got)
+	if err != nil {
+		t.Fatalf("canonicalJSON after roundtrip: %v", err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("canonical JSON drifted after roundtrip:\nBEFORE: %s\nAFTER:  %s", before, after)
+	}
+
+	// Phase 5: Signatures must verify on the read-back lock.
+	if err := VerifyLockfileSignature(got); err != nil {
+		t.Fatalf("VerifyLockfileSignature after roundtrip: %v", err)
+	}
+	if err := VerifyPublisherSignature(got); err != nil {
+		t.Fatalf("VerifyPublisherSignature after roundtrip: %v", err)
+	}
+
+	// Phase 6: AgentYAML fields must survive roundtrip structurally.
+	if got.AgentYAML == nil {
+		t.Fatal("AgentYAML is nil after roundtrip")
+	}
+	if got.AgentYAML.Name != ay.Name {
+		t.Fatalf("AgentYAML.Name: got %q, want %q", got.AgentYAML.Name, ay.Name)
+	}
+	if got.AgentYAML.LLM.Provider != ay.LLM.Provider {
+		t.Fatalf("AgentYAML.LLM.Provider: got %q, want %q", got.AgentYAML.LLM.Provider, ay.LLM.Provider)
+	}
+	if got.AgentYAML.MCPService.Transport != ay.MCPService.Transport {
+		t.Fatalf("AgentYAML.MCPService.Transport: got %q, want %q", got.AgentYAML.MCPService.Transport, ay.MCPService.Transport)
+	}
+}
+
+// TestV2_AgentYAML_OldLock_NoMCPService verifies that reading a lock signed
+// without MCPService in agent_yaml (older format) still verifies its signature
+// after re-canonicalization. The canonical map must NOT inject zero-valued
+// MCPService fields that weren't present at signing time.
+func TestV2_AgentYAML_OldLock_NoMCPService(t *testing.T) {
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '{"spdxVersion":"SPDX-2.3","name":"agentpaas-backcompat-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+
+	// Create AgentYAML WITHOUT MCPService (simulating v0.3-era lock).
+	ay := &AgentYAML{
+		Name:    "backcompat-agent",
+		Version: "1.0.0",
+		Runtime: "python3.12",
+		Entry:   "main.py",
+		LLM: LLMConfig{
+			Provider:   "openrouter",
+			Model:      "deepseek/deepseek-v4-flash",
+			Credential: "test-key",
+		},
+		// MCPService is zero-valued (not set) — simulating old lock where
+		// this field didn't exist in the struct.
+	}
+
+	lock, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("backcompat-image"),
+			ImageRef:         "backcompat-test:latest",
+			BuildInputDigest: digestString("backcompat-input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         ay,
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("backcompat-base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock: %v", err)
+	}
+
+	// Phase 1: Signatures must verify on the fresh lock.
+	if err := VerifyLockfileSignature(lock); err != nil {
+		t.Fatalf("VerifyLockfileSignature before write: %v", err)
+	}
+
+	// The canonical JSON must NOT contain MCPService when it is zero-valued.
+	canonical, err := canonicalJSON(lock)
+	if err != nil {
+		t.Fatalf("canonicalJSON: %v", err)
+	}
+	if bytes.Contains(canonical, []byte("MCPService")) {
+		t.Fatalf("canonical JSON contains MCPService with zero values — should be omitted:\n%s", canonical)
+	}
+	if bytes.Contains(canonical, []byte("mcp_service")) {
+		t.Fatalf("canonical JSON contains mcp_service with zero values — should be omitted:\n%s", canonical)
+	}
+
+	// Phase 2: Write to disk.
+	path := filepath.Join(testSecureTempDir(t), "agent-backcompat.lock")
+	if err := WriteAgentLock(lock, path); err != nil {
+		t.Fatalf("WriteAgentLock: %v", err)
+	}
+
+	// Phase 3: Read back.
+	got, err := ReadAgentLock(path)
+	if err != nil {
+		t.Fatalf("ReadAgentLock: %v", err)
+	}
+
+	// Phase 4: Signature must still verify.
+	if err := VerifyLockfileSignature(got); err != nil {
+		t.Fatalf("VerifyLockfileSignature after roundtrip: %v", err)
+	}
+	if err := VerifyPublisherSignature(got); err != nil {
+		t.Fatalf("VerifyPublisherSignature after roundtrip: %v", err)
+	}
+}

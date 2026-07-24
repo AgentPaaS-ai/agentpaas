@@ -1241,7 +1241,7 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 		m["capabilities"] = capEntries
 	}
 	if lock.AgentYAML != nil {
-		m["agent_yaml"] = lock.AgentYAML
+		m["agent_yaml"] = agentYAMLCanonicalMap(lock.AgentYAML)
 	}
 	if lock.WorkflowYAML != nil {
 		m["workflow_yaml"] = lock.WorkflowYAML
@@ -1250,6 +1250,87 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 		m["communication_snapshot"] = lock.CommunicationSnapshot
 	}
 	return m
+}
+
+// agentYAMLCanonicalMap returns a deterministic map representation of AgentYAML
+// with snake_case keys and omitempty semantics. Zero-valued fields are excluded
+// to ensure canonical stability: locks signed before new fields were added to
+// the struct still produce the same canonical JSON when read by newer code.
+func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
+	if ay == nil {
+		return nil
+	}
+	out := make(map[string]interface{})
+	setIfNotEmpty(out, "name", ay.Name)
+	setIfNotEmpty(out, "version", ay.Version)
+	setIfNotEmpty(out, "runtime", ay.Runtime)
+	setIfNotEmpty(out, "entry", ay.Entry)
+	setIfNotEmpty(out, "description", ay.Description)
+	setIfNotEmpty(out, "kind", ay.Kind)
+
+	// LLM block.
+	if ay.LLM.Provider != "" || ay.LLM.Model != "" || ay.LLM.Credential != "" || ay.LLM.Route != "" {
+		llmMap := make(map[string]interface{})
+		setIfNotEmpty(llmMap, "provider", ay.LLM.Provider)
+		setIfNotEmpty(llmMap, "model", ay.LLM.Model)
+		setIfNotEmpty(llmMap, "credential", ay.LLM.Credential)
+		setIfNotEmpty(llmMap, "route", ay.LLM.Route)
+		out["llm"] = llmMap
+	}
+
+	// MCPService block — only include when at least one field is non-zero.
+	if ay.MCPService.Transport != "" || len(ay.MCPService.Tools) > 0 || ay.MCPService.MaxConcurrency > 0 {
+		mcpMap := make(map[string]interface{})
+		setIfNotEmpty(mcpMap, "transport", ay.MCPService.Transport)
+		if len(ay.MCPService.Tools) > 0 {
+			toolsCopy := make([]string, len(ay.MCPService.Tools))
+			copy(toolsCopy, ay.MCPService.Tools)
+			mcpMap["tools"] = toolsCopy
+		}
+		if ay.MCPService.MaxConcurrency > 0 {
+			mcpMap["max_concurrency"] = ay.MCPService.MaxConcurrency
+		}
+		out["mcp_service"] = mcpMap
+	}
+
+	// Capabilities.
+	if len(ay.Capabilities) > 0 {
+		caps := make([]map[string]interface{}, 0, len(ay.Capabilities))
+		for _, c := range ay.Capabilities {
+			caps = append(caps, map[string]interface{}{
+				"id":          c.ID,
+				"description": c.Description,
+			})
+		}
+		out["capabilities"] = caps
+	}
+
+	// Metadata block — only include when at least one field is non-empty.
+	if ay.Metadata.Name != "" || ay.Metadata.Version != "" || ay.Metadata.Description != "" {
+		metaMap := make(map[string]interface{})
+		setIfNotEmpty(metaMap, "name", ay.Metadata.Name)
+		setIfNotEmpty(metaMap, "version", ay.Metadata.Version)
+		setIfNotEmpty(metaMap, "description", ay.Metadata.Description)
+		out["metadata"] = metaMap
+	}
+
+	// Spec block — only include when at least one field is non-empty.
+	if ay.Spec.Runtime != "" || ay.Spec.Entrypoint != "" || ay.Spec.Entry != "" {
+		specMap := make(map[string]interface{})
+		setIfNotEmpty(specMap, "runtime", ay.Spec.Runtime)
+		setIfNotEmpty(specMap, "entrypoint", ay.Spec.Entrypoint)
+		setIfNotEmpty(specMap, "entry", ay.Spec.Entry)
+		out["spec"] = specMap
+	}
+
+	return out
+}
+
+// setIfNotEmpty sets m[key]=val only when val (string) is non-empty.
+func setIfNotEmpty(m map[string]interface{}, key, val string) {
+	if val != "" {
+		m[key] = val
+	}
 }
 
 func privateKeyFromMaterial(material interface{}) (*ecdsa.PrivateKey, []byte, error) {
