@@ -92,6 +92,14 @@ type ServiceInstance struct {
 	// Endpoint is the trusted-only service address; never exposed to untrusted code.
 	Endpoint string `json:"endpoint"`
 
+	// NetworkAlias is the random DNS alias for the workflow-scoped service
+	// network. NEVER exposed to agent/Python code.
+	NetworkAlias string `json:"network_alias"`
+
+	// Capability is the per-binding unguessable capability token used to
+	// authorize MCP service route requests. NEVER exposed to agent/Python code.
+	Capability string `json:"capability"`
+
 	// Declared tools from the service package manifest.
 	DeclaredTools []string `json:"declared_tools"`
 

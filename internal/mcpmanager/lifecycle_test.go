@@ -312,6 +312,7 @@ type fakeRuntimeDriver struct {
 	specs      map[runtime.ContainerID]runtime.ContainerSpec
 	statuses   map[runtime.ContainerID]runtime.ContainerStatus
 	removedIDs map[runtime.ContainerID]bool
+	networks   map[runtime.NetworkID]runtime.NetworkSpec
 	failCreate bool // when true, Create returns an error
 }
 
@@ -320,6 +321,7 @@ func newFakeRuntimeDriver() *fakeRuntimeDriver {
 		specs:      make(map[runtime.ContainerID]runtime.ContainerSpec),
 		statuses:   make(map[runtime.ContainerID]runtime.ContainerStatus),
 		removedIDs: make(map[runtime.ContainerID]bool),
+		networks:   make(map[runtime.NetworkID]runtime.NetworkSpec),
 	}
 }
 
@@ -389,16 +391,35 @@ func (d *fakeRuntimeDriver) Exec(context.Context, runtime.ContainerID, []string)
 	return "", "", -1, errors.New("not implemented")
 }
 
-func (d *fakeRuntimeDriver) CreateNetwork(context.Context, runtime.NetworkSpec) (runtime.NetworkID, error) {
-	return "", errors.New("not implemented")
+func (d *fakeRuntimeDriver) CreateNetwork(_ context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.nextID++
+	id := runtime.NetworkID("net-" + string(rune('0'+d.nextID)))
+	d.networks[id] = spec
+	return id, nil
 }
 
-func (d *fakeRuntimeDriver) RemoveNetwork(context.Context, runtime.NetworkID) error {
-	return errors.New("not implemented")
+func (d *fakeRuntimeDriver) RemoveNetwork(_ context.Context, id runtime.NetworkID) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.networks, id)
+	return nil
 }
 
-func (d *fakeRuntimeDriver) InspectNetwork(context.Context, runtime.NetworkID) (runtime.NetworkInfo, error) {
-	return runtime.NetworkInfo{}, errors.New("not implemented")
+func (d *fakeRuntimeDriver) InspectNetwork(_ context.Context, id runtime.NetworkID) (runtime.NetworkInfo, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	spec, ok := d.networks[id]
+	if !ok {
+		return runtime.NetworkInfo{}, runtime.ErrNetworkNotFound
+	}
+	return runtime.NetworkInfo{
+		ID:       string(id),
+		Name:     spec.Name,
+		Internal: spec.Internal,
+		Labels:   spec.Labels,
+	}, nil
 }
 
 func (d *fakeRuntimeDriver) AttachNetwork(_ context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error {
@@ -412,14 +433,6 @@ func (d *fakeRuntimeDriver) DetachNetwork(_ context.Context, containerID runtime
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return nil
-}
-
-func (d *fakeRuntimeDriver) InspectContainerNetworks(context.Context, runtime.ContainerID) ([]runtime.ContainerNetworkInfo, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (d *fakeRuntimeDriver) InspectContainerIP(context.Context, runtime.ContainerID, string) (string, error) {
-	return "", errors.New("not implemented")
 }
 
 func (d *fakeRuntimeDriver) ListContainers(_ context.Context, _ ...string) ([]runtime.ContainerInfo, error) {
@@ -438,8 +451,42 @@ func (d *fakeRuntimeDriver) ListContainers(_ context.Context, _ ...string) ([]ru
 	return containers, nil
 }
 
-func (d *fakeRuntimeDriver) ListNetworks(context.Context, ...string) ([]runtime.NetworkInfo, error) {
-	return nil, errors.New("not implemented")
+func (d *fakeRuntimeDriver) ListNetworks(_ context.Context, labelFilters ...string) ([]runtime.NetworkInfo, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	var result []runtime.NetworkInfo
+	for id, spec := range d.networks {
+		if !labelsMatchSpec(spec.Labels, labelFilters) {
+			continue
+		}
+		result = append(result, runtime.NetworkInfo{
+			ID:       string(id),
+			Name:     spec.Name,
+			Internal: spec.Internal,
+			Labels:   spec.Labels,
+		})
+	}
+	return result, nil
+}
+
+func (d *fakeRuntimeDriver) InspectContainerNetworks(_ context.Context, id runtime.ContainerID) ([]runtime.ContainerNetworkInfo, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	spec, ok := d.specs[id]
+	if !ok {
+		return nil, runtime.ErrContainerNotFound
+	}
+	var result []runtime.ContainerNetworkInfo
+	for _, netID := range spec.NetworkIDs {
+		result = append(result, runtime.ContainerNetworkInfo{
+			ID: netID,
+		})
+	}
+	return result, nil
+}
+
+func (d *fakeRuntimeDriver) InspectContainerIP(context.Context, runtime.ContainerID, string) (string, error) {
+	return "", errors.New("not implemented")
 }
 
 func (d *fakeRuntimeDriver) createdSpec(id runtime.ContainerID) runtime.ContainerSpec {
@@ -458,4 +505,31 @@ func (d *fakeRuntimeDriver) setStatus(id runtime.ContainerID, status runtime.Con
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.statuses[id] = status
+}
+
+// labelsMatchSpec checks whether a set of labels matches the given label
+// filters. Each filter is a "key=value" pair.
+func labelsMatchSpec(labels map[string]string, filters []string) bool {
+	if len(filters) == 0 {
+		return true
+	}
+	for _, filter := range filters {
+		key, value, ok := splitLabelFilter(filter)
+		if !ok {
+			return false
+		}
+		if labels[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func splitLabelFilter(filter string) (key, value string, ok bool) {
+	for i := 0; i < len(filter); i++ {
+		if filter[i] == '=' {
+			return filter[:i], filter[i+1:], true
+		}
+	}
+	return "", "", false
 }

@@ -394,6 +394,14 @@ func (d *statusFakeRuntimeDriver) InspectNetwork(context.Context, runtime.Networ
 	return runtime.NetworkInfo{}, nil
 }
 
+func (d *statusFakeRuntimeDriver) AttachNetwork(context.Context, runtime.ContainerID, runtime.NetworkID) error {
+	return nil
+}
+
+func (d *statusFakeRuntimeDriver) DetachNetwork(context.Context, runtime.ContainerID, runtime.NetworkID) error {
+	return nil
+}
+
 func (d *statusFakeRuntimeDriver) InspectContainerNetworks(_ context.Context, id runtime.ContainerID) ([]runtime.ContainerNetworkInfo, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
