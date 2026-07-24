@@ -50,6 +50,10 @@ type ServiceRegistry struct {
 	// keyed by workflowID.
 	serviceNetworks map[string]*serviceNetworkState
 
+	// healthStates tracks bounded failure history per service binding.
+	// keyed by workflowID/serviceBindingID.
+	healthStates map[string]*healthState
+
 	driver           runtime.RuntimeDriver
 	promotionChecker PromotionChecker
 	readinessProbe   ReadinessProbe
@@ -62,6 +66,7 @@ func NewServiceRegistry(driver runtime.RuntimeDriver, promotionChecker Promotion
 	return &ServiceRegistry{
 		instances:       make(map[string]*ServiceInstance),
 		serviceNetworks: make(map[string]*serviceNetworkState),
+		healthStates:    make(map[string]*healthState),
 		driver:           driver,
 		promotionChecker: promotionChecker,
 		readinessProbe:   readinessProbe,
