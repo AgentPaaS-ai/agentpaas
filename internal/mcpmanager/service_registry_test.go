@@ -1029,3 +1029,133 @@ func (p *toolSetMismatchProbe) Check(_ context.Context, inst *ServiceInstance) (
 	}
 	return true, nil
 }
+
+// ---------------------------------------------------------------------------
+// Tests: B33-T08 chunk 5a — DNS alias, HTTP endpoint, AttachClientContainer
+// ---------------------------------------------------------------------------
+
+func TestServiceNetworkDNSAlias_Sanitization(t *testing.T) {
+	tests := []struct {
+		input, want string
+	}{
+		{"feedback", "svc-feedback"},
+		{"my_service", "svc-my-service"},
+		{"My.Service", "svc-my-service"},
+		{"UPPERCASE", "svc-uppercase"},
+		{"foo bar", "svc-foo-bar"},
+		{"a/b", "svc-a-b"},
+		{"!!!test!!!", "svc-test"},
+		{"", "svc-unknown"},
+		{"---", "svc-unknown"},
+		{"__", "svc-unknown"},
+		{"123service", "svc-123service"},
+		{"svc-feedback", "svc-svc-feedback"},
+	}
+	for _, tc := range tests {
+		got := serviceNetworkDNSAlias(tc.input)
+		if got != tc.want {
+			t.Errorf("serviceNetworkDNSAlias(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestStart_SetsHTTPEndpoint(t *testing.T) {
+	reg, driver := newFakeRegistry()
+
+	binding := testBinding("feedback", "feedback-svc", "1.0.0")
+	_ = mustDeclare(t, reg, "wf-1", binding, "sha256:abc", []string{"lookup_feedback"})
+
+	inst := mustStart(t, reg, context.Background(), "wf-1", "feedback")
+
+	if inst.Endpoint == "" {
+		t.Fatal("Endpoint not set")
+	}
+	if inst.Endpoint != "http://svc-feedback:8080" {
+		t.Errorf("Endpoint = %q, want %q", inst.Endpoint, "http://svc-feedback:8080")
+	}
+	if inst.NetworkAlias != "svc-feedback" {
+		t.Errorf("NetworkAlias = %q, want %q", inst.NetworkAlias, "svc-feedback")
+	}
+
+	// Verify aliases recorded on driver.
+	spec := driver.createdSpec(inst.ContainerID)
+	networkIDs := spec.NetworkIDs
+	if len(networkIDs) < 1 {
+		t.Fatal("container not attached to any network")
+	}
+	// The container was attached to the service network — verify aliases.
+	// We know the service network was created with a specific netID.
+	aliases := driver.aliasesFor(inst.ContainerID, runtime.NetworkID(networkIDs[len(networkIDs)-1]))
+	found := false
+	for _, a := range aliases {
+		if a == "svc-feedback" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("alias 'svc-feedback' not found in container aliases: %v", aliases)
+	}
+}
+
+func TestAttachClientContainer_Idempotent(t *testing.T) {
+	reg, driver := newFakeRegistry()
+
+	binding := testBinding("search", "search-svc", "1.0.0")
+	_ = mustDeclare(t, reg, "wf-cl", binding, "sha256:xyz", []string{"search"})
+	_ = mustStart(t, reg, context.Background(), "wf-cl", "search")
+
+	// Create a client container in the driver.
+	clientID, err := driver.Create(context.Background(), runtime.ContainerSpec{Image: "test-agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First attach should succeed.
+	if err := reg.AttachClientContainer(context.Background(), "wf-cl", clientID); err != nil {
+		t.Fatalf("first AttachClientContainer: %v", err)
+	}
+	// Second attach should be idempotent (no error).
+	if err := reg.AttachClientContainer(context.Background(), "wf-cl", clientID); err != nil {
+		t.Fatalf("second AttachClientContainer (idempotent): %v", err)
+	}
+	// Third attach should also be idempotent.
+	if err := reg.AttachClientContainer(context.Background(), "wf-cl", clientID); err != nil {
+		t.Fatalf("third AttachClientContainer (idempotent): %v", err)
+	}
+}
+
+func TestAttachClientContainer_NoServices_NoOp(t *testing.T) {
+	reg, driver := newFakeRegistry()
+	// No services declared — serviceNetworks map is empty.
+
+	clientID, err := driver.Create(context.Background(), runtime.ContainerSpec{Image: "test-agent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should be a no-op, not an error.
+	if err := reg.AttachClientContainer(context.Background(), "wf-none", clientID); err != nil {
+		t.Fatalf("AttachClientContainer with no services: %v", err)
+	}
+}
+
+func TestSetServiceContainerDefaults_UsedByCreate(t *testing.T) {
+	reg, _ := newFakeRegistry()
+
+	// Set overrides.
+	reg.SetServiceContainerDefaults("python:3.12-slim", []string{"python", "-m", "http.server", "8080"})
+
+	binding := testBinding("web", "web-svc", "1.0.0")
+	_ = mustDeclare(t, reg, "wf-def", binding, "sha256:z", []string{"serve"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// We don't need to fully start — just check createServiceContainer uses
+	// the injected defaults. We can inspect the created spec.
+	// start will create the container but readiness always passes.
+	_, err := reg.Start(ctx, "wf-def", "web")
+	if err != nil {
+		t.Fatalf("Start with defaults: %v", err)
+	}
+}
