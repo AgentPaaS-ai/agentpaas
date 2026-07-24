@@ -255,7 +255,7 @@ func (r *ServiceRegistry) failInstance(key string, gen int64, errMsg string) {
 	}
 	inst.mu.Lock()
 	inst.State = StateFailed
-	inst.LastError = sanitizeToolOutputString(errMsg)
+	inst.LastError = sanitizeLastError(errMsg)
 	inst.UpdatedAt = time.Now().UTC()
 	inst.mu.Unlock()
 	r.mu.Unlock()
@@ -362,7 +362,7 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	inst.State = StateFenced
 	inst.UpdatedAt = time.Now().UTC()
 	if reason != "" {
-		inst.LastError = sanitizeToolOutputString(reason)
+		inst.LastError = sanitizeLastError(reason)
 	}
 	return nil
 }
@@ -423,7 +423,7 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 					// Two containers claiming same generation → conflict.
 					if inst.State == StateReady {
 						inst.State = StateUnhealthy
-						inst.LastError = sanitizeToolOutputString("reconcile: duplicate container for generation " + genStr)
+						inst.LastError = sanitizeLastError("reconcile: duplicate container for generation " + genStr)
 						inst.UpdatedAt = time.Now().UTC()
 					}
 				} else {
@@ -432,7 +432,7 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 					if statusErr != nil || status != runtime.ContainerStatusRunning {
 						if inst.State == StateReady {
 							inst.State = StateUnhealthy
-							inst.LastError = sanitizeToolOutputString("reconcile: container not running")
+							inst.LastError = sanitizeLastError("reconcile: container not running")
 							inst.UpdatedAt = time.Now().UTC()
 						}
 					}
@@ -451,7 +451,7 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 		if inst.ContainerID != "" && !discoveredIDs[string(inst.ContainerID)] {
 			if inst.State == StateReady || inst.State == StateFenced {
 				inst.State = StateUnhealthy
-				inst.LastError = sanitizeToolOutputString("reconcile: container not found")
+				inst.LastError = sanitizeLastError("reconcile: container not found")
 				inst.UpdatedAt = time.Now().UTC()
 			}
 		}
@@ -466,7 +466,7 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 				instGenKey := inst.serviceKey() + "/" + strconv.FormatInt(inst.Generation, 10)
 				if instGenKey == genKey && (inst.State == StateReady || inst.State == StateFenced) {
 					inst.State = StateUnhealthy
-					inst.LastError = sanitizeToolOutputString("reconcile: ambiguous lease — multiple containers for generation")
+					inst.LastError = sanitizeLastError("reconcile: ambiguous lease — multiple containers for generation")
 					inst.UpdatedAt = time.Now().UTC()
 				}
 				inst.mu.Unlock()
