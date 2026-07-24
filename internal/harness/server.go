@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -147,6 +148,11 @@ type Server struct {
 	// Used by InstallMCPBindingSidecar to register sidecar bindings.
 	managedManager *mcpmanager.Manager
 
+	// mcpBridge is the HTTP MCP bridge started when AgentKind == "mcp_service".
+	// It translates JSON-RPC requests to the Python worker's stdin/stdout protocol.
+	// The bridge is created in startWorker() and closed in Close().
+	mcpBridge *MCPBridge
+
 	invokeMu sync.Mutex
 
 	// nowMonotonicMs supplies the monotonic millisecond timestamp used to
@@ -202,7 +208,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-// Close stops the Python worker.
+// Close stops the Python worker and the MCP bridge (if any).
 func (s *Server) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -211,15 +217,22 @@ func (s *Server) Close() error {
 	}
 	s.closed = true
 	worker := s.worker
+	bridge := s.mcpBridge
 	s.mu.Unlock()
 
 	if worker == nil {
 		if s.reaper != nil {
 			s.reaper.Stop()
 		}
+		if bridge != nil {
+			return bridge.Close()
+		}
 		return nil
 	}
 	err := worker.Close()
+	if bridge != nil {
+		err = errors.Join(err, bridge.Close())
+	}
 	if s.reaper != nil {
 		s.reaper.Stop()
 	}
@@ -244,6 +257,23 @@ func (s *Server) startWorker() {
 	s.worker = worker
 	s.rpcServer = worker.rpc
 	s.ready = true
+
+	// When running as a service agent, start the MCP HTTP bridge on the
+	// worker's stdin/stdout so managed resolvers can reach the agent via
+	// JSON-RPC with the capability header.
+	if s.cfg.AgentKind == "mcp_service" {
+		bridge := NewMCPBridge(MCPBridgeConfig{
+			Stdin:  worker.stdin,
+			Stdout: worker.stdout,
+		})
+		if err := bridge.Start(); err != nil {
+			log.Printf("harness: MCP bridge start failed: %v", err)
+			_ = bridge.Close()
+		} else {
+			log.Printf("harness: MCP bridge started on %s", bridge.Addr())
+			s.mcpBridge = bridge
+		}
+	}
 }
 
 // SetRouter installs the MCP protocol router and manager on the harness RPC server.
@@ -267,6 +297,14 @@ func (s *Server) GetRouter() *mcpmanager.Router {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.router
+}
+
+// MCPBridge returns the MCP HTTP bridge started for mcp_service agents.
+// Returns nil when AgentKind != "mcp_service" or the bridge failed to start.
+func (s *Server) MCPBridge() *MCPBridge {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.mcpBridge
 }
 
 // InstallMCPBindingSidecar reads a sidecar file at path, wires its bindings

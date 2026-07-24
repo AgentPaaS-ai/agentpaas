@@ -1,0 +1,10 @@
+name: mcp-feedback-service
+version: 0.1.0
+runtime: python3.12
+entry: main.py
+kind: mcp_service
+mcp_service:
+  transport: streamable_http
+  tools:
+    - lookup_feedback
+  max_concurrency: 4

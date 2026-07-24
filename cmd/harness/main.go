@@ -18,29 +18,7 @@ func main() {
 	harness.InitEgressFirewall()
 	harness.DropNetAdminCapability()
 
-	cfg := harness.Config{
-		Addr:            envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
-		AgentPath:       envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
-		Python:          detectPython(),
-		ImportTimeout: envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second), // legacy compat: import phase timeout (not a lifetime ceiling)
-		// InvokeTimeout is the LEGACY v0.2.3 compat default for the /invoke
-		// context timeout. On the durable path (B30-T03 Part B), the timeout
-		// is derived from the TimeEnvelope carried in the invoke payload
-		// (see Server.invokeTimeoutForPayload). AGENTPAAS_INVOKE_TIMEOUT
-		// remains as a legacy compat override for the non-envelope path.
-		InvokeTimeout:            envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy compat: durable path uses invokeTimeoutForPayload
-		TerminateGrace:           envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy compat: SIGTERM grace (not a lifetime ceiling)
-		StdoutPath:               envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
-		StderrPath:               envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
-		CredentialsPath:          os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
-		JournalKeyPath:           os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
-		JournalPath:              os.Getenv("AGENTPAAS_JOURNAL_PATH"),
-		AttemptID:                os.Getenv("AGENTPAAS_ATTEMPT_ID"),
-		LeaseID:                  os.Getenv("AGENTPAAS_LEASE_ID"),
-		RunID:                    os.Getenv("AGENTPAAS_RUN_ID"),
-		DelegationSnapshotPath:   os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_PATH"),
-		MCPBindingSidecarPath:    os.Getenv("AGENTPAAS_MCP_BINDING_SIDECAR_PATH"),
-	}
+	cfg := buildConfig()
 
 	// B30-T04: durable-path resource ceilings. On the durable
 	// (InvokeDeployment) path, the daemon sets AGENTPAAS_DURABLE_PATH=1 and
@@ -105,7 +83,11 @@ func main() {
 		cancel()
 	}()
 
-	log.Printf("harness: listening on %s, agent=%s", cfg.Addr, cfg.AgentPath)
+	log.Printf("harness: listening on %s, agent=%s, agent_kind=%s", cfg.Addr, cfg.AgentPath, cfg.AgentKind)
+	if cfg.AgentKind == "mcp_service" {
+		bridgeAddr := envOrDefault("AGENTPAAS_MCP_HTTP_ADDR", "0.0.0.0:8080")
+		log.Printf("harness: MCP HTTP bridge will start on %s", bridgeAddr)
+	}
 	if err := server.ListenAndServe(ctx); err != nil {
 		log.Printf("harness: server error: %v", err)
 		os.Exit(1)
@@ -156,4 +138,30 @@ func envInt(key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+// buildConfig constructs a harness.Config from environment variables.
+// Extracted from main() to allow test coverage of env var wiring.
+func buildConfig() harness.Config {
+	return harness.Config{
+		Addr:            envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
+		AgentPath:       envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
+		Python:          detectPython(),
+		ImportTimeout:   envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),
+		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second),
+		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second),
+		StdoutPath:      envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
+		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
+		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
+		JournalKeyPath:  os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
+		JournalPath:     os.Getenv("AGENTPAAS_JOURNAL_PATH"),
+		AttemptID:       os.Getenv("AGENTPAAS_ATTEMPT_ID"),
+		LeaseID:         os.Getenv("AGENTPAAS_LEASE_ID"),
+		RunID:           os.Getenv("AGENTPAAS_RUN_ID"),
+		DelegationSnapshotPath: os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_PATH"),
+		MCPBindingSidecarPath:  os.Getenv("AGENTPAAS_MCP_BINDING_SIDECAR_PATH"),
+		AgentKind:              os.Getenv("AGENTPAAS_AGENT_KIND"),
+		MCPDeclaredTools:       os.Getenv("AGENTPAAS_MCP_DECLARED_TOOLS"),
+		MCPMaxConcurrency:      envInt("AGENTPAAS_MCP_MAX_CONCURRENCY", 0),
+	}
 }

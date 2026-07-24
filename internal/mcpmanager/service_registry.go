@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -884,6 +885,7 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 	workflowID := inst.WorkflowID
 	serviceID := inst.ServiceBindingID
 	tools := stringsJoin(inst.DeclaredTools)
+	bundleDigest := inst.BundleDigest
 	inst.mu.RUnlock()
 
 	labels := runtime.Labels(runtime.ResourceTypeMCP, runID)
@@ -893,33 +895,49 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 	labels[runtime.LabelServiceGeneration] = strconv.FormatInt(gen, 10)
 	labels[runtime.LabelServiceRunID] = runID
 
-	image := "agentpaas-mcp-service:latest"
-	command := []string{"sleep", "infinity"}
-	var binds []string
-
-	// Allow test override for injectable service container defaults.
+	// Determine image and command.
+	// 1. ServiceDefaults (test override) always wins if set.
+	// 2. BundleDigest (packed image) — use bare sha256: digest with image entrypoint.
+	// 3. Fallback: default image + sleep infinity.
 	r.mu.RLock()
-	if r.serviceDefaults != nil && r.serviceDefaults.image != "" {
+	hasDefaults := r.serviceDefaults != nil && r.serviceDefaults.image != ""
+	var image string
+	var command []string
+	var binds []string
+	if hasDefaults {
 		image = r.serviceDefaults.image
-	}
-	if r.serviceDefaults != nil && len(r.serviceDefaults.command) > 0 {
 		command = r.serviceDefaults.command
-	}
-	if r.serviceDefaults != nil && len(r.serviceDefaults.binds) > 0 {
-		binds = r.serviceDefaults.binds
+		if r.serviceDefaults != nil && len(r.serviceDefaults.binds) > 0 {
+			binds = r.serviceDefaults.binds
+		}
+	} else if bundleDigest != "" {
+		image = "sha256:" + strings.TrimPrefix(bundleDigest, "sha256:")
+		// Use image entrypoint; don't force sleep infinity.
+		command = nil
+	} else {
+		image = "agentpaas-mcp-service:latest"
+		command = []string{"sleep", "infinity"}
 	}
 	r.mu.RUnlock()
+
+	env := []string{
+		"AGENTPAAS_ADDR=127.0.0.1:8090",
+		"AGENTPAAS_MCP_HTTP_ADDR=0.0.0.0:8080",
+		"AGENTPAAS_AGENT_KIND=mcp_service",
+		"AGENTPAAS_MCP_DECLARED_TOOLS=" + tools,
+		"AGENTPAAS_MCP_CAPABILITY=" + capability,
+	}
+	// When using packed image, add the agent path env var.
+	if bundleDigest != "" && !hasDefaults {
+		env = append(env, "AGENTPAAS_AGENT_PATH=/app/main.py")
+	}
 
 	spec := runtime.ContainerSpec{
 		Image:   image,
 		Command: command,
-		Env: []string{
-			"AGENTPAAS_AGENT_KIND=mcp_service",
-			"AGENTPAAS_MCP_DECLARED_TOOLS=" + tools,
-			"AGENTPAAS_MCP_CAPABILITY=" + capability,
-		},
-		Labels: labels,
-		Binds:  binds,
+		Env:     env,
+		Labels:  labels,
+		Binds:   binds,
 	}
 
 	return r.driver.Create(ctx, spec)
