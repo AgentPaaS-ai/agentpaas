@@ -90,7 +90,7 @@ func sanitizeToolOutputString(s string) string {
 		for idx >= 0 {
 			end := len(s)
 			for i := idx + len(pattern); i < len(s); i++ {
-				if s[i] == '"' || s[i] == '\'' || s[i] == ' ' || s[i] == '\t' {
+				if s[i] == '"' || s[i] == '\'' || s[i] == ' ' || s[i] == '	' {
 					end = i
 					break
 				}
@@ -107,6 +107,15 @@ func sanitizeToolOutputString(s string) string {
 	if len(s) > maxToolOutputLen {
 		return s[:maxToolOutputLen] + "...[truncated]"
 	}
+	return s
+}
+
+// sanitizeLastError sanitizes an error message for storage in LastError.
+// It chains both tool output sanitization (control chars, sentinel patterns)
+// and capability token redaction (hex tokens).
+func sanitizeLastError(s string) string {
+	s = sanitizeToolOutputString(s)
+	s = SanitizeErrorMessageForAgent(s)
 	return s
 }
 
