@@ -826,7 +826,8 @@ func TestCharacterization_MCPManagerExistsButDaemonDoesNotUseIt(t *testing.T) {
 // a deadline shorter than the fixed 5s stdioResponseTimeout, the context
 // deadline takes precedence. The fixed constant remains as a legacy ceiling
 // for callers without explicit deadline propagation.
-// B33-T06 will enforce call bounds (size/concurrency/cancellation).
+// B33-T06 added request/response size bounds, JSON depth limits, concurrency
+// semaphores, cancel tracking, and new error codes.
 func TestCharacterization_MCPTimeoutInventory(t *testing.T) {
 	rootDir := projectRoot(t)
 
@@ -866,4 +867,62 @@ func TestCharacterization_MCPTimeoutInventory(t *testing.T) {
 
 	// 5. B33-T05: handleMCP now uses mcpCallContext() with 30s default + B30 deadline.
 	t.Log("rpc_server.go: handleMCP uses mcpCallContext() with 30s default + B30 TimeEnvelope deadline (B33-T05)")
+
+	// 6. B33-T06: bounds.go defines MaxRequestBytes, MaxResponseBytes, MaxJSONDepth, concurrency.
+	boundsSrc, err := os.ReadFile(filepath.Join(rootDir, "internal", "mcpmanager", "bounds.go"))
+	if err != nil {
+		t.Fatalf("read bounds.go: %v", err)
+	}
+	boundsText := string(boundsSrc)
+	if !strings.Contains(boundsText, "MaxRequestBytes = 256 << 10") {
+		t.Fatal("bounds.go: MaxRequestBytes = 256 KiB not found — B33-T06 enforces 256KiB request bound")
+	}
+	if !strings.Contains(boundsText, "MaxResponseBytes = 1 << 20") {
+		t.Fatal("bounds.go: MaxResponseBytes = 1 MiB not found — B33-T06 mirrors maxBodySize")
+	}
+	if !strings.Contains(boundsText, "MaxJSONDepth = 32") {
+		t.Fatal("bounds.go: MaxJSONDepth = 32 not found — B33-T06 enforces JSON depth bound")
+	}
+	if !strings.Contains(boundsText, "DefaultMaxConcurrentMCPCalls = 8") {
+		t.Fatal("bounds.go: DefaultMaxConcurrentMCPCalls = 8 not found — B33-T06 enforces per-caller concurrency")
+	}
+	t.Log("bounds.go: MaxRequestBytes=256KiB, MaxResponseBytes=1MiB, MaxJSONDepth=32, DefaultMaxConcurrentMCPCalls=8 (B33-T06)")
+
+	// 7. B33-T06: new error codes.
+	if !strings.Contains(boundsText, "ErrCodeOverloaded") {
+		t.Fatal("bounds.go: ErrCodeOverloaded not found — B33-T06 overload error code")
+	}
+	if !strings.Contains(boundsText, "ErrCodeBodyTooLarge") {
+		t.Fatal("bounds.go: ErrCodeBodyTooLarge not found — B33-T06 size error code")
+	}
+	if !strings.Contains(boundsText, "ErrCodeDepthTooDeep") {
+		t.Fatal("bounds.go: ErrCodeDepthTooDeep not found — B33-T06 depth error code")
+	}
+	t.Log("bounds.go: ErrCodeOverloaded, ErrCodeBodyTooLarge, ErrCodeDepthTooDeep error codes (B33-T06)")
+
+	// 8. B33-T06: LeaseDeadline on ServiceInstance.
+	svcStateSrc, err := os.ReadFile(filepath.Join(rootDir, "internal", "mcpmanager", "service_state.go"))
+	if err != nil {
+		t.Fatalf("read service_state.go: %v", err)
+	}
+	if !strings.Contains(string(svcStateSrc), "LeaseDeadline") {
+		t.Fatal("service_state.go: LeaseDeadline field not found on ServiceInstance — B33-T06 requires service lease deadline")
+	}
+	t.Log("service_state.go: ServiceInstance.LeaseDeadline time.Time (B33-T06)")
+
+	// 9. B33-T06: CancelTracker on ServiceInstance for Fence cancellation.
+	if !strings.Contains(string(svcStateSrc), "cancelTracker") {
+		t.Fatal("service_state.go: cancelTracker field not found on ServiceInstance — B33-T06 requires fence cancellation tracking")
+	}
+	t.Log("service_state.go: ServiceInstance.cancelTracker (B33-T06 fence cancellation)")
+
+	// 10. B33-T06: harness per-caller MCP semaphore.
+	rpcSrc, err := os.ReadFile(filepath.Join(rootDir, "internal", "harness", "rpc_server.go"))
+	if err != nil {
+		t.Fatalf("read rpc_server.go: %v", err)
+	}
+	if !strings.Contains(string(rpcSrc), "mcpSemaphore") {
+		t.Fatal("rpc_server.go: mcpSemaphore field not found on harnessRPCServer — B33-T06 requires per-caller MCP concurrency")
+	}
+	t.Log("rpc_server.go: harnessRPCServer.mcpSemaphore per-caller MCP concurrency (B33-T06)")
 }

@@ -86,6 +86,15 @@ type ServiceInstance struct {
 	AttemptID string `json:"attempt_id"`
 	LeaseID   string `json:"lease_id"`
 
+	// LeaseDeadline is the wall-clock time at which the service lease expires.
+	// When zero, the lease has no deadline (managed by policy only).
+	// Set at Start time; checked by managed resolver before dispatch.
+	LeaseDeadline time.Time `json:"lease_deadline,omitempty"`
+
+	// MaxConcurrency is the per-service call concurrency limit.
+	// Zero means no explicit limit (caller-side bounds still apply).
+	MaxConcurrency int `json:"max_concurrency,omitempty"`
+
 	// Container tracking.
 	ContainerID runtime.ContainerID `json:"container_id"`
 
@@ -112,6 +121,20 @@ type ServiceInstance struct {
 
 	// LastError holds the redacted last error message.
 	LastError string `json:"last_error,omitempty"`
+
+	// cancelTracker tracks in-flight MCP call cancel functions.
+	// When Fence is called, all tracked calls are cancelled.
+	// Initialized lazily; use getCancelTracker() to access.
+	cancelTracker *CancelTracker
+}
+
+// GetCancelTracker returns the instance's CancelTracker, creating one if needed.
+// Not safe for concurrent create — call under inst.mu write lock.
+func (s *ServiceInstance) getCancelTracker() *CancelTracker {
+	if s.cancelTracker == nil {
+		s.cancelTracker = NewCancelTracker()
+	}
+	return s.cancelTracker
 }
 
 // NewServiceInstance creates a ServiceInstance in DECLARED state.
