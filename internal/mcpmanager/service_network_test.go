@@ -549,18 +549,25 @@ func TestRace_ConcurrentStart_StillOneNetwork(t *testing.T) {
 	wg.Wait()
 	close(results)
 
-	successCount := 0
-	var cap string
+	// Start() is idempotent: after the first call reaches READY,
+	// concurrent late-arriving Start calls also return success copies.
+	// All successes must share the same Generation+Capability (one
+	// logical start), and exactly one network must exist.
+	var first *ServiceInstance
 	for inst := range results {
-		successCount++
-		if cap == "" {
-			cap = inst.Capability
+		if first == nil {
+			first = inst
+		}
+		if first.Generation != inst.Generation {
+			t.Errorf("concurrent start: mismatched Generation: first=%d got=%d",
+				first.Generation, inst.Generation)
+		}
+		if first.Capability != inst.Capability {
+			t.Errorf("concurrent start: mismatched Capability")
 		}
 	}
-
-	// Exactly one should win the CAS race.
-	if successCount != 1 {
-		t.Fatalf("concurrent start: expected 1 success, got %d", successCount)
+	if first == nil {
+		t.Fatal("concurrent start: no Start() succeeded")
 	}
 
 	// Only one network should be created.

@@ -249,9 +249,9 @@ func TestAdversaryT07b_CleanupGenMismatchDestroysLiveContainer(t *testing.T) {
 	close(drv.releaseStop)
 	<-done
 
-	if !drv.inner.removed(cid) {
-		// Fix: gen mismatch should NOT remove the container — it belongs to new gen.
-		// The container removal was correctly skipped. Verify gen 2 state is intact.
+	if drv.inner.removed(cid) {
+		// Gen mismatch should NOT remove the container — it belongs to new gen.
+		t.Fatal("gen mismatch incorrectly removed container belonging to new generation")
 	}
 	got, err := reg.Get("wf-1", "svc-1")
 	if err != nil {
