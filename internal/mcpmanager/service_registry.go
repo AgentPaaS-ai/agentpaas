@@ -335,12 +335,19 @@ func (r *ServiceRegistry) Stop(ctx context.Context, workflowID, serviceBindingID
 			return &ErrIllegalStateTransition{From: state, To: StateStopping}
 		}
 
-		// Mark STOPPING.
+		// Mark STOPPING and capture cancel tracker.
 		inst.mu.Lock()
 		inst.State = StateStopping
 		inst.UpdatedAt = time.Now().UTC()
+		tracker := inst.cancelTracker
+		inst.cancelTracker = nil
 		inst.mu.Unlock()
 		r.mu.Unlock()
+
+		// Cancel in-flight calls (same as Fence) before tear down.
+		if tracker != nil {
+			tracker.CancelAll()
+		}
 
 		// Stop and remove container.
 		if containerID != "" && r.driver != nil {
@@ -882,7 +889,7 @@ func (r *ServiceRegistry) recordLifecycleEvent(workflowID, serviceBindingID, run
 		Generation:       generation,
 		FromState:        from,
 		ToState:          to,
-		Reason:           reason,
+		Reason:           sanitizeEvidenceReason(reason),
 		Timestamp:        time.Now().UTC(),
 	})
 }

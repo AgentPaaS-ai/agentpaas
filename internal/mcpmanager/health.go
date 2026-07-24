@@ -100,7 +100,7 @@ func (r *ServiceRegistry) HealthSummary(workflowID, serviceBindingID string) *Wo
 		Generated:  time.Now().UTC(),
 	}
 
-	for key, inst := range r.instances {
+	for _, inst := range r.instances {
 		inst.mu.RLock()
 
 		if inst.WorkflowID != workflowID {
@@ -129,7 +129,7 @@ func (r *ServiceRegistry) HealthSummary(workflowID, serviceBindingID string) *Wo
 		}
 
 		var failures []HealthFailureItem
-		if hs, ok := r.healthStates[key]; ok {
+		if hs, ok := r.healthStates[makeCompositeKey(inst.WorkflowID, inst.ServiceBindingID)]; ok {
 			failures = hs.getFailures()
 		}
 		if failures == nil {
@@ -166,21 +166,22 @@ func (r *ServiceRegistry) HealthSummary(workflowID, serviceBindingID string) *Wo
 // RecordHealthFailure records a bounded failure for a service binding.
 // This is called from the Router when a call fails with a typed error.
 func (r *ServiceRegistry) RecordHealthFailure(workflowID, serviceBindingID, statusCode, reason, tool string) {
-	key := workflowID + "/" + serviceBindingID
+	instKey := workflowID + "/" + serviceBindingID
 
 	r.mu.RLock()
-	_, ok := r.instances[key]
+	_, ok := r.instances[instKey]
 	if !ok {
 		r.mu.RUnlock()
 		return
 	}
 	r.mu.RUnlock()
 
+	hsKey := makeCompositeKey(workflowID, serviceBindingID)
 	r.mu.Lock()
-	hs, ok := r.healthStates[key]
+	hs, ok := r.healthStates[hsKey]
 	if !ok {
 		hs = newHealthState()
-		r.healthStates[key] = hs
+		r.healthStates[hsKey] = hs
 	}
 	r.mu.Unlock()
 
@@ -216,7 +217,19 @@ func (r *ServiceRegistry) CleanupServiceResources(ctx context.Context, workflowI
 	containerID := inst.ContainerID
 	generation := inst.Generation
 	state := inst.State
+	// Cancel in-flight calls immediately (like Fence) before clearing trusted material.
+	tracker := inst.cancelTracker
+	inst.cancelTracker = nil
+	// Clear Capability/Endpoint/NetworkAlias BEFORE slow I/O window.
+	inst.Capability = ""
+	inst.Endpoint = ""
+	inst.NetworkAlias = ""
 	inst.mu.Unlock()
+
+	// Cancel outside the lock to avoid deadlocks.
+	if tracker != nil {
+		tracker.CancelAll()
+	}
 
 	// Already cleaned up.
 	if state == StateStopped && containerID == "" {
@@ -237,38 +250,55 @@ func (r *ServiceRegistry) CleanupServiceResources(ctx context.Context, workflowI
 
 	cleaned := false
 
-	// 1. Stop and remove container.
+	// 1. Stop and remove container — but re-check generation before AND after
+	// slow I/O to avoid destroying the container of a newer generation.
 	if containerID != "" && r.driver != nil {
-		_ = r.driver.Stop(ctx, containerID, nil)
-		// Detach from service network.
-		netState := r.getNetworkState(workflowID)
-		if netState != nil {
-			_ = r.driver.DetachNetwork(ctx, containerID, netState.NetworkID)
-			netState.mu.Lock()
-			delete(netState.attachedContainers, containerID)
-			netState.mu.Unlock()
+		// Pre-check: if gen already changed, skip entirely.
+		r.mu.RLock()
+		inst2, ok2 := r.instances[key]
+		genChanged := ok2 && inst2.Generation != generation
+		r.mu.RUnlock()
+		if !genChanged {
+			_ = r.driver.Stop(ctx, containerID, nil)
+
+			// Post-check: gen may have changed during slow Stop I/O.
+			r.mu.RLock()
+			inst2, ok2 = r.instances[key]
+			genChanged = ok2 && inst2.Generation != generation
+			r.mu.RUnlock()
+
+			if !genChanged {
+				// Detach from service network.
+				netState := r.getNetworkState(workflowID)
+				if netState != nil {
+					_ = r.driver.DetachNetwork(ctx, containerID, netState.NetworkID)
+					netState.mu.Lock()
+					delete(netState.attachedContainers, containerID)
+					netState.mu.Unlock()
+				}
+				_ = r.driver.Remove(ctx, containerID, true)
+				cleaned = true
+			}
 		}
-		_ = r.driver.Remove(ctx, containerID, true)
-		cleaned = true
 	}
 
 	// 2. Clean up service network if empty.
 	r.mu.Lock()
-	r.cleanupNetworkIfEmptyLocked(workflowID)
+	r.cleanupNetworkIfEmptyLocked(ctx, workflowID)
 	r.mu.Unlock()
 
 	// 3. Update instance state to STOPPED.
 	r.mu.Lock()
-	inst2, ok2 := r.instances[key]
-	if ok2 && inst2.Generation == generation {
-		inst2.mu.Lock()
-		inst2.State = StateStopped
-		inst2.ContainerID = ""
-		inst2.Endpoint = ""
-		inst2.NetworkAlias = ""
-		inst2.Capability = ""
-		inst2.UpdatedAt = time.Now().UTC()
-		inst2.mu.Unlock()
+	inst3, ok3 := r.instances[key]
+	if ok3 && inst3.Generation == generation {
+		inst3.mu.Lock()
+		inst3.State = StateStopped
+		inst3.ContainerID = ""
+		inst3.Endpoint = ""
+		inst3.NetworkAlias = ""
+		inst3.Capability = ""
+		inst3.UpdatedAt = time.Now().UTC()
+		inst3.mu.Unlock()
 	}
 	r.mu.Unlock()
 
@@ -285,7 +315,7 @@ func (r *ServiceRegistry) getNetworkState(workflowID string) *serviceNetworkStat
 
 // cleanupNetworkIfEmptyLocked removes the service network for a workflow
 // if no containers remain attached. Caller must hold r.mu.
-func (r *ServiceRegistry) cleanupNetworkIfEmptyLocked(workflowID string) {
+func (r *ServiceRegistry) cleanupNetworkIfEmptyLocked(ctx context.Context, workflowID string) {
 	netState, ok := r.serviceNetworks[workflowID]
 	if !ok {
 		return
@@ -293,7 +323,7 @@ func (r *ServiceRegistry) cleanupNetworkIfEmptyLocked(workflowID string) {
 	if netState.RemainingAttachments() > 0 {
 		return
 	}
-	_ = RemoveServiceNetwork(context.Background(), r.driver, netState)
+	_ = RemoveServiceNetwork(ctx, r.driver, netState)
 	delete(r.serviceNetworks, workflowID)
 }
 
@@ -333,7 +363,7 @@ func (r *ServiceRegistry) reconcileOrphanCleanup(ctx context.Context, workflowID
 
 	// Clean up orphan network if empty.
 	r.mu.Lock()
-	r.cleanupNetworkIfEmptyLocked(workflowID)
+	r.cleanupNetworkIfEmptyLocked(ctx, workflowID)
 	r.mu.Unlock()
 
 	return cleaned, nil
@@ -363,7 +393,10 @@ func (r *ServiceRegistry) DiscoverOrphans(ctx context.Context, workflowID string
 	for _, inst := range r.instances {
 		inst.mu.RLock()
 		if inst.WorkflowID == workflowID && inst.ContainerID != "" {
-			if inst.State == StateReady || inst.State == StateFenced || inst.State == StateUnhealthy || inst.State == StateStarting {
+			// Track containers for ALL states that still own them:
+			// STOPPING and FAILED instances still have live containers.
+			if inst.State == StateReady || inst.State == StateFenced || inst.State == StateUnhealthy ||
+				inst.State == StateStarting || inst.State == StateStopping || inst.State == StateFailed {
 				tracked[string(inst.ContainerID)] = true
 			}
 		}

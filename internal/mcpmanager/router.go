@@ -533,8 +533,20 @@ func (r *Router) recordCallEvidence(store CallEvidenceStore, correlationID strin
 	if !ok {
 		return
 	}
+
+	// Respect terminal status: if the existing record is already in a terminal
+	// state (restart UNKNOWN, CANCELLED, etc.), do not overwrite with SUCCEEDED.
+	if isTerminalCallStatus(existing.Status, existing.FinishedAt) && status == CallStatusSucceeded {
+		return // late success after terminal — discard
+	}
+	// Do not demote SUCCEEDED back to UNKNOWN.
+	if existing.Status == CallStatusSucceeded && status == CallStatusUnknown {
+		return
+	}
+
+	// Sanitize reason before storing in evidence.
+	existing.Reason = sanitizeEvidenceReason(reason)
 	existing.Status = status
-	existing.Reason = reason
 	existing.FinishedAt = time.Now().UTC()
 	existing.TimingMS = existing.FinishedAt.Sub(startedAt).Milliseconds()
 	if outputDigest != "" {
