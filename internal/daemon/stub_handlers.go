@@ -9,6 +9,7 @@ import (
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
@@ -98,6 +99,17 @@ type controlServer struct {
 	// Docker containers. Set by unit tests that don't have a Docker
 	// runtime available. Production daemons always leave this false.
 	disableContainerLaunch bool
+
+	// mcpRegistry provides the MCP service registry for managed service
+	// routing. When nil, MCP service routing fails closed with B33.
+	mcpRegistry *mcpmanager.ServiceRegistry
+}
+
+// SetMCPServiceRegistry sets the MCP service registry hook on the daemon.
+// When set (non-nil), managed MCP service requests are allowed through the
+// fail-closed gate. Thread-safe; matches existing server patterns.
+func (s *controlServer) SetMCPServiceRegistry(reg *mcpmanager.ServiceRegistry) {
+	s.mcpRegistry = reg
 }
 
 // compile-time interface check.

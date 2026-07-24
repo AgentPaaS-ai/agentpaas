@@ -952,8 +952,8 @@ func (s *controlServer) failClosedRoutedRun(ctx context.Context, agentName strin
 	}
 
 	switch {
-	case sig != nil && sig.HasMCPService:
-		return notEnabledFailedPrecondition("mcp_service", "B29", "agentpaas_mcp_service_not_enabled")
+	case sig != nil && sig.HasMCPService && s.mcpRegistry == nil:
+		return notEnabledFailedPrecondition("mcp_service", "B33", "agentpaas_mcp_service_not_enabled")
 	case sig != nil && sig.HasPipeline:
 		return notEnabledFailedPrecondition("pipeline", "B30", "agentpaas_pipeline_not_enabled")
 	case sig != nil && sig.HasChildSpawn:
@@ -1237,7 +1237,7 @@ func workflowKindNotEnabled(kind string) (feature, block, code string) {
 	case pack.WorkflowKindParentChild:
 		return "child_spawn", "B31", "agentpaas_child_spawn_not_enabled"
 	case "mcp_service", "mcp":
-		return "mcp_service", "B29", "agentpaas_mcp_service_not_enabled"
+		return "mcp_service", "B33", "agentpaas_mcp_service_not_enabled"
 	default:
 		return "workflow_runtime", "B28", "routed_run_workflow_not_enabled"
 	}
