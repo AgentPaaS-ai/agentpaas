@@ -150,38 +150,47 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 	t.Log("Client attached to service network")
 
 	// ── Debug: verify network connectivity ────────────────────────────────
-	// Check service container networks
-	svcNetworks, err := dr.InspectContainerNetworks(ctx, inst.ContainerID)
-	if err != nil {
-		t.Logf("Warning: InspectContainerNetworks(service): %v", err)
-	} else {
-		for _, n := range svcNetworks {
-			t.Logf("Service network: ID=%s IP=%s", n.ID, n.IPAddress)
-		}
-	}
-
-	// Check client container networks
+	// Check client container networks to find the service network IPs
 	clientNetworks, err := dr.InspectContainerNetworks(ctx, clientID)
 	if err != nil {
-		t.Logf("Warning: InspectContainerNetworks(client): %v", err)
-	} else {
-		for _, n := range clientNetworks {
-			t.Logf("Client network: ID=%s IP=%s", n.ID, n.IPAddress)
+		t.Fatalf("InspectContainerNetworks(client): %v", err)
+	}
+	var serviceNetworkID string
+	for _, n := range clientNetworks {
+		t.Logf("Client network: ID=%s Name=%s IP=%s", n.ID, n.Name, n.IPAddress)
+		// Look for the service network (internal, not the default bridge)
+		if strings.Contains(n.Name, "agentpaas-mcp-svc") {
+			serviceNetworkID = n.ID
 		}
 	}
+	if serviceNetworkID == "" {
+		t.Fatal("could not find service network among client's networks")
+	}
+	t.Logf("Service network ID: %s", serviceNetworkID)
 
-	// Try nslookup from client
-	nsOut, nsStderr, _, _ := dr.Exec(ctx, clientID,
-		[]string{"nslookup", "svc-feedback"})
-	t.Logf("nslookup svc-feedback: %s (stderr: %s)", nsOut, nsStderr)
+	// Get the service container's IP on the service network.
+	svcIP, err := dr.InspectContainerIP(ctx, inst.ContainerID, serviceNetworkID)
+	if err != nil {
+		t.Logf("Warning: InspectContainerIP(service): %v", err)
+	}
+	t.Logf("Service container IP on service network: %q", svcIP)
 
-	// Wait for DNS to propagate on Docker embedded DNS server.
-	time.Sleep(3 * time.Second)
+	// If we have the service IP, use it directly instead of DNS.
+	// Docker DNS aliases may take time to propagate on internal networks.
+	serviceURL := inst.Endpoint // default: DNS-based
+	if svcIP != "" {
+		serviceURL = fmt.Sprintf("http://%s:%d", svcIP, DefaultMCPServicePort)
+		t.Logf("Using direct IP: %s", serviceURL)
+	}
 
-	// Retry nslookup after wait
-	nsOut2, nsStderr2, _, _ := dr.Exec(ctx, clientID,
-		[]string{"nslookup", "svc-feedback"})
-	t.Logf("nslookup (after wait) svc-feedback: %s (stderr: %s)", nsOut2, nsStderr2)
+	// Wait a bit for DNS propagation anyway.
+	time.Sleep(2 * time.Second)
+
+	// Test DNS resolution via nslookup from client.
+	if nsOut, nsStderr, _, nsErr := dr.Exec(ctx, clientID,
+		[]string{"nslookup", "svc-feedback"}); nsErr == nil {
+		t.Logf("nslookup svc-feedback: %s (stderr: %s)", nsOut, nsStderr)
+	}
 
 	// ── Build JSON-RPC request payload ─────────────────────────────────────
 	requestPayload := map[string]interface{}{
@@ -218,7 +227,7 @@ try:
 except Exception as e:
     print("ERROR:" + str(e))
     print("HTTP_STATUS:0")
-`, string(reqBytes), inst.Endpoint, CapabilityHeader, inst.Capability)
+`, string(reqBytes), serviceURL, CapabilityHeader, inst.Capability)
 
 	stdout, stderr, exitCode, err := dr.Exec(ctx, clientID,
 		[]string{"python", "-c", pythonScript})
