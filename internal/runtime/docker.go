@@ -655,8 +655,22 @@ func (d *DockerRuntime) InspectNetwork(ctx context.Context, id NetworkID) (Netwo
 // AttachNetwork connects a container to an existing Docker network.
 // If the driver is injected, it delegates to it.
 func (d *DockerRuntime) AttachNetwork(ctx context.Context, containerID ContainerID, networkID NetworkID) error {
+	return d.attachNetworkWithAliases(ctx, containerID, networkID, nil)
+}
+
+// AttachNetworkWithAliases connects a container to an existing Docker network
+// with network-scoped DNS aliases (e.g., "svc-feedback"). If the driver is
+// injected, it delegates to it; otherwise uses NetworkConnect with
+// EndpointSettings.
+func (d *DockerRuntime) AttachNetworkWithAliases(ctx context.Context, containerID ContainerID, networkID NetworkID, aliases []string) error {
+	return d.attachNetworkWithAliases(ctx, containerID, networkID, aliases)
+}
+
+// attachNetworkWithAliases is the shared implementation for AttachNetwork
+// and AttachNetworkWithAliases.
+func (d *DockerRuntime) attachNetworkWithAliases(ctx context.Context, containerID ContainerID, networkID NetworkID, aliases []string) error {
 	if d.driver != nil {
-		return d.driver.AttachNetwork(ctx, containerID, networkID)
+		return d.driver.AttachNetworkWithAliases(ctx, containerID, networkID, aliases)
 	}
 	if string(containerID) == "" {
 		return fmt.Errorf("%w: container id is required", ErrInvalidSpec)
@@ -667,7 +681,15 @@ func (d *DockerRuntime) AttachNetwork(ctx context.Context, containerID Container
 	if d.cli == nil {
 		return ErrDockerNotInitialized
 	}
-	if err := d.cli.NetworkConnect(ctx, string(networkID), string(containerID), nil); err != nil {
+
+	var endpointSettings *network.EndpointSettings
+	if len(aliases) > 0 {
+		endpointSettings = &network.EndpointSettings{
+			Aliases: aliases,
+		}
+	}
+
+	if err := d.cli.NetworkConnect(ctx, string(networkID), string(containerID), endpointSettings); err != nil {
 		return fmt.Errorf("attach container %q to network %q: %w", string(containerID), string(networkID), err)
 	}
 	return nil

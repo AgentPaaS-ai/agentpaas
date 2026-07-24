@@ -271,6 +271,13 @@ type RuntimeDriver interface {
 	// container to a network it is already on is idempotent.
 	AttachNetwork(ctx context.Context, containerID ContainerID, networkID NetworkID) error
 
+	// AttachNetworkWithAliases connects a container to a network with DNS
+	// aliases on that network. The container must already exist. Attaching
+	// a container to a network it is already on is idempotent.
+	// The aliases are network-scoped DNS names that resolve to the
+	// container within the network (e.g., "svc-feedback").
+	AttachNetworkWithAliases(ctx context.Context, containerID ContainerID, networkID NetworkID, aliases []string) error
+
 	// DetachNetwork disconnects a container from a network. If the
 	// container is not attached to the network, the call is idempotent
 	// and succeeds silently.
