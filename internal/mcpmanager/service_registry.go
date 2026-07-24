@@ -339,7 +339,8 @@ func (r *ServiceRegistry) Stop(ctx context.Context, workflowID, serviceBindingID
 	return nil
 }
 
-// Fence blocks the service from accepting new calls.
+// Fence blocks the service from accepting new calls and cancels all
+// in-flight MCP calls for that service binding.
 // Only valid when READY.
 func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingID, reason string) error {
 	key := workflowID + "/" + serviceBindingID
@@ -353,9 +354,9 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	}
 
 	inst.mu.Lock()
-	defer inst.mu.Unlock()
 
 	if inst.State != StateReady {
+		inst.mu.Unlock()
 		return &ErrIllegalStateTransition{From: inst.State, To: StateFenced}
 	}
 
@@ -364,7 +365,55 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	if reason != "" {
 		inst.LastError = sanitizeLastError(reason)
 	}
+
+	// Cancel all in-flight MCP calls for this service binding (B33-T06).
+	tracker := inst.cancelTracker
+	inst.cancelTracker = nil // release reference
+	inst.mu.Unlock()
+
+	// Cancel outside the lock to avoid deadlocks with in-flight call cleanup.
+	if tracker != nil {
+		tracker.CancelAll()
+	}
+
 	return nil
+}
+
+// RegisterCall registers an in-flight MCP call's cancel function with the
+// service's CancelTracker (B33-T06). Returns a call ID for UnregisterCall.
+// The cancel function is invoked when Fence is called on the service.
+func (r *ServiceRegistry) RegisterCall(workflowID, serviceBindingID string, cancel context.CancelFunc) (string, error) {
+	key := workflowID + "/" + serviceBindingID
+	r.mu.RLock()
+	inst, ok := r.instances[key]
+	r.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("register call: %w", ErrServiceNotFound)
+	}
+
+	inst.mu.Lock()
+	tracker := inst.getCancelTracker()
+	callID := tracker.Register(cancel)
+	inst.mu.Unlock()
+	return callID, nil
+}
+
+// UnregisterCall removes an in-flight call from the service's CancelTracker.
+// Safe to call after the call has completed or been cancelled.
+func (r *ServiceRegistry) UnregisterCall(workflowID, serviceBindingID, callID string) {
+	key := workflowID + "/" + serviceBindingID
+	r.mu.RLock()
+	inst, ok := r.instances[key]
+	r.mu.RUnlock()
+	if !ok {
+		return
+	}
+	inst.mu.RLock()
+	tracker := inst.cancelTracker
+	inst.mu.RUnlock()
+	if tracker != nil {
+		tracker.Unregister(callID)
+	}
 }
 
 // Reconcile discovers labelled resources and validates their state.
@@ -716,6 +765,8 @@ func copyInstance(inst *ServiceInstance) *ServiceInstance {
 		RunID:            inst.RunID,
 		AttemptID:        inst.AttemptID,
 		LeaseID:          inst.LeaseID,
+		LeaseDeadline:    inst.LeaseDeadline,
+		MaxConcurrency:   inst.MaxConcurrency,
 		ContainerID:      inst.ContainerID,
 		Endpoint:         inst.Endpoint,
 		NetworkAlias:     inst.NetworkAlias,

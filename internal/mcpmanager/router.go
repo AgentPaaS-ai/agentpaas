@@ -72,6 +72,9 @@ type Router struct {
 	stdioLocks map[string]*sync.Mutex
 	requestSeq int64
 
+	// semaphores tracks per-service call concurrency limits (B33-T06).
+	semaphores map[string]*CallSemaphore
+
 	// managedResolver resolves AgentPaaS-managed MCP service bindings.
 	// When non-nil and server.Transport is "agentpaas-service", the router
 	// dispatches through the ServiceRegistry instead of local stdio/HTTP.
@@ -94,6 +97,7 @@ func NewRouter(manager *Manager, lifecycle *Lifecycle, gateway HTTPDoer, audit a
 		gateway:    gateway,
 		audit:      audit,
 		stdioLocks: make(map[string]*sync.Mutex),
+		semaphores: make(map[string]*CallSemaphore),
 	}
 }
 
@@ -104,6 +108,33 @@ func (r *Router) SetManagedResolver(resolver *ManagedServiceResolver, workflowID
 	defer r.mu.Unlock()
 	r.managedResolver = resolver
 	r.managedWorkflowID = workflowID
+}
+
+// SetServiceConcurrency sets the per-service concurrency limit for a server.
+// max <= 0 means unlimited. Call before CallTool dispatch.
+func (r *Router) SetServiceConcurrency(serverID string, max int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.semaphores == nil {
+		r.semaphores = make(map[string]*CallSemaphore)
+	}
+	r.semaphores[serverID] = NewCallSemaphore(max)
+}
+
+// getSemaphore returns the semaphore for the given server, creating a default
+// unlimited one if none configured.
+func (r *Router) getSemaphore(serverID string) *CallSemaphore {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.semaphores == nil {
+		r.semaphores = make(map[string]*CallSemaphore)
+	}
+	s, ok := r.semaphores[serverID]
+	if !ok {
+		s = NewCallSemaphore(0) // unlimited by default
+		r.semaphores[serverID] = s
+	}
+	return s
 }
 
 // CallTool routes an MCP tool call to the appropriate server.
@@ -126,10 +157,32 @@ func (r *Router) CallTool(ctx context.Context, serverID, tool string, input any,
 		return nil, errors.New("mcp server/tool not allowed")
 	}
 
-	var (
-		result any
-		err    error
-	)
+	// B33-T06: enforce request size bounds before dispatch.
+	requestJSON, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("marshal input for bounds check: %w", err)
+	}
+	if err := CheckRequestSize(requestJSON); err != nil {
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, err.Error(), "request_too_large", "", hashRouterJSON(input), time.Since(start).Milliseconds())
+		return nil, err
+	}
+
+	// B33-T06: enforce request JSON depth bounds.
+	if err := CheckJSONDepth(requestJSON); err != nil {
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, err.Error(), "request_too_deep", "", hashRouterJSON(input), time.Since(start).Milliseconds())
+		return nil, err
+	}
+
+	// B33-T06: acquire per-service concurrency semaphore.
+	sem := r.getSemaphore(serverID)
+	releaseSem, err := sem.Acquire()
+	if err != nil {
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, err.Error(), "overloaded", "", hashRouterJSON(input), time.Since(start).Milliseconds())
+		return nil, err
+	}
+	defer releaseSem()
+
+	var result any
 	switch server.Transport {
 	case "stdio":
 		result, err = r.routeStdio(ctx, serverID, tool, input)
@@ -145,6 +198,14 @@ func (r *Router) CallTool(ctx context.Context, serverID, tool string, input any,
 		// (e.g. "mcp error N: ...", "mcp server/tool not allowed").
 		return nil, err
 	}
+
+	// B33-T06: enforce response JSON depth bounds.
+	responseJSON, _ := json.Marshal(result)
+	if err := CheckJSONDepth(responseJSON); err != nil {
+		AuditToolDenied(r.audit, serverID, tool, agentID, runID, err.Error(), "response_too_deep", "", hashRouterJSON(input), time.Since(start).Milliseconds())
+		return nil, err
+	}
+
 	AuditToolCall(r.audit, serverID, tool, agentID, runID, "allowed", "", "", hashRouterJSON(input), RedactToolOutputHash(result), time.Since(start).Milliseconds())
 	return redactToolOutputValue(result), nil
 }

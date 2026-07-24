@@ -52,6 +52,14 @@ type harnessRPCServer struct {
 	// evaluate the TimeEnvelope in handleLLM (B30-T03 Part B, ceiling 5). When
 	// nil, routedrun.NowMonotonicMs(nil) (time.Now().UnixMilli()) is used.
 	nowMonotonicMs func() int64
+
+	// mcpSemaphore enforces per-caller concurrent MCP call bounds (B33-T06).
+	// Initialized lazily; nil (legacy) means unlimited.
+	mcpSemaphore *mcpmanager.CallSemaphore
+
+	// mcpMaxConcurrency configures the caller-side MCP concurrency limit.
+	// 0 (default) uses the package-level DefaultMaxConcurrentMCPCalls.
+	mcpMaxConcurrency int
 }
 
 type rpcInvokeState struct {
@@ -320,6 +328,29 @@ func (s *harnessRPCServer) SetRouter(router *mcpmanager.Router) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.router = router
+}
+
+// SetMCPMaxConcurrency sets the caller-side MCP concurrent call limit.
+// 0 means use DefaultMaxConcurrentMCPCalls. Called before first MCP call.
+func (s *harnessRPCServer) SetMCPMaxConcurrency(max int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mcpMaxConcurrency = max
+}
+
+// getMCPSemaphore returns the per-caller MCP concurrency semaphore, creating
+// one if needed.
+func (s *harnessRPCServer) getMCPSemaphore() *mcpmanager.CallSemaphore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mcpSemaphore == nil {
+		limit := s.mcpMaxConcurrency
+		if limit <= 0 {
+			limit = mcpmanager.DefaultMaxConcurrentMCPCalls
+		}
+		s.mcpSemaphore = mcpmanager.NewCallSemaphore(limit)
+	}
+	return s.mcpSemaphore
 }
 
 // SetCredentialsForTest directly injects credentials without file I/O.
@@ -945,6 +976,23 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 	input := req.Params["input"]
 	inputHash := hashJSONValue(input)
 
+	// B33-T06: enforce per-caller MCP concurrency bound.
+	sem := s.getMCPSemaphore()
+	releaseSem, err := sem.Acquire()
+	if err != nil {
+		s.auditMCPDenied(serverID, tool, err.Error())
+		return rpcError(req.ID, err.Error(), mcpmanager.ErrCodeOverloaded)
+	}
+	defer releaseSem()
+
+	// B33-T06: enforce input request size bound.
+	if rawInput, err := json.Marshal(input); err == nil {
+		if checkErr := mcpmanager.CheckRequestSize(rawInput); checkErr != nil {
+			s.auditMCPDenied(serverID, tool, checkErr.Error())
+			return rpcError(req.ID, checkErr.Error(), mcpmanager.ErrCodeBodyTooLarge)
+		}
+	}
+
 	// B33-T05: derive a context deadline from the B30 operation envelope.
 	// When a TimeEnvelope is present on the invoke state, use the effective
 	// operation deadline as the MCP call timeout; otherwise use a
@@ -1100,6 +1148,12 @@ func mcpErrorCode(err error) string {
 		return "mcp_service_not_ready"
 	case strings.Contains(msg, "crashed"):
 		return "mcp_service_crashed"
+	case strings.Contains(msg, "overloaded") || strings.Contains(msg, "concurrency limit"):
+		return mcpmanager.ErrCodeOverloaded
+	case strings.Contains(msg, "exceeds") && strings.Contains(msg, "byte"):
+		return mcpmanager.ErrCodeBodyTooLarge
+	case strings.Contains(msg, "depth") && strings.Contains(msg, "exceeds"):
+		return mcpmanager.ErrCodeDepthTooDeep
 	default:
 		return "mcp_error"
 	}
