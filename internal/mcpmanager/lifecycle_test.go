@@ -425,13 +425,38 @@ func (d *fakeRuntimeDriver) InspectNetwork(_ context.Context, id runtime.Network
 func (d *fakeRuntimeDriver) AttachNetwork(_ context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	// Track attachments if needed; for now idempotent success.
+	spec, ok := d.specs[containerID]
+	if !ok {
+		return runtime.ErrContainerNotFound
+	}
+	// Track attachment by appending network ID to spec.NetworkIDs.
+	netStr := string(networkID)
+	for _, nid := range spec.NetworkIDs {
+		if nid == netStr {
+			return nil // already attached
+		}
+	}
+	spec.NetworkIDs = append(spec.NetworkIDs, netStr)
+	d.specs[containerID] = spec
 	return nil
 }
 
 func (d *fakeRuntimeDriver) DetachNetwork(_ context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	spec, ok := d.specs[containerID]
+	if !ok {
+		return runtime.ErrContainerNotFound
+	}
+	netStr := string(networkID)
+	filtered := make([]string, 0, len(spec.NetworkIDs))
+	for _, nid := range spec.NetworkIDs {
+		if nid != netStr {
+			filtered = append(filtered, nid)
+		}
+	}
+	spec.NetworkIDs = filtered
+	d.specs[containerID] = spec
 	return nil
 }
 
