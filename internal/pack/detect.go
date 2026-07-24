@@ -28,38 +28,38 @@ const (
 // as credentialed HTTP egress (Option B unified egress).
 // In v0.3, Route is mutually exclusive with Provider, Model, and Credential.
 type LLMConfig struct {
-	Provider   string `yaml:"provider"`   // openai|anthropic|xai
-	Model      string `yaml:"model"`      // e.g. "gpt-4o", "claude-sonnet-4", "grok-beta"
-	Credential string `yaml:"credential"` // Keychain secret name (e.g. "openai-key")
-	Route      string `yaml:"route"`      // v0.3: logical model route (mutually exclusive with provider/model/credential)
+	Provider   string `yaml:"provider" json:"provider,omitempty"`     // openai|anthropic|xai
+	Model      string `yaml:"model" json:"model,omitempty"`           // e.g. "gpt-4o", "claude-sonnet-4", "grok-beta"
+	Credential string `yaml:"credential" json:"credential,omitempty"` // Keychain secret name (e.g. "openai-key")
+	Route      string `yaml:"route" json:"route,omitempty"`           // v0.3: logical model route (mutually exclusive with provider/model/credential)
 }
 
 // AgentYAML is a minimal subset of agent.yaml fields needed for detection
 // and packaging. The runtime field overrides auto-detection.
 // Both flat fields and the v1 metadata/spec schema are supported.
 type AgentYAML struct {
-	Name        string    `yaml:"name"`
-	Version     string    `yaml:"version"`
-	Runtime     string    `yaml:"runtime"`
-	Entry       string    `yaml:"entry"`
-	Description string    `yaml:"description"`
-	Kind        string    `yaml:"kind"` // v0.3: "worker" or "mcp_service" (legacy absence means worker)
-	LLM         LLMConfig `yaml:"llm"`
+	Name        string    `yaml:"name" json:"name,omitempty"`
+	Version     string    `yaml:"version" json:"version,omitempty"`
+	Runtime     string    `yaml:"runtime" json:"runtime,omitempty"`
+	Entry       string    `yaml:"entry" json:"entry,omitempty"`
+	Description string    `yaml:"description" json:"description,omitempty"`
+	Kind        string    `yaml:"kind" json:"kind,omitempty"` // v0.3: "worker" or "mcp_service" (legacy absence means worker)
+	LLM         LLMConfig `yaml:"llm" json:"llm,omitempty"`
 	// MCPService is the mcp_service block for kind=mcp_service packages (v0.4).
-	MCPService MCPServiceConfig `yaml:"mcp_service"`
+	MCPService MCPServiceConfig `yaml:"mcp_service" json:"mcp_service,omitempty"`
 	// Capabilities is additive optional metadata from the package manifest (B31-T01).
 	// Stored verbatim; not schema-validated against other packages in v0.3.
-	Capabilities []DeclaredCapability `yaml:"capabilities,omitempty"`
+	Capabilities []DeclaredCapability `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
 	Metadata     struct {
-		Name        string `yaml:"name"`
-		Version     string `yaml:"version"`
-		Description string `yaml:"description"`
-	} `yaml:"metadata"`
+		Name        string `yaml:"name" json:"name,omitempty"`
+		Version     string `yaml:"version" json:"version,omitempty"`
+		Description string `yaml:"description" json:"description,omitempty"`
+	} `yaml:"metadata" json:"metadata,omitempty"`
 	Spec struct {
-		Runtime    string `yaml:"runtime"`
-		Entrypoint string `yaml:"entrypoint"`
-		Entry      string `yaml:"entry"`
-	} `yaml:"spec"`
+		Runtime    string `yaml:"runtime" json:"runtime,omitempty"`
+		Entrypoint string `yaml:"entrypoint" json:"entrypoint,omitempty"`
+		Entry      string `yaml:"entry" json:"entry,omitempty"`
+	} `yaml:"spec" json:"spec,omitempty"`
 }
 
 // DeclaredCapability is a single capability entry from the agent.yaml manifest.
@@ -72,9 +72,9 @@ type DeclaredCapability struct {
 // MCPServiceConfig represents the mcp_service block in agent.yaml for
 // kind: mcp_service packages (v0.4).
 type MCPServiceConfig struct {
-	Transport      string   `yaml:"transport"`       // Only "streamable_http" is supported in v0.4.
-	Tools          []string `yaml:"tools"`           // Non-empty, unique tool names.
-	MaxConcurrency int      `yaml:"max_concurrency"` // 1..32, default 1 if omitted.
+	Transport      string   `yaml:"transport" json:"transport,omitempty"`               // Only "streamable_http" is supported in v0.4.
+	Tools          []string `yaml:"tools" json:"tools,omitempty"`                       // Non-empty, unique tool names.
+	MaxConcurrency int      `yaml:"max_concurrency" json:"max_concurrency,omitempty"`   // 1..32, default 1 if omitted.
 }
 
 func (agent *AgentYAML) normalize() {
