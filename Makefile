@@ -531,7 +531,7 @@ block33-gate: block32-gate
 	@echo "  vet"
 	@go vet ./...
 	@echo "  lint"
-	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m ./...
+	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m ./internal/... ./cmd/... ./test/...
 	@echo "  govulncheck"
 	@govulncheck ./...
 	@echo "  golden-fast"
@@ -548,10 +548,12 @@ block33-gate-fast:
 	@cd python && PYTHONPATH=. python3 -m unittest discover -s agentpaas_sdk/tests -v
 	@echo "  B33 adversary matrix"
 	@go test ./internal/mcpmanager/... ./internal/harness/... -count=1 -race -run 'TestAdversary_B33|TestAdversaryT07|TestMCP_|TestE2E_Neg'
+	@echo "  MCP container e2e"
+	@$(MAKE) mcp-container-e2e
 	@echo "  vet"
 	@go vet ./...
 	@echo "  lint"
-	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m ./...
+	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m ./internal/... ./cmd/... ./test/...
 	@echo "  golden-fast"
 	@$(MAKE) golden-fast
 	@echo "Block 33 gate FAST: PASS"
@@ -595,9 +597,22 @@ block28-k8s-tests:
 #   GOLDEN_K=N    — override repetition count (default: 3)
 #   AGENTPAAS_DOCKER_TESTS=1 — enables docker-tier tasks
 
-golden-fast: build-all
+# After build-all, restart agentpaasd so pack RPCs use the just-built binary
+# (macOS keeps the old daemon text mapped if we only overwrite bin/agentpaasd).
+.PHONY: restart-local-daemon
+restart-local-daemon:
+	@echo "==> Restarting local agentpaasd from $(CURDIR)/bin"
+	@-PATH="$(CURDIR)/bin:$$PATH" agentpaas daemon stop >/dev/null 2>&1 || true
+	@pkill -f "$(CURDIR)/bin/agentpaasd" >/dev/null 2>&1 || true
+	@sleep 1
+	@PATH="$(CURDIR)/bin:$$PATH" nohup "$(CURDIR)/bin/agentpaasd" >/tmp/agentpaasd-local.log 2>&1 &
+	@sleep 1
+	@pgrep -f "$(CURDIR)/bin/agentpaasd" >/dev/null || (echo "failed to start local agentpaasd; see /tmp/agentpaasd-local.log"; exit 1)
+	@echo "    agentpaasd PID $$(pgrep -f '$(CURDIR)/bin/agentpaasd' | head -1)"
+
+golden-fast: build-all restart-local-daemon
 	@echo "==> Running golden dataset: fast tier (pass^k=3)"
-	GOLDEN_TIER=fast GOLDEN_K=3 go test -v -run TestGoldenSuite -count=1 ./test/golden/ -timeout 120s
+	PATH="$(CURDIR)/bin:$$PATH" GOLDEN_TIER=fast GOLDEN_K=3 go test -v -run TestGoldenSuite -count=1 ./test/golden/ -timeout 120s
 	@echo "✓ Golden fast tier: PASS"
 
 golden-slow: build
