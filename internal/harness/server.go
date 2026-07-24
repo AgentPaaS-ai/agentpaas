@@ -61,6 +61,14 @@ type Config struct {
 	// declared (backward compat).
 	DelegationSnapshotPath string
 
+	// MCPBindingSidecarPath is the path to the MCP binding sidecar file (B33-T08 c3).
+	// The daemon writes it before starting the harness. The harness reads it at
+	// startup, wires the managed resolver onto the Router, and registers each
+	// binding on the Manager. The file is then deleted if writable (mirrors
+	// credentials sidecar pattern). Empty when no managed MCP services are
+	// declared (backward compat).
+	MCPBindingSidecarPath string
+
 	// B30-T04: policy-derived resource ceilings. On the durable path
 	// (InvokeDeployment), the daemon populates these from the deployment
 	// policy and the harness propagates them to the Python worker via
@@ -131,6 +139,13 @@ type Server struct {
 	importError *ErrorResponse
 	closed      bool
 	rpcServer   *harnessRPCServer
+
+	// router is the MCP protocol router installed via SetRouter.
+	// Accessed by InstallMCPBindingSidecar for sidecar loading.
+	router *mcpmanager.Router
+	// managedManager is the MCP Manager installed alongside the router.
+	// Used by InstallMCPBindingSidecar to register sidecar bindings.
+	managedManager *mcpmanager.Manager
 
 	invokeMu sync.Mutex
 
@@ -231,15 +246,61 @@ func (s *Server) startWorker() {
 	s.ready = true
 }
 
-// SetRouter installs the MCP protocol router on the harness RPC server.
+// SetRouter installs the MCP protocol router and manager on the harness RPC server.
 // Must be called before the Python worker starts invoking MCP tools.
 // When nil, the harness fails closed (no synthetic success for managed bindings).
-func (s *Server) SetRouter(router *mcpmanager.Router) {
+// The manager is stored on Server so InstallMCPBindingSidecar can register
+// sidecar bindings later.
+func (s *Server) SetRouter(router *mcpmanager.Router, manager *mcpmanager.Manager) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.router = router
+	s.managedManager = manager
 	if s.rpcServer != nil {
-		s.rpcServer.SetRouter(router)
+		s.rpcServer.SetRouter(router, manager)
 	}
+}
+
+// GetRouter returns the MCP Router installed via SetRouter. Used by tests
+// and by InstallMCPBindingSidecar to wire managed bindings.
+func (s *Server) GetRouter() *mcpmanager.Router {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.router
+}
+
+// InstallMCPBindingSidecar reads a sidecar file at path, wires its bindings
+// into the Router and Manager, and deletes the file if writable. This mirrors
+// the credentials sidecar pattern: the daemon writes the file before starting
+// the harness, and the harness consumes and deletes it at startup.
+//
+// The sidecar file contains READY MCP bindings with endpoint + capability +
+// allowed tools. Capability tokens are trusted root-only material and never
+// reach the Python environment.
+func (s *Server) InstallMCPBindingSidecar(path string) error {
+	s.mu.RLock()
+	router := s.router
+	manager := s.managedManager
+	s.mu.RUnlock()
+
+	if router == nil || manager == nil {
+		return fmt.Errorf("harness: InstallMCPBindingSidecar: router and manager must be installed via SetRouter first")
+	}
+
+	sc, err := mcpmanager.ReadMCPBindingSidecar(path)
+	if err != nil {
+		return fmt.Errorf("harness: read MCP binding sidecar: %w", err)
+	}
+
+	if err := mcpmanager.InstallSidecarOnRouter(router, manager, sc); err != nil {
+		return fmt.Errorf("harness: install MCP binding sidecar on router: %w", err)
+	}
+
+	// Delete the sidecar file after successful load (like credentials).
+	// If the file is on a read-only mount, ignore the delete error.
+	_ = os.Remove(path)
+
+	return nil
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
