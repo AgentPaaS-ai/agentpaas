@@ -485,11 +485,11 @@ func findRepoRoot() (string, error) {
 	}
 }
 
-// copyDir recursively copies a directory tree.
+// copyDir recursively copies the CONTENTS of src into dst (like cp -R src/. dst/).
 func copyDir(src, dst string) error {
-	cmd := exec.Command("cp", "-R", src, dst)
+	cmd := exec.Command("cp", "-R", src+"/.", dst)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("cp -R %s %s: %w\n%s", src, dst, err, out)
+		return fmt.Errorf("cp -R %s/. %s: %w\n%s", src, dst, err, out)
 	}
 	return nil
 }
