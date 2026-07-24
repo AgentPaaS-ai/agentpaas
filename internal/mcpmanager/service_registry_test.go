@@ -54,14 +54,6 @@ func newFakeRegistry() (*ServiceRegistry, *fakeRuntimeDriver) {
 	return reg, driver
 }
 
-// newFakeRegistryNoProbe creates a registry without readiness probe (manual state management).
-func newFakeRegistryNoProbe() (*ServiceRegistry, *fakeRuntimeDriver) {
-	driver := newFakeRuntimeDriver()
-	checker := &fakePromotionChecker{promoted: true}
-	reg := NewServiceRegistry(driver, checker, nil)
-	return reg, driver
-}
-
 // testBinding creates a simple ServiceBinding for tests.
 func testBinding(serviceID, packageName, packageVersion string) pack.ServiceBinding {
 	return pack.ServiceBinding{
@@ -491,13 +483,10 @@ func TestCrash_AfterReadiness_ReconcileDetectsUnhealthy(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestReconcile_ReadyServiceWithRunningContainer_StaysReady(t *testing.T) {
-	reg, driver := newFakeRegistry()
+	reg, _ := newFakeRegistry()
 	binding := testBinding("feedback", "feedback-tools", "1.0.0")
 	mustDeclare(t, reg, "wf-1", binding, "sha256:abc123", nil)
-	inst := mustStart(t, reg, context.Background(), "wf-1", "feedback")
-
-	// Container is still running (fake driver default).
-	_ = driver
+	mustStart(t, reg, context.Background(), "wf-1", "feedback")
 
 	if err := reg.Reconcile(context.Background(), "wf-1"); err != nil {
 		t.Fatalf("Reconcile() error = %v", err)

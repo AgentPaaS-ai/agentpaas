@@ -584,20 +584,36 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 	return r.driver.Create(ctx, spec)
 }
 
-// copyInstance returns a shallow-copy of the instance for safe read access.
+// copyInstance returns a field-by-field copy of the instance for safe read access.
 // Caller must hold inst.mu (at least RLock).
 func copyInstance(inst *ServiceInstance) *ServiceInstance {
 	if inst == nil {
 		return nil
 	}
-	cp := *inst
-	cp.BoundClients = make(map[string]bool, len(inst.BoundClients))
-	for k, v := range inst.BoundClients {
-		cp.BoundClients[k] = v
+	cp := &ServiceInstance{
+		WorkflowID:       inst.WorkflowID,
+		ServiceBindingID: inst.ServiceBindingID,
+		PackageName:      inst.PackageName,
+		PackageVersion:   inst.PackageVersion,
+		BundleDigest:     inst.BundleDigest,
+		Generation:       inst.Generation,
+		State:            inst.State,
+		RunID:            inst.RunID,
+		AttemptID:        inst.AttemptID,
+		LeaseID:          inst.LeaseID,
+		ContainerID:      inst.ContainerID,
+		Endpoint:         inst.Endpoint,
+		BoundClients:     make(map[string]bool, len(inst.BoundClients)),
+		CreatedAt:        inst.CreatedAt,
+		UpdatedAt:        inst.UpdatedAt,
+		LastError:        inst.LastError,
 	}
 	cp.DeclaredTools = make([]string, len(inst.DeclaredTools))
 	copy(cp.DeclaredTools, inst.DeclaredTools)
-	return &cp
+	for k, v := range inst.BoundClients {
+		cp.BoundClients[k] = v
+	}
+	return cp
 }
 
 func stringsJoin(ss []string) string {
