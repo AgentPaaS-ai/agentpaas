@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,13 +25,79 @@ import (
 type CallStatus string
 
 const (
-	CallStatusSucceeded CallStatus = "SUCCEEDED"
-	CallStatusFailed    CallStatus = "FAILED"
-	CallStatusCancelled CallStatus = "CANCELLED"
-	CallStatusUnknown   CallStatus = "UNKNOWN"
+	CallStatusSucceeded  CallStatus = "SUCCEEDED"
+	CallStatusFailed     CallStatus = "FAILED"
+	CallStatusCancelled  CallStatus = "CANCELLED"
+	CallStatusUnknown    CallStatus = "UNKNOWN"
 	CallStatusOverloaded CallStatus = "OVERLOADED"
-	CallStatusTimeout   CallStatus = "TIMEOUT"
+	CallStatusTimeout    CallStatus = "TIMEOUT"
 )
+
+// isTerminalCallStatus returns true if the status is considered terminal
+// (the call will never transition to SUCCEEDED). Terminal includes:
+// SUCCEEDED, FAILED, CANCELLED, TIMEOUT, OVERLOADED, and restart UNKNOWN
+// (where FinishedAt is set by MarkInFlightUnknown).
+func isTerminalCallStatus(status CallStatus, finishedAt time.Time) bool {
+	switch status {
+	case CallStatusSucceeded, CallStatusFailed, CallStatusCancelled,
+		CallStatusTimeout, CallStatusOverloaded:
+		return true
+	case CallStatusUnknown:
+		return !finishedAt.IsZero()
+	default:
+		return false
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Bounded storage constants
+// ---------------------------------------------------------------------------
+
+const (
+	// MaxCallRecordsPerWorkflow caps call records per workflow to prevent
+	// unbounded memory growth.
+	MaxCallRecordsPerWorkflow = 1024
+	// MaxLifecycleEventsPerKey caps lifecycle events per (workflow, binding)
+	// to prevent unbounded growth.
+	MaxLifecycleEventsPerKey = 256
+)
+
+// ---------------------------------------------------------------------------
+// Key encoding
+// ---------------------------------------------------------------------------
+
+// makeCompositeKey builds a collision-safe composite key from two strings
+// using a NUL separator. Unlike naive slash joining, this prevents injection
+// attacks where a binding ID containing "/" could alias another key.
+func makeCompositeKey(a, b string) string {
+	// Length-prefix encoding: "<lenA>:<a>\x00<lenB>:<b>"
+	return fmt.Sprintf("%d:%s\x00%d:%s", len(a), a, len(b), b)
+}
+
+// normalizeIdentityField strips control characters (CR, LF, NUL, and other
+// non-printable chars) from identity fields to prevent log injection.
+func normalizeIdentityField(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '?'
+		}
+		return r
+	}, s)
+	s = strings.ReplaceAll(s, "\x00", "")
+	return s
+}
+
+// validateCorrelationID checks that a correlation ID is non-empty and
+// does not contain NUL bytes. Returns an error if invalid.
+func validateCorrelationID(id string) error {
+	if id == "" {
+		return fmt.Errorf("correlation ID must not be empty")
+	}
+	if strings.Contains(id, "\x00") {
+		return fmt.Errorf("correlation ID must not contain NUL bytes")
+	}
+	return nil
+}
 
 // ---------------------------------------------------------------------------
 // MCPCallRecord
@@ -59,9 +126,9 @@ type MCPCallRecord struct {
 	ServiceLeaseID string `json:"service_lease_id,omitempty"`
 
 	// Binding identity.
-	WorkflowID  string `json:"workflow_id"`
-	BindingID   string `json:"binding_id"`
-	Tool        string `json:"tool"`
+	WorkflowID string `json:"workflow_id"`
+	BindingID  string `json:"binding_id"`
+	Tool       string `json:"tool"`
 
 	// Digests only — never raw args/results.
 	InputDigest  string `json:"input_digest"`
@@ -176,10 +243,10 @@ type CallEvidenceStore interface {
 // InMemoryCallEvidenceStore is a thread-safe in-memory implementation of
 // CallEvidenceStore for tests.
 type InMemoryCallEvidenceStore struct {
-	mu       sync.RWMutex
-	calls       map[string]MCPCallRecord           // keyed by correlationID
-	lifecycle   map[string][]MCPServiceLifecycleEvent // keyed by workflowID/bindingID
-	inFlight    map[string]bool                     // correlationIDs that are in-flight
+	mu        sync.RWMutex
+	calls     map[string]MCPCallRecord              // keyed by correlationID
+	lifecycle map[string][]MCPServiceLifecycleEvent  // keyed by composite key
+	inFlight  map[string]bool                        // correlationIDs that are in-flight
 }
 
 // NewInMemoryCallEvidenceStore creates a new in-memory evidence store.
@@ -192,22 +259,89 @@ func NewInMemoryCallEvidenceStore() *InMemoryCallEvidenceStore {
 }
 
 func (s *InMemoryCallEvidenceStore) RecordCall(record MCPCallRecord) error {
+	// Validate correlation ID: reject empty and NUL-containing IDs.
+	if err := validateCorrelationID(record.CorrelationID); err != nil {
+		return err
+	}
+
+	// Normalize identity fields to strip CR/LF/NUL injection.
+	record.WorkflowID = normalizeIdentityField(record.WorkflowID)
+	record.BindingID = normalizeIdentityField(record.BindingID)
+	record.Tool = normalizeIdentityField(record.Tool)
+	record.Reason = sanitizeEvidenceReason(record.Reason)
+	record.CorrelationID = normalizeIdentityField(record.CorrelationID)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.calls[record.CorrelationID] = record
-	if record.Status == CallStatusUnknown {
-		s.inFlight[record.CorrelationID] = true
-	} else {
-		delete(s.inFlight, record.CorrelationID)
+
+	// Terminal state machine: prevent fabricated commits and demotion.
+	existing, hasExisting := s.calls[record.CorrelationID]
+	if hasExisting {
+		existingTerminal := isTerminalCallStatus(existing.Status, existing.FinishedAt)
+
+		// Rule 1: Once terminal, never allow SUCCEEDED overwrite
+		// (prevents CANCELLED/FAILED/TIMEOUT → SUCCEEDED fabrication).
+		if existingTerminal && record.Status == CallStatusSucceeded {
+			return nil // silently reject — preserve existing terminal record
+		}
+
+		// Rule 2: SUCCEEDED cannot be demoted to UNKNOWN
+		// (prevents erasing committed success evidence).
+		if existing.Status == CallStatusSucceeded && record.Status == CallStatusUnknown {
+			return nil // silently reject demotion
+		}
+
+		// Rule 3: Terminal statuses cannot be downgraded to in-flight UNKNOWN.
+		if existingTerminal && record.Status == CallStatusUnknown && record.FinishedAt.IsZero() {
+			return nil // silently reject
+		}
 	}
+
+	// Bounded storage: cap per-workflow call records.
+	workflowCount := 0
+	for _, c := range s.calls {
+		if c.WorkflowID == record.WorkflowID && c.CorrelationID != record.CorrelationID {
+			workflowCount++
+		}
+	}
+	if workflowCount >= MaxCallRecordsPerWorkflow && !hasExisting {
+		return nil // drop oldest would require ordering; reject excess for now
+	}
+
+	s.calls[record.CorrelationID] = record
+
+	// Update inFlight map based on terminal status.
+	if isTerminalCallStatus(record.Status, record.FinishedAt) {
+		delete(s.inFlight, record.CorrelationID)
+	} else if record.Status == CallStatusUnknown && record.FinishedAt.IsZero() {
+		s.inFlight[record.CorrelationID] = true
+	}
+
 	return nil
 }
 
 func (s *InMemoryCallEvidenceStore) RecordLifecycleEvent(event MCPServiceLifecycleEvent) error {
+	// Normalize identity fields.
+	event.WorkflowID = normalizeIdentityField(event.WorkflowID)
+	event.ServiceBindingID = normalizeIdentityField(event.ServiceBindingID)
+	event.Reason = sanitizeEvidenceReason(event.Reason)
+	event.CorrelationID = normalizeIdentityField(event.CorrelationID)
+	event.RunID = normalizeIdentityField(event.RunID)
+	event.AttemptID = normalizeIdentityField(event.AttemptID)
+	event.LeaseID = normalizeIdentityField(event.LeaseID)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := event.WorkflowID + "/" + event.ServiceBindingID
-	s.lifecycle[key] = append(s.lifecycle[key], event)
+
+	key := makeCompositeKey(event.WorkflowID, event.ServiceBindingID)
+	events := s.lifecycle[key]
+
+	// Bounded storage: cap per-key lifecycle events.
+	if len(events) >= MaxLifecycleEventsPerKey {
+		// Drop oldest, keep most recent.
+		events = events[1:]
+	}
+	s.lifecycle[key] = append(events, event)
 	return nil
 }
 
@@ -245,7 +379,7 @@ func (s *InMemoryCallEvidenceStore) GetCallsByBinding(workflowID, bindingID stri
 func (s *InMemoryCallEvidenceStore) GetLifecycleEvents(workflowID, bindingID string) []MCPServiceLifecycleEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	key := workflowID + "/" + bindingID
+	key := makeCompositeKey(workflowID, bindingID)
 	result := make([]MCPServiceLifecycleEvent, len(s.lifecycle[key]))
 	copy(result, s.lifecycle[key])
 	return result
@@ -258,9 +392,14 @@ func (s *InMemoryCallEvidenceStore) MarkInFlightUnknown(workflowID string) int {
 	for correlationID := range s.inFlight {
 		if record, ok := s.calls[correlationID]; ok {
 			if record.WorkflowID == workflowID {
+				// Only mark in-flight calls — never touch already-terminal ones.
+				if isTerminalCallStatus(record.Status, record.FinishedAt) {
+					continue
+				}
 				record.Status = CallStatusUnknown
 				record.Reason = "daemon restart: call outcome unknown"
 				record.FinishedAt = time.Now().UTC()
+				record.OutputDigest = "" // clear any forged output digest
 				s.calls[correlationID] = record
 				delete(s.inFlight, correlationID)
 				count++
@@ -275,6 +414,20 @@ func (s *InMemoryCallEvidenceStore) Close() error {
 }
 
 // ---------------------------------------------------------------------------
+// sanitizeEvidenceReason — central sanitization for evidence reason fields
+// ---------------------------------------------------------------------------
+
+// sanitizeEvidenceReason applies the full redaction pipeline to fields stored
+// in evidence records (call reason, lifecycle reason, etc.). This ensures
+// no secret leakage through any evidence path.
+func sanitizeEvidenceReason(s string) string {
+	if s == "" {
+		return s
+	}
+	return sanitizeLastError(s)
+}
+
+// ---------------------------------------------------------------------------
 // InFlightCallTracker
 // ---------------------------------------------------------------------------
 
@@ -282,8 +435,8 @@ func (s *InMemoryCallEvidenceStore) Close() error {
 // marked as UNKNOWN/CANCELLED during restart or fence. Never marks them as
 // SUCCEEDED.
 type InFlightCallTracker struct {
-	mu     sync.Mutex
-	calls  map[string]inFlightCall // keyed by correlationID
+	mu    sync.Mutex
+	calls map[string]inFlightCall // keyed by correlationID
 }
 
 type inFlightCall struct {
