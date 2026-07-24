@@ -107,7 +107,7 @@ install-plugin:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -514,6 +514,48 @@ block32-gate: block31-gate
 	@$(MAKE) golden-fast
 	@echo "Block 32 gate: PASS"
 
+# ── Block 33 Gate: MCP Container Services ─────────────────────────────────
+
+.PHONY: block33-gate
+block33-gate: block32-gate
+	@echo "==> Running Block 33 gate: MCP container services"
+	@echo "  T01-T08 packages race"
+	@go test ./internal/mcpmanager/... ./internal/harness/... ./internal/daemon/... -count=1 -race
+	@go test ./internal/runtime/... ./internal/routedrun/... ./internal/policy/... ./internal/pack/... -count=1 -race
+	@echo "  Python SDK"
+	@python3 -m unittest discover -s python/agentpaas_sdk/tests -v
+	@echo "  MCP container e2e (docker)"
+	@$(MAKE) mcp-container-e2e
+	@echo "  B33 adversary matrix"
+	@go test ./internal/mcpmanager/... ./internal/harness/... -count=1 -race -run 'TestAdversary_B33|TestAdversaryT07|TestMCP_|TestE2E_Neg'
+	@echo "  vet"
+	@go vet ./...
+	@echo "  lint"
+	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m ./...
+	@echo "  govulncheck"
+	@govulncheck ./...
+	@echo "  golden-fast"
+	@$(MAKE) golden-fast
+	@echo "Block 33 gate: PASS"
+
+.PHONY: block33-gate-fast
+block33-gate-fast:
+	@echo "==> Running Block 33 gate FAST (no block32 chain)"
+	@echo "  T01-T08 packages race"
+	@go test ./internal/mcpmanager/... ./internal/harness/... ./internal/daemon/... -count=1 -race
+	@go test ./internal/runtime/... ./internal/routedrun/... ./internal/policy/... ./internal/pack/... -count=1 -race
+	@echo "  Python SDK"
+	@python3 -m unittest discover -s python/agentpaas_sdk/tests -v
+	@echo "  B33 adversary matrix"
+	@go test ./internal/mcpmanager/... ./internal/harness/... -count=1 -race -run 'TestAdversary_B33|TestAdversaryT07|TestMCP_|TestE2E_Neg'
+	@echo "  vet"
+	@go vet ./...
+	@echo "  lint"
+	@rm -rf ~/Library/Caches/golangci-lint && golangci-lint run --timeout 5m ./...
+	@echo "  golden-fast"
+	@$(MAKE) golden-fast
+	@echo "Block 33 gate FAST: PASS"
+
 # ── MCP admission conformance (unit) ──────────────────────────────────────
 
 .PHONY: mcp-admission-conformance
@@ -619,6 +661,8 @@ gates: ## List all available gate targets
 	@echo "  block30-gate - Durable runtime: supervisor, liveness, reference worker, longevity"
 	@echo "  block31-gate - Local package registry: read API, promotion, delegation gate"
 	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
+	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
+	@echo "  block33-gate-fast - MCP container services: fast gate (skip block32 chain)"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
