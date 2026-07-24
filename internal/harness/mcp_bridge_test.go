@@ -28,7 +28,6 @@ import (
 type fakeMCPWorker struct {
 	stdin  io.WriteCloser
 	stdout io.ReadCloser
-	stderr bytes.Buffer
 
 	tools       []string
 	callHandler func(tool string, args map[string]any) (map[string]any, error)

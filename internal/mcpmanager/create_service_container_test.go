@@ -38,7 +38,7 @@ func TestCreateServiceContainer_BundleDigest(t *testing.T) {
 	if !strings.Contains(spec.Image, "abc123") {
 		t.Fatalf("image must contain bundle digest, got %q", spec.Image)
 	}
-	if spec.Command != nil && len(spec.Command) > 0 {
+	if len(spec.Command) > 0 {
 		t.Fatalf("command must be nil/empty (use image entrypoint), got %v", spec.Command)
 	}
 
