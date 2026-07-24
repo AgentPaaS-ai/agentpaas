@@ -62,7 +62,7 @@ class TestTriggerInvokeTool(unittest.TestCase):
                 self.plugin.tools.agentpaas_trigger_invoke({"agent_name": "weather-agent"})
             )
             self.assertEqual(result["run_id"], "run-123")
-            m.assert_called_once_with(["trigger", "invoke", "weather-agent"])
+            m.assert_called_once_with(["trigger", "invoke", "weather-agent", "--wait"])
 
     def test_trigger_invoke_requires_agent_name(self):
         result = json.loads(self.plugin.tools.agentpaas_trigger_invoke({}))
@@ -82,7 +82,7 @@ class TestTriggerInvokeTool(unittest.TestCase):
                 )
             )
             m.assert_called_once_with([
-                "trigger", "invoke", "agent",
+                "trigger", "invoke", "agent", "--wait",
                 "--payload", "/tmp/payload.json",
             ])
 
@@ -98,7 +98,7 @@ class TestTriggerInvokeTool(unittest.TestCase):
                 )
             )
             m.assert_called_once_with([
-                "trigger", "invoke", "agent",
+                "trigger", "invoke", "agent", "--wait",
                 "--content-type", "text/plain",
             ])
 
