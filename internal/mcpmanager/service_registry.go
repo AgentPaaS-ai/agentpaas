@@ -46,6 +46,10 @@ type ServiceRegistry struct {
 	mu        sync.RWMutex
 	instances map[string]*ServiceInstance // key: workflowID/serviceBindingID
 
+	// serviceNetworks tracks workflow-scoped MCP service networks
+	// keyed by workflowID.
+	serviceNetworks map[string]*serviceNetworkState
+
 	driver           runtime.RuntimeDriver
 	promotionChecker PromotionChecker
 	readinessProbe   ReadinessProbe
@@ -56,7 +60,8 @@ type ServiceRegistry struct {
 // NewServiceRegistry creates a new ServiceRegistry.
 func NewServiceRegistry(driver runtime.RuntimeDriver, promotionChecker PromotionChecker, readinessProbe ReadinessProbe) *ServiceRegistry {
 	return &ServiceRegistry{
-		instances:        make(map[string]*ServiceInstance),
+		instances:       make(map[string]*ServiceInstance),
+		serviceNetworks: make(map[string]*serviceNetworkState),
 		driver:           driver,
 		promotionChecker: promotionChecker,
 		readinessProbe:   readinessProbe,
@@ -165,6 +170,48 @@ func (r *ServiceRegistry) Start(ctx context.Context, workflowID, serviceBindingI
 	inst.ContainerID = containerID
 	inst.mu.Unlock()
 
+	// Phase 2.5: ensure service network, generate capability, attach container.
+	networkState, err := r.getOrCreateNetworkState(workflowID)
+	if err != nil {
+		r.failInstance(key, gen, "network create: "+err.Error())
+		_ = r.driver.Stop(context.Background(), containerID, nil)
+		_ = r.driver.Remove(context.Background(), containerID, true)
+		return nil, fmt.Errorf("start service %q: network: %w", serviceBindingID, err)
+	}
+
+	// Ensure the service network exists (idempotent).
+	_, alias, err := EnsureServiceNetwork(ctx, r.driver, workflowID, networkState)
+	if err != nil {
+		r.failInstance(key, gen, "ensure network: "+err.Error())
+		_ = r.driver.Stop(context.Background(), containerID, nil)
+		_ = r.driver.Remove(context.Background(), containerID, true)
+		return nil, fmt.Errorf("start service %q: ensure network: %w", serviceBindingID, err)
+	}
+
+	// Attach the service container to the service network.
+	if err := AttachToServiceNetwork(ctx, r.driver, containerID, networkState); err != nil {
+		r.failInstance(key, gen, "attach network: "+err.Error())
+		_ = r.driver.Stop(context.Background(), containerID, nil)
+		_ = r.driver.Remove(context.Background(), containerID, true)
+		return nil, fmt.Errorf("start service %q: attach network: %w", serviceBindingID, err)
+	}
+
+	// Generate per-binding capability token (crypto/rand).
+	capability, err := GenerateCapability()
+	if err != nil {
+		r.failInstance(key, gen, "generate capability: "+err.Error())
+		detachAndCleanupContainer(ctx, r.driver, containerID, networkState)
+		_ = r.driver.Stop(context.Background(), containerID, nil)
+		_ = r.driver.Remove(context.Background(), containerID, true)
+		return nil, fmt.Errorf("start service %q: generate capability: %w", serviceBindingID, err)
+	}
+
+	// Store network alias and capability on the instance (trusted fields).
+	inst.mu.Lock()
+	inst.NetworkAlias = alias
+	inst.Capability = capability
+	inst.mu.Unlock()
+
 	// Phase 3: readiness checks.
 	if r.readinessProbe != nil {
 		ready, probeErr := r.readinessProbe.Check(ctx, inst)
@@ -208,7 +255,7 @@ func (r *ServiceRegistry) failInstance(key string, gen int64, errMsg string) {
 	}
 	inst.mu.Lock()
 	inst.State = StateFailed
-	inst.LastError = sanitizeToolOutputString(errMsg)
+	inst.LastError = sanitizeLastError(errMsg)
 	inst.UpdatedAt = time.Now().UTC()
 	inst.mu.Unlock()
 	r.mu.Unlock()
@@ -255,6 +302,13 @@ func (r *ServiceRegistry) Stop(ctx context.Context, workflowID, serviceBindingID
 		// Stop and remove container.
 		if containerID != "" && r.driver != nil {
 			_ = r.driver.Stop(ctx, containerID, nil)
+			// Detach from service network before removing container.
+			if netState, ok := r.serviceNetworks[workflowID]; ok {
+				_ = r.driver.DetachNetwork(ctx, containerID, netState.NetworkID)
+				netState.mu.Lock()
+				delete(netState.attachedContainers, containerID)
+				netState.mu.Unlock()
+			}
 			_ = r.driver.Remove(ctx, containerID, true)
 		}
 
@@ -269,8 +323,13 @@ func (r *ServiceRegistry) Stop(ctx context.Context, workflowID, serviceBindingID
 		inst2.State = StateStopped
 		inst2.ContainerID = ""
 		inst2.Endpoint = ""
+		inst2.NetworkAlias = ""
+		inst2.Capability = ""
 		inst2.UpdatedAt = time.Now().UTC()
 		inst2.mu.Unlock()
+
+		// Check if this was the last attachment for the workflow network.
+		r.cleanupNetworkIfEmpty(workflowID)
 		r.mu.Unlock()
 		return nil
 	}
@@ -303,7 +362,7 @@ func (r *ServiceRegistry) Fence(ctx context.Context, workflowID, serviceBindingI
 	inst.State = StateFenced
 	inst.UpdatedAt = time.Now().UTC()
 	if reason != "" {
-		inst.LastError = sanitizeToolOutputString(reason)
+		inst.LastError = sanitizeLastError(reason)
 	}
 	return nil
 }
@@ -364,7 +423,7 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 					// Two containers claiming same generation → conflict.
 					if inst.State == StateReady {
 						inst.State = StateUnhealthy
-						inst.LastError = sanitizeToolOutputString("reconcile: duplicate container for generation " + genStr)
+						inst.LastError = sanitizeLastError("reconcile: duplicate container for generation " + genStr)
 						inst.UpdatedAt = time.Now().UTC()
 					}
 				} else {
@@ -373,7 +432,7 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 					if statusErr != nil || status != runtime.ContainerStatusRunning {
 						if inst.State == StateReady {
 							inst.State = StateUnhealthy
-							inst.LastError = sanitizeToolOutputString("reconcile: container not running")
+							inst.LastError = sanitizeLastError("reconcile: container not running")
 							inst.UpdatedAt = time.Now().UTC()
 						}
 					}
@@ -392,7 +451,7 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 		if inst.ContainerID != "" && !discoveredIDs[string(inst.ContainerID)] {
 			if inst.State == StateReady || inst.State == StateFenced {
 				inst.State = StateUnhealthy
-				inst.LastError = sanitizeToolOutputString("reconcile: container not found")
+				inst.LastError = sanitizeLastError("reconcile: container not found")
 				inst.UpdatedAt = time.Now().UTC()
 			}
 		}
@@ -407,10 +466,28 @@ func (r *ServiceRegistry) Reconcile(ctx context.Context, workflowID string) erro
 				instGenKey := inst.serviceKey() + "/" + strconv.FormatInt(inst.Generation, 10)
 				if instGenKey == genKey && (inst.State == StateReady || inst.State == StateFenced) {
 					inst.State = StateUnhealthy
-					inst.LastError = sanitizeToolOutputString("reconcile: ambiguous lease — multiple containers for generation")
+					inst.LastError = sanitizeLastError("reconcile: ambiguous lease — multiple containers for generation")
 					inst.UpdatedAt = time.Now().UTC()
 				}
 				inst.mu.Unlock()
+			}
+		}
+	}
+
+	// Reconcile orphan service networks: remove networks with no
+	// attached containers.
+	r.mu.Unlock()
+	reconciledOrphans, orphanErr := ReconcileOrphanServiceNetworks(ctx, r.driver, workflowID)
+	r.mu.Lock()
+	if orphanErr != nil {
+		// Non-fatal: log and continue.
+		_ = orphanErr
+	}
+	if reconciledOrphans > 0 {
+		// Clear orphaned states.
+		for wfID, netState := range r.serviceNetworks {
+			if wfID == workflowID && netState.RemainingAttachments() == 0 {
+				delete(r.serviceNetworks, wfID)
 			}
 		}
 	}
@@ -551,6 +628,44 @@ func (r *ServiceRegistry) List(workflowID string) []*ServiceInstance {
 	return result
 }
 
+// getOrCreateNetworkState returns the serviceNetworkState for a workflow,
+// creating one if it does not exist. Caller must hold at least r.mu.RLock.
+func (r *ServiceRegistry) getOrCreateNetworkState(workflowID string) (*serviceNetworkState, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	state, ok := r.serviceNetworks[workflowID]
+	if !ok {
+		state = newServiceNetworkState()
+		r.serviceNetworks[workflowID] = state
+	}
+	return state, nil
+}
+
+// detachAndCleanupContainer detaches a container from its service network
+// and is used during rollback on failure.
+func detachAndCleanupContainer(ctx context.Context, driver runtime.RuntimeDriver, containerID runtime.ContainerID, state *serviceNetworkState) {
+	if driver == nil || state == nil {
+		return
+	}
+	_ = driver.DetachNetwork(ctx, containerID, state.NetworkID)
+}
+
+// cleanupNetworkIfEmpty removes the service network for a workflow if no
+// containers remain attached. Caller must hold r.mu (write lock).
+func (r *ServiceRegistry) cleanupNetworkIfEmpty(workflowID string) {
+	netState, ok := r.serviceNetworks[workflowID]
+	if !ok {
+		return
+	}
+	if netState.RemainingAttachments() > 0 {
+		return
+	}
+	// Remove the network; ignore errors (best-effort cleanup).
+	_ = RemoveServiceNetwork(context.Background(), r.driver, netState)
+	delete(r.serviceNetworks, workflowID)
+}
+
 // createServiceContainer builds and creates a container for a service instance.
 func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *ServiceInstance, gen int64) (runtime.ContainerID, error) {
 	if r.driver == nil {
@@ -603,6 +718,8 @@ func copyInstance(inst *ServiceInstance) *ServiceInstance {
 		LeaseID:          inst.LeaseID,
 		ContainerID:      inst.ContainerID,
 		Endpoint:         inst.Endpoint,
+		NetworkAlias:     inst.NetworkAlias,
+		Capability:       inst.Capability,
 		BoundClients:     make(map[string]bool, len(inst.BoundClients)),
 		CreatedAt:        inst.CreatedAt,
 		UpdatedAt:        inst.UpdatedAt,
