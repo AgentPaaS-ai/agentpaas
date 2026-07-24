@@ -83,7 +83,11 @@ func main() {
 		cancel()
 	}()
 
-	log.Printf("harness: listening on %s, agent=%s", cfg.Addr, cfg.AgentPath)
+	log.Printf("harness: listening on %s, agent=%s, agent_kind=%s", cfg.Addr, cfg.AgentPath, cfg.AgentKind)
+	if cfg.AgentKind == "mcp_service" {
+		bridgeAddr := envOrDefault("AGENTPAAS_MCP_HTTP_ADDR", "0.0.0.0:8080")
+		log.Printf("harness: MCP HTTP bridge will start on %s", bridgeAddr)
+	}
 	if err := server.ListenAndServe(ctx); err != nil {
 		log.Printf("harness: server error: %v", err)
 		os.Exit(1)
