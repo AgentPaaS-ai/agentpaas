@@ -1,0 +1,8 @@
+kind: standalone
+services:
+  - service_id: feedback
+    package_name: mcp-feedback-service
+    package_version: "0.1.0"
+    bundle_digest: sha256:placeholder
+    allowed_tools:
+      - lookup_feedback

@@ -1,0 +1,7 @@
+version: "1.0"
+agent:
+  name: mcp-feedback-client
+  description: Client that invokes the MCP feedback service
+egress: []
+credentials: []
+ingress: []
