@@ -228,12 +228,24 @@ func (r *ServiceRegistry) Start(ctx context.Context, workflowID, serviceBindingI
 	inst.LastError = ""
 
 	// Release instance lock, keep registry lock to prevent map mutation.
+	// Generate per-binding capability token (crypto/rand) BEFORE container
+	// creation so it can be injected into the container environment.
+	capability, err := GenerateCapability()
+	if err != nil {
+		inst.mu.Unlock()
+		r.mu.Unlock()
+		r.failInstance(key, gen, "generate capability: "+err.Error())
+		return nil, fmt.Errorf("start service %q: generate capability: %w", serviceBindingID, err)
+	}
+
+	// Store capability on instance before releasing locks.
+	inst.Capability = capability
 	inst.mu.Unlock()
 
 	r.mu.Unlock()
 
 	// Phase 2: create and start container (no locks held).
-	containerID, err := r.createServiceContainer(ctx, inst, gen)
+	containerID, err := r.createServiceContainer(ctx, inst, gen, capability)
 	if err != nil {
 		r.failInstance(key, gen, "container create: "+err.Error())
 		return nil, fmt.Errorf("start service %q: create container: %w", serviceBindingID, err)
@@ -249,7 +261,7 @@ func (r *ServiceRegistry) Start(ctx context.Context, workflowID, serviceBindingI
 	inst.ContainerID = containerID
 	inst.mu.Unlock()
 
-	// Phase 2.5: ensure service network, generate capability, attach container.
+	// Phase 2.5: ensure service network, attach container.
 	networkState, err := r.getOrCreateNetworkState(workflowID)
 	if err != nil {
 		r.failInstance(key, gen, "network create: "+err.Error())
@@ -277,20 +289,9 @@ func (r *ServiceRegistry) Start(ctx context.Context, workflowID, serviceBindingI
 		return nil, fmt.Errorf("start service %q: attach network: %w", serviceBindingID, err)
 	}
 
-	// Generate per-binding capability token (crypto/rand).
-	capability, err := GenerateCapability()
-	if err != nil {
-		r.failInstance(key, gen, "generate capability: "+err.Error())
-		detachAndCleanupContainer(ctx, r.driver, containerID, networkState)
-		_ = r.driver.Stop(context.Background(), containerID, nil)
-		_ = r.driver.Remove(context.Background(), containerID, true)
-		return nil, fmt.Errorf("start service %q: generate capability: %w", serviceBindingID, err)
-	}
-
-	// Store network alias and capability on the instance (trusted fields).
+	// Store network alias on the instance (trusted fields).
 	inst.mu.Lock()
 	inst.NetworkAlias = alias
-	inst.Capability = capability
 	inst.mu.Unlock()
 
 	// Phase 3: readiness checks.
@@ -871,7 +872,9 @@ func (r *ServiceRegistry) cleanupNetworkIfEmpty(workflowID string) {
 }
 
 // createServiceContainer builds and creates a container for a service instance.
-func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *ServiceInstance, gen int64) (runtime.ContainerID, error) {
+// The capability token is injected into the container environment so the MCP
+// service can validate the X-AgentPaaS-MCP-Capability header on incoming calls.
+func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *ServiceInstance, gen int64, capability string) (runtime.ContainerID, error) {
 	if r.driver == nil {
 		return "", fmt.Errorf("no runtime driver configured")
 	}
@@ -892,6 +895,7 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 
 	image := "agentpaas-mcp-service:latest"
 	command := []string{"sleep", "infinity"}
+	var binds []string
 
 	// Allow test override for injectable service container defaults.
 	r.mu.RLock()
@@ -901,6 +905,9 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 	if r.serviceDefaults != nil && len(r.serviceDefaults.command) > 0 {
 		command = r.serviceDefaults.command
 	}
+	if r.serviceDefaults != nil && len(r.serviceDefaults.binds) > 0 {
+		binds = r.serviceDefaults.binds
+	}
 	r.mu.RUnlock()
 
 	spec := runtime.ContainerSpec{
@@ -909,8 +916,10 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 		Env: []string{
 			"AGENTPAAS_AGENT_KIND=mcp_service",
 			"AGENTPAAS_MCP_DECLARED_TOOLS=" + tools,
+			"AGENTPAAS_MCP_CAPABILITY=" + capability,
 		},
 		Labels: labels,
+		Binds:  binds,
 	}
 
 	return r.driver.Create(ctx, spec)
@@ -1023,6 +1032,7 @@ func serviceNetworkDNSAlias(serviceBindingID string) string {
 type serviceDefaults struct {
 	image   string
 	command []string
+	binds   []string
 }
 
 // SetServiceContainerDefaults configures the default image and command
@@ -1037,4 +1047,17 @@ func (r *ServiceRegistry) SetServiceContainerDefaults(image string, command []st
 	}
 	r.serviceDefaults.image = image
 	r.serviceDefaults.command = command
+}
+
+// SetServiceBinds configures host-to-container bind mounts for MCP service
+// containers. Intended for Docker e2e tests that need to mount mock server
+// scripts or test data into service containers. Binds follow the Docker
+// --volume format: \"host_path:container_path\" or \"host_path:container_path:ro\".
+func (r *ServiceRegistry) SetServiceBinds(binds []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.serviceDefaults == nil {
+		r.serviceDefaults = &serviceDefaults{}
+	}
+	r.serviceDefaults.binds = binds
 }
