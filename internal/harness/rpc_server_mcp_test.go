@@ -550,3 +550,129 @@ func TestMCP_OneCallOneAuditRecord(t *testing.T) {
 	// per call — we document the current count and expect T07 cleanup.
 	t.Logf("audit events: %d total, %d mcp_call, %d mcp_denied", len(events), mcpCalls, mcpDenied)
 }
+
+// TestMCP_RouterDeliversManagedServiceResult proves the full managed service
+// e2e path: Manager.Register with transport=agentpaas-service → Router →
+// ManagedServiceResolver → httptest server → distinctive non-synthetic value.
+// The test asserts the result carries the service's own value (not {ok: true}),
+// proves Capability header reaches the service, and verifies managed path cannot
+// succeed without the resolver/registry wired in.
+func TestMCP_RouterDeliversManagedServiceResult(t *testing.T) {
+	t.Setenv("AGENTPAAS_TEST_FAKE_MCP", "")
+
+	const workflowID = "wf-integration"
+	const bindingID = "managed-integration"
+	capToken := "test-integration-cap-token-00000000000000000000000000000001"
+
+	// Capture request headers for assertion.
+	var capturedHeaders http.Header
+
+	// Stand up a fake MCP service endpoint returning a distinctive result.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeaders = r.Header.Clone()
+		_ = r.Body.Close()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":0,"result":{"source":"b33-t05-integration-real","value":"managed-e2e-proof"}}`))
+	}))
+	defer func() { upstream.Close() }()
+
+	// Build a Router with Manager + managed resolver backed by a pre-built
+	// ServiceRegistry instance (bypasses real container creation).
+	manager := mcpmanager.NewManager()
+	manager.Register([]policy.MCPServer{{
+		Name:         bindingID,
+		Transport:    "agentpaas-service",
+		AllowedTools: []string{"lookup"},
+	}}, "agent-integration", "run-integration")
+
+	inst := mcpmanager.TestServiceInstance(workflowID, bindingID,
+		mcpmanager.StateReady, upstream.URL, capToken, []string{"lookup"})
+	registry := mcpmanager.TestServiceRegistry([]*mcpmanager.ServiceInstance{inst})
+	resolver := mcpmanager.TestManagedResolverHTTPClient(registry, upstream.Client())
+
+	router := mcpmanager.NewRouter(manager, nil, nil, nil)
+	router.SetManagedResolver(resolver, workflowID)
+
+	// Wire the router into a harness RPC server via handleMCP.
+	recorder := &recordingAuditAppender{}
+	s := &harnessRPCServer{audit: recorder}
+	s.SetRouter(router)
+	state := &rpcInvokeState{
+		// Managed binding in the payload: transport=agentpaas-service.
+		payload: map[string]any{
+			"mcp_servers": []any{
+				map[string]any{
+					"server_id": bindingID,
+					"name":      bindingID,
+					"tools":     []any{"lookup"},
+					"transport": "agentpaas-service",
+				},
+			},
+		},
+		budget:     NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+		mcpAllowed: map[string]map[string]bool{bindingID: {"lookup": true}},
+	}
+
+	req := rpcRequest{
+		ID:     "1",
+		Method: "mcp",
+		Params: map[string]any{
+			"server_id": bindingID,
+			"tool":      "lookup",
+			"input":     map[string]any{"q": "integration"},
+		},
+	}
+	resp := s.handleMCP(req, state)
+
+	if !resp.OK {
+		t.Fatalf("response OK = false, want true (managed service via resolver); error=%q code=%q", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("response Result = %#v, want map from managed resolver", resp.Result)
+	}
+	// Prove result is NOT the synthetic {ok: true}.
+	if result["source"] != "b33-t05-integration-real" {
+		t.Fatalf("result.source = %q, want b33-t05-integration-real (prove real service value)", result["source"])
+	}
+	if result["value"] != "managed-e2e-proof" {
+		t.Fatalf("result.value = %q, want managed-e2e-proof", result["value"])
+	}
+	// Ensure no synthetic inner {ok: true}.
+	if inner, ok := result["result"].(map[string]any); ok && inner["ok"] == true {
+		t.Fatalf("result contains synthetic {ok: true}: %#v", result)
+	}
+
+	// Assert Capability header reached the upstream service.
+	if capHdr := capturedHeaders.Get(mcpmanager.CapabilityHeader); capHdr != capToken {
+		t.Fatalf("Capability header = %q, want %q", capHdr, capToken)
+	}
+
+	// Prove managed path fails without resolver (unwire it).
+	s2 := &harnessRPCServer{audit: recorder}
+	router2 := mcpmanager.NewRouter(manager, nil, nil, nil)
+	// Intentionally do NOT call SetManagedResolver on router2.
+	s2.SetRouter(router2)
+	state2 := &rpcInvokeState{
+		payload: map[string]any{
+			"mcp_servers": []any{
+				map[string]any{
+					"server_id": bindingID,
+					"name":      bindingID,
+					"tools":     []any{"lookup"},
+					"transport": "agentpaas-service",
+				},
+			},
+		},
+		budget:     NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+		mcpAllowed: map[string]map[string]bool{bindingID: {"lookup": true}},
+	}
+	resp2 := s2.handleMCP(req, state2)
+
+	if resp2.OK {
+		t.Fatalf("response OK = true (no resolver), want false; result=%#v", resp2.Result)
+	}
+	if !strings.Contains(resp2.Error, "managed service resolver not configured") {
+		t.Fatalf("error = %q, want 'managed service resolver not configured'", resp2.Error)
+	}
+}
