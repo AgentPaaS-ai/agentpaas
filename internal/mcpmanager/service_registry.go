@@ -921,13 +921,15 @@ func (r *ServiceRegistry) createServiceContainer(ctx context.Context, inst *Serv
 	r.mu.RUnlock()
 
 	env := []string{
+		"AGENTPAAS_ADDR=127.0.0.1:8090",
+		"AGENTPAAS_MCP_HTTP_ADDR=0.0.0.0:8080",
 		"AGENTPAAS_AGENT_KIND=mcp_service",
 		"AGENTPAAS_MCP_DECLARED_TOOLS=" + tools,
 		"AGENTPAAS_MCP_CAPABILITY=" + capability,
 	}
 	// When using packed image, add the agent path env var.
 	if bundleDigest != "" && !hasDefaults {
-		env = append(env, "AGENTPAAS_AGENT_PATH=/agent/main.py")
+		env = append(env, "AGENTPAAS_AGENT_PATH=/app/main.py")
 	}
 
 	spec := runtime.ContainerSpec{

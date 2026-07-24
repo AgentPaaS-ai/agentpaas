@@ -42,7 +42,9 @@ func TestCreateServiceContainer_BundleDigest(t *testing.T) {
 		t.Fatalf("command must be nil/empty (use image entrypoint), got %v", spec.Command)
 	}
 
-	// Env should contain capability, declared tools, kind, and agent path.
+	// Env should contain capability, declared tools, kind, agent path,
+	// the invoke API address (non-conflicting with MCP bridge), and the
+	// MCP HTTP bridge listen address.
 	env := findEnv(spec.Env, "AGENTPAAS_MCP_CAPABILITY")
 	if env != "cap-test-token" {
 		t.Fatalf("AGENTPAAS_MCP_CAPABILITY = %q", env)
@@ -53,8 +55,14 @@ func TestCreateServiceContainer_BundleDigest(t *testing.T) {
 	if f := findEnv(spec.Env, "AGENTPAAS_AGENT_KIND"); f != "mcp_service" {
 		t.Fatalf("AGENTPAAS_AGENT_KIND = %q", f)
 	}
-	if f := findEnv(spec.Env, "AGENTPAAS_AGENT_PATH"); f != "/agent/main.py" {
-		t.Fatalf("AGENTPAAS_AGENT_PATH = %q", f)
+	if f := findEnv(spec.Env, "AGENTPAAS_AGENT_PATH"); f != "/app/main.py" {
+		t.Fatalf("AGENTPAAS_AGENT_PATH = %q, want /app/main.py", f)
+	}
+	if f := findEnv(spec.Env, "AGENTPAAS_ADDR"); f != "127.0.0.1:8090" {
+		t.Fatalf("AGENTPAAS_ADDR = %q, want 127.0.0.1:8090", f)
+	}
+	if f := findEnv(spec.Env, "AGENTPAAS_MCP_HTTP_ADDR"); f != "0.0.0.0:8080" {
+		t.Fatalf("AGENTPAAS_MCP_HTTP_ADDR = %q, want 0.0.0.0:8080", f)
 	}
 }
 
