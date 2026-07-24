@@ -1,0 +1,84 @@
+=== mcp-admission-conformance ===
+go test ./internal/routedrun/ -count=1 -race -run 'TestAdmissionConformance_Matrix' -timeout 5m
+ok  	github.com/AgentPaaS-ai/agentpaas/internal/routedrun	8.991s
+EXIT_ADM:0
+=== mcp-container-e2e ===
+go test ./internal/routedrun/ -count=1 -race -run 'TestAdmissionConformance_Matrix' -timeout 5m
+ok  	github.com/AgentPaaS-ai/agentpaas/internal/routedrun	8.939s
+AGENTPAAS_DOCKER_TESTS=1 go test ./internal/mcpmanager/ -count=1 -race \
+	  -run 'TestE2E_CrossContainer|TestE2E_Neg_|TestE2E_OperatorPack' -timeout 25m
+ok  	github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager	200.930s
+EXIT_MCP:0
+=== golden-fast ===
+==> Running golden dataset: fast tier (pass^k=3)
+PATH="/Users/pms88/projects/agentpaas/bin:$PATH" GOLDEN_TIER=fast GOLDEN_K=3 go test -v -run TestGoldenSuite -count=1 ./test/golden/ -timeout 120s
+=== RUN   TestGoldenSuite
+    golden_test.go:78: 
+        ╔════════╦══════════════════════════════════════════╦════════╦══════════╦══════════╦════════╗
+        ║   ID   ║ Task                                     ║ Tier   ║ pass@1   ║ pass^k   ║ Verdict║
+        ╠════════╬══════════════════════════════════════════╬════════╬══════════╬══════════╬════════╣
+        ║ G01    ║ Project init from Python source          ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G02    ║ Project init from LangGraph source       ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G03    ║ Project init from CrewAI source          ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G04    ║ Policy init deny-all template            ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G05    ║ Policy init allow-http template          ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G06    ║ Policy init allow-llm template           ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G07    ║ Policy init allow-mcp template           ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G08    ║ Policy validation rejects unknown fields ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G09    ║ Policy validation rejects empty policy   ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G10    ║ Policy validation rejects scalar port    ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G11    ║ Secret add and list                      ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G12    ║ Secret remove                            ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G13    ║ Secret rotate                            ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G14    ║ Validate project for pack readiness      ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G15    ║ Validate project rejects missing agent.… ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G16    ║ Doctor check returns status              ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G44    ║ Plugin installed-state reference check   ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G45    ║ Plugin pack writes .agentpaas-built-via… ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G47    ║ Bundle inspect shows integrity and poli… ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G49    ║ Supervisor reconcile revokes ambiguous … ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G50    ║ Supervisor preserves checkpoint across … ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G51    ║ Fault injection scenarios pass (13 B30 … ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ║ G52    ║ Longevity fake-clock 24h 100 turns       ║ fast   ║ 100%     ║ 100%     ║ PASS   ║
+        ╠════════╩══════════════════════════════════════════╩════════╩══════════╩══════════╩════════╣
+        ║ PASS:23  FAIL:0  SKIP:0  TOTAL:23  Gate: PASS                              ║
+        ╚════════════════════════════════════════════════════════════════════════════════════════════╝
+        
+    golden_test.go:79: Verdict: 23/23 tasks pass (pass^k gate: PASS)
+    golden_test.go:87: Machine-readable report: /var/folders/q3/3wvtftvn7832cb4xrjlz_q1c0000gn/T//agentpaas-golden-report.json
+--- PASS: TestGoldenSuite (30.76s)
+PASS
+ok  	github.com/AgentPaaS-ai/agentpaas/test/golden	31.021s
+✓ Golden fast tier: PASS
+EXIT_GOLD:0
+=== adversary matrix ===
+ok  	github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager	1.959s
+ok  	github.com/AgentPaaS-ai/agentpaas/internal/harness	1.407s
+EXIT_ADV:0
+=== govulncheck ===
+      #62: internal/runtime/docker.go:18:2: runtime.init calls network.init
+      #63: internal/runtime/docker.go:19:2: runtime.init calls client.init, which calls registry.init
+      #64: internal/runtime/docker.go:19:2: runtime.init calls client.init, which eventually calls runtime.init
+      #65: internal/runtime/docker.go:574:30: runtime.DockerRuntime.ExecWithStdin calls stdcopy.StdCopy
+      #66: internal/runtime/docker.go:20:2: runtime.init calls stdcopy.init
+      #67: internal/routedrun/localstore.go:1824:27: routedrun.LocalStore.AppendControlResult calls json.Marshal, which eventually calls stdcopy.init
+      #68: internal/runtime/docker.go:17:2: runtime.init calls image.init, which calls storage.init
+      #69: internal/runtime/docker.go:15:2: runtime.init calls container.init, which calls strslice.init
+      #70: internal/runtime/docker.go:19:2: runtime.init calls client.init, which calls swarm.init
+      #71: internal/runtime/docker.go:19:2: runtime.init calls client.init, which calls system.init
+      #72: internal/runtime/docker.go:464:36: runtime.DockerRuntime.Logs calls client.Client.ContainerLogs, which calls time.GetTimestamp
+      #73: internal/runtime/docker.go:19:2: runtime.init calls client.init, which calls time.init
+      #74: internal/runtime/docker.go:553:2: runtime.DockerRuntime.ExecWithStdin calls types.HijackedResponse.Close
+      #75: internal/runtime/docker.go:549:44: runtime.DockerRuntime.ExecWithStdin calls client.Client.ContainerExecAttach, which eventually calls types.NewHijackedResponse
+      #76: internal/runtime/docker.go:19:2: runtime.init calls client.init, which calls types.init
+      #77: internal/runtime/docker.go:221:36: runtime.DockerRuntime.Create calls client.Client.ContainerCreate, which calls versions.GreaterThanOrEqualTo
+      #78: internal/runtime/docker.go:549:44: runtime.DockerRuntime.ExecWithStdin calls client.Client.ContainerExecAttach, which calls versions.LessThan
+      #79: internal/runtime/docker.go:19:2: runtime.init calls client.init, which calls versions.init
+      #80: internal/runtime/docker.go:19:2: runtime.init calls client.init, which calls volume.init
+
+Your code is affected by 5 vulnerabilities from 2 modules.
+This scan also found 0 vulnerabilities in packages you import and 1
+vulnerability in modules you require, but your code doesn't appear to call these
+vulnerabilities.
+Use '-show verbose' for more details.
+EXIT_VULN:0
