@@ -3,7 +3,6 @@ package mcpmanager
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -459,36 +458,16 @@ func TestAdversaryT07b_MarkInFlightUnknownPreservesForgedOutputDigest(t *testing
 // collides like lifecycle store (round-1 covered lifecycle only).
 func TestAdversaryT07b_HealthKeySlashInjection(t *testing.T) {
 	reg := newTestRegistry()
-	// Victim instance
+	// Instances whose field identities differ but composite keys collide on "/".
 	reg.instances["wf-1/svc"] = TestServiceInstance("wf-1", "svc", StateReady, "http://x", "c", nil)
-	// Colliding identities sharing composite key wf-1/svc/evil
-	reg.instances["wf-1/svc/evil"] = TestServiceInstance("wf-1", "svc/evil", StateReady, "http://x", "c", nil)
-	reg.instances["wf-1/svc"] = reg.instances["wf-1/svc"] // keep victim
-	// Directly place second identity under colliding key used by RecordHealthFailure
 	reg.instances["wf-1/svc/evil"] = TestServiceInstance("wf-1", "svc/evil", StateReady, "http://y", "c", nil)
-	// Also register alternate split identity for Get path confusion
-	reg.instances["wf-1/svc"] = TestServiceInstance("wf-1", "svc", StateReady, "http://x", "c", nil)
+	// Alternate split: workflowID="wf-1/svc", binding="evil" → same map key as above.
+	reg.instances["wf-1/svc/evil-alt"] = TestServiceInstance("wf-1/svc", "evil", StateReady, "http://z", "c", nil)
 
 	reg.RecordHealthFailure("wf-1", "svc/evil", ErrCodeTimeout, "injected-a", "t")
 	reg.RecordHealthFailure("wf-1/svc", "evil", ErrCodeOverloaded, "injected-b", "t")
 
 	// Both writes target healthStates["wf-1/svc/evil"].
-	sumA := reg.HealthSummary("wf-1", "svc/evil")
-	sumB := reg.HealthSummary("wf-1/svc", "evil")
-	// HealthSummary filters by inst.WorkflowID/ServiceBindingID fields, not map key —
-	// so summary may miss failures recorded under colliding keys when instance fields differ.
-	var failA, failB int
-	if sumA != nil {
-		for _, s := range sumA.Services {
-			failA += len(s.RecentFailures)
-		}
-	}
-	if sumB != nil {
-		for _, s := range sumB.Services {
-			failB += len(s.RecentFailures)
-		}
-	}
-	// Probe raw healthStates collision.
 	reg.mu.RLock()
 	hs := reg.healthStates["wf-1/svc/evil"]
 	reg.mu.RUnlock()
@@ -500,8 +479,6 @@ func TestAdversaryT07b_HealthKeySlashInjection(t *testing.T) {
 		// ADVERSARY BREAK: MEDIUM - health key slash collision merges distinct identities
 		t.Fatalf("ADVERSARY BREAK: MEDIUM - healthStates key collision merged %d failures for distinct (wf,binding) pairs", len(fails))
 	}
-	_ = failA
-	_ = failB
 }
 
 // TestAdversaryT07b_RecordHealthFailureEmptyWorkflowCrossTalk: empty workflowID
@@ -868,5 +845,3 @@ func TestAdversaryT07b_InFlightTrackerCompleteThenSnapshotRace(t *testing.T) {
 	}
 }
 
-// silence unused import if errors unused in some builds
-var _ = errors.New
