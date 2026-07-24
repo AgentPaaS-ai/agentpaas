@@ -401,6 +401,19 @@ func (d *fakeRuntimeDriver) InspectNetwork(context.Context, runtime.NetworkID) (
 	return runtime.NetworkInfo{}, errors.New("not implemented")
 }
 
+func (d *fakeRuntimeDriver) AttachNetwork(_ context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// Track attachments if needed; for now idempotent success.
+	return nil
+}
+
+func (d *fakeRuntimeDriver) DetachNetwork(_ context.Context, containerID runtime.ContainerID, networkID runtime.NetworkID) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return nil
+}
+
 func (d *fakeRuntimeDriver) InspectContainerNetworks(context.Context, runtime.ContainerID) ([]runtime.ContainerNetworkInfo, error) {
 	return nil, errors.New("not implemented")
 }

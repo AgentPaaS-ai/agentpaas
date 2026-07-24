@@ -266,6 +266,16 @@ type RuntimeDriver interface {
 	// including its Internal flag and labels.
 	InspectNetwork(ctx context.Context, id NetworkID) (NetworkInfo, error)
 
+	// AttachNetwork connects a container to a network. The container must
+	// already exist (created but not necessarily started). Attaching a
+	// container to a network it is already on is idempotent.
+	AttachNetwork(ctx context.Context, containerID ContainerID, networkID NetworkID) error
+
+	// DetachNetwork disconnects a container from a network. If the
+	// container is not attached to the network, the call is idempotent
+	// and succeeds silently.
+	DetachNetwork(ctx context.Context, containerID ContainerID, networkID NetworkID) error
+
 	// InspectContainerNetworks returns the list of networks a container is
 	// attached to, with network names and IDs. Used for topology assertions.
 	InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error)

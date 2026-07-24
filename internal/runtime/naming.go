@@ -50,6 +50,10 @@ const (
 	ResourceTypeMCP         = "mcp"
 	ResourceTypeNetInternal = "net-internal"
 	ResourceTypeNetEgress   = "net-egress"
+	// ResourceTypeMCPServiceNet is the label value for workflow-scoped MCP
+	// service networks that carry no external route and are only attached
+	// to trusted gateway/service containers.
+	ResourceTypeMCPServiceNet = "mcp-service-net"
 )
 
 // ContainerPrefixes map role types to their container name prefixes.

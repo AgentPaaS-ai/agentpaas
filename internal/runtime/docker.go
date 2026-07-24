@@ -652,6 +652,53 @@ func (d *DockerRuntime) InspectNetwork(ctx context.Context, id NetworkID) (Netwo
 	}, nil
 }
 
+// AttachNetwork connects a container to an existing Docker network.
+// If the driver is injected, it delegates to it.
+func (d *DockerRuntime) AttachNetwork(ctx context.Context, containerID ContainerID, networkID NetworkID) error {
+	if d.driver != nil {
+		return d.driver.AttachNetwork(ctx, containerID, networkID)
+	}
+	if string(containerID) == "" {
+		return fmt.Errorf("%w: container id is required", ErrInvalidSpec)
+	}
+	if string(networkID) == "" {
+		return fmt.Errorf("%w: network id is required", ErrInvalidSpec)
+	}
+	if d.cli == nil {
+		return ErrDockerNotInitialized
+	}
+	if err := d.cli.NetworkConnect(ctx, string(networkID), string(containerID), nil); err != nil {
+		return fmt.Errorf("attach container %q to network %q: %w", string(containerID), string(networkID), err)
+	}
+	return nil
+}
+
+// DetachNetwork disconnects a container from a Docker network.
+// If the driver is injected, it delegates to it.
+func (d *DockerRuntime) DetachNetwork(ctx context.Context, containerID ContainerID, networkID NetworkID) error {
+	if d.driver != nil {
+		return d.driver.DetachNetwork(ctx, containerID, networkID)
+	}
+	if string(containerID) == "" {
+		return fmt.Errorf("%w: container id is required", ErrInvalidSpec)
+	}
+	if string(networkID) == "" {
+		return fmt.Errorf("%w: network id is required", ErrInvalidSpec)
+	}
+	if d.cli == nil {
+		return ErrDockerNotInitialized
+	}
+	if err := d.cli.NetworkDisconnect(ctx, string(networkID), string(containerID), true); err != nil {
+		// NetworkDisconnect returns an error if container is not connected.
+		// Treat "not found" errors as idempotent success.
+		if errdefs.IsNotFound(err) || strings.Contains(err.Error(), "not found") {
+			return nil
+		}
+		return fmt.Errorf("detach container %q from network %q: %w", string(containerID), string(networkID), err)
+	}
+	return nil
+}
+
 // InspectContainerNetworks returns the list of networks a container is
 // attached to. Used for topology assertions.
 func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id ContainerID) ([]ContainerNetworkInfo, error) {
