@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -101,9 +102,14 @@ func ComputeOutputDigest(output any) string {
 }
 
 // NewCorrelationID generates a unique correlation ID for an MCP call.
+// Uses a monotonic counter with nanosecond timestamp to avoid collisions
+// in tight loops.
+var correlationIDCounter int64
+
 func NewCorrelationID() string {
 	now := time.Now().UnixNano()
-	h := sha256.Sum256([]byte(fmt.Sprintf("mcp-call-%d-%d", now, now)))
+	next := atomic.AddInt64(&correlationIDCounter, 1)
+	h := sha256.Sum256([]byte(fmt.Sprintf("mcp-call-%d-%d", now, next)))
 	return hex.EncodeToString(h[:])[:16]
 }
 
