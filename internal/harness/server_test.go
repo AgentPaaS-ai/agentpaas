@@ -269,3 +269,102 @@ func writeAgent(t *testing.T, source string) string {
 	}
 	return path
 }
+
+// TestServer_MCPBridge_StartsWithServiceKind verifies that when the Server
+// starts with AgentKind == "mcp_service", an MCPBridge is created and stored
+// on the Server, and the bridge can respond to HTTP JSON-RPC requests via
+// the real Python service worker.
+func TestServer_MCPBridge_StartsWithServiceKind(t *testing.T) {
+	repoRoot := findRepoRoot(t)
+
+	// Write a service agent with mcp_tool decorators.
+	agentCode := `
+from agentpaas_sdk import agent
+
+@agent.mcp_tool("echo")
+def echo(args):
+    return {"received": args.get("message", ""), "marker": "server-wire-test"}
+
+@agent.mcp_tool("ping")
+def ping(args):
+    return {"pong": True}
+`
+	agentPath := writeAgent(t, agentCode)
+
+	// Override Python path to include the SDK.
+	pythonPath := filepath.Join(repoRoot, "python")
+	t.Setenv("PYTHONPATH", pythonPath)
+
+	// Set the MCP capability env var so the bridge can authenticate.
+	cap := randomCapability(t)
+	t.Setenv("AGENTPAAS_MCP_CAPABILITY", cap)
+
+	cfg := Config{
+		AgentPath:        agentPath,
+		AgentKind:        "mcp_service",
+		MCPDeclaredTools: "echo,ping",
+		MCPMaxConcurrency: 1,
+	}
+	srv := NewServer(cfg)
+	t.Cleanup(func() { _ = srv.Close() })
+
+	// Wait for ready.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code == http.StatusOK {
+			break
+		}
+		if rec.Code == http.StatusServiceUnavailable {
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		t.Fatalf("readyz status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the MCPBridge exists.
+	bridge := srv.MCPBridge()
+	if bridge == nil {
+		t.Fatal("MCPBridge is nil for mcp_service kind")
+	}
+
+	// Verify the bridge has a listen address.
+	addr := bridge.Addr()
+	if addr == "" {
+		t.Fatal("MCPBridge addr is empty")
+	}
+
+	t.Logf("bridge addr: %s", addr)
+
+	// Make a real HTTP request to the bridge.
+	callResp, err := postMCPRequest(addr, cap, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo","arguments":{"message":"server-wire-test-msg"}}}`)
+	if err != nil {
+		t.Fatalf("tools/call request: %v", err)
+	}
+	if callResp["error"] != nil {
+		t.Fatalf("tools/call error: %v", callResp["error"])
+	}
+	callResult := callResp["result"].(map[string]any)
+	content, _ := callResult["content"].([]any)
+	textItem := content[0].(map[string]any)
+	text := textItem["text"].(string)
+	if !strings.Contains(text, "server-wire-test-msg") {
+		t.Fatalf("text missing server-wire-test-msg: %s", text)
+	}
+}
+
+// TestServer_MCPBridge_NotStartedWithoutServiceKind verifies that the MCPBridge
+// is nil when AgentKind is not "mcp_service".
+func TestServer_MCPBridge_NotStartedWithoutServiceKind(t *testing.T) {
+	srv := newReadyServer(t, `def invoke(payload):
+    return payload
+`)
+	defer func() { _ = srv.Close() }()
+
+	bridge := srv.MCPBridge()
+	if bridge != nil {
+		t.Fatal("MCPBridge should be nil when AgentKind is not mcp_service")
+	}
+}
