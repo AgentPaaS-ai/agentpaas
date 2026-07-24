@@ -76,6 +76,19 @@ var admissionTopologies = []topologyCase{
 		wantRuns:  1,
 		wantNodes: 1,
 	},
+	// MCP client topology — standalone agent that calls MCP services.
+	// Admission shape is still one READY node/run for the client deployment.
+	{
+		name: "mcp_client",
+		kind: "standalone",
+		meta: map[string]string{
+			"mcp:client":               "true",
+			"mcp:binding:feedback":     "feedback-tools@1.0.0",
+			"mcp:allowed_tools:feedback": "lookup_feedback",
+		},
+		wantRuns:  1,
+		wantNodes: 1,
+	},
 }
 
 func TestAdmissionConformance_Matrix(t *testing.T) {
