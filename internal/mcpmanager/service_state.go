@@ -136,18 +136,6 @@ func (s *ServiceInstance) transition(to ServiceState) error {
 	return nil
 }
 
-// setError sets the last error (redacted) on the instance.
-// Must be called while holding s.mu.
-func (s *ServiceInstance) setError(errMsg string) {
-	s.LastError = sanitizeToolOutputString(errMsg)
-	s.UpdatedAt = time.Now().UTC()
-}
-
-// stateLocked returns the current state. Caller must hold s.mu.RLock.
-func (s *ServiceInstance) stateLocked() ServiceState {
-	return s.State
-}
-
 // serviceKey returns a unique key for the service instance.
 func (s *ServiceInstance) serviceKey() string {
 	return s.WorkflowID + "/" + s.ServiceBindingID
