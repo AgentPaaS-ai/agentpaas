@@ -379,12 +379,11 @@ func TestAdversaryT07_InFlightTrackerUnusedByRouter(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestAdversaryT07_LifecycleEventsUnbounded: T07 requires bounded event volume.
-// Health ring is capped; lifecycle store is not.
 func TestAdversaryT07_LifecycleEventsUnbounded(t *testing.T) {
 	store := NewInMemoryCallEvidenceStore()
 	defer func() { _ = store.Close() }()
 
-	const flood = MaxRecentFailures*64 + 100 // well past health cap
+	const flood = MaxLifecycleEventsPerKey + 100 // well past bounded cap
 	for i := 0; i < flood; i++ {
 		_ = store.RecordLifecycleEvent(MCPServiceLifecycleEvent{
 			CorrelationID:    "flood",
@@ -397,10 +396,10 @@ func TestAdversaryT07_LifecycleEventsUnbounded(t *testing.T) {
 		})
 	}
 	events := store.GetLifecycleEvents("wf-1", "svc-1")
-	if len(events) > MaxRecentFailures*4 {
+	if len(events) > MaxLifecycleEventsPerKey {
 		// ADVERSARY BREAK: MEDIUM - lifecycle evidence store grows without bound (DoS / memory pressure)
-		t.Fatalf("ADVERSARY BREAK: MEDIUM - lifecycle events unbounded: got %d (health cap=%d)",
-			len(events), MaxRecentFailures)
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - lifecycle events unbounded: got %d (cap=%d)",
+			len(events), MaxLifecycleEventsPerKey)
 	}
 }
 
@@ -492,40 +491,33 @@ func TestAdversaryT07_EmptyCorrelationIDCollides(t *testing.T) {
 	store := NewInMemoryCallEvidenceStore()
 	defer func() { _ = store.Close() }()
 
-	_ = store.RecordCall(MCPCallRecord{
+	// Empty CorrelationIDs must be rejected — no evidence stored.
+	err := store.RecordCall(MCPCallRecord{
 		CorrelationID: "",
 		WorkflowID:    "wf-a",
 		Tool:          "t1",
 		Status:        CallStatusSucceeded,
 		InputDigest:   "1",
 	})
-	_ = store.RecordCall(MCPCallRecord{
+	if err == nil {
+		// ADVERSARY BREAK: MEDIUM - empty CorrelationID still accepted
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - empty CorrelationID accepted (must be rejected)")
+	}
+	// Second empty ID also rejected.
+	err = store.RecordCall(MCPCallRecord{
 		CorrelationID: "",
 		WorkflowID:    "wf-b",
 		Tool:          "t2",
 		Status:        CallStatusFailed,
 		InputDigest:   "2",
 	})
-
-	// Two logical calls, one empty key → second destroys first.
-	a, okA := store.GetCall("")
-	if !okA {
-		t.Fatal("empty correlation record missing")
+	if err == nil {
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - second empty CorrelationID also accepted")
 	}
-	if a.WorkflowID == "wf-a" && a.Tool == "t1" {
-		// first survived somehow — also check count
-	}
-	all := collectAllCalls(store)
-	emptyCount := 0
-	for _, c := range all {
-		if c.CorrelationID == "" {
-			emptyCount++
-		}
-	}
-	// Map can only hold one empty key; claiming two independent empty-ID records is impossible.
-	if emptyCount <= 1 && (a.WorkflowID != "wf-a" || a.Status != CallStatusSucceeded) {
-		// ADVERSARY BREAK: MEDIUM - empty CorrelationID allows silent overwrite of evidence
-		t.Fatalf("ADVERSARY BREAK: MEDIUM - empty CorrelationID collision destroyed prior evidence: got %+v (total empty slots reflected=%d)", a, emptyCount)
+	// No empty-ID records should exist.
+	_, okA := store.GetCall("")
+	if okA {
+		t.Fatalf("ADVERSARY BREAK: MEDIUM - empty CorrelationID record exists in store")
 	}
 }
 

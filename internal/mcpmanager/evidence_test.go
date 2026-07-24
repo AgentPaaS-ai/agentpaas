@@ -409,8 +409,8 @@ func TestEvidence_NewCorrelationID(t *testing.T) {
 func TestEvidence_LifecycleEventBoundedVolume(t *testing.T) {
 	store := NewInMemoryCallEvidenceStore()
 
-	const maxEvents = 1000
-	for i := 0; i < maxEvents+10; i++ {
+	total := MaxLifecycleEventsPerKey + 10
+	for i := 0; i < total; i++ {
 		event := MCPServiceLifecycleEvent{
 			CorrelationID:    "lifecycle-bounded",
 			WorkflowID:       "wf-1",
@@ -427,10 +427,24 @@ func TestEvidence_LifecycleEventBoundedVolume(t *testing.T) {
 	}
 
 	events := store.GetLifecycleEvents("wf-1", "svc-1")
-	// The in-memory store doesn't cap by default, but we verify the data
-	// is accessible and the count is reasonable.
-	if len(events) != maxEvents+10 {
-		t.Errorf("Lifecycle events count = %d, want %d", len(events), maxEvents+10)
+
+	// The store must be bounded: at most MaxLifecycleEventsPerKey retained.
+	if len(events) != MaxLifecycleEventsPerKey {
+		t.Errorf("Lifecycle events count = %d, want %d (bounded)", len(events), MaxLifecycleEventsPerKey)
+	}
+
+	// Verify newest generations are retained (oldest dropped).
+	// After inserting 0..(total-1), the retained window should be
+	// [total-MaxLifecycleEventsPerKey, total-1].
+	firstGen := events[0].Generation
+	lastGen := events[len(events)-1].Generation
+	wantFirst := int64(total - MaxLifecycleEventsPerKey) // 10
+	wantLast := int64(total - 1)                          // 265
+	if firstGen != wantFirst {
+		t.Errorf("first retained generation = %d, want %d (oldest should be dropped)", firstGen, wantFirst)
+	}
+	if lastGen != wantLast {
+		t.Errorf("last retained generation = %d, want %d (newest should be retained)", lastGen, wantLast)
 	}
 }
 
