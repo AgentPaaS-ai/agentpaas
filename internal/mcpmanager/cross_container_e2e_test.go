@@ -149,6 +149,40 @@ func TestE2E_CrossContainer_LookupFeedback(t *testing.T) {
 	}
 	t.Log("Client attached to service network")
 
+	// ── Debug: verify network connectivity ────────────────────────────────
+	// Check service container networks
+	svcNetworks, err := dr.InspectContainerNetworks(ctx, inst.ContainerID)
+	if err != nil {
+		t.Logf("Warning: InspectContainerNetworks(service): %v", err)
+	} else {
+		for _, n := range svcNetworks {
+			t.Logf("Service network: ID=%s IP=%s", n.ID, n.IPAddress)
+		}
+	}
+
+	// Check client container networks
+	clientNetworks, err := dr.InspectContainerNetworks(ctx, clientID)
+	if err != nil {
+		t.Logf("Warning: InspectContainerNetworks(client): %v", err)
+	} else {
+		for _, n := range clientNetworks {
+			t.Logf("Client network: ID=%s IP=%s", n.ID, n.IPAddress)
+		}
+	}
+
+	// Try nslookup from client
+	nsOut, nsStderr, _, _ := dr.Exec(ctx, clientID,
+		[]string{"nslookup", "svc-feedback"})
+	t.Logf("nslookup svc-feedback: %s (stderr: %s)", nsOut, nsStderr)
+
+	// Wait for DNS to propagate on Docker embedded DNS server.
+	time.Sleep(3 * time.Second)
+
+	// Retry nslookup after wait
+	nsOut2, nsStderr2, _, _ := dr.Exec(ctx, clientID,
+		[]string{"nslookup", "svc-feedback"})
+	t.Logf("nslookup (after wait) svc-feedback: %s (stderr: %s)", nsOut2, nsStderr2)
+
 	// ── Build JSON-RPC request payload ─────────────────────────────────────
 	requestPayload := map[string]interface{}{
 		"jsonrpc": "2.0",
