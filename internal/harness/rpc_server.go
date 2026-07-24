@@ -944,12 +944,22 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 	tool := stringParam(req.Params, "tool")
 	input := req.Params["input"]
 	inputHash := hashJSONValue(input)
+
+	// B33-T05: derive a context deadline from the B30 operation envelope.
+	// When a TimeEnvelope is present on the invoke state, use the effective
+	// operation deadline as the MCP call timeout; otherwise use a
+	// configurable bound (default 30s). This replaces the legacy fixed 5s
+	// stdioResponseTimeout with the authoritative B30 deadline.
+	ctx, cancel := s.mcpCallContext(state)
+	defer cancel()
+
 	s.mu.RLock()
 	router := s.router
 	s.mu.RUnlock()
 	if router != nil {
-		result, err := router.CallTool(context.Background(), serverID, tool, input, "harness", "test-run")
+		result, err := router.CallTool(ctx, serverID, tool, input, "harness", "test-run")
 		if err != nil {
+			code := mcpErrorCode(err)
 			s.auditMCPDenied(serverID, tool, err.Error())
 			state.setFailureEvidence(&UpstreamEvidence{
 				Availability: AvailabilityForbidden,
@@ -957,7 +967,7 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 				BodyHash:     inputHash,
 				BodyRedacted: "[REDACTED:body]",
 			})
-			return rpcError(req.ID, err.Error(), "mcp_error")
+			return rpcError(req.ID, err.Error(), code)
 		}
 		s.auditMCPCall(serverID, tool, inputHash, hashJSONValue(result), elapsedMS(start))
 		return rpcResponse{
@@ -976,15 +986,25 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 		})
 		return rpcError(req.ID, "mcp server/tool is not declared", "mcp_denied")
 	}
-	// No router is installed. In production this is a governed path that must
-	// fail closed with a typed not-enabled error — a synthetic {ok: true} would
-	// be a false-success defect (same class as B20 C8). B33 wires the real
-	// production router in v0.4; until then the managed MCP service is not
-	// enabled. Explicit test mode (AGENTPAAS_TEST_FAKE_MCP=1) keeps the
-	// synthetic result for fixtures that opt in, mirroring
-	// AGENTPAAS_TEST_FAKE_LLM. External stdio/HTTP MCP compatibility (router
-	// installed) is unaffected — the router != nil branch above handles it.
+	// No router is installed. The production path always installs a Router
+	// (B33-T05); this branch is retained for backward-compat with tests that
+	// don't install one. AGENTPAAS_TEST_FAKE_MCP=1 provides a synthetic
+	// response ONLY when no managed bindings are configured — managed
+	// service calls must never succeed synthetically.
 	if os.Getenv("AGENTPAAS_TEST_FAKE_MCP") == "1" {
+		// Managed services: reject synthetic success even in test mode.
+		// The synthetic path is for external stdio/HTTP MCP compatibility
+		// tests only. Managed bindings must go through the real router.
+		if isManagedBinding(state, serverID) {
+			s.auditMCPDenied(serverID, tool, "managed binding: synthetic success forbidden")
+			state.setFailureEvidence(&UpstreamEvidence{
+				Availability: AvailabilityForbidden,
+				TimingMS:     elapsedMS(start),
+				BodyHash:     inputHash,
+				BodyRedacted: "[REDACTED:body]",
+			})
+			return rpcError(req.ID, "managed MCP binding requires real router; synthetic success is forbidden", mcpServiceNotEnabledCode)
+		}
 		result := map[string]any{
 			"server_id": serverID,
 			"tool":      tool,
@@ -1005,6 +1025,91 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 		BodyRedacted: "[REDACTED:body]",
 	})
 	return rpcError(req.ID, mcpServiceNotEnabledReason, mcpServiceNotEnabledCode)
+}
+
+// mcpCallContext creates a context with a deadline derived from the invoke
+// state's TimeEnvelope (B30 operation deadline). When no envelope is present,
+// falls back to a 30s bound.
+//
+// B30-T03 Part B (legacy/compat): mcpDefaultTimeoutSeconds is a documented
+// ceiling on the non-envelope fallback path. This path is exercised only
+// when the harness is not on the durable InvokeDeployment path (v0.2.3
+// legacy compat). On the durable path the effective operation deadline from
+// the TimeEnvelope takes precedence. Registered in b30T01Ceilings.
+func (s *harnessRPCServer) mcpCallContext(state *rpcInvokeState) (context.Context, context.CancelFunc) {
+	const mcpDefaultTimeoutSeconds = 30
+	if state != nil && state.timeEnvelope != nil {
+		nowMs := routedrun.NowMonotonicMs(nil)
+		if s.nowMonotonicMs != nil {
+			nowMs = s.nowMonotonicMs()
+		}
+		deadlineMs := state.timeEnvelope.EffectiveOperationDeadlineMs(nowMs, state.timeEnvelope.StallTimeoutMs)
+		if deadlineMs > 0 && time.Duration(deadlineMs)*time.Millisecond < mcpDefaultTimeoutSeconds*time.Second { // legacy/compat ceiling override
+			return context.WithTimeout(context.Background(), time.Duration(deadlineMs)*time.Millisecond)
+		}
+	}
+	return context.WithTimeout(context.Background(), mcpDefaultTimeoutSeconds*time.Second) // legacy/compat fallback
+}
+
+// isManagedBinding checks whether the given serverID corresponds to a managed
+// AgentPaaS service binding (as opposed to an external stdio/HTTP MCP server).
+// Managed bindings are identified by having their transport set to
+// "agentpaas-service" in the invoke payload or registered servers.
+func isManagedBinding(state *rpcInvokeState, serverID string) bool {
+	if state == nil || state.payload == nil {
+		return false
+	}
+	// Check if any mcp_server entry has transport "agentpaas-service".
+	for _, item := range listParam(state.payload, "mcp_servers") {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := firstString(obj, "server_id", "id", "name")
+		if id != serverID {
+			continue
+		}
+		transport := firstString(obj, "transport")
+		if transport == "agentpaas-service" {
+			return true
+		}
+	}
+	return false
+}
+
+// mcpErrorCode maps known MCP errors to stable typed codes for the RPC response.
+// Unknown errors fall back to "mcp_error".
+func mcpErrorCode(err error) string {
+	var typed *mcpmanager.TypedError
+	if errors.As(err, &typed) {
+		return typed.Code
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "timed out"):
+		return "mcp_timeout"
+	case ctxErr(err):
+		return "mcp_timeout"
+	case strings.Contains(msg, "not allowed"):
+		return "mcp_denied"
+	case strings.Contains(msg, "not declared"):
+		return "mcp_denied"
+	case strings.Contains(msg, "not found"):
+		return "mcp_service_not_found"
+	case strings.Contains(msg, "not ready"):
+		return "mcp_service_not_ready"
+	case strings.Contains(msg, "crashed"):
+		return "mcp_service_crashed"
+	default:
+		return "mcp_error"
+	}
+}
+
+func ctxErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }
 
 func (s *harnessRPCServer) auditEgressDecision(actor, destination, method, credentialID, statusCode, decision, reason string) {
