@@ -514,6 +514,10 @@ block32-gate: block31-gate
 	@$(MAKE) golden-fast
 	@echo "Block 32 gate: PASS"
 
+.PHONY: mcp-container-e2e
+mcp-container-e2e:
+	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/mcpmanager/ -count=1 -race -run 'TestE2E_CrossContainer' -timeout 15m
+
 .PHONY: block28-k8s-tests
 block28-k8s-tests:
 	@echo "==> Block 28 Kubernetes integration tests (requires kind cluster)"
