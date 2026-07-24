@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/httpjson"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
 
@@ -87,6 +88,18 @@ type Config struct {
 	// Python runner so it applies policy-derived rlimits; when false,
 	// the runner falls back to the legacy fixed constants.
 	DurablePath bool
+
+	// AgentKind is the kind field from agent.yaml (e.g. "worker", "mcp_service").
+	// Set by the daemon/harness when constructing the worker. Empty means worker.
+	AgentKind string
+
+	// MCPDeclaredTools is the comma-separated list of declared tool names from
+	// the mcp_service block. Only set when AgentKind == "mcp_service".
+	MCPDeclaredTools string
+
+	// MCPMaxConcurrency is the max_concurrency from the mcp_service block.
+	// Defaults to 1 if unset. Only meaningful when AgentKind == "mcp_service".
+	MCPMaxConcurrency int
 }
 
 // ErrorResponse is the structured failure envelope returned by lifecycle APIs.
@@ -117,6 +130,7 @@ type Server struct {
 	ready       bool
 	importError *ErrorResponse
 	closed      bool
+	rpcServer   *harnessRPCServer
 
 	invokeMu sync.Mutex
 
@@ -213,7 +227,19 @@ func (s *Server) startWorker() {
 		return
 	}
 	s.worker = worker
+	s.rpcServer = worker.rpc
 	s.ready = true
+}
+
+// SetRouter installs the MCP protocol router on the harness RPC server.
+// Must be called before the Python worker starts invoking MCP tools.
+// When nil, the harness fails closed (no synthetic success for managed bindings).
+func (s *Server) SetRouter(router *mcpmanager.Router) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rpcServer != nil {
+		s.rpcServer.SetRouter(router)
+	}
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {

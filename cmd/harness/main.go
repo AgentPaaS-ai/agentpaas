@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/harness"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 )
 
 func main() {
@@ -66,6 +67,22 @@ func main() {
 	}
 
 	server := harness.NewServer(cfg)
+
+	// B33-T05: Always install the MCP router in production. This replaces
+	// the legacy synthetic-success fallback with a real Router backed by a
+	// Manager. Server registrations populate at runtime via the invoke
+	// payload or sidecar. When no servers are registered, MCP calls fail
+	// closed with "mcp server/tool not allowed" — no synthetic success.
+	//
+	// Managed service bindings (agentpaas-service transport) are resolved
+	// through a ManagedServiceResolver when the ServiceRegistry is supplied
+	// by the daemon (future: sidecar file); until then, managed calls fail
+	// closed with ErrCodeRouterUnavail.
+	manager := mcpmanager.NewManager()
+	lifecycle := mcpmanager.NewLifecycle(manager, nil, "")
+	router := mcpmanager.NewRouter(manager, lifecycle, nil, cfg.Audit)
+	server.SetRouter(router)
+	log.Printf("harness: MCP router installed (production mode, fail-closed)")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
