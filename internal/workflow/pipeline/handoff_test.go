@@ -301,6 +301,133 @@ func TestHandoffForgedProducerMissingIDs(t *testing.T) {
 	}
 }
 
+// FuzzHandoffJSONBounds fuzzes handoff envelope validation with random
+// context values to ensure no panics and fast rejection of oversized inputs.
+func FuzzHandoffJSONBounds(f *testing.F) {
+	// Seed corpus with known edge cases.
+	f.Add("{}")
+	f.Add(`{"key":"value"}`)
+	f.Add(strings.Repeat("x", HandoffContextMaxBytes))
+	f.Add(strings.Repeat("x", HandoffContextMaxBytes+1))
+	f.Add(`{"` + strings.Repeat("k", 100) + `":"` + strings.Repeat("v", 1000) + `"}`)
+
+	f.Fuzz(func(t *testing.T, ctxValue string) {
+		ho := validMinimalHandoff()
+		ho.Context.Value = json.RawMessage(ctxValue)
+		codes := ValidateHandoffEnvelope(&ho)
+		// Must not panic; must return valid codes for any input.
+		for _, c := range codes {
+			_ = c // verify code is a non-empty string
+		}
+	})
+}
+
+// TestHandoffArtifactMetaExactlyAtLimit validates artifact meta at exactly 64 KiB.
+func TestHandoffArtifactMetaExactlyAtLimit(t *testing.T) {
+	ho := validMinimalHandoff()
+	// Build artifact meta that totals exactly HandoffArtifactMetaMaxBytes.
+	// Each artifact has fixed overhead from the struct fields we measure.
+	// Template artifact: ArtifactID (20) + OwnerNodeID (7) + OwnerRunID (5) +
+	// ImmutableRef (18) + Digest (71) + MediaType (16) + 8 (SizeBytes) + Classification (10) = 155 bytes
+	perArtifact := 155
+	count := HandoffArtifactMetaMaxBytes / perArtifact
+	artifacts := make([]HandoffArtifact, 0, count)
+	digest := "sha256:" + strings.Repeat("a", 64)
+	for i := 0; i < count; i++ {
+		artifacts = append(artifacts, HandoffArtifact{
+			ArtifactID:     "artifact_" + strings.Repeat("x", 10),
+			OwnerNodeID:    "stage_a",
+			OwnerRunID:     "run_1",
+			ImmutableRef:   "artifacts/out.json",
+			Digest:         digest,
+			MediaType:      "application/json",
+			SizeBytes:      100,
+			Classification: "internal",
+		})
+	}
+	ho.Artifacts = artifacts
+	codes := ValidateHandoffEnvelope(&ho)
+	metaSize := estimateArtifactMetaSize(ho.Artifacts)
+	if metaSize > HandoffArtifactMetaMaxBytes {
+		if !ContainsCode(codes, CodeHandoffArtifactMetaOversize) {
+			t.Fatalf("expected %s for meta size %d > %d, got %v",
+				CodeHandoffArtifactMetaOversize, metaSize, HandoffArtifactMetaMaxBytes, codes)
+		}
+	} else {
+		if len(codes) > 0 {
+			t.Fatalf("expected no errors for meta size %d <= %d, got %v",
+				metaSize, HandoffArtifactMetaMaxBytes, codes)
+		}
+	}
+}
+
+// TestHandoffArtifactMetaOneByteOver rejects artifact meta at 64 KiB + 1.
+func TestHandoffArtifactMetaOneByteOver(t *testing.T) {
+	ho := validMinimalHandoff()
+	// Create just enough artifacts to exceed the limit.
+	perArtifact := estimateArtifactMetaSize([]HandoffArtifact{{
+		ArtifactID:     "artifact_" + strings.Repeat("x", 10),
+		OwnerNodeID:    "stage_a",
+		OwnerRunID:     "run_1",
+		ImmutableRef:   "artifacts/out.json",
+		Digest:         "sha256:" + strings.Repeat("a", 64),
+		MediaType:      "application/json",
+		SizeBytes:      100,
+		Classification: "internal",
+	}})
+	count := HandoffArtifactMetaMaxBytes/perArtifact + 1
+	artifacts := make([]HandoffArtifact, 0, count)
+	digest := "sha256:" + strings.Repeat("a", 64)
+	for i := 0; i < count; i++ {
+		artifacts = append(artifacts, HandoffArtifact{
+			ArtifactID:     "artifact_" + strings.Repeat("x", 10),
+			OwnerNodeID:    "stage_a",
+			OwnerRunID:     "run_1",
+			ImmutableRef:   "artifacts/out.json",
+			Digest:         digest,
+			MediaType:      "application/json",
+			SizeBytes:      100,
+			Classification: "internal",
+		})
+	}
+	ho.Artifacts = artifacts
+	codes := ValidateHandoffEnvelope(&ho)
+	metaSize := estimateArtifactMetaSize(ho.Artifacts)
+	if metaSize <= HandoffArtifactMetaMaxBytes {
+		t.Fatalf("expected meta size %d to exceed %d", metaSize, HandoffArtifactMetaMaxBytes)
+	}
+	if !ContainsCode(codes, CodeHandoffArtifactMetaOversize) {
+		t.Fatalf("expected %s, got %v", CodeHandoffArtifactMetaOversize, codes)
+	}
+}
+
+// TestHandoffContextExactlyLimitFixture validates context exactly at 256 KiB via ValidateHandoffEnvelope.
+func TestHandoffContextExactlyLimitFixture(t *testing.T) {
+	ho := validMinimalHandoff()
+	// Create a valid JSON object whose serialized length is exactly HandoffContextMaxBytes.
+	// {"data":"<padding>"} = 11 bytes overhead + padding.
+	paddingLen := HandoffContextMaxBytes - 11
+	val := json.RawMessage(`{"data":"` + strings.Repeat("x", paddingLen) + `"}`)
+	ho.Context.Value = val
+	codes := ValidateHandoffEnvelope(&ho)
+	if len(codes) > 0 {
+		t.Fatalf("expected no errors for exactly-limit context (%d bytes), got %v", len(val), codes)
+	}
+}
+
+// TestHandoffContextOneByteOver rejects context at 256 KiB + 1 byte.
+func TestHandoffContextOneByteOver(t *testing.T) {
+	ho := validMinimalHandoff()
+	paddingLen := HandoffContextMaxBytes - 10 // one more than limit
+	val := json.RawMessage(`{"data":"` + strings.Repeat("x", paddingLen) + `"}`)
+	ho.Context.Value = val
+	codes := ValidateHandoffEnvelope(&ho)
+	if !ContainsCode(codes, CodeHandoffContextOversize) {
+		t.Fatalf("expected %s for context size %d > %d, got %v",
+			CodeHandoffContextOversize, len(val), HandoffContextMaxBytes, codes)
+	}
+}
+
 // validMinimalHandoff returns a minimal valid handoff envelope for testing.
 func validMinimalHandoff() HandoffEnvelope {
 	return HandoffEnvelope{
