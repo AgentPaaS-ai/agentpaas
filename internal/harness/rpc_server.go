@@ -83,6 +83,9 @@ type rpcInvokeState struct {
 	resumeCheckpoint map[string]any // B35-provided resume data (trusted, not from trigger)
 	resumeReason     string         // trusted enum: failure_continuation|operator_pause_resume
 
+	// Pipeline stage context (B34-T03) — nil when not a pipeline stage.
+	pipelineCtx *PipelineStageContext
+
 	mu              sync.Mutex
 	failureEvidence *UpstreamEvidence
 }
@@ -300,6 +303,10 @@ func (s *harnessRPCServer) handleRequest(req rpcRequest) rpcResponse {
 		return s.handleMCP(req, state)
 	case "progress":
 		return s.handleProgress(req, state)
+	case "workflow_input":
+		return s.handleWorkflowInput(req, state)
+	case "commit_handoff":
+		return s.handleCommitHandoff(req, state)
 	default:
 		return rpcError(req.ID, fmt.Sprintf("unknown method %q", req.Method), "unknown_method")
 	}
