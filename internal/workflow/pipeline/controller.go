@@ -55,6 +55,9 @@ type PipelineStore interface {
 	CommitHandoff(ctx context.Context, handoff *routedrun.HandoffEnvelope) error
 	GetHandoff(ctx context.Context, handoffID routedrun.HandoffID) (*routedrun.HandoffEnvelope, error)
 	ListHandoffs(ctx context.Context, workflowID routedrun.WorkflowID) ([]*routedrun.HandoffEnvelope, error)
+
+	// Desired state
+	GetDesiredState(ctx context.Context, workflowID routedrun.WorkflowID) (*routedrun.DesiredState, error)
 }
 
 // Compile-time check: MemoryStore satisfies PipelineStore.
@@ -233,6 +236,11 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 		return nil, nil
 	}
 	if wf.Status.IsTerminal() {
+		return nil, nil
+	}
+
+	// Also check desired state for pause.
+	if c.isPauseRequested(ctx, workflowID) {
 		return nil, nil
 	}
 
@@ -490,6 +498,15 @@ func (c *Controller) CommitStageSuccess(ctx context.Context, req StageSuccess) e
 			return fmt.Errorf("commit stage success: %w", err)
 		}
 		if wf.Status != routedrun.WorkflowStatusSucceeded {
+			// If workflow is PAUSE_REQUESTED, transition to RUNNING first,
+			// then to SUCCEEDED (final stage always terminates).
+			if wf.Status == routedrun.WorkflowStatusPauseRequested {
+				wf.Status = routedrun.WorkflowStatusRunning
+				wf.UpdatedAt = now
+				if err := c.Store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+					return fmt.Errorf("commit stage success: %w", err)
+				}
+			}
 			if err := routedrun.ValidateWorkflowTransition(wf.Status, routedrun.WorkflowStatusSucceeded); err != nil {
 				return fmt.Errorf("%w: %w", ErrInvalidTransition, err)
 			}
@@ -515,6 +532,26 @@ func (c *Controller) CommitStageSuccess(ctx context.Context, req StageSuccess) e
 		}
 		if err := c.Store.CommitHandoff(ctx, req.Handoff); err != nil {
 			return fmt.Errorf("commit stage success: %w", err)
+		}
+
+		// Check if pause is requested. If so, transition workflow to PAUSED
+		// and skip the next node READY transition.
+		if c.isPauseRequested(ctx, req.WorkflowID) {
+			wf, err := c.Store.GetWorkflow(ctx, req.WorkflowID)
+			if err != nil {
+				return fmt.Errorf("commit stage success: %w", err)
+			}
+			if wf.Status != routedrun.WorkflowStatusPaused {
+				if err := routedrun.ValidateWorkflowTransition(wf.Status, routedrun.WorkflowStatusPaused); err != nil {
+					return fmt.Errorf("%w: %w", ErrInvalidTransition, err)
+				}
+				wf.Status = routedrun.WorkflowStatusPaused
+				wf.UpdatedAt = now
+				if err := c.Store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+					return fmt.Errorf("commit stage success: %w", err)
+				}
+			}
+			return nil
 		}
 
 		// Find next node and set it to READY.
@@ -650,4 +687,20 @@ func (c *Controller) findNextNode(nodes []*routedrun.PipelineNode, currentOrder 
 		}
 	}
 	return nil
+}
+
+// isPauseRequested returns true if the workflow's desired state or current
+// status indicates that a pause has been requested.
+func (c *Controller) isPauseRequested(ctx context.Context, workflowID routedrun.WorkflowID) bool {
+	// Check desired state first.
+	ds, err := c.Store.GetDesiredState(ctx, workflowID)
+	if err == nil && ds.DesiredCommand == routedrun.ControlPause {
+		return true
+	}
+	// Fall back to workflow status.
+	wf, err := c.Store.GetWorkflow(ctx, workflowID)
+	if err == nil && wf.Status == routedrun.WorkflowStatusPauseRequested {
+		return true
+	}
+	return false
 }
