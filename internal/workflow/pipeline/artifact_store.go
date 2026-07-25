@@ -164,6 +164,14 @@ func artifactPutToFS(dir string, art HandoffArtifact, content []byte) (string, e
 		return "", fmt.Errorf("%s: path escape from %q to %q", CodeArtifactPathRejected, dir, target)
 	}
 
+	// Reject writing through a symlink (symlink escape protection).
+	// Lstat does not follow symlinks, so ModeSymlink is only set on the link itself.
+	if fi, lerr := os.Lstat(target); lerr == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("%s: target %q is a symlink; refusing to follow", CodeArtifactSymlinkRejected, target)
+		}
+	}
+
 	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 		return "", fmt.Errorf("mkdir: %w", err)
 	}

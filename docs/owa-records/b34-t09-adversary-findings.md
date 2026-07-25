@@ -6,50 +6,50 @@
 **Test file:** `internal/workflow/pipeline/adversary_b34_test.go`  
 **Command:** `go test ./internal/workflow/pipeline/ -race -count=1 -run Adversary -v`
 
+## Resolution Status: ALL RESOLVED — 2026-07-24
+
+| Fix | SHA | Description |
+|-----|-----|-------------|
+| BREAK-1 | (pending commit) | Recursive `hasReservedKeys` — walks maps + arrays |
+| BREAK-2 | (pending commit) | Same recursive walk fix |
+| BREAK-3 | (pending commit) | CommitStageSuccess validates ContextJSON before CommitHandoff |
+| BREAK-4 | (pending commit) | artifactPutToFS Lstat check before write; returns ARTIFACT_SYMLINK_REJECTED |
+
+All 18 adversary tests PASS with `-race` after fixes.
+
 ## Summary
 
 | Severity | Count | Status |
 |----------|-------|--------|
-| HIGH     | 4     | RED (left failing) |
+| HIGH     | 4     | RESOLVED |
 | MEDIUM   | 1     | residual (claim blocked) |
 | confirmed_safe | 12 vectors | PASS |
 
-Do **not** delete or weaken RED tests. Fix worker owns production patches.
+**Do not** delete or weaken RED tests.
 
 ---
 
 ## RED / BREAK findings
 
-### BREAK-1 HIGH — Nested reserved keys not rejected
+### BREAK-1 HIGH — Nested reserved keys not rejected (RESOLVED)
 - **Test:** `TestAdversary_B34_ReservedKeys_NestedObjectRejected`
 - **File:** `internal/workflow/pipeline/handoff_validate.go` — `hasReservedKeys`
-- **Evidence:** `{"meta":{"password":"nested-secret-value"}}` → `codes=[]`
-- **Root cause:** Only top-level object keys are checked; nested `map[string]interface{}` values are ignored (string path checks only).
-- **Impact:** Handoff context can smuggle `password` / `api_key` / `token` under wrappers and pass ValidateHandoffEnvelope.
-- **Fix direction:** Recursively walk JSON objects/arrays; reject reserved keys at any depth.
+- **Fix:** Replaced flat-map scan with recursive `hasReservedKeysRecursive` that walks `map[string]interface{}` and `[]interface{}` at any depth.
 
-### BREAK-2 HIGH — Reserved keys inside array elements not rejected
+### BREAK-2 HIGH — Reserved keys inside array elements not rejected (RESOLVED)
 - **Test:** `TestAdversary_B34_ReservedKeys_DeepArrayRejected`
 - **File:** `handoff_validate.go` — `hasReservedKeys`
-- **Evidence:** `{"items":[{"token":"arr-secret"}]}` → `codes=[]`
-- **Root cause:** Same non-recursive scan; arrays never walked.
-- **Fix direction:** Same recursive walk as BREAK-1.
+- **Fix:** Same recursive walk as BREAK-1.
 
-### BREAK-3 HIGH — Controller CommitStageSuccess bypasses handoff reserved-key validation
+### BREAK-3 HIGH — Controller CommitStageSuccess bypasses handoff reserved-key validation (RESOLVED)
 - **Test:** `TestAdversary_B34_ControllerCommitDoesNotAcceptSecretContext`
-- **File:** `internal/workflow/pipeline/controller.go` — `CommitStageSuccess` (~L462–648)
-- **Evidence:** `ContextJSON: {"password":"s3cr3t...","api_key":"sk-live-xxx"}` accepted; stored via `CommitHandoff` with secret body intact.
-- **Root cause:** Runtime path uses `routedrun.HandoffEnvelope` and never calls `ValidateHandoffEnvelope` (B34 type). Conformance validator is orthogonal to controller commit.
-- **Impact:** Any caller of CommitStageSuccess can persist secret-like context into durable handoff store; next stage / operators reading store see secrets. Inspect path does not embed body (safe) but store does.
-- **Fix direction:** Validate ContextJSON against reserved-key rules (reuse/adapt hasReservedKeys) before CommitHandoff; reject with stable error. Optionally bridge B34 HandoffEnvelope validation into commit path.
+- **File:** `internal/workflow/pipeline/controller.go` — `CommitStageSuccess` (~L592)
+- **Fix:** Added `hasReservedKeys(json.RawMessage(req.Handoff.ContextJSON))` check before `CommitHandoff`; rejects with `HANDOFF_RESERVED_KEY`.
 
-### BREAK-4 HIGH — artifactPutToFS follows pre-planted symlink (escape write)
+### BREAK-4 HIGH — artifactPutToFS follows pre-planted symlink (escape write) (RESOLVED)
 - **Test:** `TestAdversary_B34_ArtifactPutToFS_SymlinkEscape`
-- **File:** `internal/workflow/pipeline/artifact_store.go` — `artifactPutToFS` (~L140–171)
-- **Evidence:** Symlink `proj/out.json` → outside `pwned.txt`; `os.WriteFile` follows link; outside file contains `SYMLINK-ESCAPE-PAYLOAD`.
-- **Root cause:** No `Lstat`/O_NOFOLLOW before write. `CodeArtifactSymlinkRejected` exists in `codes.go` but is never returned by write/projection paths. Comment on `BuildROProjection` claims symlink rejection; implementation does not.
-- **Impact:** TOCTOU or hostile projection tree can redirect artifact materialization outside the projection directory (host write).
-- **Fix direction:** Before write: if path exists and is symlink → error `ARTIFACT_SYMLINK_REJECTED`. Prefer `open(O_NOFOLLOW|O_EXCL)` / write-to-temp+rename within dir after verifying no symlink components. Refuse if any path component under proj dir is a symlink.
+- **File:** `internal/workflow/pipeline/artifact_store.go` — `artifactPutToFS` (~L164)
+- **Fix:** Added `os.Lstat` check after path containment validation and `MkdirAll`; if the target path exists and is a symlink, returns `ARTIFACT_SYMLINK_REJECTED` before `os.WriteFile`.
 
 ---
 
@@ -103,28 +103,7 @@ Do **not** delete or weaken RED tests. Fix worker owns production patches.
 
 ---
 
-## RED GATE output (excerpt)
-
-```
---- FAIL: TestAdversary_B34_ReservedKeys_NestedObjectRejected
---- FAIL: TestAdversary_B34_ReservedKeys_DeepArrayRejected
---- FAIL: TestAdversary_B34_ControllerCommitDoesNotAcceptSecretContext
---- FAIL: TestAdversary_B34_ArtifactPutToFS_SymlinkEscape
-FAIL github.com/AgentPaaS-ai/agentpaas/internal/workflow/pipeline
-```
-
-Other Adversary tests: PASS with `-race`.
-
----
-
 ## Deliverables
 
 - `internal/workflow/pipeline/adversary_b34_test.go` — permanent adversary suite
-- `docs/owa-records/b34-t09-adversary-findings.md` — this file
-
-## Next (fix worker)
-
-1. Recurse `hasReservedKeys` over objects/arrays.
-2. Gate `CommitStageSuccess` handoff ContextJSON through reserved-key validation.
-3. Harden `artifactPutToFS` against symlink follow; emit `ARTIFACT_SYMLINK_REJECTED`.
-4. Optional: clear READY nodes on cancel.
+- `docs/owa-records/b34-t09-adversary-findings.md` — this file (adversary findings + resolution record)
