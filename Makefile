@@ -562,12 +562,15 @@ block33-gate-fast:
 
 .PHONY: block34-gate
 block34-gate:
-	@echo "==> Block 34 gate (library)"
+	@echo "==> Block 34 gate (library + adversary)"
 	go test ./internal/workflow/pipeline/ -race -count=1
+	go test ./internal/workflow/pipeline/ -race -count=1 -run Adversary
 	go test ./internal/harness/ -count=1 -run 'WorkflowInput|Pipeline'
 	go test ./internal/daemon/ -count=1 -run 'Pipeline|NotEnabled|pipeline'
-	rg -n "CancelWorkflow|ResumeWorkflow|BuildPipelineInspect|PromoteHandoffArtifacts" internal/workflow/pipeline/
+	rg -n "CancelWorkflow|ResumeWorkflow|BuildPipelineInspect|PromoteHandoffArtifacts|hasReservedKeys" internal/workflow/pipeline/
 	test -f docs/owa-records/b34-t08.md
+	test -f docs/owa-records/b34-t09.md
+	test -f docs/owa-records/b34-t09-adversary-findings.md
 	@echo "Block 34 gate: PASS"
 
 # ── MCP admission conformance (unit) ──────────────────────────────────────
