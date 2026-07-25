@@ -123,7 +123,7 @@ func isValidDigest(d string) bool {
 	}
 	// Must be lowercase hex characters.
 	for _, c := range hexPart {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}
