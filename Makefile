@@ -107,7 +107,7 @@ install-plugin:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -558,6 +558,18 @@ block33-gate-fast:
 	@$(MAKE) golden-fast
 	@echo "Block 33 gate FAST: PASS"
 
+# ── Block 34 Gate: Pipeline Operator Inspection + Reference Proof ─────────
+
+.PHONY: block34-gate
+block34-gate:
+	@echo "==> Block 34 gate (library)"
+	go test ./internal/workflow/pipeline/ -race -count=1
+	go test ./internal/harness/ -count=1 -run 'WorkflowInput|Pipeline'
+	go test ./internal/daemon/ -count=1 -run 'Pipeline|NotEnabled|pipeline'
+	rg -n "CancelWorkflow|ResumeWorkflow|BuildPipelineInspect|PromoteHandoffArtifacts" internal/workflow/pipeline/
+	test -f docs/owa-records/b34-t08.md
+	@echo "Block 34 gate: PASS"
+
 # ── MCP admission conformance (unit) ──────────────────────────────────────
 
 .PHONY: mcp-admission-conformance
@@ -678,6 +690,7 @@ gates: ## List all available gate targets
 	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
 	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
 	@echo "  block33-gate-fast - MCP container services: fast gate (skip block32 chain)"
+	@echo "  block34-gate - Pipeline operator inspection + reference proof (B34)"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
