@@ -48,6 +48,22 @@ type StageLaunchJob struct {
 	Status     LaunchStatus
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+
+	// Optional container-spec fields (zero-value safe for old tests).
+	// The FakeLauncher ignores these.
+
+	// Image is the container image reference for this stage.
+	Image string
+	// NetworkID is the Docker network ID for stage-private isolation.
+	NetworkID string
+	// PackageDigest is the content digest of the stage package.
+	PackageDigest string
+	// PolicyDigest is the content digest of the stage policy.
+	PolicyDigest string
+	// StageOrder is the 0-based ordinal of this stage in the pipeline.
+	StageOrder int
+	// ContainerID is the runtime container ID set after a successful launch.
+	ContainerID string
 }
 
 // ---------------------------------------------------------------------------
