@@ -405,7 +405,7 @@ func TestListRuns_SurvivesStoreRestart(t *testing.T) {
 
 func TestWorkflowKindNotEnabledCodes(t *testing.T) {
 	f, b, c := workflowKindNotEnabled(pack.WorkflowKindPipeline)
-	if f != "pipeline" || b != "B30" || c != "agentpaas_pipeline_not_enabled" {
+	if f != "pipeline" || b != "B34" || c != "agentpaas_pipeline_not_enabled" {
 		t.Fatalf("%s %s %s", f, b, c)
 	}
 	_, _, c = workflowKindNotEnabled(pack.WorkflowKindParentChild)
@@ -591,6 +591,35 @@ func TestNotEnabledErrorHelpers(t *testing.T) {
 	err := notEnabledFailedPrecondition("f", "B1", "code_x")
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatal(status.Code(err))
+	}
+}
+
+func TestPipelineEnabled_AllowsDeployCheck(t *testing.T) {
+	// With pipelineEnabled=true, a HasPipeline signal should not return
+	// a not_enabled error from failClosedRoutedRun.
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	// Default: pipeline not enabled — should block.
+	sig := &routedProjectSignals{
+		HasWorkflow:  true,
+		WorkflowKind: pack.WorkflowKindPipeline,
+		HasPipeline:  true,
+	}
+	err := s.failClosedRoutedRun(ctx, "demo-pipeline-blocked", sig)
+	if err == nil {
+		t.Fatal("expected pipeline to be blocked when not enabled")
+	}
+	if !strings.Contains(err.Error(), "agentpaas_pipeline_not_enabled") {
+		t.Fatalf("error should mention pipeline_not_enabled: %s", err.Error())
+	}
+
+	// Enable via field — should allow through.
+	s2 := newTestControlServer(t)
+	s2.pipelineEnabled = true
+	err = s2.failClosedRoutedRun(ctx, "demo-pipeline-enabled", sig)
+	if err != nil {
+		t.Fatalf("pipeline should be allowed when pipelineEnabled=true: %v", err)
 	}
 }
 
