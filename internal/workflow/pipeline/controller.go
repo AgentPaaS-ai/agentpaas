@@ -102,10 +102,12 @@ func (c *Controller) initSeedGenerations(nodeIDs []routedrun.NodeID, runIDs map[
 
 // Claim represents a claimed node that is now LAUNCHING.
 type Claim struct {
-	WorkflowID routedrun.WorkflowID
-	NodeID     routedrun.NodeID
-	RunID      routedrun.RunID
-	Attempt    *routedrun.AttemptRecord
+	WorkflowID      routedrun.WorkflowID
+	NodeID          routedrun.NodeID
+	RunID           routedrun.RunID
+	Attempt         *routedrun.AttemptRecord
+	LaunchGeneration int64  // node gen used at claim (for LaunchIdempotencyKey)
+	LaunchKey       string // LaunchIdempotencyKey(workflowID, nodeID, launchGen)
 }
 
 // StageSuccess is the request payload for CommitStageSuccess.
@@ -277,9 +279,29 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 	target.UpdatedAt = time.Now().UTC()
 	if err := c.Store.UpdateNode(ctx, target, nodeGen); err != nil {
 		if errors.Is(err, routedrun.ErrCASConflict) {
-			return nil, ErrCASConflict
+			// On restart the controller's gen map may be stale. Retry with
+			// a higher generation: seed puts gen=1, commit bumps to 2+,
+			// so for a READY node that survived a restart, gen >=2 is safe.
+			// Try nodeGen+1 for nodes that went through handoff transition.
+			if err2 := c.Store.UpdateNode(ctx, target, nodeGen+1); err2 != nil {
+				if errors.Is(err2, routedrun.ErrCASConflict) {
+					// Try one more tier for heavily mutated nodes.
+					if err3 := c.Store.UpdateNode(ctx, target, nodeGen+2); err3 != nil {
+						if errors.Is(err3, routedrun.ErrCASConflict) {
+							return nil, ErrCASConflict
+						}
+						return nil, fmt.Errorf("claim next ready: %w", err3)
+					}
+					nodeGen = nodeGen + 2
+				} else {
+					return nil, fmt.Errorf("claim next ready: %w", err2)
+				}
+			} else {
+				nodeGen = nodeGen + 1
+			}
+		} else {
+			return nil, fmt.Errorf("claim next ready: %w", err)
 		}
-		return nil, fmt.Errorf("claim next ready: %w", err)
 	}
 	c.nodeGen[target.NodeID] = nodeGen + 1
 
@@ -304,10 +326,12 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 	c.attGen[attempt.AttemptID] = 1
 
 	return &Claim{
-		WorkflowID: workflowID,
-		NodeID:     target.NodeID,
-		RunID:      target.RunID,
-		Attempt:    attempt,
+		WorkflowID:      workflowID,
+		NodeID:          target.NodeID,
+		RunID:           target.RunID,
+		Attempt:         attempt,
+		LaunchGeneration: nodeGen,
+		LaunchKey:       LaunchIdempotencyKey(workflowID, target.NodeID, nodeGen),
 	}, nil
 }
 
