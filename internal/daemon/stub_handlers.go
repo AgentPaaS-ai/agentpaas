@@ -105,6 +105,10 @@ type controlServer struct {
 	// mcpRegistry provides the MCP service registry for managed service
 	// routing. When nil, MCP service routing fails closed with B33.
 	mcpRegistry *mcpmanager.ServiceRegistry
+
+	// pipelineEnabled controls the B34 pipeline runtime. When true or when
+	// AGENTPAAS_PIPELINE_ENABLED=1, pipeline deployments are admitted.
+	pipelineEnabled bool
 }
 
 // SetMCPServiceRegistry sets the MCP service registry hook on the daemon.

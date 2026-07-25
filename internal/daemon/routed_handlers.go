@@ -930,6 +930,16 @@ func (s *controlServer) checkWorkflowPromotionGate(agentName string) []string {
 	return registry.ValidateWorkflowPromotedPackages(s.homePaths.State, &wf)
 }
 
+// pipelineRuntimeEnabled returns true when the B34 pipeline runtime is enabled,
+// either via the controlServer field (set by tests) or the
+// AGENTPAAS_PIPELINE_ENABLED=1 environment variable.
+func (s *controlServer) pipelineRuntimeEnabled() bool {
+	if s.pipelineEnabled {
+		return true
+	}
+	return os.Getenv("AGENTPAAS_PIPELINE_ENABLED") == "1"
+}
+
 // failClosedRoutedRun validates and (best-effort) records route/workflow
 // placeholders then returns a typed not-enabled error. Never creates Docker
 // resources or synthetic MCP/handoff results.
@@ -955,7 +965,12 @@ func (s *controlServer) failClosedRoutedRun(ctx context.Context, agentName strin
 	case sig != nil && sig.HasMCPService && s.mcpRegistry == nil:
 		return notEnabledFailedPrecondition("mcp_service", "B33", "agentpaas_mcp_service_not_enabled")
 	case sig != nil && sig.HasPipeline:
-		return notEnabledFailedPrecondition("pipeline", "B30", "agentpaas_pipeline_not_enabled")
+		if s.pipelineRuntimeEnabled() {
+			// Pipeline runtime enabled — allow through. Other gates (B26
+			// admission) may still reject; this just opens the not-enabled gate.
+			return nil
+		}
+		return notEnabledFailedPrecondition("pipeline", "B34", "agentpaas_pipeline_not_enabled")
 	case sig != nil && sig.HasChildSpawn:
 		return notEnabledFailedPrecondition("child_spawn", "B31", "agentpaas_child_spawn_not_enabled")
 	case sig != nil && sig.HasRoute:
@@ -1233,7 +1248,7 @@ func mapRoutedStoreError(err error) error {
 func workflowKindNotEnabled(kind string) (feature, block, code string) {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case pack.WorkflowKindPipeline:
-		return "pipeline", "B30", "agentpaas_pipeline_not_enabled"
+		return "pipeline", "B34", "agentpaas_pipeline_not_enabled"
 	case pack.WorkflowKindParentChild:
 		return "child_spawn", "B31", "agentpaas_child_spawn_not_enabled"
 	case "mcp_service", "mcp":
