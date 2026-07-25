@@ -60,11 +60,13 @@ type PipelineConfig struct {
 
 // PipelineStage defines a single stage in a pipeline workflow.
 type PipelineStage struct {
-	Name            string `yaml:"name"`
-	PackageName     string `yaml:"package_name"`
-	PackageVersion  string `yaml:"package_version"`
-	BundleDigest    string `yaml:"bundle_digest"`
-	Handoff         string `yaml:"handoff"` // public|internal|confidential|restricted
+	Name            string   `yaml:"name"`
+	PackageName     string   `yaml:"package_name"`
+	PackageVersion  string   `yaml:"package_version"`
+	BundleDigest    string   `yaml:"bundle_digest"`
+	Handoff         string   `yaml:"handoff"` // public|internal|confidential|restricted
+	OutputSchema    string   `yaml:"output_schema,omitempty"`
+	AcceptedSchemas []string `yaml:"accepted_schemas,omitempty"`
 }
 
 // ParentChildConfig defines a parent-child workflow topology.

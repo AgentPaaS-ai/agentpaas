@@ -1,0 +1,16 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: producer
+      package_name: producer-agent
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc123def456
+      handoff: public
+      output_schema: example/shared-schema/v1
+    - name: consumer
+      package_name: consumer-agent
+      package_version: "1.0.0"
+      bundle_digest: sha256:def456abc123
+      handoff: internal
+      accepted_schemas:
+        - example/shared-schema/v1

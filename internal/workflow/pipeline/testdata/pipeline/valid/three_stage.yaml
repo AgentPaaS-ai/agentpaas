@@ -1,0 +1,25 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: research
+      package_name: research-agent
+      package_version: "2.0.0"
+      bundle_digest: sha256:r1r2r3r4r5r6r7r8r9r0a1a2a3
+      handoff: public
+      output_schema: example/research-notes/v1
+    - name: draft
+      package_name: draft-agent
+      package_version: "1.5.0"
+      bundle_digest: sha256:d1d2d3d4d5d6d7d8d9d0e1e2e3
+      handoff: internal
+      accepted_schemas:
+        - example/research-notes/v1
+      output_schema: example/draft/v1
+    - name: review
+      package_name: review-agent
+      package_version: "3.0.0"
+      bundle_digest: sha256:v1v2v3v4v5v6v7v8v9v0w1w2w3
+      handoff: confidential
+      accepted_schemas:
+        - example/draft/v1
+      output_schema: example/reviewed/v1

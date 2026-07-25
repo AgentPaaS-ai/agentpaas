@@ -1,0 +1,8 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: only-one
+      package_name: some-package
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc123
+      handoff: public

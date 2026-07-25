@@ -1,0 +1,88 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: s01
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc1
+      handoff: public
+    - name: s02
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc2
+      handoff: public
+    - name: s03
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc3
+      handoff: public
+    - name: s04
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc4
+      handoff: public
+    - name: s05
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc5
+      handoff: public
+    - name: s06
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc6
+      handoff: public
+    - name: s07
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc7
+      handoff: public
+    - name: s08
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc8
+      handoff: public
+    - name: s09
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc9
+      handoff: public
+    - name: s10
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc10
+      handoff: public
+    - name: s11
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc11
+      handoff: public
+    - name: s12
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc12
+      handoff: public
+    - name: s13
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc13
+      handoff: public
+    - name: s14
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc14
+      handoff: public
+    - name: s15
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc15
+      handoff: public
+    - name: s16
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc16
+      handoff: public
+    - name: s17
+      package_name: p
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc17
+      handoff: public
