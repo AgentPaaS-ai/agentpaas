@@ -29,4 +29,12 @@ const (
 
 	// Runtime code (owner: daemon).
 	CodePipelineNotEnabled = "PIPELINE_NOT_ENABLED"
+
+	// Artifact transfer codes (owner: artifact-*).
+	CodeArtifactDigestMismatch  = "ARTIFACT_DIGEST_MISMATCH"
+	CodeArtifactNotFound        = "ARTIFACT_NOT_FOUND"
+	CodeArtifactPathRejected    = "ARTIFACT_PATH_REJECTED"
+	CodeArtifactBudgetExceeded  = "ARTIFACT_BUDGET_EXCEEDED"
+	CodeArtifactSymlinkRejected = "ARTIFACT_SYMLINK_REJECTED"
+	CodeArtifactOwnerMismatch   = "ARTIFACT_OWNER_MISMATCH"
 )
