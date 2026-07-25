@@ -89,12 +89,10 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 			return nil, fmt.Errorf("reconcile once: ensure launch: %w", err)
 		}
 
-		// Update launch job status.
-		if existing.Status != LaunchStatusStarted {
-			existing.Status = LaunchStatusStarted
-			existing.UpdatedAt = time.Now().UTC()
-			_ = r.Launches.Update(ctx, existing)
-		}
+		// Update launch job status in the store.
+		existing.Status = LaunchStatusStarted
+		existing.UpdatedAt = time.Now().UTC()
+		_ = r.Launches.Update(ctx, existing)
 
 		// Acknowledge running if the node is still LAUNCHING.
 		claim := &Claim{
