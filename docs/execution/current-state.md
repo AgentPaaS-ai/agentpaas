@@ -1,4 +1,4 @@
-# Current State — Block 34 in progress (T03 done)
+# Current State — Block 34 in progress (T04 chunk1 done)
 
 **Shipped release:** v0.3.0 (B1–B32)
 **Development head:** B34 Runtime-Native Sequential Agent Pipelines
@@ -9,20 +9,14 @@
 | T01 Freeze workflow/handoff conformance fixtures | DONE |
 | T02 Strict pipeline compilation | DONE |
 | T03 SDK input/handoff ops | DONE |
-| T04 Durable linear scheduler | NEXT |
-| T05 Stage containers + authority | pending |
-| T06 Artifact transfer + provenance | pending |
-| T07 Failure/cancel/pause/idempotency | pending |
-| T08 Deploy invoke + operator inspection + ref proof | pending |
-| T09 block34-gate + adversary | pending |
+| T04 Durable linear scheduler | IN PROGRESS (chunk1 library CAS DONE; chunk2+ next) |
+| T05–T09 | pending |
 
-## T03 evidence (local, 2026-07-24)
-- harness RPC workflow_input + commit_handoff (candidate staging)
-- Python SDK methods + 10 unittest
-- docs/owa-records/b34-t03.md
-- pipeline still not enabled at daemon admission
+## T04 chunk1 evidence
+- Controller: Seed/Claim/Ack/CommitSuccess/CommitFailure on MemoryStore
+- 9 controller tests + full pipeline package race PASS
+- docs/owa-records/b34-t04-chunk1.md
+- No Docker/daemon wire yet
 
-## Suggested read order
-1. This file
-2. docs/owa-records/b34-t03.md
-3. docs/execution/blocks/b34-summary.md § T04
+## Next
+T04 chunk2: PAUSE_REQUESTED desired-state seam + no next launch; crash/idempotency matrix expansion
