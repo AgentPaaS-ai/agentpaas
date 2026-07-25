@@ -46,12 +46,6 @@ func setPipelineContext(s *harnessRPCServer, ctx PipelineStageContext) {
 	}
 }
 
-func clearInvokeState(s *harnessRPCServer) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.invoke = nil
-}
-
 // --- workflow_input tests ---
 
 func TestWorkflowInput_Stage0_NotAvailable(t *testing.T) {
