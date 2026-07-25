@@ -341,12 +341,20 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 
 // AcknowledgeRunning moves LAUNCHING → RUNNING for the claimed node,
 // and PENDING → RUNNING for the run and attempt.
+// Idempotent: if node is already RUNNING for the same claim, returns nil.
 func (c *Controller) AcknowledgeRunning(ctx context.Context, claim *Claim) error {
 	// Validate and update node: LAUNCHING → RUNNING.
 	node, err := c.Store.GetNode(ctx, claim.NodeID)
 	if err != nil {
 		return fmt.Errorf("acknowledge running: %w", err)
 	}
+
+	// Idempotency: if already RUNNING with the same RunID, treat as success.
+	// This handles the double-ack scenario (crash recovery).
+	if node.Status == routedrun.NodeStatusRunning && node.RunID == claim.RunID {
+		return nil
+	}
+
 	if err := routedrun.ValidateNodeTransition(node.Status, routedrun.NodeStatusRunning); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidTransition, err)
 	}

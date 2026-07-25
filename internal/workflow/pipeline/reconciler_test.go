@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -457,7 +458,7 @@ func TestCollectStageContextParamsStage0AndMid(t *testing.T) {
 		t.Fatal("ReconcileOnce stage1: nil claim")
 	}
 
-	// Stage1 params: handoff JSON present, StageOrder=1.
+	// Stage1 params: full handoff envelope JSON present, StageOrder=1.
 	params1, err := CollectStageContextParams(ctx, store, claim1)
 	if err != nil {
 		t.Fatalf("CollectStageContextParams stage1: %v", err)
@@ -468,7 +469,20 @@ func TestCollectStageContextParamsStage0AndMid(t *testing.T) {
 	if !params1.IsFinalStage {
 		t.Fatal("stage1: expected IsFinalStage=true (2-stage pipeline)")
 	}
-	if string(params1.IncomingHandoffJSON) != `{"result":"ok"}` {
-		t.Fatalf("stage1: want handoff context '{\"result\":\"ok\"}', got %s", string(params1.IncomingHandoffJSON))
+	// The incoming handoff JSON is the full routedrun.HandoffEnvelope, not
+	// just ContextJSON. Verify it contains the expected fields.
+	if len(params1.IncomingHandoffJSON) == 0 {
+		t.Fatal("stage1: expected non-empty IncomingHandoffJSON (full envelope)")
+	}
+	// Quick spot-check: envelope should contain context_json field.
+	if !strings.Contains(string(params1.IncomingHandoffJSON), `"context_json"`) {
+		t.Fatalf("stage1: expected envelope to contain context_json, got %s",
+			string(params1.IncomingHandoffJSON))
+	}
+	// The context_json value is a JSON string, so its quotes are escaped in
+	// the raw envelope JSON. Check for the escaped form.
+	if !strings.Contains(string(params1.IncomingHandoffJSON), `\"result\":\"ok\"`) {
+		t.Fatalf("stage1: expected envelope to contain the handoff context, got %s",
+			string(params1.IncomingHandoffJSON))
 	}
 }

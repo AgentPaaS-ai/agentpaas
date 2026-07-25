@@ -62,7 +62,16 @@ func CollectStageContextParams(ctx context.Context, store PipelineStore, claim *
 	if node.IncomingHandoffID != nil {
 		handoff, err := store.GetHandoff(ctx, *node.IncomingHandoffID)
 		if err == nil {
-			incoming = json.RawMessage(handoff.ContextJSON)
+			// Set default classification if empty (DataClassification
+			// MarshalJSON rejects empty strings).
+			if handoff.Classification == "" {
+				handoff.Classification = "internal"
+			}
+			// Marshal the full HandoffEnvelope, not just ContextJSON.
+			b, err := json.Marshal(handoff)
+			if err == nil {
+				incoming = json.RawMessage(b)
+			}
 		}
 	}
 
