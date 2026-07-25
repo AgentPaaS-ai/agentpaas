@@ -37,6 +37,34 @@ const (
 
 	// LabelServiceRunID identifies the service run that owns this container.
 	LabelServiceRunID = "agentpaas.service_run_id"
+
+	// Pipeline-specific labels for multi-stage container execution with
+	// independent authority per stage.
+
+	// LabelNodeID identifies the pipeline node that owns this container.
+	LabelNodeID = "agentpaas.node_id"
+
+	// LabelAttemptID identifies the pipeline attempt that owns this container.
+	LabelAttemptID = "agentpaas.attempt_id"
+
+	// LabelPackageDigest is the content digest of the package running in
+	// this container.
+	LabelPackageDigest = "agentpaas.package_digest"
+
+	// LabelPolicyDigest is the content digest of the policy applied to this
+	// container.
+	LabelPolicyDigest = "agentpaas.policy_digest"
+
+	// LabelLeaseGeneration is the monotonic lease generation counter for
+	// CAS fencing.
+	LabelLeaseGeneration = "agentpaas.lease_generation"
+
+	// LabelPipelineStage marks a container as a pipeline stage (value "true").
+	LabelPipelineStage = "agentpaas.pipeline_stage"
+
+	// LabelStageOrder is the 0-based ordinal position of this stage in the
+	// pipeline DAG.
+	LabelStageOrder = "agentpaas.stage_order"
 )
 
 // ManagedByValue is the value of LabelManagedBy for all AgentPaaS-managed
@@ -144,4 +172,54 @@ func ResourceTypeFromLabels(labels map[string]string) string {
 		return ""
 	}
 	return labels[LabelResourceType]
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline stage labels
+// ---------------------------------------------------------------------------
+
+// sanitizeLabelValue returns an error if val contains a newline or NUL byte.
+func sanitizeLabelValue(val string) error {
+	for i := 0; i < len(val); i++ {
+		if val[i] == 0 || val[i] == '\n' || val[i] == '\r' {
+			return fmt.Errorf("label value contains forbidden character at offset %d", i)
+		}
+	}
+	return nil
+}
+
+// PipelineStageLabels returns the full set of labels for a pipeline stage
+// container. Includes all ownership labels (ManagedBy, ResourceType=agent,
+// RunID) plus pipeline-specific fields.
+//
+// All values are sanitized; an error is returned if any value contains
+// newline or NUL characters. This function never puts credential values,
+// tokens, or secret env values into labels.
+func PipelineStageLabels(workflowID, nodeID, runID, attemptID, packageDigest, policyDigest string, leaseGen int64, stageOrder int) (map[string]string, error) {
+	fields := map[string]string{
+		LabelWorkflowID:     workflowID,
+		LabelNodeID:         nodeID,
+		LabelRunID:          runID,
+		LabelAttemptID:      attemptID,
+		LabelPackageDigest:  packageDigest,
+		LabelPolicyDigest:   policyDigest,
+		LabelLeaseGeneration: fmt.Sprintf("%d", leaseGen),
+		LabelPipelineStage:  "true",
+		LabelStageOrder:     fmt.Sprintf("%d", stageOrder),
+	}
+
+	for _, v := range fields {
+		if err := sanitizeLabelValue(v); err != nil {
+			return nil, fmt.Errorf("PipelineStageLabels: %w", err)
+		}
+	}
+
+	// Merge ownership labels (LabelManagedBy, LabelResourceType=agent, LabelRunID).
+	labels := Labels(ResourceTypeAgent, runID)
+	// Merge workflow_id (already set in Labels as run-id, but we need both).
+	for k, v := range fields {
+		labels[k] = v
+	}
+
+	return labels, nil
 }
