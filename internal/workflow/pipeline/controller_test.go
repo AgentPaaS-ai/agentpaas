@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
@@ -575,5 +576,460 @@ func TestRestartSimulation(t *testing.T) {
 	}
 	if claim1.NodeID != nodeIDs[1] {
 		t.Fatalf("post-restart: expected stage1 (%s), got %s", nodeIDs[1], claim1.NodeID)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Chunk 2: Pause desired-state seam + idempotency matrix
+// ---------------------------------------------------------------------------
+
+// TestPauseBeforeClaim verifies that ClaimNextReady returns nil when the
+// workflow has a PAUSE desired state.
+func TestPauseBeforeClaim(t *testing.T) {
+	ctx := context.Background()
+	store := routedrun.NewMemoryStore()
+	ctrl := NewController(store)
+
+	wfID, _, err := SeedPipelineWorkflow(ctx, ctrl, 2)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	// Request pause via the store.
+	if err := store.RequestControl(ctx, &routedrun.ControlRequest{
+		WorkflowID:       wfID,
+		Command:          routedrun.ControlPause,
+		IdempotencyKey:   "pause-1",
+	}); err != nil {
+		t.Fatalf("RequestControl pause: %v", err)
+	}
+
+	// Set workflow to PAUSE_REQUESTED to simulate control-plane application.
+	wf, err := store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	wf.Status = routedrun.WorkflowStatusPauseRequested
+	wf.UpdatedAt = time.Now().UTC()
+	if err := store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+		t.Fatalf("UpdateWorkflow pause_requested: %v", err)
+	}
+
+	// ClaimNextReady should return nil (nothing to launch).
+	claim, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady under pause: %v", err)
+	}
+	if claim != nil {
+		t.Fatal("ClaimNextReady under pause: expected nil, got claim")
+	}
+}
+
+// TestPauseDuringStage verifies that when a stage succeeds while pause is
+// requested, the handoff commits but the next stage stays PENDING and the
+// workflow goes to PAUSED.
+func TestPauseDuringStage(t *testing.T) {
+	ctx := context.Background()
+	store := routedrun.NewMemoryStore()
+	ctrl := NewController(store)
+
+	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 2)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	// Claim and ack stage0.
+	claim0, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady: %v", err)
+	}
+	if claim0 == nil {
+		t.Fatal("ClaimNextReady: nil")
+	}
+	if err := ctrl.AcknowledgeRunning(ctx, claim0); err != nil {
+		t.Fatalf("AcknowledgeRunning: %v", err)
+	}
+
+	// Request pause while stage0 is running.
+	if err := store.RequestControl(ctx, &routedrun.ControlRequest{
+		WorkflowID:       wfID,
+		Command:          routedrun.ControlPause,
+		IdempotencyKey:   "pause-during",
+	}); err != nil {
+		t.Fatalf("RequestControl pause: %v", err)
+	}
+
+	// Set workflow to PAUSE_REQUESTED.
+	wf, err := store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	wf.Status = routedrun.WorkflowStatusPauseRequested
+	wf.UpdatedAt = time.Now().UTC()
+	if err := store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+		t.Fatalf("UpdateWorkflow pause_requested: %v", err)
+	}
+
+	// Commit stage0 success with handoff.
+	if err := ctrl.CommitStageSuccess(ctx, StageSuccess{
+		WorkflowID: wfID,
+		NodeID:     nodeIDs[0],
+		RunID:      claim0.RunID,
+		AttemptID:  claim0.Attempt.AttemptID,
+		Handoff: &routedrun.HandoffEnvelope{
+			WorkflowID:   wfID,
+			SourceNodeID: nodeIDs[0],
+			TargetNodeID: nodeIDs[1],
+			ContextJSON:  `{"result":"ok"}`,
+		},
+	}); err != nil {
+		t.Fatalf("CommitStageSuccess under pause: %v", err)
+	}
+
+	// Verify stage0 SUCCEEDED.
+	n0, err := store.GetNode(ctx, nodeIDs[0])
+	if err != nil {
+		t.Fatalf("get node0: %v", err)
+	}
+	if n0.Status != routedrun.NodeStatusSucceeded {
+		t.Fatalf("node0: want SUCCEEDED, got %s", n0.Status)
+	}
+
+	// Verify handoff committed.
+	handoffs, err := store.ListHandoffs(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ListHandoffs: %v", err)
+	}
+	if len(handoffs) != 1 {
+		t.Fatalf("expected 1 handoff, got %d", len(handoffs))
+	}
+
+	// Verify workflow PAUSED (not RUNNING).
+	wf, err = store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	if wf.Status != routedrun.WorkflowStatusPaused {
+		t.Fatalf("workflow: want PAUSED, got %s", wf.Status)
+	}
+
+	// Verify stage1 is still PENDING, NOT READY.
+	n1, err := store.GetNode(ctx, nodeIDs[1])
+	if err != nil {
+		t.Fatalf("get node1: %v", err)
+	}
+	if n1.Status != routedrun.NodeStatusPending {
+		t.Fatalf("node1: want PENDING, got %s", n1.Status)
+	}
+
+	// ClaimNextReady should return nil after pause.
+	claim, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady after pause: %v", err)
+	}
+	if claim != nil {
+		t.Fatal("ClaimNextReady after pause: expected nil, got claim")
+	}
+}
+
+// TestPauseAtFinalStage verifies that pause does not prevent the final stage
+// from terminating the workflow as SUCCEEDED.
+func TestPauseAtFinalStage(t *testing.T) {
+	ctx := context.Background()
+	store := routedrun.NewMemoryStore()
+	ctrl := NewController(store)
+
+	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 2)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	// Complete stage0 normally.
+	claim0, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady stage0: %v", err)
+	}
+	if err := ctrl.AcknowledgeRunning(ctx, claim0); err != nil {
+		t.Fatalf("AcknowledgeRunning: %v", err)
+	}
+	if err := ctrl.CommitStageSuccess(ctx, StageSuccess{
+		WorkflowID: wfID,
+		NodeID:     nodeIDs[0],
+		RunID:      claim0.RunID,
+		AttemptID:  claim0.Attempt.AttemptID,
+		Handoff: &routedrun.HandoffEnvelope{
+			WorkflowID:   wfID,
+			SourceNodeID: nodeIDs[0],
+			TargetNodeID: nodeIDs[1],
+			ContextJSON:  `{}`,
+		},
+	}); err != nil {
+		t.Fatalf("CommitStageSuccess stage0: %v", err)
+	}
+
+	// Claim and ack final stage.
+	claim1, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady stage1: %v", err)
+	}
+	if err := ctrl.AcknowledgeRunning(ctx, claim1); err != nil {
+		t.Fatalf("AcknowledgeRunning stage1: %v", err)
+	}
+
+	// Request pause while final stage is running.
+	if err := store.RequestControl(ctx, &routedrun.ControlRequest{
+		WorkflowID:       wfID,
+		Command:          routedrun.ControlPause,
+		IdempotencyKey:   "pause-final",
+	}); err != nil {
+		t.Fatalf("RequestControl pause: %v", err)
+	}
+
+	// Set workflow to PAUSE_REQUESTED.
+	wf, err := store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	wf.Status = routedrun.WorkflowStatusPauseRequested
+	wf.UpdatedAt = time.Now().UTC()
+	if err := store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+		t.Fatalf("UpdateWorkflow pause_requested: %v", err)
+	}
+
+	// Commit final stage success. Final stage always terminates workflow.
+	if err := ctrl.CommitStageSuccess(ctx, StageSuccess{
+		WorkflowID: wfID,
+		NodeID:     nodeIDs[1],
+		RunID:      claim1.RunID,
+		AttemptID:  claim1.Attempt.AttemptID,
+		Handoff:    nil,
+	}); err != nil {
+		t.Fatalf("CommitStageSuccess final under pause: %v", err)
+	}
+
+	// Workflow should be SUCCEEDED, not PAUSED (final stage wins).
+	wf, err = store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	if wf.Status != routedrun.WorkflowStatusSucceeded {
+		t.Fatalf("workflow: want SUCCEEDED, got %s", wf.Status)
+	}
+}
+
+// TestDoubleCommitStageSuccessWithPause verifies idempotent commit under pause.
+func TestDoubleCommitStageSuccessWithPause(t *testing.T) {
+	ctx := context.Background()
+	store := routedrun.NewMemoryStore()
+	ctrl := NewController(store)
+
+	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 2)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	claim0, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady: %v", err)
+	}
+	if err := ctrl.AcknowledgeRunning(ctx, claim0); err != nil {
+		t.Fatalf("AcknowledgeRunning: %v", err)
+	}
+
+	// Request pause.
+	if err := store.RequestControl(ctx, &routedrun.ControlRequest{
+		WorkflowID:       wfID,
+		Command:          routedrun.ControlPause,
+		IdempotencyKey:   "pause-idempotent",
+	}); err != nil {
+		t.Fatalf("RequestControl: %v", err)
+	}
+	wf, err := store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	wf.Status = routedrun.WorkflowStatusPauseRequested
+	wf.UpdatedAt = time.Now().UTC()
+	if err := store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+		t.Fatalf("UpdateWorkflow: %v", err)
+	}
+
+	req := StageSuccess{
+		WorkflowID: wfID,
+		NodeID:     nodeIDs[0],
+		RunID:      claim0.RunID,
+		AttemptID:  claim0.Attempt.AttemptID,
+		Handoff: &routedrun.HandoffEnvelope{
+			WorkflowID:   wfID,
+			SourceNodeID: nodeIDs[0],
+			TargetNodeID: nodeIDs[1],
+			ContextJSON:  `{"result":"ok"}`,
+		},
+	}
+
+	// First commit under pause: workflow → PAUSED.
+	if err := ctrl.CommitStageSuccess(ctx, req); err != nil {
+		t.Fatalf("CommitStageSuccess #1: %v", err)
+	}
+
+	// Second commit: idempotent (node already SUCCEEDED).
+	if err := ctrl.CommitStageSuccess(ctx, req); err != nil {
+		t.Fatalf("CommitStageSuccess #2: %v", err)
+	}
+
+	// Only one handoff, workflow still PAUSED.
+	handoffs, err := store.ListHandoffs(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ListHandoffs: %v", err)
+	}
+	if len(handoffs) != 1 {
+		t.Fatalf("expected 1 handoff, got %d", len(handoffs))
+	}
+
+	wf, err = store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	if wf.Status != routedrun.WorkflowStatusPaused {
+		t.Fatalf("workflow: want PAUSED, got %s", wf.Status)
+	}
+}
+
+// TestPauseRequestedMidClaim verifies that pause requested after a claim
+// but before the next claim prevents the next launch.
+func TestPauseRequestedMidClaim(t *testing.T) {
+	ctx := context.Background()
+	store := routedrun.NewMemoryStore()
+	ctrl := NewController(store)
+
+	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 3)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	// Claim and ack stage0.
+	claim0, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady stage0: %v", err)
+	}
+	if err := ctrl.AcknowledgeRunning(ctx, claim0); err != nil {
+		t.Fatalf("AcknowledgeRunning: %v", err)
+	}
+
+	// Request pause.
+	if err := store.RequestControl(ctx, &routedrun.ControlRequest{
+		WorkflowID:       wfID,
+		Command:          routedrun.ControlPause,
+		IdempotencyKey:   "pause-mid",
+	}); err != nil {
+		t.Fatalf("RequestControl: %v", err)
+	}
+	wf, err := store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	wf.Status = routedrun.WorkflowStatusPauseRequested
+	wf.UpdatedAt = time.Now().UTC()
+	if err := store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+		t.Fatalf("UpdateWorkflow: %v", err)
+	}
+
+	// Complete stage0 — should go to PAUSED, not advance to stage1.
+	if err := ctrl.CommitStageSuccess(ctx, StageSuccess{
+		WorkflowID: wfID,
+		NodeID:     nodeIDs[0],
+		RunID:      claim0.RunID,
+		AttemptID:  claim0.Attempt.AttemptID,
+		Handoff: &routedrun.HandoffEnvelope{
+			WorkflowID:   wfID,
+			SourceNodeID: nodeIDs[0],
+			TargetNodeID: nodeIDs[1],
+			ContextJSON:  `{}`,
+		},
+	}); err != nil {
+		t.Fatalf("CommitStageSuccess: %v", err)
+	}
+
+	// Stage1 should still be PENDING.
+	n1, err := store.GetNode(ctx, nodeIDs[1])
+	if err != nil {
+		t.Fatalf("get node1: %v", err)
+	}
+	if n1.Status != routedrun.NodeStatusPending {
+		t.Fatalf("node1: want PENDING, got %s", n1.Status)
+	}
+
+	// Stage2 should also be PENDING.
+	n2, err := store.GetNode(ctx, nodeIDs[2])
+	if err != nil {
+		t.Fatalf("get node2: %v", err)
+	}
+	if n2.Status != routedrun.NodeStatusPending {
+		t.Fatalf("node2: want PENDING, got %s", n2.Status)
+	}
+
+	// Workflow PAUSED.
+	wf, err = store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	if wf.Status != routedrun.WorkflowStatusPaused {
+		t.Fatalf("workflow: want PAUSED, got %s", wf.Status)
+	}
+}
+
+// TestPauseNoDesiredState verifies that without a desired state (or when
+// desired state is not PAUSE), the normal happy path still works.
+func TestPauseNoDesiredState(t *testing.T) {
+	ctx := context.Background()
+	ctrl := NewController(routedrun.NewMemoryStore())
+
+	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 2)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	// Normal path without any pause — should work exactly like before.
+	claim0, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady: %v", err)
+	}
+	if claim0 == nil {
+		t.Fatal("ClaimNextReady: nil")
+	}
+	if err := ctrl.AcknowledgeRunning(ctx, claim0); err != nil {
+		t.Fatalf("AcknowledgeRunning: %v", err)
+	}
+	if err := ctrl.CommitStageSuccess(ctx, StageSuccess{
+		WorkflowID: wfID,
+		NodeID:     nodeIDs[0],
+		RunID:      claim0.RunID,
+		AttemptID:  claim0.Attempt.AttemptID,
+		Handoff: &routedrun.HandoffEnvelope{
+			WorkflowID:   wfID,
+			SourceNodeID: nodeIDs[0],
+			TargetNodeID: nodeIDs[1],
+			ContextJSON:  `{}`,
+		},
+	}); err != nil {
+		t.Fatalf("CommitStageSuccess: %v", err)
+	}
+
+	// Stage1 should be READY.
+	n1, err := ctrl.Store.GetNode(ctx, nodeIDs[1])
+	if err != nil {
+		t.Fatalf("get node1: %v", err)
+	}
+	if n1.Status != routedrun.NodeStatusReady {
+		t.Fatalf("node1: want READY, got %s", n1.Status)
+	}
+
+	// Workflow should still be RUNNING.
+	wf, err := ctrl.Store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	if wf.Status != routedrun.WorkflowStatusRunning {
+		t.Fatalf("workflow: want RUNNING, got %s", wf.Status)
 	}
 }
