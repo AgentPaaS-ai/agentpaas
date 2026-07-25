@@ -1,0 +1,16 @@
+{
+  "zero_stages.yaml": ["PIPELINE_STAGE_COUNT"],
+  "one_stage.yaml": ["PIPELINE_STAGE_COUNT"],
+  "seventeen_stages.yaml": ["PIPELINE_STAGE_COUNT"],
+  "duplicate_node_ids.yaml": ["PIPELINE_DUPLICATE_NODE"],
+  "branch_edges.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
+  "cycle_marker.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
+  "dynamic_package.yaml": ["PIPELINE_MUTABLE_REF"],
+  "mutable_tag.yaml": ["PIPELINE_MUTABLE_REF"],
+  "undeclared_mcp.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
+  "compensation.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
+  "incompatible_schema.yaml": ["PIPELINE_SCHEMA_MISMATCH"],
+  "declassification.yaml": ["PIPELINE_DECLASSIFICATION"],
+  "unknown_field.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
+  "host_path_package.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"]
+}

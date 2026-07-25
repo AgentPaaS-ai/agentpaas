@@ -1,0 +1,13 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: stage-a
+      package_name: pkg-a
+      package_version: "1.0.0"
+      bundle_digest: sha256:aaa111
+      handoff: restricted
+    - name: stage-b
+      package_name: pkg-b
+      package_version: "1.0.0"
+      bundle_digest: sha256:bbb222
+      handoff: public
