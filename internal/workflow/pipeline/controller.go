@@ -128,6 +128,11 @@ type CancelRequest struct {
 	Reason     string // optional stable reason code (maps to FailureReason if recognized)
 }
 
+// ResumeRequest is the request payload for ResumeWorkflow.
+type ResumeRequest struct {
+	WorkflowID routedrun.WorkflowID
+}
+
 // StageFailure is the request payload for CommitStageFailure.
 type StageFailure struct {
 	WorkflowID    routedrun.WorkflowID
@@ -859,6 +864,119 @@ func (c *Controller) CancelWorkflow(ctx context.Context, req CancelRequest) erro
 	wf.TerminalReason = &reason
 	if err := c.Store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
 		return fmt.Errorf("cancel workflow: %w", err)
+	}
+
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// ResumeWorkflow
+// ---------------------------------------------------------------------------
+
+// ResumeWorkflow transitions a PAUSED workflow to RUNNING and marks the
+// earliest PENDING node READY if no node is already READY/LAUNCHING/RUNNING.
+// Idempotent if the workflow is already RUNNING with an active node.
+// Returns an error if the workflow is in a terminal state (CANCELLED, FAILED,
+// SUCCEEDED).
+//
+// Note: MemoryStore does not expose SetDesiredState, so this method only
+// transitions the workflow status. The control plane is responsible for
+// clearing any PAUSE desired state (e.g., via RequestControl with RESUME).
+func (c *Controller) ResumeWorkflow(ctx context.Context, req ResumeRequest) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	wf, err := c.Store.GetWorkflow(ctx, req.WorkflowID)
+	if err != nil {
+		return fmt.Errorf("resume workflow: %w", err)
+	}
+
+	// If already RUNNING or terminal, check for idempotency.
+	if wf.Status == routedrun.WorkflowStatusRunning {
+		// Already running — verify at least one node is active.
+		nodes, err := c.Store.ListNodes(ctx, req.WorkflowID)
+		if err != nil {
+			return fmt.Errorf("resume workflow: %w", err)
+		}
+		for _, n := range nodes {
+			if n.Status == routedrun.NodeStatusReady ||
+				n.Status == routedrun.NodeStatusLaunching ||
+				n.Status == routedrun.NodeStatusRunning {
+				return nil // already active, idempotent
+			}
+		}
+		// RUNNING but no active node — still idempotent (shouldn't happen).
+		return nil
+	}
+
+	// Reject terminal workflows.
+	if wf.Status.IsTerminal() {
+		return fmt.Errorf("%w: cannot resume terminal workflow %s",
+			ErrInvalidTransition, wf.Status)
+	}
+
+	// Validate and apply PAUSED → RUNNING.
+	if err := routedrun.ValidateWorkflowTransition(wf.Status, routedrun.WorkflowStatusRunning); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidTransition, err)
+	}
+
+	now := time.Now().UTC()
+	wf.Status = routedrun.WorkflowStatusRunning
+	wf.UpdatedAt = now
+	if err := c.Store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+		return fmt.Errorf("resume workflow: %w", err)
+	}
+
+	// Mark earliest PENDING node READY if no node is already active.
+	nodes, err := c.Store.ListNodes(ctx, req.WorkflowID)
+	if err != nil {
+		return fmt.Errorf("resume workflow: %w", err)
+	}
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].StageOrder < nodes[j].StageOrder
+	})
+
+	// Check if any node is already active (guard against double-ready).
+	for _, n := range nodes {
+		if n.Status == routedrun.NodeStatusReady ||
+			n.Status == routedrun.NodeStatusLaunching ||
+			n.Status == routedrun.NodeStatusRunning {
+			return nil // already active, don't double-ready
+		}
+	}
+
+	// Find earliest PENDING and mark READY.
+	for _, n := range nodes {
+		if n.Status == routedrun.NodeStatusPending {
+			nodeGen := c.nodeGen[n.NodeID]
+			if nodeGen == 0 {
+				nodeGen = 1
+			}
+			n.Status = routedrun.NodeStatusReady
+			n.UpdatedAt = now
+			if err := c.Store.UpdateNode(ctx, n, nodeGen); err != nil {
+				if errors.Is(err, routedrun.ErrCASConflict) {
+					// CAS conflict on a fresh controller — node gen may be stale.
+					// Try with higher generation for crash-recovery scenario.
+					if err2 := c.Store.UpdateNode(ctx, n, nodeGen+1); err2 != nil {
+						if errors.Is(err2, routedrun.ErrCASConflict) {
+							if err3 := c.Store.UpdateNode(ctx, n, nodeGen+2); err3 != nil {
+								return fmt.Errorf("resume workflow: %w", err3)
+							}
+							nodeGen = nodeGen + 2
+						} else {
+							return fmt.Errorf("resume workflow: %w", err2)
+						}
+					} else {
+						nodeGen = nodeGen + 1
+					}
+				} else {
+					return fmt.Errorf("resume workflow: %w", err)
+				}
+			}
+			c.nodeGen[n.NodeID] = nodeGen + 1
+			break // only mark one node READY
+		}
 	}
 
 	return nil
