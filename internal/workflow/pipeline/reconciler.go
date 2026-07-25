@@ -41,7 +41,7 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 		}
 
 		// Found a LAUNCHING node. Look up or create the launch job.
-		launchGen := int64(1) // first claim always uses gen=1
+		launchGen := int64(1) // default for first claim
 		key := LaunchIdempotencyKey(workflowID, n.NodeID, launchGen)
 
 		// Try to find an existing launch job for this node.
@@ -54,6 +54,7 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 			if j.NodeID == n.NodeID && j.WorkflowID == workflowID {
 				existing = j
 				key = j.Key
+				launchGen = j.Generation
 				break
 			}
 		}
@@ -146,21 +147,26 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 	if err != nil {
 		return nil, fmt.Errorf("reconcile once: put launch job: %w", err)
 	}
+
+	// Use existing when job already persisted (double launch guard).
+	toLaunch := job
 	if !created {
-		// Double launch guard: job already exists (e.g. concurrent reconcile).
-		// Return the claim as-is; the launch is already in flight.
-		_ = existing
+		toLaunch = existing
+		// Update claim's LaunchKey/LaunchGeneration from the existing
+		// persisted record so they match the actual stored key.
+		claim.LaunchKey = existing.Key
+		claim.LaunchGeneration = existing.Generation
 	}
 
-	// ── Step 4: Ensure launch ──
-	if err := r.Launcher.EnsureLaunch(ctx, job); err != nil {
+	// ── Step 4: Ensure launch (idempotent) ──
+	if err := r.Launcher.EnsureLaunch(ctx, toLaunch); err != nil {
 		return nil, fmt.Errorf("reconcile once: ensure launch: %w", err)
 	}
 
-	// Update job status to STARTED.
-	job.Status = LaunchStatusStarted
-	job.UpdatedAt = time.Now().UTC()
-	_ = r.Launches.Update(ctx, job)
+	// Update job status to STARTED on the stored record.
+	toLaunch.Status = LaunchStatusStarted
+	toLaunch.UpdatedAt = time.Now().UTC()
+	_ = r.Launches.Update(ctx, toLaunch)
 
 	// ── Step 5: Acknowledge running ──
 	if err := r.Ctrl.AcknowledgeRunning(ctx, claim); err != nil {
