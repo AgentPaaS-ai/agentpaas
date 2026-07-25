@@ -10,10 +10,10 @@
 
 | Fix | SHA | Description |
 |-----|-----|-------------|
-| BREAK-1 | (pending commit) | Recursive `hasReservedKeys` — walks maps + arrays |
-| BREAK-2 | (pending commit) | Same recursive walk fix |
-| BREAK-3 | (pending commit) | CommitStageSuccess validates ContextJSON before CommitHandoff |
-| BREAK-4 | (pending commit) | artifactPutToFS Lstat check before write; returns ARTIFACT_SYMLINK_REJECTED |
+| BREAK-1 | `5048943` | Recursive `hasReservedKeys` — walks maps + arrays |
+| BREAK-2 | `5048943` | Same recursive walk fix |
+| BREAK-3 | `5048943` | CommitStageSuccess validates ContextJSON before CommitHandoff |
+| BREAK-4 | `5048943` | artifactPutToFS Lstat check before write; returns ARTIFACT_SYMLINK_REJECTED |
 
 All 18 adversary tests PASS with `-race` after fixes.
 
