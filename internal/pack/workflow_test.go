@@ -2,6 +2,7 @@ package pack
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -176,6 +177,29 @@ pipeline:
 	errs := ValidateWorkflowYAML(&wf)
 	if len(errs) == 0 {
 		t.Fatal("expected validation errors for unsafe stage identity, got none")
+	}
+}
+
+func TestWorkflowOneStage(t *testing.T) {
+	yml := `kind: pipeline
+pipeline:
+  stages:
+    - name: only-one
+      package_name: pkg
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc
+      handoff: public
+`
+	var wf WorkflowYAML
+	if err := yaml.Unmarshal([]byte(yml), &wf); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	errs := ValidateWorkflowYAML(&wf)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for 1-stage pipeline, got none")
+	}
+	if !strings.Contains(errs[0], "at least 2") {
+		t.Errorf("expected 'at least 2', got: %v", errs)
 	}
 }
 

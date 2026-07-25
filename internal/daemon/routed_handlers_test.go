@@ -508,6 +508,11 @@ pipeline:
       package_version: "1.0.0"
       bundle_digest: sha256:abc123
       handoff: public
+    - name: s2
+      package_name: weather
+      package_version: "1.0.0"
+      bundle_digest: sha256:def456
+      handoff: internal
 `
 	if err := os.WriteFile(filepath.Join(deployedDir, "workflow.yaml"), []byte(wfYAML), 0o600); err != nil {
 		t.Fatal(err)

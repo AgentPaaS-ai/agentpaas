@@ -60,11 +60,14 @@ type PipelineConfig struct {
 
 // PipelineStage defines a single stage in a pipeline workflow.
 type PipelineStage struct {
-	Name            string `yaml:"name"`
-	PackageName     string `yaml:"package_name"`
-	PackageVersion  string `yaml:"package_version"`
-	BundleDigest    string `yaml:"bundle_digest"`
-	Handoff         string `yaml:"handoff"` // public|internal|confidential|restricted
+	Name            string   `yaml:"name"`
+	PackageName     string   `yaml:"package_name"`
+	PackageVersion  string   `yaml:"package_version"`
+	BundleDigest    string   `yaml:"bundle_digest"`
+	Handoff         string   `yaml:"handoff"` // public|internal|confidential|restricted
+	OutputSchema    string   `yaml:"output_schema,omitempty"`
+	AcceptedSchemas []string `yaml:"accepted_schemas,omitempty"`
+	MCPServices     []string `yaml:"mcp_services,omitempty"`
 }
 
 // ParentChildConfig defines a parent-child workflow topology.
@@ -185,8 +188,8 @@ func ValidateWorkflowYAML(wf *WorkflowYAML) []string {
 func validatePipelineStages(p *PipelineConfig) []string {
 	var errs []string
 
-	if len(p.Stages) == 0 {
-		errs = append(errs, "pipeline requires at least one stage")
+	if len(p.Stages) < 2 {
+		errs = append(errs, "pipeline requires at least 2 stages")
 		return errs
 	}
 

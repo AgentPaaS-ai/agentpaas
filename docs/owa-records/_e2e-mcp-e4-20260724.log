@@ -1,0 +1,51 @@
+=== RUN   TestE2E_CrossContainer_LookupFeedback
+    cross_container_e2e_test.go:45: Docker Engine version: 29.5.2
+    cross_container_e2e_test.go:57: bind-mount testdata from: /Users/pms88/projects/agentpaas/internal/mcpmanager/testdata
+    cross_container_e2e_test.go:120: Service endpoint: http://svc-feedback:8080
+    cross_container_e2e_test.go:138: Service container d17cd9b02d0b5778c59c41bd1fce282556c9f1194d900e74b9f285db6aa9d471 is running ✓
+    cross_container_e2e_test.go:149: Client container: 22dc81829d75a1c347867cc757e2a0510185a6de1bb9e0bb22bf3061895ca992
+    cross_container_e2e_test.go:162: Client attached to service network
+    cross_container_e2e_test.go:190: Using direct IP: http://172.18.0.2:8080
+    cross_container_e2e_test.go:235: Python HTTP response stdout: {"jsonrpc": "2.0", "result": {"content": [{"type": "text", "text": "{\"marker\": \"b33-t08-docker-e2e\", \"items\": [{\"id\": 1, \"feedback\": \"Great mock service!\"}, {\"id\": 2, \"feedback\": \"Cross-container works\"}], \"capability_provided\": true}"}]}, "id": 1}
+        HTTP_STATUS:200
+    cross_container_e2e_test.go:262: Response body: {"jsonrpc": "2.0", "result": {"content": [{"type": "text", "text": "{\"marker\": \"b33-t08-docker-e2e\", \"items\": [{\"id\": 1, \"feedback\": \"Great mock service!\"}, {\"id\": 2, \"feedback\": \"Cross-container works\"}], \"capability_provided\": true}"}]}, "id": 1}
+    cross_container_e2e_test.go:278: SUCCESS: cross-container e2e lookup_feedback completed
+    cross_container_e2e_test.go:300: ReconcileOrphanServiceNetworks removed 1 orphan network(s)
+    cross_container_e2e_test.go:320: Zero MCP orphan containers ✓
+    cross_container_e2e_test.go:338: Zero service network orphans ✓
+    cross_container_e2e_test.go:76: cleanup: stopping services...
+--- PASS: TestE2E_CrossContainer_LookupFeedback (29.21s)
+=== RUN   TestE2E_OperatorPack_MCPFeedbackService
+    operator_pack_e2e_test.go:39: repo root: /Users/pms88/projects/agentpaas
+    operator_pack_e2e_test.go:50: harness built: /Users/pms88/projects/agentpaas/bin/agentpaas-harness-linux
+2026/07/24 15:46:27 verify: SDK present = true
+2026/07/24 15:46:27 verify: harness in image = true, entry in image = true, SDK in image = true
+2026/07/24 15:46:27 verify: harness fresh = true (host=f80e9661a036cc6b1a140a828bb16f0f image=f80e9661a036cc6b1a140a828bb16f0f)
+2026/07/24 15:46:27 verify: healthz = 200
+2026/07/24 15:46:27 verify: readyz = 200
+2026/07/24 15:46:27 verify: all checks passed
+    operator_pack_e2e_test.go:64: service image digest: sha256:5c800f79c5f91f4facd3240d80a746a6c95a68ffd7d1093cdafc744be095a43a
+2026/07/24 15:46:29 verify: SDK present = true
+2026/07/24 15:46:30 verify: harness in image = true, entry in image = true, SDK in image = true
+2026/07/24 15:46:30 verify: harness fresh = true (host=f80e9661a036cc6b1a140a828bb16f0f image=f80e9661a036cc6b1a140a828bb16f0f)
+2026/07/24 15:46:30 verify: healthz = 200
+2026/07/24 15:46:30 verify: readyz = 200
+2026/07/24 15:46:30 verify: all checks passed
+    operator_pack_e2e_test.go:72: client image digest: sha256:62afd8ff17944ab916c9bc3641b5906b697828d2c103058d7ad3a22a3dd7672e
+    operator_pack_e2e_test.go:133: Service container e71d89fba93bb6fb5dbb7fdf9dc1f32e3000ae9304532e6f11d17eac8a394e36 is running, endpoint=http://svc-feedback:8080
+    operator_pack_e2e_test.go:142: Client container: 96f0840fbd59159a5561f7ef0da1cc00932c271da6562e3d908b6160206ec807
+    operator_pack_e2e_test.go:185: Service URL: http://172.18.0.2:8080
+    operator_pack_e2e_test.go:226: Python HTTP response stdout: {"id":1,"jsonrpc":"2.0","result":{"content":[{"text":"{\"marker\":\"mcp-feedback-service-S1c-fixture\",\"query\":\"test\",\"result\":\"feedback-found\",\"score\":42}","type":"text"}]}}
+        
+        HTTP_STATUS:200
+    operator_pack_e2e_test.go:257: SUCCESS: operator pack e2e — MCP feedback service returned fixture marker
+=== RUN   TestE2E_OperatorPack_MCPFeedbackService/undeclared-tool-denied
+    operator_pack_e2e_test.go:307: Undeclared tool response body: {"error":{"code":-32603,"message":"RPCError(unknown_tool): tool 'secret_backdoor' is not registered"},"id":2,"jsonrpc":"2.0"}
+=== NAME  TestE2E_OperatorPack_MCPFeedbackService
+    operator_pack_e2e_test.go:325: ReconcileOrphanServiceNetworks removed 1 orphan network(s)
+    operator_pack_e2e_test.go:344: Zero MCP orphan containers ✓
+    operator_pack_e2e_test.go:362: Zero service network orphans ✓
+--- PASS: TestE2E_OperatorPack_MCPFeedbackService (18.24s)
+    --- PASS: TestE2E_OperatorPack_MCPFeedbackService/undeclared-tool-denied (0.10s)
+PASS
+ok  	github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager	47.757s
