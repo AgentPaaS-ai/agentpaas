@@ -23,6 +23,10 @@ const (
 	CodeHandoffDuplicateID     = "HANDOFF_DUPLICATE_ID"
 	CodeHandoffNonCanonical    = "HANDOFF_NON_CANONICAL"
 
+	// Compile codes (owner: pipeline-compile).
+	CodePipelinePackageResolve = "PIPELINE_PACKAGE_RESOLVE"
+	CodePipelineDigestMismatch = "PIPELINE_DIGEST_MISMATCH"
+
 	// Runtime code (owner: daemon).
 	CodePipelineNotEnabled = "PIPELINE_NOT_ENABLED"
 )
