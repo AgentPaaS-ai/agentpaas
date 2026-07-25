@@ -4,6 +4,7 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -590,6 +591,13 @@ func (c *Controller) CommitStageSuccess(ctx context.Context, req StageSuccess) e
 		}
 	} else {
 		// Commit handoff.
+		// Validate ContextJSON for reserved keys before committing.
+		if req.Handoff.ContextJSON != "" {
+			if hasReservedKeys(json.RawMessage(req.Handoff.ContextJSON)) {
+				return fmt.Errorf("%s: handoff ContextJSON contains reserved keys", CodeHandoffReservedKey)
+			}
+		}
+
 		if req.Handoff.HandoffID == "" {
 			hid, err := routedrun.NewHandoffID()
 			if err != nil {

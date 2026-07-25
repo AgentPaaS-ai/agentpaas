@@ -149,32 +149,46 @@ func isSafeRef(ref string) bool {
 	return true
 }
 
-// hasReservedKeys checks if the context value contains any reserved keys.
+// hasReservedKeys checks if the context value contains any reserved keys
+// at any nesting depth (objects and arrays are recursed).
 func hasReservedKeys(value json.RawMessage) bool {
 	if len(value) == 0 {
 		return false
 	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(value, &m); err != nil {
-		// If it's not a map, check for reserved key strings in the raw value.
-		for k := range reservedContextKeys {
-			if strings.Contains(string(value), fmt.Sprintf(`"%s"`, k)) {
-				return true
-			}
-		}
+	var v interface{}
+	if err := json.Unmarshal(value, &v); err != nil {
 		return false
 	}
-	for k := range m {
-		if reservedContextKeys[k] {
-			return true
-		}
-		// Also check nested values for reserved patterns (path-like).
-		if s, ok := m[k].(string); ok {
-			if strings.HasPrefix(s, "/var/") || strings.HasPrefix(s, "/app/") ||
-				strings.HasPrefix(s, "/etc/") || strings.HasPrefix(s, "/root/") {
+	return hasReservedKeysRecursive(v)
+}
+
+// hasReservedKeysRecursive walks a decoded JSON value, rejecting reserved keys
+// in maps at any depth and recursing into arrays.
+func hasReservedKeysRecursive(v interface{}) bool {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		for k, child := range val {
+			if reservedContextKeys[k] {
 				return true
 			}
-			if strings.Contains(s, "../") {
+			// Check string values for forbidden path patterns.
+			if s, ok := child.(string); ok {
+				if strings.HasPrefix(s, "/var/") || strings.HasPrefix(s, "/app/") ||
+					strings.HasPrefix(s, "/etc/") || strings.HasPrefix(s, "/root/") {
+					return true
+				}
+				if strings.Contains(s, "../") {
+					return true
+				}
+			}
+			// Recurse into nested objects/arrays.
+			if hasReservedKeysRecursive(child) {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, item := range val {
+			if hasReservedKeysRecursive(item) {
 				return true
 			}
 		}
