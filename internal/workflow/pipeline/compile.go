@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -208,30 +207,15 @@ func computeSnapshotDigest(snapshot *CompiledPipelineSnapshot) (string, error) {
 	return sha256Hex(data), nil
 }
 
-// canonicalJSON marshals v to JSON with sorted keys and no HTML escaping.
+// canonicalJSON marshals v to JSON deterministically (sorted map keys, no extra
+// whitespace). Go's json.Marshal sorts map keys, so we only need to ensure our
+// maps are presorted for consistent insertion order and then marshal.
 func canonicalJSON(v any) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	// json.Encoder appends a newline; strip it for digest consistency.
-	b := buf.Bytes()
-	if len(b) > 0 && b[len(b)-1] == '\n' {
-		b = b[:len(b)-1]
-	}
-	// Re-parse and marshal with sorted keys to get deterministic output.
-	var raw any
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return nil, fmt.Errorf("canonical JSON reparse: %w", err)
-	}
-	// Now marshal with sorted keys (json.Marshal sorts map keys).
-	sorted, err := json.Marshal(raw)
+	data, err := json.Marshal(v)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("canonical JSON marshal: %w", err)
 	}
-	return sorted, nil
+	return data, nil
 }
 
 // sortedMapCopy returns a copy with sorted key insertion (maps in Go marshal
