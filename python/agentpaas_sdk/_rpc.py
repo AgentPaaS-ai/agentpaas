@@ -44,12 +44,32 @@ class StreamingNotSupported(RPCError):
     """Raised when the connected harness does not support streaming."""
 
 
+class WorkflowContextUnavailable(RPCError):
+    """Raised when workflow_input is called outside a pipeline stage."""
+
+
+class HandoffNotAllowed(RPCError):
+    """Raised when commit_handoff is called in a non-pipeline or final stage."""
+
+
+class HandoffRejected(RPCError):
+    """Raised when a handoff commit is rejected by validation."""
+
+
 # Maps RPC error codes to exception classes for progress-related calls.
 _PROGRESS_ERROR_MAP = {
     "INVALID_PROGRESS": ProgressError,
     "CHECKPOINT_REJECTED": CheckpointRejected,
     "ARTIFACT_REJECTED": ArtifactRejected,
     "LEASE_EXPIRED": LeaseExpired,
+}
+
+# Maps RPC error codes to exception classes for handoff-related calls.
+_HANDOFF_ERROR_MAP = {
+    "WORKFLOW_CONTEXT_UNAVAILABLE": WorkflowContextUnavailable,
+    "HANDOFF_NOT_ALLOWED": HandoffNotAllowed,
+    "HANDOFF_REJECTED": HandoffRejected,
+    "STALE_LEASE": LeaseExpired,
 }
 
 
@@ -89,7 +109,7 @@ class RPCClient:
         code = response.get("code") or "rpc_error"
         if code == "BUDGET_EXCEEDED":
             raise BudgetExceeded(message, code)
-        exc_cls = _PROGRESS_ERROR_MAP.get(code)
+        exc_cls = _PROGRESS_ERROR_MAP.get(code) or _HANDOFF_ERROR_MAP.get(code)
         if exc_cls is not None:
             raise exc_cls(message, code)
         raise RPCError(message, code)
