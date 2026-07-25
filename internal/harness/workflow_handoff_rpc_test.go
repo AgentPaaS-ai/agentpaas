@@ -516,3 +516,77 @@ func TestCommitHandoff_NoActiveInvoke(t *testing.T) {
 		t.Fatalf("expected no_active_invoke, got %s", resp.Code)
 	}
 }
+
+// --- workflow_input from PipelineStageContextParams tests ---
+
+func TestWorkflowInputRPC_FromPipelineParams_Stage0(t *testing.T) {
+	s := newTestRPCServer(t)
+	setTestInvoke(t, s)
+
+	// Stage 0: build from StageContextParams and set pipeline context.
+	params := pipeline.StageContextParams{
+		WorkflowKind:    "pipeline",
+		NodeID:          "stage_0",
+		StageOrder:      0,
+		IsFinalStage:    false,
+		LeaseExpiresAt:  time.Now().Add(time.Hour),
+		Classification:  "internal",
+	}
+	s.SetPipelineContext(PipelineStageContextFromParams(params))
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "p1",
+		Method: "workflow_input",
+	})
+	if !resp.OK {
+		t.Fatalf("expected ok, got error: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", resp.Result)
+	}
+	if available, _ := result["available"].(bool); available {
+		t.Fatal("expected available=false for stage 0 from params")
+	}
+}
+
+func TestWorkflowInputRPC_FromPipelineParams_MidStage(t *testing.T) {
+	s := newTestRPCServer(t)
+	setTestInvoke(t, s)
+
+	// Build a full handoff envelope JSON for a mid-stage scenario.
+	handoffJSON := json.RawMessage(`{"schema_version":"0.3.0","handoff_id":"ho_test","workflow_id":"wf_test","source_node_id":"stage_0","target_node_id":"stage_1","context_json":"{\"notes\":\"hello\"}","classification":"internal","created_at":"2026-07-24T00:00:00Z"}`)
+
+	params := pipeline.StageContextParams{
+		WorkflowKind:        "pipeline",
+		NodeID:              "stage_1",
+		StageOrder:          1,
+		IsFinalStage:        false,
+		IncomingHandoffJSON: handoffJSON,
+		LeaseExpiresAt:      time.Now().Add(time.Hour),
+		Classification:      "internal",
+	}
+	s.SetPipelineContext(PipelineStageContextFromParams(params))
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "p2",
+		Method: "workflow_input",
+	})
+	if !resp.OK {
+		t.Fatalf("expected ok, got error: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", resp.Result)
+	}
+	if available, _ := result["available"].(bool); !available {
+		t.Fatal("expected available=true for mid-stage from params")
+	}
+	handoff, _ := result["handoff"].(map[string]any)
+	if handoff == nil {
+		t.Fatal("expected handoff in result for mid-stage from params")
+	}
+	if handoff["handoff_id"] != "ho_test" {
+		t.Fatalf("expected handoff_id=ho_test, got %v", handoff["handoff_id"])
+	}
+}
