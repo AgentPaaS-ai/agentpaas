@@ -58,6 +58,7 @@
 ### Commits
 
 ```
+9dee40a docs: b34-t04 chunk3 handoff record
 955aa2b feat(b34-t04): add thin daemon pipeline reconcile hook
 cc4ea3c feat(b34-t04): add PipelineStageContextFromParams + test in harness
 760b0b5 test(b34-t04): add RED GATE reconciler tests (7 tests)
@@ -65,21 +66,29 @@ cc4ea3c feat(b34-t04): add PipelineStageContextFromParams + test in harness
 579cf44 feat(b34-t04): add launch idempotency, stage launcher, and stage context params
 ```
 
-### RED GATE results
+### Orch re-verification (2026-07-24)
 
 ```
+$ go test ./internal/workflow/pipeline/ -count=1 -run 'LaunchIdempotency|LaunchStore|Reconcile|CollectStage' -v
+PASS (7 tests)
+
 $ go test ./internal/workflow/pipeline/ -race -count=1
-ok  	github.com/AgentPaaS-ai/agentpaas/internal/workflow/pipeline	1.402s
+ok  pipeline 1.394s
 
 $ go test ./internal/harness/ -count=1 -run 'TestPipelineStageContextFromParams'
-ok  	github.com/AgentPaaS-ai/agentpaas/internal/harness	0.367s
+ok  harness
 
 $ go test ./internal/daemon/ -count=1 -run 'TestPipelineReconcileHookTick'
-ok  	github.com/AgentPaaS-ai/agentpaas/internal/daemon	0.388s
-
-$ golangci-lint run --timeout 2m ./internal/workflow/pipeline/... ./internal/harness/... ./internal/daemon/...
-0 issues.
+ok  daemon
 ```
+
+### Gaps deferred (chunk4+)
+- Daemon.Start does not call PipelineReconcileHook yet (test seam only)
+- CollectStageContextParams uses handoff.ContextJSON only, not full envelope
+- Harness test is struct-level; no live SetPipelineContext+workflow_input RPC
+- PutIfAbsent race path still EnsureLaunch(local job) not existing copy
+- LAUNCHING recovery hardcodes launchGen=1
+- Crash inject at every CAS write (T04 §Tests)
 
 ### Out of scope (not implemented)
 - Real container start / T05 isolation
