@@ -1,27 +1,34 @@
-# Current State — Block 33 complete; B34 next
+# Current State — Block 34 in progress (T01 done)
 
 **Shipped release:** v0.3.0 (B1–B32)
-**Development head:** B33 DONE locally (v0.4 AgentPaaS-container MCP services)
+**Development head:** B34 Runtime-Native Sequential Agent Pipelines
 
-## B33 progress
+## B34 progress
 | Task | Status |
 |------|--------|
-| Preflight–T07 | DONE |
-| T08 Cross-container + stretch | DONE |
-| T09 block33-gate + adversary | DONE |
+| T01 Freeze workflow/handoff conformance fixtures | DONE |
+| T02 Strict pipeline compilation | NEXT |
+| T03 SDK input/handoff ops | pending |
+| T04 Durable linear scheduler | pending |
+| T05 Stage containers + authority | pending |
+| T06 Artifact transfer + provenance | pending |
+| T07 Failure/cancel/pause/idempotency | pending |
+| T08 Deploy invoke + operator inspection + ref proof | pending |
+| T09 block34-gate + adversary | pending |
 
-## T09 evidence (local, 2026-07-24)
-- `make block33-gate-fast` PASS (packages race, python SDK, adversary matrix, mcp-container-e2e, vet, lint, golden-fast 23/23)
-- Adversary matrix 14 rows + gap regressions
-- Pack lock: agentYAMLCanonicalMap + restart-local-daemon after build-all (G47 stable)
-- Full `make block33-gate` also runs block32 chain (long); fast gate is the B33 delta proof
+## T01 evidence (local, 2026-07-24)
+- Package `internal/workflow/pipeline/` validators + fixtures
+- `go test ./internal/workflow/pipeline/...` PASS (race PASS)
+- pack/daemon pipeline-not-enabled still green
+- Handoff: docs/owa-records/b34-t01.md
+- Residuals for T02: pack min-2 single source of truth; real UNDECLARED_MCP
 
 ## Operator notes
-- After `make build`/`build-all`: `make restart-local-daemon` (or use golden-fast which does it)
+- After `make build`/`build-all`: `make restart-local-daemon`
 - CI is local-only (no GH runners)
-- MCP: per-workflow internal net; bridge :8080; harness admin 127.0.0.1:8090; no host publish
+- MCP: per-workflow internal net; bridge :8080; harness admin 127.0.0.1:8090
 
 ## Suggested read order
 1. This file
-2. docs/owa-records/b33-t09.md
-3. docs/execution/blocks/b34-summary.md (next)
+2. docs/owa-records/b34-t01.md
+3. docs/execution/blocks/b34-summary.md § T02
