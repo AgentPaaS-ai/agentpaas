@@ -240,8 +240,8 @@ func TestPipelineUnsupportedShape(t *testing.T) {
 	}
 }
 
-// TestLegacyPackValidationStillGreen ensures standalone workflows still pass pack validation.
-func TestLegacyPackValidationStillGreen(t *testing.T) {
+// TestLegacyStandalonePackValidationStillGreen ensures standalone workflows still pass pack validation.
+func TestLegacyStandalonePackValidationStillGreen(t *testing.T) {
 	yml := `kind: standalone
 services:
   - service_id: feedback
@@ -257,6 +257,23 @@ services:
 	}
 	if errs := pack.ValidateWorkflowYAML(&wf); len(errs) > 0 {
 		t.Fatalf("standalone workflow should pass pack validation: %v", errs)
+	}
+}
+
+// TestLegacyMCPFeedbackFixtureStillGreen loads the actual B33 MCP feedback client
+// workflow.yaml fixture from disk and verifies it passes pack validation.
+func TestLegacyMCPFeedbackFixtureStillGreen(t *testing.T) {
+	fixturePath := filepath.Join("..", "..", "..", "test", "e2e", "fixtures", "mcp-feedback-client", "workflow.yaml")
+	data, err := os.ReadFile(fixturePath)
+	if err != nil {
+		t.Fatalf("read MCP feedback fixture: %v", err)
+	}
+	var wf pack.WorkflowYAML
+	if err := yaml.Unmarshal(data, &wf); err != nil {
+		t.Fatalf("unmarshal MCP feedback fixture: %v", err)
+	}
+	if errs := pack.ValidateWorkflowYAML(&wf); len(errs) > 0 {
+		t.Fatalf("MCP feedback fixture should pass pack validation: %v", errs)
 	}
 }
 
