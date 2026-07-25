@@ -22,6 +22,7 @@ var (
 	ErrCASConflict       = errors.New("pipeline: CAS conflict")
 	ErrHandoffMissing    = errors.New("pipeline: handoff required for non-final stage")
 	ErrInvalidTransition = errors.New("pipeline: invalid state transition")
+	ErrWorkflowTerminal  = errors.New("pipeline: workflow is terminal, cannot commit success")
 )
 
 // ---------------------------------------------------------------------------
@@ -121,12 +122,19 @@ type StageSuccess struct {
 	Handoff    *routedrun.HandoffEnvelope
 }
 
+// CancelRequest is the request payload for CancelWorkflow.
+type CancelRequest struct {
+	WorkflowID routedrun.WorkflowID
+	Reason     string // optional stable reason code (maps to FailureReason if recognized)
+}
+
 // StageFailure is the request payload for CommitStageFailure.
 type StageFailure struct {
-	WorkflowID routedrun.WorkflowID
-	NodeID     routedrun.NodeID
-	RunID      routedrun.RunID
-	AttemptID  routedrun.AttemptID
+	WorkflowID    routedrun.WorkflowID
+	NodeID        routedrun.NodeID
+	RunID         routedrun.RunID
+	AttemptID     routedrun.AttemptID
+	FailureReason *routedrun.FailureReason // optional stable failure reason
 }
 
 // ---------------------------------------------------------------------------
@@ -458,6 +466,11 @@ func (c *Controller) CommitStageSuccess(ctx context.Context, req StageSuccess) e
 		return nil
 	}
 
+	// Reject late success after cancel/fail: node must not be in a terminal state.
+	if isNodeTerminal(node.Status) {
+		return ErrWorkflowTerminal
+	}
+
 	// Determine if this is the final stage.
 	nodes, err := c.Store.ListNodes(ctx, req.WorkflowID)
 	if err != nil {
@@ -635,6 +648,7 @@ func (c *Controller) CommitStageSuccess(ctx context.Context, req StageSuccess) e
 // ---------------------------------------------------------------------------
 
 // CommitStageFailure marks node/run failed and workflow failed; no next READY.
+// Sets FailureReason on the attempt and TerminalReason on the workflow when provided.
 func (c *Controller) CommitStageFailure(ctx context.Context, req StageFailure) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -689,7 +703,7 @@ func (c *Controller) CommitStageFailure(ctx context.Context, req StageFailure) e
 	}
 	c.runGen[req.RunID] = runGen + 1
 
-	// Update attempt → FAILED.
+	// Update attempt → FAILED with failure reason.
 	attempt, err := c.Store.GetAttempt(ctx, req.AttemptID)
 	if err != nil {
 		return fmt.Errorf("commit stage failure: %w", err)
@@ -705,6 +719,9 @@ func (c *Controller) CommitStageFailure(ctx context.Context, req StageFailure) e
 		attempt.Status = routedrun.AttemptStatusFailed
 		attempt.TerminatedAt = &now
 		attempt.UpdatedAt = now
+		if req.FailureReason != nil {
+			attempt.FailureReason = req.FailureReason
+		}
 		if err := c.Store.UpdateAttempt(ctx, attempt, attGen); err != nil {
 			if errors.Is(err, routedrun.ErrCASConflict) {
 				return ErrCASConflict
@@ -714,7 +731,7 @@ func (c *Controller) CommitStageFailure(ctx context.Context, req StageFailure) e
 		c.attGen[req.AttemptID] = attGen + 1
 	}
 
-	// Mark workflow FAILED.
+	// Mark workflow FAILED with TerminalReason.
 	wf, err := c.Store.GetWorkflow(ctx, req.WorkflowID)
 	if err != nil {
 		return fmt.Errorf("commit stage failure: %w", err)
@@ -726,12 +743,140 @@ func (c *Controller) CommitStageFailure(ctx context.Context, req StageFailure) e
 		wf.Status = routedrun.WorkflowStatusFailed
 		wf.TerminatedAt = &now
 		wf.UpdatedAt = now
+		if req.FailureReason != nil {
+			wf.TerminalReason = req.FailureReason
+		}
 		if err := c.Store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
 			return fmt.Errorf("commit stage failure: %w", err)
 		}
 	}
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// CancelWorkflow
+// ---------------------------------------------------------------------------
+
+// CancelWorkflow marks the workflow CANCELLED and cancels the active/launching
+// node if any. Idempotent if the workflow is already CANCELLED.
+func (c *Controller) CancelWorkflow(ctx context.Context, req CancelRequest) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	wf, err := c.Store.GetWorkflow(ctx, req.WorkflowID)
+	if err != nil {
+		return fmt.Errorf("cancel workflow: %w", err)
+	}
+
+	// Idempotent if already CANCELLED.
+	if wf.Status == routedrun.WorkflowStatusCancelled {
+		return nil
+	}
+
+	now := time.Now().UTC()
+
+	// Find the active or launching node, if any.
+	nodes, err := c.Store.ListNodes(ctx, req.WorkflowID)
+	if err != nil {
+		return fmt.Errorf("cancel workflow: %w", err)
+	}
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i].StageOrder < nodes[j].StageOrder
+	})
+
+	for _, node := range nodes {
+		if node.Status == routedrun.NodeStatusLaunching || node.Status == routedrun.NodeStatusRunning {
+			// Cancel the node.
+			if err := routedrun.ValidateNodeTransition(node.Status, routedrun.NodeStatusCancelled); err != nil {
+				return fmt.Errorf("cancel workflow: %w: %w", ErrInvalidTransition, err)
+			}
+			nodeGen := c.nodeGen[node.NodeID]
+			if nodeGen == 0 {
+				nodeGen = 1
+			}
+			node.Status = routedrun.NodeStatusCancelled
+			node.UpdatedAt = now
+			if err := c.Store.UpdateNode(ctx, node, nodeGen); err != nil {
+				return fmt.Errorf("cancel workflow: %w", err)
+			}
+			c.nodeGen[node.NodeID] = nodeGen + 1
+
+			// Cancel the run.
+			run, err := c.Store.GetRun(ctx, node.RunID)
+			if err != nil {
+				return fmt.Errorf("cancel workflow: %w", err)
+			}
+			runGen := c.runGen[node.RunID]
+			if runGen == 0 {
+				runGen = 1
+			}
+			run.Status = routedrun.RunStatusCancelled
+			run.TerminatedAt = &now
+			run.UpdatedAt = now
+			if err := c.Store.UpdateRun(ctx, run, runGen); err != nil {
+				return fmt.Errorf("cancel workflow: %w", err)
+			}
+			c.runGen[node.RunID] = runGen + 1
+
+			// Cancel the attempt if it exists.
+			attempts, err := c.Store.ListAttempts(ctx, node.RunID)
+			if err != nil {
+				return fmt.Errorf("cancel workflow: %w", err)
+			}
+			for _, att := range attempts {
+				if att.Status == routedrun.AttemptStatusRunning || att.Status == routedrun.AttemptStatusPending {
+					if err := routedrun.ValidateAttemptTransition(att.Status, routedrun.AttemptStatusCancelled); err != nil {
+						return fmt.Errorf("cancel workflow: %w: %w", ErrInvalidTransition, err)
+					}
+					attGen := c.attGen[att.AttemptID]
+					if attGen == 0 {
+						attGen = 1
+					}
+					att.Status = routedrun.AttemptStatusCancelled
+					att.TerminatedAt = &now
+					att.UpdatedAt = now
+					reason := routedrun.FailureUserCancelled
+					att.FailureReason = &reason
+					if err := c.Store.UpdateAttempt(ctx, att, attGen); err != nil {
+						return fmt.Errorf("cancel workflow: %w", err)
+					}
+					c.attGen[att.AttemptID] = attGen + 1
+				}
+			}
+			break // only cancel the first active/launching node
+		}
+	}
+
+	// Mark workflow CANCELLED.
+	if err := routedrun.ValidateWorkflowTransition(wf.Status, routedrun.WorkflowStatusCancelled); err != nil {
+		return fmt.Errorf("cancel workflow: %w: %w", ErrInvalidTransition, err)
+	}
+	wf.Status = routedrun.WorkflowStatusCancelled
+	wf.TerminatedAt = &now
+	wf.UpdatedAt = now
+	reason := routedrun.FailureUserCancelled
+	wf.TerminalReason = &reason
+	if err := c.Store.UpdateWorkflow(ctx, wf, wf.Generation); err != nil {
+		return fmt.Errorf("cancel workflow: %w", err)
+	}
+
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// isNodeTerminal returns true if the node status is terminal (Succeeded,
+// Failed, Cancelled, or Skipped).
+func isNodeTerminal(s routedrun.NodeStatus) bool {
+	switch s {
+	case routedrun.NodeStatusSucceeded, routedrun.NodeStatusFailed,
+		routedrun.NodeStatusCancelled, routedrun.NodeStatusSkipped:
+		return true
+	}
+	return false
 }
 
 // findNextNode returns the node with the next stage order, or nil if none.
