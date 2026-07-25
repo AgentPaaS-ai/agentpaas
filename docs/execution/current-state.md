@@ -1,4 +1,4 @@
-# Current State — Block 34 in progress (T04 chunk2 done)
+# Current State — Block 34 in progress (T04 chunk3 done)
 
 **Shipped release:** v0.3.0 (B1–B32)
 **Development head:** B34 Runtime-Native Sequential Agent Pipelines
@@ -9,19 +9,28 @@
 | T01 Freeze workflow/handoff conformance fixtures | DONE |
 | T02 Strict pipeline compilation | DONE |
 | T03 SDK input/handoff ops | DONE |
-| T04 Durable linear scheduler | IN PROGRESS (chunk1 CAS + chunk2 pause DONE; daemon/Docker wire next) |
+| T04 Durable linear scheduler | IN PROGRESS (c1+c2+c3 done; c4 crash matrix next) |
 | T05 Stage containers + authority | pending |
 | T06 Artifact transfer + provenance | pending |
-| T07 Failure/cancel/pause/idempotency (full matrix) | pending (pause seam started in T04c2) |
+| T07 Failure/cancel/pause/idempotency (full matrix) | pending (pause seam in c2) |
 | T08 Deploy invoke + operator inspection + ref proof | pending |
 | T09 block34-gate + adversary | pending |
 
-## Evidence
-- T01–T03: validators, CompilePipeline, harness+SDK handoff APIs
-- T04c1: Controller Claim/Ack/CommitSuccess/Failure (MemoryStore)
-- T04c2: PAUSE_REQUESTED blocks claim; success→PAUSED without next READY
-- docs/owa-records/b34-t0{1,2,3}.md, b34-t04-chunk{1,2}.md
-- Runtime admission still `agentpaas_pipeline_not_enabled`
+## T04 evidence
+- c1: Controller Claim/Ack/CommitSuccess/Failure (MemoryStore)
+- c2: PAUSE_REQUESTED blocks claim; success→PAUSED without next READY
+- c3: LaunchIdempotencyKey `wf|node|gen`, StageLaunchJob+FakeLauncher, ReconcileOnce, harness PipelineStageContextFromParams, thin daemon PipelineReconcileHook
+- docs/owa-records/b34-t04-chunk{1,2,3}.md
+- Orch re-ran: `go test -race ./internal/workflow/pipeline/`, harness FromParams, daemon Tick — PASS
+- Admission still `agentpaas_pipeline_not_enabled`; no Docker e2e
+
+## Gaps deferred (c4 / later)
+- Wire PipelineReconcileHook into Daemon.Start loop
+- Full envelope JSON in CollectStageContextParams (currently ContextJSON only)
+- Live harness RPC test SetPipelineContext+workflow_input (struct path covered)
+- Concurrent reconcile when PutIfAbsent loses race still uses local job copy for EnsureLaunch
+- LAUNCHING recovery defaults launch gen=1 (first-claim only)
+- Crash inject matrix at every CAS boundary (T04 item 402–407)
 
 ## Next session
-T04 chunk3: wire controller into daemon reconcile + optional fake launch job (still no full Docker e2e until T05)
+T04 chunk4: crash/idempotency expansion at CAS boundaries; optional daemon loop wire (still fake launch; Docker e2e stays T05)
