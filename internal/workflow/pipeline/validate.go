@@ -46,7 +46,11 @@ func ValidatePipelineDeclarative(wf *pack.WorkflowYAML) []string {
 		}
 	}
 
-	stageNames := make(map[string]bool)
+	var stageNames = make(map[string]bool)
+	serviceIDs := make(map[string]bool)
+	for _, svc := range wf.Services {
+		serviceIDs[svc.ServiceID] = true
+	}
 	prevRank := -1
 	var prevOutputSchema string
 
@@ -73,6 +77,15 @@ func ValidatePipelineDeclarative(wf *pack.WorkflowYAML) []string {
 		// Host path detection in package name (must not look like a file path).
 		if strings.Contains(stage.PackageName, "/") || strings.HasPrefix(stage.PackageName, ".") {
 			codes = append(codes, CodePipelineUnsupportedShape)
+		}
+
+		// MCP undeclared check: each stage's mcp_services must reference
+		// a service_id declared in the workflow's services list.
+		for _, mcpID := range stage.MCPServices {
+			if !serviceIDs[mcpID] {
+				codes = append(codes, CodePipelineUndeclaredMCP)
+				break // one undeclared is enough per stage
+			}
 		}
 
 		// Handoff declassification check.

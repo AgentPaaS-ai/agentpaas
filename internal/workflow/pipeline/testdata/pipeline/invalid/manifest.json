@@ -7,7 +7,7 @@
   "cycle_marker.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
   "dynamic_package.yaml": ["PIPELINE_MUTABLE_REF"],
   "mutable_tag.yaml": ["PIPELINE_MUTABLE_REF"],
-  "undeclared_mcp.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
+  "undeclared_mcp.yaml": ["PIPELINE_UNDECLARED_MCP"],
   "compensation.yaml": ["PIPELINE_UNSUPPORTED_SHAPE"],
   "incompatible_schema.yaml": ["PIPELINE_SCHEMA_MISMATCH"],
   "declassification.yaml": ["PIPELINE_DECLASSIFICATION"],
