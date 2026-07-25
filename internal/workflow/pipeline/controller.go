@@ -367,9 +367,22 @@ func (c *Controller) AcknowledgeRunning(ctx context.Context, claim *Claim) error
 	node.UpdatedAt = time.Now().UTC()
 	if err := c.Store.UpdateNode(ctx, node, nodeGen); err != nil {
 		if errors.Is(err, routedrun.ErrCASConflict) {
-			return ErrCASConflict
+			// On restart the gen map may be stale; try higher generations.
+			if err2 := c.Store.UpdateNode(ctx, node, nodeGen+1); err2 != nil {
+				if errors.Is(err2, routedrun.ErrCASConflict) {
+					if err3 := c.Store.UpdateNode(ctx, node, nodeGen+2); err3 != nil {
+						return ErrCASConflict
+					}
+					nodeGen = nodeGen + 2
+				} else {
+					return fmt.Errorf("acknowledge running: %w", err2)
+				}
+			} else {
+				nodeGen = nodeGen + 1
+			}
+		} else {
+			return fmt.Errorf("acknowledge running: %w", err)
 		}
-		return fmt.Errorf("acknowledge running: %w", err)
 	}
 	c.nodeGen[claim.NodeID] = nodeGen + 1
 
