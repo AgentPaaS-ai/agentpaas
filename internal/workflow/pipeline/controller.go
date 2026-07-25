@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
@@ -71,6 +72,7 @@ var _ PipelineStore = (*routedrun.MemoryStore)(nil)
 // logical effects for linear pipelines.
 type Controller struct {
 	Store   PipelineStore
+	mu      sync.Mutex
 	nodeGen map[routedrun.NodeID]int64 // tracks node CAS generations
 	runGen  map[routedrun.RunID]int64  // tracks run CAS generations
 	attGen  map[routedrun.AttemptID]int64 // tracks attempt CAS generations
@@ -229,6 +231,8 @@ func SeedPipelineWorkflow(ctx context.Context, ctrl *Controller, stageCount int)
 // ClaimNextReady CAS-claims the earliest READY node → LAUNCHING, creates
 // attempt+lease. Returns nil,nil if nothing to claim or PAUSE_REQUESTED state.
 func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.WorkflowID) (*Claim, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Check workflow state first.
 	wf, err := c.Store.GetWorkflow(ctx, workflowID)
 	if err != nil {
@@ -343,6 +347,8 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 // and PENDING → RUNNING for the run and attempt.
 // Idempotent: if node is already RUNNING for the same claim, returns nil.
 func (c *Controller) AcknowledgeRunning(ctx context.Context, claim *Claim) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Validate and update node: LAUNCHING → RUNNING.
 	node, err := c.Store.GetNode(ctx, claim.NodeID)
 	if err != nil {
@@ -441,6 +447,8 @@ func (c *Controller) AcknowledgeRunning(ctx context.Context, claim *Claim) error
 // commits handoff, marks next node READY or workflow SUCCEEDED if final.
 // Idempotent if called twice with same success.
 func (c *Controller) CommitStageSuccess(ctx context.Context, req StageSuccess) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Idempotency check: if node is already SUCCEEDED, return nil.
 	node, err := c.Store.GetNode(ctx, req.NodeID)
 	if err != nil {
@@ -628,6 +636,8 @@ func (c *Controller) CommitStageSuccess(ctx context.Context, req StageSuccess) e
 
 // CommitStageFailure marks node/run failed and workflow failed; no next READY.
 func (c *Controller) CommitStageFailure(ctx context.Context, req StageFailure) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	// Idempotency check.
 	node, err := c.Store.GetNode(ctx, req.NodeID)
 	if err != nil {
