@@ -1,0 +1,17 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: fetch
+      package_name: data-fetcher
+      package_version: "1.0.0"
+      bundle_digest: sha256:abc123def456
+      handoff: public
+      output_schema: example/raw-data/v1
+    - name: process
+      package_name: data-processor
+      package_version: "1.0.0"
+      bundle_digest: sha256:def456abc123
+      handoff: internal
+      accepted_schemas:
+        - example/raw-data/v1
+      output_schema: example/processed/v1

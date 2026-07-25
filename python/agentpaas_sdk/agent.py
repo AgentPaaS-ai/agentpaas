@@ -292,6 +292,49 @@ class Agent:
     def mcp(self, server_id: str, tool: str, input: dict[str, Any]) -> dict[str, Any]:
         return self._call("mcp", {"server_id": server_id, "tool": tool, "input": input})
 
+    # ---- workflow handoff (B34-T03) ----------------------------------------
+
+    def workflow_input(self) -> dict[str, Any] | None:
+        """Return the incoming handoff envelope for this pipeline stage.
+
+        Returns None if this is the first stage (stage 0) or if the workflow
+        context is not a pipeline. Raises WorkflowContextUnavailable if called
+        outside a pipeline stage.
+        """
+        result = self._call("workflow_input", {})
+        if not result.get("available"):
+            return None
+        return result.get("handoff")
+
+    def commit_handoff(
+        self,
+        schema: str,
+        context: dict[str, Any],
+        artifacts: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Commit a handoff to the next pipeline stage.
+
+        Args:
+            schema: The schema identifier for the context (e.g. "example/research-notes/v1").
+            context: The structured context to pass to the next stage.
+            artifacts: Optional list of artifact references.
+
+        Returns:
+            A dict with ``accepted``, ``handoff_digest``, and ``staged`` keys.
+
+        Raises:
+            HandoffNotAllowed: If called on a final stage or non-pipeline invocation.
+            HandoffRejected: If the handoff fails validation.
+            LeaseExpired: If the attempt lease has expired.
+        """
+        params: dict[str, Any] = {
+            "schema": schema,
+            "context": context,
+        }
+        if artifacts is not None:
+            params["artifacts"] = artifacts
+        return self._call("commit_handoff", params)
+
     # ---- delegation (B32-T03) ------------------------------------------------
 
     def delegate(

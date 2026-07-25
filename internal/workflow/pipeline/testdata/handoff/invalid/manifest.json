@@ -1,0 +1,9 @@
+{
+  "wrong_schema_version.json": ["HANDOFF_SCHEMA_VERSION"],
+  "forged_producer.json": ["HANDOFF_NON_CANONICAL"],
+  "malformed_digest.json": ["HANDOFF_DIGEST_MISMATCH"],
+  "artifact_declassification.json": ["HANDOFF_DECLASSIFICATION"],
+  "reserved_key_context.json": ["HANDOFF_RESERVED_KEY"],
+  "path_ref.json": ["HANDOFF_RESERVED_KEY"],
+  "reserved_value_context.json": ["HANDOFF_RESERVED_KEY"]
+}
