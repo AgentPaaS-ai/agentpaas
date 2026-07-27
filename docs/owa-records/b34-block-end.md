@@ -52,3 +52,10 @@ register+RuntimeStageLauncher, ClaimNextReady CAS no-steal.
 Gates: block34-gate, block345-gate, docker gates, golden-fast 23/23, lint 0.
 
 See docs/execution/current-state.md and docs/owa-records/b345-*.md.
+
+
+## Multi-agent three-stage Docker e2e (2026-07-26)
+
+- `TestB34MultiAgentE2E_ThreeStageHermesAbsent` + `make block34-multiagent-gate` (3× PASS)
+- StageOrder propagated on ReconcileOnce claim path (`3b93647`)
+- Closes B34 multi-container multi-agent runtime residual
