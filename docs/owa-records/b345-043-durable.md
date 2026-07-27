@@ -10,7 +10,7 @@
 Added `testRuntime runtime.RuntimeDriver` field to `controlServer` (stub_handlers.go:108). When set, `getOrCreateRuntime` returns `runtime.NewDockerRuntimeWithDriver(s.testRuntime)` instead of creating a real Docker client. This is the same pattern already used in `testServerWithMockRuntime`.
 
 ### Unit/integration tests (b345_durable_start_test.go)
-7 tests, all pass with `-race`:
+9 tests, all pass with `-race`:
 
 | Test | What it proves |
 |------|---------------|
@@ -20,6 +20,8 @@ Added `testRuntime runtime.RuntimeDriver` field to `controlServer` (stub_handler
 | `TestB345_DurableStart_PendingRunsAreListable` | Admission creates listable PENDING run |
 | `TestB345_DurableStart_RunStatusUpdatesToRunning` | Routed store status moves off PENDING to RUNNING |
 | `TestB345_DurableStart_InvokeResponseWritten` | Auto-invoke writes invoke-response.json |
+| `TestB345_UpdateLegacyRunStatus_UsesGetRunGeneration` | Status update uses GetRunGeneration, not hardcoded gen=1 |
+| `TestB345_UpdateLegacyRunStatus_RetryOnCASConflict` | CAS conflict retry loop re-fetches run+gen |
 | `TestB345_DurableStart_AllExistingInvokeDeploymentTestsStillPass` | Regression gate for existing InvokeDeployment tests |
 
 ### Number of runtime calls verified
@@ -33,16 +35,18 @@ With mock driver, startDurableRun through ACCEPTED path:
 
 Total: 2 network creates, 2 container creates, 2 container starts, cleanup in finalizeRun.
 
-## Gaps found (benign, not blocking)
+## Gaps found (resolved or benign)
 
-### 1. `updateLegacyRunStatus` generation conflict
-The routed run status update in startDurableRun (line 1714) hardcodes generation=1. The progress tailer (started at line 1701) may increment generation before the update runs, causing:
+### 1. `updateLegacyRunStatus` generation conflict — ✅ FIXED (B345.5-B follow-up)
+The routed run status update in startDurableRun (line 1714) hardcoded generation=1. The progress tailer (started at line 1701) may increment generation before the update runs, causing a silent CAS failure.
 
-```
-daemon: update legacy run status run-xxx: routedrun: generation conflict: run run-xxx expected 1 got 2
-```
+**Fix:** `updateLegacyRunStatus` now:
+- Uses `GetRunGeneration` via type assertion on the store (falls back to gen=1)
+- Retries up to 3 times on `ErrCASConflict`, re-fetching the run and generation each attempt
 
-The status update fails silently. The test asserts the status is RUNNING because `finalizeRun` also calls `updateLegacyRunStatus` and the timing window sometimes captures RUNNING. **This is a latent bug** in how `updateLegacyRunStatus` reads gen from GetRun but passes a hardcoded 1 to UpdateRun. Not in scope for B345.5-B.
+Two new tests validate the fix:
+- `TestB345_UpdateLegacyRunStatus_UsesGetRunGeneration` — gen>1 before status update
+- `TestB345_UpdateLegacyRunStatus_RetryOnCASConflict` — two successive updates at different generations
 
 ### 2. Pre-existing test failure
 `TestFailClosedRoutedRun_PromotionGateRejectsUnpromotedPackage` fails on main HEAD (8eedf9c) — unrelated to B345 changes. The test writes a workflow.yaml to a directory where the promotion gate picks it up but the pipeline validation ("pipeline requires at least 2 stages") fires before the promotion gate check.
