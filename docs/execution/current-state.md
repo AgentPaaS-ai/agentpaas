@@ -19,6 +19,8 @@
 
 ## Gates (disk-verified 2026-07-26)
 
+- `make golden-fast` → **23/23 PASS** (incl G47, G49–G52)
+
 - `make block34-gate` → PASS on main
 - `AGENTPAAS_DOCKER_TESTS=1 make block34-docker-gate` → PASS (2 consecutive)
 - `go test ./internal/daemon/ -race -run Pipeline` → PASS
