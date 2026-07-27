@@ -107,6 +107,13 @@ install-plugin:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
+# ── ensure-docker — guarantee Docker daemon availability ─────────────────────
+# All B34/B345 docker gates call this first. On macOS: auto-installs/start
+# Colima via brew. Never skips — Docker is mandatory for these gates.
+.PHONY: ensure-docker
+ensure-docker:
+	@bash scripts/ensure-docker.sh
+
 .PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate block34-docker-gate block34-multiagent-gate block34-full-gate block345-gate block345-docker-gate
 
 block2-gate: build test lint race
@@ -562,8 +569,7 @@ block33-gate-fast:
 
 .PHONY: block34-gate
 block34-gate:
-	@echo "==> Block 34 gate (library + adversary; docker gate is separate — see block34-docker-gate)"
-	@echo "==> Multi-agent 3-stage e2e is a separate required-for-close gate — see block34-multiagent-gate"
+	@echo "==> Block 34 gate (library + adversary)"
 	go test ./internal/workflow/pipeline/ -race -count=1
 	go test ./internal/workflow/pipeline/ -race -count=1 -run Adversary
 	go test ./internal/harness/ -count=1 -run 'WorkflowInput|Pipeline'
@@ -572,11 +578,13 @@ block34-gate:
 	test -f docs/owa-records/b34-t08.md
 	test -f docs/owa-records/b34-t09.md
 	test -f docs/owa-records/b34-t09-adversary-findings.md
+	@echo "==> Block 34 docker gate (multi-agent 3-stage + isolation e2e — mandatory, no skip)"
+	@$(MAKE) block34-docker-gate
 	@echo "Block 34 gate: PASS"
 
 # ── Block 34 Docker Gate: Live multi-container stage isolation e2e ──────
-# Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon (e.g., Colima).
-# Not required for CI without Docker; block34-gate stays green without it.
+# Requires a running Docker daemon (auto-installed via ensure-docker on macOS).
+# Included by block34-gate (mandatory, never skipped).
 
 # ── Block 34 Multi-Agent Gate: Three-stage pipeline e2e (Hermes-absent) ─
 # Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon.
@@ -586,7 +594,7 @@ block34-gate:
 # distinct networks per stage, zero orphan cleanup.
 
 .PHONY: block34-multiagent-gate
-block34-multiagent-gate:
+block34-multiagent-gate: ensure-docker
 	@echo "==> B34 multi-agent three-stage Docker e2e (x3 consecutive)"
 	@set -e; for i in 1 2 3; do \
 	  echo "--- multiagent run $$i/3 ---"; \
@@ -600,14 +608,14 @@ block34-multiagent-gate:
 # Use this (or block34-full-gate) for any B34+ release/close path.
 
 .PHONY: block34-docker-gate
-block34-docker-gate: block34-multiagent-gate
+block34-docker-gate: ensure-docker block34-multiagent-gate
 	@echo "==> B34 Docker stage isolation e2e"
 	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E' -timeout 10m
 	@echo "Block 34 docker gate (isolation + multi-agent): PASS"
 
 # Library + Docker multi-agent stack. Prefer this for block close / pre-B35.
 .PHONY: block34-full-gate
-block34-full-gate: block34-gate block34-docker-gate
+block34-full-gate: ensure-docker block34-gate block34-docker-gate
 	@echo "Block 34 full gate (library + docker multi-agent): PASS"
 
 # ── Block 34.5-C Gate: Pipeline Product Path Thin Vertical ────────────────
@@ -622,7 +630,7 @@ block345-gate: block34-gate
 	@echo "Block 34.5 gate: PASS"
 
 .PHONY: block345-docker-gate
-block345-docker-gate: block34-multiagent-gate
+block345-docker-gate: ensure-docker block34-multiagent-gate
 	@echo "==> B34.5 Docker e2e (ReconcileOnce + RuntimeStageLauncher)"
 	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/daemon/ ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E|B345.*Docker|Pipeline.*Docker' -timeout 15m
 	@echo "Block 34.5 docker gate (incl multi-agent): PASS"
@@ -747,7 +755,7 @@ gates: ## List all available gate targets
 	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
 	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
 	@echo "  block33-gate-fast - MCP container services: fast gate (skip block32 chain)"
-	@echo "  block34-gate - Pipeline library + adversary (B34; no Docker required)"
+	@echo "  block34-gate - Pipeline library + adversary + docker multi-agent (Docker mandatory)"
 	@echo "  block34-docker-gate - Multi-agent 3-stage e2e (x3) + isolation DockerE2E (needs Docker)"
 	@echo "  block34-multiagent-gate - Multi-agent 3-stage Docker e2e x3 only (needs Docker)"
 	@echo "  block34-full-gate - block34-gate + block34-docker-gate (standing B34 close path)"
