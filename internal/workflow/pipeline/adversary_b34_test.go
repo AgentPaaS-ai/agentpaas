@@ -65,11 +65,9 @@ func TestAdversary_B34_ConcurrentClaimNextReady_SingleWinner(t *testing.T) {
 	}
 	wg.Wait()
 
-	if errs != 0 {
-		// CAS conflict is acceptable under contention; hard failures are not
-		// counted separately here — any non-nil error that is not contention
-		// still surfaces via end-state checks below.
-	}
+	// CAS conflict is acceptable under contention; hard failures are not
+	// counted separately here — any non-nil error that is not contention
+	// still surfaces via end-state checks below.
 	if claims != 1 {
 		// ADVERSARY BREAK: mutex/CAS failed to serialize claim
 		t.Fatalf("ADVERSARY BREAK: concurrent ClaimNextReady produced %d claims (want exactly 1); nils=%d errs=%d",
