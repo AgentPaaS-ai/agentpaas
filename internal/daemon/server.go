@@ -22,7 +22,9 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/dashboard"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
+	"github.com/AgentPaaS-ai/agentpaas/internal/workflow/pipeline"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -67,6 +69,10 @@ type Daemon struct {
 	// after daemon restart. nil when the store could not be constructed (the
 	// trigger service then falls back to the in-memory EventBus).
 	durableEventStore *trigger.DurableEventStore
+
+	// pipelineRuntime drives the B34 pipeline reconcile loop when
+	// pipelineRuntimeEnabled is true. nil when pipeline is disabled.
+	pipelineRuntime *pipelineRuntime
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
@@ -448,6 +454,29 @@ func (d *Daemon) Start(ctx context.Context) error {
 	d.cronScheduler.Start()
 	fmt.Fprintf(os.Stderr, "daemon: cron scheduler started (state: %s)\n", cronStatePath)
 
+	// Start the pipeline reconcile loop when B34 pipeline runtime is enabled.
+	// The loop lists registered pipeline workflows and calls ReconcileOnce.
+	// Stage launcher is not yet wired — uses FakeLauncher (no-op). This
+	// proves the daemon loop fires; full container launch is T09 Docker e2e.
+	if controlServer.pipelineRuntimeEnabled() {
+		store := controlServer.pipelineStore()
+		if store != nil {
+			launches := pipeline.NewMemoryLaunchStore()
+			ctrl := pipeline.NewController(store)
+			reconciler := &pipeline.Reconciler{
+				Ctrl:     ctrl,
+				Launches: launches,
+				Launcher: pipeline.FakeLauncher{},
+			}
+			d.pipelineRuntime = newPipelineRuntime(store, func(ctx context.Context, workflowID routedrun.WorkflowID) error {
+				_, err := reconciler.ReconcileOnce(ctx, workflowID)
+				return err
+			}, 1*time.Second)
+			d.pipelineRuntime.Start(context.Background())
+			fmt.Fprintf(os.Stderr, "daemon: pipeline runtime started (B34 reconcile loop)\n")
+		}
+	}
+
 	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer reconcileCancel()
 	controlServer.reconcileOrphanedContainers(reconcileCtx)
@@ -566,6 +595,11 @@ func (d *Daemon) Stop(ctx context.Context) error {
 	}
 	if d.cronScheduler != nil {
 		d.cronScheduler.Stop()
+	}
+
+	// Stop the pipeline reconcile loop.
+	if d.pipelineRuntime != nil {
+		d.pipelineRuntime.Stop()
 	}
 
 	// Clean up files.

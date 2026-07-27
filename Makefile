@@ -566,7 +566,7 @@ block34-gate:
 	go test ./internal/workflow/pipeline/ -race -count=1
 	go test ./internal/workflow/pipeline/ -race -count=1 -run Adversary
 	go test ./internal/harness/ -count=1 -run 'WorkflowInput|Pipeline'
-	go test ./internal/daemon/ -count=1 -run 'Pipeline|NotEnabled|pipeline'
+	go test ./internal/daemon/ -count=1 -run 'Pipeline|pipeline'
 	rg -n "CancelWorkflow|ResumeWorkflow|BuildPipelineInspect|PromoteHandoffArtifacts|hasReservedKeys" internal/workflow/pipeline/
 	test -f docs/owa-records/b34-t08.md
 	test -f docs/owa-records/b34-t09.md
