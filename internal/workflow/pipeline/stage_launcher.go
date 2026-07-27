@@ -120,14 +120,17 @@ func (l *RuntimeStageLauncher) FenceStage(ctx context.Context, workflowID, nodeI
 
 		cid := runtime.ContainerID(info.ID)
 
-		// Stop the container.
+		// Stop the container with a timeout so Docker waits for it to exit
+		// before we call Remove. A nil timeout is fire-and-forget and races
+		// with the subsequent Remove.
 		if info.Status == runtime.ContainerStatusRunning {
-			if err := l.Driver.Stop(ctx, cid, nil); err != nil {
+			timeout := 10 * time.Second
+			if err := l.Driver.Stop(ctx, cid, &timeout); err != nil {
 				return fmt.Errorf("FenceStage: stop %s: %w", cid, err)
 			}
 		}
 
-		// Remove the container.
+		// Remove the container. Force=true to handle any remaining state.
 		if err := l.Driver.Remove(ctx, cid, true); err != nil {
 			return fmt.Errorf("FenceStage: remove %s: %w", cid, err)
 		}
