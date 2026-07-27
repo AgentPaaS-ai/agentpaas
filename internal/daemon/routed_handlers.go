@@ -353,7 +353,13 @@ func (s *controlServer) InvokeDeployment(ctx context.Context, req *controlv1.Inv
 		// response is not blocked on Docker operations.
 		// Skip in test environments where Docker is unavailable.
 		if !s.disableContainerLaunch {
-			go s.startDurableRun(receipt, string(req.GetInputJson()))
+			// B34.5: For pipeline workflows, register for reconcile
+			// instead of single-package startDurableRun.
+			if s.shouldUsePipelineReconcile(ctx, receipt) {
+				go s.registerPipelineWorkflow(ctx, receipt)
+			} else {
+				go s.startDurableRun(receipt, string(req.GetInputJson()))
+			}
 		}
 	}
 
@@ -938,6 +944,30 @@ func (s *controlServer) pipelineRuntimeEnabled() bool {
 		return true
 	}
 	return os.Getenv("AGENTPAAS_PIPELINE_ENABLED") == "1"
+}
+
+// shouldUsePipelineReconcile checks whether the admitted invocation should be
+// routed to the pipeline reconcile loop instead of startDurableRun. Returns
+// true when the workflow kind is "pipeline" and the pipelineRuntime is wired.
+func (s *controlServer) shouldUsePipelineReconcile(ctx context.Context, receipt *routedrun.InvocationReceipt) bool {
+	if s.pipelineRuntime == nil || s.workflowStore == nil {
+		return false
+	}
+	wf, err := s.workflowStore.GetWorkflow(ctx, receipt.WorkflowID)
+	if err != nil || wf == nil {
+		return false
+	}
+	return wf.WorkflowKind == "pipeline"
+}
+
+// registerPipelineWorkflow registers a pipeline workflow for reconcile. Called
+// after pipeline admission instead of startDurableRun (single-package path).
+// Safe to call multiple times (RegisterPipelineWorkflowForReconcile is idempotent).
+func (s *controlServer) registerPipelineWorkflow(_ context.Context, receipt *routedrun.InvocationReceipt) {
+	if s.pipelineRuntime == nil {
+		return
+	}
+	s.pipelineRuntime.RegisterPipelineWorkflowForReconcile(receipt.WorkflowID)
 }
 
 // failClosedRoutedRun validates and (best-effort) records route/workflow
