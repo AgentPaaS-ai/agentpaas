@@ -106,9 +106,22 @@ type controlServer struct {
 	// routing. When nil, MCP service routing fails closed with B33.
 	mcpRegistry *mcpmanager.ServiceRegistry
 
+	// mcpFencer is a test hook for verifying MCP fence behaviour in
+	// CancelWorkflow. When non-nil, CancelWorkflow calls
+	// mcpFencer.WorkflowTerminal instead of reaching into mcpRegistry.
+	// Production code leaves this nil (mcpRegistry is used directly).
+	mcpFencer MCPFencer
+
 	// pipelineEnabled controls the B34 pipeline runtime. When true or when
 	// AGENTPAAS_PIPELINE_ENABLED=1, pipeline deployments are admitted.
 	pipelineEnabled bool
+}
+
+// MCPFencer fences/shuts down MCP services for a workflow.
+// Used as a test seam so unit tests can verify CancelWorkflow triggers
+// WorkflowTerminal without needing a real Docker-based ServiceRegistry.
+type MCPFencer interface {
+	WorkflowTerminal(ctx context.Context, workflowID string) error
 }
 
 // SetMCPServiceRegistry sets the MCP service registry hook on the daemon.
