@@ -23,13 +23,24 @@ import (
 
 func dockerInspectRunning(ctx context.Context, t *testing.T, cid string) bool {
 	t.Helper()
-	out, err := exec.CommandContext(ctx, "docker", "inspect",
-		"-f", "{{.State.Running}}", cid).CombinedOutput()
-	if err != nil {
-		t.Logf("docker inspect %s: %v", cid, err)
+	// Retry up to 5s; Docker daemon may lag behind the SDK's Create+Start.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		out, err := exec.CommandContext(ctx, "docker", "inspect",
+			"-f", "{{.State.Running}}", cid).CombinedOutput()
+		if err == nil {
+			return strings.TrimSpace(string(out)) == "true"
+		}
+		// Container not found yet — wait and retry.
+		if strings.Contains(string(out), "No such object") || strings.Contains(err.Error(), "exit status 1") {
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		t.Logf("docker inspect %s: %v (output: %s)", cid[:12], err, strings.TrimSpace(string(out)))
 		return false
 	}
-	return strings.TrimSpace(string(out)) == "true"
+	t.Logf("docker inspect %s: timed out after 5s", cid[:12])
+	return false
 }
 
 // ---------------------------------------------------------------------------
