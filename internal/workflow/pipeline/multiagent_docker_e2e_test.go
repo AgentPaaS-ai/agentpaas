@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,9 +22,7 @@ import (
 //
 // Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon.
 func TestB34MultiAgentE2E_ThreeStageHermesAbsent(t *testing.T) {
-	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
-		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
-	}
+	requireDockerE2E(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
