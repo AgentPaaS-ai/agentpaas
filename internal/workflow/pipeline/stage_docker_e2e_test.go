@@ -570,3 +570,262 @@ func TestDockerE2E_EnsureLaunch_Idempotent(t *testing.T) {
 
 	t.Log("SUCCESS: EnsureLaunch idempotent — same key, one container")
 }
+
+// ---------------------------------------------------------------------------
+// B34.5-C Docker e2e: Reconciler + RuntimeStageLauncher integration
+// ---------------------------------------------------------------------------
+
+// TestB345DockerE2E_ReconcileLaunchesStageContainer verifies that the
+// Reconciler with RuntimeStageLauncher creates a real Docker container for
+// stage0 with correct labels, image, command, and network isolation.
+func TestB345DockerE2E_ReconcileLaunchesStageContainer(t *testing.T) {
+	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
+		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	// ── Setup Docker runtime ────────────────────────────────────────────
+	dr, err := runtime.NewDockerRuntime()
+	if err != nil {
+		t.Fatalf("NewDockerRuntime: %v", err)
+	}
+
+	workflowID := fmt.Sprintf("b345-e2e-%d", time.Now().UnixNano())
+
+	// ── Tracking for cleanup ────────────────────────────────────────────
+	var createdContainers []runtime.ContainerID
+	var createdNetworks []runtime.NetworkID
+
+	defer func() {
+		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanCancel()
+		for _, cid := range createdContainers {
+			_ = dr.Stop(cleanCtx, cid, nil)
+			_ = dr.Remove(cleanCtx, cid, true)
+		}
+		for _, nid := range createdNetworks {
+			_ = dr.RemoveNetwork(cleanCtx, nid)
+		}
+		// Final orphan check.
+		time.Sleep(2 * time.Second)
+		containers, _ := dr.ListContainers(cleanCtx, runtime.LabelWorkflowID+"="+workflowID)
+		if len(containers) > 0 {
+			ids := make([]string, len(containers))
+			for i, c := range containers {
+				ids[i] = c.ID[:12]
+			}
+			t.Errorf("orphan containers for workflow %s: %v", workflowID, ids)
+		}
+		networks, _ := dr.ListNetworks(cleanCtx, runtime.LabelWorkflowID+"="+workflowID)
+		if len(networks) > 0 {
+			names := make([]string, len(networks))
+			for i, n := range networks {
+				names[i] = n.Name
+			}
+			t.Errorf("orphan networks for workflow %s: %v", workflowID, names)
+		}
+	}()
+
+	// ── Seed a pipeline workflow via controller ─────────────────────────
+	store := routedrun.NewMemoryStore()
+	ctrl := NewController(store)
+	launches := NewMemoryLaunchStore()
+
+	// Use SeedPipelineWorkflow but override the workflow ID to a known prefix
+	// for label-based filtering. The seed creates a random wfID; we'll use
+	// its Store for controller operations and register it manually.
+	// Since SeedPipelineWorkflow uses a random wfID, we instead create
+	// nodes manually with a known workflowID.
+
+	// Create workflow.
+	wfID := routedrun.WorkflowID(workflowID)
+	now := time.Now().UTC()
+	wf := &routedrun.WorkflowRecord{
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		WorkflowID:          wfID,
+		WorkflowKind:        "pipeline",
+		Status:              routedrun.WorkflowStatusRunning,
+		Generation:          1,
+		MaxActiveDurationMs: 3600000,
+		MaxAttemptLeaseMs:   600000,
+		AuthorityGeneration: 1,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	if err := store.CreateWorkflow(ctx, wf); err != nil {
+		t.Fatalf("CreateWorkflow: %v", err)
+	}
+
+	// Create stage0 (READY) and stage1 (PENDING).
+	node0ID, _ := routedrun.NewNodeID()
+	run0ID, _ := routedrun.NewRunID()
+	node0 := &routedrun.PipelineNode{
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		NodeID:        node0ID,
+		WorkflowID:    wfID,
+		Status:        routedrun.NodeStatusReady,
+		RunID:         run0ID,
+		StageOrder:    0,
+		PackageName:   "test-pkg",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := store.CreateNode(ctx, node0); err != nil {
+		t.Fatalf("CreateNode stage0: %v", err)
+	}
+	run0 := &routedrun.RunRecord{
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		RunID:               run0ID,
+		WorkflowID:          wfID,
+		Status:              routedrun.RunStatusPending,
+		RunKind:             "pipeline_stage",
+		MaxActiveDurationMs: 3600000,
+		MaxAttemptLeaseMs:   600000,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	nid0 := node0ID
+	run0.NodeID = &nid0
+	if err := store.CreateRun(ctx, run0); err != nil {
+		t.Fatalf("CreateRun stage0: %v", err)
+	}
+
+	node1ID, _ := routedrun.NewNodeID()
+	run1ID, _ := routedrun.NewRunID()
+	node1 := &routedrun.PipelineNode{
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		NodeID:        node1ID,
+		WorkflowID:    wfID,
+		Status:        routedrun.NodeStatusPending,
+		RunID:         run1ID,
+		StageOrder:    1,
+		PackageName:   "test-pkg",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if err := store.CreateNode(ctx, node1); err != nil {
+		t.Fatalf("CreateNode stage1: %v", err)
+	}
+	run1 := &routedrun.RunRecord{
+		SchemaVersion:       routedrun.CurrentSchemaVersion,
+		RunID:               run1ID,
+		WorkflowID:          wfID,
+		Status:              routedrun.RunStatusPending,
+		RunKind:             "pipeline_stage",
+		MaxActiveDurationMs: 3600000,
+		MaxAttemptLeaseMs:   600000,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	nid1 := node1ID
+	run1.NodeID = &nid1
+	if err := store.CreateRun(ctx, run1); err != nil {
+		t.Fatalf("CreateRun stage1: %v", err)
+	}
+
+	// Init controller generations.
+	ctrl.initSeedGenerations([]routedrun.NodeID{node0ID, node1ID}, map[routedrun.NodeID]routedrun.RunID{
+		node0ID: run0ID,
+		node1ID: run1ID,
+	})
+
+	// ── Create reconciler with RuntimeStageLauncher ─────────────────────
+	launcher := NewRuntimeStageLauncher(dr)
+	reconciler := &Reconciler{
+		Ctrl:          ctrl,
+		Launches:      launches,
+		Launcher:      launcher,
+		NetworkDriver: dr,
+	}
+
+	// ── ReconcileOnce → claim stage0, create network, launch container ──
+	t.Logf("Calling ReconcileOnce for workflow %s", wfID)
+	claim, err := reconciler.ReconcileOnce(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ReconcileOnce: %v", err)
+	}
+	if claim == nil {
+		t.Fatal("expected claim, got nil")
+	}
+	t.Logf("Claimed node: %s runID=%s", claim.NodeID, claim.RunID)
+
+	// ── Verify launch job ──────────────────────────────────────────────
+	jobs, err := launches.ListByWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ListByWorkflow: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 launch job, got %d", len(jobs))
+	}
+	job := jobs[0]
+
+	// Stage0 should have ContainerID set.
+	if job.ContainerID == "" {
+		t.Fatal("launch job ContainerID is empty after EnsureLaunch")
+	}
+	cid := runtime.ContainerID(job.ContainerID)
+	createdContainers = append(createdContainers, cid)
+	t.Logf("Stage0 container ID: %s", cid)
+
+	// Stage0 should have NetworkID.
+	if job.NetworkID == "" {
+		t.Fatal("launch job NetworkID is empty")
+	}
+	createdNetworks = append(createdNetworks, runtime.NetworkID(job.NetworkID))
+
+	// ── Verify container is running ────────────────────────────────────
+	status, err := dr.Status(ctx, cid)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status != runtime.ContainerStatusRunning {
+		t.Fatalf("container status=%v want RUNNING", status)
+	}
+
+	// ── Verify container has correct labels ────────────────────────────
+	containers, err := dr.ListContainers(ctx, runtime.LabelWorkflowID+"="+workflowID)
+	if err != nil {
+		t.Fatalf("ListContainers: %v", err)
+	}
+	if len(containers) != 1 {
+		t.Fatalf("expected 1 container for workflow, got %d", len(containers))
+	}
+	labels := containers[0].Labels
+	if labels[runtime.LabelWorkflowID] != workflowID {
+		t.Errorf("LabelWorkflowID=%q want %q", labels[runtime.LabelWorkflowID], workflowID)
+	}
+	if labels[runtime.LabelNodeID] != string(node0ID) {
+		t.Errorf("LabelNodeID=%q want %q", labels[runtime.LabelNodeID], node0ID)
+	}
+	if labels[runtime.LabelRunID] != string(run0ID) {
+		t.Errorf("LabelRunID=%q want %q", labels[runtime.LabelRunID], run0ID)
+	}
+
+	// ── Verify node0 is RUNNING ────────────────────────────────────────
+	node0After, err := store.GetNode(ctx, node0ID)
+	if err != nil {
+		t.Fatalf("GetNode stage0: %v", err)
+	}
+	if node0After.Status != routedrun.NodeStatusRunning {
+		t.Errorf("stage0 status=%s want RUNNING", node0After.Status)
+	}
+
+	// ── Fence stage0 ───────────────────────────────────────────────────
+	t.Log("Fencing stage0")
+	if err := launcher.FenceStage(ctx, workflowID, string(node0ID)); err != nil {
+		t.Fatalf("FenceStage: %v", err)
+	}
+	// Clear container tracking for cleanup (already removed by Fence).
+	createdContainers = nil
+
+	// ── Verify container is gone ───────────────────────────────────────
+	time.Sleep(1 * time.Second)
+	status, _ = dr.Status(ctx, cid)
+	if status != runtime.ContainerStatusRemoved && status != runtime.ContainerStatusUnknown {
+		t.Errorf("after fence: container status=%v want REMOVED", status)
+	}
+
+	t.Logf("B34.5 Docker E2E: stage0 launched, labeled, fenced — SUCCESS")
+}

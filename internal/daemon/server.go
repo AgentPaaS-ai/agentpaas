@@ -23,6 +23,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 	"github.com/AgentPaaS-ai/agentpaas/internal/workflow/pipeline"
 	"google.golang.org/grpc"
@@ -456,24 +457,39 @@ func (d *Daemon) Start(ctx context.Context) error {
 
 	// Start the pipeline reconcile loop when B34 pipeline runtime is enabled.
 	// The loop lists registered pipeline workflows and calls ReconcileOnce.
-	// Stage launcher is not yet wired — uses FakeLauncher (no-op). This
-	// proves the daemon loop fires; full container launch is T09 Docker e2e.
+	// If Docker is available, wires RuntimeStageLauncher + per-stage network
+	// creation; otherwise falls back to FakeLauncher (unit tests).
 	if controlServer.pipelineRuntimeEnabled() {
 		store := controlServer.pipelineStore()
 		if store != nil {
 			launches := pipeline.NewMemoryLaunchStore()
 			ctrl := pipeline.NewController(store)
+
+			// Resolve stage launcher: RuntimeStageLauncher if Docker available.
+			var launcher pipeline.StageLauncher
+			var driver runtime.RuntimeDriver
+			launcher = pipeline.FakeLauncher{}
+			if rt, err := controlServer.getOrCreateRuntime(); err == nil && rt != nil {
+				launcher = pipeline.NewRuntimeStageLauncher(rt)
+				driver = rt
+				fmt.Fprintf(os.Stderr, "daemon: pipeline stage launcher: RuntimeStageLauncher (Docker)\\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "daemon: pipeline stage launcher: FakeLauncher (Docker unavailable)\\n")
+			}
+
 			reconciler := &pipeline.Reconciler{
-				Ctrl:     ctrl,
-				Launches: launches,
-				Launcher: pipeline.FakeLauncher{},
+				Ctrl:          ctrl,
+				Launches:      launches,
+				Launcher:      launcher,
+				NetworkDriver: driver,
 			}
 			d.pipelineRuntime = newPipelineRuntime(store, func(ctx context.Context, workflowID routedrun.WorkflowID) error {
 				_, err := reconciler.ReconcileOnce(ctx, workflowID)
 				return err
 			}, 1*time.Second)
 			d.pipelineRuntime.Start(context.Background())
-			fmt.Fprintf(os.Stderr, "daemon: pipeline runtime started (B34 reconcile loop)\n")
+			controlServer.pipelineRuntime = d.pipelineRuntime
+			fmt.Fprintf(os.Stderr, "daemon: pipeline runtime started (B34 reconcile loop)\\n")
 		}
 	}
 

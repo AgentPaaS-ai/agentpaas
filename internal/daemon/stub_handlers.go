@@ -121,6 +121,12 @@ type controlServer struct {
 	// pipelineEnabled controls the B34 pipeline runtime. When true or when
 	// AGENTPAAS_PIPELINE_ENABLED=1, pipeline deployments are admitted.
 	pipelineEnabled bool
+
+	// pipelineRuntime is the reconcile loop for pipeline workflows. Set by
+	// Daemon.Start after the loop is created. When non-nil, InvokeDeployment
+	// registers pipeline workflows for reconcile instead of calling
+	// startDurableRun (single-package path).
+	pipelineRuntime *pipelineRuntime
 }
 
 // MCPFencer fences/shuts down MCP services for a workflow.
