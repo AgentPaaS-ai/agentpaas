@@ -264,37 +264,46 @@ func TestAdversary_B34_ResumeAfterCancelRejected(t *testing.T) {
 	}
 }
 
-// TestAdversary_B34_CancelLeavesReadyNode_ClaimStillBlocked: cancel before any
-// claim leaves stage0 READY (Cancel only cancels LAUNCHING/RUNNING). Claim and
-// resume must still fail closed on the terminal workflow.
-func TestAdversary_B34_CancelLeavesReadyNode_ClaimStillBlocked(t *testing.T) {
+// TestAdversary_B34_CancelClearsReadyAndPendingNodes: cancel before any claim
+// must transition ALL non-terminal nodes (READY, PENDING) to CANCELLED. Claim
+// and resume must still fail closed on the terminal workflow.
+func TestAdversary_B34_CancelClearsReadyAndPendingNodes(t *testing.T) {
 	ctx := context.Background()
 	ctrl := NewController(routedrun.NewMemoryStore())
-	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 2)
+	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 3)
 	if err != nil {
 		t.Fatalf("SeedPipelineWorkflow: %v", err)
 	}
 	if err := ctrl.CancelWorkflow(ctx, CancelRequest{WorkflowID: wfID}); err != nil {
 		t.Fatalf("CancelWorkflow: %v", err)
 	}
-	n0, err := ctrl.Store.GetNode(ctx, nodeIDs[0])
-	if err != nil {
-		t.Fatalf("GetNode: %v", err)
+
+	// All nodes must be CANCELLED — no READY or PENDING survivors.
+	for i, nid := range nodeIDs {
+		n, err := ctrl.Store.GetNode(ctx, nid)
+		if err != nil {
+			t.Fatalf("GetNode %d: %v", i, err)
+		}
+		if n.Status == routedrun.NodeStatusReady || n.Status == routedrun.NodeStatusPending {
+			t.Fatalf("ADVERSARY BREAK: cancel left node%d in non-terminal state %s", i, n.Status)
+		}
+		if n.Status != routedrun.NodeStatusCancelled {
+			t.Fatalf("node%d: want CANCELLED, got %s", i, n.Status)
+		}
 	}
-	// Document residual: READY may survive cancel when never launched.
-	// Security property: claim/resume must still be blocked.
-	if n0.Status == routedrun.NodeStatusReady {
-		t.Logf("residual: cancel left READY node uncleared (status=%s) — claim path must still block", n0.Status)
-	}
+
+	// Claim must block on the terminal workflow.
 	claim, err := ctrl.ClaimNextReady(ctx, wfID)
 	if err != nil {
 		t.Fatalf("ClaimNextReady: %v", err)
 	}
 	if claim != nil {
-		t.Fatalf("ADVERSARY BREAK: ClaimNextReady claimed READY node on CANCELLED workflow")
+		t.Fatalf("ADVERSARY BREAK: ClaimNextReady claimed node on CANCELLED workflow")
 	}
+
+	// Resume must be rejected.
 	if err := ctrl.ResumeWorkflow(ctx, ResumeRequest{WorkflowID: wfID}); err == nil {
-		t.Fatal("ADVERSARY BREAK: ResumeWorkflow succeeded on CANCELLED workflow with leftover READY node")
+		t.Fatal("ADVERSARY BREAK: ResumeWorkflow succeeded on CANCELLED workflow")
 	}
 }
 

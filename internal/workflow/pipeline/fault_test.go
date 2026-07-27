@@ -339,22 +339,22 @@ func TestCancelWhileRunning_NoNext(t *testing.T) {
 		t.Fatalf("workflow: want CANCELLED, got %s", wf.Status)
 	}
 
-	// Stage1 stays PENDING, not READY.
+	// Stage1 transitions PENDING→CANCELLED.
 	n1, err := ctrl.Store.GetNode(ctx, nodeIDs[1])
 	if err != nil {
 		t.Fatalf("get node1: %v", err)
 	}
-	if n1.Status != routedrun.NodeStatusPending {
-		t.Fatalf("node1: want PENDING, got %s", n1.Status)
+	if n1.Status != routedrun.NodeStatusCancelled {
+		t.Fatalf("node1: want CANCELLED, got %s", n1.Status)
 	}
 
-	// Stage2 stays PENDING.
+	// Stage2 transitions PENDING→CANCELLED.
 	n2, err := ctrl.Store.GetNode(ctx, nodeIDs[2])
 	if err != nil {
 		t.Fatalf("get node2: %v", err)
 	}
-	if n2.Status != routedrun.NodeStatusPending {
-		t.Fatalf("node2: want PENDING, got %s", n2.Status)
+	if n2.Status != routedrun.NodeStatusCancelled {
+		t.Fatalf("node2: want CANCELLED, got %s", n2.Status)
 	}
 
 	// No claim possible.
@@ -494,13 +494,13 @@ func TestCancelIdempotent(t *testing.T) {
 		t.Fatalf("node0: want CANCELLED, got %s", n0.Status)
 	}
 
-	// Stage1 still PENDING.
+	// Stage1 transitions PENDING→CANCELLED.
 	n1, err := ctrl.Store.GetNode(ctx, nodeIDs[1])
 	if err != nil {
 		t.Fatalf("get node1: %v", err)
 	}
-	if n1.Status != routedrun.NodeStatusPending {
-		t.Fatalf("node1: want PENDING, got %s", n1.Status)
+	if n1.Status != routedrun.NodeStatusCancelled {
+		t.Fatalf("node1: want CANCELLED, got %s", n1.Status)
 	}
 }
 
@@ -793,6 +793,70 @@ func TestCancelThenPauseDesiredState_StillCancelled(t *testing.T) {
 	}
 	if n0.Status != routedrun.NodeStatusCancelled {
 		t.Fatalf("node0: want CANCELLED, got %s", n0.Status)
+	}
+}
+
+// TestCancelClearsAllNonTerminalNodes: CancelWorkflow on a fresh workflow
+// (stage0 READY, rest PENDING) must transition ALL non-terminal nodes to
+// CANCELLED — no READY or PENDING survivors. Claim must block, resume must
+// error.
+func TestCancelClearsAllNonTerminalNodes(t *testing.T) {
+	ctx := context.Background()
+	ctrl := NewController(routedrun.NewMemoryStore())
+
+	wfID, nodeIDs, err := SeedPipelineWorkflow(ctx, ctrl, 3)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	// Cancel before any claim.
+	if err := ctrl.CancelWorkflow(ctx, CancelRequest{
+		WorkflowID: wfID,
+		Reason:     "USER_CANCELLED",
+	}); err != nil {
+		t.Fatalf("CancelWorkflow: %v", err)
+	}
+
+	// Every node must be CANCELLED.
+	for i, nid := range nodeIDs {
+		n, err := ctrl.Store.GetNode(ctx, nid)
+		if err != nil {
+			t.Fatalf("get node%d: %v", i, err)
+		}
+		if n.Status != routedrun.NodeStatusCancelled {
+			t.Fatalf("node%d: want CANCELLED, got %s", i, n.Status)
+		}
+		// Run must also be CANCELLED.
+		r, err := ctrl.Store.GetRun(ctx, n.RunID)
+		if err != nil {
+			t.Fatalf("get run%d: %v", i, err)
+		}
+		if r.Status != routedrun.RunStatusCancelled {
+			t.Fatalf("run%d: want CANCELLED, got %s", i, r.Status)
+		}
+	}
+
+	// Workflow CANCELLED.
+	wf, err := ctrl.Store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	if wf.Status != routedrun.WorkflowStatusCancelled {
+		t.Fatalf("workflow: want CANCELLED, got %s", wf.Status)
+	}
+
+	// ClaimNextReady must return nil.
+	claim, err := ctrl.ClaimNextReady(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ClaimNextReady: %v", err)
+	}
+	if claim != nil {
+		t.Fatal("ClaimNextReady: expected nil on CANCELLED workflow")
+	}
+
+	// ResumeWorkflow must error.
+	if err := ctrl.ResumeWorkflow(ctx, ResumeRequest{WorkflowID: wfID}); err == nil {
+		t.Fatal("ResumeWorkflow: expected error on CANCELLED workflow")
 	}
 }
 
