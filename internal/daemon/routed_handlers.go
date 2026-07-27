@@ -1160,33 +1160,58 @@ func (s *controlServer) persistLegacyRunAsOneAttempt(ctx context.Context, runID,
 }
 
 // updateLegacyRunStatus best-effort updates the store status for a legacy run.
+// It uses GetRunGeneration (when available) to get the true generation for CAS,
+// and retries on ErrCASConflict up to 3 times to handle concurrent bumps from
+// progress tailers or other goroutines.
 func (s *controlServer) updateLegacyRunStatus(ctx context.Context, runID, statusLabel string) {
 	if s.runStore == nil {
 		return
 	}
-	run, err := s.runStore.GetRun(ctx, routedrun.RunID(runID))
-	if err != nil || run == nil {
+
+	const maxRetries = 3
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		rid := routedrun.RunID(runID)
+		run, err := s.runStore.GetRun(ctx, rid)
+		if err != nil || run == nil {
+			return
+		}
+
+		switch statusLabel {
+		case "succeeded":
+			run.Status = routedrun.RunStatusSucceeded
+		case "failed":
+			run.Status = routedrun.RunStatusFailed
+		case "cancelled":
+			run.Status = routedrun.RunStatusCancelled
+		case "running":
+			run.Status = routedrun.RunStatusRunning
+		default:
+			return
+		}
+
+		now := time.Now().UTC()
+		if run.Status.IsTerminal() {
+			run.TerminatedAt = &now
+		}
+
+		// Get the current generation. If the store supports GetRunGeneration,
+		// use it; otherwise fall back to gen=1 (the generation after CreateRun).
+		gen := int64(1)
+		if gg, ok := s.runStore.(interface {
+			GetRunGeneration(context.Context, routedrun.RunID) (int64, error)
+		}); ok {
+			if g, gErr := gg.GetRunGeneration(ctx, rid); gErr == nil {
+				gen = g
+			}
+		}
+
+		if err := s.runStore.UpdateRun(ctx, run, gen); err != nil {
+			if errors.Is(err, routedrun.ErrCASConflict) && attempt < maxRetries-1 {
+				continue
+			}
+			log.Printf("daemon: update legacy run status %s: %v", runID, err)
+		}
 		return
-	}
-	switch statusLabel {
-	case "succeeded":
-		run.Status = routedrun.RunStatusSucceeded
-	case "failed":
-		run.Status = routedrun.RunStatusFailed
-	case "cancelled":
-		run.Status = routedrun.RunStatusCancelled
-	case "running":
-		run.Status = routedrun.RunStatusRunning
-	default:
-		return
-	}
-	now := time.Now().UTC()
-	if run.Status.IsTerminal() {
-		run.TerminatedAt = &now
-	}
-	// Generation for UpdateRun is 1 after CreateRun (writeJSON gen=1).
-	if err := s.runStore.UpdateRun(ctx, run, 1); err != nil {
-		log.Printf("daemon: update legacy run status %s: %v", runID, err)
 	}
 }
 
