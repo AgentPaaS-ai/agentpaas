@@ -107,7 +107,7 @@ install-plugin:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate block34-docker-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -562,7 +562,7 @@ block33-gate-fast:
 
 .PHONY: block34-gate
 block34-gate:
-	@echo "==> Block 34 gate (library + adversary)"
+	@echo "==> Block 34 gate (library + adversary; docker gate is separate — see block34-docker-gate)"
 	go test ./internal/workflow/pipeline/ -race -count=1
 	go test ./internal/workflow/pipeline/ -race -count=1 -run Adversary
 	go test ./internal/harness/ -count=1 -run 'WorkflowInput|Pipeline'
@@ -572,6 +572,15 @@ block34-gate:
 	test -f docs/owa-records/b34-t09.md
 	test -f docs/owa-records/b34-t09-adversary-findings.md
 	@echo "Block 34 gate: PASS"
+
+# ── Block 34 Docker Gate: Live multi-container stage isolation e2e ──────
+# Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon (e.g., Colima).
+# Not required for CI without Docker; block34-gate stays green without it.
+
+.PHONY: block34-docker-gate
+block34-docker-gate:
+	@echo "==> B34 Docker stage isolation e2e"
+	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E' -timeout 10m
 
 # ── MCP admission conformance (unit) ──────────────────────────────────────
 
@@ -694,6 +703,7 @@ gates: ## List all available gate targets
 	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
 	@echo "  block33-gate-fast - MCP container services: fast gate (skip block32 chain)"
 	@echo "  block34-gate - Pipeline operator inspection + reference proof (B34)"
+	@echo "  block34-docker-gate - Live Docker multi-container stage isolation e2e (B34; needs AGENTPAAS_DOCKER_TESTS=1)"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
