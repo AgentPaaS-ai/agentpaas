@@ -1,14 +1,15 @@
 # Known Limitations
 
-AgentPaaS v0.2.3 is a local-first governed runtime for macOS with secure
-agent sharing. This document records both accepted trade-offs and capability
-gaps found during review. A listed gap must not be mistaken for a shipped
-feature merely because a v0.3 plan exists to close it.
+AgentPaaS is a local-first governed runtime for macOS with secure agent sharing.
+**Shipped stable tag line:** v0.2.3 public; development head includes v0.3.0 tag
+lineage (B26–B32) plus B33–B34 engineering complete with residual product gaps
+called out below. This document records accepted trade-offs and capability gaps.
+A listed gap must not be mistaken for a shipped operator-ready feature merely
+because a library gate or execution-ready specification exists.
 
-The Durable Routed Run work described in the roadmap targets v0.5.0 (with
-v0.3.0 and v0.4.0 as cumulative intermediate releases) and is not part of
-the shipped product yet. A planned block or execution-ready specification
-must not be described as a current capability.
+The full Durable Routed Run / multi-agent product surface continues through
+v0.4.0 (B35) and v0.5.0 (B36–B41). Planned blocks must not be described as
+current capabilities until their gates and operator proofs land.
 
 For the full security posture, see [threat-model.md](threat-model.md).
 For workarounds and authoring guidance, see
@@ -30,16 +31,16 @@ Blocks are numbered per the internal execution plan. Tracked status:
 | B23 | Verified install, consent, credential mapping, run integration | ✅ Complete |
 | B24 | Fork, modify, redistribute: provenance chains | ✅ Complete |
 | B25 | Hermes sharing UX, vulnerability closure, v0.2.x release hardening | ✅ Complete |
-| B26 | Durable deployment, invocation, run, and workflow contracts/state foundation | ✅ Complete (unreleased v0.3.0) |
-| B27 | SDK progress, checkpoint, and artifact protocol | ✅ Complete (unreleased v0.3.0) |
-| B28 | Runtime portability and managed-PaaS feasibility gate | ⏭️ Planned for v0.3.0 |
-| B29 | Agent runtime profiles, durable events, streaming, and efficiency | ⏭️ Planned for v0.3.0 |
-| B30 | Long-running multi-turn execution and proof | ⏭️ Planned for v0.3.0-alpha.1 |
-| B31 | Unified component catalog and constrained capability resolution | ⏭️ Planned for v0.3.0 |
-| B32 | Secure A2A tasks, messages, events, and artifact transfer | ⏭️ Planned for v0.3.0 |
-| B33 | AgentPaaS-container MCP services | ⏭️ Planned for v0.4.0 |
-| B34 | Runtime-native sequential pipelines | ⏭️ Planned for v0.4.0 |
-| B35 | Parent/child fan-out, fan-in, and collation | ⏭️ Planned for v0.4.0 |
+| B26 | Durable deployment, invocation, run, and workflow contracts/state foundation | ✅ Complete (in v0.3.0 tag lineage) |
+| B27 | SDK progress, checkpoint, and artifact protocol | ✅ Complete (in v0.3.0 tag lineage) |
+| B28 | Runtime portability and managed-PaaS feasibility gate | ✅ Complete (in v0.3.0 tag lineage) |
+| B29 | Agent runtime profiles, durable events, streaming, and efficiency | ✅ Complete (in v0.3.0 tag lineage) |
+| B30 | Long-running multi-turn execution and proof | ✅ Library + durable start wiring; operator multi-turn soak residual |
+| B31 | Unified component catalog and constrained capability resolution | ✅ Complete (in v0.3.0 tag lineage) |
+| B32 | Secure A2A tasks, messages, events, and artifact transfer | ✅ Complete (in v0.3.0 tag lineage); live A2A depends on delegation trust (BUG-040 fixed) |
+| B33 | AgentPaaS-container MCP services | ✅ Complete (library + cross-container e2e); enable/product claims per block handoff |
+| B34 | Runtime-native sequential pipelines | ✅ Closed 2026-07-26 (library + Docker stage e2e + reconcile loop); multi-image product pack+invoke residual |
+| B35 | Parent/child fan-out, fan-in, and collation | ⏭️ Next after GO — execution-ready spec; runtime not-enabled (`agentpaas_child_spawn_not_enabled`) |
 | B36 | Model catalog, route compiler, and deterministic selector | ⏭️ Planned for v0.5.0 |
 | B37 | Model-call failure classification and recovery | ⏭️ Planned for v0.5.0 |
 | B38 | Shared workflow LLM spend budget and cost ledger | ⏭️ Planned for v0.5.0 |
@@ -92,10 +93,12 @@ provide:
   production. Explicit test mode (`AGENTPAAS_TEST_FAKE_MCP=1`) keeps the
   synthetic result for fixtures that opt in, mirroring
   `AGENTPAAS_TEST_FAKE_LLM`.
-- A workflow controller, durable stage handoff, or a way to run a sequence of
-  agents in separate containers without Hermes relaying each transition.
-- Parent/child spawn and join. An agent cannot currently request bounded child
-  runs, await their results, collate them, and continue.
+- A **product** multi-image pipeline pack+invoke path that advances real
+  per-stage packed agents end-to-end (B34 library + Docker stage isolation +
+  enable-gated reconcile loop exist; daemon still uses FakeLauncher for the
+  loop and single-container durable invoke for deployments).
+- Parent/child spawn and join (B35). Runtime remains fail-closed with
+  `agentpaas_child_spawn_not_enabled` until B35 implements spawn/join.
 
 Current model timeout, quota, authentication, context, or subscription
 failures can therefore fail the worker. The v0.3–v0.5 B26–B41 plan closes

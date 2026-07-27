@@ -1,6 +1,9 @@
 # BUG-036 — Silent publisher identity init (first-time UX / trust)
 
-**Status:** OPEN  
+**Status:** FIXED  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** 2b6c3ce / b667f7c  
+**Close note:** skill forbids silent identity init. See b34-close-bugs-spotcheck.md.
 **Severity:** P2 (UX / trust — not a containment break)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (ap-testing, Phase 4 weather agent)  
 **Build:** CLI 0.3.0-dev commit ed22b0f  

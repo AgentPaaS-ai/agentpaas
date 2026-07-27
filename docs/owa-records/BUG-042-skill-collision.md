@@ -1,6 +1,9 @@
 # BUG-042 — Skill collision: two agentpaas-build SKILL.md files in profile
 
-**Status:** OPEN  
+**Status:** FIXED  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** 2b6c3ce / 4d6ed66  
+**Close note:** skill collision layout fixed. See b34-close-bugs-spotcheck.md.
 **Severity:** P3 (UX / blocks skill loading)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (ap-testing session analysis)  
 

@@ -1,6 +1,9 @@
 # BUG-037 — Install/share path assumes agentpaas already on PATH (first-user friction)
 
-**Status:** OPEN  
+**Status:** FIXED  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** 2b6c3ce / 4d6ed66  
+**Close note:** plugin cli_not_found + doctor path. See b34-close-bugs-spotcheck.md.
 **Severity:** P2 (UX / first-time receiver)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (receiver half, Phase 11)  
 **Build:** CLI 0.3.0-dev commit ed22b0f  

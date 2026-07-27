@@ -1,6 +1,9 @@
 # BUG-039 — Source-bundle install warns uv.lock missing (noisy UX for requirements.txt agents)
 
-**Status:** OPEN  
+**Status:** FIXED  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** 91aa146 / fcc05c7  
+**Close note:** requirements.txt note without blocking prompt. See b34-close-bugs-spotcheck.md.
 **Severity:** P3 (UX / low priority)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (receiver install, local-rebuild)  
 **Build:** CLI 0.3.0-dev commit ed22b0f  

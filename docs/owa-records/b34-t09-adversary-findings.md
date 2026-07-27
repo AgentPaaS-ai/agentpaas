@@ -53,14 +53,13 @@ All 18 adversary tests PASS with `-race` after fixes.
 
 ---
 
-## MEDIUM residual (not RED)
+## MEDIUM residual (not RED) — RESOLVED 2026-07-26
 
-### RES-1 MEDIUM — CancelWorkflow does not clear READY nodes
-- **Test:** `TestAdversary_B34_CancelLeavesReadyNode_ClaimStillBlocked` (PASS)
-- **File:** `controller.go` — `CancelWorkflow` only transitions LAUNCHING/RUNNING → CANCELLED.
-- **Behavior:** Cancel before claim leaves stage0 READY while workflow is CANCELLED.
-- **Mitigation in place:** `ClaimNextReady` / `ResumeWorkflow` fail closed on terminal workflow (property held).
-- **Fix direction (optional):** On cancel, mark READY/PENDING nodes CANCELLED or SKIPPED for consistent terminal topology.
+### RES-1 MEDIUM — CancelWorkflow does not clear READY nodes — **FIXED**
+- **Was:** Cancel only transitioned LAUNCHING/RUNNING; READY/PENDING left behind.
+- **Fix:** `09e41bb` / b34-close-library — CancelWorkflow cancels all non-terminal nodes.
+- **Test:** `TestAdversary_B34_CancelClearsReadyAndPendingNodes` (renamed) + `TestCancelClearsAllNonTerminalNodes`.
+- **Evidence:** `docs/owa-records/b34-close-library.md`
 
 ---
 
