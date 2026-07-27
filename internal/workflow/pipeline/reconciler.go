@@ -3,9 +3,11 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 // ---------------------------------------------------------------------------
@@ -17,6 +19,11 @@ type Reconciler struct {
 	Ctrl     *Controller
 	Launches LaunchStore
 	Launcher StageLauncher
+	// NetworkDriver is an optional runtime driver for creating per-stage
+	// networks. When non-nil, ReconcileOnce creates a stage-private network
+	// and sets NetworkID on the launch job before calling EnsureLaunch.
+	// When nil, networks are not created (FakeLauncher path).
+	NetworkDriver runtime.RuntimeDriver
 }
 
 // ReconcileOnce advances at most one stage claim/launch/ack for the workflow.
@@ -68,11 +75,13 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 				WorkflowID: workflowID,
 				NodeID:     n.NodeID,
 				RunID:      n.RunID,
+				StageOrder: n.StageOrder,
 				Generation: launchGen,
 				Status:     LaunchStatusPending,
 				CreatedAt:  now,
 				UpdatedAt:  now,
 			}
+			r.fillStageJobDefaults(ctx, job)
 			stored, created, err := r.Launches.PutIfAbsent(ctx, job)
 			if err != nil {
 				return nil, fmt.Errorf("reconcile once: put launch job: %w", err)
@@ -141,6 +150,9 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 		UpdatedAt:  now,
 	}
 
+	// Fill stage defaults (image, command, network) before persisting.
+	r.fillStageJobDefaults(ctx, job)
+
 	existing, created, err := r.Launches.PutIfAbsent(ctx, job)
 	if err != nil {
 		return nil, fmt.Errorf("reconcile once: put launch job: %w", err)
@@ -192,4 +204,55 @@ func findAttemptForLaunching(ctx context.Context, store PipelineStore, runID rou
 		}
 	}
 	return latest, nil
+}
+
+// defaultStageImage is the fallback container image for pipeline stages when
+// no real stage image has been resolved. Override with
+// AGENTPAAS_PIPELINE_STAGE_IMAGE for tests or production pack path.
+const defaultStageImage = "alpine:3.20"
+
+// defaultStageCommand is the fallback command for pipeline stages. The sleep
+// keeps the container alive long enough for tests to inspect it.
+var defaultStageCommand = []string{"sleep", "30"}
+
+// fillStageJobDefaults sets Image, Command, and (if NetworkDriver is wired)
+// NetworkID on a StageLaunchJob that has not yet been launched. It does NOT
+// overwrite fields already set (e.g. from a prior recovery path).
+//
+// The image is resolved from AGENTPAAS_PIPELINE_STAGE_IMAGE if set, else
+// alpine:3.20. The command defaults to ["sleep","30"].
+func (r *Reconciler) fillStageJobDefaults(ctx context.Context, job *StageLaunchJob) {
+	// Image: env override → default.
+	if job.Image == "" {
+		if img := os.Getenv("AGENTPAAS_PIPELINE_STAGE_IMAGE"); img != "" {
+			job.Image = img
+		} else {
+			job.Image = defaultStageImage
+		}
+	}
+	// Command: use default if empty.
+	if len(job.Command) == 0 {
+		job.Command = append(job.Command, defaultStageCommand...)
+	}
+	// NetworkID: create per-stage network if driver is available.
+	if job.NetworkID == "" && r.NetworkDriver != nil {
+		netName := fmt.Sprintf("ap-stage-%s-%s", job.WorkflowID, job.NodeID)
+		labels := map[string]string{
+			runtime.LabelWorkflowID: string(job.WorkflowID),
+			runtime.LabelNodeID:     string(job.NodeID),
+			"agentpaas.role":        "stage-network",
+		}
+		spec := runtime.NetworkSpec{
+			Name:     netName,
+			Internal: true,
+			Labels:   labels,
+		}
+		netID, err := r.NetworkDriver.CreateNetwork(ctx, spec)
+		if err != nil {
+			// Network creation failure is non-fatal for reconciliation;
+			// the launcher will fail with a clear error on EnsureLaunch.
+			return
+		}
+		job.NetworkID = string(netID)
+	}
 }

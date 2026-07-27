@@ -107,7 +107,7 @@ install-plugin:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate block34-docker-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate block34-docker-gate block345-gate block345-docker-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -582,6 +582,22 @@ block34-docker-gate:
 	@echo "==> B34 Docker stage isolation e2e"
 	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E' -timeout 10m
 
+# ── Block 34.5-C Gate: Pipeline Product Path Thin Vertical ────────────────
+# Extends block34-gate with daemon-level pipeline admission + reconcile tests.
+# Docker gate runs the full RuntimeStageLauncher e2e (requires Docker).
+
+.PHONY: block345-gate
+block345-gate: block34-gate
+	@echo "==> Block 34.5 gate (daemon pipeline admission + reconcile)"
+	go test ./internal/daemon/ -count=1 -race -run 'Pipeline|B345|Reconcile' -timeout 5m
+	go test ./internal/workflow/pipeline/ -count=1 -race -run 'B345'
+	@echo "Block 34.5 gate: PASS"
+
+.PHONY: block345-docker-gate
+block345-docker-gate:
+	@echo "==> B34.5 Docker e2e (ReconcileOnce + RuntimeStageLauncher)"
+	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/daemon/ ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E|B345.*Docker|Pipeline.*Docker' -timeout 15m
+
 # ── MCP admission conformance (unit) ──────────────────────────────────────
 
 .PHONY: mcp-admission-conformance
@@ -704,6 +720,8 @@ gates: ## List all available gate targets
 	@echo "  block33-gate-fast - MCP container services: fast gate (skip block32 chain)"
 	@echo "  block34-gate - Pipeline operator inspection + reference proof (B34)"
 	@echo "  block34-docker-gate - Live Docker multi-container stage isolation e2e (B34; needs AGENTPAAS_DOCKER_TESTS=1)"
+	@echo "  block345-gate - Pipeline product path thin vertical (B34.5-C; extends block34-gate)"
+	@echo "  block345-docker-gate - Docker e2e with ReconcileOnce + RuntimeStageLauncher (B34.5; needs AGENTPAAS_DOCKER_TESTS=1)"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
