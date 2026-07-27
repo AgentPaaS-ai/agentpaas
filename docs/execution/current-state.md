@@ -19,7 +19,8 @@
 - `make block34-gate` PASS  
 - `make block345-gate` PASS  
 - `make block34-docker-gate` PASS  
-- `make block34-multiagent-gate` PASS (3 consecutive)  
+- `make block34-multiagent-gate` PASS (3 consecutive)
+- **Standing:** `block34-docker-gate` and `block345-docker-gate` **include** multi-agent; use `make block34-full-gate` for library+docker close path  
 - `make block345-docker-gate` PASS  
 - golden-fast (run at close)  
 - golangci-lint pipeline 0 issues  

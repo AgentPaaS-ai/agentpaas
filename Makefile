@@ -107,7 +107,7 @@ install-plugin:
 block1-gate: proto build test lint
 	@echo "Block 1 gate: PASS"
 
-.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate block34-docker-gate block34-multiagent-gate block345-gate block345-docker-gate
+.PHONY: block2-gate block3-gate block4-gate block5-gate block6-gate block7-gate block8-gate block9-gate block10-gate block11-gate block12-gate block13-gate block14-gate block14a0-gate block14a-gate block14b-gate block14c-gate block15-gate block16-gate block31-gate block32-gate block33-gate block33-gate-fast block34-gate block34-docker-gate block34-multiagent-gate block34-full-gate block345-gate block345-docker-gate
 
 block2-gate: build test lint race
 	@echo "Verifying Block 2 packages..."
@@ -578,14 +578,10 @@ block34-gate:
 # Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon (e.g., Colima).
 # Not required for CI without Docker; block34-gate stays green without it.
 
-.PHONY: block34-docker-gate
-block34-docker-gate:
-	@echo "==> B34 Docker stage isolation e2e"
-	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E' -timeout 10m
-
 # ── Block 34 Multi-Agent Gate: Three-stage pipeline e2e (Hermes-absent) ─
 # Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon.
-# Runs 3 consecutive clean passes to prove stability; must pass for B34 close.
+# Runs 3 consecutive clean passes to prove stability.
+# Standing requirement: included by block34-docker-gate and block345-docker-gate.
 # Proves: multi-container multi-agent runtime with durable handoffs,
 # distinct networks per stage, zero orphan cleanup.
 
@@ -598,9 +594,25 @@ block34-multiagent-gate:
 	done
 	@echo "Block 34 multi-agent gate: PASS"
 
+# ── Block 34 Docker Gate: isolation e2e + multi-agent (standing) ─────────
+# Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon (e.g., Colima).
+# Not pulled into block34-gate (library stays green without Docker).
+# Use this (or block34-full-gate) for any B34+ release/close path.
+
+.PHONY: block34-docker-gate
+block34-docker-gate: block34-multiagent-gate
+	@echo "==> B34 Docker stage isolation e2e"
+	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E' -timeout 10m
+	@echo "Block 34 docker gate (isolation + multi-agent): PASS"
+
+# Library + Docker multi-agent stack. Prefer this for block close / pre-B35.
+.PHONY: block34-full-gate
+block34-full-gate: block34-gate block34-docker-gate
+	@echo "Block 34 full gate (library + docker multi-agent): PASS"
+
 # ── Block 34.5-C Gate: Pipeline Product Path Thin Vertical ────────────────
 # Extends block34-gate with daemon-level pipeline admission + reconcile tests.
-# Docker gate runs the full RuntimeStageLauncher e2e (requires Docker).
+# Docker gate runs RuntimeStageLauncher e2e + standing multi-agent gate.
 
 .PHONY: block345-gate
 block345-gate: block34-gate
@@ -610,9 +622,10 @@ block345-gate: block34-gate
 	@echo "Block 34.5 gate: PASS"
 
 .PHONY: block345-docker-gate
-block345-docker-gate:
+block345-docker-gate: block34-multiagent-gate
 	@echo "==> B34.5 Docker e2e (ReconcileOnce + RuntimeStageLauncher)"
 	AGENTPAAS_DOCKER_TESTS=1 go test ./internal/daemon/ ./internal/workflow/pipeline/ -count=1 -race -run 'DockerE2E|B345.*Docker|Pipeline.*Docker' -timeout 15m
+	@echo "Block 34.5 docker gate (incl multi-agent): PASS"
 
 # ── MCP admission conformance (unit) ──────────────────────────────────────
 
@@ -734,11 +747,12 @@ gates: ## List all available gate targets
 	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
 	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
 	@echo "  block33-gate-fast - MCP container services: fast gate (skip block32 chain)"
-	@echo "  block34-gate - Pipeline operator inspection + reference proof (B34)"
-	@echo "  block34-docker-gate - Live Docker multi-container stage isolation e2e (B34; needs AGENTPAAS_DOCKER_TESTS=1)"
-	@echo "  block34-multiagent-gate - Multi-agent 3-stage Docker e2e, 3 consecutive runs (B34 required-for-close; needs AGENTPAAS_DOCKER_TESTS=1)"
-	@echo "  block345-gate - Pipeline product path thin vertical (B34.5-C; extends block34-gate)"
-	@echo "  block345-docker-gate - Docker e2e with ReconcileOnce + RuntimeStageLauncher (B34.5; needs AGENTPAAS_DOCKER_TESTS=1)"
+	@echo "  block34-gate - Pipeline library + adversary (B34; no Docker required)"
+	@echo "  block34-docker-gate - Multi-agent 3-stage e2e (x3) + isolation DockerE2E (needs Docker)"
+	@echo "  block34-multiagent-gate - Multi-agent 3-stage Docker e2e x3 only (needs Docker)"
+	@echo "  block34-full-gate - block34-gate + block34-docker-gate (standing B34 close path)"
+	@echo "  block345-gate - Pipeline product path thin vertical (B34.5; extends block34-gate)"
+	@echo "  block345-docker-gate - multi-agent gate + B34.5 Docker e2e (needs Docker)"
 	@echo ""
 	@echo "Golden dataset (pass^k regression suite):"
 	@echo "  golden-fast  - Fast tier: deterministic checks, every commit"
