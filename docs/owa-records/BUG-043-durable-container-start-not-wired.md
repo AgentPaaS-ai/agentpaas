@@ -1,6 +1,9 @@
 # BUG-043 — Durable path: InvokeDeployment admits but never starts container
 
-**Status:** OPEN  
+**Status:** FIXED (code); residual live soak  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** 3b0995b / 81ff5db  
+**Close note:** startDurableRun wired; multi-turn soak residual. See b34-close-bugs-spotcheck.md.
 **Severity:** P0 (blocks v0.3.0 release claim for durable multi-turn execution)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (durable path verification)  
 **Build:** CLI 0.3.0-dev commit 7da75ef  

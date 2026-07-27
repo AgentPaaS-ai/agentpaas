@@ -1,6 +1,9 @@
 # BUG-040 — Delegation trust state not set in packed runs (R32 step 3 BLOCKED)
 
-**Status:** OPEN  
+**Status:** FIXED  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** f86117f / f74aed7  
+**Close note:** delegation snapshot + harness TrustState. See b34-close-bugs-spotcheck.md.
 **Severity:** P1 (blocks R32 quickstart step 3 — multi-agent A2A live path)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (R32 Tier B, step 3)  
 **Build:** CLI 0.3.0-dev commit ed22b0f  

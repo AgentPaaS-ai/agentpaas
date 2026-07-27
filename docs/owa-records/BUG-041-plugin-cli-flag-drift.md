@@ -1,6 +1,9 @@
 # BUG-041 — Plugin CLI flag drift (export --project-dir, install --alias)
 
-**Status:** OPEN  
+**Status:** FIXED  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** 2b6c3ce / 4d6ed66  
+**Close note:** export positional project path. See b34-close-bugs-spotcheck.md.
 **Severity:** P3 (UX / wasted tool calls)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (ap-testing session analysis)  
 

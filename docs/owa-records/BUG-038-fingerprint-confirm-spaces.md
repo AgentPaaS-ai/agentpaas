@@ -1,6 +1,9 @@
 # BUG-038 — Install fingerprint confirm rejects spaced last-8 (display vs input mismatch)
 
-**Status:** OPEN  
+**Status:** FIXED  
+**Closed:** 2026-07-26 (spotcheck)  
+**Fix SHAs:** 2b6c3ce / 6f3f3d4  
+**Close note:** TOFU last-8 strips whitespace via strings.Fields. See b34-close-bugs-spotcheck.md.
 **Severity:** P2 (UX — blocks first-time bundle install TOFU)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (receiver `agentpaas install`)  
 **Build:** CLI 0.3.0-dev commit ed22b0f  
