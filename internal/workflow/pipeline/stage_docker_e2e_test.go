@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -48,9 +47,7 @@ func dockerInspectRunning(ctx context.Context, t *testing.T, cid string) bool {
 // ---------------------------------------------------------------------------
 
 func TestDockerE2E_TwoStageIsolation_SeparateContainersAndNetworks(t *testing.T) {
-	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
-		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
-	}
+	requireDockerE2E(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -340,9 +337,7 @@ func TestDockerE2E_TwoStageIsolation_SeparateContainersAndNetworks(t *testing.T)
 // ---------------------------------------------------------------------------
 
 func TestDockerE2E_FenceStage_IdempotentAndNoOrphans(t *testing.T) {
-	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
-		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
-	}
+	requireDockerE2E(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -450,9 +445,7 @@ func TestDockerE2E_FenceStage_IdempotentAndNoOrphans(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDockerE2E_EnsureLaunch_Idempotent(t *testing.T) {
-	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
-		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
-	}
+	requireDockerE2E(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
@@ -579,9 +572,7 @@ func TestDockerE2E_EnsureLaunch_Idempotent(t *testing.T) {
 // Reconciler with RuntimeStageLauncher creates a real Docker container for
 // stage0 with correct labels, image, command, and network isolation.
 func TestB345DockerE2E_ReconcileLaunchesStageContainer(t *testing.T) {
-	if os.Getenv("AGENTPAAS_DOCKER_TESTS") != "1" {
-		t.Skip("set AGENTPAAS_DOCKER_TESTS=1 to run Docker integration tests")
-	}
+	requireDockerE2E(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
