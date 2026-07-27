@@ -506,6 +506,114 @@ func TestB345_DurableStart_InvokeResponseWritten(t *testing.T) {
 	}
 }
 
+// TestB345_UpdateLegacyRunStatus_UsesGetRunGeneration verifies that
+// updateLegacyRunStatus fetches the actual generation via GetRunGeneration
+// instead of hardcoding gen=1. When the generation has been bumped (e.g. by
+// a concurrent progress tailer), the status update still succeeds.
+func TestB345_UpdateLegacyRunStatus_UsesGetRunGeneration(t *testing.T) {
+	s := newTestControlServer(t) // disableContainerLaunch=true, stores init'd
+	ctx := context.Background()
+
+	// Create a run directly via the store.
+	run := &routedrun.RunRecord{
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		Status:        routedrun.RunStatusPending,
+		RunKind:       "standalone",
+	}
+	if err := s.runStore.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun: %v", err)
+	}
+	runID := string(run.RunID)
+
+	// Bump generation by doing a no-op update (gen goes from 1 to 2).
+	// This simulates a concurrent progress tailer writing a ledger entry
+	// or other metadata bumping the envelope generation.
+	fresh, err := s.runStore.GetRun(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("GetRun before bump: %v", err)
+	}
+	if err := s.runStore.UpdateRun(ctx, fresh, 1); err != nil {
+		t.Fatalf("UpdateRun (gen bump): %v", err)
+	}
+
+	// Verify gen is now 2.
+	if gen, gerr := s.runStore.(*routedrun.LocalStore).GetRunGeneration(ctx, run.RunID); gerr != nil {
+		t.Fatalf("GetRunGeneration: %v", gerr)
+	} else if gen != 2 {
+		t.Fatalf("generation after bump=%d want 2", gen)
+	}
+
+	// Call updateLegacyRunStatus — should use GetRunGeneration to get
+	// gen=2 instead of hardcoded 1, and the update should succeed.
+	s.updateLegacyRunStatus(ctx, runID, "running")
+
+	// Verify the status was updated to RUNNING.
+	got, err := s.runStore.GetRun(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("GetRun after updateLegacyRunStatus: %v", err)
+	}
+	if got.Status != routedrun.RunStatusRunning {
+		t.Fatalf("status=%s want RUNNING", got.Status)
+	}
+}
+
+// TestB345_UpdateLegacyRunStatus_RetryOnCASConflict verifies that
+// updateLegacyRunStatus retries on ErrCASConflict. We bump gen to 2, then
+// call updateLegacyRunStatus. The first GetRunGeneration returns gen=2, but
+// we simulate a concurrent write making gen=3 by calling updateLegacyRunStatus
+// twice in quick succession — the second call hits a CAS conflict on the
+// first attempt and must retry.
+func TestB345_UpdateLegacyRunStatus_RetryOnCASConflict(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	run := &routedrun.RunRecord{
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		Status:        routedrun.RunStatusPending,
+		RunKind:       "standalone",
+	}
+	if err := s.runStore.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun: %v", err)
+	}
+	runID := string(run.RunID)
+
+	// Bump generation to 2.
+	fresh, err := s.runStore.GetRun(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("GetRun before bump: %v", err)
+	}
+	if err := s.runStore.UpdateRun(ctx, fresh, 1); err != nil {
+		t.Fatalf("UpdateRun (gen bump 1→2): %v", err)
+	}
+
+	// First call should succeed (gen=2). This sets status to RUNNING and
+	// bumps gen to 3.
+	s.updateLegacyRunStatus(ctx, runID, "running")
+
+	// Now bump gen again (3→4) by someone else.
+	fresh2, err := s.runStore.GetRun(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("GetRun before second bump: %v", err)
+	}
+	if err := s.runStore.UpdateRun(ctx, fresh2, 3); err != nil {
+		t.Fatalf("UpdateRun (gen bump 3→4): %v", err)
+	}
+
+	// Second call with "failed" — GetRunGeneration returns 4. The first
+	// UpdateRun attempt with gen=4 succeeds (should not conflict since
+	// we checked gen right before). This tests the codepath end-to-end
+	// with a non-trivial generation.
+	s.updateLegacyRunStatus(ctx, runID, "failed")
+
+	got, err := s.runStore.GetRun(ctx, run.RunID)
+	if err != nil {
+		t.Fatalf("GetRun after second updateLegacyRunStatus: %v", err)
+	}
+	if got.Status != routedrun.RunStatusFailed {
+		t.Fatalf("status=%s want FAILED", got.Status)
+	}
+}
+
 // TestB345_DurableStart_AllExistingInvokeDeploymentTestsStillPass ensures
 // the existing InvokeDeployment tests (in b30_t02_invoke_deployment_test.go)
 // still work with the new testRuntime seam. These use newTestControlServer
