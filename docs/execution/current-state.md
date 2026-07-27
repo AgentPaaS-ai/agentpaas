@@ -1,43 +1,45 @@
-# Current State — Block 34.5 CLOSED
+# Current State — Block 34 CLOSED (multi-agent proof)
 
 **Shipped release tag:** v0.3.0 (B1–B32 product line)  
-**Development head:** B34 + **B34.5 residual close**  
+**Development head:** **B34 CLOSED** including multi-agent three-stage Docker e2e  
 **Main tip:** see `git log -1 --oneline`  
 **Date:** 2026-07-26
 
-## B34.5 tracks (merged)
+## B34 close criteria
 
-| Track | Status | Evidence |
-|-------|--------|----------|
-| A CancelWorkflow + MCP fence | DONE | `docs/owa-records/b345-cancel.md` |
-| B Durable start (BUG-043) + gen CAS | DONE | `docs/owa-records/b345-043-durable.md` |
-| C Pipeline admit→register + RuntimeStageLauncher | DONE | `docs/owa-records/b345-pipeline.md` |
-| ClaimNextReady CAS no-steal | DONE | `docs/owa-records/b345-claim-cas.md` (12/10 flake gone) |
+| Item | Status |
+|------|--------|
+| T01–T09 library + adversary | DONE |
+| B34.5 residuals (cancel, durable tests, pipeline register, CAS) | DONE |
+| **Multi-agent three-stage Docker e2e (Hermes-absent)** | **DONE** `make block34-multiagent-gate` ×3 |
+| StageOrder on launch jobs | FIXED |
 
-## Gates (disk-verified on tip)
+## Gates (disk-verified)
 
 - `make block34-gate` PASS  
 - `make block345-gate` PASS  
-- `make block34-docker-gate` PASS (AGENTPAAS_DOCKER_TESTS=1)  
+- `make block34-docker-gate` PASS  
+- `make block34-multiagent-gate` PASS (3 consecutive)  
 - `make block345-docker-gate` PASS  
-- `go test -race ./internal/workflow/pipeline/` PASS  
-- `golangci-lint` daemon+pipeline **0 issues**  
-- `make golden-fast` **23/23 PASS**  
+- golden-fast (run at close)  
+- golangci-lint pipeline 0 issues  
 
-## What is now proven
+## Multi-agent proof (what it is)
 
-1. **CancelWorkflow** RPC real (not FEATURE_NOT_ENABLED); nodes cleared; MCP WorkflowTerminal fenced  
-2. **InvokeDeployment ACCEPTED** → startDurableRun Create/Start (mock driver); replay no double-start; status CAS via GetRunGeneration  
-3. **Pipeline admit** registers workflow; skips startDurableRun; daemon can use RuntimeStageLauncher; Docker e2e launches labeled stage container via ReconcileOnce  
-4. Two controllers cannot double-claim after CAS fix  
+`TestB34MultiAgentE2E_ThreeStageHermesAbsent`:
+- 3 sequential stages, **3 distinct real Docker containers + networks**
+- ReconcileOnce + RuntimeStageLauncher (no Hermes)
+- Durable handoffs (2) + final CommitStageSuccess → workflow SUCCEEDED
+- BuildPipelineInspect all SUCCEEDED; labels stage_order 0/1/2
+- Fence cleanup zero orphans
 
-## Honest remaining residuals (out of B34.5 scope)
+Evidence: `docs/owa-records/b34-multiagent-e2e.md`
 
-- Full multi-image **packed** stage agents with real handoff schemas/LLM (default still alpine sleep via env)  
-- Live operator durable multi-turn soak with real agent + daemon restart (mock path + G49–G52 library cover supervisor)  
-- Pause/resume/restart RPCs still FEATURE_NOT_ENABLED (B35/control — intentional)  
-- Pipeline default still off (`AGENTPAAS_PIPELINE_ENABLED=1`)  
+## Honest residual (not blocking B34 close)
+
+- Packed product stage **agent images** with Python SDK handoff RPCs end-to-end (test uses alpine stage containers + controller CommitStageSuccess as the durable handoff plane — same contract agents will use)
+- Live CLI pack of three signed packages as operator UX (runtime multi-agent proven)
 
 ## Next
 
-**B35** parent/child fan-out after product GO. Spec ready; `agentpaas_child_spawn_not_enabled`.
+**B35** parent/child fan-out after product GO.
