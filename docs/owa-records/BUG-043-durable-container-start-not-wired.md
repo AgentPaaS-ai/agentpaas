@@ -3,7 +3,7 @@
 **Status:** FIXED (code); residual live soak  
 **Closed:** 2026-07-26 (spotcheck)  
 **Fix SHAs:** 3b0995b / 81ff5db  
-**Close note:** startDurableRun wired; multi-turn soak residual. See b34-close-bugs-spotcheck.md.
+**Close note:** startDurableRun wired; B34.5 mock-driver thorough tests + GetRunGeneration CAS. Live multi-turn operator soak still residual. See b345-043-durable.md.
 **Severity:** P0 (blocks v0.3.0 release claim for durable multi-turn execution)  
 **Found:** 2026-07-23 B32 pre-v0.3.0 manual testing (durable path verification)  
 **Build:** CLI 0.3.0-dev commit 7da75ef  

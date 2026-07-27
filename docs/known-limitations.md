@@ -39,7 +39,7 @@ Blocks are numbered per the internal execution plan. Tracked status:
 | B31 | Unified component catalog and constrained capability resolution | ✅ Complete (in v0.3.0 tag lineage) |
 | B32 | Secure A2A tasks, messages, events, and artifact transfer | ✅ Complete (in v0.3.0 tag lineage); live A2A depends on delegation trust (BUG-040 fixed) |
 | B33 | AgentPaaS-container MCP services | ✅ Complete (library + cross-container e2e); enable/product claims per block handoff |
-| B34 | Runtime-native sequential pipelines | ✅ Closed 2026-07-26 (library + Docker stage e2e + reconcile loop); multi-image product pack+invoke residual |
+| B34 | Runtime-native sequential pipelines | ✅ Closed + B34.5 (cancel RPC, durable start tests, pipeline register+RuntimeStageLauncher, CAS claim fix). Packed multi-agent handoff residual |
 | B35 | Parent/child fan-out, fan-in, and collation | ⏭️ Next after GO — execution-ready spec; runtime not-enabled (`agentpaas_child_spawn_not_enabled`) |
 | B36 | Model catalog, route compiler, and deterministic selector | ⏭️ Planned for v0.5.0 |
 | B37 | Model-call failure classification and recovery | ⏭️ Planned for v0.5.0 |
@@ -93,10 +93,9 @@ provide:
   production. Explicit test mode (`AGENTPAAS_TEST_FAKE_MCP=1`) keeps the
   synthetic result for fixtures that opt in, mirroring
   `AGENTPAAS_TEST_FAKE_LLM`.
-- A **product** multi-image pipeline pack+invoke path that advances real
-  per-stage packed agents end-to-end (B34 library + Docker stage isolation +
-  enable-gated reconcile loop exist; daemon still uses FakeLauncher for the
-  loop and single-container durable invoke for deployments).
+- Full multi-image **packed** pipeline stages with real handoff schemas (B34.5
+  registers pipeline on admit, RuntimeStageLauncher when Docker available,
+  alpine/sleep defaults via AGENTPAAS_PIPELINE_STAGE_IMAGE; not full pack UX).
 - Parent/child spawn and join (B35). Runtime remains fail-closed with
   `agentpaas_child_spawn_not_enabled` until B35 implements spawn/join.
 
