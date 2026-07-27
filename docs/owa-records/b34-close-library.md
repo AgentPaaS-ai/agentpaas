@@ -6,7 +6,9 @@
 
 ## SHAs
 
-TBD after commit.
+- `09e41bb` fix(b34): CancelWorkflow clears all non-terminal nodes (READY/PENDING)
+- `d9301fd` fix(b34): relabel child_spawn gate B31 → B35
+- `eda868c` docs(b34): handoff record for b34-close-library
 
 ## Summary
 
