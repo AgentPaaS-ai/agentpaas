@@ -42,3 +42,13 @@
 
 ## Next
 B35 fan-out/fan-in after product GO. Do not start without GO.
+
+
+## B34.5 residual close (2026-07-26)
+
+Merged tracks: cancel+MCP fence, durable start tests+gen CAS, pipeline
+register+RuntimeStageLauncher, ClaimNextReady CAS no-steal.
+
+Gates: block34-gate, block345-gate, docker gates, golden-fast 23/23, lint 0.
+
+See docs/execution/current-state.md and docs/owa-records/b345-*.md.
