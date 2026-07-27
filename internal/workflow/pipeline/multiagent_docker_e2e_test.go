@@ -308,37 +308,10 @@ func TestB34MultiAgentE2E_ThreeStageHermesAbsent(t *testing.T) {
 		}
 	}
 
-	// ── Cleanup: verify zero orphans ────────────────────────────────────
-	// Stop any remaining containers (should already be fenced).
-	for _, cid := range stageContainers {
-		if cid != "" {
-			_ = dr.Stop(ctx, runtime.ContainerID(cid), nil)
-			_ = dr.Remove(ctx, runtime.ContainerID(cid), true)
-		}
-	}
-	time.Sleep(2 * time.Second)
-
-	cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cleanCancel()
-
-	containers, _ := dr.ListContainers(cleanCtx,
-		runtime.LabelWorkflowID+"="+string(wfID))
-	if len(containers) > 0 {
-		ids := make([]string, len(containers))
-		for i, c := range containers {
-			ids[i] = c.ID[:12]
-		}
-		t.Errorf("post-cleanup orphan containers for workflow %s: %v", wfID, ids)
-	}
-	networks, _ := dr.ListNetworks(cleanCtx,
-		runtime.LabelWorkflowID+"="+string(wfID))
-	if len(networks) > 0 {
-		names := make([]string, len(networks))
-		for i, n := range networks {
-			names[i] = n.Name
-		}
-		t.Errorf("post-cleanup orphan networks for workflow %s: %v", wfID, names)
-	}
+	// ── Cleanup handled by defer (removes networks, checks orphans) ─────
+	// Containers already fenced during the stage loop.
+	// The defer at function top removes networks from createdNetworks and
+	// asserts zero orphan containers and networks by workflow label.
 
 	t.Logf("")
 	t.Logf("B34 MULTI-AGENT E2E PASS hermes-absent containers=3 handoffs=2")
