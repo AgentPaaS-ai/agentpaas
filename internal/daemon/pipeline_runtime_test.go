@@ -32,10 +32,7 @@ func TestPipelineReconcileLoop_TicksWhileEnabled(t *testing.T) {
 
 	// Wait for at least 2 ticks.
 	deadline := time.After(2 * time.Second)
-	for {
-		if atomic.LoadInt32(&tickCount) >= 2 {
-			break
-		}
+	for atomic.LoadInt32(&tickCount) < 2 {
 		select {
 		case <-deadline:
 			t.Fatalf("timed out waiting for 2 ticks: got %d", tickCount)
