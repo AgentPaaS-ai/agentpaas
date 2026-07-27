@@ -62,6 +62,7 @@ func (l *RuntimeStageLauncher) EnsureLaunch(ctx context.Context, job *StageLaunc
 		PackageDigest:    job.PackageDigest,
 		PolicyDigest:     job.PolicyDigest,
 		Image:            job.Image,
+		Command:          job.Command,
 		LeaseGeneration:  job.Generation,
 		NetworkID:        job.NetworkID,
 	}
