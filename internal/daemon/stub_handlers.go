@@ -102,6 +102,12 @@ type controlServer struct {
 	// runtime available. Production daemons always leave this false.
 	disableContainerLaunch bool
 
+	// testRuntime is a RuntimeDriver injected by unit tests. When set
+	// (non-nil), getOrCreateRuntime returns a DockerRuntime that delegates
+	// all operations to testRuntime instead of connecting to a live Docker
+	// daemon. Production daemons always leave this nil.
+	testRuntime runtime.RuntimeDriver
+
 	// mcpRegistry provides the MCP service registry for managed service
 	// routing. When nil, MCP service routing fails closed with B33.
 	mcpRegistry *mcpmanager.ServiceRegistry
