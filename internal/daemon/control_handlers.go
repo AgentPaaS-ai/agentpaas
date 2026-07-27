@@ -2736,6 +2736,12 @@ func secretServiceName(homeDir string) string {
 }
 
 func (s *controlServer) getOrCreateRuntime() (*runtime.DockerRuntime, error) {
+	// Test seam: when a test runtime is injected, return a DockerRuntime
+	// that delegates to it. This lets unit tests validate container
+	// lifecycle calls without a live Docker daemon.
+	if s.testRuntime != nil {
+		return runtime.NewDockerRuntimeWithDriver(s.testRuntime), nil
+	}
 	s.runtimeOnce.Do(func() {
 		s.dockerRT, s.runtimeErr = runtime.NewDockerRuntime()
 	})
