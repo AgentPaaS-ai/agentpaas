@@ -145,6 +145,7 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 		RunID:      claim.RunID,
 		AttemptID:  claim.Attempt.AttemptID,
 		Generation: claim.LaunchGeneration,
+		StageOrder: claim.StageOrder,
 		Status:     LaunchStatusPending,
 		CreatedAt:  now,
 		UpdatedAt:  now,

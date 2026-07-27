@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -180,6 +181,7 @@ func TestB34MultiAgentE2E_ThreeStageHermesAbsent(t *testing.T) {
 			t.Fatalf("stage %d: expected 1 container, got %d", stage, len(containers))
 		}
 		labels := containers[0].Labels
+		wantStageOrder := strconv.Itoa(stage)
 		for _, want := range []string{
 			runtime.LabelWorkflowID,
 			runtime.LabelNodeID,
@@ -192,6 +194,10 @@ func TestB34MultiAgentE2E_ThreeStageHermesAbsent(t *testing.T) {
 				t.Errorf("stage %d label %q missing", stage, want)
 			} else {
 				t.Logf("  label %s = %s", want, v)
+				if want == runtime.LabelStageOrder && v != wantStageOrder {
+					t.Errorf("stage %d label %q: want %q, got %q",
+						stage, want, wantStageOrder, v)
+				}
 			}
 		}
 		// Verify no secret-like values in labels.
