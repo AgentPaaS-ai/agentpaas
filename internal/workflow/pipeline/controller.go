@@ -297,13 +297,25 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 	target.UpdatedAt = time.Now().UTC()
 	if err := c.Store.UpdateNode(ctx, target, nodeGen); err != nil {
 		if errors.Is(err, routedrun.ErrCASConflict) {
-			// On restart the controller's gen map may be stale. Retry with
-			// a higher generation: seed puts gen=1, commit bumps to 2+,
-			// so for a READY node that survived a restart, gen >=2 is safe.
-			// Try nodeGen+1 for nodes that went through handoff transition.
+			// CAS conflict: either another controller claimed this node,
+			// or our local generation map is stale (e.g. restart after
+			// a handoff transition bumped the store generation).
+			// Re-read from store to determine which case.
+			freshNode, getErr := c.Store.GetNode(ctx, target.NodeID)
+			if getErr != nil {
+				return nil, fmt.Errorf("claim next ready: re-read after CAS conflict: %w", getErr)
+			}
+			// If the node is no longer READY, another controller won.
+			// Return nil without overwriting their claim.
+			if freshNode.Status != routedrun.NodeStatusReady {
+				return nil, nil
+			}
+			// Node is still READY but our local generation map is stale
+			// (e.g. restart scenario). Retry with higher generations.
+			// We do not blindly overwrite — the status guard above ensures
+			// we only retry when the node is genuinely unclaimed.
 			if err2 := c.Store.UpdateNode(ctx, target, nodeGen+1); err2 != nil {
 				if errors.Is(err2, routedrun.ErrCASConflict) {
-					// Try one more tier for heavily mutated nodes.
 					if err3 := c.Store.UpdateNode(ctx, target, nodeGen+2); err3 != nil {
 						if errors.Is(err3, routedrun.ErrCASConflict) {
 							return nil, ErrCASConflict
