@@ -1,6 +1,7 @@
 # Current State — Block 34 CLOSED (multi-agent proof)
 
-**Shipped release tag:** v0.3.0 (B1–B32 product line)  
+**Shipped release tag:** v0.3.5 (B1–B34 + B34.5; pipelines multi-agent e2e)
+**Prior tag:** v0.3.0  
 **Development head:** **B34 CLOSED** including multi-agent three-stage Docker e2e  
 **Main tip:** see `git log -1 --oneline`  
 **Date:** 2026-07-26

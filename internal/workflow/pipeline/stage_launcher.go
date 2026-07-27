@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,8 +132,15 @@ func (l *RuntimeStageLauncher) FenceStage(ctx context.Context, workflowID, nodeI
 		}
 
 		// Remove the container. Force=true to handle any remaining state.
+		// Docker may return "already in progress" / not-found under concurrent
+		// fence+cleanup; those are success for our purposes.
 		if err := l.Driver.Remove(ctx, cid, true); err != nil {
-			return fmt.Errorf("FenceStage: remove %s: %w", cid, err)
+			msg := err.Error()
+			if !strings.Contains(msg, "already in progress") &&
+				!strings.Contains(msg, "No such container") &&
+				!strings.Contains(msg, "is not running") {
+				return fmt.Errorf("FenceStage: remove %s: %w", cid, err)
+			}
 		}
 
 		// Clean up active map entries pointing to this container.
