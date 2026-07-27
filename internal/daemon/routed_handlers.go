@@ -14,6 +14,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/registry"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
+	"github.com/AgentPaaS-ai/agentpaas/internal/workflow/pipeline"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -635,20 +636,80 @@ func (s *controlServer) GetWorkflow(ctx context.Context, req *controlv1.GetWorkf
 	return &controlv1.GetWorkflowResponse{Workflow: workflowToProto(wf)}, nil
 }
 
-// controlServer.CancelWorkflow requests workflow cancellation or reports the control feature is not enabled.
+// controlServer.CancelWorkflow cancels a workflow with optional reason.
+// On success returns the updated workflow. MCP services for the workflow are
+// fenced (best-effort). Idempotent: cancelling an already-CANCELLED workflow
+// succeeds without mutation.
 //
-// It returns an error if the operation fails or inputs are invalid.
+// Returns:
+//   - NotFound  if the workflow does not exist
+//   - InvalidArgument if required fields are missing
 func (s *controlServer) CancelWorkflow(ctx context.Context, req *controlv1.CancelWorkflowRequest) (*controlv1.CancelWorkflowResponse, error) {
-	_ = ctx // unused context; interface compliance
 	if req.GetWorkflowId() == "" {
 		return nil, status.Error(codes.InvalidArgument, "workflow_id is required")
 	}
 	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
 		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
 	}
-	return &controlv1.CancelWorkflowResponse{
-		Error: featureNotEnabled("workflow_control", "B35", "routed_run_control_not_enabled"),
-	}, nil
+	if s.workflowStore == nil {
+		return nil, status.Error(codes.FailedPrecondition, "workflow store not initialized")
+	}
+
+	wfID := routedrun.WorkflowID(req.GetWorkflowId())
+
+	// Load workflow.
+	wf, err := s.workflowStore.GetWorkflow(ctx, wfID)
+	if err != nil {
+		if errors.Is(err, routedrun.ErrNotFound) {
+			return nil, status.Errorf(codes.NotFound, "workflow %q not found", req.GetWorkflowId())
+		}
+		return nil, mapRoutedStoreError(err)
+	}
+
+	// Idempotent: already cancelled — success.
+	if wf.Status == routedrun.WorkflowStatusCancelled {
+		return &controlv1.CancelWorkflowResponse{Workflow: workflowToProto(wf)}, nil
+	}
+
+	// Cancel via pipeline Controller when store supports it (node/run/attempt cleanup).
+	var cancelErr error
+	if ps, ok := s.workflowStore.(pipeline.PipelineStore); ok {
+		ctrl := pipeline.NewController(ps)
+		cancelErr = ctrl.CancelWorkflow(ctx, pipeline.CancelRequest{
+			WorkflowID: wfID,
+			Reason:     req.GetReason(),
+		})
+	} else {
+		// Direct durable transition (no node/run cleanup).
+		if err := routedrun.ValidateWorkflowTransition(wf.Status, routedrun.WorkflowStatusCancelled); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "cannot cancel workflow %q: %v", req.GetWorkflowId(), err)
+		}
+		now := time.Now().UTC()
+		wf.Status = routedrun.WorkflowStatusCancelled
+		wf.TerminatedAt = &now
+		wf.UpdatedAt = now
+		reason := routedrun.FailureUserCancelled
+		wf.TerminalReason = &reason
+		cancelErr = s.workflowStore.UpdateWorkflow(ctx, wf, wf.Generation)
+	}
+	if cancelErr != nil {
+		return nil, status.Errorf(codes.Internal, "cancel workflow %q: %v", req.GetWorkflowId(), cancelErr)
+	}
+
+	// Reload to return fresh state.
+	wf, err = s.workflowStore.GetWorkflow(ctx, wfID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "reload workflow %q after cancel: %v", req.GetWorkflowId(), err)
+	}
+
+	// Fence MCP services for this workflow (best-effort, non-fatal).
+	if s.mcpFencer != nil {
+		_ = s.mcpFencer.WorkflowTerminal(ctx, string(wfID))
+	} else if s.mcpRegistry != nil {
+		_ = s.mcpRegistry.WorkflowTerminal(ctx, string(wfID))
+	}
+
+	return &controlv1.CancelWorkflowResponse{Workflow: workflowToProto(wf)}, nil
 }
 
 // controlServer.SetWorkflowDesiredState sets desired workflow state or reports the control feature is not enabled.

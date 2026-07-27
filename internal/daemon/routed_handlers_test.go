@@ -15,6 +15,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
+	"github.com/AgentPaaS-ai/agentpaas/internal/workflow/pipeline"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -235,7 +236,7 @@ func TestInvokeDeployment_NotEnabledNoMutation(t *testing.T) {
 	}
 }
 
-func TestControlAndAmendment_NotEnabledNoMutation(t *testing.T) {
+func TestControlAndAmendment_CancelWorks_AmendNotEnabled(t *testing.T) {
 	s := newTestControlServer(t)
 	ctx := context.Background()
 
@@ -248,7 +249,8 @@ func TestControlAndAmendment_NotEnabledNoMutation(t *testing.T) {
 		WorkflowID:    wfID,
 		SchemaVersion: routedrun.CurrentSchemaVersion,
 		WorkflowKind:  "pipeline",
-		Status:        routedrun.WorkflowStatusPending,
+		Status:        routedrun.WorkflowStatusRunning,
+		Generation:    1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -262,18 +264,24 @@ func TestControlAndAmendment_NotEnabledNoMutation(t *testing.T) {
 		t.Fatalf("kind=%s", got.GetWorkflow().GetWorkflowKind())
 	}
 
+	// Cancel now works (was FEATURE_NOT_ENABLED before B34.5).
 	cancelResp, err := s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
 		WorkflowId: string(wfID), Reason: "test", ActorIdentity: "t", IdempotencyKey: "k1",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cancelResp.GetError() == nil || cancelResp.GetError().GetCodeName() != "FEATURE_NOT_ENABLED" &&
-		!strings.Contains(cancelResp.GetError().GetCodeName(), "not_enabled") &&
-		cancelResp.GetError().GetCode() != controlv1.TypedControlErrorCode_TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED {
-		t.Fatalf("cancel: %+v", cancelResp.GetError())
+	if cancelResp.GetError() != nil {
+		t.Fatalf("unexpected error: %+v", cancelResp.GetError())
+	}
+	if cancelResp.GetWorkflow() == nil {
+		t.Fatal("expected workflow in response")
+	}
+	if cancelResp.GetWorkflow().GetStatus() != "CANCELLED" {
+		t.Fatalf("status=%s want CANCELLED", cancelResp.GetWorkflow().GetStatus())
 	}
 
+	// AmendLimits still not enabled.
 	amend, err := s.AmendLimits(ctx, &controlv1.AmendLimitsRequest{
 		WorkflowId: string(wfID), Reason: "more", ActorIdentity: "t", IdempotencyKey: "k2",
 		NewMaxActiveDurationMs: 1000,
@@ -285,13 +293,13 @@ func TestControlAndAmendment_NotEnabledNoMutation(t *testing.T) {
 		t.Fatal("expected amend not enabled")
 	}
 
-	// Workflow status unchanged.
+	// Verify workflow is now CANCELLED.
 	got2, err := s.GetWorkflow(ctx, &controlv1.GetWorkflowRequest{WorkflowId: string(wfID)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got2.GetWorkflow().GetStatus() != got.GetWorkflow().GetStatus() {
-		t.Fatalf("status mutated: %s -> %s", got.GetWorkflow().GetStatus(), got2.GetWorkflow().GetStatus())
+	if got2.GetWorkflow().GetStatus() != "CANCELLED" {
+		t.Fatalf("status=%s want CANCELLED", got2.GetWorkflow().GetStatus())
 	}
 }
 
@@ -741,5 +749,226 @@ func TestFailClosedRoutedRun_MCPService_AllowedWithRegistry(t *testing.T) {
 	}
 	if len(runs) != 0 {
 		t.Fatalf("runs leaked: %d", len(runs))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// B34.5-A CancelWorkflow tests
+// ---------------------------------------------------------------------------
+
+func TestCancelWorkflow_RunningWorkflow_AllNodesTerminal(t *testing.T) {
+	ctx := context.Background()
+	store := routedrun.NewMemoryStore()
+	ctrl := pipeline.NewController(store)
+
+	wfID, nodeIDs, err := pipeline.SeedPipelineWorkflow(ctx, ctrl, 3)
+	if err != nil {
+		t.Fatalf("SeedPipelineWorkflow: %v", err)
+	}
+
+	s := newTestControlServer(t)
+	s.workflowStore = store
+
+	resp, err := s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+		WorkflowId:    string(wfID),
+		Reason:        "test-cancellation",
+		ActorIdentity: "test",
+		IdempotencyKey: "cancel-1",
+	})
+	if err != nil {
+		t.Fatalf("CancelWorkflow: %v", err)
+	}
+	if resp.GetError() != nil {
+		t.Fatalf("unexpected error: %+v", resp.GetError())
+	}
+
+	// Workflow should be CANCELLED.
+	wf, err := store.GetWorkflow(ctx, wfID)
+	if err != nil {
+		t.Fatalf("GetWorkflow: %v", err)
+	}
+	if wf.Status != routedrun.WorkflowStatusCancelled {
+		t.Fatalf("workflow status = %s, want CANCELLED", wf.Status)
+	}
+	if wf.TerminalReason == nil || *wf.TerminalReason != routedrun.FailureUserCancelled {
+		t.Fatalf("terminal reason = %v, want USER_CANCELLED", wf.TerminalReason)
+	}
+
+	// All nodes should be CANCELLED.
+	nodes, err := store.ListNodes(ctx, wfID)
+	if err != nil {
+		t.Fatalf("ListNodes: %v", err)
+	}
+	if len(nodes) != len(nodeIDs) {
+		t.Fatalf("node count = %d, want %d", len(nodes), len(nodeIDs))
+	}
+	for _, n := range nodes {
+		if n.Status != routedrun.NodeStatusCancelled {
+			t.Fatalf("node %s status = %s, want CANCELLED", n.NodeID, n.Status)
+		}
+	}
+
+	// Runs should also be CANCELLED.
+	for _, n := range nodes {
+		run, err := store.GetRun(ctx, n.RunID)
+		if err != nil {
+			t.Fatalf("GetRun %s: %v", n.RunID, err)
+		}
+		if run.Status != routedrun.RunStatusCancelled {
+			t.Fatalf("run %s status = %s, want CANCELLED", n.RunID, run.Status)
+		}
+	}
+}
+
+func TestCancelWorkflow_Idempotent(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	wfID, err := routedrun.NewWorkflowID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.workflowStore.CreateWorkflow(ctx, &routedrun.WorkflowRecord{
+		WorkflowID:    wfID,
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		WorkflowKind:  "pipeline",
+		Status:        routedrun.WorkflowStatusRunning,
+		Generation:    1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// First cancel.
+	resp1, err := s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+		WorkflowId:    string(wfID),
+		Reason:        "first-cancel",
+		ActorIdentity: "test",
+		IdempotencyKey: "idem-1",
+	})
+	if err != nil {
+		t.Fatalf("CancelWorkflow #1: %v", err)
+	}
+	if resp1.GetError() != nil {
+		t.Fatalf("unexpected error: %+v", resp1.GetError())
+	}
+
+	// Second cancel — idempotent.
+	resp2, err := s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+		WorkflowId:    string(wfID),
+		Reason:        "second-cancel",
+		ActorIdentity: "test",
+		IdempotencyKey: "idem-2",
+	})
+	if err != nil {
+		t.Fatalf("CancelWorkflow #2: %v", err)
+	}
+	if resp2.GetError() != nil {
+		t.Fatalf("unexpected error on second cancel: %+v", resp2.GetError())
+	}
+	if resp2.GetWorkflow() == nil {
+		t.Fatal("expected workflow in response")
+	}
+	if resp2.GetWorkflow().GetStatus() != "CANCELLED" {
+		t.Fatalf("status=%s want CANCELLED", resp2.GetWorkflow().GetStatus())
+	}
+}
+
+func TestCancelWorkflow_MissingWorkflow_NotFound(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	fakeID := "wf-not-there-12345"
+	_, err := s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+		WorkflowId:     fakeID,
+		Reason:         "test",
+		ActorIdentity:  "test",
+		IdempotencyKey: "missing-1",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing workflow")
+	}
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("code=%v, want NotFound", status.Code(err))
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("error should contain 'not found', got: %v", err)
+	}
+}
+
+func TestCancelWorkflow_MissingIdempotencyKey_InvalidArgument(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	_, err := s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+		WorkflowId:    "wf-123",
+		IdempotencyKey: "",
+	})
+	if err == nil {
+		t.Fatal("expected error for missing idempotency_key")
+	}
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("code=%v, want InvalidArgument", status.Code(err))
+	}
+}
+
+// fakeMCPFencer records calls to WorkflowTerminal for verification.
+type fakeMCPFencer struct {
+	calls int
+}
+
+func (f *fakeMCPFencer) WorkflowTerminal(_ context.Context, _ string) error {
+	f.calls++
+	return nil
+}
+
+func TestCancelWorkflow_WithMCPFencer_CallsWorkflowTerminal(t *testing.T) {
+	s := newTestControlServer(t)
+	ctx := context.Background()
+
+	// Seed a workflow.
+	wfID, err := routedrun.NewWorkflowID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.workflowStore.CreateWorkflow(ctx, &routedrun.WorkflowRecord{
+		WorkflowID:    wfID,
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		WorkflowKind:  "pipeline",
+		Status:        routedrun.WorkflowStatusRunning,
+		Generation:    1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inject fake MCP fencer.
+	fencer := &fakeMCPFencer{}
+	s.mcpFencer = fencer
+
+	resp, err := s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+		WorkflowId:     string(wfID),
+		Reason:         "test",
+		ActorIdentity:  "test",
+		IdempotencyKey: "mcp-1",
+	})
+	if err != nil {
+		t.Fatalf("CancelWorkflow: %v", err)
+	}
+	if resp.GetError() != nil {
+		t.Fatalf("unexpected error: %+v", resp.GetError())
+	}
+	if fencer.calls != 1 {
+		t.Fatalf("MCP fencer calls = %d, want 1", fencer.calls)
+	}
+
+	// Cancel again (idempotent) — should NOT call WorkflowTerminal a second time
+	// because the workflow is already CANCELLED.
+	_, _ = s.CancelWorkflow(ctx, &controlv1.CancelWorkflowRequest{
+		WorkflowId:     string(wfID),
+		Reason:         "test2",
+		ActorIdentity:  "test",
+		IdempotencyKey: "mcp-2",
+	})
+	if fencer.calls != 1 {
+		t.Fatalf("MCP fencer calls after second cancel = %d, want 1 (still)", fencer.calls)
 	}
 }
