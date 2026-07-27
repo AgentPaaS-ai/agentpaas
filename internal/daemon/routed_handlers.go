@@ -349,17 +349,17 @@ func (s *controlServer) InvokeDeployment(ctx context.Context, req *controlv1.Inv
 	}
 
 	if outcome == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
-		// BUG-043: launch the container in a goroutine so the RPC
-		// response is not blocked on Docker operations.
-		// Skip in test environments where Docker is unavailable.
-		if !s.disableContainerLaunch {
-			// B34.5: For pipeline workflows, register for reconcile
-			// instead of single-package startDurableRun.
-			if s.shouldUsePipelineReconcile(ctx, receipt) {
-				go s.registerPipelineWorkflow(ctx, receipt)
-			} else {
-				go s.startDurableRun(receipt, string(req.GetInputJson()))
-			}
+		// B34.5: For pipeline workflows, register for reconcile
+		// instead of single-package startDurableRun. Pipeline
+		// registration does not launch containers, so it runs even
+		// when disableContainerLaunch is true.
+		if s.shouldUsePipelineReconcile(ctx, receipt) {
+			go s.registerPipelineWorkflow(ctx, receipt)
+		} else if !s.disableContainerLaunch {
+			// BUG-043: launch the container in a goroutine so the RPC
+			// response is not blocked on Docker operations.
+			// Skip in test environments where Docker is unavailable.
+			go s.startDurableRun(receipt, string(req.GetInputJson()))
 		}
 	}
 
