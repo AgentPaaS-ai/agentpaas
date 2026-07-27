@@ -36,6 +36,10 @@ type StageLaunchRequest struct {
 	// Must contain nodeID or runID in the path to avoid collisions.
 	WritableWorkDirBind string
 
+	// Command is the entrypoint command override for the container (e.g.,
+	// ["sleep", "60"]). When empty the image default is used.
+	Command []string
+
 	// Env is the environment for the container. Must not include secret-looking
 	// values (the builder strips secret-like env from labels, not from Env).
 	Env []string
@@ -142,6 +146,7 @@ func BuildStageContainerSpec(req StageLaunchRequest) (runtime.ContainerSpec, err
 
 	return runtime.ContainerSpec{
 		Image:            req.Image,
+		Command:          req.Command,
 		Env:              req.Env,
 		Labels:           labels,
 		NetworkIDs:       []string{req.NetworkID},
