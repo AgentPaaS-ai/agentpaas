@@ -62,6 +62,9 @@ type StageLaunchJob struct {
 	PolicyDigest string
 	// StageOrder is the 0-based ordinal of this stage in the pipeline.
 	StageOrder int
+	// Command is the entrypoint command override for the container (e.g.,
+	// ["sleep", "60"]). When empty the image default is used.
+	Command []string
 	// ContainerID is the runtime container ID set after a successful launch.
 	ContainerID string
 }
