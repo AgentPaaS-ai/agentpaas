@@ -118,6 +118,16 @@ func (s *controlServer) SetMCPServiceRegistry(reg *mcpmanager.ServiceRegistry) {
 	s.mcpRegistry = reg
 }
 
+// pipelineStore returns the underlying routed-run LocalStore suitable for
+// use as a pipeline.PipelineStore. Returns nil when stores are not
+// initialized (e.g. before initRoutedStores).
+func (s *controlServer) pipelineStore() *routedrun.LocalStore {
+	if s == nil {
+		return nil
+	}
+	return s.localStore
+}
+
 // EnsureWorkflowMCPServices declares and starts every service binding for a
 // workflow. Requires s.mcpRegistry != nil. Idempotent Start on already-READY
 // services. On first failure, best-effort Stop/cleanup already-started
