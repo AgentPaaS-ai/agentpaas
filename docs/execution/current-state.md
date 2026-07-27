@@ -14,6 +14,12 @@
 | **Multi-agent three-stage Docker e2e (Hermes-absent)** | **DONE** `make block34-multiagent-gate` ×3 |
 | StageOrder on launch jobs | FIXED |
 
+## Docker policy (standing)
+
+- `make ensure-docker` — start/install Colima+Docker or **fail** (no skip)
+- B34 pipeline Docker/multi-agent tests use `requireDockerE2E` — **never `t.Skip`**
+- `make block34-gate` ends with `block34-docker-gate` (multi-agent ×3 + isolation)
+
 ## Gates (disk-verified)
 
 - `make block34-gate` PASS  
