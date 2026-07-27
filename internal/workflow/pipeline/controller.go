@@ -106,12 +106,13 @@ func (c *Controller) initSeedGenerations(nodeIDs []routedrun.NodeID, runIDs map[
 
 // Claim represents a claimed node that is now LAUNCHING.
 type Claim struct {
-	WorkflowID      routedrun.WorkflowID
-	NodeID          routedrun.NodeID
-	RunID           routedrun.RunID
-	Attempt         *routedrun.AttemptRecord
+	WorkflowID       routedrun.WorkflowID
+	NodeID           routedrun.NodeID
+	RunID            routedrun.RunID
+	Attempt          *routedrun.AttemptRecord
 	LaunchGeneration int64  // node gen used at claim (for LaunchIdempotencyKey)
-	LaunchKey       string // LaunchIdempotencyKey(workflowID, nodeID, launchGen)
+	LaunchKey        string // LaunchIdempotencyKey(workflowID, nodeID, launchGen)
+	StageOrder       int    // 0-based ordinal from the claimed node
 }
 
 // StageSuccess is the request payload for CommitStageSuccess.
@@ -356,12 +357,13 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 	c.attGen[attempt.AttemptID] = 1
 
 	return &Claim{
-		WorkflowID:      workflowID,
-		NodeID:          target.NodeID,
-		RunID:           target.RunID,
-		Attempt:         attempt,
+		WorkflowID:       workflowID,
+		NodeID:           target.NodeID,
+		RunID:            target.RunID,
+		Attempt:          attempt,
 		LaunchGeneration: nodeGen,
-		LaunchKey:       LaunchIdempotencyKey(workflowID, target.NodeID, nodeGen),
+		LaunchKey:        LaunchIdempotencyKey(workflowID, target.NodeID, nodeGen),
+		StageOrder:       target.StageOrder,
 	}, nil
 }
 
