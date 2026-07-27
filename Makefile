@@ -604,8 +604,7 @@ block34-multiagent-gate: ensure-docker
 
 # ── Block 34 Docker Gate: isolation e2e + multi-agent (standing) ─────────
 # Requires AGENTPAAS_DOCKER_TESTS=1 and a running Docker daemon (e.g., Colima).
-# Not pulled into block34-gate (library stays green without Docker).
-# Use this (or block34-full-gate) for any B34+ release/close path.
+# Also invoked at end of block34-gate (mandatory docker multi-agent).
 
 .PHONY: block34-docker-gate
 block34-docker-gate: ensure-docker block34-multiagent-gate
@@ -615,7 +614,8 @@ block34-docker-gate: ensure-docker block34-multiagent-gate
 
 # Library + Docker multi-agent stack. Prefer this for block close / pre-B35.
 .PHONY: block34-full-gate
-block34-full-gate: ensure-docker block34-gate block34-docker-gate
+# Alias: block34-gate already includes docker multi-agent (no double-run).
+block34-full-gate: block34-gate
 	@echo "Block 34 full gate (library + docker multi-agent): PASS"
 
 # ── Block 34.5-C Gate: Pipeline Product Path Thin Vertical ────────────────
