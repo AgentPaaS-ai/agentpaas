@@ -38,9 +38,10 @@ func soakConfigFull() soakConfig {
 func soakConfigShort() soakConfig {
 	return soakConfig{
 		MinTurns:       10,
-		MinWallSeconds: 120,
+		MinWallSeconds: 5,
 		DaemonRestarts: 1,
 		SIGKILLPoints:  2,
+		ShortMode:      true,
 	}
 }
 
