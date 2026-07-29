@@ -302,26 +302,6 @@ func dockerKillContainer(t *testing.T, containerID string) int {
 	return exitCode
 }
 
-// getAgentpaasdPIDs returns the PIDs of running agentpaasd processes.
-func getAgentpaasdPIDs() []int {
-	cmd := exec.Command("pgrep", "-f", "bin/agentpaasd")
-	out, err := cmd.Output()
-	if err != nil {
-		return nil
-	}
-	var pids []int
-	for _, s := range strings.Fields(string(out)) {
-		var pid int
-		if _, err := fmt.Sscanf(s, "%d", &pid); err != nil {
-			continue
-		}
-		if pid > 0 {
-			pids = append(pids, pid)
-		}
-	}
-	return pids
-}
-
 // waitForRunStatus polls the daemon for a run status with timeout.
 func waitForRunStatus(t *testing.T, client controlv1.ControlServiceClient, runID string, expectedStatus string, timeout time.Duration) error {
 	t.Helper()
@@ -562,19 +542,19 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 		t.Logf("Before restart: invocation=%s OK", invocID)
 	}
 
-	// 6. Kill the daemon via SIGKILL.
+	// 6. Kill the daemon via SIGKILL — scope to THIS test daemon only.
+	// NEVER kill every bin/agentpaasd; only the PID returned by startAgentpaasd.
+	// Killing other agentpaasd processes (e.g. the user's product daemon) causes
+	// interference that makes concurrent soak tests fail spuriously.
 	_ = conn.Close() // close client before kill
 	restartStart := time.Now()
-	pidsBeforeKill := getAgentpaasdPIDs()
-	if len(pidsBeforeKill) == 0 {
-		t.Fatal("No agentpaasd PID found before kill")
+	proc, err := os.FindProcess(pidBefore)
+	if err != nil {
+		t.Fatalf("FindProcess pidBefore=%d: %v", pidBefore, err)
 	}
-	for _, p := range pidsBeforeKill {
-		proc, err := os.FindProcess(p)
-		if err == nil {
-			t.Logf("Killing agentpaasd pid=%d with SIGKILL", p)
-			_ = proc.Signal(syscall.SIGKILL) // best-effort kill
-		}
+	t.Logf("Killing agentpaasd pid=%d with SIGKILL", pidBefore)
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		t.Errorf("SIGKILL pid=%d: %v", pidBefore, err)
 	}
 	time.Sleep(2 * time.Second) // wait for process death
 	wallGap := time.Since(restartStart).Seconds()
