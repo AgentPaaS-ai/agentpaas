@@ -573,15 +573,28 @@ block30-soak-gate: block30-soak-gate-real
 block30-soak-gate-real: ensure-docker build-all
 	@echo "==> Block 30 REAL OPERATOR SOAK (daemon restart + worker SIGKILL, 3× each)"
 	@echo ""
-	@# Ensure no existing daemon is running (tests manage their own).
-	@-pkill -f "$$(pwd)/bin/agentpaasd" >/dev/null 2>&1 || true
-	@sleep 1
+	@# ── Isolation preamble ───────────────────────────────────────────────
 	@# Reject short mode for the full gate.
 	@if [ "$$AGENTPAAS_SOAK_SHORT" = "1" ]; then \
 		echo "FATAL: AGENTPAAS_SOAK_SHORT=1 is set."; \
 		echo "block30-soak-gate-real requires full-duration operator tests."; \
 		echo "Unset AGENTPAAS_SOAK_SHORT and re-run."; \
 		exit 1; \
+	fi
+	@# Stop any agentpaasd running from THIS worktree only.
+	@echo "  Stopping worktree-local agentpaasd (if any)..."
+	@-pkill -f "$(CURDIR)/bin/agentpaasd" >/dev/null 2>&1 || true
+	@sleep 1
+	@# Remove Docker leftovers from prior AgentPaaS runs.
+	@echo "  Cleaning Docker leftovers (managed-by=agentpaas)..."
+	@-docker ps -a --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+	@-docker network ls --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
+	@# Warn if another agentpaasd is listening on :7718 (product daemon or other worktree).
+	@if lsof -iTCP:7718 -sTCP:LISTEN -t >/dev/null 2>&1; then \
+		echo "  ⚠ WARNING: Another agentpaasd is listening on :7718"; \
+		lsof -iTCP:7718 -sTCP:LISTEN -P 2>/dev/null | head -5; \
+		echo "  Tests use a Unix socket (not :7718), but concurrent daemons may interfere."; \
+		echo "  Consider stopping the other daemon before running this gate."; \
 	fi
 	@echo "  Docker: $$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo 'unavailable')"
 	@echo ""
