@@ -81,15 +81,16 @@ func startAgentpaasd(t *testing.T) (pid int, socketPath string, cleanup func()) 
 	t.Helper()
 
 	repoRoot := findRepoRoot()
-	socketPath = filepath.Join(repoRoot, "testdata", "agentpaasd-test.sock")
-
-	// Clean up any stale socket.
-	_ = os.Remove(socketPath)
-
 	homeDir := filepath.Join(repoRoot, "testdata", "agentpaasd-home")
 	if err := os.MkdirAll(homeDir, 0o700); err != nil {
 		t.Fatalf("mkdir home dir: %v", err)
 	}
+
+	// The daemon binds at $AGENTPAAS_HOME/daemon.sock.
+	socketPath = filepath.Join(homeDir, "daemon.sock")
+
+	// Clean up any stale socket.
+	_ = os.Remove(socketPath)
 
 	// Set AGENTPAAS_HOME for the daemon.
 	cmd := exec.Command(daemonBin())

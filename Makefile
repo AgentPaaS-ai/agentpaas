@@ -535,8 +535,60 @@ block30-soak-gate: ensure-docker build-all restart-local-daemon
 	fi; \
 	echo "  $$ev: present ✓"
 	@echo ""
-	@echo "Block 30 soak gate: PASS"
-	@echo "Evidence: docs/execution/m0/soak-{1,2,3}.json + failure-injection.json"
+	@echo 'Block 30 soak gate: PASS'
+	@echo 'Evidence: docs/execution/m0/soak-{1,2,3}.json + failure-injection.json'
+
+# ── Block 30 Real Operator Soak Gate ────────────────────────────────────
+# Runs the operator-level tests that exercise agentpaasd PID tracking, daemon
+# restart/reconcile, and docker kill of worker containers. Unlike the library
+# soaks above, these tests use the real daemon gRPC path.
+# Requires a clean daemon state (no running agentpaasd) — the tests manage their
+# own daemon processes.
+.PHONY: block30-soak-gate-real
+block30-soak-gate-real: ensure-docker build-all
+	@echo "==> Block 30 REAL OPERATOR SOAK (daemon restart + worker SIGKILL)"
+	@echo ""
+	@# Ensure no existing daemon is running (tests manage their own).
+	@-pkill -f "$$(pwd)/bin/agentpaasd" >/dev/null 2>&1 || true
+	@sleep 1
+	@# Reject short mode for the full gate.
+	@if [ "$$AGENTPAAS_SOAK_SHORT" = "1" ]; then \
+		echo "FATAL: AGENTPAAS_SOAK_SHORT=1 is set."; \
+		echo "block30-soak-gate-real requires full-duration operator tests."; \
+		echo "Unset AGENTPAAS_SOAK_SHORT and re-run."; \
+		exit 1; \
+	fi
+	@echo "  Docker: $$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo 'unavailable')"
+	@echo ""
+	@echo "  === REAL DAEMON RESTART SOAK ==="
+	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestOperatorSoak_RealDaemonRestart' -timeout 60m -v 2>&1 | tee /tmp/block30-real-daemon-restart.log
+	@if grep -q '^--- FAIL' /tmp/block30-real-daemon-restart.log; then \
+		echo "FATAL: Real daemon restart soak FAILED. See /tmp/block30-real-daemon-restart.log"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "  === REAL WORKER SIGKILL SOAK ==="
+	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestOperatorSoak_RealWorkerSIGKILL' -timeout 60m -v 2>&1 | tee /tmp/block30-real-worker-sigkill.log
+	@if grep -q '^--- FAIL' /tmp/block30-real-worker-sigkill.log; then \
+		echo "FATAL: Real worker SIGKILL soak FAILED. See /tmp/block30-real-worker-sigkill.log"; \
+		exit 1; \
+	fi
+	@echo ""
+	@# Verify real evidence files.
+	@echo "  === Verifying real evidence files ==="
+	@for ev in "docs/execution/m0/real-daemon-restart.json" "docs/execution/m0/real-worker-sigkill.json"; do \
+		if [ ! -f "$$ev" ]; then \
+			echo "FATAL: $$ev missing"; exit 1; \
+		fi; \
+		pid_before=$$(python3 -c "import json; d=json.load(open('$$ev')); print(d.get('agentpaasd_pid_before',0))" 2>/dev/null || echo 0); \
+		if [ "$$pid_before" = "0" ] || [ "$$pid_before" = "" ]; then \
+			echo "FATAL: $$ev has zero/empty agentpaasd_pid_before"; exit 1; \
+		fi; \
+		echo "  $$ev: agentpaasd_pid_before=$$pid_before OK"; \
+	done
+	@echo ""
+	@echo "Block 30 real operator soak gate: PASS"
+	@echo "Evidence: docs/execution/m0/real-daemon-restart.json + real-worker-sigkill.json"
 
 .PHONY: block31-gate
 block31-gate: block30-gate
@@ -813,6 +865,7 @@ gates: ## List all available gate targets
 	@echo "  block29-gate - Real-time stream, durable eventing, integrated adversary"
 	@echo "  block30-gate - Durable runtime: supervisor, liveness, reference worker, longevity"
 	@echo "  block30-soak-gate - Operator multi-turn soak (3×30min + failure injection, Docker mandatory)"
+	@echo "  block30-soak-gate-real - Real daemon operator soak (PID tracking, restart, SIGKILL, Docker mandatory)"
 	@echo "  block31-gate - Local package registry: read API, promotion, delegation gate"
 	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
 	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
