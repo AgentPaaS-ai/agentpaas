@@ -606,6 +606,13 @@ block30-soak-gate-real: ensure-docker build-all
 			echo "FATAL: Real daemon restart soak $$run/3 FAILED. See /tmp/block30-real-daemon-restart-$$run.log"; \
 			exit 1; \
 		fi; \
+		cp docs/execution/m0/real-daemon-restart.json docs/execution/m0/real-daemon-restart-$$run.json 2>/dev/null || true; \
+		echo "  → inter-run cleanup..."; \
+		sleep 5; \
+		docker ps -a --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true; \
+		docker network ls --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true; \
+		pkill -f "$(CURDIR)/bin/agentpaasd" >/dev/null 2>&1 || true; \
+		sleep 2; \
 		echo ""; \
 	done
 	@echo ""
@@ -617,6 +624,13 @@ block30-soak-gate-real: ensure-docker build-all
 			echo "FATAL: Real worker SIGKILL soak $$run/3 FAILED. See /tmp/block30-real-worker-sigkill-$$run.log"; \
 			exit 1; \
 		fi; \
+		cp docs/execution/m0/real-worker-sigkill.json docs/execution/m0/real-worker-sigkill-$$run.json 2>/dev/null || true; \
+		echo "  → inter-run cleanup..."; \
+		sleep 5; \
+		docker ps -a --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true; \
+		docker network ls --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true; \
+		pkill -f "$(CURDIR)/bin/agentpaasd" >/dev/null 2>&1 || true; \
+		sleep 2; \
 		echo ""; \
 	done
 	@echo ""
@@ -646,6 +660,7 @@ print(f'  real-daemon-restart.json: wall_seconds={ws:.0f} turns_completed={tc} O
 	@echo ""
 	@echo "Block 30 real operator soak gate: PASS (3× daemon restart + 3× worker SIGKILL)"
 	@echo "Evidence: docs/execution/m0/real-daemon-restart.json + real-worker-sigkill.json"
+	@echo "Per-run:   docs/execution/m0/real-daemon-restart-{1,2,3}.json + real-worker-sigkill-{1,2,3}.json"
 
 .PHONY: block31-gate
 block31-gate: block30-gate
