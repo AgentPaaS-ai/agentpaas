@@ -29,6 +29,9 @@ coverage.txt
 .agentpaas/
 AGENTPAAS_HOME/
 
+# Test runtime state directories
+testdata/agentpaasd-home/
+
 # Secrets and credentials — never commit
 .env
 .env.*
