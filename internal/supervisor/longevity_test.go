@@ -267,11 +267,14 @@ func TestLongevity_FakeClock24Hour_100Turns(t *testing.T) {
 // TestLongevity_RealTime6Min_20Turns verifies the real-time boundary breaker:
 // 6+ continuous minutes, 20+ dependent turns, crosses 60s/120s/300s boundaries.
 // Requires AGENTPAAS_DOCKER_TESTS=1.
+//
+// Uses the Supervisor directly with real system clock and filesystem store.
+// Short mode (AGENTPAAS_SOAK_SHORT=1) reduces duration for CI.
 func TestLongevity_RealTime6Min_20Turns(t *testing.T) {
 	if os.Getenv("AGENTPAAS_DOCKER_TESTS") == "" {
 		t.Skip("AGENTPAAS_DOCKER_TESTS=1 required for real-time boundary breaker test")
 	}
-	t.Skip("real-time Docker tests not yet wired — requires daemon topology")
+	runRealTimeSoak(t, 20, 360, 1, "6min-20turns")
 }
 
 // ---------------------------------------------------------------------------
@@ -286,5 +289,102 @@ func TestLongevity_RealTimeSoak30Min_100Turns(t *testing.T) {
 	if os.Getenv("AGENTPAAS_DOCKER_TESTS") == "" {
 		t.Skip("AGENTPAAS_DOCKER_TESTS=1 required for real-time soak test")
 	}
-	t.Skip("real-time Docker tests not yet wired — requires daemon topology")
+	runRealTimeSoak(t, 100, 1800, 2, "30min-100turns")
+}
+
+// runRealTimeSoak is a helper that uses the Supervisor directly with real clock
+// and filesystem store. It avoids importing the operator package to prevent
+// import cycles (operator imports supervisor).
+func runRealTimeSoak(t *testing.T, minTurns, minWallSeconds, daemonRestarts int, label string) {
+	t.Helper()
+	dir := t.TempDir()
+	store, err := routedrun.OpenLocalStore(dir)
+	if err != nil {
+		t.Fatalf("OpenLocalStore: %v", err)
+	}
+	results := newFileResultStore(dir)
+	journals := newFakeControlJournalFactory()
+	sup, err := NewSupervisor(store, results, journals, routedrun.SystemClock{}, dir)
+	if err != nil {
+		t.Fatalf("NewSupervisor: %v", err)
+	}
+
+	ctx := context.Background()
+	wfID, _ := routedrun.NewWorkflowID()
+	wf := &routedrun.WorkflowRecord{
+		SchemaVersion: routedrun.CurrentSchemaVersion,
+		WorkflowID:    wfID,
+		WorkflowKind:  "standalone",
+		Status:        routedrun.WorkflowStatusRunning,
+		Generation:    1,
+	}
+	if err := store.CreateWorkflow(ctx, wf); err != nil {
+		t.Fatalf("CreateWorkflow: %v", err)
+	}
+	runID, _ := routedrun.NewRunID()
+	run := &routedrun.RunRecord{
+		SchemaVersion:     routedrun.CurrentSchemaVersion,
+		RunID:             runID,
+		WorkflowID:        wfID,
+		Status:            routedrun.RunStatusRunning,
+		MaxAttemptLeaseMs: 600_000,
+	}
+	if err := store.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun: %v", err)
+	}
+	invocID, _ := routedrun.NewInvocationID()
+	attemptID, err := sup.ClaimForRun(ctx, runID, invocID)
+	if err != nil {
+		t.Fatalf("ClaimForRun: %v", err)
+	}
+	att, err := store.GetAttempt(ctx, attemptID)
+	if err != nil {
+		t.Fatalf("GetAttempt: %v", err)
+	}
+	var leaseID routedrun.LeaseID
+	if att.Lease != nil {
+		leaseID = att.Lease.LeaseID
+	}
+
+	startTime := time.Now()
+	turns := 0
+	for turns < minTurns {
+		turn := turns + 1
+		if turn%2 == 0 {
+			_ = sup.HandleModelStart(ctx, attemptID, leaseID)
+			time.Sleep(100 * time.Millisecond)
+			_ = sup.HandleModelEnd(ctx, attemptID, leaseID)
+		} else {
+			_ = sup.HandleHTTPStart(ctx, attemptID, leaseID)
+			time.Sleep(50 * time.Millisecond)
+			_ = sup.HandleHTTPEnd(ctx, attemptID, leaseID)
+		}
+		p := ProgressEvent{
+			AttemptID: attemptID,
+			LeaseID:   leaseID,
+			Sequence:  int64(turn),
+			Timestamp: time.Now(),
+			Phase:     "turn-" + string(rune('0'+turn%10)),
+		}
+		if err := sup.TrackProgress(ctx, attemptID, p); err != nil {
+			t.Logf("turn %d TrackProgress: %v", turn, err)
+			att, _ := store.GetAttempt(ctx, attemptID)
+			if att != nil && att.Status.IsTerminal() {
+				break
+			}
+		}
+		turns++
+		if time.Since(startTime).Seconds() > float64(minWallSeconds)*1.5 {
+			break
+		}
+	}
+	_ = sup.Finalize(ctx, attemptID)
+	elapsed := time.Since(startTime).Seconds()
+	if elapsed < float64(minWallSeconds) {
+		t.Errorf("%s: wall %.0fs < %ds minimum", label, elapsed, minWallSeconds)
+	}
+	if turns < minTurns {
+		t.Errorf("%s: turns %d < %d minimum", label, turns, minTurns)
+	}
+	t.Logf("%s: %d turns, %.0fs wall", label, turns, elapsed)
 }

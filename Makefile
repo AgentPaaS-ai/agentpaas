@@ -451,7 +451,7 @@ block28-long:
 	@rm -f /tmp/block28-long-output.txt
 	@echo "Block 28 long: PASS"
 
-.PHONY: block30-gate
+.PHONY: block30-gate block30-soak-gate
 block30-gate: block29-gate block28-ci
 	@echo "==> Running Block 30 gate"
 	@echo "  T05-T08: supervisor + routedrun + harness + daemon tests with race"
@@ -476,6 +476,67 @@ block30-gate: block29-gate block28-ci
 	@echo "NOTE: block28-long (real-time Docker proofs) is a SEPARATE gate:"
 	@echo "  AGENTPAAS_DOCKER_TESTS=1 make block28-long"
 	@echo "  B30 is not fully complete until block28-long passes with Docker."
+
+# ── Block 30 Soak Gate: Operator multi-turn soak (Docker mandatory) ──────
+#
+# Runs 3 consecutive 30-minute soaks + 1 failure-injection variant.
+# Requires Docker (auto-installed via ensure-docker on macOS).
+# NEVER skips — Docker is mandatory for this gate.
+# Rejects AGENTPAAS_SOAK_SHORT=1 with a loud failure.
+# Timeout budget: 2h30m per soak × 3 + failure injection ≈ 8h (generous).
+#
+# Evidence emitted to docs/execution/m0/ (LOCAL-ONLY, never git-add).
+.PHONY: block30-soak-gate
+block30-soak-gate: ensure-docker build-all restart-local-daemon
+	@echo "==> Block 30 SOAK GATE (operator multi-turn, Docker mandatory)"
+	@echo ""
+	@# Reject short mode.
+	@if [ "$$AGENTPAAS_SOAK_SHORT" = "1" ]; then \
+		echo "FATAL: AGENTPAAS_SOAK_SHORT=1 is set."; \
+		echo "block30-soak-gate requires full-duration soaks (30 min × 3 + failure injection)."; \
+		echo "Unset AGENTPAAS_SOAK_SHORT and re-run."; \
+		exit 1; \
+	fi
+	@echo "  Docker: $$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo 'unavailable')"
+	@echo "  Daemon: $$(pgrep -f '$(CURDIR)/bin/agentpaasd' >/dev/null && echo 'running' || echo 'NOT RUNNING')"
+	@echo ""
+	@# Soak 1/3
+	@echo "  === SOAK 1/3: 30 min, 100 turns, daemon restarts ==="
+	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestSoak_Gate_3ConsecutiveSoaks' -timeout 150m -v 2>&1 | tee /tmp/block30-soak-gate-1.log
+	@if grep -q '^--- FAIL' /tmp/block30-soak-gate-1.log; then \
+		echo "FATAL: Soak gate FAILED. See /tmp/block30-soak-gate-1.log"; \
+		exit 1; \
+	fi
+	@echo ""
+	@# Failure injection
+	@echo "  === FAILURE INJECTION SOAK ==="
+	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestSoak_Gate_FailureInjection' -timeout 120m -v 2>&1 | tee /tmp/block30-soak-gate-fi.log
+	@if grep -q '^--- FAIL' /tmp/block30-soak-gate-fi.log; then \
+		echo "FATAL: Failure injection soak FAILED. See /tmp/block30-soak-gate-fi.log"; \
+		exit 1; \
+	fi
+	@echo ""
+	@# Verify evidence files exist with real measurements.
+	@echo "  === Verifying evidence files ==="
+	@for i in 1 2 3; do \
+		ev="docs/execution/m0/soak-$$i.json"; \
+		if [ ! -f "$$ev" ]; then \
+			echo "FATAL: $$ev missing"; exit 1; \
+		fi; \
+		wall=$$(python3 -c "import json; d=json.load(open('$$ev')); print(d.get('wall_seconds',0))" 2>/dev/null || echo 0); \
+		if [ "$$(echo "$$wall < 1800" | bc 2>/dev/null || echo 1)" = "1" ]; then \
+			echo "FATAL: $$ev wall_seconds=$$wall < 1800 minimum"; exit 1; \
+		fi; \
+		echo "  $$ev: wall_seconds=$$wall ✓"; \
+	done
+	@ev="docs/execution/m0/failure-injection.json"; \
+	if [ ! -f "$$ev" ]; then \
+		echo "FATAL: $$ev missing"; exit 1; \
+	fi; \
+	echo "  $$ev: present ✓"
+	@echo ""
+	@echo "Block 30 soak gate: PASS"
+	@echo "Evidence: docs/execution/m0/soak-{1,2,3}.json + failure-injection.json"
 
 .PHONY: block31-gate
 block31-gate: block30-gate
@@ -751,6 +812,7 @@ gates: ## List all available gate targets
 	@echo "  block28-gate - Runtime portability and managed-PaaS feasibility"
 	@echo "  block29-gate - Real-time stream, durable eventing, integrated adversary"
 	@echo "  block30-gate - Durable runtime: supervisor, liveness, reference worker, longevity"
+	@echo "  block30-soak-gate - Operator multi-turn soak (3×30min + failure injection, Docker mandatory)"
 	@echo "  block31-gate - Local package registry: read API, promotion, delegation gate"
 	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
 	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
