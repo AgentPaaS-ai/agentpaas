@@ -432,18 +432,25 @@ func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
 
 // invokeTimeoutForPayload returns the /invoke context timeout. When the
 // payload carries a TimeEnvelope (B30-T03 Part B, ceiling 3), the timeout is
-// derived from env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs) —
-// the min of the stall timeout, the attempt-lease remaining, and the active
-// time remaining. When no envelope is present (legacy v0.2.3 compat), it
-// falls back to s.cfg.InvokeTimeout (the 300s default from
-// AGENTPAAS_INVOKE_TIMEOUT or its legacy default).
+// derived from the envelope's active-time remaining and attempt-lease
+// remaining only — NOT the per-operation StallTimeoutMs, which is a
+// per-operation stall-detection ceiling inside the worker, not a session-level
+// ceiling for the entire /invoke HTTP handler.
+//
+// When no envelope is present (legacy v0.2.3 compat), it falls back to
+// s.cfg.InvokeTimeout (the 300s default from AGENTPAAS_INVOKE_TIMEOUT or its
+// legacy default).
 func (s *Server) invokeTimeoutForPayload(payload map[string]any) time.Duration {
 	if env, ok := routedrun.UnmarshalTimeEnvelopeFromPayload(payload); ok {
 		nowMs := routedrun.NowMonotonicMs(nil)
 		if s.nowMonotonicMs != nil {
 			nowMs = s.nowMonotonicMs()
 		}
-		deadlineMs := env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs)
+		deadlineMs := env.ActiveTimeRemainingMs(nowMs)
+		// Also bound by attempt lease if present.
+		if env.AttemptLeaseRemainingMs != nil && *env.AttemptLeaseRemainingMs < deadlineMs {
+			deadlineMs = *env.AttemptLeaseRemainingMs
+		}
 		if deadlineMs <= 0 {
 			// Envelope exhausted: tiny grace so the call surfaces a structured
 			// error rather than a zero-timeout panic.

@@ -9,10 +9,14 @@ import (
 
 // TestB30T03PartB_HarnessInvokeTimeout_DerivedFromTimeEnvelope verifies
 // ceiling 3: when the invoke payload carries a TimeEnvelope, the harness
-// /invoke context timeout is derived from EffectiveOperationDeadlineMs(
-// nowMs, env.StallTimeoutMs), not the legacy 300s default.
+// /invoke context timeout is derived from the envelope's active-time
+// remaining and attempt-lease remaining only — NOT the per-operation
+// StallTimeoutMs, which is a per-operation stall-detection ceiling inside
+// the worker, not a session-level ceiling.
 func TestB30T03PartB_HarnessInvokeTimeout_DerivedFromTimeEnvelope(t *testing.T) {
-	// StallTimeoutMs=30000, lease=60000, active=60000 → min=30000 (30s).
+	// Case 1: active=60s, lease=60s, stall=30s → want 60s (active bound by lease,
+	// stall must NOT cap). With the old EffectiveOperationDeadlineMs this
+	// would have been min(30s, 60s, 60s)=30s.
 	env, ok := routedrun.TimeEnvelopeFromCeilings(60_000, 60_000, 30_000, 30_000)
 	if !ok {
 		t.Fatal("expected envelope")
@@ -25,9 +29,22 @@ func TestB30T03PartB_HarnessInvokeTimeout_DerivedFromTimeEnvelope(t *testing.T) 
 	payload := map[string]any{
 		"time_envelope": env.MarshalForPayload(),
 	}
-	want := 30 * time.Second
+	want := 60 * time.Second
 	if got := srv.invokeTimeoutForPayload(payload); got != want {
-		t.Fatalf("invokeTimeoutForPayload = %v, want %v (envelope-derived)", got, want)
+		t.Fatalf("Case 1: invokeTimeoutForPayload = %v, want %v (active+lease, not stall-capped)", got, want)
+	}
+
+	// Case 2: active=60s, lease=5s, stall=30s → want 5s (lease is the tighter bound).
+	env2, ok2 := routedrun.TimeEnvelopeFromCeilings(60_000, 5_000, 30_000, 30_000)
+	if !ok2 {
+		t.Fatal("expected envelope case 2")
+	}
+	payload2 := map[string]any{
+		"time_envelope": env2.MarshalForPayload(),
+	}
+	want2 := 5 * time.Second
+	if got2 := srv.invokeTimeoutForPayload(payload2); got2 != want2 {
+		t.Fatalf("Case 2: invokeTimeoutForPayload = %v, want %v (lease-bound)", got2, want2)
 	}
 }
 
