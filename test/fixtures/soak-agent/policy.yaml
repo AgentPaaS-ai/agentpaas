@@ -1,0 +1,4 @@
+# Default-deny policy for soak agent — no real egress needed.
+# The soak agent only emits progress/checkpoints via the harness internal RPC.
+egress: []
+credentials: []
