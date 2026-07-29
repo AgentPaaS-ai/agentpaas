@@ -75,13 +75,32 @@ func agentpaasBin() string {
 	return filepath.Join(repoRoot, "bin", "agentpaas")
 }
 
+// cleanupDockerResources removes leftover Docker networks and containers from
+// previous soak test runs. This prevents orphaned resources from blocking new
+// container creation in subsequent tests.
+func cleanupDockerResources(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Remove networks with AgentPaaS ownership label.
+	rmNetworks := exec.CommandContext(ctx, "sh", "-c",
+		"docker network ls --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true")
+	_ = rmNetworks.Run()
+
+	// Remove containers with AgentPaaS ownership label (force remove).
+	rmContainers := exec.CommandContext(ctx, "sh", "-c",
+		"docker ps -a --filter 'label=agentpaas.managed-by=agentpaas' -q 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true")
+	_ = rmContainers.Run()
+}
+
 // startAgentpaasd starts agentpaasd as a subprocess and returns its PID.
 // The daemon listens on a Unix socket at socketPath.
-func startAgentpaasd(t *testing.T) (pid int, socketPath string, cleanup func()) {
+func startAgentpaasd(t *testing.T) (pid int, homeDir string, socketPath string, cleanup func()) {
 	t.Helper()
 
 	repoRoot := findRepoRoot()
-	homeDir := filepath.Join(repoRoot, "testdata", "agentpaasd-home")
+	homeDir = filepath.Join(repoRoot, "testdata", "agentpaasd-home")
 	if err := os.MkdirAll(homeDir, 0o700); err != nil {
 		t.Fatalf("mkdir home dir: %v", err)
 	}
@@ -136,7 +155,7 @@ func startAgentpaasd(t *testing.T) (pid int, socketPath string, cleanup func()) 
 		killDaemon(t, cmd)
 		_ = os.Remove(socketPath) // best-effort cleanup
 	}
-	return pid, socketPath, cleanup
+	return pid, homeDir, socketPath, cleanup
 }
 
 // killDaemon sends SIGTERM (or SIGKILL if requested) and waits for exit.
@@ -179,19 +198,23 @@ func dialDaemon(t *testing.T, socketPath string) (*grpc.ClientConn, controlv1.Co
 
 // packAndDeploy packs the soak-agent fixture and creates a deployment.
 // Returns the deployment ID.
-func packAndDeploySoakAgent(t *testing.T, client controlv1.ControlServiceClient) string {
+func packAndDeploySoakAgent(t *testing.T, client controlv1.ControlServiceClient, homeDir string) string {
 	t.Helper()
 
 	repoRoot := findRepoRoot()
 	fixtureDir := filepath.Join(repoRoot, "test", "fixtures", "soak-agent")
 
-	// Pack the agent via CLI.
+	// Pack the agent via CLI. The pack command talks to the daemon, so set
+	// AGENTPAAS_HOME to find the test daemon's socket.
 	packCmd := exec.Command(agentpaasBin(), "pack",
-		"--project", fixtureDir,
-		"--agent-name", "soak-agent",
-		"--agent-version", "0.1.0",
+		fixtureDir,
+		"--name", "soak-agent",
+		"--version", "0.1.0",
 	)
-	packCmd.Env = append(os.Environ(), "AGENTPAAS_DOCKER_TESTS=1")
+	packCmd.Env = append(os.Environ(),
+		"AGENTPAAS_HOME="+homeDir,
+		"AGENTPAAS_DOCKER_TESTS=1",
+	)
 	var packOut bytes.Buffer
 	packCmd.Stdout = &packOut
 	packCmd.Stderr = os.Stderr
@@ -218,28 +241,36 @@ func packAndDeploySoakAgent(t *testing.T, client controlv1.ControlServiceClient)
 }
 
 // findWorkerContainer finds the Docker container ID for a given run ID using labels.
+// Retries for up to 30s (increased from 15s since the agent container must be
+// created by the InvokeDeployment path before it appears in docker ps).
 func findWorkerContainer(t *testing.T, runID string) string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, "docker", "ps", "--filter",
-		"label=agentpaas.run_id="+runID,
-		"--format", "{{.ID}}")
-	out, err := cmd.Output()
-	if err != nil || len(bytes.TrimSpace(out)) == 0 {
-		// Try alternate label format.
-		cmd2 := exec.CommandContext(ctx, "docker", "ps", "--filter",
-			"label=com.agentpaas.run_id="+runID,
+	// Use exact AgentPaaS label keys from internal/runtime/naming.go:
+	//   agentpaas.managed-by=agentpaas
+	//   agentpaas.resource-type=agent
+	//   agentpaas.run-id=<runID>
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, "docker", "ps",
+			"--filter", "label=agentpaas.managed-by=agentpaas",
+			"--filter", "label=agentpaas.resource-type=agent",
+			"--filter", "label=agentpaas.run-id="+runID,
 			"--format", "{{.ID}}")
-		out, err = cmd2.Output()
-		if err != nil || len(bytes.TrimSpace(out)) == 0 {
-			t.Fatalf("find worker container for run %s: no container found (docker ps returned empty)", runID)
+		out, err := cmd.Output()
+		cancel()
+		if err == nil && len(bytes.TrimSpace(out)) > 0 {
+			cid := strings.TrimSpace(string(out))
+			t.Logf("Worker container for run %s (label agentpaas.run-id=%s): %s", runID, runID, cid)
+			return cid
 		}
+		t.Logf("findWorkerContainer for run %s: retrying (container not yet visible via "+
+			"agentpaas.managed-by=agentpaas, agentpaas.resource-type=agent, agentpaas.run-id=%s)...",
+			runID, runID)
+		time.Sleep(1 * time.Second)
 	}
-	cid := strings.TrimSpace(string(out))
-	t.Logf("Worker container for run %s: %s", runID, cid)
-	return cid
+	t.Fatalf("find worker container for run %s: no container found after 30s", runID)
+	return ""
 }
 
 // dockerKillContainer sends SIGKILL to a Docker container and returns the exit code.
@@ -315,11 +346,26 @@ func invokeSoakAgent(t *testing.T, client controlv1.ControlServiceClient, depID 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	shortMode := os.Getenv("AGENTPAAS_SOAK_SHORT") == "1"
+
+	// Pass turn configuration in the input JSON so the soak-agent knows how
+	// many turns to run. In short mode use fewer turns with shorter sleeps.
+	turns := 10000
+	sleepMs := 100
+	if shortMode {
+		turns = 500
+		sleepMs = 50
+	}
+	inputJSON, _ := json.Marshal(map[string]any{
+		"turns":    turns,
+		"sleep_ms": sleepMs,
+	})
+
 	resp, err := client.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
 		DeploymentRef:  depID,
 		IdempotencyKey: "soak-test-" + fmt.Sprintf("%d", time.Now().UnixNano()),
 		CallerIdentity:  "operator-test",
-		InputJson:       []byte(`{}`),
+		InputJson:       inputJSON,
 	})
 	if err != nil {
 		t.Fatalf("InvokeDeployment: %v", err)
@@ -345,8 +391,11 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 		t.Logf("SHORT MODE: real daemon restart soak with reduced waits")
 	}
 
+	// Clean up leftover Docker resources from previous runs.
+	cleanupDockerResources(t)
+
 	// 1. Start agentpaasd and record PID.
-	pidBefore, socketPath, cleanup := startAgentpaasd(t)
+	pidBefore, homeDir, socketPath, cleanup := startAgentpaasd(t)
 	defer cleanup()
 	t.Logf("agentpaasd PID before: %d", pidBefore)
 
@@ -354,7 +403,7 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	// 2. Pack and deploy the soak-agent fixture.
-	depID := packAndDeploySoakAgent(t, client)
+	depID := packAndDeploySoakAgent(t, client, homeDir)
 
 	// 3. Invoke the deployment.
 	runID, invocID := invokeSoakAgent(t, client, depID)
@@ -405,7 +454,7 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 	time.Sleep(2 * time.Second) // wait for process death
 
 	// 8. Restart the daemon.
-	pidAfter, _, restartCleanup := startAgentpaasd(t)
+	pidAfter, _, _, restartCleanup := startAgentpaasd(t)
 	defer restartCleanup()
 	t.Logf("agentpaasd PID after: %d", pidAfter)
 
@@ -504,8 +553,11 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 	requireDockerSoak(t)
 	shortMode := os.Getenv("AGENTPAAS_SOAK_SHORT") == "1"
 
+	// Clean up leftover Docker resources from previous runs.
+	cleanupDockerResources(t)
+
 	// 1. Start agentpaasd.
-	pidBefore, socketPath, cleanup := startAgentpaasd(t)
+	pidBefore, homeDir, socketPath, cleanup := startAgentpaasd(t)
 	defer cleanup()
 	t.Logf("agentpaasd PID before: %d", pidBefore)
 
@@ -513,7 +565,7 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	// 2. Pack and deploy.
-	depID := packAndDeploySoakAgent(t, client)
+	depID := packAndDeploySoakAgent(t, client, homeDir)
 
 	// 3. Invoke.
 	runID, _ := invokeSoakAgent(t, client, depID)
