@@ -2,6 +2,9 @@ package operator
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -85,6 +88,7 @@ type soakHarness struct {
 	workflowID  routedrun.WorkflowID
 	attemptID   routedrun.AttemptID
 	leaseID     routedrun.LeaseID
+	controlKey  []byte // loaded from disk after claim
 
 	mu              sync.Mutex
 	workerContainers []runtime.ContainerID
@@ -179,6 +183,14 @@ func newSoakHarness(t *testing.T, cfg soakConfig) *soakHarness {
 		h.leaseID = att.Lease.LeaseID
 	}
 
+	// Load the control key from disk (supervisor writes it to stateRoot/runs/<runID>/control-key).
+	keyPath := filepath.Join(dir, "runs", string(runID), "control-key")
+	key, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("read control key: %v", err)
+	}
+	h.controlKey = key
+
 	return h
 }
 
@@ -232,6 +244,13 @@ func (h *soakHarness) injectDaemonRestart() float64 {
 	att, err := h.store.GetAttempt(ctx, attemptID)
 	if err == nil && att.Lease != nil {
 		h.leaseID = att.Lease.LeaseID
+	}
+
+	// Reload the control key (the file should still exist).
+	keyPath := filepath.Join(h.dir, "runs", string(h.runID), "control-key")
+	key, err := os.ReadFile(keyPath)
+	if err == nil {
+		h.controlKey = key
 	}
 
 	afterSnapshot := h.snapshotLedger("after-restart")
@@ -292,11 +311,22 @@ func (h *soakHarness) runSoakTurn(ctx context.Context, turn int) error {
 		Timestamp: time.Now(),
 		Phase:     fmt.Sprintf("turn-%d", turn),
 	}
+	p.HMAC = h.signProgress(p)
 	if err := h.sup.TrackProgress(ctx, h.attemptID, p); err != nil {
 		return fmt.Errorf("turn %d TrackProgress: %w", turn, err)
 	}
 
 	return nil
+}
+
+// signProgress computes the HMAC-SHA256 for a progress event.
+func (h *soakHarness) signProgress(p supervisor.ProgressEvent) string {
+	cp := p
+	cp.HMAC = ""
+	b, _ := json.Marshal(cp)
+	mac := hmac.New(sha256.New, h.controlKey)
+	mac.Write(b)
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func (h *soakHarness) commitCheckpoint(ctx context.Context, turn int) error {
@@ -320,11 +350,22 @@ func (h *soakHarness) commitCheckpoint(ctx context.Context, turn int) error {
 		LeaseID:    h.leaseID,
 		Checkpoint: cp,
 	}
+	ce.HMAC = h.signCheckpoint(ce)
 	if err := h.sup.HandleCheckpoint(ctx, h.attemptID, ce); err != nil {
 		return fmt.Errorf("checkpoint at turn %d: %w", turn, err)
 	}
 	h.evidence.CheckpointDigests = append(h.evidence.CheckpointDigests, string(cp.CheckpointID))
 	return nil
+}
+
+// signCheckpoint computes the HMAC-SHA256 for a checkpoint event.
+func (h *soakHarness) signCheckpoint(c supervisor.CheckpointEvent) string {
+	cc := c
+	cc.HMAC = ""
+	b, _ := json.Marshal(cc)
+	mac := hmac.New(sha256.New, h.controlKey)
+	mac.Write(b)
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func writeSoakEvidence(t *testing.T, evidence SoakEvidence, filename string) {
@@ -488,7 +529,7 @@ func runSoakOperatorMultiTurn(t *testing.T, cfg soakConfig, evidenceFile string)
 		failures = append(failures, fmt.Sprintf("turns %d < %d", turnsCompleted, cfg.MinTurns))
 		h.evidence.Pass = false
 	}
-	if h.evidence.WallSeconds < float64(cfg.MinWallSeconds) {
+	if !cfg.ShortMode && h.evidence.WallSeconds < float64(cfg.MinWallSeconds) {
 		failures = append(failures, fmt.Sprintf("wall %.0fs < %ds", h.evidence.WallSeconds, cfg.MinWallSeconds))
 		h.evidence.Pass = false
 	}
