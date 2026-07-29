@@ -375,7 +375,7 @@ func getRunTurnsCompleted(t *testing.T, client controlv1.ControlServiceClient, r
 		}
 	}
 	t.Logf("structured_result has no turns_completed field — estimating from duration_ms=%d", durationMs)
-	return int(durationMs / 200)
+	return int(durationMs / 1000) // ~1s per turn in full mode (950ms sleep + overhead)
 }
 
 // invokeSoakAgent invokes the soak-agent deployment and returns the run ID + invocation ID.
@@ -388,9 +388,10 @@ func invokeSoakAgent(t *testing.T, client controlv1.ControlServiceClient, depID 
 
 	// Pass turn configuration in the input JSON so the soak-agent knows how
 	// many turns to run. In short mode use fewer turns with shorter sleeps.
-	// Full mode: ~150ms/turn × 12000 = 1800s = 30 min minimum wall time.
-	turns := 12000
-	sleepMs := 150
+	// Full mode: ~950ms/turn × 2000 = 1900s ≈ 32 min wall time.
+	// Uses fewer turns with longer sleep to avoid hitting harness progress limits.
+	turns := 2000
+	sleepMs := 950
 	if shortMode {
 		turns = 500
 		sleepMs = 50
@@ -401,10 +402,12 @@ func invokeSoakAgent(t *testing.T, client controlv1.ControlServiceClient, depID 
 	})
 
 	resp, err := client.InvokeDeployment(ctx, &controlv1.InvokeDeploymentRequest{
-		DeploymentRef:  depID,
-		IdempotencyKey: "soak-test-" + fmt.Sprintf("%d", time.Now().UnixNano()),
-		CallerIdentity:  "operator-test",
-		InputJson:       inputJSON,
+		DeploymentRef:               depID,
+		IdempotencyKey:              "soak-test-" + fmt.Sprintf("%d", time.Now().UnixNano()),
+		CallerIdentity:              "operator-test",
+		InputJson:                   inputJSON,
+		InitialMaxActiveDurationMs: 45 * 60 * 1000, // 45 min — real ceilings for multi-turn soak
+		InitialAttemptLeaseMs:      45 * 60 * 1000, // 45 min
 	})
 	if err != nil {
 		t.Fatalf("InvokeDeployment: %v", err)
@@ -476,6 +479,8 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 
 	deadline := time.Now().Add(runDuration)
 	var lastActiveMs int64
+	var agentTerminal bool
+	var agentTerminalStatus string
 	for time.Now().Before(deadline) {
 		remaining := time.Until(deadline)
 		if remaining < progressPollInterval {
@@ -494,6 +499,15 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 		lastActiveMs = summary.GetDurationMs()
 		elapsed := time.Since(wallStart).Seconds()
 		t.Logf("Progress: elapsed=%.0fs status=%s active_ms=%d", elapsed, summary.GetStatus(), lastActiveMs)
+
+		// If the agent reached a terminal state, stop waiting.
+		status := summary.GetStatus()
+		if status == "completed" || status == "failed" || status == "stopped" {
+			t.Logf("Agent reached terminal status %s at elapsed=%.0fs — stopping progress wait", status, elapsed)
+			agentTerminal = true
+			agentTerminalStatus = status
+			break
+		}
 	}
 
 	// Final pre-restart state capture.
@@ -506,16 +520,28 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 	activeBefore := beforeSummary.GetDurationMs()
 	t.Logf("Pre-restart final: status=%s active_ms=%d", beforeSummary.GetStatus(), activeBefore)
 
+	// Full mode: if agent terminated early (before the 30-minute soak window),
+	// this is a hard RED-GATE failure — do NOT greenwash by waiting wall clock
+	// while the agent is already dead. The 60s urlopen kill bug (now fixed)
+	// produced exactly this symptom: agent dead at ~67s, soak passed anyway.
+	if !shortMode && agentTerminal {
+		elapsed := time.Since(wallStart).Seconds()
+		if elapsed < 1800 && agentTerminalStatus != "completed" {
+			t.Errorf("RED-GATE: agent reached terminal %s at %.0fs (<1800s wall) — "+
+				"soak is NOT accumulating turns; soak cannot pass from wall-clock alone. "+
+				"Status=%s active_ms=%d",
+				agentTerminalStatus, elapsed, agentTerminalStatus, activeBefore)
+		}
+	}
+
 	// Extract turns_completed from the pre-restart state.
 	// The soak-agent's agent.progress() calls may not increment SummarizeRun's
 	// duration_ms in the current harness path, so we estimate from wall clock.
-	// Conservative estimate: ~200ms per turn (150ms sleep + ~50ms overhead).
+	// Conservative estimate: per-turn = sleep_ms + ~50ms overhead.
+	// Full mode: 950ms + 50ms = 1000ms/turn. Short mode: 50ms + 20ms = 70ms/turn.
 	turnsBeforeKill := getRunTurnsCompleted(t, client, runID, activeBefore)
 	if turnsBeforeKill == 0 {
-		// Fall back to wall-clock estimate. The agent runs one turn per
-		// sleep_ms + overhead. In full mode: 150ms + ~50ms = 200ms/turn.
-		// In short mode: 50ms + ~20ms = 70ms/turn.
-		perTurnMs := int64(200)
+		perTurnMs := int64(1000)
 		if shortMode {
 			perTurnMs = 70
 		}
