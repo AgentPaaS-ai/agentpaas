@@ -350,6 +350,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 		_ = d.cleanupFiles()    // best-effort cleanup on error path
 		return fmt.Errorf("daemon: init routed stores: %w", err)
 	}
+	// Initialize the durable supervisor (B30-T05) for multi-turn run lifecycle.
+	// The supervisor uses the routed store as its DurableStore. If init fails,
+	// the daemon continues (supervisor is nil) — InvokeDeployment and
+	// startDurableRun will skip supervisor claims but the daemon still serves
+	// legacy RPCs.
+	if err := controlServer.supervisorInit(routedStoreRoot(d.paths)); err != nil {
+		fmt.Fprintf(os.Stderr, "daemon: supervisor init: %v (durable lifecycle disabled)\n", err)
+	}
 	attachConfirmationStore(controlServer, d.confirmations)
 	d.control = controlServer
 	if d.dashboard != nil {
@@ -496,6 +504,11 @@ func (d *Daemon) Start(ctx context.Context) error {
 	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer reconcileCancel()
 	controlServer.reconcileOrphanedContainers(reconcileCtx)
+
+	// Reconcile in-flight durable runs through the supervisor (B30-T05).
+	// This is best-effort on startup: runs with ambiguous active leases are
+	// fenced (marked FAILED with reason daemon_restart).
+	controlServer.supervisorReconcile(reconcileCtx)
 
 	d.started = true
 
