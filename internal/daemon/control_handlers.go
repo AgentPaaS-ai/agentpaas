@@ -2284,14 +2284,19 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 
 	// Compute the urlopen timeout for the Python one-liner.
 	// When a TimeEnvelope is present (durable admission path), the timeout
-	// is derived from env.EffectiveOperationDeadlineMs(nowMs, StallTimeoutMs)
-	// — the min of remaining active time, attempt lease, and stall timeout
-	// (B30-T03 Part B, ceiling 2). When nil (legacy trigger path), use the
-	// documented 120s legacy default (not the old 60s bug).
+	// is derived from the envelope's active-time remaining and attempt-lease
+	// remaining only — NOT the per-operation StallTimeoutMs, which is a
+	// harness-level concern for individual operation stall detection.
+	// When nil (legacy trigger path), use the documented 120s legacy default
+	// (not the old 60s bug).
 	urlopenTimeoutSec := 120 // legacy documented default in seconds
 	if timeEnvelope != nil {
 		nowMs := routedrun.NowMonotonicMs(nil)
-		timeoutMs := timeEnvelope.EffectiveOperationDeadlineMs(nowMs, timeEnvelope.StallTimeoutMs)
+		timeoutMs := timeEnvelope.ActiveTimeRemainingMs(nowMs)
+		// Also bound by attempt lease if present.
+		if timeEnvelope.AttemptLeaseRemainingMs != nil && *timeEnvelope.AttemptLeaseRemainingMs < timeoutMs {
+			timeoutMs = *timeEnvelope.AttemptLeaseRemainingMs
+		}
 		if timeoutMs > 0 {
 			urlopenTimeoutSec = int((timeoutMs + 999) / 1000) // ceil to nearest second, min=1
 		}
@@ -2840,14 +2845,20 @@ const legacyInvokeContextTimeout = 2 * time.Minute
 
 // invokeContextTimeout returns the timeout for the daemon's auto-invoke
 // goroutine. When the tracked run carries a TimeEnvelope (durable path), the
-// timeout is env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs) —
-// the min of the stall timeout, the attempt-lease remaining, and the active
-// time remaining. When nil (legacy v0.2.3 trigger path), it falls back to
-// legacyInvokeContextTimeout (2 minutes).
+// timeout is derived from the envelope's active-time remaining and attempt
+// lease remaining only — NOT the per-operation StallTimeoutMs, which is a
+// harness-level concern for individual operation stall detection, not a
+// session-level daemon timeout. When nil (legacy v0.2.3 trigger path), it
+// falls back to legacyInvokeContextTimeout (2 minutes).
 func (s *controlServer) invokeContextTimeout(tr *trackedRun) time.Duration {
 	if tr != nil && tr.TimeEnvelope != nil {
+		env := tr.TimeEnvelope
 		nowMs := routedrun.NowMonotonicMs(nil)
-		deadlineMs := tr.TimeEnvelope.EffectiveOperationDeadlineMs(nowMs, tr.TimeEnvelope.StallTimeoutMs)
+		deadlineMs := env.ActiveTimeRemainingMs(nowMs)
+		// Also bound by attempt lease if present.
+		if env.AttemptLeaseRemainingMs != nil && *env.AttemptLeaseRemainingMs < deadlineMs {
+			deadlineMs = *env.AttemptLeaseRemainingMs
+		}
 		if deadlineMs <= 0 {
 			// Envelope exhausted: tiny grace so the invoke surfaces a failure
 			// rather than a zero-timeout panic.
