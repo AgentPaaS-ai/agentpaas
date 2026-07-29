@@ -1724,6 +1724,14 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 		}
 	}
 
+	// B30-T03 Part B: Build a TimeEnvelope from the admission receipt and
+	// attach it to the tracked run so the auto-invoke goroutine derives its
+	// invoke-context timeout and urlopen timeout from envelope ceilings
+	// rather than the legacy hardcoded constants.
+	if env, ok := routedrun.TimeEnvelopeFromReceipt(receipt); ok {
+		s.setRunTimeEnvelope(runID, env)
+	}
+
 	// Record audit event for durable run start.
 	s.recordAudit("invoke_deployment_start", "daemon", map[string]interface{}{
 		"run_id":          runID,
@@ -2274,15 +2282,36 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 		return "", fmt.Errorf("marshal invoke payload: %w", err)
 	}
 
+	// Compute the urlopen timeout for the Python one-liner.
+	// When a TimeEnvelope is present (durable admission path), the timeout
+	// is derived from env.EffectiveOperationDeadlineMs(nowMs, StallTimeoutMs)
+	// — the min of remaining active time, attempt lease, and stall timeout
+	// (B30-T03 Part B, ceiling 2). When nil (legacy trigger path), use the
+	// documented 120s legacy default (not the old 60s bug).
+	urlopenTimeoutSec := 120 // legacy documented default in seconds
+	if timeEnvelope != nil {
+		nowMs := routedrun.NowMonotonicMs(nil)
+		timeoutMs := timeEnvelope.EffectiveOperationDeadlineMs(nowMs, timeEnvelope.StallTimeoutMs)
+		if timeoutMs > 0 {
+			urlopenTimeoutSec = int((timeoutMs + 999) / 1000) // ceil to nearest second, min=1
+		}
+		if urlopenTimeoutSec < 1 {
+			urlopenTimeoutSec = 1 // floor at 1s so the python one-liner doesn't get timeout=0
+		}
+	}
+
 	// Invoke the agent. The payload is passed via stdin to keep the credential
 	// value out of process args (visible via ps). The python script reads stdin.
 	invokeCmd := []string{"python3", "-c",
-		"import urllib.request,json,sys;" +
-			"payload=sys.stdin.buffer.read();" +
-			"req=urllib.request.Request('http://127.0.0.1:8080/invoke'," +
-			"data=payload," +
-			"headers={'Content-Type':'application/json'});" +
-			"print(urllib.request.urlopen(req,timeout=60).read().decode())"}
+		fmt.Sprintf(
+			"import urllib.request,json,sys;"+
+				"payload=sys.stdin.buffer.read();"+
+				"req=urllib.request.Request('http://127.0.0.1:8080/invoke',"+
+				"data=payload,"+
+				"headers={'Content-Type':'application/json'}');"+
+				"print(urllib.request.urlopen(req,timeout=%d).read().decode())",
+			urlopenTimeoutSec,
+		)}
 	stdout, stderr, exitCode, err := rt.ExecWithStdin(ctx, containerID, invokeCmd, payloadJSON)
 	if err != nil {
 		return "", fmt.Errorf("exec invoke: %w", err)

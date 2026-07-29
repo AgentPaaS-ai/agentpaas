@@ -106,21 +106,32 @@ func TestB30T01_DaemonInvokeTimeoutIsTwoMinutes_Failing(t *testing.T) {
 }
 
 // ----------------------------------------------------------------------------
-// Test 2: Inner invoke helper urlopen(...,timeout=60) waits for final response
-// Source: internal/daemon/control_handlers.go:1500
-//   urllib.request.urlopen(req,timeout=60)
+// Test 2: Inner invoke helper urlopen timeout comes from TimeEnvelope
+// Source: internal/daemon/control_handlers.go:~2280
+//   urllib.request.urlopen(req,timeout=%d) — dynamically computed, not hardcoded
 //
-// STILL SKIPPED — T05 owns the durable InvokeJob protocol replacement.
+// The old timeout=60 bug (ceiling 2) is FIXED. The urlopen timeout is now
+// derived from the TimeEnvelope's EffectiveOperationDeadlineMs (min of
+// remaining active time, attempt lease, and stall timeout). When no envelope
+// is present (legacy trigger path), it uses the documented 120s default
+// (not the old 60s).
 // ----------------------------------------------------------------------------
 
-func TestB30T01_InnerInvokeHelperUrlopen60_Failing(t *testing.T) {
+func TestB30T01_InnerInvokeHelperUrlopen60_Fixed(t *testing.T) {
 	data := sourceBytes(t, "internal/daemon/control_handlers.go")
-	mustContain(t, "internal/daemon/control_handlers.go", data,
-		"urllib.request.urlopen(req,timeout=60)")
-	// Passing on baseline today: the lifetime-spanning urlopen exists. Register
-	// the requirement; B30-T02 will replace it with the durable InvokeJob
-	// protocol.
-	t.Skip("B30-T05 will replace the lifetime-spanning urlopen with the durable InvokeJob protocol")
+	// The old hardcoded timeout=60 must no longer exist.
+	if strings.Contains(string(data), "urlopen(req,timeout=60)") {
+		t.Fatal("internal/daemon/control_handlers.go: hardcoded urlopen timeout=60 still present — ceiling 2 must be derived from TimeEnvelope")
+	}
+	// The urlopen timeout must be dynamically computed via fmt.Sprintf with a
+	// format verb (%%d), not a hardcoded constant.
+	if !strings.Contains(string(data), `urlopen(req,timeout=%d)`) {
+		t.Fatal("internal/daemon/control_handlers.go: urlopen timeout must be dynamically computed from TimeEnvelope (fmt.Sprintf with format verb), not a hardcoded constant")
+	}
+	// The 120s legacy documented default must exist as a literal.
+	if !strings.Contains(string(data), "120 // legacy documented default") {
+		t.Fatal("internal/daemon/control_handlers.go: legacy 120s default comment must document the fallback")
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -332,7 +343,7 @@ var b30T01Ceilings = []struct {
 	literal string
 	owner   string // owning future task (T02)
 }{
-	{"internal/daemon/control_handlers.go", "urllib.request.urlopen(req,timeout=60)", "B30-T02"},
+	{"internal/daemon/control_handlers.go", "urlopen(req,timeout=%d)", "B30-T03-PartB (FIXED)"},
 }
 
 // b30T01DurablePathFiles are the source files on the durable invocation path
