@@ -451,7 +451,7 @@ block28-long:
 	@rm -f /tmp/block28-long-output.txt
 	@echo "Block 28 long: PASS"
 
-.PHONY: block30-gate block30-soak-gate
+.PHONY: block30-gate block30-soak-gate block30-soak-gate-lib block30-soak-gate-real
 block30-gate: block29-gate block28-ci
 	@echo "==> Running Block 30 gate"
 	@echo "  T05-T08: supervisor + routedrun + harness + daemon tests with race"
@@ -477,23 +477,22 @@ block30-gate: block29-gate block28-ci
 	@echo "  AGENTPAAS_DOCKER_TESTS=1 make block28-long"
 	@echo "  B30 is not fully complete until block28-long passes with Docker."
 
-# ── Block 30 Soak Gate: Operator multi-turn soak (Docker mandatory) ──────
+# ── Block 30 Soak Gate (library, optional) ──────────────────────────────
 #
-# Runs 3 consecutive 30-minute soaks + 1 failure-injection variant.
+# Runs 3 consecutive 30-minute soaks + 1 failure-injection variant using the
+# library-level soak harness (no real daemon gRPC). This is a lighter-weight
+# alternative to block30-soak-gate (which uses the real daemon path).
 # Requires Docker (auto-installed via ensure-docker on macOS).
-# NEVER skips — Docker is mandatory for this gate.
-# Rejects AGENTPAAS_SOAK_SHORT=1 with a loud failure.
-# Timeout budget: 2h30m per soak × 3 + failure injection ≈ 8h (generous).
 #
 # Evidence emitted to docs/execution/m0/ (LOCAL-ONLY, never git-add).
-.PHONY: block30-soak-gate
-block30-soak-gate: ensure-docker build-all restart-local-daemon
-	@echo "==> Block 30 SOAK GATE (operator multi-turn, Docker mandatory)"
+.PHONY: block30-soak-gate-lib
+block30-soak-gate-lib: ensure-docker build-all restart-local-daemon
+	@echo "==> Block 30 SOAK GATE LIBRARY (operator multi-turn, Docker mandatory)"
 	@echo ""
 	@# Reject short mode.
 	@if [ "$$AGENTPAAS_SOAK_SHORT" = "1" ]; then \
 		echo "FATAL: AGENTPAAS_SOAK_SHORT=1 is set."; \
-		echo "block30-soak-gate requires full-duration soaks (30 min × 3 + failure injection)."; \
+		echo "block30-soak-gate-lib requires full-duration soaks (30 min × 3 + failure injection)."; \
 		echo "Unset AGENTPAAS_SOAK_SHORT and re-run."; \
 		exit 1; \
 	fi
@@ -502,17 +501,17 @@ block30-soak-gate: ensure-docker build-all restart-local-daemon
 	@echo ""
 	@# Soak 1/3
 	@echo "  === SOAK 1/3: 30 min, 100 turns, daemon restarts ==="
-	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestSoak_Gate_3ConsecutiveSoaks' -timeout 150m -v 2>&1 | tee /tmp/block30-soak-gate-1.log
-	@if grep -q '^--- FAIL' /tmp/block30-soak-gate-1.log; then \
-		echo "FATAL: Soak gate FAILED. See /tmp/block30-soak-gate-1.log"; \
+	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestSoak_Gate_3ConsecutiveSoaks' -timeout 150m -v 2>&1 | tee /tmp/block30-soak-gate-lib-1.log
+	@if grep -q '^--- FAIL' /tmp/block30-soak-gate-lib-1.log; then \
+		echo "FATAL: Soak gate FAILED. See /tmp/block30-soak-gate-lib-1.log"; \
 		exit 1; \
 	fi
 	@echo ""
 	@# Failure injection
 	@echo "  === FAILURE INJECTION SOAK ==="
-	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestSoak_Gate_FailureInjection' -timeout 120m -v 2>&1 | tee /tmp/block30-soak-gate-fi.log
-	@if grep -q '^--- FAIL' /tmp/block30-soak-gate-fi.log; then \
-		echo "FATAL: Failure injection soak FAILED. See /tmp/block30-soak-gate-fi.log"; \
+	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestSoak_Gate_FailureInjection' -timeout 120m -v 2>&1 | tee /tmp/block30-soak-gate-lib-fi.log
+	@if grep -q '^--- FAIL' /tmp/block30-soak-gate-lib-fi.log; then \
+		echo "FATAL: Failure injection soak FAILED. See /tmp/block30-soak-gate-lib-fi.log"; \
 		exit 1; \
 	fi
 	@echo ""
@@ -535,18 +534,44 @@ block30-soak-gate: ensure-docker build-all restart-local-daemon
 	fi; \
 	echo "  $$ev: present ✓"
 	@echo ""
-	@echo 'Block 30 soak gate: PASS'
+	@echo 'Block 30 soak gate (library): PASS'
 	@echo 'Evidence: docs/execution/m0/soak-{1,2,3}.json + failure-injection.json'
+
+# ── Block 30 Soak Gate: Real operator daemon path (MANDATORY for M0) ────
+#
+# THIS IS THE REAL GATE. Runs operator-level tests that exercise gRPC against
+# a real agentpaasd process, including PID tracking, daemon restart/reconcile,
+# and Docker kill of worker containers.
+#
+# M0 requires 3 consecutive ≥30m operator soaks + failure injection.
+# Each test is run 3× consecutively. Soak-agent turns are controlled via
+# AGENTPAAS_FAKE_LLM_TURNS (default: 18000 for ~30m wall at 100ms/turn).
+#
+# Requires a clean daemon state (no running agentpaasd) — tests manage their
+# own daemon processes.
+#
+# Evidence emitted to docs/execution/m0/ (LOCAL-ONLY, never git-add).
+.PHONY: block30-soak-gate
+block30-soak-gate: block30-soak-gate-real
+	@echo "==> Block 30 SOAK GATE: PASS (real operator daemon path)"
+	@echo "Evidence: docs/execution/m0/real-daemon-restart.json + real-worker-sigkill.json"
 
 # ── Block 30 Real Operator Soak Gate ────────────────────────────────────
 # Runs the operator-level tests that exercise agentpaasd PID tracking, daemon
 # restart/reconcile, and docker kill of worker containers. Unlike the library
 # soaks above, these tests use the real daemon gRPC path.
+#
+# M0 requirement: 3 consecutive ≥30m operator soaks + failure injection.
+# Each test is run 3× consecutively. Between test runs, all daemon state is
+# cleaned up so each run starts fresh.
+#
 # Requires a clean daemon state (no running agentpaasd) — the tests manage their
 # own daemon processes.
+#
+# Evidence emitted to docs/execution/m0/ (LOCAL-ONLY, never git-add).
 .PHONY: block30-soak-gate-real
 block30-soak-gate-real: ensure-docker build-all
-	@echo "==> Block 30 REAL OPERATOR SOAK (daemon restart + worker SIGKILL)"
+	@echo "==> Block 30 REAL OPERATOR SOAK (daemon restart + worker SIGKILL, 3× each)"
 	@echo ""
 	@# Ensure no existing daemon is running (tests manage their own).
 	@-pkill -f "$$(pwd)/bin/agentpaasd" >/dev/null 2>&1 || true
@@ -560,19 +585,27 @@ block30-soak-gate-real: ensure-docker build-all
 	fi
 	@echo "  Docker: $$(docker info --format '{{.ServerVersion}}' 2>/dev/null || echo 'unavailable')"
 	@echo ""
-	@echo "  === REAL DAEMON RESTART SOAK ==="
-	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestOperatorSoak_RealDaemonRestart' -timeout 60m -v 2>&1 | tee /tmp/block30-real-daemon-restart.log
-	@if grep -q '^--- FAIL' /tmp/block30-real-daemon-restart.log; then \
-		echo "FATAL: Real daemon restart soak FAILED. See /tmp/block30-real-daemon-restart.log"; \
-		exit 1; \
-	fi
+	@# Run daemon restart test 3× consecutively.
+	@for run in 1 2 3; do \
+		echo "  === REAL DAEMON RESTART SOAK $$run/3 ==="; \
+		AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestOperatorSoak_RealDaemonRestart' -timeout 90m -v 2>&1 | tee /tmp/block30-real-daemon-restart-$$run.log; \
+		if grep -q '^--- FAIL' /tmp/block30-real-daemon-restart-$$run.log; then \
+			echo "FATAL: Real daemon restart soak $$run/3 FAILED. See /tmp/block30-real-daemon-restart-$$run.log"; \
+			exit 1; \
+		fi; \
+		echo ""; \
+	done
 	@echo ""
-	@echo "  === REAL WORKER SIGKILL SOAK ==="
-	@AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestOperatorSoak_RealWorkerSIGKILL' -timeout 60m -v 2>&1 | tee /tmp/block30-real-worker-sigkill.log
-	@if grep -q '^--- FAIL' /tmp/block30-real-worker-sigkill.log; then \
-		echo "FATAL: Real worker SIGKILL soak FAILED. See /tmp/block30-real-worker-sigkill.log"; \
-		exit 1; \
-	fi
+	@# Run worker SIGKILL test 3× consecutively.
+	@for run in 1 2 3; do \
+		echo "  === REAL WORKER SIGKILL SOAK $$run/3 ==="; \
+		AGENTPAAS_DOCKER_TESTS=1 go test ./internal/operator/ -count=1 -run 'TestOperatorSoak_RealWorkerSIGKILL' -timeout 90m -v 2>&1 | tee /tmp/block30-real-worker-sigkill-$$run.log; \
+		if grep -q '^--- FAIL' /tmp/block30-real-worker-sigkill-$$run.log; then \
+			echo "FATAL: Real worker SIGKILL soak $$run/3 FAILED. See /tmp/block30-real-worker-sigkill-$$run.log"; \
+			exit 1; \
+		fi; \
+		echo ""; \
+	done
 	@echo ""
 	@# Verify real evidence files.
 	@echo "  === Verifying real evidence files ==="
@@ -587,7 +620,7 @@ block30-soak-gate-real: ensure-docker build-all
 		echo "  $$ev: agentpaasd_pid_before=$$pid_before OK"; \
 	done
 	@echo ""
-	@echo "Block 30 real operator soak gate: PASS"
+	@echo "Block 30 real operator soak gate: PASS (3× daemon restart + 3× worker SIGKILL)"
 	@echo "Evidence: docs/execution/m0/real-daemon-restart.json + real-worker-sigkill.json"
 
 .PHONY: block31-gate
@@ -864,8 +897,9 @@ gates: ## List all available gate targets
 	@echo "  block28-gate - Runtime portability and managed-PaaS feasibility"
 	@echo "  block29-gate - Real-time stream, durable eventing, integrated adversary"
 	@echo "  block30-gate - Durable runtime: supervisor, liveness, reference worker, longevity"
-	@echo "  block30-soak-gate - Operator multi-turn soak (3×30min + failure injection, Docker mandatory)"
-	@echo "  block30-soak-gate-real - Real daemon operator soak (PID tracking, restart, SIGKILL, Docker mandatory)"
+	@echo "  block30-soak-gate - Real operator daemon soak (PID tracking, restart, SIGKILL, 3× each; Docker mandatory)"
+	@echo "  block30-soak-gate-lib - Library-only operator soak (3×30min + failure injection, Docker mandatory; optional)"
+	@echo "  block30-soak-gate-real - Same as block30-soak-gate (real daemon path, 3× each test)"
 	@echo "  block31-gate - Local package registry: read API, promotion, delegation gate"
 	@echo "  block32-gate - Delegation adversary break tests, completed block32 gate"
 	@echo "  block33-gate - MCP container services: full gate (T01-T09)"
