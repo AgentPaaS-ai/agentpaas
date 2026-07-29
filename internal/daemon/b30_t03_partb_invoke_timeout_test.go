@@ -8,16 +8,19 @@ import (
 )
 
 // TestB30T03PartB_DaemonInvokeTimeout_DerivedFromTimeEnvelope verifies
-// ceiling 1: when a trackedRun carries a TimeEnvelope (set by the durable
+// that when a trackedRun carries a TimeEnvelope (set by the durable
 // admission path), the daemon's invoke-context timeout is derived from
-// env.EffectiveOperationDeadlineMs(nowMs, env.StallTimeoutMs), not the
-// legacy 2-minute fallback.
+// the envelope's active-time remaining and attempt-lease remaining only
+// — NOT the per-operation StallTimeoutMs, which is a harness-level
+// concern. This ensures the daemon's auto-invoke goroutine survives for
+// the full session duration, not just one operation.
 //
 // This directly exercises the compute function used by the invoke goroutine
 // (control_handlers.go invokeContextTimeout). The full Run flow requires
 // Docker; the timeout derivation is the behavior under test.
 func TestB30T03PartB_DaemonInvokeTimeout_DerivedFromTimeEnvelope(t *testing.T) {
-	// StallTimeoutMs=30000, lease=60000, active=60000 → min=30000 (30s).
+	// active=60000, lease=60000 → effective = min(60000,60000) = 60000ms (60s).
+	// StallTimeoutMs=30000 is NOT used — it's a per-operation harness concern.
 	env, ok := routedrun.TimeEnvelopeFromCeilings(60_000, 60_000, 30_000, 30_000)
 	if !ok {
 		t.Fatal("expected envelope")
@@ -25,9 +28,34 @@ func TestB30T03PartB_DaemonInvokeTimeout_DerivedFromTimeEnvelope(t *testing.T) {
 	s := newTestControlServer(t)
 	tr := &trackedRun{TimeEnvelope: &env}
 	got := s.invokeContextTimeout(tr)
-	want := 30 * time.Second
+	want := 60 * time.Second
 	if got != want {
-		t.Fatalf("invokeContextTimeout = %v, want %v (envelope-derived)", got, want)
+		t.Fatalf("invokeContextTimeout = %v, want %v (active-remaining-derived, not stall-capped)", got, want)
+	}
+
+	// lease < active: lease=5000, active=60000 → min(60000,5000) = 5000ms.
+	env2, ok2 := routedrun.TimeEnvelopeFromCeilings(60_000, 5_000, 30_000, 30_000)
+	if !ok2 {
+		t.Fatal("expected envelope")
+	}
+	tr2 := &trackedRun{TimeEnvelope: &env2}
+	got2 := s.invokeContextTimeout(tr2)
+	want2 := 5 * time.Second
+	if got2 != want2 {
+		t.Fatalf("invokeContextTimeout (lease-bound) = %v, want %v", got2, want2)
+	}
+
+	// active < lease: active=10000 consumed=8000 remaining=2000, lease=60000 → min=2000ms.
+	env3, ok3 := routedrun.TimeEnvelopeFromCeilings(10_000, 60_000, 30_000, 30_000)
+	if !ok3 {
+		t.Fatal("expected envelope")
+	}
+	env3.ConsumedActiveDurationMs = 8_000
+	tr3 := &trackedRun{TimeEnvelope: &env3}
+	got3 := s.invokeContextTimeout(tr3)
+	want3 := 2 * time.Second
+	if got3 != want3 {
+		t.Fatalf("invokeContextTimeout (active-bound) = %v, want %v", got3, want3)
 	}
 }
 
@@ -62,8 +90,8 @@ func TestB30T03PartB_DaemonInvokeTimeout_EnvelopeExhaustedClampsLow(t *testing.T
 	s := newTestControlServer(t)
 	tr := &trackedRun{TimeEnvelope: &env}
 	got := s.invokeContextTimeout(tr)
-	if got <= 0 || got > 1*time.Millisecond {
-		t.Fatalf("invokeContextTimeout = %v, want (0,1ms] (exhausted envelope)", got)
+	if got != 1*time.Millisecond {
+		t.Fatalf("invokeContextTimeout = %v, want 1ms (exhausted envelope)", got)
 	}
 }
 
