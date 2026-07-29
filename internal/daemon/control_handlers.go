@@ -2308,7 +2308,7 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 				"payload=sys.stdin.buffer.read();"+
 				"req=urllib.request.Request('http://127.0.0.1:8080/invoke',"+
 				"data=payload,"+
-				"headers={'Content-Type':'application/json'}');"+
+				"headers={'Content-Type':'application/json'});"+
 				"print(urllib.request.urlopen(req,timeout=%d).read().decode())",
 			urlopenTimeoutSec,
 		)}
