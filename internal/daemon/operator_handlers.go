@@ -275,7 +275,7 @@ func (s *controlServer) SummarizeRun(ctx context.Context, req *controlv1.Summari
 	var failReason string
 	for _, record := range records {
 		switch record.EventType {
-		case "run_start":
+		case "run_start", "invoke_deployment_start":
 			if startedAt.IsZero() {
 				startedAt = parseAuditTime(record.Timestamp)
 			}
