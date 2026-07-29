@@ -1713,6 +1713,17 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 	// Mark run as RUNNING in the routed store.
 	s.updateLegacyRunStatus(ctx, runID, "running")
 
+	// Claim through the durable supervisor (B30-T05). This creates an attempt
+	// record in the durable store and establishes the supervisor as the
+	// lifecycle authority for this run. If the supervisor is nil (init
+	// failed), skip the claim.
+	if s.supervisor != nil {
+		invocID := receipt.InvocationID
+		if _, err := s.supervisor.ClaimForRun(ctx, routedrun.RunID(runID), invocID); err != nil {
+			fmt.Fprintf(os.Stderr, "daemon: supervisor claim for run %s: %v\n", runID, err)
+		}
+	}
+
 	// Record audit event for durable run start.
 	s.recordAudit("invoke_deployment_start", "daemon", map[string]interface{}{
 		"run_id":          runID,

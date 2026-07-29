@@ -15,6 +15,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
+	"github.com/AgentPaaS-ai/agentpaas/internal/supervisor"
 	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 )
 
@@ -127,6 +128,12 @@ type controlServer struct {
 	// registers pipeline workflows for reconcile instead of calling
 	// startDurableRun (single-package path).
 	pipelineRuntime *pipelineRuntime
+
+	// supervisor is the durable lifecycle supervisor for multi-turn runs.
+	// Initialized in Daemon.Start via supervisorInit. Nil until the routed
+	// store is ready. When non-nil, startDurableRun claims through it and
+	// the daemon reconciles in-flight runs on restart.
+	supervisor *supervisor.Supervisor
 }
 
 // MCPFencer fences/shuts down MCP services for a workflow.
