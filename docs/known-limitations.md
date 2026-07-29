@@ -1,15 +1,17 @@
 # Known Limitations
 
 AgentPaaS is a local-first governed runtime for macOS with secure agent sharing.
-**Shipped stable tag line:** v0.2.3 public; development head includes v0.3.0 tag
-lineage (B26–B32) plus B33–B34 engineering complete with residual product gaps
-called out below. This document records accepted trade-offs and capability gaps.
-A listed gap must not be mistaken for a shipped operator-ready feature merely
-because a library gate or execution-ready specification exists.
+**Shipped stable tag line:** v0.3.5 (B1–B34 + B34.5). This document records
+accepted trade-offs and capability gaps. A listed gap must not be mistaken for
+a shipped operator-ready feature merely because a library gate or
+execution-ready specification exists.
 
-The full Durable Routed Run / multi-agent product surface continues through
-v0.4.0 (B35) and v0.5.0 (B36–B41). Planned blocks must not be described as
-current capabilities until their gates and operator proofs land.
+**Product direction (2026-07-28):** the MVP is the AgentPaaS Cloud managed
+service (see `docs/roadmap.md` and `docs/execution/planning/managed-cloud-m-series-plan.md`).
+The classic v0.4–v0.5 train (B35–B41) is frozen per D77 and archived at
+`docs/execution/archive/classic-train-v0.4-v0.5/`. Parent/child (B35) returns
+post-POC per D85. Nothing from the frozen train is a current capability or a
+committed feature, and it must not be described as such.
 
 For the full security posture, see [threat-model.md](threat-model.md).
 For workarounds and authoring guidance, see
