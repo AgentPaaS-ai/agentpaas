@@ -420,6 +420,10 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 
 	// Clean up leftover Docker resources from previous runs.
 	cleanupDockerResources(t)
+	// Also clean up Docker resources after test completes so the next soak
+	// run starts clean (soak3 SIGTERM race: worker container from soak2
+	// was still up after daemon SIGKILL, blocking soak3's container creation).
+	defer cleanupDockerResources(t)
 
 	// 1. Start agentpaasd and record PID.
 	pidBefore, homeDir, socketPath, cleanup := startAgentpaasd(t)
@@ -675,6 +679,8 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 
 	// Clean up leftover Docker resources from previous runs.
 	cleanupDockerResources(t)
+	// Also clean up Docker resources after test completes.
+	defer cleanupDockerResources(t)
 
 	// 1. Start agentpaasd.
 	pidBefore, homeDir, socketPath, cleanup := startAgentpaasd(t)
