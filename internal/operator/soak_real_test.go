@@ -296,7 +296,9 @@ func dockerKillContainer(t *testing.T, containerID string) int {
 		return -1
 	}
 	var exitCode int
-	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &exitCode)
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &exitCode); err != nil {
+		t.Logf("parse docker exit code: %v", err)
+	}
 	return exitCode
 }
 
@@ -310,7 +312,9 @@ func getAgentpaasdPIDs() []int {
 	var pids []int
 	for _, s := range strings.Fields(string(out)) {
 		var pid int
-		fmt.Sscanf(s, "%d", &pid)
+		if _, err := fmt.Sscanf(s, "%d", &pid); err != nil {
+			continue
+		}
 		if pid > 0 {
 			pids = append(pids, pid)
 		}
@@ -459,16 +463,12 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 	// container's harness can't reconnect to the new daemon, so all progress
 	// must happen before the kill. In full mode, we wait for ≥30 min wall
 	// time and ≥100 turns.
-	runDuration := 5 * time.Second
+	var runDuration time.Duration
 	progressPollInterval := 5 * time.Second
 	if shortMode {
 		runDuration = 5 * time.Second
 	} else {
 		// Full mode: wait until wall clock reaches 30 min + buffer.
-		// The soak-agent is configured with 12000 turns × 150ms sleep,
-		// so it will naturally run for ~30+ min. We poll periodically
-		// to confirm active time is growing, then wait for the minimum
-		// wall duration.
 		runDuration = 30 * time.Minute
 		progressPollInterval = 30 * time.Second
 	}
