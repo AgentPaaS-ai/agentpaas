@@ -52,6 +52,9 @@ type BuildConfig struct {
 	NonRootUID int
 	// ImageTag is the tag for the built image (e.g. "agentpaas/myagent:0.1.0").
 	ImageTag string
+	// Platform is the target platform for the built image (e.g. "linux/arm64" or "linux/amd64").
+	// If empty, Docker uses the host platform. Set to "linux/amd64" for cross-build on arm64 hosts.
+	Platform string
 }
 
 // BuildResult holds the outcome of an image build.
@@ -126,6 +129,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		Remove:     true,
 		NoCache:    true,
 		PullParent: true,
+		Platform:   cfg.Platform,
 		Labels: map[string]string{
 			"org.opencontainers.image.created":     cfg.SourceDateEpoch.UTC().Format(time.RFC3339),
 			"org.agentpaas.build_input_digest":     inputDigest,
