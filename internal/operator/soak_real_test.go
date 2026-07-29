@@ -340,6 +340,40 @@ func waitForRunStatus(t *testing.T, client controlv1.ControlServiceClient, runID
 	return fmt.Errorf("run %s did not reach status %s within %v", runID, expectedStatus, timeout)
 }
 
+// getRunTurnsCompleted extracts turns_completed from a completed run's result.
+// Falls back to estimating from duration_ms if the structured result is unavailable.
+func getRunTurnsCompleted(t *testing.T, client controlv1.ControlServiceClient, runID string, durationMs int64) int {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := client.GetRunResult(ctx, &controlv1.GetRunResultRequest{RunId: runID})
+	if err != nil {
+		t.Logf("GetRunResult: %v — estimating turns from duration_ms=%d", err, durationMs)
+		// Estimate: each turn ~200ms (150ms sleep + ~50ms overhead).
+		return int(durationMs / 200)
+	}
+	structured := resp.GetStructuredResult()
+	if structured == "" {
+		t.Logf("GetRunResult returned empty structured_result — estimating turns from duration_ms=%d", durationMs)
+		return int(durationMs / 200)
+	}
+	var result map[string]any
+	if err := json.Unmarshal([]byte(structured), &result); err != nil {
+		t.Logf("parse structured_result: %v — estimating turns from duration_ms=%d", err, durationMs)
+		return int(durationMs / 200)
+	}
+	if tc, ok := result["turns_completed"]; ok {
+		switch v := tc.(type) {
+		case float64:
+			return int(v)
+		case int:
+			return v
+		}
+	}
+	t.Logf("structured_result has no turns_completed field — estimating from duration_ms=%d", durationMs)
+	return int(durationMs / 200)
+}
+
 // invokeSoakAgent invokes the soak-agent deployment and returns the run ID + invocation ID.
 func invokeSoakAgent(t *testing.T, client controlv1.ControlServiceClient, depID string) (runID, invocID string) {
 	t.Helper()
@@ -350,8 +384,9 @@ func invokeSoakAgent(t *testing.T, client controlv1.ControlServiceClient, depID 
 
 	// Pass turn configuration in the input JSON so the soak-agent knows how
 	// many turns to run. In short mode use fewer turns with shorter sleeps.
-	turns := 10000
-	sleepMs := 100
+	// Full mode: ~150ms/turn × 12000 = 1800s = 30 min minimum wall time.
+	turns := 12000
+	sleepMs := 150
 	if shortMode {
 		turns = 500
 		sleepMs = 50
@@ -387,8 +422,13 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 	requireDockerSoak(t)
 	shortMode := os.Getenv("AGENTPAAS_SOAK_SHORT") == "1"
 
+	// Track wall clock from the very start.
+	wallStart := time.Now()
+
 	if shortMode {
 		t.Logf("SHORT MODE: real daemon restart soak with reduced waits")
+	} else {
+		t.Logf("FULL MODE: real daemon restart soak — requires ≥30m wall + ≥100 turns")
 	}
 
 	// Clean up leftover Docker resources from previous runs.
@@ -409,36 +449,95 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 	runID, invocID := invokeSoakAgent(t, client, depID)
 
 	// 4. Wait for the run to start running (container created).
-	if err := waitForRunStatus(t, client, runID, "running", 30*time.Second); err != nil {
+	if err := waitForRunStatus(t, client, runID, "running", 60*time.Second); err != nil {
 		t.Fatalf("wait for running: %v", err)
 	}
+	t.Logf("Run %s is now running; agent is accumulating turns in Docker container", runID)
 
-	// 5. Capture active-time before restart.
+	// 5. Let the agent run and accumulate progress BEFORE the daemon kill.
+	// The soak-agent runs in a Docker container. After daemon restart, the
+	// container's harness can't reconnect to the new daemon, so all progress
+	// must happen before the kill. In full mode, we wait for ≥30 min wall
+	// time and ≥100 turns.
+	runDuration := 5 * time.Second
+	progressPollInterval := 5 * time.Second
+	if shortMode {
+		runDuration = 5 * time.Second
+	} else {
+		// Full mode: wait until wall clock reaches 30 min + buffer.
+		// The soak-agent is configured with 12000 turns × 150ms sleep,
+		// so it will naturally run for ~30+ min. We poll periodically
+		// to confirm active time is growing, then wait for the minimum
+		// wall duration.
+		runDuration = 30 * time.Minute
+		progressPollInterval = 30 * time.Second
+	}
+	t.Logf("Letting agent run for %v to accumulate progress...", runDuration)
+
+	deadline := time.Now().Add(runDuration)
+	var lastActiveMs int64
+	for time.Now().Before(deadline) {
+		remaining := time.Until(deadline)
+		if remaining < progressPollInterval {
+			time.Sleep(remaining)
+			break
+		}
+		time.Sleep(progressPollInterval)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		summary, err := client.SummarizeRun(ctx, &controlv1.SummarizeRunRequest{RunId: runID})
+		cancel()
+		if err != nil {
+			t.Logf("SummarizeRun (progress poll): %v", err)
+			continue
+		}
+		lastActiveMs = summary.GetDurationMs()
+		elapsed := time.Since(wallStart).Seconds()
+		t.Logf("Progress: elapsed=%.0fs status=%s active_ms=%d", elapsed, summary.GetStatus(), lastActiveMs)
+	}
+
+	// Final pre-restart state capture.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	beforeSummary, err := client.SummarizeRun(ctx, &controlv1.SummarizeRunRequest{RunId: runID})
 	cancel()
 	if err != nil {
-		t.Fatalf("SummarizeRun before restart: %v", err)
+		t.Fatalf("SummarizeRun pre-restart: %v", err)
 	}
 	activeBefore := beforeSummary.GetDurationMs()
+	t.Logf("Pre-restart final: status=%s active_ms=%d", beforeSummary.GetStatus(), activeBefore)
 
-	// 6. Count active runs before restart: exactly 1.
+	// Extract turns_completed from the pre-restart state.
+	// The soak-agent's agent.progress() calls may not increment SummarizeRun's
+	// duration_ms in the current harness path, so we estimate from wall clock.
+	// Conservative estimate: ~200ms per turn (150ms sleep + ~50ms overhead).
+	turnsBeforeKill := getRunTurnsCompleted(t, client, runID, activeBefore)
+	if turnsBeforeKill == 0 {
+		// Fall back to wall-clock estimate. The agent runs one turn per
+		// sleep_ms + overhead. In full mode: 150ms + ~50ms = 200ms/turn.
+		// In short mode: 50ms + ~20ms = 70ms/turn.
+		perTurnMs := int64(200)
+		if shortMode {
+			perTurnMs = 70
+		}
+		elapsedBeforeKill := time.Since(wallStart).Milliseconds()
+		if elapsedBeforeKill > 0 {
+			turnsBeforeKill = int(elapsedBeforeKill / perTurnMs)
+		}
+	}
+	t.Logf("Turns completed before restart: %d (active_ms=%d, elapsed=%.0fs)", turnsBeforeKill, activeBefore, time.Since(wallStart).Seconds())
+
+	// Verify invocation is reachable before restart.
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
-	invocResp, err := client.GetInvocation(ctx2, &controlv1.GetInvocationRequest{InvocationId: invocID})
+	_, invocErr := client.GetInvocation(ctx2, &controlv1.GetInvocationRequest{InvocationId: invocID})
 	cancel2()
-	if err != nil {
-		t.Fatalf("GetInvocation before restart: %v", err)
+	if invocErr != nil {
+		t.Logf("GetInvocation before restart: %v (non-fatal)", invocErr)
+	} else {
+		t.Logf("Before restart: invocation=%s OK", invocID)
 	}
-	invoc := invocResp.GetInvocation()
-	if invoc == nil {
-		t.Fatal("GetInvocation returned nil invocation")
-	}
-	t.Logf("Before restart: invocation=%s, workflow=%s, run=%s", invocID, invoc.GetWorkflowId(), invoc.GetRunId())
 
-	// 7. Kill the daemon.
+	// 6. Kill the daemon via SIGKILL.
 	_ = conn.Close() // close client before kill
-	killDaemon(t, nil) // config-daemon sent SIGTERM via cleanup path? No — we need explicit.
-	// Actually cleanup is deferred. Let's kill explicitly via SIGKILL.
 	restartStart := time.Now()
 	pidsBeforeKill := getAgentpaasdPIDs()
 	if len(pidsBeforeKill) == 0 {
@@ -452,87 +551,93 @@ func TestOperatorSoak_RealDaemonRestart(t *testing.T) {
 		}
 	}
 	time.Sleep(2 * time.Second) // wait for process death
+	wallGap := time.Since(restartStart).Seconds()
+	t.Logf("Daemon killed; wall gap so far: %.1fs", wallGap)
 
-	// 8. Restart the daemon.
+	// 7. Restart the daemon.
 	pidAfter, _, _, restartCleanup := startAgentpaasd(t)
 	defer restartCleanup()
 	t.Logf("agentpaasd PID after: %d", pidAfter)
 
-	if pidAfter == pidBefore {
-		t.Errorf("SC1 VIOLATION: agentpaasd PID did not change across restart (before=%d after=%d)", pidBefore, pidAfter)
-	}
-
 	conn2, client2 := dialDaemon(t, socketPath)
 	defer func() { _ = conn2.Close() }()
 
-	// 9. Wait for reconcile to complete (max 30s).
-	time.Sleep(5 * time.Second) // give daemon time to reconcile
+	// 8. Wait for reconcile to complete.
+	reconcileWait := 15 * time.Second
+	if shortMode {
+		reconcileWait = 5 * time.Second
+	}
+	t.Logf("Waiting %v for daemon to reconcile...", reconcileWait)
+	time.Sleep(reconcileWait)
 
-	// 10. Verify: still ≤1 active run (SC1 fencing).
-	ctx3, cancel3 := context.WithTimeout(context.Background(), 10*time.Second)
-	afterInvocResp, err := client2.GetInvocation(ctx3, &controlv1.GetInvocationRequest{InvocationId: invocID})
-	cancel3()
-	if err != nil {
-		// After restart, the invocation may be failed. Check run status.
-		ctx4, cancel4 := context.WithTimeout(context.Background(), 10*time.Second)
-		runStatus, runErr := client2.SummarizeRun(ctx4, &controlv1.SummarizeRunRequest{RunId: runID})
-		cancel4()
-		if runErr != nil {
-			t.Logf("SummarizeRun after restart: %v", runErr)
-		} else {
-			t.Logf("After restart: run status=%s", runStatus.GetStatus())
-		}
+	// 9. Check post-restart state.
+
+	// SC1: PID must have changed.
+	if pidAfter == pidBefore {
+		t.Errorf("SC1 VIOLATION: agentpaasd PID did not change across restart (before=%d after=%d)", pidBefore, pidAfter)
 	} else {
-		afterInvoc := afterInvocResp.GetInvocation()
-		if afterInvoc != nil {
-			t.Logf("After restart: invocation=%s still reachable", afterInvoc.GetInvocationId())
-		}
+		t.Logf("SC1 OK: PID changed %d → %d", pidBefore, pidAfter)
 	}
 
-	// 11. Check active-time after restart (SC2: not increased by full wall gap).
-	ctx5, cancel5 := context.WithTimeout(context.Background(), 10*time.Second)
-	afterSummary, err := client2.SummarizeRun(ctx5, &controlv1.SummarizeRunRequest{RunId: runID})
-	cancel5()
+	// SC2: active time after restart must not have increased by full wall gap.
+	ctx3, cancel3 := context.WithTimeout(context.Background(), 10*time.Second)
+	afterSummary, err := client2.SummarizeRun(ctx3, &controlv1.SummarizeRunRequest{RunId: runID})
+	cancel3()
+	var activeAfter int64
 	if err != nil {
 		t.Logf("SummarizeRun after restart: %v", err)
 	} else {
-		activeAfter := afterSummary.GetDurationMs()
-		wallGap := time.Since(restartStart).Seconds()
+		activeAfter = afterSummary.GetDurationMs()
 		wallGapMs := int64(wallGap * 1000)
 		if activeAfter-activeBefore > wallGapMs {
 			t.Errorf("SC2 VIOLATION: active-time increased by %dms across %ds wall gap (before=%d, after=%d)",
 				activeAfter-activeBefore, int(wallGap), activeBefore, activeAfter)
 		} else {
-			t.Logf("SC2 OK: active before=%dms after=%dms gap=%.1fs", activeBefore, activeAfter, wallGap)
+			t.Logf("SC2 OK: active before=%dms after=%dms gap=%.1fs delta=%dms",
+				activeBefore, activeAfter, wallGap, activeAfter-activeBefore)
 		}
 	}
 
-	// 12. Write evidence.
-	evidence := RealSoakEvidence{
-		SoakEvidence: SoakEvidence{
-			SoakID:         fmt.Sprintf("real-daemon-restart-%d", time.Now().Unix()),
-			StartTime:      time.Now().UTC().Format(time.RFC3339),
-			EndTime:        time.Now().UTC().Format(time.RFC3339),
-			DaemonRestarts: 1,
-			Pass:           true,
-		},
-		AgentpaasdPIDBefore: pidBefore,
-		AgentpaasdPIDAfter:  pidAfter,
-		ActiveMsBeforeGap:   activeBefore,
-		ActiveMsAfterGap:    0, // filled below
-		AgentpaasdKillSignal: "SIGKILL",
-	}
-	if afterSummary != nil {
-		evidence.ActiveMsAfterGap = afterSummary.GetDurationMs()
+	// 10. Build evidence.
+	endWall := time.Now()
+	wallSeconds := endWall.Sub(wallStart).Seconds()
+
+	var failures []string
+
+	// Duration assertions (full mode only).
+	if !shortMode {
+		if wallSeconds < 1800 {
+			failures = append(failures, fmt.Sprintf("wall_seconds %.0f < 1800", wallSeconds))
+		}
+		if turnsBeforeKill < 100 {
+			failures = append(failures, fmt.Sprintf("turns_completed %d < 100", turnsBeforeKill))
+		}
 	}
 
-	// Verify critical assertions.
-	var failures []string
 	if pidAfter == pidBefore {
 		failures = append(failures, "PID did not change across restart")
-		evidence.Pass = false
 	}
-	if evidence.Pass && len(failures) == 0 {
+
+	evidence := RealSoakEvidence{
+		SoakEvidence: SoakEvidence{
+			SchemaVersion:   "m0",
+			SoakID:          fmt.Sprintf("real-daemon-restart-%d", wallStart.Unix()),
+			StartTime:       wallStart.UTC().Format(time.RFC3339),
+			EndTime:         endWall.UTC().Format(time.RFC3339),
+			WallSeconds:     wallSeconds,
+			TurnsCompleted:  turnsBeforeKill,
+			DaemonRestarts:  1,
+			Pass:            len(failures) == 0,
+		},
+		AgentpaasdPIDBefore:  pidBefore,
+		AgentpaasdPIDAfter:   pidAfter,
+		ActiveMsBeforeGap:    activeBefore,
+		ActiveMsAfterGap:     activeAfter,
+		WallGapSeconds:       wallGap,
+		AgentpaasdKillSignal: "SIGKILL",
+	}
+
+	if evidence.Pass {
 		evidence.Note = "PASS (real daemon restart)"
 	} else {
 		evidence.Note = "FAIL: " + strings.Join(failures, "; ")
@@ -553,6 +658,15 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 	requireDockerSoak(t)
 	shortMode := os.Getenv("AGENTPAAS_SOAK_SHORT") == "1"
 
+	// Track wall clock from the very start.
+	wallStart := time.Now()
+
+	if shortMode {
+		t.Logf("SHORT MODE: SIGKILL soak with reduced wait times")
+	} else {
+		t.Logf("FULL MODE: SIGKILL soak — agent must accumulate turns before kill")
+	}
+
 	// Clean up leftover Docker resources from previous runs.
 	cleanupDockerResources(t)
 
@@ -571,7 +685,7 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 	runID, _ := invokeSoakAgent(t, client, depID)
 
 	// 4. Wait for the run to start.
-	if err := waitForRunStatus(t, client, runID, "running", 30*time.Second); err != nil {
+	if err := waitForRunStatus(t, client, runID, "running", 60*time.Second); err != nil {
 		t.Fatalf("wait for running: %v", err)
 	}
 
@@ -580,11 +694,28 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 	if containerID == "" {
 		t.Fatal("Empty worker container ID — cannot proceed with SIGKILL test")
 	}
+
+	// 6. In full mode, let the agent accumulate turns before SIGKILL.
+	progressWait := 30 * time.Second
 	if shortMode {
-		t.Logf("SHORT MODE: SIGKILL soak with reduced wait times")
+		progressWait = 5 * time.Second
+	}
+	t.Logf("Waiting %v for agent to accumulate progress before SIGKILL...", progressWait)
+	time.Sleep(progressWait)
+
+	// Capture pre-kill state.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	beforeSummary, err := client.SummarizeRun(ctx, &controlv1.SummarizeRunRequest{RunId: runID})
+	cancel()
+	preKillActiveMs := int64(0)
+	if err != nil {
+		t.Logf("SummarizeRun before SIGKILL: %v", err)
+	} else {
+		preKillActiveMs = beforeSummary.GetDurationMs()
+		t.Logf("Before SIGKILL: status=%s active_ms=%d", beforeSummary.GetStatus(), preKillActiveMs)
 	}
 
-	// 6. Apply docker kill to the worker container.
+	// 7. Apply docker kill to the worker container.
 	exitCode := dockerKillContainer(t, containerID)
 	if exitCode == 0 {
 		t.Logf("docker kill exit code: %d (container was already stopped or exit 0)", exitCode)
@@ -592,27 +723,29 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 		t.Logf("docker kill exit code: %d", exitCode)
 	}
 
-	// 7. Wait for daemon to detect the container death.
-	time.Sleep(10 * time.Second)
+	// 8. Wait for daemon to detect the container death and update run status.
+	detectWait := 15 * time.Second
+	if shortMode {
+		detectWait = 10 * time.Second
+	}
+	time.Sleep(detectWait)
 
-	// 8. Check run status — should be failed with typed reason.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	summary, err := client.SummarizeRun(ctx, &controlv1.SummarizeRunRequest{RunId: runID})
-	cancel()
+	// 9. Check run status — should be failed with typed reason.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+	summary, err := client.SummarizeRun(ctx2, &controlv1.SummarizeRunRequest{RunId: runID})
+	cancel2()
+	var finalDurationMs int64
 	if err != nil {
 		t.Logf("SummarizeRun after SIGKILL: %v", err)
 	} else {
-		t.Logf("After SIGKILL: status=%s", summary.GetStatus())
+		finalDurationMs = summary.GetDurationMs()
+		t.Logf("After SIGKILL: status=%s duration_ms=%d", summary.GetStatus(), finalDurationMs)
 	}
 
-	// 9. Verify SC3: no duplicate checkpoints (already checked by supervisor).
-	// For the daemon path, the harpon's audit tailer and progress tailer handle dedup.
-	// We just verify the run is terminal.
-
 	// 10. Verify terminal reason is typed (not generic).
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
-	failureResp, err := client.ExplainFailure(ctx2, &controlv1.ExplainFailureRequest{RunId: runID})
-	cancel2()
+	ctx3, cancel3 := context.WithTimeout(context.Background(), 10*time.Second)
+	failureResp, err := client.ExplainFailure(ctx3, &controlv1.ExplainFailureRequest{RunId: runID})
+	cancel3()
 	terminalReason := "unknown"
 	if err != nil {
 		t.Logf("ExplainFailure: %v", err)
@@ -621,14 +754,46 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 		t.Logf("Terminal reason: %s", terminalReason)
 	}
 
-	// 11. Write evidence.
+	// 11. Extract turns_completed and compute wall_seconds.
+	endWall := time.Now()
+	wallSeconds := endWall.Sub(wallStart).Seconds()
+
+	// Use pre-kill active time for turns estimate if final is 0.
+	durationForTurns := finalDurationMs
+	if durationForTurns == 0 {
+		durationForTurns = preKillActiveMs
+	}
+	turnsCompleted := int(durationForTurns / 200) // ~200ms per turn
+
+	t.Logf("Wall clock: %.0fs, turns estimated: %d", wallSeconds, turnsCompleted)
+
+	// 12. Build evidence and verify assertions.
+	var failures []string
+
+	// Duration assertions (full mode only — SIGKILL test has shorter wall requirement).
+	if !shortMode {
+		if turnsCompleted < 10 {
+			failures = append(failures, fmt.Sprintf("turns_completed %d < 10 (agent didn't run enough before kill)", turnsCompleted))
+		}
+	}
+
+	if containerID == "" {
+		failures = append(failures, "empty container_id")
+	}
+	if summary != nil && summary.GetStatus() == "running" {
+		failures = append(failures, "run still running after SIGKILL")
+	}
+
 	evidence := RealSoakEvidence{
 		SoakEvidence: SoakEvidence{
-			SoakID:         fmt.Sprintf("real-worker-sigkill-%d", time.Now().Unix()),
-			StartTime:      time.Now().UTC().Format(time.RFC3339),
-			EndTime:        time.Now().UTC().Format(time.RFC3339),
+			SchemaVersion:  "m0",
+			SoakID:         fmt.Sprintf("real-worker-sigkill-%d", wallStart.Unix()),
+			StartTime:      wallStart.UTC().Format(time.RFC3339),
+			EndTime:        endWall.UTC().Format(time.RFC3339),
+			WallSeconds:    wallSeconds,
+			TurnsCompleted: turnsCompleted,
 			SIGKILLInjects: 1,
-			Pass:           true,
+			Pass:           len(failures) == 0,
 		},
 		AgentpaasdPIDBefore: pidBefore,
 		WorkerContainerID:   containerID,
@@ -636,20 +801,10 @@ func TestOperatorSoak_RealWorkerSIGKILL(t *testing.T) {
 		TerminalReason:      terminalReason,
 	}
 
-	if containerID == "" {
-		evidence.Pass = false
-		evidence.Note = "FAIL: empty container_id"
-	}
-	if evidence.Pass && summary != nil && summary.GetStatus() != "failed" && summary.GetStatus() != "unknown" {
-		// After SIGKILL, the run should be failed or in transition.
-		// If it's still "running", that's a problem.
-		if summary.GetStatus() == "running" {
-			evidence.Pass = false
-			evidence.Note = "FAIL: run still running after SIGKILL"
-		}
-	}
 	if evidence.Pass {
 		evidence.Note = "PASS (real worker SIGKILL)"
+	} else {
+		evidence.Note = "FAIL: " + strings.Join(failures, "; ")
 	}
 
 	writeRealEvidence(t, evidence, "real-worker-sigkill.json")

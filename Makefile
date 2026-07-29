@@ -619,6 +619,17 @@ block30-soak-gate-real: ensure-docker build-all
 		fi; \
 		echo "  $$ev: agentpaasd_pid_before=$$pid_before OK"; \
 	done
+	@# Verify duration assertions for real-daemon-restart.json (full mode).
+	@echo "  === Verifying duration assertions ==="
+	@python3 -c "\
+import json; \
+d = json.load(open('docs/execution/m0/real-daemon-restart.json')); \
+ws = d.get('wall_seconds', 0); \
+tc = d.get('turns_completed', 0); \
+assert ws >= 1800, f'wall_seconds={ws} < 1800'; \
+assert tc >= 100, f'turns_completed={tc} < 100'; \
+print(f'  real-daemon-restart.json: wall_seconds={ws:.0f} turns_completed={tc} OK'); \
+" || { echo "FATAL: real-daemon-restart.json duration assertions failed"; exit 1; }
 	@echo ""
 	@echo "Block 30 real operator soak gate: PASS (3× daemon restart + 3× worker SIGKILL)"
 	@echo "Evidence: docs/execution/m0/real-daemon-restart.json + real-worker-sigkill.json"
