@@ -37,7 +37,7 @@ Blocks are numbered per the internal execution plan. Tracked status:
 | B27 | SDK progress, checkpoint, and artifact protocol | ✅ Complete (in v0.3.0 tag lineage) |
 | B28 | Runtime portability and managed-PaaS feasibility gate | ✅ Complete (in v0.3.0 tag lineage) |
 | B29 | Agent runtime profiles, durable events, streaming, and efficiency | ✅ Complete (in v0.3.0 tag lineage) |
-| B30 | Long-running multi-turn execution and proof | ✅ Library + durable start wiring; operator multi-turn soak residual |
+| B30 | Long-running multi-turn execution and proof | ✅ Closed — operator soak proven (real agentpaasd + Docker, 3×≥30m + SIGKILL) |
 | B31 | Unified component catalog and constrained capability resolution | ✅ Complete (in v0.3.0 tag lineage) |
 | B32 | Secure A2A tasks, messages, events, and artifact transfer | ✅ Complete (in v0.3.0 tag lineage); live A2A depends on delegation trust (BUG-040 fixed) |
 | B33 | AgentPaaS-container MCP services | ✅ Complete (library + cross-container e2e); enable/product claims per block handoff |
@@ -53,11 +53,11 @@ Blocks are numbered per the internal execution plan. Tracked status:
 ## Durable Routed Run is not available in v0.2.3
 
 The shipped v0.2.3 path has one configured provider/model/credential target.
-It has not proven a long-running multi-turn agent and does not currently
-provide:
+B30 soak has now proven a long-running multi-turn agent with real agentpaasd +
+Docker (3×≥30m + SIGKILL). Remaining gaps not yet closed:
 
-- A durable asynchronous invocation path. The normal daemon path waits on one
-  HTTP response and ordinarily times out at approximately 60 seconds.
+- A durable asynchronous invocation path (closed by B30 soak — real agentpaasd + Docker
+  with durable start wiring and operator soak gate).
 - Immutable deployment versions, audited aliases, atomic promotion/rollback,
   deactivation, or exact-version pinning for independent cron/API invocation.
 - Durable invocation idempotency and receiver-local per-deployment top-level
@@ -69,9 +69,8 @@ provide:
   `PAUSED`/`NEEDS_REPLAN` states.
 - Policy-derived worker CPU/process limits. The worker bootstrap currently
   applies a fixed 30-second CPU rlimit and zero child-process allowance.
-- A long-running proof. The manual test labelled “Long-Running Mixed-Egress”
-  only repeated the weather HTTP+LLM case and did not test duration, turn
-  count, restart, or resume.
+- A long-running proof (closed by B30 soak — 3× RealDaemonRestart ≥30m each
+  + 3× RealWorkerSIGKILL, real agentpaasd + Docker containers).
 - First-class conversation/session state. Repeated `agent.llm()` calls work,
   but the worker must explicitly carry prior context.
 - Logical route selection across an approved local/cloud model pool.
