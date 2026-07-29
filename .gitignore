@@ -75,3 +75,8 @@ docs/execution/prompts/b*-start-prompt.md
 # Ephemeral local workspaces
 .worktrees/
 b16-test-workspace/
+
+# docs/execution/ is local-only build history and cloud planning (D90, 2026-07-28).
+# Previously tracked files were removed from the index in the untrack commit;
+# never re-add them. Public roadmap/known-limitations stay tracked.
+docs/execution/
