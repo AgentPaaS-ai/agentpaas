@@ -368,3 +368,58 @@ func TestServer_MCPBridge_NotStartedWithoutServiceKind(t *testing.T) {
 		t.Fatal("MCPBridge should be nil when AgentKind is not mcp_service")
 	}
 }
+
+func TestLoopbackAddrCheckRespectsAllowEnv(t *testing.T) {
+	agentPath := writeAgent(t, `def invoke(payload):
+    return {"ok": True}
+`)
+
+	// Without the env var, a non-loopback address should be rejected.
+	t.Run("rejected_without_env", func(t *testing.T) {
+		srv := NewServer(Config{AgentPath: agentPath, Addr: "0.0.0.0:8080"})
+		t.Cleanup(func() { _ = srv.Close() })
+
+		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("readyz status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+		}
+		var got ErrorResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal error response: %v", err)
+		}
+		if got.Reason != "invalid_listen_addr" {
+			t.Fatalf("reason = %s, want invalid_listen_addr", got.Reason)
+		}
+	})
+
+	// With the env var set, a non-loopback address should be allowed.
+	t.Run("allowed_with_env", func(t *testing.T) {
+		t.Setenv("AGENTPAAS_ALLOW_NON_LOOPBACK_LISTEN", "1")
+
+		srv := NewServer(Config{AgentPath: agentPath, Addr: "0.0.0.0:8080"})
+		t.Cleanup(func() { _ = srv.Close() })
+
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+			rec := httptest.NewRecorder()
+			srv.ServeHTTP(rec, req)
+			if rec.Code == http.StatusOK {
+				return // success
+			}
+			if rec.Code == http.StatusServiceUnavailable {
+				var got ErrorResponse
+				if err := json.Unmarshal(rec.Body.Bytes(), &got); err == nil && got.Reason == "invalid_listen_addr" {
+					t.Fatalf("readyz returned invalid_listen_addr even with AGENTPAAS_ALLOW_NON_LOOPBACK_LISTEN=1")
+				}
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+			t.Fatalf("unexpected readyz status = %d; body: %s", rec.Code, rec.Body.String())
+		}
+		t.Fatal("server did not become ready within deadline")
+	})
+}

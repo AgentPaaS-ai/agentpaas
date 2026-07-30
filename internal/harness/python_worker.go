@@ -47,7 +47,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		errResp := &ErrorResponse{Status: "FAILED", Reason: "missing_agent_path", Detail: "agent path is required"}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
-	if !loopbackAddr(cfg.Addr) {
+	if !loopbackAddr(cfg.Addr) && os.Getenv("AGENTPAAS_ALLOW_NON_LOOPBACK_LISTEN") != "1" {
 		errResp := &ErrorResponse{Status: "FAILED", Reason: "invalid_listen_addr", Detail: "harness must listen on a loopback address"}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
