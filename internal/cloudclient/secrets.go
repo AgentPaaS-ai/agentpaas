@@ -16,8 +16,8 @@ type SecretLabel struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-// listSecretsResponse is the envelope for GET /v1/secrets.
-type listSecretsResponse struct {
+// ListSecretsResponse is the envelope for GET /v1/secrets.
+type ListSecretsResponse struct {
 	Secrets []SecretLabel `json:"secrets"`
 }
 
@@ -79,7 +79,7 @@ func (c *CloudClient) ListSecrets(ctx context.Context, token string) ([]SecretLa
 		return nil, fmt.Errorf("list secrets: unexpected status %d", resp.StatusCode)
 	}
 
-	var result listSecretsResponse
+	var result ListSecretsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("list secrets: decode response: %w", err)
 	}
