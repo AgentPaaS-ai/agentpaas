@@ -10,43 +10,55 @@ import (
 )
 
 func TestCloudClient_StartCLIAuth(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
-		}
-		if r.URL.Path != "/v1/auth/cli/start" {
-			t.Errorf("expected /v1/auth/cli/start, got %s", r.URL.Path)
-		}
-
-		var req StartCLIAuthRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Errorf("decode body: %v", err)
-		}
-		if req.RedirectURI == "" {
-			t.Error("redirect_uri must not be empty")
-		}
-
-		resp := StartCLIAuthResponse{
-			State:      "state-abc123",
-			ApproveURL: "/approve?state=state-abc123",
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
-	client := NewCloudClient(server.URL)
-	ctx := context.Background()
-
-	result, err := client.StartCLIAuth(ctx, "http://127.0.0.1:12345/callback")
-	if err != nil {
-		t.Fatalf("StartCLIAuth: %v", err)
+	tests := []struct {
+		name       string
+		statusCode int
+	}{
+		{"StatusOK", http.StatusOK},
+		{"StatusCreated", http.StatusCreated},
 	}
-	if result.State != "state-abc123" {
-		t.Errorf("State = %q, want state-abc123", result.State)
-	}
-	if result.ApproveURL != "/approve?state=state-abc123" {
-		t.Errorf("ApproveURL = %q, want /approve?state=state-abc123", result.ApproveURL)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					t.Errorf("expected POST, got %s", r.Method)
+				}
+				if r.URL.Path != "/v1/auth/cli/start" {
+					t.Errorf("expected /v1/auth/cli/start, got %s", r.URL.Path)
+				}
+
+				var req StartCLIAuthRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("decode body: %v", err)
+				}
+				if req.RedirectURI == "" {
+					t.Error("redirect_uri must not be empty")
+				}
+
+				resp := StartCLIAuthResponse{
+					State:      "state-abc123",
+					ApproveURL: "/approve?state=state-abc123",
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.statusCode)
+				_ = json.NewEncoder(w).Encode(resp)
+			}))
+			defer server.Close()
+
+			client := NewCloudClient(server.URL)
+			ctx := context.Background()
+
+			result, err := client.StartCLIAuth(ctx, "http://127.0.0.1:12345/callback")
+			if err != nil {
+				t.Fatalf("StartCLIAuth: %v", err)
+			}
+			if result.State != "state-abc123" {
+				t.Errorf("State = %q, want state-abc123", result.State)
+			}
+			if result.ApproveURL != "/approve?state=state-abc123" {
+				t.Errorf("ApproveURL = %q, want /approve?state=state-abc123", result.ApproveURL)
+			}
+		})
 	}
 }
 
