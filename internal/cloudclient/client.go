@@ -74,7 +74,7 @@ func (c *CloudClient) StartCLIAuth(ctx context.Context, redirectURI string) (*St
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("start cli auth: unexpected status %d", resp.StatusCode)
 	}
 
