@@ -35,10 +35,17 @@ func newPackCmd() *cobra.Command {
 		Long: `Build a container image from an agent project via the control daemon.
 
 Requires a running daemon. project-dir defaults to the current directory.
-Refuses wildcard egress policies unless --allow-wildcard is set.`,
+Refuses wildcard egress policies unless --allow-wildcard is set.
+
+Use --target to build for a different platform than the host (e.g. --target
+linux/amd64 for Cloudflare Workers). Cross-platform builds use Docker platform
+emulation; you may need to pre-pull base images with --platform first:
+  docker pull --platform linux/amd64 gcr.io/distroless/python3-debian12
+  docker pull --platform linux/amd64 python:3.11-slim`,
 		Example: `  agentpaas pack ./my-agent
   agentpaas pack . --name weather --version 1.0.0
-  agentpaas pack ./my-agent --allow-wildcard`,
+  agentpaas pack ./my-agent --allow-wildcard
+  agentpaas pack ./my-agent --target linux/amd64`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectDir := "."
@@ -50,6 +57,13 @@ Refuses wildcard egress policies unless --allow-wildcard is set.`,
 				return fmt.Errorf("new pack cmd: %w", err)
 			}
 			projectDir = absPath
+
+			targetPlatform, _ := cmd.Flags().GetString("target") // cobra flag default on missing
+			if targetPlatform != "" {
+				if err := validateTargetPlatform(targetPlatform); err != nil {
+					return fmt.Errorf("new pack cmd: %w", err)
+				}
+			}
 
 			// BUG 9 fix: warn about wildcard egress policies before packing.
 			{
@@ -92,6 +106,7 @@ Refuses wildcard egress policies unless --allow-wildcard is set.`,
 				AgentProjectPath: projectDir,
 				AgentName:        agentName,
 				AgentVersion:     agentVersion,
+				Platform:         targetPlatform,
 			})
 			if err != nil {
 				return fmt.Errorf("pack failed: %w", err)
@@ -116,7 +131,28 @@ Refuses wildcard egress policies unless --allow-wildcard is set.`,
 	cmd.Flags().String("name", "", "Override agent name from agent.yaml for this pack")
 	cmd.Flags().String("version", "", "Override agent version from agent.yaml for this pack")
 	cmd.Flags().Bool("allow-wildcard", false, "Allow packing when policy.yaml has domain: '*' egress (prints warning)")
+	cmd.Flags().String("target", "", "Target platform for the image (e.g. \"linux/amd64\", \"linux/arm64\"). Empty means host default. For Cloudflare, use \"linux/amd64\"")
 	return cmd
+}
+
+// validateTargetPlatform checks that target has the form "os/arch".
+// It rejects empty strings, missing separators, missing components, and
+// obviously invalid characters (newlines, null bytes, spaces, multiple separators).
+func validateTargetPlatform(target string) error {
+	if strings.TrimSpace(target) == "" {
+		return fmt.Errorf("--target must not be empty")
+	}
+	if strings.Contains(target, "\x00") || strings.Contains(target, "\n") {
+		return fmt.Errorf("--target contains invalid characters")
+	}
+	parts := strings.Split(target, "/")
+	if len(parts) != 2 {
+		return fmt.Errorf("--target must be of the form \"os/arch\" (got %q)", target)
+	}
+	if strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return fmt.Errorf("--target must be of the form \"os/arch\" with non-empty components (got %q)", target)
+	}
+	return nil
 }
 
 // resolveRunTarget resolves a user-provided target (project path, image
