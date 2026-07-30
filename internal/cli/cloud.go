@@ -95,6 +95,9 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudImagesCmd())
 	cmd.AddCommand(newCloudDeployCmd())
 	cmd.AddCommand(newCloudDeploymentsCmd())
+	cmd.AddCommand(newCloudRunCmd())
+	cmd.AddCommand(newCloudStatusCmd())
+	cmd.AddCommand(newCloudCancelCmd())
 
 	return cmd
 }
@@ -819,4 +822,196 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 	}
 
 	return cmd
+}
+
+// newCloudRunCmd creates the `agentpaas cloud run` command.
+func newCloudRunCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "run <deployment_id>",
+		Short: "Create a cloud run from a deployment",
+		Long: `Create a new run for a deployment on the AgentPaaS Cloud control plane.
+
+Note: cloud run may show status=failed when no container runtime is
+available (local development setup). Real Cloudflare Workers runs
+will be available in a future release.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			deploymentID := args[0]
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud run: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			req := cloudclient.CreateRunRequest{
+				DeploymentID: deploymentID,
+			}
+
+			resp, err := client.CreateRun(cmd.Context(), token, req)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud run: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+			fmt.Printf("Run created: %s\n", resp.ID)
+			fmt.Printf("  Deployment: %s\n", resp.DeploymentID)
+			fmt.Printf("  Status:     %s\n", resp.Status)
+			if resp.Error != nil && *resp.Error != "" {
+				fmt.Printf("  Error:      %s\n", *resp.Error)
+			}
+			return nil
+		},
+	}
+}
+
+// newCloudStatusCmd creates the `agentpaas cloud status` command.
+func newCloudStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status [run_id]",
+		Short: "Show cloud run status",
+		Long: `Show status of cloud runs.
+
+Without arguments, lists all runs. With a run_id, shows details for
+that specific run.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud status: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			// If a run_id is provided, get that specific run.
+			if len(args) == 1 {
+				runID := args[0]
+
+				resp, err := client.GetRun(cmd.Context(), token, runID)
+				if err != nil {
+					if strings.Contains(err.Error(), "not authenticated") {
+						return printNotLoggedIn(cmd)
+					}
+					return fmt.Errorf("cloud status: %w", err)
+				}
+
+				if jsonOutput(cmd) {
+					return printTextOrJSON(true, resp, nil)
+				}
+				fmt.Printf("Run:        %s\n", resp.ID)
+				fmt.Printf("  Deployment: %s\n", resp.DeploymentID)
+				fmt.Printf("  Status:     %s\n", resp.Status)
+				if resp.CreatedAt != "" {
+					fmt.Printf("  Created:    %s\n", resp.CreatedAt)
+				}
+				if resp.StartedAt != nil && *resp.StartedAt != "" {
+					fmt.Printf("  Started:    %s\n", *resp.StartedAt)
+				}
+				if resp.FinishedAt != nil && *resp.FinishedAt != "" {
+					fmt.Printf("  Finished:   %s\n", *resp.FinishedAt)
+				}
+				if resp.Error != nil && *resp.Error != "" {
+					fmt.Printf("  Error:      %s\n", *resp.Error)
+				}
+				if resp.SlotID != nil && *resp.SlotID != "" {
+					fmt.Printf("  Slot:       %s\n", *resp.SlotID)
+				}
+				if resp.ContainerID != nil && *resp.ContainerID != "" {
+					fmt.Printf("  Container:  %s\n", *resp.ContainerID)
+				}
+				return nil
+			}
+
+			// No run_id: list all runs.
+			runs, err := client.ListRuns(cmd.Context(), token)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud status: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, runs, nil)
+			}
+
+			if len(runs) == 0 {
+				fmt.Println("No runs. Create one with 'agentpaas cloud run <deployment_id>'.")
+				return nil
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-20s %-12s %s\n", "ID", "DEPLOYMENT", "STATUS", "ERROR")
+			for _, r := range runs {
+				errStr := ""
+				if r.Error != nil {
+					errStr = *r.Error
+				}
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-20s %-12s %s\n", r.ID, r.DeploymentID, r.Status, errStr)
+			}
+			return nil
+		},
+	}
+}
+
+// newCloudCancelCmd creates the `agentpaas cloud cancel` command.
+func newCloudCancelCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cancel <run_id>",
+		Short: "Cancel a cloud run",
+		Long: `Cancel a running or pending cloud run.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			runID := args[0]
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud cancel: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			resp, err := client.CancelRun(cmd.Context(), token, runID)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud cancel: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+			fmt.Printf("Run cancelled: %s\n", resp.ID)
+			fmt.Printf("  Deployment: %s\n", resp.DeploymentID)
+			fmt.Printf("  Status:     %s\n", resp.Status)
+			if resp.Error != nil && *resp.Error != "" {
+				fmt.Printf("  Error:      %s\n", *resp.Error)
+			}
+			return nil
+		},
+	}
 }

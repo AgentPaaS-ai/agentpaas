@@ -873,3 +873,419 @@ func TestCloudHelp_HasDeployAndDeployments(t *testing.T) {
 		t.Errorf("cloud --help should mention deployments, got: %s", stdout)
 	}
 }
+
+// --- Cloud run tests ---
+
+func TestCloudRun_CommandsRegistered(t *testing.T) {
+	resetAgentCmd()
+	cmd := AgentCmd()
+
+	_, _, err := cmd.Find([]string{"cloud", "run"})
+	if err != nil {
+		t.Fatalf("Find cloud run: %v", err)
+	}
+
+	_, _, err = cmd.Find([]string{"cloud", "status"})
+	if err != nil {
+		t.Fatalf("Find cloud status: %v", err)
+	}
+
+	_, _, err = cmd.Find([]string{"cloud", "cancel"})
+	if err != nil {
+		t.Fatalf("Find cloud cancel: %v", err)
+	}
+}
+
+func TestCloudRun_NotLoggedIn(t *testing.T) {
+	_ = setupFakeTokenStore(t)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "run", "dep-abc")
+	if err == nil {
+		t.Fatal("expected error when not logged in")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "Not logged in") && !strings.Contains(combined, "not logged in") {
+		t.Errorf("expected 'not logged in' message, got: err=%q stderr=%q", err, stderr)
+	}
+}
+
+func TestCloudRun_MissingArgs(t *testing.T) {
+	_ = setupFakeTokenStore(t)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "run")
+	if err == nil {
+		t.Fatal("expected error for missing deployment_id")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "accepts 1 arg") {
+		t.Errorf("error should mention accepts 1 arg, got: %s", combined)
+	}
+}
+
+func TestCloudRun_Success(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_run_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/runs" && r.Method == http.MethodPost {
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer apc_run_test" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			var req cloudclient.CreateRunRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+
+			resp := cloudclient.RunRecord{
+				ID:           "run-created-001",
+				DeploymentID: req.DeploymentID,
+				Status:       "pending",
+				CreatedAt:    "2025-01-15T10:30:00Z",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "run", "dep-abc")
+	if err != nil {
+		t.Fatalf("run: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "run-created-001") {
+		t.Errorf("expected run-created-001 in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "pending") {
+		t.Errorf("expected 'pending' status in output, got: %q", stdout)
+	}
+}
+
+func TestCloudRun_JSONOutput(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_run_json")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := cloudclient.RunRecord{
+			ID:           "run-json-001",
+			DeploymentID: "dep-abc",
+			Status:       "pending",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "run", "--json", "dep-abc")
+	if err != nil {
+		t.Fatalf("run --json: %v", err)
+	}
+	var parsed struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\noutput: %s", err, stdout)
+	}
+	if parsed.ID != "run-json-001" {
+		t.Errorf("ID = %q, want run-json-001", parsed.ID)
+	}
+}
+
+func TestCloudRun_Help(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "run", "--help")
+	if err != nil {
+		t.Fatalf("run --help: %v", err)
+	}
+	if !strings.Contains(stdout, "deployment_id") {
+		t.Errorf("help should mention deployment_id, got: %s", stdout)
+	}
+}
+
+// --- Cloud status tests ---
+
+func TestCloudStatus_NotLoggedIn(t *testing.T) {
+	_ = setupFakeTokenStore(t)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "status")
+	if err == nil {
+		t.Fatal("expected error when not logged in")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "Not logged in") && !strings.Contains(combined, "not logged in") {
+		t.Errorf("expected 'not logged in' message, got: err=%q stderr=%q", err, stderr)
+	}
+}
+
+func TestCloudStatus_ListRuns(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_status_list")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/runs" && r.Method == http.MethodGet {
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer apc_status_list" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			runs := []cloudclient.RunRecord{
+				{ID: "run-1", DeploymentID: "dep-1", Status: "running"},
+				{ID: "run-2", DeploymentID: "dep-2", Status: "failed"},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(runs)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "status")
+	if err != nil {
+		t.Fatalf("status: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "run-1") {
+		t.Errorf("expected run-1 in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "run-2") {
+		t.Errorf("expected run-2 in output, got: %q", stdout)
+	}
+}
+
+func TestCloudStatus_GetRun(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_status_get")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/runs/run-abc" && r.Method == http.MethodGet {
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer apc_status_get" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			run := cloudclient.RunRecord{
+				ID:           "run-abc",
+				DeploymentID: "dep-xyz",
+				Status:       "running",
+				CreatedAt:    "2025-01-15T10:30:00Z",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(run)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "status", "run-abc")
+	if err != nil {
+		t.Fatalf("status run-abc: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "run-abc") {
+		t.Errorf("expected run-abc in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "running") {
+		t.Errorf("expected 'running' status in output, got: %q", stdout)
+	}
+}
+
+func TestCloudStatus_Empty(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_status_empty")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode([]cloudclient.RunRecord{})
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "status")
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if !strings.Contains(stdout, "No runs") {
+		t.Errorf("expected 'No runs' message, got: %q", stdout)
+	}
+}
+
+func TestCloudStatus_JSONOutput(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_status_json")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		runs := []cloudclient.RunRecord{
+			{ID: "run-json", DeploymentID: "dep-json", Status: "running"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(runs)
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "status", "--json")
+	if err != nil {
+		t.Fatalf("status --json: %v", err)
+	}
+	var parsed []struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\noutput: %s", err, stdout)
+	}
+	if len(parsed) != 1 || parsed[0].ID != "run-json" {
+		t.Errorf("expected run-json, got %v", parsed)
+	}
+}
+
+func TestCloudStatus_Help(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "status", "--help")
+	if err != nil {
+		t.Fatalf("status --help: %v", err)
+	}
+	if !strings.Contains(stdout, "status") {
+		t.Errorf("help should mention status, got: %s", stdout)
+	}
+}
+
+// --- Cloud cancel tests ---
+
+func TestCloudCancel_NotLoggedIn(t *testing.T) {
+	_ = setupFakeTokenStore(t)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "cancel", "run-abc")
+	if err == nil {
+		t.Fatal("expected error when not logged in")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "Not logged in") && !strings.Contains(combined, "not logged in") {
+		t.Errorf("expected 'not logged in' message, got: err=%q stderr=%q", err, stderr)
+	}
+}
+
+func TestCloudCancel_MissingArgs(t *testing.T) {
+	_ = setupFakeTokenStore(t)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "cancel")
+	if err == nil {
+		t.Fatal("expected error for missing run_id")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "accepts 1 arg") {
+		t.Errorf("error should mention accepts 1 arg, got: %s", combined)
+	}
+}
+
+func TestCloudCancel_Success(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_cancel_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/runs/run-abc/cancel" && r.Method == http.MethodPost {
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer apc_cancel_test" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			resp := cloudclient.RunRecord{
+				ID:           "run-abc",
+				DeploymentID: "dep-xyz",
+				Status:       "cancelled",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "cancel", "run-abc")
+	if err != nil {
+		t.Fatalf("cancel: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "run-abc") {
+		t.Errorf("expected run-abc in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "cancelled") {
+		t.Errorf("expected 'cancelled' status in output, got: %q", stdout)
+	}
+}
+
+func TestCloudCancel_JSONOutput(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_cancel_json")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := cloudclient.RunRecord{
+			ID:           "run-abc",
+			DeploymentID: "dep-xyz",
+			Status:       "cancelled",
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "cancel", "--json", "run-abc")
+	if err != nil {
+		t.Fatalf("cancel --json: %v", err)
+	}
+	var parsed struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("unmarshal JSON output: %v\noutput: %s", err, stdout)
+	}
+	if parsed.ID != "run-abc" {
+		t.Errorf("ID = %q, want run-abc", parsed.ID)
+	}
+	if parsed.Status != "cancelled" {
+		t.Errorf("Status = %q, want cancelled", parsed.Status)
+	}
+}
+
+func TestCloudCancel_Help(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "cancel", "--help")
+	if err != nil {
+		t.Fatalf("cancel --help: %v", err)
+	}
+	if !strings.Contains(stdout, "run_id") {
+		t.Errorf("help should mention run_id, got: %s", stdout)
+	}
+}
+
+func TestCloudHelp_HasRunStatusCancel(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "--help")
+	if err != nil {
+		t.Fatalf("cloud --help: %v", err)
+	}
+	if !strings.Contains(stdout, "run") {
+		t.Errorf("cloud --help should mention run, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "status") {
+		t.Errorf("cloud --help should mention status, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "cancel") {
+		t.Errorf("cloud --help should mention cancel, got: %s", stdout)
+	}
+}
