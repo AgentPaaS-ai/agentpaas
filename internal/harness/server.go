@@ -42,6 +42,7 @@ type Config struct {
 	StderrPath      string
 	Audit           AuditAppender
 	CredentialsPath string // Path to credentials.json sidecar file (empty = none)
+	CredentialsJSON string // JSON array of {id, header, value} objects (empty = none); used when CredentialsPath is empty
 
 	// Progress journal integration (B27). The daemon writes the journal key
 	// to a sidecar file and bind-mounts it into the harness container. The
