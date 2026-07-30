@@ -255,8 +255,31 @@ var runWranglerPush = func(ctx context.Context, imageRef string) (registryRef st
 		}
 		out = out2
 	}
-	// Parse the output for a registry.cloudflare.com line.
-	lines := strings.Split(string(out), "\n")
+	return parseWranglerPushOutput(string(out))
+}
+
+// parseWranglerPushOutput extracts the registry reference from wrangler output.
+// Prefers a line containing "Pushed image:" and extracts the registry.cloudflare.com URL;
+// falls back to any line containing registry.cloudflare.com.
+func parseWranglerPushOutput(output string) (string, error) {
+	lines := strings.Split(output, "\n")
+	// Prefer: find "Pushed image:" line and extract registry.cloudflare.com from it.
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if !strings.Contains(trimmed, "Pushed image:") {
+			continue
+		}
+		// Try to extract a registry.cloudflare.com URL from this line.
+		for _, token := range strings.Fields(trimmed) {
+			if strings.Contains(token, "registry.cloudflare.com") {
+				return strings.TrimRight(token, ".,;"), nil
+			}
+		}
+		// Line has "Pushed image:" but no registry.cloudflare.com URL on it.
+		// Fall through to general search below.
+		break
+	}
+	// Fallback: any line containing registry.cloudflare.com.
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.Contains(line, "registry.cloudflare.com") {
@@ -264,6 +287,74 @@ var runWranglerPush = func(ctx context.Context, imageRef string) (registryRef st
 		}
 	}
 	return "", fmt.Errorf("wrangler push succeeded but no registry ref found in output")
+}
+
+// dockerImageInspect returns the image ID (digest with sha256: prefix) for a
+// local Docker image. Tests override this var.
+var dockerImageInspect = func(ctx context.Context, ref string) (string, error) {
+	cmd := exec.CommandContext(ctx, "docker", "image", "inspect", ref, "--format", "{{.ID}}")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("docker image inspect %s: %w (output: %s)", ref, err, string(out))
+	}
+	id := strings.TrimSpace(string(out))
+	if id == "" {
+		return "", fmt.Errorf("docker image inspect %s: empty output", ref)
+	}
+	return id, nil
+}
+
+// dockerTag creates a new tag for a local Docker image. Tests override this var.
+var dockerTag = func(ctx context.Context, src, dst string) error {
+	cmd := exec.CommandContext(ctx, "docker", "tag", src, dst)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("docker tag %s %s: %w (output: %s)", src, dst, err, string(out))
+	}
+	return nil
+}
+
+// resolveLocalImageRef determines the local Docker image reference to pass to
+// wrangler. It prefers the agentpaas/<name>:<version> tag if it exists and its
+// digest matches the lock. Otherwise falls back to the digest image, tagging it
+// if necessary. An explicit --image override bypasses all resolution.
+func resolveLocalImageRef(ctx context.Context, lock *pack.AgentLock, imageOverride string) (string, error) {
+	// Explicit override takes precedence.
+	if imageOverride != "" {
+		return imageOverride, nil
+	}
+
+	// Normalize the lock digest to have sha256: prefix.
+	lockDigest := normalizeSHA256Prefix(lock.ImageDigest)
+
+	// Preferred ref: agentpaas/<name>:<version>
+	preferredRef := fmt.Sprintf("agentpaas/%s:%s", lock.AgentName, lock.AgentVersion)
+
+	// Check if the preferred tag exists and its digest matches.
+	if localDigest, err := dockerImageInspect(ctx, preferredRef); err == nil {
+		if normalizeSHA256Prefix(localDigest) == lockDigest {
+			return preferredRef, nil
+		}
+	}
+
+	// Fallback: check if the digest image exists locally.
+	if _, err := dockerImageInspect(ctx, lockDigest); err != nil {
+		return "", fmt.Errorf("local image for digest %s not found — pack --target linux/amd64 first", lockDigest)
+	}
+
+	// Tag the digest image with the preferred ref and return it.
+	if err := dockerTag(ctx, lockDigest, preferredRef); err != nil {
+		return "", fmt.Errorf("failed to tag image %s → %s: %w", lockDigest, preferredRef, err)
+	}
+	return preferredRef, nil
+}
+
+// normalizeSHA256Prefix ensures the digest has a sha256: prefix.
+func normalizeSHA256Prefix(digest string) string {
+	if strings.HasPrefix(digest, "sha256:") {
+		return digest
+	}
+	return "sha256:" + digest
 }
 
 // newCloudPushCmd creates the `agentpaas cloud push` command.
@@ -274,6 +365,7 @@ func newCloudPushCmd() *cobra.Command {
 		platform     string
 		registryRef  string
 		skipRegistry bool
+		imageRef     string
 	)
 
 	cmd := &cobra.Command{
@@ -285,14 +377,18 @@ This command reads the agent.lock file, verifies its signature, and
 sends an admission request to the cloud API. The control plane verifies
 the lockfile signature and admits the image for deployment.
 
-Cloud requires amd64 packs. Customers never run wrangler themselves —
-the CLI wraps it. Admit rejects unsigned locks.
+Cloud requires amd64 packs. The CLI wraps wrangler to push the image
+to the Cloudflare Container Registry — customers never invoke wrangler
+directly. Set CLOUDFLARE_API_TOKEN in your CI/builder environment.
+Admit rejects unsigned locks.
 
 If --skip-registry is set, only the admission request is sent (no
-registry push). Otherwise, the CLI attempts to push the image to the
-Cloudflare Container Registry via wrangler, using the
-CLOUDFLARE_API_TOKEN environment variable.`,
-		Example: `  # Push with admission only (no registry push)
+registry push). Use --registry-ref to skip wrangler when the image has
+already been pushed.`,
+		Example: `  # Push and admit (CLI wraps wrangler automatically)
+  agentpaas cloud push --lock agent.lock
+
+  # Push with admission only (no registry push)
   agentpaas cloud push --lock agent.lock --skip-registry
 
   # Push with registry ref from prior wrangler push
@@ -365,7 +461,11 @@ CLOUDFLARE_API_TOKEN environment variable.`,
 				if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
 					return fmt.Errorf("cloud push: CLOUDFLARE_API_TOKEN not set — use --skip-registry or set CLOUDFLARE_API_TOKEN")
 				}
-				ref, err := runWranglerPush(cmd.Context(), resolvedDigest)
+				localRef, err := resolveLocalImageRef(cmd.Context(), lock, imageRef)
+				if err != nil {
+					return fmt.Errorf("cloud push: %w", err)
+				}
+				ref, err := runWranglerPush(cmd.Context(), localRef)
 				if err != nil {
 					return fmt.Errorf("cloud push: wrangler push failed: %w (use --skip-registry to skip)", err)
 				}
@@ -421,6 +521,7 @@ CLOUDFLARE_API_TOKEN environment variable.`,
 	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (default: from lock.platform or linux/amd64)")
 	cmd.Flags().StringVar(&registryRef, "registry-ref", "", "Cloudflare Container Registry reference (optional)")
 	cmd.Flags().BoolVar(&skipRegistry, "skip-registry", false, "Skip registry push; admission only")
+	cmd.Flags().StringVar(&imageRef, "image", "", "Override local image ref for wrangler push (for tests)")
 
 	return cmd
 }
