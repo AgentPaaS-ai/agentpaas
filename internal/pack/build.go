@@ -52,6 +52,9 @@ type BuildConfig struct {
 	NonRootUID int
 	// ImageTag is the tag for the built image (e.g. "agentpaas/myagent:0.1.0").
 	ImageTag string
+	// Platform is the target platform for the image (e.g. "linux/amd64", "linux/arm64").
+	// Empty means Docker default (host platform). For Cloudflare, use "linux/amd64".
+	Platform string
 }
 
 // BuildResult holds the outcome of an image build.
@@ -121,7 +124,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	}
 	defer func() { _ = cli.Close() }() // best-effort close
 
-	buildResp, err := cli.ImageBuild(ctx, buildCtx, build.ImageBuildOptions{
+	opts := build.ImageBuildOptions{
 		Tags:       []string{cfg.ImageTag},
 		Remove:     true,
 		NoCache:    true,
@@ -134,7 +137,11 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 			"org.opencontainers.image.revision":    inputDigest,
 			"org.opencontainers.image.description": "AgentPaaS Python agent image",
 		},
-	})
+	}
+	if cfg.Platform != "" {
+		opts.Platform = cfg.Platform
+	}
+	buildResp, err := cli.ImageBuild(ctx, buildCtx, opts)
 	if err != nil {
 		return nil, fmt.Errorf("build image: %w", err)
 	}
