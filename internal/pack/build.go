@@ -82,6 +82,18 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		return nil, fmt.Errorf("build image: %w", err)
 	}
 
+	// Resolve multi-arch base image to a single-platform digest when
+	// building for a specific target platform. Without this, Docker on
+	// arm64 will return the cached arm64 variant of a multi-arch index
+	// even when --platform linux/amd64 is requested.
+	if cfg.Platform != "" {
+		resolved, err := ResolveBaseImagePlatform(ctx, cfg.BaseImage, cfg.Platform)
+		if err != nil {
+			return nil, fmt.Errorf("build image: %w", err)
+		}
+		cfg.BaseImage = resolved
+	}
+
 	// Enforce LLM egress policy at pack time.
 	// If the agent has an LLM provider configured, the provider's domain
 	// MUST be present in the egress policy. Otherwise, the agent will fail
