@@ -163,12 +163,21 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		defer cleanup()
 		sdkDir = embeddedSDKDir
 	}
+	// Resolve the target platform. When --target is provided by the CLI,
+	// this is the explicit value (e.g. "linux/amd64"). When empty, use the
+	// host platform so the lock records what was actually built.
+	resolvedPlatform := req.GetPlatform()
+	if resolvedPlatform == "" {
+		resolvedPlatform = fmt.Sprintf("%s/%s", goruntime.GOOS, goruntime.GOARCH)
+	}
+
 	cfg := pack.BuildConfig{
 		ProjectDir:  absProjectDir,
 		Runtime:     det.Runtime,
 		ImageTag:    imageTag,
 		HarnessPath: harnessPath,
 		SDKDir:      sdkDir,
+		Platform:    req.GetPlatform(),
 	}
 	if req.GetBaseImage() != "" {
 		cfg.BaseImage = req.GetBaseImage()
@@ -217,7 +226,7 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		Runtime:           det.Runtime,
 		BaseImageDigest:   cfg.BaseImage,
 		HarnessVersion:    "embedded",
-		Platform:          fmt.Sprintf("%s/%s", goruntime.GOOS, goruntime.GOARCH),
+		Platform:          resolvedPlatform,
 		SourceDateEpoch:   time.Unix(0, 0).UTC(),
 		KeyStore:          &packKeyStoreAdapter{store: keyStore},
 		KeyID:             string(keyID),
