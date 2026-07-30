@@ -877,3 +877,99 @@ func TestSignImage_LocalVsProdTlogArgs(t *testing.T) {
 		}
 	}
 }
+
+// TestAgentLockRecordsPlatform verifies that the Platform field in the lock
+// is recorded correctly — it preserves whatever value is set, including
+// empty (legacy compat) and cross-platform targets.
+func TestAgentLockRecordsPlatform(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+	}{
+		{"host default (empty)", ""},
+		{"linux/amd64", "linux/amd64"},
+		{"linux/arm64", "linux/arm64"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				t.Fatalf("generate key: %v", err)
+			}
+
+			pubPEM, err := publicKeyPEM(&key.PublicKey)
+			if err != nil {
+				t.Fatalf("encode public key: %v", err)
+			}
+
+			seedDigest := func(seed string) string {
+				sum := sha256.Sum256([]byte(seed))
+				return hex.EncodeToString(sum[:])
+			}
+			// A zero policy YAML is valid (no policy.yaml in project).
+			policyDigest, err := ComputePolicyDigest(nil)
+			if err != nil {
+				t.Fatalf("compute policy digest: %v", err)
+			}
+
+			lock := &AgentLock{
+				SchemaVersion:        LockSchemaVersion,
+				AgentName:            "test-agent",
+				AgentVersion:         "0.1.0",
+				Runtime:              "python",
+				Platform:             tt.platform,
+				BaseImageDigest:      "gcr.io/distroless/python3-debian12@sha256:" + seedDigest("base"),
+				HarnessVersion:       "test",
+				BuildInputDigest:     seedDigest("input"),
+				ImageDigest:          seedDigest("image"),
+				SBOMDigest:           seedDigest("sbom"),
+				PolicyDigest:         policyDigest,
+				PackageAID:           string(pubPEM),
+				PublicKeyFingerprint: PublicKeyFingerprint(&key.PublicKey),
+				Reproducibility: ReproducibilityMeta{
+					SourceDateEpoch: time.Unix(1_700_000_000, 0).UTC(),
+					BaseImagePinned: true,
+					DepsLocked:      true,
+					TarOrder:        "sorted",
+				},
+				CreatedAt: time.Unix(1_700_000_000, 0).UTC(),
+			}
+
+			// Sign the lock.
+			canonical, err := canonicalJSON(lock)
+			if err != nil {
+				t.Fatalf("canonical JSON: %v", err)
+			}
+			digest := sha256.Sum256(canonical)
+			sig, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+			if err != nil {
+				t.Fatalf("sign lock: %v", err)
+			}
+			lock.LockfileSignature = base64.StdEncoding.EncodeToString(sig)
+
+			// Verify Platform is recorded correctly.
+			if lock.Platform != tt.platform {
+				t.Errorf("Platform = %q, want %q", lock.Platform, tt.platform)
+			}
+
+			// Verify the canonical JSON contains the platform field.
+			var m map[string]interface{}
+			if err := json.Unmarshal(canonical, &m); err != nil {
+				t.Fatalf("unmarshal canonical JSON: %v", err)
+			}
+			got, ok := m["platform"]
+			if !ok {
+				t.Fatal("canonical JSON missing platform field")
+			}
+			if got.(string) != tt.platform {
+				t.Errorf("canonical JSON platform = %q, want %q", got, tt.platform)
+			}
+
+			// Signature verification must still succeed.
+			if err := VerifyLockfileSignature(lock); err != nil {
+				t.Errorf("VerifyLockfileSignature with platform %q: %v", tt.platform, err)
+			}
+		})
+	}
+}

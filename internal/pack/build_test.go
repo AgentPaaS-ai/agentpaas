@@ -553,3 +553,45 @@ func inspectImage(t *testing.T, tag string) image.InspectResponse {
 
 	return inspect
 }
+
+// TestBuildConfigPlatformField verifies that BuildConfig accepts a Platform
+// field and that validateBuildConfig does not reject a valid platform string.
+func TestBuildConfigPlatformField(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBuildTestFile(t, projectDir, "main.py", []byte("print('hello')\n"))
+
+	harnessDir := t.TempDir()
+	harnessPath := filepath.Join(harnessDir, "agentpaas-harness")
+	if err := os.WriteFile(harnessPath, []byte("\x7fELF"), 0o755); err != nil {
+		t.Fatalf("write fake harness: %v", err)
+	}
+	// Set PATH so LookPath finds the fake harness.
+	t.Setenv("PATH", harnessDir+string(filepath.ListSeparator)+os.Getenv("PATH"))
+
+	tests := []struct {
+		name     string
+		platform string
+	}{
+		{"empty platform (host default)", ""},
+		{"linux/amd64", "linux/amd64"},
+		{"linux/arm64", "linux/arm64"},
+		{"darwin/arm64", "darwin/arm64"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := BuildConfig{
+				ProjectDir: projectDir,
+				Runtime:    RuntimePython,
+				ImageTag:   "agentpaas/test:latest",
+				Platform:   tt.platform,
+			}
+			if err := validateBuildConfig(&cfg); err != nil {
+				t.Errorf("validateBuildConfig() with platform %q: %v", tt.platform, err)
+			}
+			if cfg.Platform != tt.platform {
+				t.Errorf("Platform field: got %q, want %q", cfg.Platform, tt.platform)
+			}
+		})
+	}
+}

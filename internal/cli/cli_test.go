@@ -983,3 +983,81 @@ func TestSecretTest_NeverPrintsValue(t *testing.T) {
 		t.Fatalf("stderr leaked secret value:\n%s", stderr)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TestValidateTargetPlatform
+// Tests: validateTargetPlatform rejects invalid inputs and accepts valid ones.
+// ---------------------------------------------------------------------------
+func TestValidateTargetPlatform(t *testing.T) {
+	tests := []struct {
+		name    string
+		target  string
+		wantErr bool
+	}{
+		{"valid linux/amd64", "linux/amd64", false},
+		{"valid linux/arm64", "linux/arm64", false},
+		{"valid darwin/arm64", "darwin/arm64", false},
+		{"empty string", "", true},
+		{"whitespace only", "   ", true},
+		{"no separator", "linuxamd64", true},
+		{"three parts", "linux/amd64/extra", true},
+		{"empty os", "/amd64", true},
+		{"empty arch", "linux/", true},
+		{"just slash", "/", true},
+		{"contains newline", "linux/amd64\n", true},
+		{"contains null byte", "linux/\x00amd64", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateTargetPlatform(tt.target)
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error for target %q, got nil", tt.target)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error for target %q: %v", tt.target, err)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestPackCmdHasTargetFlag
+// Tests: the `agentpaas pack` command has a --target flag.
+// ---------------------------------------------------------------------------
+func TestPackCmdHasTargetFlag(t *testing.T) {
+	cmd := freshCmd()
+	packCmd := findSubCmd(cmd, "pack")
+	if packCmd == nil {
+		t.Fatal("pack command not found")
+	}
+
+	targetFlag := packCmd.Flags().Lookup("target")
+	if targetFlag == nil {
+		t.Fatal("expected --target flag on pack command, got nil")
+	}
+	if targetFlag.DefValue != "" {
+		t.Errorf("expected --target default to be empty, got %q", targetFlag.DefValue)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestPackCmdHelpShowsTarget
+// Tests: `agentpaas pack --help` shows --target in the output.
+// ---------------------------------------------------------------------------
+func TestPackCmdHelpShowsTarget(t *testing.T) {
+	cmd := freshCmd()
+	outBuf := new(bytes.Buffer)
+	cmd.SetOut(outBuf)
+	cmd.SetErr(new(bytes.Buffer))
+	cmd.SetArgs([]string{"pack", "--help"})
+	_ = cmd.Execute()
+
+	out := outBuf.String()
+	if !strings.Contains(out, "--target") {
+		t.Errorf("expected --target in help output; got:\n%s", out)
+	}
+	if !strings.Contains(out, "linux/amd64") {
+		t.Errorf("expected linux/amd64 in help output; got:\n%s", out)
+	}
+}
