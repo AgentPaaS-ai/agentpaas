@@ -492,7 +492,10 @@ type PackRequest struct {
 	// Version string for the agent image.
 	AgentVersion string `protobuf:"bytes,3,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
 	// Override base image (optional).
-	BaseImage     string `protobuf:"bytes,4,opt,name=base_image,json=baseImage,proto3" json:"base_image,omitempty"`
+	BaseImage string `protobuf:"bytes,4,opt,name=base_image,json=baseImage,proto3" json:"base_image,omitempty"`
+	// Target platform (e.g. "linux/amd64", "linux/arm64").
+	// Empty means host default. For Cloudflare deployment, use "linux/amd64".
+	Platform      string `protobuf:"bytes,5,opt,name=platform,proto3" json:"platform,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -551,6 +554,13 @@ func (x *PackRequest) GetAgentVersion() string {
 func (x *PackRequest) GetBaseImage() string {
 	if x != nil {
 		return x.BaseImage
+	}
+	return ""
+}
+
+func (x *PackRequest) GetPlatform() string {
+	if x != nil {
+		return x.Platform
 	}
 	return ""
 }
@@ -10708,14 +10718,15 @@ var File_control_v1_control_proto protoreflect.FileDescriptor
 
 const file_control_v1_control_proto_rawDesc = "" +
 	"\n" +
-	"\x18control/v1/control.proto\x12\x14agentpaas.control.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9e\x01\n" +
+	"\x18control/v1/control.proto\x12\x14agentpaas.control.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xba\x01\n" +
 	"\vPackRequest\x12,\n" +
 	"\x12agent_project_path\x18\x01 \x01(\tR\x10agentProjectPath\x12\x1d\n" +
 	"\n" +
 	"agent_name\x18\x02 \x01(\tR\tagentName\x12#\n" +
 	"\ragent_version\x18\x03 \x01(\tR\fagentVersion\x12\x1d\n" +
 	"\n" +
-	"base_image\x18\x04 \x01(\tR\tbaseImage\"N\n" +
+	"base_image\x18\x04 \x01(\tR\tbaseImage\x12\x1a\n" +
+	"\bplatform\x18\x05 \x01(\tR\bplatform\"N\n" +
 	"\fPackResponse\x12!\n" +
 	"\fimage_digest\x18\x01 \x01(\tR\vimageDigest\x12\x1b\n" +
 	"\tbuild_log\x18\x02 \x01(\tR\bbuildLog\"i\n" +
