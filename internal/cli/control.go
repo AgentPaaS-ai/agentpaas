@@ -38,14 +38,15 @@ Requires a running daemon. project-dir defaults to the current directory.
 Refuses wildcard egress policies unless --allow-wildcard is set.
 
 Use --target to build for a different platform than the host (e.g. --target
-linux/amd64 for Cloudflare Workers). Cross-platform builds use Docker platform
-emulation; you may need to pre-pull base images with --platform first:
-  docker pull --platform linux/amd64 gcr.io/distroless/python3-debian12
+linux/amd64 for Cloudflare Workers). Multi-arch base images are automatically
+resolved to the correct platform-specific digest. The builder stage image
+(python:3.11-slim) may still need pre-pulling for cross-platform builds:
   docker pull --platform linux/amd64 python:3.11-slim`,
 		Example: `  agentpaas pack ./my-agent
   agentpaas pack . --name weather --version 1.0.0
   agentpaas pack ./my-agent --allow-wildcard
-  agentpaas pack ./my-agent --target linux/amd64`,
+  agentpaas pack ./my-agent --target linux/amd64
+  agentpaas pack ./my-agent --target linux/amd64 --base-image gcr.io/distroless/python3-debian12@sha256:...`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			projectDir := "."
@@ -88,6 +89,7 @@ emulation; you may need to pre-pull base images with --platform first:
 
 			agentName, _ := cmd.Flags().GetString("name")       // cobra flag default on missing
 			agentVersion, _ := cmd.Flags().GetString("version") // cobra flag default on missing
+			baseImage, _ := cmd.Flags().GetString("base-image") // cobra flag default on missing
 
 			sock, err := socketPath(cmd)
 			if err != nil {
@@ -106,6 +108,7 @@ emulation; you may need to pre-pull base images with --platform first:
 				AgentProjectPath: projectDir,
 				AgentName:        agentName,
 				AgentVersion:     agentVersion,
+				BaseImage:        baseImage,
 				Platform:         targetPlatform,
 			})
 			if err != nil {
@@ -132,6 +135,7 @@ emulation; you may need to pre-pull base images with --platform first:
 	cmd.Flags().String("version", "", "Override agent version from agent.yaml for this pack")
 	cmd.Flags().Bool("allow-wildcard", false, "Allow packing when policy.yaml has domain: '*' egress (prints warning)")
 	cmd.Flags().String("target", "", "Target platform for the image (e.g. \"linux/amd64\", \"linux/arm64\"). Empty means host default. For Cloudflare, use \"linux/amd64\"")
+	cmd.Flags().String("base-image", "", "Override the base distroless image (e.g. \"gcr.io/distroless/python3-debian12@sha256:...\")")
 	return cmd
 }
 

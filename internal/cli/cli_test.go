@@ -1042,6 +1042,26 @@ func TestPackCmdHasTargetFlag(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestPackCmdHasBaseImageFlag
+// Tests: the `agentpaas pack` command has a --base-image flag.
+// ---------------------------------------------------------------------------
+func TestPackCmdHasBaseImageFlag(t *testing.T) {
+	cmd := freshCmd()
+	packCmd := findSubCmd(cmd, "pack")
+	if packCmd == nil {
+		t.Fatal("pack command not found")
+	}
+
+	flag := packCmd.Flags().Lookup("base-image")
+	if flag == nil {
+		t.Fatal("expected --base-image flag on pack command, got nil")
+	}
+	if flag.DefValue != "" {
+		t.Errorf("expected --base-image default to be empty, got %q", flag.DefValue)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // TestPackCmdHelpShowsTarget
 // Tests: `agentpaas pack --help` shows --target in the output.
 // ---------------------------------------------------------------------------
@@ -1056,6 +1076,9 @@ func TestPackCmdHelpShowsTarget(t *testing.T) {
 	out := outBuf.String()
 	if !strings.Contains(out, "--target") {
 		t.Errorf("expected --target in help output; got:\n%s", out)
+	}
+	if !strings.Contains(out, "--base-image") {
+		t.Errorf("expected --base-image in help output; got:\n%s", out)
 	}
 	if !strings.Contains(out, "linux/amd64") {
 		t.Errorf("expected linux/amd64 in help output; got:\n%s", out)
