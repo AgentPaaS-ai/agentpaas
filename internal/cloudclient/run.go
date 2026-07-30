@@ -16,10 +16,10 @@ type RunRecord struct {
 	DeploymentID     string  `json:"deployment_id"`
 	Status           string  `json:"status"`
 	Admission        *string `json:"admission,omitempty"`
-	QueuePosition    int     `json:"queue_position"`
+	QueuePosition    *int `json:"queue_position,omitempty"`
 	CreatedAt        string  `json:"created_at"`
 	ConcurrencyLimit int     `json:"concurrency_limit"`
-	ActiveBefore     *string `json:"active_before,omitempty"`
+	ActiveBefore     int  `json:"active_before"`
 	SlotID           *string `json:"slot_id,omitempty"`
 	ContainerID      *string `json:"container_id,omitempty"`
 	UpdatedAt        *string `json:"updated_at,omitempty"`
