@@ -47,7 +47,7 @@ func NewCloudClient(baseURL string) *CloudClient {
 	}
 	return &CloudClient{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: 180 * time.Second},
 	}
 }
 
