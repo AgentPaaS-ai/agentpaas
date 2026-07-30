@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/cloudclient"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/spf13/cobra"
 )
 
@@ -87,6 +90,8 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudLoginCmd())
 	cmd.AddCommand(newCloudWhoamiCmd())
 	cmd.AddCommand(newCloudLogoutCmd())
+	cmd.AddCommand(newCloudPushCmd())
+	cmd.AddCommand(newCloudImagesCmd())
 
 	return cmd
 }
@@ -227,6 +232,238 @@ Idempotent — succeeds even if not currently logged in.`,
 			}
 
 			fmt.Println("Logged out.")
+			return nil
+		},
+	}
+}
+
+// runWranglerPush is the hook for pushing an image to Cloudflare Container Registry.
+// Tests override this var. The default implementation calls wrangler.
+var runWranglerPush = func(ctx context.Context, imageRef string) (registryRef string, err error) {
+	// Try wrangler first, then npx wrangler.
+	cmd := exec.CommandContext(ctx, "wrangler", "containers", "push", imageRef)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Try npx.
+		cmd2 := exec.CommandContext(ctx, "npx", "wrangler", "containers", "push", imageRef)
+		out2, err2 := cmd2.CombinedOutput()
+		if err2 != nil {
+			return "", fmt.Errorf("wrangler push failed: %w (output: %s)", err, string(out))
+		}
+		out = out2
+	}
+	// Parse the output for a registry.cloudflare.com line.
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "registry.cloudflare.com") {
+			return line, nil
+		}
+	}
+	return "", fmt.Errorf("wrangler push succeeded but no registry ref found in output")
+}
+
+// newCloudPushCmd creates the `agentpaas cloud push` command.
+func newCloudPushCmd() *cobra.Command {
+	var (
+		lockPath     string
+		digest       string
+		platform     string
+		registryRef  string
+		skipRegistry bool
+	)
+
+	cmd := &cobra.Command{
+		Use:   "push",
+		Short: "Push a packed agent image to AgentPaaS Cloud",
+		Long: `Admit a signed agent image to the AgentPaaS Cloud control plane.
+
+This command reads the agent.lock file, verifies its signature, and
+sends an admission request to the cloud API. The control plane verifies
+the lockfile signature and admits the image for deployment.
+
+Cloud requires amd64 packs. Customers never run wrangler themselves —
+the CLI wraps it. Admit rejects unsigned locks.
+
+If --skip-registry is set, only the admission request is sent (no
+registry push). Otherwise, the CLI attempts to push the image to the
+Cloudflare Container Registry via wrangler, using the
+CLOUDFLARE_API_TOKEN environment variable.`,
+		Example: `  # Push with admission only (no registry push)
+  agentpaas cloud push --lock agent.lock --skip-registry
+
+  # Push with registry ref from prior wrangler push
+  agentpaas cloud push --lock agent.lock --registry-ref registry.cloudflare.com/...
+
+  # Push with explicit digest override
+  agentpaas cloud push --lock agent.lock --digest sha256:...`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// --lock is required. Check before network calls (fail closed).
+			if lockPath == "" {
+				return fmt.Errorf("cloud push: --lock is required (path to agent.lock)")
+			}
+
+			// Read and validate the lockfile before auth (fail closed).
+			lock, err := pack.ReadAgentLock(lockPath)
+			if err != nil {
+				return fmt.Errorf("cloud push: read lock: %w", err)
+			}
+
+			// Require lockfile_signature non-empty.
+			if lock.LockfileSignature == "" {
+				return fmt.Errorf("cloud push: unsigned agent.lock — pack with signing identity")
+			}
+
+			// Verify the lockfile signature.
+			if err := pack.VerifyLockfileSignature(lock); err != nil {
+				return fmt.Errorf("cloud push: lockfile signature verification failed: %w", err)
+			}
+
+			// Require image_digest non-empty.
+			if lock.ImageDigest == "" {
+				return fmt.Errorf("cloud push: agent.lock has no image_digest")
+			}
+
+			// Resolve platform.
+			resolvedPlatform := platform
+			if resolvedPlatform == "" {
+				if lock.Platform != "" {
+					resolvedPlatform = lock.Platform
+				} else {
+					resolvedPlatform = "linux/amd64"
+				}
+			}
+
+			// Require platform == linux/amd64 when targeting cloud.
+			if resolvedPlatform != "linux/amd64" {
+				return fmt.Errorf("cloud push: platform must be linux/amd64 for cloud, got %q", resolvedPlatform)
+			}
+
+			// Resolve token (must be logged in).
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud push: %w", err)
+			}
+
+			// Resolve image digest.
+			resolvedDigest := digest
+			if resolvedDigest == "" {
+				resolvedDigest = lock.ImageDigest
+			}
+
+			// Registry step: only if --registry-ref not provided AND --skip-registry is false.
+			resolvedRegistryRef := registryRef
+			if resolvedRegistryRef == "" && !skipRegistry {
+				// Check if CLOUDFLARE_API_TOKEN is set.
+				if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
+					return fmt.Errorf("cloud push: CLOUDFLARE_API_TOKEN not set — use --skip-registry or set CLOUDFLARE_API_TOKEN")
+				}
+				ref, err := runWranglerPush(cmd.Context(), resolvedDigest)
+				if err != nil {
+					return fmt.Errorf("cloud push: wrangler push failed: %w (use --skip-registry to skip)", err)
+				}
+				resolvedRegistryRef = ref
+			}
+
+			// Build the admit request.
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			// Read lock JSON for agent_lock field.
+			lockJSON, err := os.ReadFile(lockPath)
+			if err != nil {
+				return fmt.Errorf("cloud push: read lock file: %w", err)
+			}
+			var lockMap interface{}
+			if err := json.Unmarshal(lockJSON, &lockMap); err != nil {
+				return fmt.Errorf("cloud push: parse lock JSON: %w", err)
+			}
+
+			admReq := cloudclient.AdmitImageRequest{
+				ImageDigest: resolvedDigest,
+				Platform:    resolvedPlatform,
+				RegistryRef: resolvedRegistryRef,
+				AgentLock:   lockMap,
+			}
+
+			resp, err := client.AdmitImage(cmd.Context(), token, admReq)
+			if err != nil {
+				// Check if 401 — token may be expired.
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud push: %w", err)
+			}
+
+			// Print result.
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+			fmt.Printf("Image admitted: %s\n", resp.ID)
+			fmt.Printf("  Digest: %s\n", resp.ImageDigest)
+			fmt.Printf("  Status: %s\n", resp.Status)
+			if resolvedRegistryRef != "" {
+				fmt.Printf("  Registry: %s\n", resolvedRegistryRef)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&lockPath, "lock", "", "Path to agent.lock JSON (required)")
+	cmd.Flags().StringVar(&digest, "digest", "", "Override image digest (default: from lock.image_digest)")
+	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (default: from lock.platform or linux/amd64)")
+	cmd.Flags().StringVar(&registryRef, "registry-ref", "", "Cloudflare Container Registry reference (optional)")
+	cmd.Flags().BoolVar(&skipRegistry, "skip-registry", false, "Skip registry push; admission only")
+
+	return cmd
+}
+
+// newCloudImagesCmd creates the `agentpaas cloud images` command.
+func newCloudImagesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "images",
+		Short: "List admitted cloud images",
+		Long: `List all images admitted to the AgentPaaS Cloud control plane.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud images: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			images, err := client.ListImages(cmd.Context(), token)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud images: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, images, nil)
+			}
+
+			if len(images) == 0 {
+				fmt.Println("No images. Push an image with 'agentpaas cloud push'.")
+				return nil
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-70s %s\n", "ID", "DIGEST", "STATUS")
+			for _, img := range images {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-70s %s\n", img.ID, img.ImageDigest, img.Status)
+			}
 			return nil
 		},
 	}
