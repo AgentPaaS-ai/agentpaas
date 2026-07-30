@@ -51,8 +51,14 @@ func NewCloudClient(baseURL string) *CloudClient {
 	}
 }
 
+// jsonOK reports whether status is a successful HTTP response that may carry a JSON body (any 2xx).
+func jsonOK(code int) bool { return code >= 200 && code < 300 }
+
 // StartCLIAuth initiates a CLI-based login flow and returns the approve URL
 // and state parameter.
+//
+// Cloud API returns 201 Created (pending cli_login). Older mocks may return 200.
+// Accept any 2xx so we do not break on either.
 func (c *CloudClient) StartCLIAuth(ctx context.Context, redirectURI string) (*StartCLIAuthResponse, error) {
 	body := StartCLIAuthRequest{
 		RedirectURI: redirectURI,
@@ -74,7 +80,7 @@ func (c *CloudClient) StartCLIAuth(ctx context.Context, redirectURI string) (*St
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+	if !jsonOK(resp.StatusCode) {
 		return nil, fmt.Errorf("start cli auth: unexpected status %d", resp.StatusCode)
 	}
 
@@ -102,7 +108,7 @@ func (c *CloudClient) Whoami(ctx context.Context, token string) (*WhoamiResponse
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("whoami: not authenticated (token may be expired or invalid)")
 	}
-	if resp.StatusCode != http.StatusOK {
+	if !jsonOK(resp.StatusCode) {
 		return nil, fmt.Errorf("whoami: unexpected status %d", resp.StatusCode)
 	}
 

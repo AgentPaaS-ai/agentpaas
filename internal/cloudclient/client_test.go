@@ -217,3 +217,27 @@ func TestNewCloudClient_CustomURL(t *testing.T) {
 		t.Errorf("BaseURL = %q, want https://custom.example.com", client.BaseURL)
 	}
 }
+
+func TestJSONOK(t *testing.T) {
+	tests := []struct {
+		code int
+		want bool
+	}{
+		{200, true},
+		{201, true},
+		{204, true},
+		{299, true},
+		{199, false},
+		{300, false},
+		{301, false},
+		{400, false},
+		{401, false},
+		{500, false},
+	}
+	for _, tt := range tests {
+		got := jsonOK(tt.code)
+		if got != tt.want {
+			t.Errorf("jsonOK(%d) = %v, want %v", tt.code, got, tt.want)
+		}
+	}
+}
