@@ -155,13 +155,21 @@ the AGENTPAAS_CLOUD_API_TOKEN environment variable.`,
 	return cmd
 }
 
+// whoamiDisplay is the founder-facing whoami output, intentionally omitting
+// SecretsBackend (founders should not see secrets infrastructure details).
+type whoamiDisplay struct {
+	TenantID         string `json:"tenant_id"`
+	Tier             string `json:"tier"`
+	ConcurrencyLimit int    `json:"concurrency_limit"`
+}
+
 // newCloudWhoamiCmd creates the `agentpaas cloud whoami` command.
 func newCloudWhoamiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "whoami",
 		Short: "Show authenticated cloud user info",
 		Long: `Display the currently authenticated cloud user's tenant, tier,
-concurrency limit, and secrets backend.
+and concurrency limit.
 
 Requires a valid login. Use 'agentpaas cloud login' first.`,
 		Args: cobra.NoArgs,
@@ -183,11 +191,17 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 				return fmt.Errorf("cloud whoami: %w", err)
 			}
 
-			if jsonOutput(cmd) {
-				return printTextOrJSON(true, resp, nil)
+			display := whoamiDisplay{
+				TenantID:         resp.TenantID,
+				Tier:             resp.Tier,
+				ConcurrencyLimit: resp.ConcurrencyLimit,
 			}
-			fmt.Printf("Tenant: %s\nTier: %s\nConcurrency limit: %d\nSecrets backend: %s\n",
-				resp.TenantID, resp.Tier, resp.ConcurrencyLimit, resp.SecretsBackend)
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, display, nil)
+			}
+			fmt.Printf("Tenant: %s\nTier: %s\nConcurrency limit: %d\n",
+				display.TenantID, display.Tier, display.ConcurrencyLimit)
 			return nil
 		},
 	}

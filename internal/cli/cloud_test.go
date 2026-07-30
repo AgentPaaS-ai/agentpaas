@@ -333,15 +333,27 @@ func TestCloudWhoami_JSONOutput(t *testing.T) {
 		t.Fatalf("whoami --json: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
 
-	var resp cloudclient.WhoamiResponse
-	if err := json.Unmarshal([]byte(stdout), &resp); err != nil {
+	// Verify secrets_backend is NOT leaked in JSON output.
+	if strings.Contains(stdout, "secrets_backend") {
+		t.Errorf("JSON output should not contain secrets_backend, got: %s", stdout)
+	}
+
+	var parsed struct {
+		TenantID         string `json:"tenant_id"`
+		Tier             string `json:"tier"`
+		ConcurrencyLimit int    `json:"concurrency_limit"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("unmarshal JSON: %v\noutput: %s", err, stdout)
 	}
-	if resp.TenantID != "json-tenant" {
-		t.Errorf("TenantID = %q, want json-tenant", resp.TenantID)
+	if parsed.TenantID != "json-tenant" {
+		t.Errorf("TenantID = %q, want json-tenant", parsed.TenantID)
 	}
-	if resp.Tier != "free" {
-		t.Errorf("Tier = %q, want free", resp.Tier)
+	if parsed.Tier != "free" {
+		t.Errorf("Tier = %q, want free", parsed.Tier)
+	}
+	if parsed.ConcurrencyLimit != 1 {
+		t.Errorf("ConcurrencyLimit = %d, want 1", parsed.ConcurrencyLimit)
 	}
 }
 
