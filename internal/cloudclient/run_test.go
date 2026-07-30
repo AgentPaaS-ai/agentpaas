@@ -15,7 +15,7 @@ func TestCloudClient_CreateRun_Success(t *testing.T) {
 		TenantID:         "tenant-42",
 		DeploymentID:     "dep-xyz",
 		Status:           "pending",
-		QueuePosition:    0,
+		QueuePosition:    intPtr(0),
 		ConcurrencyLimit: 1,
 	}
 
@@ -386,3 +386,6 @@ func TestCloudClient_CancelRun_500_ServerError(t *testing.T) {
 
 // strPtr returns a pointer to the given string.
 func strPtr(s string) *string { return &s }
+
+// intPtr returns a pointer to the given int.
+func intPtr(i int) *int { return &i }
