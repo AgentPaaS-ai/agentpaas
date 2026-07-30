@@ -16,6 +16,7 @@ import (
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/cloudclient"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
 )
 
@@ -95,6 +96,7 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudImagesCmd())
 	cmd.AddCommand(newCloudDeployCmd())
 	cmd.AddCommand(newCloudDeploymentsCmd())
+	cmd.AddCommand(newCloudSecretsCmd())
 	cmd.AddCommand(newCloudRunCmd())
 	cmd.AddCommand(newCloudStatusCmd())
 	cmd.AddCommand(newCloudCancelCmd())
@@ -570,6 +572,126 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-70s %s\n", "ID", "DIGEST", "STATUS")
 			for _, img := range images {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-70s %s\n", img.ID, img.ImageDigest, img.Status)
+			}
+			return nil
+		},
+	}
+}
+
+// newCloudSecretsCmd creates the `agentpaas cloud secrets` command.
+func newCloudSecretsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "secrets",
+		Aliases: []string{"secret"},
+		Short:   "Push and list cloud secrets (labels only, never values)",
+		Long: `Sync local keychain secrets to the AgentPaaS Cloud.
+
+Secrets are pushed by name only; values are transmitted over TLS but
+never displayed by the CLI. Requires a valid cloud login.`,
+		Example: `  agentpaas cloud secrets push my-api-key
+  agentpaas cloud secrets list`,
+	}
+
+	cmd.AddCommand(newCloudSecretsPushCmd())
+	cmd.AddCommand(newCloudSecretsListCmd())
+
+	return cmd
+}
+
+// newCloudSecretsPushCmd creates the `agentpaas cloud secrets push` command.
+func newCloudSecretsPushCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "push <name> [name...]",
+		Short: "Push local keychain secrets to the cloud (labels only, never prints value)",
+		Long: `Push one or more local keychain secrets to AgentPaaS Cloud.
+
+Each named secret is read from the local macOS Keychain and sent to the
+cloud API over TLS. Names are printed on success, but values are never
+displayed. Requires a valid cloud login.`,
+		Example: `  agentpaas cloud secrets push openai-key
+  agentpaas cloud secrets push openai-key anthropic-key`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Resolve token (must be logged in).
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud secrets push: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			// Get the local secret store.
+			store, err := secretStoreFactory(cmd)
+			if err != nil {
+				return fmt.Errorf("cloud secrets push: %w", err)
+			}
+
+			for _, name := range args {
+				if err := secrets.ValidateSecretName(name); err != nil {
+					return fmt.Errorf("cloud secrets push: %w", err)
+				}
+				value, err := store.Get(cmd.Context(), name)
+				if err != nil {
+					return fmt.Errorf("cloud secrets push: get local secret %q: %w", name, err)
+				}
+				if err := client.PutSecret(cmd.Context(), token, name, string(value)); err != nil {
+					return fmt.Errorf("cloud secrets push: push %q: %w", name, err)
+				}
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "pushed: %s\n", name)
+			}
+
+			return nil
+		},
+	}
+}
+
+// newCloudSecretsListCmd creates the `agentpaas cloud secrets list` command.
+func newCloudSecretsListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List cloud secret labels (names only, never values)",
+		Long: `List secret labels stored in AgentPaaS Cloud.
+
+Returns names and timestamps only. Secret values are never returned
+or displayed. Requires a valid cloud login.`,
+		Example: `  agentpaas cloud secrets list
+  agentpaas cloud secrets list --json`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud secrets list: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			labels, err := client.ListSecrets(cmd.Context(), token)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud secrets list: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, labels, nil)
+			}
+
+			if len(labels) == 0 {
+				fmt.Println("No cloud secrets. Push one with 'agentpaas cloud secrets push'.")
+				return nil
+			}
+
+			for _, s := range labels {
+				fmt.Println(s.Name)
 			}
 			return nil
 		},

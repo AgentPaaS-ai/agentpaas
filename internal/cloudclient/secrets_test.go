@@ -119,7 +119,7 @@ func TestCloudClient_ListSecrets_Success(t *testing.T) {
 			t.Errorf("Authorization = %q, want Bearer apc_test_token", auth)
 		}
 
-		resp := listSecretsResponse{Secrets: expected}
+		resp := ListSecretsResponse{Secrets: expected}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
@@ -145,7 +145,7 @@ func TestCloudClient_ListSecrets_Success(t *testing.T) {
 
 func TestCloudClient_ListSecrets_Empty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := listSecretsResponse{Secrets: []SecretLabel{}}
+		resp := ListSecretsResponse{Secrets: []SecretLabel{}}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
