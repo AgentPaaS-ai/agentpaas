@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -92,6 +93,8 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudLogoutCmd())
 	cmd.AddCommand(newCloudPushCmd())
 	cmd.AddCommand(newCloudImagesCmd())
+	cmd.AddCommand(newCloudDeployCmd())
+	cmd.AddCommand(newCloudDeploymentsCmd())
 
 	return cmd
 }
@@ -583,4 +586,136 @@ func isServerClosedErr(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "use of closed network connection")
+}
+
+// sha256DigestRe validates sha256:<64 hex chars>.
+var sha256DigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// newCloudDeployCmd creates the `agentpaas cloud deploy` command.
+func newCloudDeployCmd() *cobra.Command {
+	var slotID string
+
+	cmd := &cobra.Command{
+		Use:   "deploy <digest>",
+		Short: "Deploy an admitted image to AgentPaaS Cloud",
+		Long: `Create a deployment from an admitted image digest.
+
+The digest must be in sha256:<hex> format. The image must have been
+previously admitted via 'agentpaas cloud push'.
+
+Use --slot-id to pin the deployment to a specific slot; otherwise the
+control plane assigns one automatically.`,
+		Example: `  # Deploy an admitted image
+  agentpaas cloud deploy sha256:abcd1234...
+
+  # Deploy to a specific slot
+  agentpaas cloud deploy sha256:abcd1234... --slot-id slot-42`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			digest := args[0]
+
+			// Validate digest format.
+			if !sha256DigestRe.MatchString(digest) {
+				return fmt.Errorf("cloud deploy: invalid digest format %q — must be sha256:<64 hex chars>", digest)
+			}
+
+			// Resolve token.
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud deploy: %w", err)
+			}
+
+			// Build request.
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			req := cloudclient.CreateDeploymentRequest{
+				ImageDigest: digest,
+			}
+			if slotID != "" {
+				req.SlotID = &slotID
+			}
+
+			resp, err := client.CreateDeployment(cmd.Context(), token, req)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud deploy: %w", err)
+			}
+
+			// Print result.
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+			fmt.Printf("Deployment created: %s\n", resp.ID)
+			fmt.Printf("  Digest: %s\n", resp.ImageDigest)
+			fmt.Printf("  Status: %s\n", resp.Status)
+			if resp.SlotID != nil && *resp.SlotID != "" {
+				fmt.Printf("  Slot:   %s\n", *resp.SlotID)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&slotID, "slot-id", "", "Pin deployment to a specific slot")
+
+	return cmd
+}
+
+// newCloudDeploymentsCmd creates the `agentpaas cloud deployments` command.
+func newCloudDeploymentsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "deployments",
+		Aliases: []string{"list"},
+		Short:   "List cloud deployments",
+		Long: `List all deployments on the AgentPaaS Cloud control plane.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud deployments: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			deployments, err := client.ListDeployments(cmd.Context(), token)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud deployments: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, deployments, nil)
+			}
+
+			if len(deployments) == 0 {
+				fmt.Println("No deployments. Deploy an image with 'agentpaas cloud deploy'.")
+				return nil
+			}
+
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-70s %-12s %s\n", "ID", "DIGEST", "STATUS", "SLOT")
+			for _, dep := range deployments {
+				slot := "-"
+				if dep.SlotID != nil && *dep.SlotID != "" {
+					slot = *dep.SlotID
+				}
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-20s %-70s %-12s %s\n", dep.ID, dep.ImageDigest, dep.Status, slot)
+			}
+			return nil
+		},
+	}
+
+	return cmd
 }
