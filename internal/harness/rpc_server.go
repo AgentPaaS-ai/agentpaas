@@ -411,6 +411,43 @@ func (s *harnessRPCServer) LoadCredentials(path string) error {
 	return nil
 }
 
+// LoadCredentialsFromJSON parses a JSON array of {id, header, value} objects
+// and stores them as credentials in memory. This is the cloud CF equivalent
+// of LoadCredentials when the platform provides credentials via
+// AGENTPAAS_CREDENTIALS_JSON instead of a mounted file.
+// Credential values are never logged or included in error messages.
+func (s *harnessRPCServer) LoadCredentialsFromJSON(jsonStr string) error {
+	if jsonStr == "" {
+		return nil
+	}
+
+	type credEntry struct {
+		ID     string `json:"id"`
+		Header string `json:"header"`
+		Value  string `json:"value"`
+	}
+	var entries []credEntry
+	if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
+		return fmt.Errorf("harness rpcserver load credentials from json: %w", err)
+	}
+
+	creds := make(map[string]rpcCredential)
+	for _, e := range entries {
+		if e.ID == "" {
+			continue
+		}
+		creds[e.ID] = rpcCredential{
+			Header: e.Header,
+			Value:  e.Value,
+		}
+	}
+
+	s.mu.Lock()
+	s.credentials = creds
+	s.mu.Unlock()
+	return nil
+}
+
 // LoadProgressMetadata reads the journal key from the sidecar file,
 // constructs a progressJournalWriter and progressIdentity, and stores
 // them on the server for use by SetInvoke. The key file is deleted after

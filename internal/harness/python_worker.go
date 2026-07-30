@@ -75,8 +75,17 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 	// Load pre-resolved credentials from the sidecar file before starting
 	// the Python worker, so credential values are in memory before agent
 	// code begins executing.
+	// Prefer path if set (traditional file mount); fall back to JSON env
+	// (cloud CF where platform resolves vault secrets into the env var).
 	if cfg.CredentialsPath != "" {
 		if err := rpcServer.LoadCredentials(cfg.CredentialsPath); err != nil {
+			_ = rpcServer.Close()     // best-effort cleanup
+			_ = stderrCapture.Close() // best-effort cleanup
+			errResp := &ErrorResponse{Status: "FAILED", Reason: "credential_load_failed", Detail: err.Error()}
+			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+		}
+	} else if cfg.CredentialsJSON != "" {
+		if err := rpcServer.LoadCredentialsFromJSON(cfg.CredentialsJSON); err != nil {
 			_ = rpcServer.Close()     // best-effort cleanup
 			_ = stderrCapture.Close() // best-effort cleanup
 			errResp := &ErrorResponse{Status: "FAILED", Reason: "credential_load_failed", Detail: err.Error()}
