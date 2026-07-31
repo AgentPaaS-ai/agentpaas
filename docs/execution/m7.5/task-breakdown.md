@@ -14,7 +14,7 @@
 | T10 | Secrets posture: label "preview vault" (D114) | cloud + docs | DONE 496a893 |
 | T11 | Cold-onboard external gate (founder+external) | human | PENDING — D113 non-deferrable |
 | T12 | Live CF soak $ cap | human+cloud | PENDING |
-| ADV | SC1–SC5 adversary | cloud | after T01–T08 |
+| ADV | SC1–SC5 adversary | cloud | DONE 480 tests |
 | ARCH | Thinker architecture review | read-only | block-end |
 | VER | Verifier 8 segments | cloud+OSS | block-end |
 
