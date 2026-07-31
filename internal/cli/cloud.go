@@ -95,6 +95,8 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudUsageCmd())
 	cmd.AddCommand(newCloudInvokeTokenCmd())
 	cmd.AddCommand(newCloudInvokeCmd())
+	cmd.AddCommand(newCloudResultCmd())
+	cmd.AddCommand(newCloudLogsCmd())
 	cmd.AddCommand(newCloudLogoutCmd())
 	cmd.AddCommand(newCloudPushCmd())
 	cmd.AddCommand(newCloudImagesCmd())
@@ -306,6 +308,14 @@ The invoke token is displayed once. Store it securely and use it with
 				return fmt.Errorf("cloud invoke-token: %w", err)
 			}
 
+			invokeStore, err := newCloudInvokeTokenStore(cmd)
+			if err != nil {
+				return fmt.Errorf("cloud invoke-token: store token: %w", err)
+			}
+			if err := invokeStore.Set(cmd.Context(), args[0], resp.InvokeToken); err != nil {
+				return fmt.Errorf("cloud invoke-token: store token: %w", err)
+			}
+
 			if jsonOutput(cmd) {
 				return printTextOrJSON(true, resp, nil)
 			}
@@ -334,7 +344,7 @@ Use --token or AGENTPAAS_CLOUD_INVOKE_TOKEN for the invoke token. This
 command never uses the tenant cloud login token for the invoke request.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			invokeToken, err := resolveCloudInvokeToken(token)
+			invokeToken, err := resolveCloudInvokeToken(cmd, token, args[0])
 			if err != nil {
 				return err
 			}
@@ -371,14 +381,26 @@ command never uses the tenant cloud login token for the invoke request.`,
 	return cmd
 }
 
-func resolveCloudInvokeToken(flagToken string) (string, error) {
+func resolveCloudInvokeToken(cmd *cobra.Command, flagToken, deploymentID string) (string, error) {
 	if flagToken != "" {
 		return flagToken, nil
 	}
 	if envToken := os.Getenv("AGENTPAAS_CLOUD_INVOKE_TOKEN"); envToken != "" {
 		return envToken, nil
 	}
-	return "", fmt.Errorf("cloud invoke: missing invoke token; provide --token or set AGENTPAAS_CLOUD_INVOKE_TOKEN")
+
+	store, err := newCloudInvokeTokenStore(cmd)
+	if err != nil {
+		return "", fmt.Errorf("cloud invoke: resolve stored invoke token: %w", err)
+	}
+	invokeToken, err := store.Get(cmd.Context(), deploymentID)
+	if err != nil {
+		if cloudclient.IsInvokeTokenNotFoundErr(err) {
+			return "", fmt.Errorf("cloud invoke: missing invoke token for deployment %q; provide --token or set AGENTPAAS_CLOUD_INVOKE_TOKEN", deploymentID)
+		}
+		return "", fmt.Errorf("cloud invoke: resolve stored invoke token: %w", err)
+	}
+	return invokeToken, nil
 }
 
 func readCloudInvokeBody(cmd *cobra.Command, body, bodyFile string) (json.RawMessage, error) {
