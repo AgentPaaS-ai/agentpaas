@@ -4,7 +4,7 @@
 |------|-------|------|--------|
 | T01 | Artifacts + signed R2 URLs (SC1) | cloud | DONE 557e462 |
 | T02 | Completion webhook HMAC + SSRF (SC2) | cloud | DONE ca986cb |
-| T03 | Delivery channel declared output only (SC3) | cloud | PENDING |
+| T03 | Delivery channel declared output only (SC3) | cloud | DONE 602b1bb |
 | T04 | `cloud result` / `cloud logs` polish | cloud + OSS | PENDING |
 | T05 | Always-on prod API + deploy re-bind | cloud + docs | PENDING |
 | T06 | Golden-path customer runbook | OSS docs | PENDING |
