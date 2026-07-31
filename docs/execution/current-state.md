@@ -1,0 +1,13 @@
+# Current State — M7.5 IN PROGRESS
+
+**M5:** CLOSED
+**M6-lite:** CLOSED eng (no Stripe)
+**M7:** CLOSED eng — triggers + ADV + OSS cloud invoke-token / invoke (07fd802)
+**M7.5:** IN PROGRESS (opened 2026-07-31) — Customer Readiness Regression
+  Spec: `docs/execution/m7.5/block-spec.md`. Adversary required.
+  Output loop pulled forward from M8 (T01–T03 + SC1–SC3).
+
+**Next eng after M7.5:** M8 (rescoped — run-record CLI verbs only; depends M7.5)
+**Human:** M6.5 Stripe GO; W1/UI plan; live CF with $ cap (T12)
+**Process:** D112 deferrals→D-entries; D113 customer gates non-deferrable;
+  D114 preview vault; D115 no commercial tenant-count gate
