@@ -3,7 +3,7 @@
 | Task | Title | Repo | Status |
 |------|-------|------|--------|
 | T01 | Artifacts + signed R2 URLs (SC1) | cloud | DONE 557e462 |
-| T02 | Completion webhook HMAC + SSRF (SC2) | cloud | PENDING |
+| T02 | Completion webhook HMAC + SSRF (SC2) | cloud | DONE ca986cb |
 | T03 | Delivery channel declared output only (SC3) | cloud | PENDING |
 | T04 | `cloud result` / `cloud logs` polish | cloud + OSS | PENDING |
 | T05 | Always-on prod API + deploy re-bind | cloud + docs | PENDING |
