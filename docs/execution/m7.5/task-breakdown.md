@@ -6,8 +6,8 @@
 | T02 | Completion webhook HMAC + SSRF (SC2) | cloud | DONE ca986cb |
 | T03 | Delivery channel declared output only (SC3) | cloud | DONE 602b1bb |
 | T04 | `cloud result` / `cloud logs` polish | cloud + OSS | DONE (OSS merge) |
-| T05 | Always-on prod API + deploy re-bind | cloud + docs | PENDING |
-| T06 | Golden-path customer runbook | OSS docs | PENDING |
+| T05 | Always-on prod API + deploy re-bind | cloud + docs | DONE 3b39bc3 |
+| T06 | Golden-path customer runbook | OSS docs | DONE |
 | T07 | Invoke-token Keychain/`~/.agentpaas` store | OSS | DONE (with T04) |
 | T08 | D105 rate-limit matrix (SC4) | cloud | DONE 1a7e257 |
 | T09 | Quota UX (reset, upgrade CTA, trial expiry path) | cloud + OSS | PENDING |
