@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/cloudclient"
 )
 
 func TestCloudInvokeCommandsRegistered(t *testing.T) {
@@ -250,6 +252,11 @@ func TestCloudInvoke_BodyFileStdin(t *testing.T) {
 func TestCloudInvoke_MissingToken(t *testing.T) {
 	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
 	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "")
+	oldFactory := cloudInvokeTokenStoreFactory
+	cloudInvokeTokenStoreFactory = func(_ string) (cloudclient.InvokeTokenStore, error) {
+		return cloudclient.NewFakeInvokeTokenStore(), nil
+	}
+	t.Cleanup(func() { cloudInvokeTokenStoreFactory = oldFactory })
 	_ = setupFakeTokenStore(t)
 
 	_, stderr, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-abc")
