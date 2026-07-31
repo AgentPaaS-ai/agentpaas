@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -92,6 +93,8 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudLoginCmd())
 	cmd.AddCommand(newCloudWhoamiCmd())
 	cmd.AddCommand(newCloudUsageCmd())
+	cmd.AddCommand(newCloudInvokeTokenCmd())
+	cmd.AddCommand(newCloudInvokeCmd())
 	cmd.AddCommand(newCloudLogoutCmd())
 	cmd.AddCommand(newCloudPushCmd())
 	cmd.AddCommand(newCloudImagesCmd())
@@ -272,6 +275,184 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			return nil
 		},
 	}
+}
+
+// newCloudInvokeTokenCmd creates the `agentpaas cloud invoke-token` command.
+func newCloudInvokeTokenCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "invoke-token <deployment_id>",
+		Short: "Mint a deployment invoke token",
+		Long: `Mint a token that can invoke a deployment without exposing the
+tenant API token to the caller.
+
+The invoke token is displayed once. Store it securely and use it with
+'agentpaas cloud invoke'. Requires a valid cloud login.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			tenantToken, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud invoke-token: %w", err)
+			}
+
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			resp, err := client.MintInvokeToken(cmd.Context(), tenantToken, args[0])
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud invoke-token: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "Invoke token: %s\n", resp.InvokeToken)
+			_, _ = fmt.Fprintf(out, "Prefix: %s\n", resp.InvokeTokenPrefix)
+			_, _ = fmt.Fprintln(out, "Warning: store this token securely; it will only be shown once.")
+			return nil
+		},
+	}
+}
+
+// newCloudInvokeCmd creates the `agentpaas cloud invoke` command.
+func newCloudInvokeCmd() *cobra.Command {
+	var body string
+	var bodyFile string
+	var token string
+
+	cmd := &cobra.Command{
+		Use:   "invoke <deployment_id>",
+		Short: "Invoke a cloud deployment",
+		Long: `Invoke a deployment with a deployment invoke token.
+
+Use --token or AGENTPAAS_CLOUD_INVOKE_TOKEN for the invoke token. This
+command never uses the tenant cloud login token for the invoke request.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			invokeToken, err := resolveCloudInvokeToken(token)
+			if err != nil {
+				return err
+			}
+
+			requestBody, err := readCloudInvokeBody(cmd, body, bodyFile)
+			if err != nil {
+				return err
+			}
+
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			resp, err := client.InvokeDeployment(cmd.Context(), invokeToken, args[0], requestBody)
+			if err != nil {
+				return fmt.Errorf("cloud invoke: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+
+			var run cloudclient.RunRecord
+			if err := json.Unmarshal(resp, &run); err != nil {
+				return fmt.Errorf("cloud invoke: decode run response: %w", err)
+			}
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "Run ID: %s\n", run.ID)
+			_, _ = fmt.Fprintf(out, "Status: %s\n", run.Status)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&body, "body", "{}", "JSON request body")
+	cmd.Flags().StringVar(&bodyFile, "body-file", "", "Read JSON request body from a file, or - for stdin")
+	cmd.Flags().StringVar(&token, "token", "", "Deployment invoke token")
+	return cmd
+}
+
+func resolveCloudInvokeToken(flagToken string) (string, error) {
+	if flagToken != "" {
+		return flagToken, nil
+	}
+	if envToken := os.Getenv("AGENTPAAS_CLOUD_INVOKE_TOKEN"); envToken != "" {
+		return envToken, nil
+	}
+	return "", fmt.Errorf("cloud invoke: missing invoke token; provide --token or set AGENTPAAS_CLOUD_INVOKE_TOKEN")
+}
+
+func readCloudInvokeBody(cmd *cobra.Command, body, bodyFile string) (json.RawMessage, error) {
+	if bodyFile != "" && cmd.Flags().Changed("body") {
+		return nil, fmt.Errorf("cloud invoke: --body and --body-file are mutually exclusive")
+	}
+
+	var data []byte
+	if bodyFile == "-" {
+		var err error
+		data, err = io.ReadAll(cmd.InOrStdin())
+		if err != nil {
+			return nil, fmt.Errorf("cloud invoke: read body from stdin: %w", err)
+		}
+	} else if bodyFile != "" {
+		var err error
+		data, err = readCloudInvokeBodyFile(bodyFile)
+		if err != nil {
+			return nil, fmt.Errorf("cloud invoke: %w", err)
+		}
+	} else {
+		data = []byte(body)
+	}
+
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		trimmed = "{}"
+	}
+	if !json.Valid([]byte(trimmed)) {
+		return nil, fmt.Errorf("cloud invoke: invalid JSON body")
+	}
+	return json.RawMessage(trimmed), nil
+}
+
+func readCloudInvokeBodyFile(path string) ([]byte, error) {
+	if strings.ContainsRune(path, '\x00') {
+		return nil, fmt.Errorf("body file path contains a null byte")
+	}
+	for _, component := range strings.Split(filepath.ToSlash(path), "/") {
+		if component == ".." {
+			return nil, fmt.Errorf("body file path must not contain '..'")
+		}
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve body file path: %w", err)
+	}
+	for current := absPath; ; current = filepath.Dir(current) {
+		info, err := os.Lstat(current)
+		if err != nil {
+			return nil, fmt.Errorf("inspect body file path: %w", err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 && !isCloudInvokeSystemSymlink(current) {
+			return nil, fmt.Errorf("body file path contains a symlink: %s", current)
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read body file: %w", err)
+	}
+	return data, nil
+}
+
+func isCloudInvokeSystemSymlink(path string) bool {
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	return path == "/var" || path == "/tmp"
 }
 
 // newCloudLogoutCmd creates the `agentpaas cloud logout` command.
