@@ -9,9 +9,9 @@
 | T05 | Always-on prod API + deploy re-bind | cloud + docs | PENDING |
 | T06 | Golden-path customer runbook | OSS docs | PENDING |
 | T07 | Invoke-token Keychain/`~/.agentpaas` store | OSS | PENDING |
-| T08 | D105 rate-limit matrix (SC4) | cloud | PENDING |
+| T08 | D105 rate-limit matrix (SC4) | cloud | DONE 1a7e257 |
 | T09 | Quota UX (reset, upgrade CTA, trial expiry path) | cloud + OSS | PENDING |
-| T10 | Secrets posture: label "preview vault" (D114) | cloud + docs | PENDING |
+| T10 | Secrets posture: label "preview vault" (D114) | cloud + docs | DONE 496a893 |
 | T11 | Cold-onboard external gate (founder+external) | human | PENDING — D113 non-deferrable |
 | T12 | Live CF soak $ cap | human+cloud | PENDING |
 | ADV | SC1–SC5 adversary | cloud | after T01–T08 |
