@@ -91,6 +91,7 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 
 	cmd.AddCommand(newCloudLoginCmd())
 	cmd.AddCommand(newCloudWhoamiCmd())
+	cmd.AddCommand(newCloudUsageCmd())
 	cmd.AddCommand(newCloudLogoutCmd())
 	cmd.AddCommand(newCloudPushCmd())
 	cmd.AddCommand(newCloudImagesCmd())
@@ -215,6 +216,59 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			}
 			fmt.Printf("Tenant: %s\nTier: %s\nConcurrency limit: %d\n",
 				display.TenantID, display.Tier, display.ConcurrencyLimit)
+			return nil
+		},
+	}
+}
+
+// newCloudUsageCmd creates the `agentpaas cloud usage` command.
+func newCloudUsageCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "usage",
+		Short: "Show cloud usage and plan limits",
+		Long: `Display current AgentPaaS Cloud usage, plan limits, and the
+metering formula.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud usage: %w", err)
+			}
+
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			resp, err := client.GetUsage(cmd.Context(), token)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud usage: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "Tier: %s\n", resp.Tier)
+			_, _ = fmt.Fprintf(out, "Concurrency active: %d/%d\n", resp.ConcurrencyActive, resp.ConcurrencyLimit)
+			_, _ = fmt.Fprintf(out, "Agents used: %d/%d\n", resp.AgentsUsed, resp.AgentLimit)
+			_, _ = fmt.Fprintf(out, "CPU minutes used: %g/%d\n", resp.CPUMinutesUsed, resp.CPUMinuteLimit)
+			if resp.CPUMinutesRemaining == nil {
+				_, _ = fmt.Fprintln(out, "CPU minutes remaining: unlimited")
+			} else {
+				_, _ = fmt.Fprintf(out, "CPU minutes remaining: %g\n", *resp.CPUMinutesRemaining)
+			}
+			if resp.DaysRemaining == nil {
+				_, _ = fmt.Fprintln(out, "Trial days remaining: no trial expiry")
+			} else {
+				_, _ = fmt.Fprintf(out, "Trial days remaining: %d\n", *resp.DaysRemaining)
+			}
+			_, _ = fmt.Fprintf(out, "Meter formula: %s\n", resp.Meter.Formula)
 			return nil
 		},
 	}
@@ -778,7 +832,7 @@ func runBrowserLoginFlow(cmd *cobra.Command, store cloudclient.TokenStore, clien
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			if !isServerClosedErr(err) {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Callback server error: %v\n", err)
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Callback server error: %v\n", err)
 			}
 		}
 	}()
