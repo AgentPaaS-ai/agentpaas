@@ -105,5 +105,5 @@ agentpaas cloud usage
 
 ## Hermes first-time user (full)
 
-Use `docs/execution/golden-loop-hermes-e2e.md` — profile teardown → install →
+Use `docs/customer/golden-loop-hermes-e2e.md` — profile teardown → install →
 local build → egress deny/allow → cloud path, all through Hermes.
