@@ -1,14 +1,16 @@
-# Current State — M7.5 ENG GREEN + residual ADV fixed; HUMAN GATES OPEN
+# Current State — M7.5 HUMAN GATES; v0.3.6 shipped; cloud deploy blocked on R2
 
-**M5–M7:** CLOSED eng  
-**M7.5:** ENG GREEN (T01–T10 + ADV SC1–SC5 + residual R1/R2 SSRF fix). Cloud **497** tests.
-  Block OPEN until D113 manual gates:
-  - T11 cold-onboard external tester (30 min, runbook only)
-  - T12 live CF soak with $ cap
+**M5–M7:** CLOSED eng
+**CLI brew:** **v0.3.6** shipped (local goreleaser) — result/logs/invoke-token
+**M7.5 eng:** GREEN (T01–T10 + ADV + residual SSRF). Cloud tests 497.
+**Block OPEN** until D113:
+- T11 cold-onboard (founder + external)
+- T12 live CF soak
 
-**Pre-T11 eng gates (this session):**
-- Verifier 8-seg: **VERIFY PASS (eng local)** — `docs/owa-records/m7.5-verifier.md`
-- Residual ADV: R1/R2 fixed `0aaeb27`; main `5731e5f`; 497/497 PASS
+**Today (2026-08-01) session:**
+- D1 remote migrations through 0015 applied
+- `wrangler deploy` **BLOCKED**: CF R2 not enabled (API 10042) — founder must enable R2 in Dashboard
+- cloud.agentpaas.ai still DOWN until deploy
+- Weather demo already LLM-friendly summary in `answer`
 
-**Next eng after human gates:** M8 run-record CLI verbs  
-**Human also:** M6.5 Stripe GO; W1/UI
+**Next eng after human gates:** M8 run-record CLI verbs
