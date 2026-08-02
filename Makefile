@@ -1,4 +1,4 @@
-.PHONY: build build-harness-linux build-all test proto lint race osv e2e-network redteam-smoke install-plugin golden-eval golden-fast golden-slow golden-docker
+.PHONY: build build-harness-linux build-harness-linux-amd64 build-all test proto lint race osv e2e-network redteam-smoke install-plugin golden-eval golden-fast golden-slow golden-docker
 
 build:
 	go build ./...
@@ -15,7 +15,10 @@ BUILD_FLAGS_HARNESS := -trimpath -ldflags "$(LDFLAGS_VERSION) -s -w"
 build-harness-linux:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness-linux ./cmd/harness
 
-build-all: build build-harness-linux
+build-harness-linux-amd64:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness-linux-amd64 ./cmd/harness
+
+build-all: build build-harness-linux build-harness-linux-amd64
 	go build $(BUILD_FLAGS) -o bin/agentpaas ./cmd/agent
 	go build $(BUILD_FLAGS) -o bin/agentpaasd ./cmd/agentpaasd
 	go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness ./cmd/harness

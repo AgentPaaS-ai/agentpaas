@@ -13,6 +13,41 @@ func writeStub(t *testing.T, path string) {
 	}
 }
 
+func TestHarnessBinaryForPlatform_PrefersLinuxAMD64(t *testing.T) {
+	dir := t.TempDir()
+	amd64Harness := filepath.Join(dir, "agentpaas-harness-linux-amd64")
+	armHarness := filepath.Join(dir, "agentpaas-harness-linux")
+	daemonBinary := filepath.Join(dir, "agentpaasd")
+	for _, p := range []string{amd64Harness, armHarness, daemonBinary} {
+		writeStub(t, p)
+	}
+
+	oldExe := Executable
+	Executable = func() (string, error) { return daemonBinary, nil }
+	t.Cleanup(func() { Executable = oldExe })
+
+	if got := HarnessBinaryForPlatform("linux/amd64"); got != amd64Harness {
+		t.Fatalf("HarnessBinaryForPlatform(linux/amd64) = %q, want %q", got, amd64Harness)
+	}
+}
+
+func TestHarnessBinaryForPlatform_FallsBackToDefault(t *testing.T) {
+	dir := t.TempDir()
+	armHarness := filepath.Join(dir, "agentpaas-harness-linux")
+	daemonBinary := filepath.Join(dir, "agentpaasd")
+	for _, p := range []string{armHarness, daemonBinary} {
+		writeStub(t, p)
+	}
+
+	oldExe := Executable
+	Executable = func() (string, error) { return daemonBinary, nil }
+	t.Cleanup(func() { Executable = oldExe })
+	t.Setenv("PATH", dir)
+
+	if got := HarnessBinaryForPlatform("linux/amd64"); got != armHarness {
+		t.Fatalf("HarnessBinaryForPlatform fallback = %q, want %q", got, armHarness)
+	}
+}
 func TestHarnessBinary_PrefersLinuxNextToExe(t *testing.T) {
 	dir := t.TempDir()
 	linuxHarness := filepath.Join(dir, "agentpaas-harness-linux")
