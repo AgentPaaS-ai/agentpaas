@@ -63,7 +63,37 @@ func HarnessBinary() string {
 	return ""
 }
 
-// harnessCandidate returns path if it points to a regular file, else "".
+// HarnessBinaryForPlatform resolves a harness for an explicit target platform.
+// linux/amd64 uses the architecture-qualified binary first so a host ARM
+// installation cannot accidentally be embedded in an x86-64 image.
+func HarnessBinaryForPlatform(platform string) string {
+	if platform != "linux/amd64" {
+		return HarnessBinary()
+	}
+
+	exePath, err := Executable()
+	if err == nil {
+		if fi, lerr := os.Lstat(exePath); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+			if realExe, rerr := filepath.EvalSymlinks(exePath); rerr == nil {
+				exePath = realExe
+			}
+		}
+		exeDir := filepath.Dir(exePath)
+		for _, candidate := range []string{
+			filepath.Join(exeDir, "agentpaas-harness-linux-amd64"),
+			filepath.Join(exeDir, "..", "bin", "agentpaas-harness-linux-amd64"),
+		} {
+			if p := harnessCandidate(candidate); p != "" {
+				return p
+			}
+		}
+	}
+	if p, err := exec.LookPath("agentpaas-harness-linux-amd64"); err == nil {
+		return p
+	}
+	return HarnessBinary()
+}
+
 func harnessCandidate(path string) string {
 	info, err := os.Stat(path)
 	if err == nil && !info.IsDir() {

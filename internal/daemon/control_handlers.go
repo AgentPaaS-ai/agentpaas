@@ -143,8 +143,16 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		return nil, status.Errorf(codes.Internal, "read policy.yaml: %v", err)
 	}
 
+	// Resolve the target platform. When --target is provided by the CLI,
+	// this is the explicit value (e.g. "linux/amd64"). When empty, use the
+	// host platform so the lock records what was actually built.
+	resolvedPlatform := req.GetPlatform()
+	if resolvedPlatform == "" {
+		resolvedPlatform = fmt.Sprintf("%s/%s", goruntime.GOOS, goruntime.GOARCH)
+	}
+
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
-	harnessPath := binresolve.HarnessBinary()
+	harnessPath := binresolve.HarnessBinaryForPlatform(resolvedPlatform)
 	if harnessPath != "" {
 		if info, err := os.Stat(harnessPath); err == nil {
 			fmt.Fprintf(os.Stderr, "daemon: pack using harness %s (modified %s)\n", harnessPath, info.ModTime().Format(time.RFC3339))
@@ -163,14 +171,6 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		defer cleanup()
 		sdkDir = embeddedSDKDir
 	}
-	// Resolve the target platform. When --target is provided by the CLI,
-	// this is the explicit value (e.g. "linux/amd64"). When empty, use the
-	// host platform so the lock records what was actually built.
-	resolvedPlatform := req.GetPlatform()
-	if resolvedPlatform == "" {
-		resolvedPlatform = fmt.Sprintf("%s/%s", goruntime.GOOS, goruntime.GOARCH)
-	}
-
 	cfg := pack.BuildConfig{
 		ProjectDir:  absProjectDir,
 		Runtime:     det.Runtime,
