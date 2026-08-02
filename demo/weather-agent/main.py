@@ -39,7 +39,12 @@ def invoke(payload):
         results["city"] = city
     except Exception as e:
         results["llm_error"] = str(e)
-        return {"scenario": "weather-agent", "results": results, "answer": None}
+        return {
+            "scenario": "weather-agent",
+            "results": results,
+            "answer": None,
+            "final_output": None,
+        }
 
     # Step 2: Fetch weather data from wttr.in (policy-controlled egress)
     try:
@@ -56,16 +61,19 @@ def invoke(payload):
                 f"A user asked about the weather in {city}, but the weather API "
                 f"is unavailable (error: {e}). Explain this to the user in one sentence."
             )
+            answer = llm_resp.get("text", f"Could not fetch weather for {city}.")
             return {
                 "scenario": "weather-agent",
                 "results": results,
-                "answer": llm_resp.get("text", f"Could not fetch weather for {city}."),
+                "answer": answer,
+                "final_output": answer,
             }
         except Exception as llm_err:
             return {
                 "scenario": "weather-agent",
                 "results": results,
                 "answer": f"Could not fetch weather for {city} (error: {llm_err}).",
+                "final_output": f"Could not fetch weather for {city} (error: {llm_err}).",
             }
 
     # Step 3: LLM reasoning — analyze weather data and produce a summary
@@ -84,4 +92,9 @@ def invoke(payload):
         results["llm_summary_error"] = str(e)
         answer = f"Got weather data for {city} but couldn't generate a summary (error: {e})."
 
-    return {"scenario": "weather-agent", "results": results, "answer": answer}
+    return {
+        "scenario": "weather-agent",
+        "results": results,
+        "answer": answer,
+        "final_output": answer,
+    }
