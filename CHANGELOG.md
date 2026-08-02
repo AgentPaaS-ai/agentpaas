@@ -3,6 +3,14 @@
 All notable changes to AgentPaaS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.3.6 — cloud result/logs, invoke-token store, golden-path doc, M5–M7 cloud CLI
+
+### Added
+- **Cloud result and logs CLI**: commands for retrieving cloud run results and logs.
+- **Invoke-token store**: local storage for cloud invocation tokens.
+- **Cloud CLI golden-path documentation**: operator guidance for the supported workflow.
+- **M5–M7 cloud CLI**: the completed cloud CLI milestones are included on `main`.
+
 ## [Unreleased] — v0.3.0-dev
 
 ### Changed
