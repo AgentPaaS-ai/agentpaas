@@ -44,7 +44,7 @@ func (c *CloudClient) PutSecret(ctx context.Context, token, name, value string) 
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("put secret: %w", err)
+		return wrapTransportError("put secret", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -52,7 +52,7 @@ func (c *CloudClient) PutSecret(ctx context.Context, token, name, value string) 
 		return fmt.Errorf("put secret: not authenticated (token may be expired or invalid)")
 	}
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("put secret: unexpected status %d", resp.StatusCode)
+		return statusError("put secret", resp)
 	}
 	return nil
 }
@@ -68,7 +68,7 @@ func (c *CloudClient) ListSecrets(ctx context.Context, token string) ([]SecretLa
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("list secrets: %w", err)
+		return nil, wrapTransportError("list secrets", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -76,7 +76,7 @@ func (c *CloudClient) ListSecrets(ctx context.Context, token string) ([]SecretLa
 		return nil, fmt.Errorf("list secrets: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("list secrets: unexpected status %d", resp.StatusCode)
+		return nil, statusError("list secrets", resp)
 	}
 
 	var result ListSecretsResponse
@@ -102,7 +102,7 @@ func (c *CloudClient) DeleteSecret(ctx context.Context, token, name string) erro
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("delete secret: %w", err)
+		return wrapTransportError("delete secret", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -110,7 +110,7 @@ func (c *CloudClient) DeleteSecret(ctx context.Context, token, name string) erro
 		return fmt.Errorf("delete secret: not authenticated (token may be expired or invalid)")
 	}
 	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("delete secret: unexpected status %d", resp.StatusCode)
+		return statusError("delete secret", resp)
 	}
 	return nil
 }

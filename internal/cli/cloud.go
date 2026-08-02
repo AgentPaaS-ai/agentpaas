@@ -947,8 +947,9 @@ or displayed. Requires a valid cloud login.`,
 				return nil
 			}
 
+			fmt.Printf("Cloud secrets (%d):\n", len(labels))
 			for _, s := range labels {
-				fmt.Println(s.Name)
+				fmt.Println("  " + s.Name)
 			}
 			return nil
 		},
@@ -1077,31 +1078,34 @@ var sha256DigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 // newCloudDeployCmd creates the `agentpaas cloud deploy` command.
 func newCloudDeployCmd() *cobra.Command {
 	var slotID string
+	var lockPath string
 
 	cmd := &cobra.Command{
-		Use:   "deploy <digest>",
+		Use:   "deploy [digest|latest]",
 		Short: "Deploy an admitted image to AgentPaaS Cloud",
 		Long: `Create a deployment from an admitted image digest.
 
-The digest must be in sha256:<hex> format. The image must have been
-previously admitted via 'agentpaas cloud push'.
+The digest must be in sha256:<hex> format, or pass "latest" to deploy the
+most recently admitted image. With --lock, the digest is read from the
+signed agent.lock (same path pack prints).
+
+The image must have been previously admitted via 'agentpaas cloud push'.
 
 Use --slot-id to pin the deployment to a specific slot; otherwise the
 control plane assigns one automatically.`,
 		Example: `  # Deploy an admitted image
   agentpaas cloud deploy sha256:abcd1234...
 
+  # Deploy most recently admitted image
+  agentpaas cloud deploy latest
+
+  # Deploy digest from a pack lock
+  agentpaas cloud deploy --lock "$HOME/.agentpaas/state/agents/weather-agent/agent.lock"
+
   # Deploy to a specific slot
   agentpaas cloud deploy sha256:abcd1234... --slot-id slot-42`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			digest := args[0]
-
-			// Validate digest format.
-			if !sha256DigestRe.MatchString(digest) {
-				return fmt.Errorf("cloud deploy: invalid digest format %q — must be sha256:<64 hex chars>", digest)
-			}
-
 			// Resolve token.
 			token, err := resolveToken(cmd)
 			if err != nil {
@@ -1111,10 +1115,58 @@ control plane assigns one automatically.`,
 				return fmt.Errorf("cloud deploy: %w", err)
 			}
 
-			// Build request.
 			apiURL := resolveAPIURL()
 			client := cloudclient.NewCloudClient(apiURL)
 
+			digest := ""
+			if len(args) > 0 {
+				digest = args[0]
+			}
+
+			// Prefer --lock when set.
+			if lockPath != "" {
+				if !filepath.IsAbs(lockPath) {
+					return fmt.Errorf("cloud deploy: --lock path must be absolute: %s", lockPath)
+				}
+				lock, err := pack.ReadAgentLock(lockPath)
+				if err != nil {
+					return fmt.Errorf("cloud deploy: read lock: %w", err)
+				}
+				if lock.ImageDigest == "" {
+					return fmt.Errorf("cloud deploy: agent.lock has no image_digest")
+				}
+				digest = lock.ImageDigest
+			}
+
+			if digest == "" {
+				return fmt.Errorf("cloud deploy: provide a digest, 'latest', or --lock <absolute agent.lock>")
+			}
+
+			if digest == "latest" {
+				images, err := client.ListImages(cmd.Context(), token)
+				if err != nil {
+					if strings.Contains(err.Error(), "not authenticated") {
+						return printNotLoggedIn(cmd)
+					}
+					return fmt.Errorf("cloud deploy: list images for latest: %w", err)
+				}
+				if len(images) == 0 {
+					return fmt.Errorf("cloud deploy: no admitted images — run 'agentpaas cloud push' first")
+				}
+				// Prefer the most recently admitted; API order is newest-first when available.
+				digest = images[0].ImageDigest
+				if digest == "" {
+					return fmt.Errorf("cloud deploy: latest image has empty digest")
+				}
+				fmt.Printf("Using latest admitted image: %s\n", digest)
+			}
+
+			// Validate digest format.
+			if !sha256DigestRe.MatchString(digest) {
+				return fmt.Errorf("cloud deploy: invalid digest format %q — must be sha256:<64 hex chars> or 'latest'", digest)
+			}
+
+			// Build request.
 			req := cloudclient.CreateDeploymentRequest{
 				ImageDigest: digest,
 			}
@@ -1145,6 +1197,7 @@ control plane assigns one automatically.`,
 	}
 
 	cmd.Flags().StringVar(&slotID, "slot-id", "", "Pin deployment to a specific slot")
+	cmd.Flags().StringVar(&lockPath, "lock", "", "Absolute path to agent.lock (uses its image_digest)")
 
 	return cmd
 }

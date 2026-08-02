@@ -48,7 +48,7 @@ func (c *CloudClient) GetRunResult(ctx context.Context, token, id string) (*RunR
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("get run result: %w", err)
+		return nil, wrapTransportError("get run result", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -56,7 +56,7 @@ func (c *CloudClient) GetRunResult(ctx context.Context, token, id string) (*RunR
 		return nil, fmt.Errorf("get run result: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("get run result: unexpected status %d", resp.StatusCode)
+		return nil, statusError("get run result", resp)
 	}
 
 	var result RunResult
@@ -112,7 +112,7 @@ func (c *CloudClient) FetchSignedURL(ctx context.Context, signedURL string) ([]b
 	}
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("fetch signed URL: %w", err)
+		return nil, wrapTransportError("fetch signed URL", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -120,7 +120,7 @@ func (c *CloudClient) FetchSignedURL(ctx context.Context, signedURL string) ([]b
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			return nil, fmt.Errorf("fetch signed URL: signed URL expired or invalid (status %d)", resp.StatusCode)
 		}
-		return nil, fmt.Errorf("fetch signed URL: unexpected status %d", resp.StatusCode)
+		return nil, statusError("fetch signed URL", resp)
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

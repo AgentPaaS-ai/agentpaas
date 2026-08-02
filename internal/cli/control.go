@@ -117,17 +117,38 @@ resolved to the correct platform-specific digest. The builder stage image
 
 			result := struct {
 				ImageDigest string `json:"image_digest"`
+				LockPath    string `json:"lock_path,omitempty"`
 				BuildLog    string `json:"build_log,omitempty"`
 			}{
 				ImageDigest: resp.GetImageDigest(),
 				BuildLog:    resp.GetBuildLog(),
 			}
+			// Resolve lock path for customer-facing pack output (UX-LOCKPATH).
+			// Lock lives under ~/.agentpaas/state/agents/<name>/agent.lock — not
+			// next to the project. Prefer --name, else agent.yaml name.
+			agentForLock := agentName
+			if agentForLock == "" {
+				if ay, err := pack.LoadAgentYAML(projectDir); err == nil && ay != nil {
+					agentForLock = ay.Name
+				}
+			}
+			if agentForLock != "" {
+				if homeDir, err := homeDirPath(cmd); err == nil {
+					result.LockPath = filepath.Join(pack.DeployedAgentPath(homeDir, agentForLock), "agent.lock")
+				}
+			}
 			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
 				r := v.(struct {
 					ImageDigest string `json:"image_digest"`
+					LockPath    string `json:"lock_path,omitempty"`
 					BuildLog    string `json:"build_log,omitempty"`
 				})
-				return fmt.Sprintf("Image: %s\nDigest: %s", r.ImageDigest, r.ImageDigest)
+				out := fmt.Sprintf("Image: %s\nDigest: %s", r.ImageDigest, r.ImageDigest)
+				if r.LockPath != "" {
+					out += fmt.Sprintf("\nLock: %s", r.LockPath)
+					out += "\nPush with: agentpaas cloud push --lock " + r.LockPath
+				}
+				return out
 			})
 		},
 	}

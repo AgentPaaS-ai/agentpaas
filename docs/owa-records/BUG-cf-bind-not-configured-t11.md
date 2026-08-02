@@ -2,7 +2,7 @@
 
 **When found:** 2026-08-01 M7.5 T11 founder cold path  
 **Severity:** P0 for live Cloud (blocks `cloud deploy` after successful push)  
-**Status:** OPEN as process/product gap; partial ops fix applied same session
+**Status:** PARTIAL — CLI surfaces error body (2026-08-02); ops checklist still required
 
 ## Symptom
 
