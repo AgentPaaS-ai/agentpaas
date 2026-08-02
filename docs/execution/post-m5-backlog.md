@@ -40,6 +40,7 @@ Not blockers for M7.5 close; do not interleave into T11/T12. Pick up in a small 
 | **UX-DLOG** | CLI errors print **twice** (`Error: …` then `error: …`) | `identity init` when identity exists; `daemon start` when already running. One failure, two print paths (cobra/main wrapper). Fix: single user-facing error line. |
 | **UX-DDOCKER** | `agentpaas daemon status` / version line shows `Docker: unknown \| Docker API: unknown` even when Docker is healthy | `internal/daemon/version.go` documents DockerContext/DockerAPIVersion as **stubs**; CLI maps empty → `"unknown"`. `doctor` already probes Docker for real. Fix: fill from live probe or omit until implemented. |
 | **UX-APIHOST** | Default Cloud API host `https://cloud.agentpaas.ai` does not resolve; T11 live is workers.dev only | Without `AGENTPAAS_CLOUD_API_URL`, `whoami`/`secrets list`/`push` fail: `lookup cloud.agentpaas.ai: no such host` (double-printed). Fix: DNS + always-on hostname, or document/require env until DNS exists; consider better error (“set AGENTPAAS_CLOUD_API_URL”). |
+| **BUG-CF-BIND** | Fresh Worker deploy missing CF bind secrets → `cloud deploy` 503 `cf_bind_not_configured` | See `docs/owa-records/BUG-cf-bind-not-configured-t11.md`. Post-teardown checklist must set CF_API_TOKEN + CF_ACCOUNT_ID + CF_CONTAINER_APP_ID (+ egress). CLI must surface error body. |
 | **UX-SECRETS-OUT** | `cloud secrets push/list` success output too quiet | push should always show `pushed: <name>` (code has it); list prints bare names only — easy to miss. Prefer header + count. |
 
 ## Paths
