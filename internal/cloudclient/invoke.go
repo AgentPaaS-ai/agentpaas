@@ -33,7 +33,7 @@ func (c *CloudClient) MintInvokeToken(ctx context.Context, tenantToken, deployme
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("mint invoke token: %w", err)
+		return nil, wrapTransportError("mint invoke token", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -41,7 +41,7 @@ func (c *CloudClient) MintInvokeToken(ctx context.Context, tenantToken, deployme
 		return nil, fmt.Errorf("mint invoke token: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("mint invoke token: unexpected status %d", resp.StatusCode)
+		return nil, statusError("mint invoke token", resp)
 	}
 
 	var result MintInvokeTokenResponse
@@ -72,7 +72,7 @@ func (c *CloudClient) InvokeDeployment(ctx context.Context, invokeToken, deploym
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("invoke deployment: %w", err)
+		return nil, wrapTransportError("invoke deployment", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -80,7 +80,7 @@ func (c *CloudClient) InvokeDeployment(ctx context.Context, invokeToken, deploym
 		return nil, fmt.Errorf("invoke deployment: not authenticated (invoke token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("invoke deployment: unexpected status %d", resp.StatusCode)
+		return nil, statusError("invoke deployment", resp)
 	}
 
 	var result json.RawMessage

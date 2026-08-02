@@ -47,7 +47,7 @@ func (c *CloudClient) AdmitImage(ctx context.Context, token string, req AdmitIma
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("admit image: %w", err)
+		return nil, wrapTransportError("admit image", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -55,7 +55,7 @@ func (c *CloudClient) AdmitImage(ctx context.Context, token string, req AdmitIma
 		return nil, fmt.Errorf("admit image: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("admit image: unexpected status %d", resp.StatusCode)
+		return nil, statusError("admit image", resp)
 	}
 
 	var result AdmitImageResponse
@@ -75,7 +75,7 @@ func (c *CloudClient) ListImages(ctx context.Context, token string) ([]ImageReco
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("list images: %w", err)
+		return nil, wrapTransportError("list images", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -83,7 +83,7 @@ func (c *CloudClient) ListImages(ctx context.Context, token string) ([]ImageReco
 		return nil, fmt.Errorf("list images: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("list images: unexpected status %d", resp.StatusCode)
+		return nil, statusError("list images", resp)
 	}
 
 	var results []ImageRecord
@@ -108,7 +108,7 @@ func (c *CloudClient) GetImage(ctx context.Context, token string, idOrDigest str
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("get image: %w", err)
+		return nil, wrapTransportError("get image", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -116,7 +116,7 @@ func (c *CloudClient) GetImage(ctx context.Context, token string, idOrDigest str
 		return nil, fmt.Errorf("get image: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("get image: unexpected status %d", resp.StatusCode)
+		return nil, statusError("get image", resp)
 	}
 
 	var result ImageRecord

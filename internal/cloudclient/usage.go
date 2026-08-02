@@ -40,7 +40,7 @@ func (c *CloudClient) GetUsage(ctx context.Context, token string) (*UsageRespons
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("get usage: %w", err)
+		return nil, wrapTransportError("get usage", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -48,7 +48,7 @@ func (c *CloudClient) GetUsage(ctx context.Context, token string) (*UsageRespons
 		return nil, fmt.Errorf("get usage: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("get usage: unexpected status %d", resp.StatusCode)
+		return nil, statusError("get usage", resp)
 	}
 
 	var result UsageResponse

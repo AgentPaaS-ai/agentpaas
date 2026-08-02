@@ -50,7 +50,7 @@ func (c *CloudClient) CreateRun(ctx context.Context, token string, req CreateRun
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("create run: %w", err)
+		return nil, wrapTransportError("create run", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -58,7 +58,7 @@ func (c *CloudClient) CreateRun(ctx context.Context, token string, req CreateRun
 		return nil, fmt.Errorf("create run: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("create run: unexpected status %d", resp.StatusCode)
+		return nil, statusError("create run", resp)
 	}
 
 	var result RunRecord
@@ -78,7 +78,7 @@ func (c *CloudClient) ListRuns(ctx context.Context, token string) ([]RunRecord, 
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("list runs: %w", err)
+		return nil, wrapTransportError("list runs", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -86,7 +86,7 @@ func (c *CloudClient) ListRuns(ctx context.Context, token string) ([]RunRecord, 
 		return nil, fmt.Errorf("list runs: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("list runs: unexpected status %d", resp.StatusCode)
+		return nil, statusError("list runs", resp)
 	}
 
 	var results []RunRecord
@@ -111,7 +111,7 @@ func (c *CloudClient) GetRun(ctx context.Context, token string, id string) (*Run
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("get run: %w", err)
+		return nil, wrapTransportError("get run", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -119,7 +119,7 @@ func (c *CloudClient) GetRun(ctx context.Context, token string, id string) (*Run
 		return nil, fmt.Errorf("get run: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("get run: unexpected status %d", resp.StatusCode)
+		return nil, statusError("get run", resp)
 	}
 
 	var result RunRecord
@@ -144,7 +144,7 @@ func (c *CloudClient) CancelRun(ctx context.Context, token string, id string) (*
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("cancel run: %w", err)
+		return nil, wrapTransportError("cancel run", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -152,7 +152,7 @@ func (c *CloudClient) CancelRun(ctx context.Context, token string, id string) (*
 		return nil, fmt.Errorf("cancel run: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("cancel run: unexpected status %d", resp.StatusCode)
+		return nil, statusError("cancel run", resp)
 	}
 
 	var result RunRecord

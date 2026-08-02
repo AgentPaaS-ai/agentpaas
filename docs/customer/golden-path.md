@@ -6,16 +6,33 @@ secrets, or signed artifact URLs.
 
 ## Before you start
 
-You need the AgentPaaS CLI, Docker, a running daemon, and a project containing
-`agent.yaml` and `policy.yaml`. Create a publisher identity once per machine:
+You need the AgentPaaS CLI (0.3.6+), Docker, a running daemon, and a project
+containing `agent.yaml` and `policy.yaml`. Create a publisher identity once per
+machine:
 
 ```bash
 agentpaas identity init --name my-org
 agentpaas daemon start
 ```
 
+If identity or daemon already exists, those commands print a single error and
+exit — that is OK; continue.
+
 Cloud requires a `linux/amd64` image. On macOS, the pack command below builds
 that target.
+
+### API host
+
+Until custom DNS for `cloud.agentpaas.ai` is live, set the Worker URL in every
+shell (zsh and bash):
+
+```bash
+export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.<account>.workers.dev'
+export CLOUD_API="$AGENTPAAS_CLOUD_API_URL"
+```
+
+Without this, `whoami` / `secrets list` fail with a DNS error telling you to set
+`AGENTPAAS_CLOUD_API_URL`.
 
 ## 1. Provision a tenant token
 
@@ -23,7 +40,7 @@ A Cloud operator provisions a trial tenant through the Cloud control plane. The
 OSS CLI has no `provision-token` command. The operator-only API call is:
 
 ```bash
-export CLOUD_API=https://cloud.agentpaas.ai
+export CLOUD_API="${AGENTPAAS_CLOUD_API_URL:?set AGENTPAAS_CLOUD_API_URL}"
 curl -fsS -X POST "$CLOUD_API/v1/admin/tenants" \
   -H "X-Admin-Secret: $ADMIN_SECRET" \
   -H "Content-Type: application/json" \
@@ -39,7 +56,8 @@ export AGENTPAAS_CLOUD_API_TOKEN='apc_...'
 
 ## 2. Log in
 
-Interactive login opens a browser and stores the token in the macOS Keychain:
+Interactive login opens a browser and stores the token in the macOS Keychain
+(requires a one-time claim URL from provision):
 
 ```bash
 agentpaas cloud login
@@ -58,24 +76,33 @@ agentpaas cloud whoami
 From the project directory, build and sign the Cloud image:
 
 ```bash
-cd ~/my-agent
+cd ~/my-agent   # or: cd ~/projects/agentpaas/demo/weather-agent
 agentpaas pack . --target linux/amd64
 ```
 
-This writes `agent.lock`. The lock must be signed; Cloud rejects unsigned locks.
+Pack prints `Image`, `Digest`, and an absolute **Lock** path, for example:
+
+```text
+~/.agentpaas/state/agents/<agent-name>/agent.lock
+```
+
+The lock is **not** written next to the project. The lock must be signed; Cloud
+rejects unsigned locks. Copy the Lock path for the next step.
 
 ## 4. Push and admit
 
 The normal push also sends the image to the Cloudflare Container Registry. The
-registry credential is separate from the tenant token:
+registry credential is a Cloudflare API token (not the tenant `apc_...`):
 
 ```bash
-export CLOUDFLARE_API_TOKEN='<registry-token>'
-agentpaas cloud push --lock agent.lock
+export CLOUDFLARE_API_TOKEN='<cloudflare-api-token>'
+agentpaas cloud push --lock "$HOME/.agentpaas/state/agents/<agent-name>/agent.lock"
 ```
 
-Copy the `Digest: sha256:...` value from the output. `--skip-registry` is
-admission-only and is not the full deploy path.
+Use the absolute path pack printed. Relative `agent.lock` is rejected.
+
+Copy the `Digest: sha256:...` value from the output (or use `cloud deploy latest`
+below). `--skip-registry` is admission-only and is not the full deploy path.
 
 ## 5. Push secrets
 
@@ -83,20 +110,36 @@ Store a value locally without displaying it, then sync its label and value to
 Cloud over TLS:
 
 ```bash
-agentpaas secret add openai-key
-agentpaas cloud secrets push openai-key
+# Weather demo uses openrouter-key (not openai-key)
+agentpaas secret add openrouter-key
+agentpaas cloud secrets push openrouter-key
 agentpaas cloud secrets list
 ```
 
 Use the name declared by the agent policy. Secret values are never printed.
 
-## 6. Deploy
-
-Use the exact 64-hex digest printed by `cloud push`:
+After deploy, bind the secret on the deployment (required for LLM agents):
 
 ```bash
-export IMAGE_DIGEST='sha256:<64-hex-digest>'
-agentpaas cloud deploy "$IMAGE_DIGEST"
+curl -fsS -X PUT "$CLOUD_API/v1/deployments/$DEPLOYMENT_ID/secrets" \
+  -H "Authorization: Bearer $AGENTPAAS_CLOUD_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"bindings":[{"secret_name":"openrouter-key","inject_as":"bearer","host_pattern":"openrouter.ai"}]}'
+```
+
+## 6. Deploy
+
+Any of:
+
+```bash
+# From digest printed by pack/push
+agentpaas cloud deploy sha256:<64-hex-digest>
+
+# Or most recently admitted image
+agentpaas cloud deploy latest
+
+# Or digest from lock
+agentpaas cloud deploy --lock "$HOME/.agentpaas/state/agents/<agent-name>/agent.lock"
 ```
 
 Copy the `Deployment created: dep_...` ID into `DEPLOYMENT_ID`:
@@ -141,7 +184,7 @@ Mint a deployment-scoped invoke token. The CLI stores it in
 
 ```bash
 agentpaas cloud invoke-token "$DEPLOYMENT_ID"
-agentpaas cloud invoke "$DEPLOYMENT_ID" --body '{"name":"Ada"}'
+agentpaas cloud invoke "$DEPLOYMENT_ID" --body '{"query":"What is the weather in Folsom?"}'
 ```
 
 Copy the returned `Run ID: run_...`. `cloud invoke` uses the stored deployment

@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"strings"
+	"time"
 )
 
 // VersionOutput holds the CLI version information for display.
@@ -68,4 +72,31 @@ func printTextOrJSON(jsonOut bool, val interface{}, textFn func(interface{}) str
 	}
 	fmt.Println(textFn(val))
 	return nil
+}
+
+// probeDockerStatus returns (context, server/API version) for status/version
+// lines. Never stubs as "unknown" when Docker is reachable (UX-DDOCKER).
+// On failure returns ("unavailable", "unavailable") so customers know to run
+// doctor rather than thinking the field is unimplemented.
+func probeDockerStatus() (dockerContext, dockerAPI string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Prefer active docker context name.
+	dockerContext = "default"
+	if out, err := exec.CommandContext(ctx, "docker", "context", "show").Output(); err == nil {
+		if s := strings.TrimSpace(string(out)); s != "" {
+			dockerContext = s
+		}
+	}
+
+	out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").Output()
+	if err != nil {
+		return "unavailable", "unavailable"
+	}
+	ver := strings.TrimSpace(string(out))
+	if ver == "" {
+		return dockerContext, "unavailable"
+	}
+	return dockerContext, ver
 }

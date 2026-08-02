@@ -3,15 +3,21 @@ package cloudclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
 const (
 	// DefaultCloudAPIURL is the production AgentPaaS Cloud API base URL.
+	// Until cloud.agentpaas.ai DNS is live, operators must set
+	// AGENTPAAS_CLOUD_API_URL (typically the workers.dev URL).
 	DefaultCloudAPIURL = "https://cloud.agentpaas.ai"
 )
 
@@ -54,6 +60,61 @@ func NewCloudClient(baseURL string) *CloudClient {
 // jsonOK reports whether status is a successful HTTP response that may carry a JSON body (any 2xx).
 func jsonOK(code int) bool { return code >= 200 && code < 300 }
 
+// statusError reads a non-2xx response body and returns an error that surfaces
+// the API `error` field when present (UX-HTTP-BODY). Callers must not use
+// resp.Body after this returns.
+func statusError(op string, resp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	msg := strings.TrimSpace(string(body))
+	if msg != "" {
+		var payload struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+			Hint    string `json:"hint"`
+		}
+		if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
+			errMsg := fmt.Sprintf("%s: %s (status %d)", op, payload.Error, resp.StatusCode)
+			if payload.Message != "" {
+				errMsg += ": " + payload.Message
+			}
+			if payload.Hint != "" {
+				errMsg += " — " + payload.Hint
+			}
+			return fmt.Errorf("%s", errMsg)
+		}
+		// Non-JSON body: include a short excerpt.
+		if len(msg) > 200 {
+			msg = msg[:200] + "…"
+		}
+		return fmt.Errorf("%s: unexpected status %d: %s", op, resp.StatusCode, msg)
+	}
+	return fmt.Errorf("%s: unexpected status %d", op, resp.StatusCode)
+}
+
+// wrapTransportError rewrites DNS/connection failures into an actionable
+// message when the default Cloud hostname is used without AGENTPAAS_CLOUD_API_URL
+// (UX-APIHOST empty-stdout / blank whoami).
+func wrapTransportError(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	var dnsErr *net.DNSError
+	dnsFail := errors.As(err, &dnsErr) ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "Name or service not known") ||
+		strings.Contains(msg, "nodename nor servname")
+	if dnsFail {
+		if os.Getenv("AGENTPAAS_CLOUD_API_URL") == "" {
+			return fmt.Errorf("%s: cannot reach %s (%v). Set AGENTPAAS_CLOUD_API_URL to your live API host (e.g. https://agentpaas-cloud-api.<account>.workers.dev)",
+				op, DefaultCloudAPIURL, err)
+		}
+		return fmt.Errorf("%s: cannot reach API host (%v). Check AGENTPAAS_CLOUD_API_URL=%s",
+			op, err, os.Getenv("AGENTPAAS_CLOUD_API_URL"))
+	}
+	return fmt.Errorf("%s: %w", op, err)
+}
+
 // StartCLIAuth initiates a CLI-based login flow and returns the approve URL
 // and state parameter.
 //
@@ -76,12 +137,12 @@ func (c *CloudClient) StartCLIAuth(ctx context.Context, redirectURI string) (*St
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("start cli auth: %w", err)
+		return nil, wrapTransportError("start cli auth", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("start cli auth: unexpected status %d", resp.StatusCode)
+		return nil, statusError("start cli auth", resp)
 	}
 
 	var result StartCLIAuthResponse
@@ -101,7 +162,7 @@ func (c *CloudClient) Whoami(ctx context.Context, token string) (*WhoamiResponse
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("whoami: %w", err)
+		return nil, wrapTransportError("whoami", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -109,7 +170,7 @@ func (c *CloudClient) Whoami(ctx context.Context, token string) (*WhoamiResponse
 		return nil, fmt.Errorf("whoami: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("whoami: unexpected status %d", resp.StatusCode)
+		return nil, statusError("whoami", resp)
 	}
 
 	var result WhoamiResponse

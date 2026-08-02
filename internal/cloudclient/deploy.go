@@ -40,7 +40,7 @@ func (c *CloudClient) CreateDeployment(ctx context.Context, token string, req Cr
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("create deployment: %w", err)
+		return nil, wrapTransportError("create deployment", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -48,7 +48,7 @@ func (c *CloudClient) CreateDeployment(ctx context.Context, token string, req Cr
 		return nil, fmt.Errorf("create deployment: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("create deployment: unexpected status %d", resp.StatusCode)
+		return nil, statusError("create deployment", resp)
 	}
 
 	var result DeploymentRecord
@@ -68,7 +68,7 @@ func (c *CloudClient) ListDeployments(ctx context.Context, token string) ([]Depl
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("list deployments: %w", err)
+		return nil, wrapTransportError("list deployments", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -76,7 +76,7 @@ func (c *CloudClient) ListDeployments(ctx context.Context, token string) ([]Depl
 		return nil, fmt.Errorf("list deployments: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("list deployments: unexpected status %d", resp.StatusCode)
+		return nil, statusError("list deployments", resp)
 	}
 
 	var results []DeploymentRecord
@@ -101,7 +101,7 @@ func (c *CloudClient) GetDeployment(ctx context.Context, token string, id string
 
 	resp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("get deployment: %w", err)
+		return nil, wrapTransportError("get deployment", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -109,7 +109,7 @@ func (c *CloudClient) GetDeployment(ctx context.Context, token string, id string
 		return nil, fmt.Errorf("get deployment: not authenticated (token may be expired or invalid)")
 	}
 	if !jsonOK(resp.StatusCode) {
-		return nil, fmt.Errorf("get deployment: unexpected status %d", resp.StatusCode)
+		return nil, statusError("get deployment", resp)
 	}
 
 	var result DeploymentRecord

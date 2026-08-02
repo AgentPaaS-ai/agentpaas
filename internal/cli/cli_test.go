@@ -194,14 +194,22 @@ func TestAgentVersion_TextOutput(t *testing.T) {
 		t.Errorf("expected output to contain OS/Arch %q; got:\n%s", expectedArch, stdout)
 	}
 
-	// Golden output: exact format check.
-	expected := fmt.Sprintf(
-		"CLI: 0.3.6-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | Docker: unknown | Docker API: unknown",
+	// Golden output: prefix fields are fixed; Docker fields come from live probe
+	// (UX-DDOCKER) so they are never empty stubs.
+	got := strings.TrimSpace(stdout)
+	prefix := fmt.Sprintf(
+		"CLI: 0.3.6-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | Docker: ",
 		expectedArch,
 	)
-	got := strings.TrimSpace(stdout)
-	if got != expected {
-		t.Errorf("golden output mismatch\nwant: %q\ngot:  %q", expected, got)
+	if !strings.HasPrefix(got, prefix) {
+		t.Fatalf("golden output prefix mismatch\nwant prefix: %q\ngot:  %q", prefix, got)
+	}
+	if !strings.Contains(got, " | Docker API: ") {
+		t.Fatalf("expected Docker API field in output: %q", got)
+	}
+	// Must not still stub as unknown when we probe (may be unavailable if no Docker).
+	if strings.Contains(got, "Docker: unknown | Docker API: unknown") {
+		t.Fatalf("Docker fields still stubbed as unknown: %q", got)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 **When:** 2026-08-01 M7.5 T11  
 **Severity:** P0 — blocks golden-path invoke→result  
-**Status:** FIX IN PROGRESS
+**Status:** FIXED — deployment invoke starts container + forwards /invoke
 
 ## Symptom
 `agentpaas cloud invoke dep_…` returns Run ID with `status: starting` forever.
