@@ -1,228 +1,109 @@
-# AgentPaaS Cloud golden path
+# AgentPaaS Cloud — short golden path (terminal)
 
-This is the shortest path from a signed project to a scheduled Cloud run and its
-customer-visible output. Replace `<...>` placeholders. Do not commit tokens,
-secrets, or signed artifact URLs.
+Copy each block top to bottom. Replace nothing except secrets when prompted.
+Do not commit tokens.
 
-## Before you start
-
-You need the AgentPaaS CLI (0.3.6+), Docker, a running daemon, and a project
-containing `agent.yaml` and `policy.yaml`. Create a publisher identity once per
-machine:
+## 0. One-time shell setup
 
 ```bash
-agentpaas identity init --name my-org
-agentpaas daemon start
+export PATH="/opt/homebrew/bin:$PATH"
+export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.parvezsyed.workers.dev'
+# Cloudflare registry push (not your apc_ tenant token):
+export CLOUDFLARE_API_TOKEN="$(security find-generic-password -s agentpaas-cloudflare-api-token -w)"
 ```
 
-If identity or daemon already exists, those commands print a single error and
-exit — that is OK; continue.
-
-Cloud requires a `linux/amd64` image. On macOS, the pack command below builds
-that target.
-
-### API host
-
-Until custom DNS for `cloud.agentpaas.ai` is live, set the Worker URL in every
-shell (zsh and bash):
+Check:
 
 ```bash
-export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.<account>.workers.dev'
-export CLOUD_API="$AGENTPAAS_CLOUD_API_URL"
+agentpaas version          # expect 0.3.6
+agentpaas doctor           # 7/7
+echo "API=$AGENTPAAS_CLOUD_API_URL"
 ```
 
-Without this, `whoami` / `secrets list` fail with a DNS error telling you to set
-`AGENTPAAS_CLOUD_API_URL`.
-
-## 1. Provision a tenant token
-
-A Cloud operator provisions a trial tenant through the Cloud control plane. The
-OSS CLI has no `provision-token` command. The operator-only API call is:
+## 1. Identity + daemon (skip if already done)
 
 ```bash
-export CLOUD_API="${AGENTPAAS_CLOUD_API_URL:?set AGENTPAAS_CLOUD_API_URL}"
-curl -fsS -X POST "$CLOUD_API/v1/admin/tenants" \
-  -H "X-Admin-Secret: $ADMIN_SECRET" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"<customer-name>","email":"<customer-email>","tier":"trial"}'
+agentpaas identity init --name my-org     # OK if "already exists"
+agentpaas daemon start                   # OK if already running
 ```
 
-Give the returned `token` (`apc_...`) to the customer once through a secure
-channel. Keep it in a protected shell variable when API calls are needed:
+## 2. Login (trial token once)
 
 ```bash
-export AGENTPAAS_CLOUD_API_TOKEN='apc_...'
-```
-
-## 2. Log in
-
-Interactive login opens a browser and stores the token in the macOS Keychain
-(requires a one-time claim URL from provision):
-
-```bash
-agentpaas cloud login
-agentpaas cloud whoami
-```
-
-For a token received out of band or for CI, use the help-listed stdin path:
-
-```bash
+# paste apc_… token when prompted, or:
 printf '%s\n' "$AGENTPAAS_CLOUD_API_TOKEN" | agentpaas cloud login --token-stdin
 agentpaas cloud whoami
 ```
 
-## 3. Pack
-
-From the project directory, build and sign the Cloud image:
+## 3. Pack the demo weather agent
 
 ```bash
-cd ~/my-agent   # or: cd ~/projects/agentpaas/demo/weather-agent
+cd ~/projects/agentpaas/demo/weather-agent
 agentpaas pack . --target linux/amd64
 ```
 
-Pack prints `Image`, `Digest`, and an absolute **Lock** path, for example:
-
-```text
-~/.agentpaas/state/agents/<agent-name>/agent.lock
-```
-
-The lock is **not** written next to the project. The lock must be signed; Cloud
-rejects unsigned locks. Copy the Lock path for the next step.
-
-## 4. Push and admit
-
-The normal push also sends the image to the Cloudflare Container Registry. The
-registry credential is a Cloudflare API token (not the tenant `apc_...`):
+Copy the **Lock:** line (absolute path). Example:
 
 ```bash
-export CLOUDFLARE_API_TOKEN='<cloudflare-api-token>'
-agentpaas cloud push --lock "$HOME/.agentpaas/state/agents/<agent-name>/agent.lock"
+LOCK="$HOME/.agentpaas/state/agents/weather-agent/agent.lock"
 ```
 
-Use the absolute path pack printed. Relative `agent.lock` is rejected.
-
-Copy the `Digest: sha256:...` value from the output (or use `cloud deploy latest`
-below). `--skip-registry` is admission-only and is not the full deploy path.
-
-## 5. Push secrets
-
-Store a value locally without displaying it, then sync its label and value to
-Cloud over TLS:
+## 4. Push image to Cloud
 
 ```bash
-# Weather demo uses openrouter-key (not openai-key)
+agentpaas cloud push --lock "$LOCK"
+agentpaas cloud images
+```
+
+## 5. Secret (local → cloud)
+
+```bash
+# Local Keychain (paste key in terminal; never in chat):
 agentpaas secret add openrouter-key
 agentpaas cloud secrets push openrouter-key
 agentpaas cloud secrets list
 ```
 
-Use the name declared by the agent policy. Secret values are never printed.
-
-After deploy, bind the secret on the deployment (required for LLM agents):
-
-```bash
-curl -fsS -X PUT "$CLOUD_API/v1/deployments/$DEPLOYMENT_ID/secrets" \
-  -H "Authorization: Bearer $AGENTPAAS_CLOUD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"bindings":[{"secret_name":"openrouter-key","inject_as":"bearer","host_pattern":"openrouter.ai"}]}'
-```
-
 ## 6. Deploy
 
-Any of:
-
 ```bash
-# From digest printed by pack/push
-agentpaas cloud deploy sha256:<64-hex-digest>
-
-# Or most recently admitted image
 agentpaas cloud deploy latest
-
-# Or digest from lock
-agentpaas cloud deploy --lock "$HOME/.agentpaas/state/agents/<agent-name>/agent.lock"
+# note: Deployment created: dep_…
+export DEPLOYMENT_ID='dep_…'
 ```
 
-Copy the `Deployment created: dep_...` ID into `DEPLOYMENT_ID`:
+## 7. Bind secret on the deployment (required for LLM)
 
 ```bash
-export DEPLOYMENT_ID='dep_...'
+agentpaas cloud secrets bind "$DEPLOYMENT_ID" openrouter-key --as bearer --host openrouter.ai
+agentpaas cloud secrets bindings "$DEPLOYMENT_ID"
 ```
 
-## 7. Configure completion and final-output delivery
-
-The OSS CLI does not yet expose these Cloud configuration routes. Configure
-both destinations with the tenant token. Each URL must be public HTTPS; do not
-use localhost or a URL that redirects. If `secret` is omitted, Cloud generates
-one and returns it once—save it in the receiver.
-
-```bash
-export COMPLETION_URL='https://<public-receiver>/agentpaas/completion'
-export DELIVERY_URL='https://<public-receiver>/agentpaas/delivery'
-export WEBHOOK_SECRET='<single-line-secret>'
-
-curl -fsS -X PUT "$CLOUD_API/v1/deployments/$DEPLOYMENT_ID/completion-webhook" \
-  -H "Authorization: Bearer $AGENTPAAS_CLOUD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"url\":\"$COMPLETION_URL\",\"enabled\":true,\"secret\":\"$WEBHOOK_SECRET\"}"
-
-curl -fsS -X PUT "$CLOUD_API/v1/deployments/$DEPLOYMENT_ID/delivery-webhook" \
-  -H "Authorization: Bearer $AGENTPAAS_CLOUD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"url\":\"$DELIVERY_URL\",\"enabled\":true,\"secret\":\"$WEBHOOK_SECRET\"}"
-```
-
-Both delivered POST requests include `X-Agentpaas-Timestamp` and
-`X-Agentpaas-Signature`. Verify `HMAC-SHA256(secret,
-"<timestamp>.<raw-json-body>")`. Completion contains the run status and signed
-result links. Delivery has `kind: "final_output"` and only the declared final
-output—not logs, secrets, artifacts, or intermediate events.
-
-## 8. Invoke
-
-Mint a deployment-scoped invoke token. The CLI stores it in
-`~/.agentpaas/invoke-tokens.json` and displays it only once:
+## 8. Invoke + result
 
 ```bash
 agentpaas cloud invoke-token "$DEPLOYMENT_ID"
 agentpaas cloud invoke "$DEPLOYMENT_ID" --body '{"query":"What is the weather in Folsom?"}'
-```
-
-Copy the returned `Run ID: run_...`. `cloud invoke` uses the stored deployment
-token; it does not use the tenant login token.
-
-## 9. Schedule a Cloud run
-
-Cloud cron is configured through the Cloud API; `agentpaas cron add` schedules
-a local daemon agent and is not this Cloud schedule. The supported Cloud
-interval names are `every_1m`, `every_5m`, `every_15m`, and `every_1h`:
-
-```bash
-curl -fsS -X PUT "$CLOUD_API/v1/deployments/$DEPLOYMENT_ID/cron" \
-  -H "Authorization: Bearer $AGENTPAAS_CLOUD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"expr":"every_5m","enabled":true}'
-```
-
-## 10. Read the result
-
-Wait until the run is terminal (`succeeded`, `failed`, or `cancelled`), then
-fetch the customer-facing result package:
-
-```bash
-agentpaas cloud status <run_id>
-agentpaas cloud result <run_id>
-agentpaas cloud logs <run_id>
-```
-
-`cloud result` shows final output, failure details, and signed artifact URLs
-with an expiry. The completion webhook carries the same result links; the
-final-output delivery is intentionally smaller.
-
-## 11. Check usage
-
-```bash
+# note Run ID
+agentpaas cloud result run_…
+agentpaas cloud logs run_…
 agentpaas cloud usage
 ```
 
-This shows the tier, concurrency, agent count, CPU minutes, remaining trial or
-quota information, and the metering formula.
+**Pass:** Status succeeded, Final output is real weather prose (not empty).
+
+## If something fails
+
+| Message | Fix |
+|---------|-----|
+| cannot reach cloud.agentpaas.ai / set AGENTPAAS_CLOUD_API_URL | Step 0 export |
+| cf_bind_not_configured | Operator: Worker needs CF_API_TOKEN, CF_ACCOUNT_ID, CF_CONTAINER_APP_ID |
+| secrets_misconfigured | Operator: SECRETS_MASTER_KEY on Worker |
+| llm credential not declared | Step 7 bind |
+| path must be absolute: agent.lock | Use Lock path from pack, not `./agent.lock` |
+| unexpected exit code 1 | Need amd64 pack + container app instance_type dev |
+
+## Hermes first-time user (full)
+
+Use `docs/execution/golden-loop-hermes-e2e.md` — profile teardown → install →
+local build → egress deny/allow → cloud path, all through Hermes.

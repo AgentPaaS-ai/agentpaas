@@ -851,6 +851,8 @@ never displayed by the CLI. Requires a valid cloud login.`,
 
 	cmd.AddCommand(newCloudSecretsPushCmd())
 	cmd.AddCommand(newCloudSecretsListCmd())
+	cmd.AddCommand(newCloudSecretsBindCmd())
+	cmd.AddCommand(newCloudSecretsBindingsCmd())
 
 	return cmd
 }
@@ -950,6 +952,135 @@ or displayed. Requires a valid cloud login.`,
 			fmt.Printf("Cloud secrets (%d):\n", len(labels))
 			for _, s := range labels {
 				fmt.Println("  " + s.Name)
+			}
+			return nil
+		},
+	}
+}
+
+// newCloudSecretsBindCmd binds a vault secret onto a deployment for inject at invoke.
+func newCloudSecretsBindCmd() *cobra.Command {
+	var injectAs, headerName, hostPattern string
+	cmd := &cobra.Command{
+		Use:   "bind <deployment_id> <secret_name>",
+		Short: "Bind a cloud secret to a deployment (inject at invoke)",
+		Long: `Attach a previously pushed cloud secret to a deployment.
+
+LLM agents need this after deploy — tenant vault push alone is not enough.
+Example for weather + OpenRouter:
+
+  agentpaas cloud secrets bind dep_… openrouter-key --as bearer --host openrouter.ai
+
+Bindings replace the full set for the named secret when used with --replace-all
+false (default merges by rewriting the whole list as: existing minus same name,
+plus this binding). Use --only to set exactly one binding.`,
+		Example: `  agentpaas cloud secrets bind dep_abc openrouter-key --as bearer --host openrouter.ai`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			deploymentID := args[0]
+			secretName := args[1]
+			if err := secrets.ValidateSecretName(secretName); err != nil {
+				return fmt.Errorf("cloud secrets bind: %w", err)
+			}
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud secrets bind: %w", err)
+			}
+			only, _ := cmd.Flags().GetBool("only")
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+
+			b := cloudclient.DeploymentSecretBinding{
+				SecretName: secretName,
+				InjectAs:   injectAs,
+			}
+			if headerName != "" {
+				h := headerName
+				b.HeaderName = &h
+			}
+			if hostPattern != "" {
+				h := hostPattern
+				b.HostPattern = &h
+			}
+
+			var bindings []cloudclient.DeploymentSecretBinding
+			if only {
+				bindings = []cloudclient.DeploymentSecretBinding{b}
+			} else {
+				existing, err := client.ListDeploymentSecrets(cmd.Context(), token, deploymentID)
+				if err != nil && !strings.Contains(err.Error(), "not_found") {
+					// If list fails empty is OK for first bind — try with just this binding.
+					if !strings.Contains(err.Error(), "not authenticated") {
+						existing = nil
+					} else {
+						return printNotLoggedIn(cmd)
+					}
+				}
+				for _, e := range existing {
+					if e.SecretName == secretName {
+						continue
+					}
+					bindings = append(bindings, e)
+				}
+				bindings = append(bindings, b)
+			}
+
+			if err := client.SetDeploymentSecrets(cmd.Context(), token, deploymentID, bindings); err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud secrets bind: %w", err)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "bound: %s → %s (inject=%s host=%s)\n",
+				secretName, deploymentID, injectAs, hostPattern)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&injectAs, "as", "bearer", "Injection mode: bearer, header, or none")
+	cmd.Flags().StringVar(&headerName, "header", "", "Header name when --as=header")
+	cmd.Flags().StringVar(&hostPattern, "host", "", "Host pattern for credential scope (e.g. openrouter.ai)")
+	cmd.Flags().Bool("only", false, "Replace all bindings with only this one")
+	return cmd
+}
+
+// newCloudSecretsBindingsCmd lists deployment secret bindings (metadata only).
+func newCloudSecretsBindingsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "bindings <deployment_id>",
+		Short: "List secret bindings on a deployment (names only)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud secrets bindings: %w", err)
+			}
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			list, err := client.ListDeploymentSecrets(cmd.Context(), token, args[0])
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud secrets bindings: %w", err)
+			}
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, list, nil)
+			}
+			if len(list) == 0 {
+				fmt.Println("No bindings. Bind with: agentpaas cloud secrets bind <dep> <secret> --as bearer --host <host>")
+				return nil
+			}
+			fmt.Printf("Bindings on %s (%d):\n", args[0], len(list))
+			for _, b := range list {
+				host := ""
+				if b.HostPattern != nil {
+					host = *b.HostPattern
+				}
+				fmt.Printf("  %s  inject=%s  host=%s\n", b.SecretName, b.InjectAs, host)
 			}
 			return nil
 		},
