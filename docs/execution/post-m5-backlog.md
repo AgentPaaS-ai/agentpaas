@@ -38,7 +38,9 @@ Not blockers for M7.5 close; do not interleave into T11/T12. Pick up in a small 
 | ID | Issue | Evidence / notes |
 |----|--------|------------------|
 | **UX-DLOG** | CLI errors print **twice** (`Error: …` then `error: …`) | `identity init` when identity exists; `daemon start` when already running. One failure, two print paths (cobra/main wrapper). Fix: single user-facing error line. |
-| **UX-DDOCKER** | `agentpaas daemon status` / version line shows `Docker: unknown \| Docker API: unknown` even when Docker is healthy | `internal/daemon/version.go` documents DockerContext/DockerAPIVersion as **stubs**; CLI maps empty → `"unknown"` (`internal/cli/daemon.go`). `doctor` already probes Docker for real. Fix: fill from live Docker probe in status/version, or omit fields until implemented (no fake "unknown" when unprobed). |
+| **UX-DDOCKER** | `agentpaas daemon status` / version line shows `Docker: unknown \| Docker API: unknown` even when Docker is healthy | `internal/daemon/version.go` documents DockerContext/DockerAPIVersion as **stubs**; CLI maps empty → `"unknown"`. `doctor` already probes Docker for real. Fix: fill from live probe or omit until implemented. |
+| **UX-APIHOST** | Default Cloud API host `https://cloud.agentpaas.ai` does not resolve; T11 live is workers.dev only | Without `AGENTPAAS_CLOUD_API_URL`, `whoami`/`secrets list`/`push` fail: `lookup cloud.agentpaas.ai: no such host` (double-printed). Fix: DNS + always-on hostname, or document/require env until DNS exists; consider better error (“set AGENTPAAS_CLOUD_API_URL”). |
+| **UX-SECRETS-OUT** | `cloud secrets push/list` success output too quiet | push should always show `pushed: <name>` (code has it); list prints bare names only — easy to miss. Prefer header + count. |
 
 ## Paths
 - OSS: `~/projects/agentpaas`
