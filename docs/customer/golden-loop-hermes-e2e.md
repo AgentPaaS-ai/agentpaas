@@ -164,6 +164,7 @@ Steps:
 10) cloud result <run_id>
 11) cloud logs <run_id>
 12) cloud usage
+13) cloud undeploy <dep_id> — prove slot freed; then cloud deploy latest again and confirm it succeeds (free-capacity loop)
 Report every Run ID and final_output. On 503 print full error body.
 ```
 
