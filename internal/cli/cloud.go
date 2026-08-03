@@ -976,7 +976,7 @@ Bindings replace the full set for the named secret when used with --replace-all
 false (default merges by rewriting the whole list as: existing minus same name,
 plus this binding). Use --only to set exactly one binding.`,
 		Example: `  agentpaas cloud secrets bind dep_abc openrouter-key --as bearer --host openrouter.ai`,
-		Args: cobra.ExactArgs(2),
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deploymentID := args[0]
 			secretName := args[1]
@@ -1227,16 +1227,17 @@ The image must have been previously admitted via 'agentpaas cloud push'.
 Use --slot-id to pin the deployment to a specific slot; otherwise the
 control plane assigns one automatically.
 
-Use --instance-type to select the workload size: dev (default, minimum) or
-lite.`,
+Use --instance-type to select a Cloudflare Container preset, from smallest to
+largest: lite, basic (default; 1/4 vCPU, 1GiB), standard-1, standard-2,
+standard-3, standard-4.`,
 		Example: `  # Deploy an admitted image
   agentpaas cloud deploy sha256:abcd1234...
 
-  # Deploy most recently admitted image
+  # Deploy most recently admitted image with the default basic preset
   agentpaas cloud deploy latest
 
-  # Deploy latest using the lite instance type
-  agentpaas cloud deploy latest --instance-type lite
+  # Deploy latest using the standard-2 preset
+  agentpaas cloud deploy latest --instance-type standard-2
 
   # Deploy digest from a pack lock
   agentpaas cloud deploy --lock "$HOME/.agentpaas/state/agents/weather-agent/agent.lock"
@@ -1245,8 +1246,12 @@ lite.`,
   agentpaas cloud deploy sha256:abcd1234... --slot-id slot-42`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if instanceType != "dev" && instanceType != "lite" {
-				return fmt.Errorf("cloud deploy: invalid --instance-type %q: must be one of \"dev\" or \"lite\"", instanceType)
+			switch instanceType {
+			case "dev":
+				return fmt.Errorf("instance_type 'dev' is an alias for 'lite' (256MiB) which is too small for LLM agents — use 'basic' or higher")
+			case "lite", "basic", "standard-1", "standard-2", "standard-3", "standard-4":
+			default:
+				return fmt.Errorf("instance_type must be one of: lite, basic, standard-1, standard-2, standard-3, standard-4")
 			}
 
 			// Resolve token.
@@ -1342,7 +1347,7 @@ lite.`,
 
 	cmd.Flags().StringVar(&slotID, "slot-id", "", "Pin deployment to a specific slot")
 	cmd.Flags().StringVar(&lockPath, "lock", "", "Absolute path to agent.lock (uses its image_digest)")
-	cmd.Flags().StringVar(&instanceType, "instance-type", "dev", "Workload instance type (dev or lite; default: dev)")
+	cmd.Flags().StringVar(&instanceType, "instance-type", "basic", "Cloudflare Container preset (default: basic; lite, basic, standard-1, standard-2, standard-3, standard-4)")
 
 	return cmd
 }
