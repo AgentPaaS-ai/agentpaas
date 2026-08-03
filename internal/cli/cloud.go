@@ -102,6 +102,7 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudImagesCmd())
 	cmd.AddCommand(newCloudDeployCmd())
 	cmd.AddCommand(newCloudDeploymentsCmd())
+	cmd.AddCommand(newCloudUndeployCmd())
 	cmd.AddCommand(newCloudSecretsCmd())
 	cmd.AddCommand(newCloudRunCmd())
 	cmd.AddCommand(newCloudStatusCmd())
@@ -1385,6 +1386,53 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 	}
 
 	return cmd
+}
+
+// newCloudUndeployCmd creates the `agentpaas cloud undeploy` command.
+func newCloudUndeployCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "undeploy <dep_id>",
+		Short: "Undeploy a cloud deployment and free its slot",
+		Long: `Undeploy a cloud deployment by ID.
+
+This calls DELETE /v1/deployments/:id and frees the deployment's slot for
+reuse.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			depID := args[0]
+			if strings.ContainsAny(depID, "/\\\n\r") {
+				return fmt.Errorf("cloud undeploy: invalid deployment id %q: must not contain '/', '\\', newline, or carriage return", depID)
+			}
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud undeploy: %w", err)
+			}
+
+			apiURL := resolveAPIURL()
+			client := cloudclient.NewCloudClient(apiURL)
+
+			result, err := client.DeleteDeployment(cmd.Context(), token, depID)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud undeploy: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, result, nil)
+			}
+			fmt.Printf("Undeployed: %s (slot freed)\n", result.ID)
+			fmt.Printf("  Status: %s\n", result.Status)
+			return nil
+		},
+	}
 }
 
 // newCloudRunCmd creates the `agentpaas cloud run` command.
