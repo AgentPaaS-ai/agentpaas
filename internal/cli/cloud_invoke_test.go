@@ -271,3 +271,47 @@ func TestCloudInvoke_MissingToken(t *testing.T) {
 		t.Errorf("expected clear missing invoke token error, got %q", combined)
 	}
 }
+
+func TestCloudInvoke_AlreadyRunning429(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_busy_token")
+	_ = setupFakeTokenStore(t)
+
+	tests := []struct {
+		name    string
+		body    string
+		wantMsg string
+	}{
+		{
+			name:    "retry after supplied",
+			body:    `{"error":"conflict","reason":"already_running","retry_after_sec":17}`,
+			wantMsg: "agent already running; retry in 17s",
+		},
+		{
+			name:    "retry after default",
+			body:    `{"error":"already_running"}`,
+			wantMsg: "agent already running; retry in 30s",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer func() { server.Close() }()
+
+			t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+			_, stderr, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-busy")
+			if err == nil {
+				t.Fatal("expected already-running error")
+			}
+			combined := err.Error() + stderr
+			if !strings.Contains(combined, tt.wantMsg) {
+				t.Errorf("error = %q, want %q", combined, tt.wantMsg)
+			}
+		})
+	}
+}
