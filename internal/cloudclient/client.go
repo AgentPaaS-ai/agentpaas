@@ -19,6 +19,17 @@ const (
 	DefaultCloudAPIURL = "https://agentpaas-cloud-api.parvezsyed.workers.dev"
 )
 
+// HTTPStatusError reports a non-successful HTTP response from the cloud API.
+// The message is kept user-facing while StatusCode lets callers distinguish
+// retryable server failures from validation errors.
+type HTTPStatusError struct {
+	StatusCode int
+	Message    string
+}
+
+// Error implements error.
+func (e *HTTPStatusError) Error() string { return e.Message }
+
 // StartCLIAuthRequest is the body for POST /v1/auth/cli/start.
 type StartCLIAuthRequest struct {
 	RedirectURI string `json:"redirect_uri"`
@@ -58,6 +69,20 @@ func NewCloudClient(baseURL string) *CloudClient {
 // jsonOK reports whether status is a successful HTTP response that may carry a JSON body (any 2xx).
 func jsonOK(code int) bool { return code >= 200 && code < 300 }
 
+// IsRetryableError reports whether err is a server or transport failure that
+// may succeed when the request is retried.
+func IsRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var statusErr *HTTPStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.StatusCode >= http.StatusInternalServerError && statusErr.StatusCode < 600
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
+}
+
 // statusError reads a non-2xx response body and returns an error that surfaces
 // the API `error` field when present (UX-HTTP-BODY). Callers must not use
 // resp.Body after this returns.
@@ -78,15 +103,21 @@ func statusError(op string, resp *http.Response) error {
 			if payload.Hint != "" {
 				errMsg += " — " + payload.Hint
 			}
-			return fmt.Errorf("%s", errMsg)
+			return &HTTPStatusError{StatusCode: resp.StatusCode, Message: errMsg}
 		}
 		// Non-JSON body: include a short excerpt.
 		if len(msg) > 200 {
 			msg = msg[:200] + "…"
 		}
-		return fmt.Errorf("%s: unexpected status %d: %s", op, resp.StatusCode, msg)
+		return &HTTPStatusError{
+			StatusCode: resp.StatusCode,
+			Message:    fmt.Sprintf("%s: unexpected status %d: %s", op, resp.StatusCode, msg),
+		}
 	}
-	return fmt.Errorf("%s: unexpected status %d", op, resp.StatusCode)
+	return &HTTPStatusError{
+		StatusCode: resp.StatusCode,
+		Message:    fmt.Sprintf("%s: unexpected status %d", op, resp.StatusCode),
+	}
 }
 
 // wrapTransportError rewrites DNS/connection failures into an actionable
