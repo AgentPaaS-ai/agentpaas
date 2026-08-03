@@ -184,7 +184,7 @@ func TestCloudInvoke_UsesStoredTokenWhenFlagAndEnvOmitted(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"run-from-store","status":"queued"}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-from-store","status":"queued"}`))
 	}))
 	defer func() { server.Close() }()
 
