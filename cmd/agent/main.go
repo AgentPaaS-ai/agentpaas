@@ -22,7 +22,9 @@ import (
 func main() {
 	root := cli.AgentCmd()
 	if err := root.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		if !cli.IsCloudErrorRendered(err) {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		}
+		os.Exit(cli.CloudExitCode(err))
 	}
 }
