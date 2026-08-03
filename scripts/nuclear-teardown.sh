@@ -32,10 +32,13 @@ echo "=== 4. Removing state directories ==="
 rm -rf ~/.agentpaas ~/.agentpaas-testing ~/.colima ~/agentpaas ~/weather-agent ~/golden-weather-agent 2>/dev/null || true
 
 echo "=== 5. Purging Keychain entries ==="
+# Purge customer tenant token + customer secrets + daemon. The founder's
+# Cloudflare API token (agentpaas-cloudflare-api-token) is deliberately kept.
 for svc in \
   "ai.agentpaas.secrets.3b7a4be2064eedc6" \
   "ai.agentpaas.secrets.741d0c70f8cb08ab" \
-  "agentpaas-daemon"; do
+  "agentpaas-daemon" \
+  "agentpaas-cloud-api-token"; do
   while security delete-generic-password -s "$svc" 2>/dev/null; do :; done
 done
 
