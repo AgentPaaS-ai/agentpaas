@@ -1211,6 +1211,7 @@ var sha256DigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 func newCloudDeployCmd() *cobra.Command {
 	var slotID string
 	var lockPath string
+	var instanceType string
 
 	cmd := &cobra.Command{
 		Use:   "deploy [digest|latest]",
@@ -1224,12 +1225,18 @@ signed agent.lock (same path pack prints).
 The image must have been previously admitted via 'agentpaas cloud push'.
 
 Use --slot-id to pin the deployment to a specific slot; otherwise the
-control plane assigns one automatically.`,
+control plane assigns one automatically.
+
+Use --instance-type to select the workload size: dev (default, minimum) or
+lite.`,
 		Example: `  # Deploy an admitted image
   agentpaas cloud deploy sha256:abcd1234...
 
   # Deploy most recently admitted image
   agentpaas cloud deploy latest
+
+  # Deploy latest using the lite instance type
+  agentpaas cloud deploy latest --instance-type lite
 
   # Deploy digest from a pack lock
   agentpaas cloud deploy --lock "$HOME/.agentpaas/state/agents/weather-agent/agent.lock"
@@ -1238,6 +1245,10 @@ control plane assigns one automatically.`,
   agentpaas cloud deploy sha256:abcd1234... --slot-id slot-42`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if instanceType != "dev" && instanceType != "lite" {
+				return fmt.Errorf("cloud deploy: invalid --instance-type %q: must be one of \"dev\" or \"lite\"", instanceType)
+			}
+
 			// Resolve token.
 			token, err := resolveToken(cmd)
 			if err != nil {
@@ -1300,7 +1311,8 @@ control plane assigns one automatically.`,
 
 			// Build request.
 			req := cloudclient.CreateDeploymentRequest{
-				ImageDigest: digest,
+				ImageDigest:  digest,
+				InstanceType: &instanceType,
 			}
 			if slotID != "" {
 				req.SlotID = &slotID
@@ -1330,6 +1342,7 @@ control plane assigns one automatically.`,
 
 	cmd.Flags().StringVar(&slotID, "slot-id", "", "Pin deployment to a specific slot")
 	cmd.Flags().StringVar(&lockPath, "lock", "", "Absolute path to agent.lock (uses its image_digest)")
+	cmd.Flags().StringVar(&instanceType, "instance-type", "dev", "Workload instance type (dev or lite; default: dev)")
 
 	return cmd
 }
