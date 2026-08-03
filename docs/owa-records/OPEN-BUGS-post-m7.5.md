@@ -47,6 +47,7 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P2-7** | cloud push leaks internals ("wraps wrangler", "set CLOUDFLARE_API_TOKEN") | **FIXED** — help/errors reworded to user-facing abstraction (OSS `f4c9135` line) |
 | **P2-8** | `cloud invoke` printed empty Run ID, dropped final_output | **FIXED + LIVE-PROVEN 2026-08-03** — deploy-invoke wire shape is `{run_id,status,final_output,...}` not a run record; CLI now decodes typed response (OSS `df5b09c`) |
 | **P2-9** | "Apple could not verify agentpaas is free of malware" on first run | **OPEN — 2026-08-03 founder E2E** — binaries not Apple-notarized; Gatekeeper flags them. Workaround `xattr -cr` (runbook) or right-click→Open. Real fix: Apple Developer ID notarization (~$99/yr) before stranger trial; else ship a one-line "macOS may warn — click Open" note in install docs |
+| **P2-10** | Secret onboarding fires BEFORE agent build — asks for openrouter-key when nothing needs it | **OPEN — 2026-08-03 founder E2E** — golden-path order is build → push → secret → deploy → bind; the install/setup skill prompts `secret add openrouter-key` too early. Fix: setup skill must not ask for LLM keys; the build skill asks only when packing/llm config is reached (fix ordering in integrations/hermes-plugin skills) |
 
 ---
 
