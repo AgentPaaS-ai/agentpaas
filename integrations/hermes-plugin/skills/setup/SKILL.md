@@ -45,15 +45,28 @@ colima start
 brew install agentpaas-ai/tap/agentpaas
 ```
 
-### 3. Clear macOS Quarantine (MUST be first — before any agentpaas command)
+### 3. Clear macOS Quarantine (HARD GATE — before any agentpaas command)
 
-The brew cask is not notarized. macOS will KILL the binaries (exit 137)
-if you run them before clearing quarantine. Run xattr FIRST:
+The brew cask is not notarized. macOS can KILL the binaries (exit 137) or
+show a Gatekeeper dialog if you run them before clearing quarantine.
+
+**HARD GATE:** Run `xattr -cr` on all four binaries (`agentpaas`,
+`agentpaasd`, `agentpaas-harness-linux`, and `agentpaas-harness-linux-amd64`)
+**BEFORE any agentpaas command**. Then VERIFY quarantine is cleared:
 
 ```bash
-xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux
-agentpaas version
+xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux /opt/homebrew/bin/agentpaas-harness-linux-amd64
+xattr -l /opt/homebrew/bin/agentpaas
 ```
+
+The verification output must NOT list `com.apple.quarantine`. Do not proceed
+to `agentpaas version` until this xattr check passes — a skipped xattr will
+SIGKILL the binary (exit 137) or show the Gatekeeper dialog.
+
+- [ ] Ran `xattr -cr` on all four binaries.
+- [ ] Confirmed `xattr -l /opt/homebrew/bin/agentpaas` does not list
+      `com.apple.quarantine`.
+- [ ] Only after both checks pass, continue to `agentpaas version`.
 
 ### 4. Verify Harness Binary (bundled since v0.2.1)
 
@@ -113,6 +126,12 @@ available_skills index. Load it BEFORE writing any agent code or calling
 agentpaas tools.
 ```
 
+### LLM secrets are not part of setup
+
+Do not ask the user to add an LLM secret during installation or setup. LLM
+keys are added later, when the user builds an agent that needs one (the build
+skill will prompt them).
+
 ### 7. Verify live registration
 
 The plugin and tools register live in the current session; no restart is
@@ -152,5 +171,6 @@ After setup, when the user asks to build something, THEN load
 | `colima start` fails with "docker not found" | Docker CLI not installed | `brew install docker` |
 | doctor shows harness not found | Pre-v0.2.1 or built from source without harness | `brew upgrade agentpaas` (v0.2.1+ bundles it) |
 | Plugin tools not in Hermes | Toolset not registered | Run `ensure-toolset.py` or add `agentpaas` to `platform_toolsets.cli` manually |
+| "Apple could not verify agentpaas is free of malware" | `com.apple.quarantine` xattr is still set | Run `xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux /opt/homebrew/bin/agentpaas-harness-linux-amd64`, then verify `xattr -l /opt/homebrew/bin/agentpaas` does not list `com.apple.quarantine` |
 | "xattr: No such file" | Binary path wrong | Check with `which agentpaas`; path varies by Homebrew install location |
 | Plugin changes not reflected during development | Dev session needs refresh | `/quit` then relaunch Hermes |
