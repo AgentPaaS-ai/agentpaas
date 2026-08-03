@@ -335,6 +335,24 @@ keys with `agentpaas secret add` in a **separate** terminal, and build agents
 in natural language. See the [main README](../README.md) for the full Hermes
 flow and slash commands.
 
+## Run in the cloud
+
+Cloud is optional and browser-first. After your provider gives you a tenant
+claim link, use this six-command path:
+
+```bash
+agentpaas cloud login                 # open the claim link in a browser first
+agentpaas pack . --target linux/amd64
+agentpaas cloud push --lock "$LOCK"
+agentpaas cloud deploy latest
+agentpaas cloud invoke "$DEPLOYMENT_ID" --body '{"query":"hello"}'
+agentpaas cloud result "$RUN_ID"
+```
+
+Run `agentpaas cloud login` first; if you get **"Open your claim link first"**,
+ask your provider for your claim link (or use `--token-stdin` with the token
+they issued). See the [full cloud runbook](customer/golden-path.md).
+
 ## Next steps
 
 | Topic | Doc |
