@@ -40,8 +40,16 @@ func TestCloudClient_UploadImageStart_Success(t *testing.T) {
 		if got.Platform != "linux/amd64" {
 			t.Errorf("Platform = %q, want linux/amd64", got.Platform)
 		}
-		if !reflect.DeepEqual(got.AgentLock, lock) {
-			t.Errorf("AgentLock = %#v, want %#v", got.AgentLock, lock)
+		wantLockJSON, err := json.Marshal(lock)
+		if err != nil {
+			t.Errorf("marshal expected lock: %v", err)
+		}
+		gotLockJSON, err := json.Marshal(got.AgentLock)
+		if err != nil {
+			t.Errorf("marshal received lock: %v", err)
+		}
+		if string(gotLockJSON) != string(wantLockJSON) {
+			t.Errorf("AgentLock = %s, want %s", gotLockJSON, wantLockJSON)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
