@@ -35,7 +35,8 @@ echo "=== 5. Purging Keychain entries ==="
 for svc in \
   "ai.agentpaas.secrets.3b7a4be2064eedc6" \
   "ai.agentpaas.secrets.741d0c70f8cb08ab" \
-  "agentpaas-daemon"; do
+  "agentpaas-daemon" \
+  "agentpaas-cloudflare-api-token"; do
   while security delete-generic-password -s "$svc" 2>/dev/null; do :; done
 done
 
