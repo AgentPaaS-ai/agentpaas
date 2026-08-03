@@ -36,7 +36,7 @@ weather (they fabricate values).
 
 In Hermes, tell it:
 
-> Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
+> Install from https://github.com/AgentPaaS-ai/agentpaas
 
 Hermes installs the plugin and registers the toolset. Restart when prompted:
 ```

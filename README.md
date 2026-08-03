@@ -153,7 +153,7 @@ hermes
 
 Tell Hermes:
 
-> Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
+> Install from https://github.com/AgentPaaS-ai/agentpaas
 
 Use `hermes plugins install` from GitHub. Do not use `make install-plugin`
 from a local clone. That skips after-install work (skill pointer, toolset

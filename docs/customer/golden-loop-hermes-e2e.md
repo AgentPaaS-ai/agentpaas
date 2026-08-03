@@ -70,13 +70,7 @@ hermes -p agentpaas-testing
 Paste **one** message:
 
 ```text
-I am a first-time user. Install AgentPaaS so I can build a governed weather agent.
-
-1) Ensure brew package agentpaas is installed (AgentPaaS-ai/homebrew-tap or agentpaas-ai/tap), version 0.3.6.
-2) xattr -cr the brew binaries if macOS quarantines them.
-3) agentpaas daemon start && agentpaas doctor (must be 7/7).
-4) Install the AgentPaaS Hermes plugin from https://github.com/AgentPaaS-ai/agentpaas and enable the toolset.
-5) Stop. Tell me to restart Hermes. Do not build an agent yet.
+Install from https://github.com/AgentPaaS-ai/agentpaas
 ```
 
 **Orch verify:**

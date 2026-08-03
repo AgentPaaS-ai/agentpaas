@@ -29,7 +29,7 @@ HTTP request at call time.
 
 Tell Hermes:
 
-> Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
+> Install from https://github.com/AgentPaaS-ai/agentpaas
 
 Hermes installs the plugin, registers the toolset, and creates the skill
 pointer automatically. Restart Hermes when prompted:
