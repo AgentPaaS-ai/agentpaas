@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestCloudClient_UploadImageStart_Success(t *testing.T) {
@@ -119,7 +118,7 @@ func TestCloudClient_UploadImageComplete_DecodesAdmittedImage(t *testing.T) {
 		AgentName:    "test-agent",
 		AgentVersion: "1.0.0",
 		Status:       "admitted",
-		CreatedAt:    time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC),
+		CreatedAt:    "2026-01-01T00:00:00Z",
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
