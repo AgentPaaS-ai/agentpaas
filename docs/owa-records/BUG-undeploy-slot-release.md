@@ -2,15 +2,15 @@
 
 **When found:** 2026-08-03 (post-M7.5 founder golden / slot capacity)
 **Severity:** P0 for trial stranger bar — deploy is one-way; pool fills forever
-**Status:** OPEN
-**M8+ coverage:** **NO** — not in M8 (run-record retention/CLI only), M8.5 (registry/MCP), or M9 (audit/metrics). Pre-M8 residual.
+**Status:** FIXED 2026-08-03 (pre-nuclear E2E bar)
+**M8+ coverage:** fixed pre-M8 as required
 
 ## Symptom
 
 - `cloud deploy` returns `503 no_slot_capacity` when the shared D1 slot pool has no `free` rows.
 - Customer has no CLI/API to take down a deployment and free the slot.
 - Orphan binds remain (e.g. dep gone from list but slot still `bound` to tenant).
-- Live: pool size 3; trial story is 10 agents / 5 concurrent runs — cannot match without undeploy or much larger pool.
+- Live: pool size 3; trial story is 10 agents / per-deployment duplicate suppression (D123) — cannot match without undeploy or much larger pool.
 
 ## Root cause
 

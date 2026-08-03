@@ -1,32 +1,32 @@
 # Open bugs & residuals — post M7.5 (must fix before real trial / before M8 if P0)
 
-**As of:** 2026-08-03  
-**OSS main:** `f9b2cb7` (synced GitHub)  
-**Cloud main:** `5d0dc1b` (merged container reliability; synced GitHub)  
-**Brew:** v0.3.6 @ `9ce0bcb` (docs-only commits after tag OK)
+**As of:** 2026-08-03 (pre-nuclear E2E bar — A1–A7 + M8 closed)
+**OSS main:** `e0c770c` + A1/A3/A6 CLI commits (local; pushed on GO)
+**Cloud main:** `26e91b8` (A1 undeploy, A2 slots, A3 instance, B1 run-delete, A5 secrets)
+**Brew:** v0.3.6 (rebuilt same tag after bar code merged)
 
-This is the single checklist of **what still needs a fix**. FIXED items are listed at the bottom for audit only.
+This is the single checklist of **what still needs a fix**. FIXED items are listed below for audit only.
 
 ---
 
 ## P0 — fix before stranger trial traffic
 
-| ID | Bug | What breaks | Fix | Doc |
-|----|-----|-------------|-----|-----|
-| **P0-1** | **No undeploy / slots never freed** | Deploy is one-way; shared pool fills → forever `no_slot_capacity`. Trial cannot match “10 agents / invoke anytime.” | Cloud `DELETE /v1/deployments/:id` + `releaseSlot`; CLI `cloud undeploy`; orphan slot cleanup | `BUG-undeploy-slot-release.md` |
-| **P0-2** | **Slot pool size 3 shared** (not per-tenant) | Whole Worker only 3 bound deployments; multi-tenant trial collides | Per-tenant slot quota (trial≈5) and/or larger pool + undeploy; align with concurrency story | same + product decision |
-| **P0-3** | **Orphan bound slots** | Slot stays `bound` when dep missing from customer list | Undeploy path + reconciliation job/ops script | same |
+| ID | Bug | Status |
+|----|-----|--------|
+| **P0-1** | No undeploy / slots never freed | **FIXED** — `DELETE /v1/deployments/:id` + `releaseSlot` (cloud `7634d5c`), CLI `agentpaas cloud undeploy` (OSS `526a7d4`), orphan cleanup ops step (see BUG-undeploy-slot-release.md) |
+| **P0-2** | Slot pool size 3 shared (not per-tenant) | **FIXED** — pool enlarged to 10 (`0016_slot_pool_10.sql`), per-tenant slot quota 5 with customer-visible 429 (`10b757b`), actionable `no_slot_capacity` 503 message |
+| **P0-3** | Orphan bound slots | **FIXED** — undeploy releases slot; orphan reconciliation via undeploy/ops SQL (`UPDATE slots SET status='free' WHERE deployment_id NOT IN (SELECT id FROM deployments)`) |
 
 ---
 
 ## P1 — fix before polished trial / scale agents
 
-| ID | Bug | What breaks | Fix | Doc |
-|----|-----|-------------|-----|-----|
-| **P1-1** | **BUG-INSTANCE-SIZING phase 2** | Heavy agents may still OOM/`exit 1` if lite sneaks back or default `dev` too small | Pack-time peak RSS → lock `resources` → CF preset map at bind | cloud `ADV-GAPS` / residuals R2 |
-| **P1-2** | **wrangler deploy wipes customer image** | Every API redeploy resets container app to platform Dockerfile | Automate rebind in `deploy-prod` / post-wrangler checklist always | residuals R3 |
-| **P1-3** | **BUG-CF-BIND ops gap** | Fresh Worker missing CF_* secrets → deploy 503 | Ops checklist enforced; optional `cloud doctor` remote config probe | `BUG-cf-bind-not-configured-t11.md` (CLI body FIXED; ops PARTIAL) |
-| **P1-4** | **cloud.agentpaas.ai DNS dead** | Default host fails; stranger needs env every shell | CF zone DNS → `cloud.agentpaas.ai` or change default URL | residuals R4 |
+| ID | Bug | Status |
+|----|-----|--------|
+| **P1-1** | BUG-INSTANCE-SIZING phase 2 | **FIXED** — per-deployment `instance_type` preset (dev floor, lite only explicit), persisted + bound to CF rollout (`0017_deployment_instance_type.sql`, cloud `4f4ac37`); CLI `--instance-type` (OSS `5e0a592`) |
+| **P1-2** | wrangler deploy wipes customer image | **FIXED** — `deploy-prod.sh` always rebinds after deploy; rebind no longer emits lite custom shape (cloud `4f4ac37`, `7868f9a`) |
+| **P1-3** | BUG-CF-BIND ops gap | **FIXED** — `scripts/verify-worker-secrets.sh` mechanical checklist + deploy-prod assert + `docs/worker-recreate-checklist.md` (cloud `7868f9a`) |
+| **P1-4** | cloud.agentpaas.ai DNS dead | **FIXED (interim)** — CLI default URL now points at live workers.dev `https://agentpaas-cloud-api.parvezsyed.workers.dev` (OSS `5e0a592`); DNS record still pending founder |
 
 ---
 
@@ -37,17 +37,17 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P2-1** | Provision-token still admin curl | Intentional until self-serve; not a code bug if runbook is clear |
 | **P2-2** | Deployment secret bind was curl | **FIXED** — `cloud secrets bind` |
 | **P2-3** | UX-DLOG / DDOCKER / APIHOST / LOCKPATH / deploy latest | **FIXED** on OSS 0.3.6 line |
-| **P2-4** | Hermes E2E golden not yet live-run end-to-end | Doc exists (`docs/customer/golden-loop-hermes-e2e.md`); full profile run still open |
+| **P2-4** | Hermes E2E golden not yet live-run end-to-end | Doc updated with undeploy step; profile-level run = A7 evidence (nuclear optional second pass) |
 
 ---
 
-## Not M8+ (do not wait for M8)
+## M8 (rescoped) — run-record persistence CLI
 
-M8 = run-record retention / CLI polish only.  
-M8.5 = registry + MCP.  
-M9 = audit/metrics APIs.
-
-**None of P0-1…P0-3 or P1-1…P1-4 are scheduled in M8+.** They are pre-M8.
+| Item | Status |
+|------|--------|
+| Full run-record retained until explicit tenant deletion | **VERIFIED** — no TTL/auto-cleanup in cloud `src/`; runs persist |
+| `cloud status` / runs list, `cloud logs <run>`, `cloud result <run>` on brew bar | **EXISTS** (OSS 0.3.6 line); proven in E2E |
+| Delete-run clears records + artifact URLs die | **FIXED** — `DELETE /v1/runs/:id` removes run + events + artifacts, R2 objects deleted so signed URLs 404 (cloud `0877644`) |
 
 ---
 
@@ -60,15 +60,12 @@ M9 = audit/metrics APIs.
 | Default instance_type `dev` (not lite 256MiB) | Cloud main `bb46f82` |
 | AMD64 harness in pack | OSS `35856a5` |
 | CLI double error, Docker stub, API error body, lock path, deploy latest, secrets bind | OSS main / brew 0.3.6 |
-| BUG-036…043 local product bugs | FIXED historically |
 
 ---
 
-## Git cleanliness (2026-08-03)
+## Git cleanliness (2026-08-03 pre-nuclear)
 
 | Repo | main == origin/main | Notes |
 |------|---------------------|--------|
-| agentpaas (OSS) | YES `f9b2cb7` | ~59 untracked local owa/history files — not on GH; safe to ignore or park |
-| agentpaas-cloud | YES `5d0dc1b` | `fix/retry-flaky-container-start` merged FF into main |
-
-Optional desk: delete merged cloud feature branch locally; park OSS `??` under `/tmp` if goreleaser needed again.
+| agentpaas (OSS) | local ahead (A1/A3/A6/docs) — pushed when bar green | ~60 untracked owa/history files — parked before goreleaser |
+| agentpaas-cloud | local ahead (A1/A2/A3/B1/A5) — pushed when bar green | remote feature branches closed (PR 44/45) |
