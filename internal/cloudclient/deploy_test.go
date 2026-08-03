@@ -108,6 +108,56 @@ func TestCloudClient_CreateDeployment_WithoutSlotID(t *testing.T) {
 	}
 }
 
+func TestCloudClient_CreateDeployment_InstanceTypeJSON(t *testing.T) {
+	instanceType := "lite"
+	requests := []CreateDeploymentRequest{
+		{
+			ImageDigest: "sha256:with-instance-type",
+			InstanceType: &instanceType,
+		},
+		{
+			ImageDigest: "sha256:without-instance-type",
+		},
+	}
+	requestNumber := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+
+		if requestNumber == 0 {
+			raw, ok := body["instance_type"]
+			if !ok {
+				t.Error("instance_type should be present when set")
+			} else {
+				var got string
+				if err := json.Unmarshal(raw, &got); err != nil {
+					t.Errorf("decode instance_type: %v", err)
+				} else if got != "lite" {
+					t.Errorf("instance_type = %q, want lite", got)
+				}
+			}
+		} else if _, ok := body["instance_type"]; ok {
+			t.Error("instance_type should be omitted when nil")
+		}
+		requestNumber++
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(DeploymentRecord{ID: "dep-instance-type", Status: "pending"})
+	}))
+	defer func() { server.Close() }()
+
+	client := NewCloudClient(server.URL)
+	for _, req := range requests {
+		if _, err := client.CreateDeployment(context.Background(), "token", req); err != nil {
+			t.Fatalf("CreateDeployment: %v", err)
+		}
+	}
+}
+
 func TestCloudClient_CreateDeployment_400(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
