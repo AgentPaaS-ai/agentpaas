@@ -15,10 +15,8 @@ import (
 )
 
 const (
-	// DefaultCloudAPIURL is the production AgentPaaS Cloud API base URL.
-	// Until cloud.agentpaas.ai DNS is live, operators must set
-	// AGENTPAAS_CLOUD_API_URL (typically the workers.dev URL).
-	DefaultCloudAPIURL = "https://cloud.agentpaas.ai"
+	// DefaultCloudAPIURL is the live production API (workers.dev until cloud.agentpaas.ai DNS is configured). Users can still override with AGENTPAAS_CLOUD_API_URL.
+	DefaultCloudAPIURL = "https://agentpaas-cloud-api.parvezsyed.workers.dev"
 )
 
 // StartCLIAuthRequest is the body for POST /v1/auth/cli/start.

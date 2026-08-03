@@ -171,27 +171,27 @@ func TestResolveApproveURL(t *testing.T) {
 	}{
 		{
 			name:       "absolute approve URL",
-			baseURL:    "https://cloud.agentpaas.ai",
+			baseURL:    "https://agentpaas-cloud-api.parvezsyed.workers.dev",
 			approveURL: "https://auth.agentpaas.ai/approve?state=abc",
 			want:       "https://auth.agentpaas.ai/approve?state=abc",
 		},
 		{
 			name:       "relative approve URL",
-			baseURL:    "https://cloud.agentpaas.ai",
+			baseURL:    "https://agentpaas-cloud-api.parvezsyed.workers.dev",
 			approveURL: "/approve?state=abc",
-			want:       "https://cloud.agentpaas.ai/approve?state=abc",
+			want:       "https://agentpaas-cloud-api.parvezsyed.workers.dev/approve?state=abc",
 		},
 		{
 			name:       "base with trailing slash",
-			baseURL:    "https://cloud.agentpaas.ai/",
+			baseURL:    "https://agentpaas-cloud-api.parvezsyed.workers.dev/",
 			approveURL: "/approve?state=abc",
-			want:       "https://cloud.agentpaas.ai/approve?state=abc",
+			want:       "https://agentpaas-cloud-api.parvezsyed.workers.dev/approve?state=abc",
 		},
 		{
 			name:       "relative without leading slash",
-			baseURL:    "https://cloud.agentpaas.ai",
+			baseURL:    "https://agentpaas-cloud-api.parvezsyed.workers.dev",
 			approveURL: "approve?state=abc",
-			want:       "https://cloud.agentpaas.ai/approve?state=abc",
+			want:       "https://agentpaas-cloud-api.parvezsyed.workers.dev/approve?state=abc",
 		},
 	}
 	for _, tt := range tests {
