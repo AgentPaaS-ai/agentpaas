@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -359,6 +360,9 @@ command never uses the tenant cloud login token for the invoke request.`,
 			client := cloudclient.NewCloudClient(resolveAPIURL())
 			resp, err := client.InvokeDeployment(cmd.Context(), invokeToken, args[0], requestBody)
 			if err != nil {
+				if message, ok := cloudAlreadyRunningMessage(err); ok {
+					return errors.New(message)
+				}
 				return fmt.Errorf("cloud invoke: %w", err)
 			}
 
@@ -384,6 +388,22 @@ command never uses the tenant cloud login token for the invoke request.`,
 	cmd.Flags().StringVar(&bodyFile, "body-file", "", "Read JSON request body from a file, or - for stdin")
 	cmd.Flags().StringVar(&token, "token", "", "Deployment invoke token")
 	return cmd
+}
+
+func cloudAlreadyRunningMessage(err error) (string, bool) {
+	var statusErr *cloudclient.HTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusTooManyRequests {
+		return "", false
+	}
+	if statusErr.ErrorCode != "already_running" && statusErr.Reason != "already_running" {
+		return "", false
+	}
+
+	retryAfter := statusErr.RetryAfterSec
+	if retryAfter <= 0 {
+		retryAfter = 30
+	}
+	return fmt.Sprintf("agent already running; retry in %ds", retryAfter), true
 }
 
 func resolveCloudInvokeToken(cmd *cobra.Command, flagToken, deploymentID string) (string, error) {
@@ -1548,6 +1568,9 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 
 			resp, err := client.CreateRun(cmd.Context(), token, req)
 			if err != nil {
+				if message, ok := cloudAlreadyRunningMessage(err); ok {
+					return errors.New(message)
+				}
 				if strings.Contains(err.Error(), "not authenticated") {
 					return printNotLoggedIn(cmd)
 				}

@@ -23,8 +23,11 @@ const (
 // The message is kept user-facing while StatusCode lets callers distinguish
 // retryable server failures from validation errors.
 type HTTPStatusError struct {
-	StatusCode int
-	Message    string
+	StatusCode    int
+	Message       string
+	ErrorCode     string
+	Reason        string
+	RetryAfterSec int
 }
 
 // Error implements error.
@@ -91,19 +94,30 @@ func statusError(op string, resp *http.Response) error {
 	msg := strings.TrimSpace(string(body))
 	if msg != "" {
 		var payload struct {
-			Error   string `json:"error"`
-			Message string `json:"message"`
-			Hint    string `json:"hint"`
+			Error         string `json:"error"`
+			Reason        string `json:"reason"`
+			Message       string `json:"message"`
+			Hint          string `json:"hint"`
+			RetryAfterSec int    `json:"retry_after_sec"`
 		}
-		if json.Unmarshal(body, &payload) == nil && payload.Error != "" {
+		if json.Unmarshal(body, &payload) == nil && (payload.Error != "" || payload.Reason != "") {
 			errMsg := fmt.Sprintf("%s: %s (status %d)", op, payload.Error, resp.StatusCode)
+			if payload.Error == "" {
+				errMsg = fmt.Sprintf("%s: %s (status %d)", op, payload.Reason, resp.StatusCode)
+			}
 			if payload.Message != "" {
 				errMsg += ": " + payload.Message
 			}
 			if payload.Hint != "" {
 				errMsg += " — " + payload.Hint
 			}
-			return &HTTPStatusError{StatusCode: resp.StatusCode, Message: errMsg}
+			return &HTTPStatusError{
+				StatusCode:    resp.StatusCode,
+				Message:       errMsg,
+				ErrorCode:     payload.Error,
+				Reason:        payload.Reason,
+				RetryAfterSec: payload.RetryAfterSec,
+			}
 		}
 		// Non-JSON body: include a short excerpt.
 		if len(msg) > 200 {
