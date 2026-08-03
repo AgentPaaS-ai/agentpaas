@@ -118,7 +118,7 @@ func TestCloudInvoke_HumanOutput_UsesInvokeTokenAndBody(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"run-invoked-001","status":"queued"}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-invoked-001","status":"succeeded","error":null,"final_output":"hello Ada"}`))
 	}))
 	defer func() { server.Close() }()
 
@@ -130,8 +130,11 @@ func TestCloudInvoke_HumanOutput_UsesInvokeTokenAndBody(t *testing.T) {
 	if !strings.Contains(stdout, "Run ID: run-invoked-001") {
 		t.Errorf("expected run ID in output, got %q", stdout)
 	}
-	if !strings.Contains(stdout, "Status: queued") {
+	if !strings.Contains(stdout, "Status: succeeded") {
 		t.Errorf("expected status in output, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "Final output:\nhello Ada") {
+		t.Errorf("expected final output in output, got %q", stdout)
 	}
 	_ = stderr
 }
@@ -147,7 +150,7 @@ func TestCloudInvoke_JSONOutput_UsesFlagToken(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"run-json-001","status":"running","result":{"ok":true}}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-json-001","status":"running"}`))
 	}))
 	defer func() { server.Close() }()
 
@@ -160,7 +163,7 @@ func TestCloudInvoke_JSONOutput_UsesFlagToken(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("unmarshal JSON output: %v\noutput: %s", err, stdout)
 	}
-	if parsed["id"] != "run-json-001" || parsed["status"] != "running" {
+	if parsed["run_id"] != "run-json-001" || parsed["status"] != "running" {
 		t.Errorf("response = %#v, want run-json-001/running", parsed)
 	}
 	_ = stderr
@@ -185,7 +188,7 @@ func TestCloudInvoke_BodyFile(t *testing.T) {
 			t.Errorf("request body = %q, want file body", requestBody)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"run-file-001","status":"queued"}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-file-001","status":"queued"}`))
 	}))
 	defer func() { server.Close() }()
 
@@ -234,7 +237,7 @@ func TestCloudInvoke_BodyFileStdin(t *testing.T) {
 			t.Errorf("request body = %q, want stdin body", requestBody)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"run-stdin-001","status":"queued"}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-stdin-001","status":"queued"}`))
 	}))
 	defer func() { server.Close() }()
 

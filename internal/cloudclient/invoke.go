@@ -51,9 +51,18 @@ func (c *CloudClient) MintInvokeToken(ctx context.Context, tenantToken, deployme
 	return &result, nil
 }
 
+// InvokeDeploymentResult is the response from POST
+// /v1/deployments/{id}/invoke.
+type InvokeDeploymentResult struct {
+	RunID       string  `json:"run_id"`
+	Status      string  `json:"status"`
+	Error       *string `json:"error"`
+	FinalOutput *string `json:"final_output"`
+}
+
 // InvokeDeployment invokes a deployment with an invoke token and returns the
-// raw JSON run record returned by the API.
-func (c *CloudClient) InvokeDeployment(ctx context.Context, invokeToken, deploymentID string, body json.RawMessage) (json.RawMessage, error) {
+// deployment invocation result.
+func (c *CloudClient) InvokeDeployment(ctx context.Context, invokeToken, deploymentID string, body json.RawMessage) (*InvokeDeploymentResult, error) {
 	if err := validateInvokeDeploymentID("invoke deployment", deploymentID); err != nil {
 		return nil, err
 	}
@@ -83,11 +92,11 @@ func (c *CloudClient) InvokeDeployment(ctx context.Context, invokeToken, deploym
 		return nil, statusError("invoke deployment", resp)
 	}
 
-	var result json.RawMessage
+	var result InvokeDeploymentResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("invoke deployment: decode response: %w", err)
 	}
-	return result, nil
+	return &result, nil
 }
 
 func validateInvokeDeploymentID(operation, deploymentID string) error {
