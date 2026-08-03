@@ -21,6 +21,7 @@ class Agentpaas < Formula
     bin.install "agentpaas"
     bin.install "agentpaasd"
     bin.install "agentpaas-harness-linux"
+    bin.install "agentpaas-harness-linux-amd64"
   end
 
   test do

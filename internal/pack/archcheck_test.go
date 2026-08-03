@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -56,6 +57,25 @@ func TestHarnessArchMatches(t *testing.T) {
 				t.Fatalf("harnessArchMatches() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidateBuildConfigRejectsHarnessArchMismatch(t *testing.T) {
+	harnessPath := filepath.Join(t.TempDir(), "agentpaas-harness-linux")
+	if err := os.WriteFile(harnessPath, testELF64(elf.EM_AARCH64), 0o755); err != nil {
+		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+
+	cfg := BuildConfig{
+		ProjectDir:  t.TempDir(),
+		HarnessPath: harnessPath,
+		ImageTag:    "test:arch-mismatch",
+		Platform:    "linux/amd64",
+	}
+	if err := validateBuildConfig(&cfg); err == nil {
+		t.Fatal("validateBuildConfig() error = nil, want architecture mismatch")
+	} else if !strings.Contains(err.Error(), "is arm64 but target is linux/amd64") {
+		t.Fatalf("validateBuildConfig() error = %q, want architecture mismatch", err)
 	}
 }
 

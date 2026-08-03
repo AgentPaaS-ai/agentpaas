@@ -365,6 +365,9 @@ func validateBuildConfig(cfg *BuildConfig) error {
 	if resolved, err := filepath.EvalSymlinks(cfg.HarnessPath); err == nil {
 		cfg.HarnessPath = resolved
 	}
+	if err := validateHarnessArchitecture(cfg.HarnessPath, cfg.Platform); err != nil {
+		return fmt.Errorf("validate build config: %w", err)
+	}
 	if cfg.SDKDir == "" {
 		harnessDir := filepath.Dir(cfg.HarnessPath)
 		candidate := filepath.Join(filepath.Dir(harnessDir), "python")
