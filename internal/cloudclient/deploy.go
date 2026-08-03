@@ -18,6 +18,12 @@ type DeploymentRecord struct {
 	CreatedAt   string  `json:"created_at"`
 }
 
+// DeploymentDeleteResult is the response from DELETE /v1/deployments/{id}.
+type DeploymentDeleteResult struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
 // CreateDeploymentRequest is the body for POST /v1/deployments.
 type CreateDeploymentRequest struct {
 	ImageDigest string  `json:"image_digest"`
@@ -115,6 +121,39 @@ func (c *CloudClient) GetDeployment(ctx context.Context, token string, id string
 	var result DeploymentRecord
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("get deployment: decode response: %w", err)
+	}
+	return &result, nil
+}
+
+// DeleteDeployment calls DELETE /v1/deployments/{id} with a Bearer token.
+func (c *CloudClient) DeleteDeployment(ctx context.Context, token string, id string) (*DeploymentDeleteResult, error) {
+	// Sanitize: id must not contain path traversal or newlines.
+	if strings.ContainsAny(id, "/\\\n\r") {
+		return nil, fmt.Errorf("undeploy deployment: invalid id %q", id)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, c.BaseURL+"/v1/deployments/"+id, nil)
+	if err != nil {
+		return nil, fmt.Errorf("undeploy deployment: create request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, wrapTransportError("undeploy deployment", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("undeploy deployment: not authenticated (token may be expired or invalid)")
+	}
+	if !jsonOK(resp.StatusCode) {
+		return nil, statusError("undeploy deployment", resp)
+	}
+
+	var result DeploymentDeleteResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("undeploy deployment: decode response: %w", err)
 	}
 	return &result, nil
 }
