@@ -634,28 +634,25 @@ func newCloudPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "Push a packed agent image to AgentPaaS Cloud",
-		Long: `Admit a signed agent image to the AgentPaaS Cloud control plane.
+		Long: `Push a locally built agent image to the AgentPaaS cloud registry and admit it for deployment. The image must have been packed with --target linux/amd64.
 
 This command reads the agent.lock file, verifies its signature, and
 sends an admission request to the cloud API. The control plane verifies
 the lockfile signature and admits the image for deployment.
 
-Cloud requires amd64 packs. The CLI wraps wrangler to push the image
-to the Cloudflare Container Registry — customers never invoke wrangler
-directly. Set CLOUDFLARE_API_TOKEN in your CI/builder environment.
 Admit rejects unsigned locks.
 
 If --skip-registry is set, only the admission request is sent (no
-registry push). Use --registry-ref to skip wrangler when the image has
-already been pushed.`,
-		Example: `  # Push and admit (CLI wraps wrangler automatically)
+registry push). Use --registry-ref to skip the registry push when the
+image has already been pushed.`,
+		Example: `  # Push and admit
   agentpaas cloud push --lock agent.lock
 
   # Push with admission only (no registry push)
   agentpaas cloud push --lock agent.lock --skip-registry
 
-  # Push with registry ref from prior wrangler push
-  agentpaas cloud push --lock agent.lock --registry-ref registry.cloudflare.com/...
+  # Admit an image already available in the cloud registry
+  agentpaas cloud push --lock agent.lock --registry-ref registry.example.com/...
 
   # Push with explicit digest override
   agentpaas cloud push --lock agent.lock --digest sha256:...`,
@@ -720,9 +717,9 @@ already been pushed.`,
 			// Registry step: only if --registry-ref not provided AND --skip-registry is false.
 			resolvedRegistryRef := registryRef
 			if resolvedRegistryRef == "" && !skipRegistry {
-				// Check if CLOUDFLARE_API_TOKEN is set.
+				// Check that registry credentials are configured.
 				if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
-					return fmt.Errorf("cloud push: CLOUDFLARE_API_TOKEN not set — use --skip-registry or set CLOUDFLARE_API_TOKEN")
+					return fmt.Errorf("cloud push: registry credentials not configured — run 'agentpaas cloud login' or use --skip-registry to skip the registry push")
 				}
 				localRef, err := resolveLocalImageRef(cmd.Context(), lock, imageRef)
 				if err != nil {
@@ -730,7 +727,7 @@ already been pushed.`,
 				}
 				ref, err := runWranglerPush(cmd.Context(), localRef)
 				if err != nil {
-					return fmt.Errorf("cloud push: wrangler push failed: %w (use --skip-registry to skip)", err)
+					return fmt.Errorf("cloud push: registry push failed: %w (use --skip-registry to skip)", err)
 				}
 				resolvedRegistryRef = ref
 			}
@@ -782,9 +779,9 @@ already been pushed.`,
 	cmd.Flags().StringVar(&lockPath, "lock", "", "Path to agent.lock JSON (required)")
 	cmd.Flags().StringVar(&digest, "digest", "", "Override image digest (default: from lock.image_digest)")
 	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (default: from lock.platform or linux/amd64)")
-	cmd.Flags().StringVar(&registryRef, "registry-ref", "", "Cloudflare Container Registry reference (optional)")
+	cmd.Flags().StringVar(&registryRef, "registry-ref", "", "Cloud registry reference (optional)")
 	cmd.Flags().BoolVar(&skipRegistry, "skip-registry", false, "Skip registry push; admission only")
-	cmd.Flags().StringVar(&imageRef, "image", "", "Override local image ref for wrangler push (for tests)")
+	cmd.Flags().StringVar(&imageRef, "image", "", "Override local image reference (optional)")
 
 	return cmd
 }
