@@ -159,7 +159,8 @@ Use `hermes plugins install` from GitHub. Do not use `make install-plugin`
 from a local clone. That skips after-install work (skill pointer, toolset
 registration), and a normal user does not have the source repo.
 
-When Hermes asks you to restart:
+No restart needed — the plugin registers its toolset in the current session.
+If the agentpaas tools don't appear, restart once:
 
 ```
 /quit

@@ -32,7 +32,8 @@ Tell Hermes:
 > Install from https://github.com/AgentPaaS-ai/agentpaas
 
 Hermes installs the plugin, registers the toolset, and creates the skill
-pointer automatically. Restart Hermes when prompted:
+pointer automatically — no restart needed; the toolset is available in the
+current session. If the agentpaas tools don't appear, restart once:
 
 ```
 /quit
