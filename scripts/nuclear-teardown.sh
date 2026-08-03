@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # AgentPaaS Nuclear Teardown — removes EVERYTHING for a genuine zero state.
 # Usage: bash scripts/nuclear-teardown.sh [hermes-profile]
-# Default profile: ap-testing (first-time-user tester profile).
-# CF-side state (Worker, D1 slots, CF registry token) is intentionally kept.
+# Customer tenant token and customer secrets are purged.
+# The founder's Cloudflare API token (agentpaas-cloudflare-api-token) is kept because it is the founder's infra credential for building agentpaas.
 set -euo pipefail
 
 PROFILE="${1:-ap-testing}"
@@ -35,8 +35,7 @@ echo "=== 5. Purging Keychain entries ==="
 for svc in \
   "ai.agentpaas.secrets.3b7a4be2064eedc6" \
   "ai.agentpaas.secrets.741d0c70f8cb08ab" \
-  "agentpaas-daemon" \
-  "agentpaas-cloudflare-api-token"; do
+  "agentpaas-daemon"; do
   while security delete-generic-password -s "$svc" 2>/dev/null; do :; done
 done
 
