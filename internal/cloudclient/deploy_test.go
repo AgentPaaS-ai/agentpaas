@@ -287,3 +287,94 @@ func TestCloudClient_GetDeployment_InvalidID(t *testing.T) {
 		t.Errorf("error should mention invalid id, got: %v", err)
 	}
 }
+
+func TestDeleteDeployment(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodDelete {
+				t.Errorf("expected DELETE, got %s", r.Method)
+			}
+			if r.URL.Path != "/v1/deployments/dep-delete" {
+				t.Errorf("expected /v1/deployments/dep-delete, got %s", r.URL.Path)
+			}
+			if auth := r.Header.Get("Authorization"); auth != "Bearer apc_test_token" {
+				t.Errorf("Authorization = %q, want Bearer apc_test_token", auth)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(DeploymentDeleteResult{
+				ID:     "dep-delete",
+				Status: "deleted",
+			})
+		}))
+		defer func() { server.Close() }()
+
+		client := NewCloudClient(server.URL)
+		result, err := client.DeleteDeployment(context.Background(), "apc_test_token", "dep-delete")
+		if err != nil {
+			t.Fatalf("DeleteDeployment: %v", err)
+		}
+		if result.ID != "dep-delete" {
+			t.Errorf("ID = %q, want dep-delete", result.ID)
+		}
+		if result.Status != "deleted" {
+			t.Errorf("Status = %q, want deleted", result.Status)
+		}
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "not_found"})
+		}))
+		defer func() { server.Close() }()
+
+		client := NewCloudClient(server.URL)
+		_, err := client.DeleteDeployment(context.Background(), "token", "missing-deployment")
+		if err == nil {
+			t.Fatal("expected error for 404 status")
+		}
+		if !strings.Contains(err.Error(), "not_found") {
+			t.Errorf("error should mention not_found, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "undeploy deployment") {
+			t.Errorf("error should mention operation, got: %v", err)
+		}
+	})
+
+	t.Run("unauthorized", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusUnauthorized)
+		}))
+		defer func() { server.Close() }()
+
+		client := NewCloudClient(server.URL)
+		_, err := client.DeleteDeployment(context.Background(), "bad-token", "dep-delete")
+		if err == nil {
+			t.Fatal("expected error for 401 status")
+		}
+		if !strings.Contains(err.Error(), "not authenticated") {
+			t.Errorf("error should mention not authenticated, got: %v", err)
+		}
+	})
+
+	client := NewCloudClient("https://example.com")
+	for name, id := range map[string]string{
+		"slash":     "bad/id",
+		"backslash": `bad\id`,
+		"newline":   "bad\nid",
+		"carriage":  "bad\rid",
+	} {
+		t.Run("invalid id "+name, func(t *testing.T) {
+			_, err := client.DeleteDeployment(context.Background(), "token", id)
+			if err == nil {
+				t.Fatal("expected error for invalid id")
+			}
+			if !strings.Contains(err.Error(), "invalid id") {
+				t.Errorf("error should mention invalid id, got: %v", err)
+			}
+		})
+	}
+}

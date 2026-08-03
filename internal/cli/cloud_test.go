@@ -515,6 +515,11 @@ func TestCloudDeploy_CommandsRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Find cloud list (alias): %v", err)
 	}
+
+	_, _, err = cmd.Find([]string{"cloud", "undeploy"})
+	if err != nil {
+		t.Fatalf("Find cloud undeploy: %v", err)
+	}
 }
 
 func TestCloudDeploy_NotLoggedIn(t *testing.T) {
@@ -811,6 +816,67 @@ func TestCloudDeployments_JSONOutput(t *testing.T) {
 	}
 	if len(parsed) != 1 || parsed[0].ID != "dep-json" {
 		t.Errorf("expected dep-json, got %v", parsed)
+	}
+}
+
+func TestCloudUndeploy_Success(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_undeploy_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/deployments/dep-delete-001" {
+			t.Errorf("expected /v1/deployments/dep-delete-001, got %s", r.URL.Path)
+		}
+		if auth := r.Header.Get("Authorization"); auth != "Bearer apc_undeploy_test" {
+			t.Errorf("Authorization = %q, want Bearer apc_undeploy_test", auth)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(cloudclient.DeploymentDeleteResult{
+			ID:     "dep-delete-001",
+			Status: "deleted",
+		})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001")
+	if err != nil {
+		t.Fatalf("undeploy: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Undeployed") {
+		t.Errorf("expected 'Undeployed' in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "slot freed") {
+		t.Errorf("expected 'slot freed' in output, got: %q", stdout)
+	}
+}
+
+func TestCloudUndeploy_NotFound(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_undeploy_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "not_found"})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment")
+	if err == nil {
+		t.Fatal("expected error for 404 response")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "not_found") {
+		t.Errorf("error should surface not_found, got: %s", combined)
 	}
 }
 
