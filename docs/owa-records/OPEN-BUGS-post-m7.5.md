@@ -17,7 +17,8 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P0-2** | Slot pool size 3 shared (not per-tenant) | **FIXED** — pool enlarged to 10 (`0016_slot_pool_10.sql`), per-tenant slot quota 5 with customer-visible 429 (`10b757b`), actionable `no_slot_capacity` 503 message |
 | **P0-3** | Orphan bound slots | **FIXED** — undeploy releases slot; orphan reconciliation via undeploy/ops SQL (`UPDATE slots SET status='free' WHERE deployment_id NOT IN (SELECT id FROM deployments)`) |
 
-| **P0-4** | **cloud push requires a customer Cloudflare API token** | Every trial user would need the founder's CF credential to push — breaks the stranger bar. `cloud push` wraps the CF registry directly (CLI needs CLOUDFLARE_API_TOKEN). Fix: server-side admission — CLI uploads the image to the platform with the TENANT token; the Worker pushes to the CF registry with its own CF_API_TOKEN (already present for binds). Browser login stays the only customer credential. |
+| **P0-4** | **cloud push requires a customer Cloudflare API token** | **FIXED + LIVE-PROVEN 2026-08-03** — server-side admission; CLI streams docker save with TENANT token; Worker stages R2 + pushes to CF registry with platform credential (cloud `b90d77d` mig 0018, OSS `f4c9135`). Re-proven end-to-end with zero CF token in CLI env. |
+| **P0-5** | **New admission path rejects every real push: "image digest does not match an archive platform config"** | **FIXED + LIVE-PROVEN 2026-08-03** — three-layer fix: deep-sort lock canonicalization + setIfNotEmpty agent_yaml (P0-5a), config-vs-manifest digest domain pin, scoped registry creds minted via containers API instead of raw Bearer (P0-5b, cloud `35c6b04`). Live: push admitted img_d6671d6b → deploy → invoke real LLM weather → result → undeploy, all tenant-token-only. |
 
 ---
 
@@ -43,7 +44,9 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P2-4** | Hermes E2E golden not yet live-run end-to-end | Doc updated with undeploy step; profile-level run = A7 evidence (nuclear optional second pass) |
 | **P2-5** | Install prompt too verbose | **FIXED 2026-08-03** — canonical prompt is now one sentence: `Install from https://github.com/AgentPaaS-ai/agentpaas`. Updated README.md:156, demo/README.md:39, docs/quickstart.md:331, docs/execution/golden-loop-test.md (×2), integrations/hermes-plugin/SKILL.md:32, docs/customer/golden-loop-hermes-e2e.md Phase 2 |
 | **P2-6** | Install flow says "restart Hermes" | **FIXED 2026-08-03** — toolset registers live (verified Hermes v0.19.1); restart-required removed from README.md, demo/README.md, docs/quickstart.md, docs/internal/after-install.md STEP 4, integrations/hermes-plugin/SKILL.md, golden-loop docs. Restart kept only as a fallback if tools don't appear |
-| **P2-7** | cloud push leaks internals ("wraps wrangler", "set CLOUDFLARE_API_TOKEN") | **FOUND 2026-08-03 tester run** — first-time user saw internal transport detail. Fix in flight: reword cloud.go help + error to user-facing abstraction (worker dispatched). |
+| **P2-7** | cloud push leaks internals ("wraps wrangler", "set CLOUDFLARE_API_TOKEN") | **FIXED** — help/errors reworded to user-facing abstraction (OSS `f4c9135` line) |
+| **P2-8** | `cloud invoke` printed empty Run ID, dropped final_output | **FIXED + LIVE-PROVEN 2026-08-03** — deploy-invoke wire shape is `{run_id,status,final_output,...}` not a run record; CLI now decodes typed response (OSS `df5b09c`) |
+| **P2-9** | "Apple could not verify agentpaas is free of malware" on first run | **OPEN — 2026-08-03 founder E2E** — binaries not Apple-notarized; Gatekeeper flags them. Workaround `xattr -cr` (runbook) or right-click→Open. Real fix: Apple Developer ID notarization (~$99/yr) before stranger trial; else ship a one-line "macOS may warn — click Open" note in install docs |
 
 ---
 

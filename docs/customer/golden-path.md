@@ -8,8 +8,7 @@ Do not commit tokens.
 ```bash
 export PATH="/opt/homebrew/bin:$PATH"
 export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.parvezsyed.workers.dev'
-# Cloudflare registry push (not your apc_ tenant token):
-export CLOUDFLARE_API_TOKEN="$(security find-generic-password -s agentpaas-cloudflare-api-token -w)"
+# No Cloudflare credential needed — push/deploy/invoke use only your tenant token.
 ```
 
 Check:
@@ -112,7 +111,8 @@ new deployment instead of `no_slot_capacity`.
 | secrets_misconfigured | Operator: SECRETS_MASTER_KEY on Worker |
 | llm credential not declared | Step 7 bind |
 | path must be absolute: agent.lock | Use Lock path from pack, not `./agent.lock` |
-| unexpected exit code 1 | Need amd64 pack + container app instance_type dev |
+| unexpected exit code 1 | Need amd64 pack (`pack . --target linux/amd64`); container preset defaults to basic (1GiB) — do not force lite/dev |
+| Run ID prints empty on invoke | Fixed in 0.3.7+ — upgrade: `brew upgrade agentpaas` or rebuild |
 
 ## Hermes first-time user (full)
 
