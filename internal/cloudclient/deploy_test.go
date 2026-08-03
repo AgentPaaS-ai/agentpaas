@@ -112,7 +112,7 @@ func TestCloudClient_CreateDeployment_InstanceTypeJSON(t *testing.T) {
 	instanceType := "lite"
 	requests := []CreateDeploymentRequest{
 		{
-			ImageDigest: "sha256:with-instance-type",
+			ImageDigest:  "sha256:with-instance-type",
 			InstanceType: &instanceType,
 		},
 		{
