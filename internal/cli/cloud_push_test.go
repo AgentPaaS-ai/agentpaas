@@ -286,6 +286,57 @@ func TestCloudPush_Help(t *testing.T) {
 	}
 }
 
+// TestCloudPush_HelpAbstractsRegistryTransport verifies help does not expose
+// the registry transport or its implementation credential.
+func TestCloudPush_HelpAbstractsRegistryTransport(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "push", "--help")
+	if err != nil {
+		t.Fatalf("push --help: %v", err)
+	}
+
+	if !strings.Contains(stdout, "Push a locally built agent image to the AgentPaaS cloud registry and admit it for deployment.") {
+		t.Errorf("help should describe the cloud registry workflow, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "--target linux/amd64") {
+		t.Errorf("help should require linux/amd64 packs, got: %s", stdout)
+	}
+	for _, internalDetail := range []string{"wrangler", "CLOUDFLARE_API_TOKEN"} {
+		if strings.Contains(strings.ToLower(stdout), strings.ToLower(internalDetail)) {
+			t.Errorf("help should not expose %q, got: %s", internalDetail, stdout)
+		}
+	}
+}
+
+// TestCloudPush_MissingRegistryCredentialsAbstractsTransport verifies the
+// missing registry credential error gives user-facing next steps.
+func TestCloudPush_MissingRegistryCredentialsAbstractsTransport(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_registry_credentials_test")
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	t.Setenv("CLOUDFLARE_API_TOKEN", "")
+
+	dir := t.TempDir()
+	lockPath := newTestLock(t, dir)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "push", "--lock", lockPath)
+	if err == nil {
+		t.Fatal("expected error when registry credentials are unavailable")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "registry credentials not configured") {
+		t.Errorf("error should explain missing registry credentials, got: %v", combined)
+	}
+	if !strings.Contains(combined, "agentpaas cloud login") {
+		t.Errorf("error should suggest cloud login, got: %v", combined)
+	}
+	if !strings.Contains(combined, "--skip-registry") {
+		t.Errorf("error should mention --skip-registry, got: %v", combined)
+	}
+	if strings.Contains(combined, "CLOUDFLARE_API_TOKEN") {
+		t.Errorf("error should not expose the implementation credential, got: %v", combined)
+	}
+}
+
 // TestCloudHelp_HasPushAndImages verifies cloud --help lists push and images.
 func TestCloudHelp_HasPushAndImages(t *testing.T) {
 	stdout, _, err := executeCloudCmd(t, "", "cloud", "--help")
