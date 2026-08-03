@@ -18,7 +18,18 @@ Present the four template options with a brief description of each:
 Ask: **"Which egress policy fits your agent?"**
 
 ## After the user chooses
-Call `agentpaas_policy_init` with the chosen template and project directory.
+
+Before calling `agentpaas_policy_init`, identify the exact hostnames that the
+chosen template would permit and show them to the user. Ask:
+
+`Approve egress to <hosts>? [y/N]`
+
+Wait for an affirmative answer. Never auto-approve egress. The user approves
+every host. If the user has not approved, STOP and ask. Only then call
+`agentpaas_policy_init` with the chosen template and project directory.
 
 ## Custom egress
-If the user has custom domain or port requirements beyond the four templates, start with `allow-http` as a base, then tell the user to manually edit `policy.yaml` for their specific egress rules.
+If the user has custom domain or port requirements beyond the four templates,
+start with `allow-http` as a base, then list the exact resulting hostnames and
+ask `Approve egress to <hosts>? [y/N]`. Wait for affirmative approval before
+writing or manually editing `policy.yaml`; never auto-approve a custom host.
