@@ -113,7 +113,11 @@ available_skills index. Load it BEFORE writing any agent code or calling
 agentpaas tools.
 ```
 
-### 7. Restart Hermes
+### 7. Verify live registration
+
+The plugin and tools register live in the current session; no restart is
+needed. If `agentpaas_*` tools do not appear, restart Hermes once as a
+fallback:
 
 ```bash
 /quit
@@ -124,9 +128,10 @@ hermes -p <profile>
 any agent. Do NOT ask "would you like me to build a test agent?" The
 correct end-of-setup message is:
 
-> AgentPaaS setup complete. Restart Hermes to load the plugin and tools.
+> AgentPaaS setup complete. The plugin and tools are available in this
+> session. Restart Hermes only if the `agentpaas_*` tools do not appear.
 
-After the user restarts and asks to build something, THEN load
+After setup, when the user asks to build something, THEN load
 `agentpaas:deploy`. Until then, do nothing.
 
 ## Verification Checklist
@@ -148,4 +153,4 @@ After the user restarts and asks to build something, THEN load
 | doctor shows harness not found | Pre-v0.2.1 or built from source without harness | `brew upgrade agentpaas` (v0.2.1+ bundles it) |
 | Plugin tools not in Hermes | Toolset not registered | Run `ensure-toolset.py` or add `agentpaas` to `platform_toolsets.cli` manually |
 | "xattr: No such file" | Binary path wrong | Check with `which agentpaas`; path varies by Homebrew install location |
-| Plugin changes not reflected | Need session restart | `/quit` then relaunch Hermes |
+| Plugin changes not reflected during development | Dev session needs refresh | `/quit` then relaunch Hermes |
