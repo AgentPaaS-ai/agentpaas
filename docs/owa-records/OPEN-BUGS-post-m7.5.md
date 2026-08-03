@@ -46,6 +46,7 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P2-6** | Install flow says "restart Hermes" | **FIXED 2026-08-03** — toolset registers live (verified Hermes v0.19.1); restart-required removed from README.md, demo/README.md, docs/quickstart.md, docs/internal/after-install.md STEP 4, integrations/hermes-plugin/SKILL.md, golden-loop docs. Restart kept only as a fallback if tools don't appear |
 | **P2-7** | cloud push leaks internals ("wraps wrangler", "set CLOUDFLARE_API_TOKEN") | **FIXED** — help/errors reworded to user-facing abstraction (OSS `f4c9135` line) |
 | **P2-8** | `cloud invoke` printed empty Run ID, dropped final_output | **FIXED + LIVE-PROVEN 2026-08-03** — deploy-invoke wire shape is `{run_id,status,final_output,...}` not a run record; CLI now decodes typed response (OSS `df5b09c`) |
+| **P2-9** | "Apple could not verify agentpaas is free of malware" on first run | **OPEN — 2026-08-03 founder E2E** — binaries not Apple-notarized; Gatekeeper flags them. Workaround `xattr -cr` (runbook) or right-click→Open. Real fix: Apple Developer ID notarization (~$99/yr) before stranger trial; else ship a one-line "macOS may warn — click Open" note in install docs |
 
 ---
 
