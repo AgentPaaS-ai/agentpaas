@@ -1,12 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -114,35 +116,83 @@ func TestCloudPush_UnsignedLock(t *testing.T) {
 	}
 }
 
-// TestCloudPush_Success verifies a successful push with --skip-registry and fake API.
+// TestCloudPush_Success verifies a successful tenant-token upload and admission.
 func TestCloudPush_Success(t *testing.T) {
 	store := setupFakeTokenStore(t)
 	_ = store.Set(context.Background(), "apc_push_test")
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
 
 	dir := t.TempDir()
 	lockPath := newTestLock(t, dir)
+	tarData := append(bytes.Repeat([]byte("a"), 8<<20), []byte("tail")...)
+	var savedRef string
+	oldDockerSave := dockerSaveImage
+	dockerSaveImage = func(ctx context.Context, imageRef string) (io.ReadCloser, error) {
+		savedRef = imageRef
+		return io.NopCloser(bytes.NewReader(tarData)), nil
+	}
+	t.Cleanup(func() { dockerSaveImage = oldDockerSave })
 
 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/images/admit" {
-			auth := r.Header.Get("Authorization")
-			if auth != "Bearer apc_push_test" {
-				w.WriteHeader(http.StatusUnauthorized)
-				return
+		if got := r.Header.Get("Authorization"); got != "Bearer apc_push_test" {
+			t.Errorf("Authorization = %q, want Bearer apc_push_test", got)
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/images/upload-start":
+			var req cloudclient.UploadImageStartRequest
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Errorf("decode upload-start: %v", err)
 			}
-			var req cloudclient.AdmitImageRequest
-			_ = json.NewDecoder(r.Body).Decode(&req)
-
-			resp := cloudclient.AdmitImageResponse{
-				ID:          "img-pushed-001",
-				ImageDigest: req.ImageDigest,
-				Status:      "admitted",
+			if req.ImageDigest != "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
+				t.Errorf("ImageDigest = %q", req.ImageDigest)
+			}
+			if req.Platform != "linux/amd64" {
+				t.Errorf("Platform = %q, want linux/amd64", req.Platform)
+			}
+			lockMap, ok := req.AgentLock.(map[string]interface{})
+			if !ok || lockMap["agent_name"] != "test-agent" || lockMap["lockfile_signature"] == "" {
+				t.Errorf("AgentLock = %#v, want signed test lock", req.AgentLock)
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(resp)
-			return
+			if err := json.NewEncoder(w).Encode(cloudclient.UploadImageStartResponse{
+				UploadID:       "upload-pushed-001",
+				ImageID:        "img-pushed-001",
+				ChunkSizeBytes: 8 << 20,
+			}); err != nil {
+				t.Errorf("encode upload-start: %v", err)
+			}
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/images/upload/upload-pushed-001/chunk/1":
+			chunk, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read chunk 1: %v", err)
+			}
+			if !bytes.Equal(chunk, tarData[:8<<20]) {
+				t.Errorf("chunk 1 has %d bytes, want first 8 MiB", len(chunk))
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/images/upload/upload-pushed-001/chunk/2":
+			chunk, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Errorf("read chunk 2: %v", err)
+			}
+			if !bytes.Equal(chunk, tarData[8<<20:]) {
+				t.Errorf("chunk 2 = %q, want tail", chunk)
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/images/upload/upload-pushed-001/complete":
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(cloudclient.AdmitImageResponse{
+				ID:          "img-pushed-001",
+				ImageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Status:      "admitted",
+				RegistryRef: "registry.example.com/test-agent@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			}); err != nil {
+				t.Errorf("encode complete: %v", err)
+			}
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
 		}
-		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer apiServer.Close()
 
@@ -150,7 +200,6 @@ func TestCloudPush_Success(t *testing.T) {
 
 	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "push",
 		"--lock", lockPath,
-		"--skip-registry",
 		"--platform", "linux/amd64")
 	if err != nil {
 		t.Fatalf("push: err=%v stdout=%q stderr=%q", err, stdout, stderr)
@@ -160,6 +209,152 @@ func TestCloudPush_Success(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "admitted") {
 		t.Errorf("expected 'admitted' in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "Registry:") {
+		t.Errorf("expected registry in output, got: %q", stdout)
+	}
+	if savedRef != "agentpaas/test-agent:1.0.0" {
+		t.Errorf("docker save ref = %q, want agentpaas/test-agent:1.0.0", savedRef)
+	}
+}
+
+func TestCloudPush_SkipRegistryAdmitsWithNullRegistryRef(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_skip_test")
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+
+	dir := t.TempDir()
+	lockPath := newTestLock(t, dir)
+	oldDockerSave := dockerSaveImage
+	dockerSaveImage = func(ctx context.Context, imageRef string) (io.ReadCloser, error) {
+		t.Fatal("docker save must not run with --skip-registry")
+		return nil, nil
+	}
+	t.Cleanup(func() { dockerSaveImage = oldDockerSave })
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/images/admit" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode admit: %v", err)
+		}
+		if registryRef, ok := body["registry_ref"]; !ok || registryRef != nil {
+			t.Errorf("registry_ref = %#v, want explicit null", registryRef)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(cloudclient.AdmitImageResponse{
+			ID:          "img-skip-001",
+			ImageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			Status:      "admitted",
+		}); err != nil {
+			t.Errorf("encode admit: %v", err)
+		}
+	}))
+	defer apiServer.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "push", "--lock", lockPath, "--skip-registry")
+	if err != nil {
+		t.Fatalf("push --skip-registry: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Image admitted: img-skip-001") {
+		t.Errorf("output = %q, want admitted image", stdout)
+	}
+}
+
+func TestCloudPush_StartUnauthorizedPrintsNotLoggedIn(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_start_unauthorized")
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+
+	dir := t.TempDir()
+	lockPath := newTestLock(t, dir)
+	oldDockerSave := dockerSaveImage
+	dockerSaveImage = func(ctx context.Context, imageRef string) (io.ReadCloser, error) {
+		t.Fatal("docker save must not run when upload-start is unauthorized")
+		return nil, nil
+	}
+	t.Cleanup(func() { dockerSaveImage = oldDockerSave })
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/images/upload-start" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer apiServer.Close()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "push", "--lock", lockPath, "--image", "custom/image:tag")
+	if err == nil {
+		t.Fatal("expected not-logged-in error")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "not logged in") {
+		t.Errorf("error = %q, want not logged in", combined)
+	}
+}
+
+func TestCloudPush_ChunkRetryOnServerError(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_retry_test")
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+
+	dir := t.TempDir()
+	lockPath := newTestLock(t, dir)
+	oldDockerSave := dockerSaveImage
+	dockerSaveImage = func(ctx context.Context, imageRef string) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader([]byte("retryable tar"))), nil
+	}
+	t.Cleanup(func() { dockerSaveImage = oldDockerSave })
+
+	chunkAttempts := 0
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/images/upload-start":
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(cloudclient.UploadImageStartResponse{
+				UploadID:       "upload-retry-001",
+				ChunkSizeBytes: 8 << 20,
+			}); err != nil {
+				t.Errorf("encode start: %v", err)
+			}
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/images/upload/upload-retry-001/chunk/1":
+			chunkAttempts++
+			if chunkAttempts == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/images/upload/upload-retry-001/complete":
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(cloudclient.AdmitImageResponse{
+				ID:          "img-retry-001",
+				ImageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Status:      "admitted",
+			}); err != nil {
+				t.Errorf("encode complete: %v", err)
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer apiServer.Close()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "push", "--lock", lockPath, "--image", "custom/image:tag")
+	if err != nil {
+		t.Fatalf("push retry: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if chunkAttempts != 2 {
+		t.Errorf("chunk attempts = %d, want 2", chunkAttempts)
+	}
+	if !strings.Contains(stdout, "Image admitted: img-retry-001") {
+		t.Errorf("output = %q, want admitted image", stdout)
 	}
 }
 
@@ -294,8 +489,8 @@ func TestCloudPush_HelpAbstractsRegistryTransport(t *testing.T) {
 		t.Fatalf("push --help: %v", err)
 	}
 
-	if !strings.Contains(stdout, "Push a locally built agent image to the AgentPaaS cloud registry and admit it for deployment.") {
-		t.Errorf("help should describe the cloud registry workflow, got: %s", stdout)
+	if !strings.Contains(stdout, "Upload a locally built agent image to AgentPaaS Cloud and admit it for deployment.") {
+		t.Errorf("help should describe the tenant-token upload workflow, got: %s", stdout)
 	}
 	if !strings.Contains(stdout, "--target linux/amd64") {
 		t.Errorf("help should require linux/amd64 packs, got: %s", stdout)
@@ -304,36 +499,6 @@ func TestCloudPush_HelpAbstractsRegistryTransport(t *testing.T) {
 		if strings.Contains(strings.ToLower(stdout), strings.ToLower(internalDetail)) {
 			t.Errorf("help should not expose %q, got: %s", internalDetail, stdout)
 		}
-	}
-}
-
-// TestCloudPush_MissingRegistryCredentialsAbstractsTransport verifies the
-// missing registry credential error gives user-facing next steps.
-func TestCloudPush_MissingRegistryCredentialsAbstractsTransport(t *testing.T) {
-	store := setupFakeTokenStore(t)
-	_ = store.Set(context.Background(), "apc_registry_credentials_test")
-	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
-	t.Setenv("CLOUDFLARE_API_TOKEN", "")
-
-	dir := t.TempDir()
-	lockPath := newTestLock(t, dir)
-
-	_, stderr, err := executeCloudCmd(t, "", "cloud", "push", "--lock", lockPath)
-	if err == nil {
-		t.Fatal("expected error when registry credentials are unavailable")
-	}
-	combined := err.Error() + stderr
-	if !strings.Contains(combined, "registry credentials not configured") {
-		t.Errorf("error should explain missing registry credentials, got: %v", combined)
-	}
-	if !strings.Contains(combined, "agentpaas cloud login") {
-		t.Errorf("error should suggest cloud login, got: %v", combined)
-	}
-	if !strings.Contains(combined, "--skip-registry") {
-		t.Errorf("error should mention --skip-registry, got: %v", combined)
-	}
-	if strings.Contains(combined, "CLOUDFLARE_API_TOKEN") {
-		t.Errorf("error should not expose the implementation credential, got: %v", combined)
 	}
 }
 
@@ -348,16 +513,6 @@ func TestCloudHelp_HasPushAndImages(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "images") {
 		t.Errorf("cloud --help should mention images, got: %s", stdout)
-	}
-}
-
-// TestWranglerHook_DefaultReturnsError verifies the default wrangler hook
-// returns an error when wrangler is not available.
-func TestWranglerHook_DefaultReturnsError(t *testing.T) {
-	ctx := context.Background()
-	_, err := runWranglerPush(ctx, "test-image:latest")
-	if err == nil {
-		t.Log("wrangler found locally - hook works")
 	}
 }
 
@@ -518,146 +673,5 @@ func TestResolveLocalImageRef_DigestMatchNormalized(t *testing.T) {
 	}
 	if ref != preferredRef {
 		t.Errorf("expected ref %q, got %q", preferredRef, ref)
-	}
-}
-
-// ---- runWranglerPush tests ----
-
-func TestPushCommand_CallsWranglerWithTagNotDigest(t *testing.T) {
-	store := setupFakeTokenStore(t)
-	_ = store.Set(context.Background(), "apc_tag_test")
-
-	dir := t.TempDir()
-	lockPath := newTestLock(t, dir)
-
-	// Set CLOUDFLARE_API_TOKEN so we pass the env check.
-	t.Setenv("CLOUDFLARE_API_TOKEN", "test-token")
-
-	// Mock resolveLocalImageRef hooks.
-	oldInspect := dockerImageInspect
-	dockerImageInspect = func(ctx context.Context, ref string) (string, error) {
-		return "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil
-	}
-	defer func() { dockerImageInspect = oldInspect }()
-
-	var pushedRef string
-	oldPush := runWranglerPush
-	runWranglerPush = func(ctx context.Context, imageRef string) (string, error) {
-		pushedRef = imageRef
-		return "registry.cloudflare.com/test-org/test-repo:latest", nil
-	}
-	defer func() { runWranglerPush = oldPush }()
-
-	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/images/admit" {
-			var req cloudclient.AdmitImageRequest
-			_ = json.NewDecoder(r.Body).Decode(&req)
-			resp := cloudclient.AdmitImageResponse{
-				ID:          "img-tag-001",
-				ImageDigest: req.ImageDigest,
-				Status:      "admitted",
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(resp)
-			return
-		}
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer apiServer.Close()
-
-	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
-
-	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "push",
-		"--lock", lockPath,
-		"--platform", "linux/amd64")
-	if err != nil {
-		t.Fatalf("push: err=%v stdout=%q stderr=%q", err, stdout, stderr)
-	}
-
-	// Verify wrangler was called with a tag (agentpaas/...), not a sha256: digest.
-	if !strings.Contains(pushedRef, "agentpaas/") {
-		t.Errorf("wrangler push should receive agentpaas/<name>:<version>, got: %q", pushedRef)
-	}
-	if strings.HasPrefix(pushedRef, "sha256:") {
-		t.Errorf("wrangler push should NOT receive a digest, got: %q", pushedRef)
-	}
-	if !strings.Contains(stdout, "img-tag-001") {
-		t.Errorf("expected img-tag-001 in output, got: %q", stdout)
-	}
-	if !strings.Contains(stdout, "Registry:") {
-		t.Errorf("output should include Registry, got: %q", stdout)
-	}
-}
-
-// ---- parseWranglerPushOutput tests ----
-
-func TestParseWranglerPushOutput_PrefersPushedImage(t *testing.T) {
-	output := `Deploying container...
-Uploading layers...
-Pushed image: registry.cloudflare.com/my-org/my-agent:sha256-abc.1@sha256:abcd1234
-Done.`
-
-	ref, err := parseWranglerPushOutput(output)
-	if err != nil {
-		t.Fatalf("parseWranglerPushOutput: %v", err)
-	}
-	if ref != "registry.cloudflare.com/my-org/my-agent:sha256-abc.1@sha256:abcd1234" {
-		t.Errorf("expected extracted URL, got: %q", ref)
-	}
-}
-
-func TestParseWranglerPushOutput_PushedImageWithoutURL(t *testing.T) {
-	output := `Pushed image: some other text
-registry.cloudflare.com/my-org/my-agent:latest
-Done.`
-
-	ref, err := parseWranglerPushOutput(output)
-	if err != nil {
-		t.Fatalf("parseWranglerPushOutput: %v", err)
-	}
-	// "Pushed image:" line has no registry.cloudflare.com URL, so fallback finds the next line.
-	if ref != "registry.cloudflare.com/my-org/my-agent:latest" {
-		t.Errorf("expected fallback URL, got: %q", ref)
-	}
-}
-
-func TestParseWranglerPushOutput_FallbackToRegistryLine(t *testing.T) {
-	output := `Uploading image...
-registry.cloudflare.com/my-org/other-agent:sha256-def.5
-Done.`
-
-	ref, err := parseWranglerPushOutput(output)
-	if err != nil {
-		t.Fatalf("parseWranglerPushOutput: %v", err)
-	}
-	if !strings.Contains(ref, "registry.cloudflare.com") {
-		t.Errorf("expected registry.cloudflare.com line, got: %q", ref)
-	}
-}
-
-func TestParseWranglerPushOutput_NoMatch(t *testing.T) {
-	output := `Uploaded successfully.`
-	_, err := parseWranglerPushOutput(output)
-	if err == nil {
-		t.Fatal("expected error when no registry ref found")
-	}
-	if !strings.Contains(err.Error(), "no registry ref found") {
-		t.Errorf("expected 'no registry ref found' error, got: %v", err)
-	}
-}
-
-func TestParseWranglerPushOutput_PushedImageWithTokenSeparation(t *testing.T) {
-	// "Pushed image:" and URL may be separated by whitespace or punctuation.
-	output := `Pushed image:
-  registry.cloudflare.com/my-org/agent:prod@sha256:ffff
-Done.`
-
-	ref, err := parseWranglerPushOutput(output)
-	if err != nil {
-		t.Fatalf("parseWranglerPushOutput: %v", err)
-	}
-	if ref != "registry.cloudflare.com/my-org/agent:prod@sha256:ffff" {
-		t.Errorf("expected URL, got: %q", ref)
 	}
 }
