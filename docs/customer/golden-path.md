@@ -92,6 +92,17 @@ agentpaas cloud usage
 
 **Pass:** Status succeeded, Final output is real weather prose (not empty).
 
+## 9. Free capacity (undeploy) — required before more deploys
+
+```bash
+agentpaas cloud undeploy "$DEPLOYMENT_ID"     # frees the slot
+agentpaas cloud deployments                    # list no longer shows it
+agentpaas cloud deploy latest                  # deploy again succeeds (slot reused)
+```
+
+**Pass:** undeploy prints `Undeployed: dep_… (slot freed)`; second deploy creates a
+new deployment instead of `no_slot_capacity`.
+
 ## If something fails
 
 | Message | Fix |
