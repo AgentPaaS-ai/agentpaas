@@ -110,6 +110,10 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudStatusCmd())
 	cmd.AddCommand(newCloudCancelCmd())
 
+	// All cloud descendants return errors through one renderer so API reason
+	// codes and semantic exit codes stay consistent across verbs.
+	wrapCloudCommandErrors(cmd)
+
 	return cmd
 }
 
@@ -1170,20 +1174,10 @@ func newCloudSecretsBindingsCmd() *cobra.Command {
 	}
 }
 
-// printNotLoggedIn prints the "not logged in" error message and returns an
-// error so the command exits non-zero. For JSON output, prints the error to
-// stdout and returns nil (matching the daemon status pattern).
+// printNotLoggedIn returns a typed cloud error. The cloud command wrapper
+// renders it as JSON when requested and maps it to the auth exit code.
 func printNotLoggedIn(cmd *cobra.Command) error {
-	errMsg := "not logged in"
-	hint := "Run: agentpaas cloud login  (CI: export AGENTPAAS_CLOUD_API_TOKEN=...)"
-	if jsonOutput(cmd) {
-		return printTextOrJSON(true, JSONError{
-			Error:   errMsg,
-			Message: "No cloud token found",
-			Hint:    hint,
-		}, nil)
-	}
-	return fmt.Errorf("%s. %s", errMsg, hint)
+	return fmt.Errorf("not logged in. Run: agentpaas cloud login  (CI: export AGENTPAAS_CLOUD_API_TOKEN=...)")
 }
 
 // storeAndConfirmLogin stores the token and prints a confirmation.

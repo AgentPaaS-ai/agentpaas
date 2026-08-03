@@ -25,6 +25,7 @@ const (
 type HTTPStatusError struct {
 	StatusCode    int
 	Message       string
+	APIMessage    string
 	ErrorCode     string
 	Reason        string
 	RetryAfterSec int
@@ -114,6 +115,7 @@ func statusError(op string, resp *http.Response) error {
 			return &HTTPStatusError{
 				StatusCode:    resp.StatusCode,
 				Message:       errMsg,
+				APIMessage:    payload.Message,
 				ErrorCode:     payload.Error,
 				Reason:        payload.Reason,
 				RetryAfterSec: payload.RetryAfterSec,
