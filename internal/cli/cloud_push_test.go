@@ -132,6 +132,11 @@ func TestCloudPush_Success(t *testing.T) {
 		return io.NopCloser(bytes.NewReader(tarData)), nil
 	}
 	t.Cleanup(func() { dockerSaveImage = oldDockerSave })
+	oldInspect := dockerImageInspect
+	dockerImageInspect = func(ctx context.Context, ref string) (string, error) {
+		return "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil
+	}
+	t.Cleanup(func() { dockerImageInspect = oldInspect })
 
 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer apc_push_test" {

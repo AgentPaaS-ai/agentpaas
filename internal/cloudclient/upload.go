@@ -124,7 +124,7 @@ func (c *CloudClient) UploadImageComplete(ctx context.Context, token, uploadID s
 }
 
 func validateUploadID(uploadID string) error {
-	if uploadID == "" || strings.ContainsAny(uploadID, "/\\\n\r\x00") {
+	if uploadID == "" || uploadID == "." || uploadID == ".." || strings.Contains(uploadID, "..") || strings.ContainsAny(uploadID, "/\\\n\r\x00?#") {
 		return fmt.Errorf("invalid upload ID")
 	}
 	return nil

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -503,59 +504,51 @@ Idempotent — succeeds even if not currently logged in.`,
 	}
 }
 
-// runWranglerPush is the hook for pushing an image to Cloudflare Container Registry.
-// Tests override this var. The default implementation calls wrangler.
-var runWranglerPush = func(ctx context.Context, imageRef string) (registryRef string, err error) {
-	// Try wrangler first, then npx wrangler.
-	cmd := exec.CommandContext(ctx, "wrangler", "containers", "push", imageRef)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		// Try npx.
-		cmd2 := exec.CommandContext(ctx, "npx", "wrangler", "containers", "push", imageRef)
-		out2, err2 := cmd2.CombinedOutput()
-		if err2 != nil {
-			return "", fmt.Errorf("wrangler push failed: %w (output: %s)", err, string(out))
-		}
-		out = out2
-	}
-	return parseWranglerPushOutput(string(out))
+const cloudDockerSaveTimeout = 10 * time.Second
+
+type dockerSaveProcess struct {
+	stdout io.ReadCloser
+	cmd    *exec.Cmd
+	cancel context.CancelFunc
 }
 
-// parseWranglerPushOutput extracts the registry reference from wrangler output.
-// Prefers a line containing "Pushed image:" and extracts the registry.cloudflare.com URL;
-// falls back to any line containing registry.cloudflare.com.
-func parseWranglerPushOutput(output string) (string, error) {
-	lines := strings.Split(output, "\n")
-	// Prefer: find "Pushed image:" line and extract registry.cloudflare.com from it.
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if !strings.Contains(trimmed, "Pushed image:") {
-			continue
-		}
-		// Try to extract a registry.cloudflare.com URL from this line.
-		for _, token := range strings.Fields(trimmed) {
-			if strings.Contains(token, "registry.cloudflare.com") {
-				return strings.TrimRight(token, ".,;"), nil
-			}
-		}
-		// Line has "Pushed image:" but no registry.cloudflare.com URL on it.
-		// Fall through to general search below.
-		break
+func (p *dockerSaveProcess) Read(buf []byte) (int, error) {
+	return p.stdout.Read(buf)
+}
+
+func (p *dockerSaveProcess) Close() error {
+	closeErr := p.stdout.Close()
+	waitErr := p.cmd.Wait()
+	p.cancel()
+	if closeErr != nil {
+		return closeErr
 	}
-	// Fallback: any line containing registry.cloudflare.com.
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.Contains(line, "registry.cloudflare.com") {
-			return line, nil
-		}
+	return waitErr
+}
+
+// dockerSaveImage streams a local image as a Docker save tar. Tests override
+// this hook so they can provide deterministic tar bytes without Docker.
+var dockerSaveImage = func(ctx context.Context, imageRef string) (io.ReadCloser, error) {
+	saveCtx, cancel := context.WithTimeout(ctx, cloudDockerSaveTimeout)
+	cmd := exec.CommandContext(saveCtx, "docker", "save", imageRef)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("docker save %s: create stdout pipe: %w", imageRef, err)
 	}
-	return "", fmt.Errorf("wrangler push succeeded but no registry ref found in output")
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return nil, fmt.Errorf("docker save %s: start: %w", imageRef, err)
+	}
+	return &dockerSaveProcess{stdout: stdout, cmd: cmd, cancel: cancel}, nil
 }
 
 // dockerImageInspect returns the image ID (digest with sha256: prefix) for a
 // local Docker image. Tests override this var.
 var dockerImageInspect = func(ctx context.Context, ref string) (string, error) {
-	cmd := exec.CommandContext(ctx, "docker", "image", "inspect", ref, "--format", "{{.ID}}")
+	dockerCtx, cancel := context.WithTimeout(ctx, cloudDockerSaveTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(dockerCtx, "docker", "image", "inspect", ref, "--format", "{{.ID}}")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("docker image inspect %s: %w (output: %s)", ref, err, string(out))
@@ -569,7 +562,9 @@ var dockerImageInspect = func(ctx context.Context, ref string) (string, error) {
 
 // dockerTag creates a new tag for a local Docker image. Tests override this var.
 var dockerTag = func(ctx context.Context, src, dst string) error {
-	cmd := exec.CommandContext(ctx, "docker", "tag", src, dst)
+	dockerCtx, cancel := context.WithTimeout(ctx, cloudDockerSaveTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(dockerCtx, "docker", "tag", src, dst)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("docker tag %s %s: %w (output: %s)", src, dst, err, string(out))
@@ -577,8 +572,8 @@ var dockerTag = func(ctx context.Context, src, dst string) error {
 	return nil
 }
 
-// resolveLocalImageRef determines the local Docker image reference to pass to
-// wrangler. It prefers the agentpaas/<name>:<version> tag if it exists and its
+// resolveLocalImageRef determines the local Docker image reference to save.
+// It prefers the agentpaas/<name>:<version> tag if it exists and its
 // digest matches the lock. Otherwise falls back to the digest image, tagging it
 // if necessary. An explicit --image override bypasses all resolution.
 func resolveLocalImageRef(ctx context.Context, lock *pack.AgentLock, imageOverride string) (string, error) {
@@ -620,6 +615,73 @@ func normalizeSHA256Prefix(digest string) string {
 	return "sha256:" + digest
 }
 
+func uploadCloudChunkWithRetry(ctx context.Context, client *cloudclient.CloudClient, token, uploadID string, index int, chunk []byte) error {
+	const maxAttempts = 3
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err = client.UploadImageChunk(ctx, token, uploadID, index, chunk)
+		if err == nil {
+			return nil
+		}
+		if strings.Contains(err.Error(), "not authenticated") || !cloudclient.IsRetryableError(err) || attempt == maxAttempts {
+			return err
+		}
+	}
+	return err
+}
+
+func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, token, imageRef string, startReq cloudclient.UploadImageStartRequest) (*cloudclient.AdmitImageResponse, error) {
+	startResp, err := client.UploadImageStart(ctx, token, startReq)
+	if err != nil {
+		return nil, err
+	}
+	if startResp.UploadID == "" {
+		return nil, fmt.Errorf("upload-start returned an empty upload_id")
+	}
+	if startResp.ChunkSizeBytes <= 0 {
+		return nil, fmt.Errorf("upload-start returned an invalid chunk_size_bytes: %d", startResp.ChunkSizeBytes)
+	}
+
+	saved, err := dockerSaveImage(ctx, imageRef)
+	if err != nil {
+		return nil, err
+	}
+	if saved == nil {
+		return nil, fmt.Errorf("docker save returned a nil stream")
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = saved.Close()
+		}
+	}()
+
+	reader := bufio.NewReaderSize(saved, startResp.ChunkSizeBytes)
+	chunk := make([]byte, startResp.ChunkSizeBytes)
+	for index := 1; ; index++ {
+		n, readErr := io.ReadFull(reader, chunk)
+		if readErr != nil && readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
+			return nil, fmt.Errorf("read docker save stream: %w", readErr)
+		}
+		if n > 0 {
+			if err := uploadCloudChunkWithRetry(ctx, client, token, startResp.UploadID, index, chunk[:n]); err != nil {
+				return nil, err
+			}
+		}
+		if readErr != nil {
+			break
+		}
+	}
+
+	if err := saved.Close(); err != nil {
+		closed = true
+		return nil, fmt.Errorf("finish docker save: %w", err)
+	}
+	closed = true
+
+	return client.UploadImageComplete(ctx, token, startResp.UploadID)
+}
+
 // newCloudPushCmd creates the `agentpaas cloud push` command.
 func newCloudPushCmd() *cobra.Command {
 	var (
@@ -634,17 +696,18 @@ func newCloudPushCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "push",
 		Short: "Push a packed agent image to AgentPaaS Cloud",
-		Long: `Push a locally built agent image to the AgentPaaS cloud registry and admit it for deployment. The image must have been packed with --target linux/amd64.
+		Long: `Upload a locally built agent image to AgentPaaS Cloud and admit it for deployment. The image must have been packed with --target linux/amd64.
 
 This command reads the agent.lock file, verifies its signature, and
-sends an admission request to the cloud API. The control plane verifies
-the lockfile signature and admits the image for deployment.
+streams a Docker save archive to the cloud API using your tenant token.
+The control plane verifies the lockfile signature and admits the image for
+deployment.
 
 Admit rejects unsigned locks.
 
-If --skip-registry is set, only the admission request is sent (no
-registry push). Use --registry-ref to skip the registry push when the
-image has already been pushed.`,
+If --skip-registry is set, only the admission request is sent (no image
+upload). Use --registry-ref to admit an image that is already available in
+the cloud registry.`,
 		Example: `  # Push and admit
   agentpaas cloud push --lock agent.lock
 
@@ -714,46 +777,41 @@ image has already been pushed.`,
 				resolvedDigest = lock.ImageDigest
 			}
 
-			// Registry step: only if --registry-ref not provided AND --skip-registry is false.
-			resolvedRegistryRef := registryRef
-			if resolvedRegistryRef == "" && !skipRegistry {
-				// Check that registry credentials are configured.
-				if os.Getenv("CLOUDFLARE_API_TOKEN") == "" {
-					return fmt.Errorf("cloud push: registry credentials not configured — run 'agentpaas cloud login' or use --skip-registry to skip the registry push")
-				}
-				localRef, err := resolveLocalImageRef(cmd.Context(), lock, imageRef)
-				if err != nil {
-					return fmt.Errorf("cloud push: %w", err)
-				}
-				ref, err := runWranglerPush(cmd.Context(), localRef)
-				if err != nil {
-					return fmt.Errorf("cloud push: registry push failed: %w (use --skip-registry to skip)", err)
-				}
-				resolvedRegistryRef = ref
-			}
-
-			// Build the admit request.
 			apiURL := resolveAPIURL()
 			client := cloudclient.NewCloudClient(apiURL)
 
-			// Read lock JSON for agent_lock field.
-			lockJSON, err := os.ReadFile(lockPath)
+			// Marshal the verified lock back into the signed agent_lock object
+			// sent to the cloud API.
+			lockJSON, err := json.Marshal(lock)
 			if err != nil {
-				return fmt.Errorf("cloud push: read lock file: %w", err)
+				return fmt.Errorf("cloud push: marshal lock JSON: %w", err)
 			}
 			var lockMap interface{}
 			if err := json.Unmarshal(lockJSON, &lockMap); err != nil {
 				return fmt.Errorf("cloud push: parse lock JSON: %w", err)
 			}
 
-			admReq := cloudclient.AdmitImageRequest{
-				ImageDigest: resolvedDigest,
-				Platform:    resolvedPlatform,
-				RegistryRef: resolvedRegistryRef,
-				AgentLock:   lockMap,
+			var resp *cloudclient.AdmitImageResponse
+			if skipRegistry || registryRef != "" {
+				admReq := cloudclient.AdmitImageRequest{
+					ImageDigest: resolvedDigest,
+					Platform:    resolvedPlatform,
+					RegistryRef: registryRef,
+					AgentLock:   lockMap,
+				}
+				resp, err = client.AdmitImage(cmd.Context(), token, admReq)
+			} else {
+				localRef, resolveErr := resolveLocalImageRef(cmd.Context(), lock, imageRef)
+				if resolveErr != nil {
+					return fmt.Errorf("cloud push: %w", resolveErr)
+				}
+				startReq := cloudclient.UploadImageStartRequest{
+					ImageDigest: resolvedDigest,
+					Platform:    resolvedPlatform,
+					AgentLock:   lockMap,
+				}
+				resp, err = uploadCloudImage(cmd.Context(), client, token, localRef, startReq)
 			}
-
-			resp, err := client.AdmitImage(cmd.Context(), token, admReq)
 			if err != nil {
 				// Check if 401 — token may be expired.
 				if strings.Contains(err.Error(), "not authenticated") {
@@ -769,8 +827,12 @@ image has already been pushed.`,
 			fmt.Printf("Image admitted: %s\n", resp.ID)
 			fmt.Printf("  Digest: %s\n", resp.ImageDigest)
 			fmt.Printf("  Status: %s\n", resp.Status)
-			if resolvedRegistryRef != "" {
-				fmt.Printf("  Registry: %s\n", resolvedRegistryRef)
+			outputRegistryRef := registryRef
+			if outputRegistryRef == "" {
+				outputRegistryRef = resp.RegistryRef
+			}
+			if outputRegistryRef != "" {
+				fmt.Printf("  Registry: %s\n", outputRegistryRef)
 			}
 			return nil
 		},
@@ -780,7 +842,7 @@ image has already been pushed.`,
 	cmd.Flags().StringVar(&digest, "digest", "", "Override image digest (default: from lock.image_digest)")
 	cmd.Flags().StringVar(&platform, "platform", "", "Target platform (default: from lock.platform or linux/amd64)")
 	cmd.Flags().StringVar(&registryRef, "registry-ref", "", "Cloud registry reference (optional)")
-	cmd.Flags().BoolVar(&skipRegistry, "skip-registry", false, "Skip registry push; admission only")
+	cmd.Flags().BoolVar(&skipRegistry, "skip-registry", false, "Skip image upload; admission only")
 	cmd.Flags().StringVar(&imageRef, "image", "", "Override local image reference (optional)")
 
 	return cmd

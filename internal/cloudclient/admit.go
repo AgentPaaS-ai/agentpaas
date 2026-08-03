@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // AdmitImageRequest is the body for POST /v1/images/admit.
@@ -20,15 +19,15 @@ type AdmitImageRequest struct {
 
 // AdmitImageResponse is the response from POST /v1/images/admit.
 type AdmitImageResponse struct {
-	ID           string    `json:"id"`
-	TenantID     string    `json:"tenant_id"`
-	ImageDigest  string    `json:"image_digest"`
-	Platform     string    `json:"platform"`
-	RegistryRef  string    `json:"registry_ref"`
-	AgentName    string    `json:"agent_name"`
-	AgentVersion string    `json:"agent_version"`
-	Status       string    `json:"status"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID           string `json:"id"`
+	TenantID     string `json:"tenant_id"`
+	ImageDigest  string `json:"image_digest"`
+	Platform     string `json:"platform"`
+	RegistryRef  string `json:"registry_ref"`
+	AgentName    string `json:"agent_name"`
+	AgentVersion string `json:"agent_version"`
+	Status       string `json:"status"`
+	CreatedAt    string `json:"created_at"`
 }
 
 // ImageRecord represents a single image record returned by the API.
