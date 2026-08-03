@@ -75,7 +75,7 @@ func TestCloudClient_InvokeDeployment_Success(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"run-123","status":"queued","custom":true}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-123","status":"succeeded","error":null,"final_output":"hi","invoke_result":{"custom":true}}`))
 	}))
 	defer func() { server.Close() }()
 
@@ -84,8 +84,17 @@ func TestCloudClient_InvokeDeployment_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InvokeDeployment: %v", err)
 	}
-	if string(result) != `{"id":"run-123","status":"queued","custom":true}` {
-		t.Errorf("response = %s, want raw run response", result)
+	if result.RunID != "run-123" {
+		t.Errorf("RunID = %q, want run-123", result.RunID)
+	}
+	if result.Status != "succeeded" {
+		t.Errorf("Status = %q, want succeeded", result.Status)
+	}
+	if result.FinalOutput == nil || *result.FinalOutput != "hi" {
+		t.Errorf("FinalOutput = %v, want hi", result.FinalOutput)
+	}
+	if result.Error != nil {
+		t.Errorf("Error = %v, want nil", result.Error)
 	}
 }
 
@@ -100,7 +109,7 @@ func TestCloudClient_InvokeDeployment_EmptyBodyUsesObject(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"id":"run-empty","status":"queued"}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-empty","status":"queued"}`))
 	}))
 	defer func() { server.Close() }()
 
@@ -108,8 +117,8 @@ func TestCloudClient_InvokeDeployment_EmptyBodyUsesObject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InvokeDeployment: %v", err)
 	}
-	if !strings.Contains(string(result), `"run-empty"`) {
-		t.Errorf("response = %s, want run-empty response", result)
+	if result.RunID != "run-empty" {
+		t.Errorf("RunID = %q, want run-empty", result.RunID)
 	}
 }
 
