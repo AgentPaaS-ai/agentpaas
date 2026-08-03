@@ -26,13 +26,30 @@ agentpaas identity init --name my-org     # OK if "already exists"
 agentpaas daemon start                   # OK if already running
 ```
 
-## 2. Login (trial token once)
+## 2. Login (once)
+
+Primary path — browser claim link:
+
+1. Ask your AgentPaaS provider/operator for your tenant claim link.
+2. Open the link in a browser and complete sign-in (for example,
+   `https://<api>/v1/auth/claim/<code>`).
+3. In the same terminal, approve the CLI login:
 
 ```bash
-# paste apc_… token when prompted, or:
+agentpaas cloud login
+agentpaas cloud whoami
+```
+
+Fallback for CI or scripted use — use the `apc_…` token your provider gave you:
+
+```bash
 printf '%s\n' "$AGENTPAAS_CLOUD_API_TOKEN" | agentpaas cloud login --token-stdin
 agentpaas cloud whoami
 ```
+
+If you don't have a claim link yet, your AgentPaaS provider/operator mints one
+when they provision your tenant. Without it, use the token they gave you with
+`--token-stdin`.
 
 ## 3. Pack the demo weather agent
 
