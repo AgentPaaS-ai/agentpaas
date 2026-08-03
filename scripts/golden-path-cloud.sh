@@ -36,9 +36,18 @@ echo "== push =="
 agentpaas cloud push --lock "$LOCK"
 
 echo "== deploy latest =="
-DEP_OUT=$(agentpaas cloud deploy latest)
+set +e
+DEP_OUT=$(agentpaas cloud deploy latest 2>&1)
+DEP_RC=$?
+set -e
 echo "$DEP_OUT"
 DEP=$(echo "$DEP_OUT" | awk '/Deployment created:/{print $3}')
+if [ -z "$DEP" ] || [ "$DEP_RC" -ne 0 ]; then
+  if echo "$DEP_OUT" | grep -q no_slot_capacity; then
+    echo "no_slot_capacity — using existing ready deployment"
+    DEP=$(agentpaas cloud deployments 2>/dev/null | awk 'NR>1 && $3=="ready"{print $1; exit}')
+  fi
+fi
 test -n "$DEP"
 echo "DEP=$DEP"
 
