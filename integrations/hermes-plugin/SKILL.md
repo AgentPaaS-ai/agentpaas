@@ -182,6 +182,19 @@ When building an agent, complete these steps BEFORE packing. Ask the user
 what you need, then act. Do not dump plans, secure-pattern lectures, or
 multi-item checklists into the chat.
 
+### HARD GATE: choose the project before any filesystem side effect
+
+Before creating **ANY** project directory or writing **ANY** file, ask the
+user to choose one of these options:
+
+1. Use the bundled demo (for a matching request, such as
+   `demo/weather-agent`), or
+2. Name a **NEW** project directory.
+
+Never scaffold into a path the user did not name. Never write agent files
+before this choice is confirmed. If the request matches an existing demo,
+prefer pointing at that demo and ask before scaffolding a new project.
+
 ### User-facing tone (critical)
 
 - Be terse. One short question at a time.
@@ -250,7 +263,7 @@ Provider → hostname map (for YOU when writing policy; do not show as
 
 Default port in policy.yaml for all of the above: 443.
 
-### Step 2: Confirm Egress Hostnames
+### Step 2: Confirm Egress Hostnames (MANDATORY CONSENT GATE)
 
 **CRITICAL — applies to BOTH new agent creation AND agent modification.**
 
@@ -267,6 +280,12 @@ new egress destinations:
 4. Generate `policy.yaml` with ONLY confirmed hostnames. Write ports
    yourself (default 443). Never use wildcard `*:443` unless the user
    explicitly requests it.
+
+Before packing an agent whose `policy.yaml` opens egress hosts, the skill
+MUST show the user the exact hosts from `policy.yaml`, ask explicitly
+`Approve egress to <hosts>? [y/N]`, and wait for an affirmative answer.
+Never auto-approve egress. The user approves every host. If the user has not
+approved, STOP and ask.
 
 **BUG-031 rule:** If the user asks to add a new API or data source to
 an existing agent, you MUST ask for confirmation before adding the new
@@ -326,6 +345,46 @@ Before `agentpaas_pack`, verify:
 6. The LLM provider hostname is in the egress policy.
 
 If ANY are missing, do NOT pack — ask only for the missing piece.
+
+### Cloud Deploy and Run (MANDATORY ORDER AND CONSENT GATES)
+
+Cloud operations are side effects and paid cloud infrastructure. Never push
+or deploy to the cloud without explicit user confirmation.
+
+Before `agentpaas cloud push`, present the plan including the image name,
+lockfile (`--lock <lock>`), deployment target, and that this uses billed
+cloud infrastructure. Ask for explicit user OK. Only after the user says yes
+may you run:
+
+```bash
+agentpaas cloud push --lock <lock>
+```
+
+Before `agentpaas cloud deploy latest` (or a specific digest), present the
+image, deployment target, and billed-cloud-infrastructure consequence again,
+then ask for explicit user OK. Only after the user says yes may you run:
+
+```bash
+agentpaas cloud deploy latest
+```
+
+Record the returned `DEPLOYMENT_ID`. Complete this REQUIRED ordered checklist
+before any invoke:
+
+1. `agentpaas cloud push --lock <lock>`
+2. `agentpaas cloud deploy latest` (or digest) — record `DEPLOYMENT_ID`
+3. `agentpaas cloud secrets push <secret>` for every secret that
+   `agent.yaml` needs
+4. `agentpaas cloud secrets bind <DEPLOYMENT_ID> <secret> --as bearer --host <host>`
+   once per host
+5. `agentpaas cloud secrets bindings <DEPLOYMENT_ID>` — VERIFY each expected
+   binding is listed. If it says `No bindings`, STOP and redo steps 3–4.
+6. Only then run `agentpaas cloud invoke ...` and
+   `agentpaas cloud result <run>`.
+
+A deployment with no secret bindings will return succeeded with EMPTY
+`final_output`. Always verify bindings before invoke; otherwise stop rather
+than retrying an invoke loop.
 
 ### Anti-Fabrication (Critical — user-facing results)
 
