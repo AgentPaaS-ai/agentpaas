@@ -39,6 +39,7 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P2-2** | Deployment secret bind was curl | **FIXED** — `cloud secrets bind` |
 | **P2-3** | UX-DLOG / DDOCKER / APIHOST / LOCKPATH / deploy latest | **FIXED** on OSS 0.3.6 line |
 | **P2-4** | Hermes E2E golden not yet live-run end-to-end | Doc updated with undeploy step; profile-level run = A7 evidence (nuclear optional second pass) |
+| **P2-5** | Install prompt too verbose | **FIXED 2026-08-03** — canonical prompt is now one sentence: `Install from https://github.com/AgentPaaS-ai/agentpaas`. Updated README.md:156, demo/README.md:39, docs/quickstart.md:331, docs/execution/golden-loop-test.md (×2), integrations/hermes-plugin/SKILL.md:32, docs/customer/golden-loop-hermes-e2e.md Phase 2 |
 
 ---
 

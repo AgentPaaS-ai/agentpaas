@@ -328,7 +328,7 @@ hermes
 
 Then tell Hermes:
 
-> Install the AgentPaaS plugin from github https://github.com/AgentPaaS-ai/agentpaas
+> Install from https://github.com/AgentPaaS-ai/agentpaas
 
 Restart when prompted (`/quit`, then `hermes`), run `/agentpaas-doctor`, store
 keys with `agentpaas secret add` in a **separate** terminal, and build agents
