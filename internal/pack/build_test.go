@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"debug/elf"
 	"errors"
 	"io"
 	"os"
@@ -560,14 +561,6 @@ func TestBuildConfigPlatformField(t *testing.T) {
 	projectDir := t.TempDir()
 	writeBuildTestFile(t, projectDir, "main.py", []byte("print('hello')\n"))
 
-	harnessDir := t.TempDir()
-	harnessPath := filepath.Join(harnessDir, "agentpaas-harness")
-	if err := os.WriteFile(harnessPath, []byte("\x7fELF"), 0o755); err != nil {
-		t.Fatalf("write fake harness: %v", err)
-	}
-	// Set PATH so LookPath finds the fake harness.
-	t.Setenv("PATH", harnessDir+string(filepath.ListSeparator)+os.Getenv("PATH"))
-
 	tests := []struct {
 		name     string
 		platform string
@@ -580,11 +573,20 @@ func TestBuildConfigPlatformField(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			machine := elf.EM_AARCH64
+			if tt.platform == "linux/amd64" {
+				machine = elf.EM_X86_64
+			}
+			harnessPath := filepath.Join(t.TempDir(), "agentpaas-harness")
+			if err := os.WriteFile(harnessPath, testELF64(machine), 0o755); err != nil {
+				t.Fatalf("write fake harness: %v", err)
+			}
 			cfg := BuildConfig{
-				ProjectDir: projectDir,
-				Runtime:    RuntimePython,
-				ImageTag:   "agentpaas/test:latest",
-				Platform:   tt.platform,
+				ProjectDir:  projectDir,
+				Runtime:     RuntimePython,
+				ImageTag:    "agentpaas/test:latest",
+				HarnessPath: harnessPath,
+				Platform:    tt.platform,
 			}
 			if err := validateBuildConfig(&cfg); err != nil {
 				t.Errorf("validateBuildConfig() with platform %q: %v", tt.platform, err)

@@ -53,6 +53,20 @@ builds:
     ldflags:
       - -s -w
 
+  - id: agentpaas-harness-linux-amd64
+    main: ./cmd/harness
+    binary: agentpaas-harness-linux-amd64
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
 archives:
   - id: default
     ids:
@@ -67,6 +81,8 @@ archives:
       - demo/**/*
       - src: dist/agentpaas-harness-linux_linux_arm64_v8.0/agentpaas-harness-linux
         dst: agentpaas-harness-linux
+      - src: dist/agentpaas-harness-linux-amd64_linux_amd64_v1/agentpaas-harness-linux-amd64
+        dst: agentpaas-harness-linux-amd64
 
 checksum:
   name_template: 'checksums.txt'
@@ -95,6 +111,7 @@ homebrew_casks:
       - agentpaas
       - agentpaasd
       - agentpaas-harness-linux
+      - agentpaas-harness-linux-amd64
     repository:
       owner: AgentPaaS-ai
       name: homebrew-tap
