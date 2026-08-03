@@ -605,6 +605,9 @@ func TestCloudDeploy_Success(t *testing.T) {
 			}
 			var req cloudclient.CreateDeploymentRequest
 			_ = json.NewDecoder(r.Body).Decode(&req)
+			if req.InstanceType == nil || *req.InstanceType != "basic" {
+				t.Errorf("InstanceType = %v, want basic", req.InstanceType)
+			}
 
 			resp := cloudclient.DeploymentRecord{
 				ID:          "dep-created-001",
@@ -636,7 +639,7 @@ func TestCloudDeploy_Success(t *testing.T) {
 	}
 }
 
-func TestCloudDeploy_Latest_WithInstanceTypeLite(t *testing.T) {
+func TestCloudDeploy_Latest_WithInstanceTypeStandard2(t *testing.T) {
 	store := setupFakeTokenStore(t)
 	_ = store.Set(context.Background(), "apc_deploy_instance_type")
 
@@ -665,8 +668,8 @@ func TestCloudDeploy_Latest_WithInstanceTypeLite(t *testing.T) {
 			if err := json.Unmarshal(body["instance_type"], &gotInstanceType); err != nil {
 				t.Errorf("decode instance_type: %v", err)
 			}
-			if gotInstanceType != "lite" {
-				t.Errorf("instance_type = %q, want lite", gotInstanceType)
+			if gotInstanceType != "standard-2" {
+				t.Errorf("instance_type = %q, want standard-2", gotInstanceType)
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
@@ -683,12 +686,27 @@ func TestCloudDeploy_Latest_WithInstanceTypeLite(t *testing.T) {
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
 
-	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--instance-type", "lite")
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--instance-type", "standard-2")
 	if err != nil {
-		t.Fatalf("deploy latest --instance-type lite: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+		t.Fatalf("deploy latest --instance-type standard-2: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
 	if !strings.Contains(stdout, "dep-instance-type-001") {
 		t.Errorf("expected dep-instance-type-001 in output, got: %q", stdout)
+	}
+}
+
+func TestCloudDeploy_DevInstanceTypeRejected(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_invalid_instance_type")
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--instance-type", "dev")
+	if err == nil {
+		t.Fatal("expected error for dev instance type")
+	}
+	combined := err.Error() + stderr
+	want := "instance_type 'dev' is an alias for 'lite' (256MiB) which is too small for LLM agents — use 'basic' or higher"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error should contain %q, got: %s", want, combined)
 	}
 }
 
@@ -696,16 +714,14 @@ func TestCloudDeploy_InvalidInstanceType(t *testing.T) {
 	store := setupFakeTokenStore(t)
 	_ = store.Set(context.Background(), "apc_deploy_invalid_instance_type")
 
-	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--instance-type", "gpu")
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--instance-type", "gigantic")
 	if err == nil {
 		t.Fatal("expected error for invalid instance type")
 	}
 	combined := err.Error() + stderr
-	if !strings.Contains(combined, "invalid --instance-type") {
-		t.Errorf("error should mention invalid --instance-type, got: %s", combined)
-	}
-	if !strings.Contains(combined, "dev") || !strings.Contains(combined, "lite") {
-		t.Errorf("error should list allowed instance types, got: %s", combined)
+	want := "instance_type must be one of: lite, basic, standard-1, standard-2, standard-3, standard-4"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error should contain %q, got: %s", want, combined)
 	}
 }
 
@@ -987,6 +1003,14 @@ func TestCloudDeploy_Help(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "digest") {
 		t.Errorf("help should mention digest, got: %s", stdout)
+	}
+	for _, preset := range []string{"lite", "basic", "standard-1", "standard-2", "standard-3", "standard-4"} {
+		if !strings.Contains(stdout, preset) {
+			t.Errorf("help should mention instance preset %q, got: %s", preset, stdout)
+		}
+	}
+	if !strings.Contains(stdout, "default: basic") {
+		t.Errorf("help should mention basic as the default, got: %s", stdout)
 	}
 }
 
