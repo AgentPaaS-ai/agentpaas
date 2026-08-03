@@ -14,10 +14,14 @@ version: 1.0.0
 
 ## Adding a Credential
 
-1. Ask the user for the credential name (e.g. "openai-api-key")
-2. Ask the user for the credential value (API key)
-3. Call `agentpaas_secret_add` with name and value
-4. Verify it was stored: call `agentpaas_secret_list`
+1. Ask the user for the credential name (e.g. "openai-api-key").
+2. Tell the user to run `agentpaas secret add <name>` in a separate terminal
+   and paste the credential when prompted. Wait for explicit confirmation
+   that the command completed.
+3. Verify it was stored: call `agentpaas_secret_list`.
+
+The secret value must never enter the Hermes conversation and must never be
+passed to `agentpaas_secret_add` as a tool parameter.
 
 ## Validating a Credential (Pre-Deployment)
 
