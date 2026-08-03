@@ -146,7 +146,7 @@ Required env (every shell):
   export CLOUDFLARE_API_TOKEN from Keychain label agentpaas-cloudflare-api-token (user pastes; never print)
 
 Steps:
-1) cloud login --token-stdin if needed (founder trial token)
+1) Open the tenant claim link in a browser, then run `cloud login`; fallback for CI/scripts: `cloud login --token-stdin` with the provider-issued token
 2) cloud whoami
 3) pack already done — print Lock path from pack output
 4) cloud push --lock <absolute lock>
