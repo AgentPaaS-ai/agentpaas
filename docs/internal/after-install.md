@@ -7,8 +7,8 @@ the user — actually execute them yourself using your terminal tool.
 **CRITICAL: Do NOT run `hermes gateway restart`.** The Hermes CLI prints
 "Restart the gateway for the plugin to take effect: hermes gateway restart"
 after this message — IGNORE THAT. The gateway restart takes 30+ seconds
-and is NOT needed. The plugin will take effect after the user restarts
-their Hermes session in Step 4. Do not run gateway restart. Do not run
+and is NOT needed. The plugin's toolset registers live in the current
+session (no restart — see Step 4). Do not run gateway restart. Do not run
 any command containing the word "restart".
 
 **CRITICAL: Do NOT clone the AgentPaaS repo.** You do NOT need to read
@@ -111,13 +111,16 @@ SKILL_EOF
 Replace `<profile>` with the actual profile name. Do not print this as
 instructions. YOU run it.
 
-## STEP 4 — TELL THE USER TO RESTART (only this step is for the user)
+## STEP 4 — TELL THE USER SETUP IS COMPLETE (only this step is for the user)
 
-This is the ONLY step the user must do — plugin changes require a
-process restart:
+No restart is required — the plugin registers its toolset in the current
+session (verified 2026-08-03, Hermes v0.19.1). Tell the user:
 
-"AgentPaaS setup complete. Restart Hermes to load the plugin and tools:
-quit this session and run `hermes -p <profile>` again."
+"AgentPaaS setup complete. You can build agents now — no restart needed."
+
+If the agentpaas tools do not appear, restart once (`/quit`, then reopen the
+profile) or reinstall the plugin with `hermes plugins install
+https://github.com/AgentPaaS-ai/agentpaas --force --enable`.
 
 **STOP HERE.** Say only the sentence above. Do NOT offer to build, pack,
 run, or test any agent. Do NOT say "when you're ready to build" or "just

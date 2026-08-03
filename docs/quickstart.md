@@ -330,7 +330,7 @@ Then tell Hermes:
 
 > Install from https://github.com/AgentPaaS-ai/agentpaas
 
-Restart when prompted (`/quit`, then `hermes`), run `/agentpaas-doctor`, store
+No restart needed — the toolset registers live. Run `/agentpaas-doctor`, store
 keys with `agentpaas secret add` in a **separate** terminal, and build agents
 in natural language. See the [main README](../README.md) for the full Hermes
 flow and slash commands.

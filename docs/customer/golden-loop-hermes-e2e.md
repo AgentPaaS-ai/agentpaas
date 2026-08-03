@@ -79,7 +79,7 @@ Install from https://github.com/AgentPaaS-ai/agentpaas
 - doctor 7/7
 - plugin present under profile
 
-User restarts: `/quit` then `hermes -p agentpaas-testing`.
+No restart needed — toolset registers live (verified 2026-08-03). If tools are missing, restart once (`/quit` then reopen).
 
 ---
 

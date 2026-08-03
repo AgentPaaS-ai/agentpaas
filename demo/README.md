@@ -38,7 +38,8 @@ In Hermes, tell it:
 
 > Install from https://github.com/AgentPaaS-ai/agentpaas
 
-Hermes installs the plugin and registers the toolset. Restart when prompted:
+Hermes installs the plugin and registers the toolset live — no restart needed.
+If the agentpaas tools don't appear, restart once:
 ```
 /quit
 hermes
