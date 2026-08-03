@@ -17,6 +17,8 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P0-2** | Slot pool size 3 shared (not per-tenant) | **FIXED** — pool enlarged to 10 (`0016_slot_pool_10.sql`), per-tenant slot quota 5 with customer-visible 429 (`10b757b`), actionable `no_slot_capacity` 503 message |
 | **P0-3** | Orphan bound slots | **FIXED** — undeploy releases slot; orphan reconciliation via undeploy/ops SQL (`UPDATE slots SET status='free' WHERE deployment_id NOT IN (SELECT id FROM deployments)`) |
 
+| **P0-4** | **cloud push requires a customer Cloudflare API token** | Every trial user would need the founder's CF credential to push — breaks the stranger bar. `cloud push` wraps the CF registry directly (CLI needs CLOUDFLARE_API_TOKEN). Fix: server-side admission — CLI uploads the image to the platform with the TENANT token; the Worker pushes to the CF registry with its own CF_API_TOKEN (already present for binds). Browser login stays the only customer credential. |
+
 ---
 
 ## P1 — fix before polished trial / scale agents
