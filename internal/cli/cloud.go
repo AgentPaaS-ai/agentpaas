@@ -366,13 +366,16 @@ command never uses the tenant cloud login token for the invoke request.`,
 				return printTextOrJSON(true, resp, nil)
 			}
 
-			var run cloudclient.RunRecord
-			if err := json.Unmarshal(resp, &run); err != nil {
-				return fmt.Errorf("cloud invoke: decode run response: %w", err)
-			}
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Run ID: %s\n", run.ID)
-			_, _ = fmt.Fprintf(out, "Status: %s\n", run.Status)
+			_, _ = fmt.Fprintf(out, "Run ID: %s\n", resp.RunID)
+			_, _ = fmt.Fprintf(out, "Status: %s\n", resp.Status)
+			if resp.FinalOutput != nil && *resp.FinalOutput != "" {
+				_, _ = fmt.Fprintln(out, "Final output:")
+				_, _ = fmt.Fprintln(out, *resp.FinalOutput)
+			}
+			if resp.Error != nil {
+				_, _ = fmt.Fprintf(out, "Error: %s\n", *resp.Error)
+			}
 			return nil
 		},
 	}
