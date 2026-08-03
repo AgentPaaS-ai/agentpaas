@@ -23,7 +23,8 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 
 | ID | Bug | Status |
 |----|-----|--------|
-| **P1-1** | BUG-INSTANCE-SIZING phase 2 | **FIXED** — per-deployment `instance_type` preset (dev floor, lite only explicit), persisted + bound to CF rollout (`0017_deployment_instance_type.sql`, cloud `4f4ac37`); CLI `--instance-type` (OSS `5e0a592`) |
+| **P1-1** | BUG-INSTANCE-SIZING phase 2 | **FIXED** — per-deployment instance preset (default `basic` 1/4 vCPU 1GiB; allowlist lite/basic/standard-1..4; `dev` rejected with hint because CF treats `dev` as an alias for `lite` 256MiB). Bind + rebind emit the preset (cloud `a2d4d65`); CLI `--instance-type` (OSS `4ed5dda`). Live app verified 0.25 vCPU / 1GiB |
+| **P1-1b** | ARM harness silently embedded in amd64 image | **FIXED** — release/cask now ship `agentpaas-harness-linux-amd64`; pack validates harness ELF arch vs target and hard-errors on mismatch (OSS `3b4c332`). Live: brew-daemon pack now embeds x86-64 harness; cloud invoke succeeded |
 | **P1-2** | wrangler deploy wipes customer image | **FIXED** — `deploy-prod.sh` always rebinds after deploy; rebind no longer emits lite custom shape (cloud `4f4ac37`, `7868f9a`) |
 | **P1-3** | BUG-CF-BIND ops gap | **FIXED** — `scripts/verify-worker-secrets.sh` mechanical checklist + deploy-prod assert + `docs/worker-recreate-checklist.md` (cloud `7868f9a`) |
 | **P1-4** | cloud.agentpaas.ai DNS dead | **FIXED (interim)** — CLI default URL now points at live workers.dev `https://agentpaas-cloud-api.parvezsyed.workers.dev` (OSS `5e0a592`); DNS record still pending founder |
