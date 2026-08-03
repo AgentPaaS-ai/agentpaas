@@ -636,6 +636,79 @@ func TestCloudDeploy_Success(t *testing.T) {
 	}
 }
 
+func TestCloudDeploy_Latest_WithInstanceTypeLite(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_instance_type")
+
+	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/images":
+			if r.Method != http.MethodGet {
+				t.Errorf("images method = %s, want GET", r.Method)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]cloudclient.ImageRecord{{
+				ID:          "img-latest-001",
+				ImageDigest: digest,
+				Status:      "admitted",
+			}})
+		case "/v1/deployments":
+			if r.Method != http.MethodPost {
+				t.Errorf("deployments method = %s, want POST", r.Method)
+			}
+			var body map[string]json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode deployment body: %v", err)
+			}
+			var gotInstanceType string
+			if err := json.Unmarshal(body["instance_type"], &gotInstanceType); err != nil {
+				t.Errorf("decode instance_type: %v", err)
+			}
+			if gotInstanceType != "lite" {
+				t.Errorf("instance_type = %q, want lite", gotInstanceType)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(cloudclient.DeploymentRecord{
+				ID:          "dep-instance-type-001",
+				ImageDigest: digest,
+				Status:      "pending",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--instance-type", "lite")
+	if err != nil {
+		t.Fatalf("deploy latest --instance-type lite: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "dep-instance-type-001") {
+		t.Errorf("expected dep-instance-type-001 in output, got: %q", stdout)
+	}
+}
+
+func TestCloudDeploy_InvalidInstanceType(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_invalid_instance_type")
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--instance-type", "gpu")
+	if err == nil {
+		t.Fatal("expected error for invalid instance type")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "invalid --instance-type") {
+		t.Errorf("error should mention invalid --instance-type, got: %s", combined)
+	}
+	if !strings.Contains(combined, "dev") || !strings.Contains(combined, "lite") {
+		t.Errorf("error should list allowed instance types, got: %s", combined)
+	}
+}
+
 func TestCloudDeploy_Success_WithSlotID(t *testing.T) {
 	store := setupFakeTokenStore(t)
 	_ = store.Set(context.Background(), "apc_deploy_slot")
