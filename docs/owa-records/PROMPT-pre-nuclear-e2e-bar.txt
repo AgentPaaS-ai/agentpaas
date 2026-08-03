@@ -126,7 +126,7 @@ Orch runs this first. Founder repeats only on GO.
 
 - [ ] Post-nuclear: reinstall colima/docker, brew agentpaas, xattr -cr, daemon start, doctor 7/7
 - [ ] identity init; secret add openrouter-key (user stdin)
-- [ ] CLOUDFLARE_API_TOKEN + AGENTPAAS_CLOUD_API_URL + cloud login
+- [ ] CLOUDFLARE_API_TOKEN + AGENTPAAS_CLOUD_API_URL + open tenant claim link, then cloud login (or --token-stdin with provider token)
 
 ### C2. Local agent
 
