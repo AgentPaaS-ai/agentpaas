@@ -9,6 +9,7 @@ from test_plugin_skeleton import _load_plugin_package
 
 CLOUD_TOOLS = (
     "agentpaas_cloud_whoami",
+    "agentpaas_cloud_registry",
     "agentpaas_cloud_push",
     "agentpaas_cloud_deploy",
     "agentpaas_cloud_deployments",
@@ -47,6 +48,7 @@ def test_cloud_handlers_forward_cli_arguments():
     plugin = _load_plugin_package()
     cases = [
         ("agentpaas_cloud_whoami", {}, ["cloud", "whoami"]),
+        ("agentpaas_cloud_registry", {}, ["cloud", "registry"]),
         (
             "agentpaas_cloud_push",
             {"lock": "/tmp/agent.lock", "image": "agentpaas/demo:latest"},
