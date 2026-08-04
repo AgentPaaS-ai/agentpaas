@@ -55,6 +55,24 @@ If you don't have a claim link yet, your AgentPaaS provider/operator mints one
 when they provision your tenant. Without it, use the token they gave you with
 `--token-stdin`.
 
+## Cloud registry and MCP deployments
+
+Use the registry to see tenant-owned assets and the platform MCP catalog. The
+`list` alias is equivalent to `registry`, and `--json` returns the structured
+response for automation:
+
+```bash
+agentpaas cloud registry
+agentpaas cloud list --json
+```
+
+Deployments are agents by default. To create an MCP deployment, pass
+`--type mcp` (the request sends `kind: "mcp"`):
+
+```bash
+agentpaas cloud deploy latest --type mcp
+```
+
 ## 3. Pack the demo weather agent
 
 ```bash
