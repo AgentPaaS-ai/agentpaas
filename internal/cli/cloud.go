@@ -341,6 +341,8 @@ func newCloudInvokeCmd() *cobra.Command {
 	var body string
 	var bodyFile string
 	var token string
+	var wait bool
+	var waitTimeout time.Duration
 
 	cmd := &cobra.Command{
 		Use:   "invoke <deployment_id>",
@@ -370,6 +372,20 @@ command never uses the tenant cloud login token for the invoke request.`,
 				return fmt.Errorf("cloud invoke: %w", err)
 			}
 
+			if wait {
+				if waitTimeout <= 0 {
+					return fmt.Errorf("cloud invoke: --wait-timeout must be greater than zero")
+				}
+				finalResult, waitErr := waitForCloudInvoke(cmd, client, resp, waitTimeout)
+				if waitErr != nil {
+					return waitErr
+				}
+				if jsonOutput(cmd) {
+					return printTextOrJSON(true, finalResult, nil)
+				}
+				return printCloudRunResult(cmd, finalResult)
+			}
+
 			if jsonOutput(cmd) {
 				return printTextOrJSON(true, resp, nil)
 			}
@@ -391,7 +407,79 @@ command never uses the tenant cloud login token for the invoke request.`,
 	cmd.Flags().StringVar(&body, "body", "{}", "JSON request body")
 	cmd.Flags().StringVar(&bodyFile, "body-file", "", "Read JSON request body from a file, or - for stdin")
 	cmd.Flags().StringVar(&token, "token", "", "Deployment invoke token")
+	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for a terminal run result")
+	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "Maximum time to wait when --wait is set")
 	return cmd
+}
+
+var cloudInvokePollInterval = time.Second
+
+func waitForCloudInvoke(cmd *cobra.Command, client *cloudclient.CloudClient, invoked *cloudclient.InvokeDeploymentResult, timeout time.Duration) (*cloudclient.RunResult, error) {
+	if invoked.RunID == "" {
+		return nil, fmt.Errorf("cloud invoke: response has no run_id")
+	}
+	if cloudRunTerminal(invoked.Status) && invoked.FinalOutput != nil {
+		return invokeResultAsRunResult(invoked), nil
+	}
+
+	tenantToken, err := resolveToken(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("cloud invoke --wait: resolve cloud token: %w", err)
+	}
+	waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
+	defer cancel()
+
+	for {
+		run, err := client.GetRun(waitCtx, tenantToken, invoked.RunID)
+		if err != nil {
+			return nil, fmt.Errorf("cloud invoke --wait: poll status: %w", err)
+		}
+		if cloudRunTerminal(run.Status) {
+			result, err := client.GetRunResult(waitCtx, tenantToken, invoked.RunID)
+			if err != nil {
+				return nil, fmt.Errorf("cloud invoke --wait: fetch result: %w", err)
+			}
+			return result, nil
+		}
+
+		timer := time.NewTimer(cloudInvokePollInterval)
+		select {
+		case <-waitCtx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return nil, fmt.Errorf("cloud invoke --wait: timed out after %s", timeout)
+		case <-timer.C:
+		}
+	}
+}
+
+func cloudRunTerminal(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "completed", "succeeded", "failed", "stopped", "cancelled", "canceled", "error", "finished":
+		return true
+	default:
+		return false
+	}
+}
+
+func invokeResultAsRunResult(invoked *cloudclient.InvokeDeploymentResult) *cloudclient.RunResult {
+	finalOutput := json.RawMessage("null")
+	if invoked.FinalOutput != nil {
+		value := strings.TrimSpace(*invoked.FinalOutput)
+		if json.Valid([]byte(value)) {
+			finalOutput = json.RawMessage(value)
+		} else if encoded, err := json.Marshal(*invoked.FinalOutput); err == nil {
+			finalOutput = json.RawMessage(encoded)
+		}
+	}
+	return &cloudclient.RunResult{
+		RunID:       invoked.RunID,
+		Status:      invoked.Status,
+		Error:       invoked.Error,
+		FinalOutput: finalOutput,
+		Artifacts:   []cloudclient.RunArtifact{},
+	}
 }
 
 func cloudAlreadyRunningMessage(err error) (string, bool) {

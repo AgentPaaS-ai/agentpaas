@@ -315,3 +315,61 @@ func TestCloudInvoke_AlreadyRunning429(t *testing.T) {
 		})
 	}
 }
+
+func TestCloudInvoke_WaitPollsAndPrintsFinalResult(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_wait_token")
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_wait_tenant"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+
+	statusCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/deployments/dep-wait/invoke":
+			if got := r.Header.Get("Authorization"); got != "Bearer inv_wait_token" {
+				t.Errorf("invoke authorization = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"run_id":"run-wait","status":"queued"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run-wait":
+			statusCalls++
+			status := "running"
+			if statusCalls >= 2 {
+				status = "completed"
+			}
+			_, _ = w.Write([]byte(`{"id":"run-wait","deployment_id":"dep-wait","status":"` + status + `"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run-wait/result":
+			if got := r.Header.Get("Authorization"); got != "Bearer apc_wait_tenant" {
+				t.Errorf("result authorization = %q", got)
+			}
+			_, _ = w.Write([]byte(`{"run_id":"run-wait","status":"completed","error":null,"finished_at":"2026-08-03T00:00:00Z","final_output":{"answer":"done"},"artifacts":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-wait", "--wait", "--wait-timeout", "2s", "--json")
+	if err != nil {
+		t.Fatalf("invoke --wait: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("invoke --wait stderr = %q", stderr)
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("decode final result: %v; stdout=%q", err, stdout)
+	}
+	if result["run_id"] != "run-wait" || result["status"] != "completed" {
+		t.Fatalf("final result = %#v, want run-wait/completed", result)
+	}
+	if _, ok := result["final_output"].(map[string]interface{}); !ok {
+		t.Fatalf("final_output = %#v, want object", result["final_output"])
+	}
+	if statusCalls != 2 {
+		t.Fatalf("status calls = %d, want 2", statusCalls)
+	}
+}
