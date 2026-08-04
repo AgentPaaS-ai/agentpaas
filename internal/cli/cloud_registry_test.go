@@ -28,16 +28,16 @@ func TestCloudRegistry_SuccessText(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(cloudclient.RegistryResponse{
 			TenantID: "tenant-cli-1",
 			Assets: cloudclient.RegistryAssets{
-				Deployments: []cloudclient.RegistryAsset{{
-					ID: "deployment-1", Name: "weather-agent", Version: "1.0.0", Status: "running",
+				Deployments: []cloudclient.RegistryDeployment{{
+					ID: "deployment-1", Kind: "agent", Status: "running", ImageDigest: "sha256:image", AgentName: "weather-agent",
 				}},
-				Images: []cloudclient.RegistryAsset{{
+				Images: []cloudclient.RegistryImage{{
 					ID: "image-1", ImageDigest: "sha256:image", Status: "ready",
 				}},
 				Secrets: []cloudclient.RegistrySecret{{Label: "OPENAI_API_KEY"}},
 			},
 			Platform: cloudclient.RegistryPlatform{
-				MCPCatalog: []cloudclient.MCPRegistryEntry{{ID: "mcp-1", Name: "GitHub", Description: "GitHub tools"}},
+				MCPCatalog: []cloudclient.MCPRegistryEntry{{Name: "GitHub", Description: "GitHub tools"}},
 			},
 		})
 	}))
@@ -75,12 +75,12 @@ func TestCloudRegistry_JSON(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tenant_id": "tenant-json-1",
 			"assets": map[string]any{
-				"deployments": []map[string]string{{"id": "deployment-json", "status": "running"}},
+				"deployments": []map[string]string{{"id": "deployment-json", "kind": "mcp", "agent_name": "Slack", "status": "running"}},
 				"images":      []map[string]string{{"id": "image-json", "image_digest": "sha256:json", "status": "ready"}},
 				"secrets":     []map[string]string{{"label": "SLACK_TOKEN"}},
 			},
 			"platform": map[string]any{
-				"mcp_catalog": []map[string]string{{"id": "catalog-json", "name": "Slack"}},
+				"mcp_catalog": []map[string]string{{"name": "Slack"}},
 			},
 		})
 	}))

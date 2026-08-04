@@ -45,11 +45,9 @@ func TestCloudClient_GetRegistry(t *testing.T) {
 			"platform": map[string]any{
 				"mcp_catalog": []map[string]any{
 					{
-						"id":          "catalog-github",
 						"name":        "GitHub",
 						"description": "GitHub tools",
-						"image":       "ghcr.io/example/github-mcp:2.0.0",
-						"version":     "2.0.0",
+						"visibility":  "public",
 					},
 				},
 			},
