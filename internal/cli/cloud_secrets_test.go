@@ -109,6 +109,43 @@ func TestCloudSecretsPush_Success(t *testing.T) {
 	}
 }
 
+func TestCloudSecretsPush_JSONOutput(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_json_secret"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+	secStore := setupFakeSecretStore(t)
+	if err := secStore.Set(context.Background(), "json-key", []byte("secret-value")); err != nil {
+		t.Fatalf("store secret: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/v1/secrets/json-key" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "secrets", "push", "json-key", "--json")
+	if err != nil {
+		t.Fatalf("push --json: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("push --json stderr = %q", stderr)
+	}
+	var got struct {
+		Pushed []string `json:"pushed"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode push JSON: %v; stdout=%q", err, stdout)
+	}
+	if len(got.Pushed) != 1 || got.Pushed[0] != "json-key" {
+		t.Fatalf("pushed = %#v, want json-key", got.Pushed)
+	}
+}
+
 func TestCloudSecretsPush_NeverPrintsValue(t *testing.T) {
 	store := setupFakeTokenStore(t)
 	_ = store.Set(context.Background(), "token")

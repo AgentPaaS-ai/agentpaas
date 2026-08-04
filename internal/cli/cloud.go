@@ -636,7 +636,12 @@ Idempotent — succeeds even if not currently logged in.`,
 				return fmt.Errorf("cloud logout: %w", err)
 			}
 
-			fmt.Println("Logged out.")
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, struct {
+					Message string `json:"message"`
+				}{Message: "Logged out."}, nil)
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Logged out.")
 			return nil
 		},
 	}
@@ -1087,6 +1092,7 @@ displayed. Requires a valid cloud login.`,
 				return fmt.Errorf("cloud secrets push: %w", err)
 			}
 
+			pushed := make([]string, 0, len(args))
 			for _, name := range args {
 				if err := secrets.ValidateSecretName(name); err != nil {
 					return fmt.Errorf("cloud secrets push: %w", err)
@@ -1098,9 +1104,17 @@ displayed. Requires a valid cloud login.`,
 				if err := client.PutSecret(cmd.Context(), token, name, string(value)); err != nil {
 					return fmt.Errorf("cloud secrets push: push %q: %w", name, err)
 				}
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "pushed: %s\n", name)
+				pushed = append(pushed, name)
 			}
 
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, struct {
+					Pushed []string `json:"pushed"`
+				}{Pushed: pushed}, nil)
+			}
+			for _, name := range pushed {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "pushed: %s\n", name)
+			}
 			return nil
 		},
 	}
@@ -1296,7 +1310,12 @@ func storeAndConfirmLogin(cmd *cobra.Command, store cloudclient.TokenStore, toke
 	if err := store.Set(cmd.Context(), token); err != nil {
 		return fmt.Errorf("cloud login: store token: %w", err)
 	}
-	fmt.Println("Logged in. Run 'agentpaas cloud whoami' to verify.")
+	if jsonOutput(cmd) {
+		return printTextOrJSON(true, struct {
+			Message string `json:"message"`
+		}{Message: "Logged in."}, nil)
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Logged in. Run 'agentpaas cloud whoami' to verify.")
 	return nil
 }
 

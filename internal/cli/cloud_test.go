@@ -135,6 +135,31 @@ func TestCloudLogin_TokenStdin(t *testing.T) {
 	}
 }
 
+func TestCloudLogin_TokenStdinJSONOutput(t *testing.T) {
+	store := setupFakeTokenStore(t)
+
+	stdout, stderr, err := executeCloudCmd(t, "apc_json_login_token", "cloud", "login", "--token-stdin", "--json")
+	if err != nil {
+		t.Fatalf("login --json: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("login --json stderr = %q", stderr)
+	}
+	if strings.Contains(stdout, "apc_json_login_token") {
+		t.Fatalf("login JSON leaked token: %q", stdout)
+	}
+	var got map[string]string
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode login JSON: %v; stdout=%q", err, stdout)
+	}
+	if got["message"] != "Logged in." {
+		t.Fatalf("login JSON = %#v", got)
+	}
+	if _, err := store.Get(context.Background()); err != nil {
+		t.Fatalf("stored login token: %v", err)
+	}
+}
+
 func TestCloudLogin_TokenStdin_Empty(t *testing.T) {
 	_ = setupFakeTokenStore(t)
 
