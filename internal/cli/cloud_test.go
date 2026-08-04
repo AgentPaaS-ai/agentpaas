@@ -1064,18 +1064,22 @@ func TestCloudUndeploy_NotFoundJSONExitCode(t *testing.T) {
 	}
 }
 
-func TestCloudList_AliasToDeployments(t *testing.T) {
+func TestCloudList_AliasToRegistry(t *testing.T) {
 	store := setupFakeTokenStore(t)
-	_ = store.Set(context.Background(), "apc_alias_test")
+	if err := store.Set(context.Background(), "apc_alias_test"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
 
 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		deployments := []cloudclient.DeploymentRecord{
-			{ID: "dep-alias", ImageDigest: "sha256:ddd", Status: "running"},
+		if r.URL.Path != "/v1/registry" {
+			t.Errorf("path = %q, want /v1/registry", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(deployments)
+		_ = json.NewEncoder(w).Encode(cloudclient.RegistryResponse{
+			TenantAssets: []cloudclient.RegistryAsset{{Name: "asset-alias", Kind: "agent"}},
+		})
 	}))
-	defer apiServer.Close()
+	defer func() { apiServer.Close() }()
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
 
@@ -1083,8 +1087,8 @@ func TestCloudList_AliasToDeployments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cloud list: %v", err)
 	}
-	if !strings.Contains(stdout, "dep-alias") {
-		t.Errorf("expected dep-alias in output, got: %q", stdout)
+	if !strings.Contains(stdout, "asset-alias") {
+		t.Errorf("expected asset-alias in output, got: %q", stdout)
 	}
 }
 

@@ -102,6 +102,7 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudLogoutCmd())
 	cmd.AddCommand(newCloudPushCmd())
 	cmd.AddCommand(newCloudImagesCmd())
+	cmd.AddCommand(newCloudRegistryCmd())
 	cmd.AddCommand(newCloudDeployCmd())
 	cmd.AddCommand(newCloudDeploymentsCmd())
 	cmd.AddCommand(newCloudUndeployCmd())
@@ -1038,6 +1039,77 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 	}
 }
 
+// newCloudRegistryCmd creates the `agentpaas cloud registry` command.
+func newCloudRegistryCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "registry",
+		Aliases: []string{"list"},
+		Short:   "List tenant assets and the platform MCP catalog",
+		Long: `List assets owned by the authenticated tenant together with the
+platform-provided MCP server catalog.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud registry: %w", err)
+			}
+
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			registry, err := client.GetRegistry(cmd.Context(), token)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud registry: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, registry, nil)
+			}
+
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "Tenant assets (%d):\n", len(registry.TenantAssets))
+			if len(registry.TenantAssets) == 0 {
+				_, _ = fmt.Fprintln(out, "  (none)")
+			}
+			for _, asset := range registry.TenantAssets {
+				_, _ = fmt.Fprintf(out, "  %s", asset.Name)
+				if asset.Kind != "" {
+					_, _ = fmt.Fprintf(out, " [%s]", asset.Kind)
+				}
+				if asset.Version != "" {
+					_, _ = fmt.Fprintf(out, " @%s", asset.Version)
+				}
+				if asset.Status != "" {
+					_, _ = fmt.Fprintf(out, " (%s)", asset.Status)
+				}
+				_, _ = fmt.Fprintln(out)
+			}
+
+			_, _ = fmt.Fprintf(out, "Platform MCP catalog (%d):\n", len(registry.Platform.MCPCatalog))
+			if len(registry.Platform.MCPCatalog) == 0 {
+				_, _ = fmt.Fprintln(out, "  (none)")
+			}
+			for _, entry := range registry.Platform.MCPCatalog {
+				_, _ = fmt.Fprintf(out, "  %s", entry.Name)
+				if entry.Version != "" {
+					_, _ = fmt.Fprintf(out, " @%s", entry.Version)
+				}
+				if entry.Description != "" {
+					_, _ = fmt.Fprintf(out, " — %s", entry.Description)
+				}
+				_, _ = fmt.Fprintln(out)
+			}
+			return nil
+		},
+	}
+}
+
 // newCloudSecretsCmd creates the `agentpaas cloud secrets` command.
 func newCloudSecretsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -1418,6 +1490,7 @@ func newCloudDeployCmd() *cobra.Command {
 	var slotID string
 	var lockPath string
 	var instanceType string
+	var deployType string
 
 	cmd := &cobra.Command{
 		Use:   "deploy [digest|latest]",
@@ -1435,7 +1508,9 @@ control plane assigns one automatically.
 
 Use --instance-type to select a Cloudflare Container preset, from smallest to
 largest: lite, basic (default; 1/4 vCPU, 1GiB), standard-1, standard-2,
-standard-3, standard-4.`,
+standard-3, standard-4.
+
+Use --type to deploy an agent or an MCP server. The default is agent.`,
 		Example: `  # Deploy an admitted image
   agentpaas cloud deploy sha256:abcd1234...
 
@@ -1452,6 +1527,9 @@ standard-3, standard-4.`,
   agentpaas cloud deploy sha256:abcd1234... --slot-id slot-42`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if deployType != "agent" && deployType != "mcp" {
+				return fmt.Errorf("cloud deploy: --type must be agent or mcp")
+			}
 			switch instanceType {
 			case "dev":
 				return fmt.Errorf("instance_type 'dev' is an alias for 'lite' (256MiB) which is too small for LLM agents — use 'basic' or higher")
@@ -1525,6 +1603,7 @@ standard-3, standard-4.`,
 			// Build request.
 			req := cloudclient.CreateDeploymentRequest{
 				ImageDigest:  digest,
+				Kind:         deployType,
 				InstanceType: &instanceType,
 			}
 			if slotID != "" {
@@ -1556,6 +1635,7 @@ standard-3, standard-4.`,
 	cmd.Flags().StringVar(&slotID, "slot-id", "", "Pin deployment to a specific slot")
 	cmd.Flags().StringVar(&lockPath, "lock", "", "Absolute path to agent.lock (uses its image_digest)")
 	cmd.Flags().StringVar(&instanceType, "instance-type", "basic", "Cloudflare Container preset (default: basic; lite, basic, standard-1, standard-2, standard-3, standard-4)")
+	cmd.Flags().StringVar(&deployType, "type", "agent", "Deployment type: agent|mcp (default: agent)")
 
 	return cmd
 }
@@ -1563,9 +1643,8 @@ standard-3, standard-4.`,
 // newCloudDeploymentsCmd creates the `agentpaas cloud deployments` command.
 func newCloudDeploymentsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "deployments",
-		Aliases: []string{"list"},
-		Short:   "List cloud deployments",
+		Use:   "deployments",
+		Short: "List cloud deployments",
 		Long: `List all deployments on the AgentPaaS Cloud control plane.
 
 Requires a valid login. Use 'agentpaas cloud login' first.`,
