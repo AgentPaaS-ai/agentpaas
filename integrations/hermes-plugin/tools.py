@@ -1902,6 +1902,40 @@ def agentpaas_cloud_images(args, **kwargs):
     return _run_cloud_tool(["cloud", "images"])
 
 
+def agentpaas_cloud_events(args, **kwargs):
+    """Show lifecycle and audit events for a Cloud run."""
+    args = args or {}
+    run_id, error = _cloud_required_string(args, "run_id", "agentpaas_cloud_events")
+    if error:
+        return error
+    return _run_cloud_tool(["cloud", "events", run_id])
+
+
+def agentpaas_cloud_audit(args, **kwargs):
+    """Query tenant-scoped Cloud audit events."""
+    args = args or {}
+    cmd = ["cloud", "audit"]
+    for key, flag in (("since", "--since"), ("until", "--until"), ("limit", "--limit")):
+        value = args.get(key)
+        if value is not None and value != "":
+            cmd.extend([flag, str(value)])
+    return _run_cloud_tool(cmd)
+
+
+def agentpaas_cloud_audit_export(args, **kwargs):
+    """Fetch the audit export for a Cloud run."""
+    args = args or {}
+    run_id, error = _cloud_required_string(args, "run_id", "agentpaas_cloud_audit_export")
+    if error:
+        return error
+    return _run_cloud_tool(["cloud", "audit", "export", run_id])
+
+
+def agentpaas_cloud_metrics(args, **kwargs):
+    """Show aggregate Cloud run and audit metrics."""
+    return _run_cloud_tool(["cloud", "metrics"])
+
+
 def agentpaas_cloud_secrets_list(args, **kwargs):
     """List Cloud secret labels without returning secret values."""
     return _run_cloud_tool(["cloud", "secrets", "list"])

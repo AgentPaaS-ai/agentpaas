@@ -48,5 +48,9 @@ provides_tools:
   - agentpaas_cron_add
   - agentpaas_cron_list
   - agentpaas_cron_remove
+  - agentpaas_cloud_events
+  - agentpaas_cloud_audit
+  - agentpaas_cloud_audit_export
+  - agentpaas_cloud_metrics
 requires_env:
   - AGENTPAAS_SOCKET_PATH
