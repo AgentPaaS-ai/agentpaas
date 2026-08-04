@@ -349,7 +349,7 @@ If ANY are missing, do NOT pack — ask only for the missing piece.
 ### Hermes Cloud Tools
 
 The plugin exposes the cloud CLI through these structured tools: `agentpaas_cloud_whoami`,
-`agentpaas_cloud_push`, `agentpaas_cloud_deploy`, `agentpaas_cloud_deployments`,
+`agentpaas_cloud_registry`, `agentpaas_cloud_push`, `agentpaas_cloud_deploy`, `agentpaas_cloud_deployments`,
 `agentpaas_cloud_undeploy`, `agentpaas_cloud_invoke`, `agentpaas_cloud_result`,
 `agentpaas_cloud_logs`, `agentpaas_cloud_usage`, `agentpaas_cloud_images`,
 `agentpaas_cloud_secrets_list`, `agentpaas_cloud_secrets_push`, and
@@ -357,6 +357,8 @@ The plugin exposes the cloud CLI through these structured tools: `agentpaas_clou
 CLI's structured response; `agentpaas_cloud_invoke` waits for a terminal result
 by default. Cloud login has no token argument and opens the CLI browser flow;
 cloud secret push accepts labels only and reads values from the local secure store.
+
+Use `agentpaas_cloud_registry` (or `agentpaas cloud registry --json`) to discover tenant assets and the platform MCP catalog; its schema accepts no secret values and its output path never returns them. Cloud deployments are agents by default, while `agentpaas cloud deploy --type mcp` creates an MCP deployment, so obtain explicit user confirmation before either state-changing operation.
 
 Treat push, deploy, undeploy, and invoke as paid or state-changing operations:
 explain the plan and obtain explicit user confirmation before calling them.
