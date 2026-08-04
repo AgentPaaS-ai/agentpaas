@@ -167,6 +167,9 @@ func printCloudAuditEvents(out io.Writer, heading string, events []cloudclient.C
 		} else if event.Detail != "" {
 			_, _ = fmt.Fprintf(out, " — %s", event.Detail)
 		}
+		if event.Payload != "" {
+			_, _ = fmt.Fprintf(out, " payload=%s", event.Payload)
+		}
 		_, _ = fmt.Fprintln(out)
 	}
 	return nil
