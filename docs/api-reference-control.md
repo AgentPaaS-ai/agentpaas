@@ -85,6 +85,25 @@ Callers should branch on `error` and `reason`, use the process exit code for
 shell control flow, and treat `message` as display text rather than a stable
 machine signal.
 
+### Cloud audit, events, and metrics
+
+The cloud CLI uses the authenticated tenant API (Bearer token) for these
+read-only observability endpoints:
+
+| CLI | HTTP endpoint | Purpose |
+|---|---|---|
+| `agentpaas cloud events <run_id>` | `GET /v1/runs/:id/events` | Events for one run |
+| `agentpaas cloud audit [--since --until --limit]` | `GET /v1/audit?since&until&limit` | Tenant audit query |
+| `agentpaas cloud audit export <run_id>` | `GET /v1/runs/:id/audit/export` | Run audit export |
+| `agentpaas cloud metrics` | `GET /v1/metrics` | Aggregate run/audit metrics |
+
+`since`, `until`, and `limit` are omitted from the request when their flags
+are not supplied. Successful responses are emitted as JSON with `--json`;
+the audit and events responses contain an `events` array and may include
+`run_id`, `next_cursor`, and `has_more`. Export output preserves the cloud
+response, and metrics preserves named and provider-specific fields. Failures
+use the cloud JSON error envelope and semantic exit codes described above.
+
 ### Operator contract
 
 Operator methods (validate, summarize, explain, recommend, timeline, next-action) return structured fields with:

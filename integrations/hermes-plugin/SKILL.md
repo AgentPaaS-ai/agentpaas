@@ -89,6 +89,19 @@ All commands are also available as natural language — just ask Hermes.
 | `/agentpaas-secret-list` | List stored credentials (by label, never value) |
 | `/agentpaas-cron-list` | List scheduled agent invocations |
 
+Cloud observability is available after `agentpaas cloud login` through the
+CLI or the matching Hermes tools:
+
+| Command/tool | Description |
+|---|---|
+| `agentpaas cloud events <run_id>` / `agentpaas_cloud_events` | Show events for one cloud run |
+| `agentpaas cloud audit [--since --until --limit]` / `agentpaas_cloud_audit` | Query tenant cloud audit events |
+| `agentpaas cloud audit export <run_id>` / `agentpaas_cloud_audit_export` | Fetch a run audit export |
+| `agentpaas cloud metrics` / `agentpaas_cloud_metrics` | Show aggregate cloud run and audit metrics |
+
+All four cloud commands support `--json`. Hermes passes filters and run IDs to
+the CLI and never accepts cloud API tokens as tool parameters.
+
 ### Sharing
 
 | Command | Description |
