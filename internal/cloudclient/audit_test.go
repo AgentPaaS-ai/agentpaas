@@ -29,7 +29,7 @@ func TestCloudClient_GetRunEvents(t *testing.T) {
 					"id":         "evt-1",
 					"event_type": "policy_denial",
 					"timestamp":  "2026-08-04T00:00:00Z",
-					"payload":    map[string]any{"host": "example.com"},
+					"payload":    `{"host":"example.com"}`,
 				},
 			},
 		})
@@ -46,8 +46,8 @@ func TestCloudClient_GetRunEvents(t *testing.T) {
 	if len(result.Events) != 1 || result.Events[0].EventType != "policy_denial" {
 		t.Fatalf("Events = %#v, want one policy_denial event", result.Events)
 	}
-	if result.Events[0].Payload["host"] != "example.com" {
-		t.Fatalf("event payload = %#v, want host", result.Events[0].Payload)
+	if result.Events[0].Payload != `{"host":"example.com"}` {
+		t.Fatalf("event payload = %q, want raw JSON text", result.Events[0].Payload)
 	}
 }
 
