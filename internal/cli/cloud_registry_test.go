@@ -26,9 +26,16 @@ func TestCloudRegistry_SuccessText(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(cloudclient.RegistryResponse{
-			TenantAssets: []cloudclient.RegistryAsset{{
-				ID: "asset-1", Kind: "agent", Name: "weather-agent", Version: "1.0.0", Status: "ready",
-			}},
+			TenantID: "tenant-cli-1",
+			Assets: cloudclient.RegistryAssets{
+				Deployments: []cloudclient.RegistryAsset{{
+					ID: "deployment-1", Name: "weather-agent", Version: "1.0.0", Status: "running",
+				}},
+				Images: []cloudclient.RegistryAsset{{
+					ID: "image-1", ImageDigest: "sha256:image", Status: "ready",
+				}},
+				Secrets: []cloudclient.RegistrySecret{{Label: "OPENAI_API_KEY"}},
+			},
 			Platform: cloudclient.RegistryPlatform{
 				MCPCatalog: []cloudclient.MCPRegistryEntry{{ID: "mcp-1", Name: "GitHub", Description: "GitHub tools"}},
 			},
@@ -41,8 +48,19 @@ func TestCloudRegistry_SuccessText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cloud registry: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "weather-agent") || !strings.Contains(stdout, "GitHub") {
-		t.Fatalf("registry output = %q, want tenant and MCP entries", stdout)
+	for _, want := range []string{
+		"Tenant: tenant-cli-1",
+		"Deployments (1):",
+		"weather-agent",
+		"Images (1):",
+		"sha256:image",
+		"Secrets (1):",
+		"OPENAI_API_KEY",
+		"GitHub",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("registry output = %q, want %q", stdout, want)
+		}
 	}
 }
 
@@ -55,7 +73,12 @@ func TestCloudRegistry_JSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"tenant_assets": []map[string]string{{"id": "asset-json", "kind": "mcp", "name": "Slack"}},
+			"tenant_id": "tenant-json-1",
+			"assets": map[string]any{
+				"deployments": []map[string]string{{"id": "deployment-json", "status": "running"}},
+				"images":      []map[string]string{{"id": "image-json", "image_digest": "sha256:json", "status": "ready"}},
+				"secrets":     []map[string]string{{"label": "SLACK_TOKEN"}},
+			},
 			"platform": map[string]any{
 				"mcp_catalog": []map[string]string{{"id": "catalog-json", "name": "Slack"}},
 			},
@@ -75,8 +98,17 @@ func TestCloudRegistry_JSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 		t.Fatalf("decode registry JSON: %v; output=%q", err, stdout)
 	}
-	if len(got.TenantAssets) != 1 || got.TenantAssets[0].Name != "Slack" {
-		t.Fatalf("tenant assets = %#v", got.TenantAssets)
+	if got.TenantID != "tenant-json-1" {
+		t.Fatalf("tenant ID = %q, want tenant-json-1", got.TenantID)
+	}
+	if len(got.Assets.Deployments) != 1 || got.Assets.Deployments[0].ID != "deployment-json" {
+		t.Fatalf("deployments = %#v", got.Assets.Deployments)
+	}
+	if len(got.Assets.Images) != 1 || got.Assets.Images[0].ImageDigest != "sha256:json" {
+		t.Fatalf("images = %#v", got.Assets.Images)
+	}
+	if len(got.Assets.Secrets) != 1 || got.Assets.Secrets[0].Label != "SLACK_TOKEN" {
+		t.Fatalf("secrets = %#v", got.Assets.Secrets)
 	}
 	if len(got.Platform.MCPCatalog) != 1 || got.Platform.MCPCatalog[0].Name != "Slack" {
 		t.Fatalf("MCP catalog = %#v", got.Platform.MCPCatalog)

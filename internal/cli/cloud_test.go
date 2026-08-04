@@ -1076,7 +1076,9 @@ func TestCloudList_AliasToRegistry(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(cloudclient.RegistryResponse{
-			TenantAssets: []cloudclient.RegistryAsset{{Name: "asset-alias", Kind: "agent"}},
+			Assets: cloudclient.RegistryAssets{
+				Deployments: []cloudclient.RegistryAsset{{Name: "asset-alias", Kind: "agent"}},
+			},
 		})
 	}))
 	defer func() { apiServer.Close() }()
