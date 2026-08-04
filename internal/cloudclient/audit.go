@@ -11,8 +11,8 @@ import (
 )
 
 // CloudAuditEvent is an event or audit record returned by the cloud control
-// plane. Payload, data, and metadata are intentionally structured maps so the
-// client does not discard provider-specific fields.
+// plane. Payload is JSON text as returned by the cloud API; data and metadata
+// remain structured maps so the client does not discard provider-specific fields.
 type CloudAuditEvent struct {
 	ID             string         `json:"id,omitempty"`
 	RunID          string         `json:"run_id,omitempty"`
@@ -30,7 +30,7 @@ type CloudAuditEvent struct {
 	DeploymentMode string         `json:"deployment_mode,omitempty"`
 	Message        string         `json:"message,omitempty"`
 	Detail         string         `json:"detail,omitempty"`
-	Payload        map[string]any `json:"payload,omitempty"`
+	Payload        string         `json:"payload,omitempty"`
 	Data           map[string]any `json:"data,omitempty"`
 	Metadata       map[string]any `json:"metadata,omitempty"`
 	HostedContext  map[string]any `json:"hosted_context,omitempty"`
