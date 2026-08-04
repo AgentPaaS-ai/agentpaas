@@ -25,3 +25,7 @@
 
 ## Next
 M10 skinny dashboard + 30-min onboarding (R4 DNS still pending founder)
+
+## Payload wire fix
+Audit event `payload` is string|null on API; CLI initially expected object. Fixed.
+`cloud audit --json` and metrics verified live.
