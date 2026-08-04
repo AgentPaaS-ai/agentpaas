@@ -22,23 +22,24 @@ func TestCloudClient_GetRegistry(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"tenant_assets": []map[string]any{
-				{
-					"id":           "asset-agent-1",
-					"kind":         "agent",
-					"name":         "weather-agent",
-					"version":      "1.0.0",
-					"status":       "ready",
-					"image_digest": "sha256:agent",
-					"registry_ref": "registry.example/tenant/weather:1.0.0",
+			"tenant_id": "tenant-registry-1",
+			"assets": map[string]any{
+				"deployments": []map[string]any{
+					{
+						"id":           "deployment-1",
+						"image_digest": "sha256:deployment",
+						"status":       "running",
+					},
 				},
-				{
-					"id":      "asset-mcp-1",
-					"kind":    "mcp",
-					"name":    "github-mcp",
-					"version": "2.0.0",
-					"status":  "ready",
-					"image":   "ghcr.io/example/github-mcp:2.0.0",
+				"images": []map[string]any{
+					{
+						"id":           "image-1",
+						"image_digest": "sha256:image",
+						"status":       "ready",
+					},
+				},
+				"secrets": []map[string]any{
+					{"label": "OPENAI_API_KEY"},
 				},
 			},
 			"platform": map[string]any{
@@ -60,14 +61,26 @@ func TestCloudClient_GetRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRegistry: %v", err)
 	}
-	if len(result.TenantAssets) != 2 {
-		t.Fatalf("TenantAssets length = %d, want 2", len(result.TenantAssets))
+	if result.TenantID != "tenant-registry-1" {
+		t.Errorf("TenantID = %q, want tenant-registry-1", result.TenantID)
 	}
-	if result.TenantAssets[0].Kind != "agent" {
-		t.Errorf("TenantAssets[0].Kind = %q, want agent", result.TenantAssets[0].Kind)
+	if len(result.Assets.Deployments) != 1 {
+		t.Fatalf("Deployments length = %d, want 1", len(result.Assets.Deployments))
 	}
-	if result.TenantAssets[1].Image != "ghcr.io/example/github-mcp:2.0.0" {
-		t.Errorf("TenantAssets[1].Image = %q, want MCP image", result.TenantAssets[1].Image)
+	if result.Assets.Deployments[0].ID != "deployment-1" {
+		t.Errorf("Deployments[0].ID = %q, want deployment-1", result.Assets.Deployments[0].ID)
+	}
+	if len(result.Assets.Images) != 1 {
+		t.Fatalf("Images length = %d, want 1", len(result.Assets.Images))
+	}
+	if result.Assets.Images[0].ImageDigest != "sha256:image" {
+		t.Errorf("Images[0].ImageDigest = %q, want sha256:image", result.Assets.Images[0].ImageDigest)
+	}
+	if len(result.Assets.Secrets) != 1 {
+		t.Fatalf("Secrets length = %d, want 1", len(result.Assets.Secrets))
+	}
+	if result.Assets.Secrets[0].Label != "OPENAI_API_KEY" {
+		t.Errorf("Secrets[0].Label = %q, want OPENAI_API_KEY", result.Assets.Secrets[0].Label)
 	}
 	if len(result.Platform.MCPCatalog) != 1 {
 		t.Fatalf("MCPCatalog length = %d, want 1", len(result.Platform.MCPCatalog))
