@@ -58,7 +58,9 @@ t2-test-agent/
 # Internal / private docs — not part of the public tree
 docs/archive/
 docs/plans/
-docs/owa-records/archive/
+# M10 T04: owa-records are builder-only; only README stays public (points to docs/customer)
+docs/owa-records/**
+!docs/owa-records/README.md
 docs/*-resume-prompt*.md
 docs/*-checkpoint*.md
 docs/*-block-end.md
