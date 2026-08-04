@@ -97,6 +97,57 @@ func TestCloudInvokeToken_JSONOutput(t *testing.T) {
 	_ = stderr
 }
 
+func TestCloudInvokeToken_StoreRedactsTokenAndPersists(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	homeDir := t.TempDir()
+	t.Setenv("AGENTPAAS_HOME", homeDir)
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_store_tenant"); err != nil {
+		t.Fatalf("store tenant token: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"deployment_id":"dep-store","invoke_token":"inv_store_secret","invoke_token_prefix":"inv_store","message":"one time"}`))
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "invoke-token", "dep-store", "--store", "--json")
+	if err != nil {
+		t.Fatalf("invoke-token --store: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("invoke-token --store stderr = %q", stderr)
+	}
+	if strings.Contains(stdout, "inv_store_secret") {
+		t.Fatalf("stored invoke token leaked in output: %q", stdout)
+	}
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+		t.Fatalf("decode store output: %v; stdout=%q", err, stdout)
+	}
+	if result["invoke_token_prefix"] != "inv_store" {
+		t.Fatalf("prefix = %#v, want inv_store", result["invoke_token_prefix"])
+	}
+	if _, ok := result["invoke_token"]; ok {
+		t.Fatalf("stored output contains invoke_token field: %#v", result)
+	}
+
+	stored, err := cloudclient.NewFileInvokeTokenStore(filepath.Join(homeDir, cloudInvokeTokenStoreName))
+	if err != nil {
+		t.Fatalf("open invoke-token store: %v", err)
+	}
+	got, err := stored.Get(context.Background(), "dep-store")
+	if err != nil {
+		t.Fatalf("read stored invoke token: %v", err)
+	}
+	if got != "inv_store_secret" {
+		t.Fatalf("stored token = %q, want inv_store_secret", got)
+	}
+}
+
 func TestCloudInvoke_HumanOutput_UsesInvokeTokenAndBody(t *testing.T) {
 	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
 	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_env_token")
