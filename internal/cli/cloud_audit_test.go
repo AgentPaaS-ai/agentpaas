@@ -34,7 +34,7 @@ func TestCloudEvents_HumanOutput(t *testing.T) {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"run_id":"run-cli","events":[{"timestamp":"2026-08-04T00:00:00Z","event_type":"run_started","actor":"user"}]}`))
+		_, _ = w.Write([]byte(`{"run_id":"run-cli","events":[{"timestamp":"2026-08-04T00:00:00Z","event_type":"run_started","actor":"user","payload":"{\"phase\":\"boot\"}"}]}`))
 	}))
 	defer func() { server.Close() }()
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
@@ -43,7 +43,7 @@ func TestCloudEvents_HumanOutput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cloud events: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
-	for _, want := range []string{"Run: run-cli", "Events (1):", "run_started", "user"} {
+	for _, want := range []string{"Run: run-cli", "Events (1):", "run_started", "user", `payload={"phase":"boot"}`} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("events output %q does not contain %q", stdout, want)
 		}
