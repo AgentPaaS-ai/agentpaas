@@ -205,9 +205,11 @@ func TestResolveApproveURL(t *testing.T) {
 }
 
 func TestNewCloudClient_DefaultURL(t *testing.T) {
+	const want = "https://cloud.agentpaas.ai"
+
 	client := NewCloudClient("")
-	if client.BaseURL != DefaultCloudAPIURL {
-		t.Errorf("BaseURL = %q, want %q", client.BaseURL, DefaultCloudAPIURL)
+	if client.BaseURL != want {
+		t.Errorf("BaseURL = %q, want %q", client.BaseURL, want)
 	}
 }
 
