@@ -50,6 +50,10 @@ TOOL_NAMES = [
     "agentpaas_cloud_logs",
     "agentpaas_cloud_usage",
     "agentpaas_cloud_images",
+    "agentpaas_cloud_events",
+    "agentpaas_cloud_audit",
+    "agentpaas_cloud_audit_export",
+    "agentpaas_cloud_metrics",
     "agentpaas_cloud_secrets_list",
     "agentpaas_cloud_secrets_push",
     "agentpaas_cloud_login",
@@ -858,6 +862,56 @@ AGENTPAAS_CLOUD_USAGE = {
 AGENTPAAS_CLOUD_IMAGES = {
     "name": "agentpaas_cloud_images",
     "description": "List admitted AgentPaaS Cloud images.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_EVENTS = {
+    "name": "agentpaas_cloud_events",
+    "description": "Show lifecycle and audit events for a Cloud run.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "run_id": {"type": "string", "description": "Cloud run identifier."},
+        },
+        "required": ["run_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_AUDIT = {
+    "name": "agentpaas_cloud_audit",
+    "description": "Query tenant-scoped Cloud audit events by time range and limit.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "since": {"type": "string", "description": "Earliest event timestamp to include."},
+            "until": {"type": "string", "description": "Latest event timestamp to include."},
+            "limit": {"type": "integer", "minimum": 1, "description": "Maximum number of events."},
+        },
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_AUDIT_EXPORT = {
+    "name": "agentpaas_cloud_audit_export",
+    "description": "Fetch the audit export for a Cloud run.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "run_id": {"type": "string", "description": "Cloud run identifier."},
+        },
+        "required": ["run_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_METRICS = {
+    "name": "agentpaas_cloud_metrics",
+    "description": "Show aggregate Cloud run and audit metrics.",
     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
 }
 
