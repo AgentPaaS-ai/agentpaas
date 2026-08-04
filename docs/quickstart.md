@@ -341,10 +341,10 @@ Cloud is optional and browser-first. After your provider gives you a tenant
 claim link:
 
 1. Open the claim link in a browser (sets the session cookie on the API host).
-2. Optional: open the skinny dashboard on the same API origin (`/` or
-   `/dashboard/`) to verify tokens, secret labels, usage, and agents. Until
-   custom DNS is live, that origin is the workers.dev API URL your provider
-   gave you.
+2. Optional: if your provider exposes a dashboard, use the URL they provide.
+   The CLI defaults to `https://cloud.agentpaas.ai`. For a legacy/transition
+   API host, set `AGENTPAAS_CLOUD_API_URL` to the workers.dev URL your provider
+   gives you.
 3. Then:
 
 ```bash

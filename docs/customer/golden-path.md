@@ -11,7 +11,10 @@ state-changing cloud calls still require explicit user confirmation.
 
 ```bash
 export PATH="/opt/homebrew/bin:$PATH"
-export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.parvezsyed.workers.dev'
+# AGENTPAAS_CLOUD_API_URL is optional; the binary defaults to
+# https://cloud.agentpaas.ai.
+# For a legacy/transition API host, uncomment and set the override:
+# export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.parvezsyed.workers.dev'
 # No Cloudflare credential needed — push/deploy/invoke use only your tenant token.
 ```
 
@@ -20,7 +23,7 @@ Check:
 ```bash
 agentpaas version          # expect 0.3.6
 agentpaas doctor           # 7/7
-echo "API=$AGENTPAAS_CLOUD_API_URL"
+echo "API=${AGENTPAAS_CLOUD_API_URL:-https://cloud.agentpaas.ai}"
 ```
 
 ## 1. Identity + daemon (skip if already done)
@@ -38,11 +41,11 @@ Primary path — browser claim link:
 2. Open the link in a browser and complete sign-in (for example,
    `https://<api>/v1/auth/claim/<code>`). That sets a browser session cookie
    on the API host.
-3. Optional verify UI: open the skinny dashboard on the same API origin
-   (`https://<api>/` or `/dashboard/` once M10 is live). Tokens, secret
-   labels, usage, and agents are read there. Until `cloud.agentpaas.ai`
-   DNS is live, the host is the workers.dev API URL above — not a separate
-   app domain.
+3. Optional: if your provider exposes a dashboard, use the URL they provide.
+   The CLI defaults to `https://cloud.agentpaas.ai`; set
+   `AGENTPAAS_CLOUD_API_URL` to a legacy workers.dev API host during the
+   transition. The dashboard, when available, is on the API origin rather
+   than a separate app domain.
 4. In the same terminal, approve the CLI login:
 
 ```bash
