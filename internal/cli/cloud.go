@@ -1079,16 +1079,20 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			if len(registry.Assets.Deployments) == 0 {
 				_, _ = fmt.Fprintln(out, "  (none)")
 			}
-			for _, asset := range registry.Assets.Deployments {
-				printCloudRegistryAsset(out, asset)
+			for _, deployment := range registry.Assets.Deployments {
+				printCloudRegistryAsset(out, deployment.AgentName, deployment.ID, deployment.Kind, deployment.Status, deployment.ImageDigest)
 			}
 
 			_, _ = fmt.Fprintf(out, "Images (%d):\n", len(registry.Assets.Images))
 			if len(registry.Assets.Images) == 0 {
 				_, _ = fmt.Fprintln(out, "  (none)")
 			}
-			for _, asset := range registry.Assets.Images {
-				printCloudRegistryAsset(out, asset)
+			for _, image := range registry.Assets.Images {
+				label := ""
+				if image.AgentName != nil {
+					label = *image.AgentName
+				}
+				printCloudRegistryAsset(out, label, image.ID, "", image.Status, image.ImageDigest)
 			}
 
 			_, _ = fmt.Fprintf(out, "Secrets (%d):\n", len(registry.Assets.Secrets))
@@ -1105,8 +1109,8 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			}
 			for _, entry := range registry.Platform.MCPCatalog {
 				_, _ = fmt.Fprintf(out, "  %s", entry.Name)
-				if entry.Version != "" {
-					_, _ = fmt.Fprintf(out, " @%s", entry.Version)
+				if entry.Visibility != "" {
+					_, _ = fmt.Fprintf(out, " [%s]", entry.Visibility)
 				}
 				if entry.Description != "" {
 					_, _ = fmt.Fprintf(out, " — %s", entry.Description)
@@ -1118,29 +1122,22 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 	}
 }
 
-func printCloudRegistryAsset(out io.Writer, asset cloudclient.RegistryAsset) {
-	label := asset.Name
+func printCloudRegistryAsset(out io.Writer, label, id, kind, status, imageDigest string) {
 	if label == "" {
-		label = asset.ID
+		label = id
 	}
 	if label == "" {
-		label = asset.ImageDigest
+		label = imageDigest
 	}
 	_, _ = fmt.Fprintf(out, "  %s", label)
-	if asset.Kind != "" {
-		_, _ = fmt.Fprintf(out, " [%s]", asset.Kind)
+	if kind != "" {
+		_, _ = fmt.Fprintf(out, " [%s]", kind)
 	}
-	if asset.Version != "" {
-		_, _ = fmt.Fprintf(out, " @%s", asset.Version)
+	if status != "" {
+		_, _ = fmt.Fprintf(out, " (%s)", status)
 	}
-	if asset.Status != "" {
-		_, _ = fmt.Fprintf(out, " (%s)", asset.Status)
-	}
-	if asset.ImageDigest != "" && label != asset.ImageDigest {
-		_, _ = fmt.Fprintf(out, " digest=%s", asset.ImageDigest)
-	}
-	if asset.RegistryRef != "" {
-		_, _ = fmt.Fprintf(out, " registry=%s", asset.RegistryRef)
+	if imageDigest != "" && label != imageDigest {
+		_, _ = fmt.Fprintf(out, " digest=%s", imageDigest)
 	}
 	_, _ = fmt.Fprintln(out)
 }
