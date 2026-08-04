@@ -1493,7 +1493,9 @@ standard-3, standard-4.`,
 				if digest == "" {
 					return fmt.Errorf("cloud deploy: latest image has empty digest")
 				}
-				fmt.Printf("Using latest admitted image: %s\n", digest)
+				if !jsonOutput(cmd) {
+					fmt.Printf("Using latest admitted image: %s\n", digest)
+				}
 			}
 
 			// Validate digest format.
