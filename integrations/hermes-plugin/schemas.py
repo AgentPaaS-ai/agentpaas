@@ -40,6 +40,7 @@ TOOL_NAMES = [
     "agentpaas_trust_list",
     "agentpaas_fork",
     "agentpaas_cloud_whoami",
+    "agentpaas_cloud_registry",
     "agentpaas_cloud_push",
     "agentpaas_cloud_deploy",
     "agentpaas_cloud_deployments",
@@ -742,6 +743,13 @@ AGENTPAAS_FORK = {
 AGENTPAAS_CLOUD_WHOAMI = {
     "name": "agentpaas_cloud_whoami",
     "description": "Show the authenticated AgentPaaS Cloud account.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_REGISTRY = {
+    "name": "agentpaas_cloud_registry",
+    "description": "List tenant cloud assets and the platform MCP catalog; secret values are never returned.",
     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
 }
 

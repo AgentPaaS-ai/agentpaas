@@ -43,6 +43,7 @@ provides_tools:
   - agentpaas_trust_list
   - agentpaas_fork
   - agentpaas_cloud_whoami
+  - agentpaas_cloud_registry
   - agentpaas_cloud_push
   - agentpaas_cloud_deploy
   - agentpaas_cloud_deployments

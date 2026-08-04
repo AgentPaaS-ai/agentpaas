@@ -1787,6 +1787,14 @@ def agentpaas_cloud_whoami(args, **kwargs):
     return _run_cloud_tool(["cloud", "whoami"])
 
 
+def agentpaas_cloud_registry(args, **kwargs):
+    """List tenant assets and the platform MCP catalog."""
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_registry")
+    if sensitive_error:
+        return sensitive_error
+    return _run_cloud_tool(["cloud", "registry"])
+
+
 def agentpaas_cloud_push(args, **kwargs):
     """Push and admit a packed image to AgentPaaS Cloud."""
     args = args or {}
