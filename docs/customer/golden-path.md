@@ -3,6 +3,10 @@
 Copy each block top to bottom. Replace nothing except secrets when prompted.
 Do not commit tokens.
 
+Hermes can run this same flow through its structured cloud tools, including login,
+push, deploy, invoke, result, logs, usage, and label-only secret operations;
+state-changing cloud calls still require explicit user confirmation.
+
 ## 0. One-time shell setup
 
 ```bash
