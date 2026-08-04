@@ -804,6 +804,43 @@ func TestCloudDeploy_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestCloudDeploy_IdempotentReplayJSONIsClean(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_deploy_replay"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/images":
+			_, _ = w.Write([]byte(`[{"id":"img-existing","image_digest":"` + digest + `","status":"admitted"}]`))
+		case "/v1/deployments":
+			_, _ = w.Write([]byte(`{"id":"dep-existing","image_digest":"` + digest + `","status":"idempotent_replay"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--json")
+	if err != nil {
+		t.Fatalf("idempotent deploy: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("idempotent deploy stderr = %q", stderr)
+	}
+	var got cloudclient.DeploymentRecord
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode idempotent deployment: %v; stdout=%q", err, stdout)
+	}
+	if got.ID != "dep-existing" || got.Status != "idempotent_replay" {
+		t.Fatalf("deployment = %#v, want existing idempotent replay", got)
+	}
+}
+
 // --- Cloud deployments tests ---
 
 func TestCloudDeployments_NotLoggedIn(t *testing.T) {
@@ -966,6 +1003,39 @@ func TestCloudUndeploy_NotFound(t *testing.T) {
 	combined := err.Error() + stderr
 	if !strings.Contains(combined, "not_found") {
 		t.Errorf("error should surface not_found, got: %s", combined)
+	}
+}
+
+func TestCloudUndeploy_NotFoundJSONExitCode(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_undeploy_json"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"not_found","reason":"not_found","message":"deployment missing"}`))
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--json")
+	if err == nil {
+		t.Fatal("expected not-found error")
+	}
+	if got := CloudExitCode(err); got != cloudExitNotFound {
+		t.Fatalf("CloudExitCode = %d, want %d", got, cloudExitNotFound)
+	}
+	if stderr != "" {
+		t.Fatalf("JSON not-found error wrote stderr: %q", stderr)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("decode not-found error: %v; stdout=%q", err, stdout)
+	}
+	if got["error"] != "not_found" || got["reason"] != "not_found" || got["message"] != "deployment missing" {
+		t.Fatalf("not-found envelope = %#v", got)
 	}
 }
 
