@@ -36,8 +36,14 @@ Primary path — browser claim link:
 
 1. Ask your AgentPaaS provider/operator for your tenant claim link.
 2. Open the link in a browser and complete sign-in (for example,
-   `https://<api>/v1/auth/claim/<code>`).
-3. In the same terminal, approve the CLI login:
+   `https://<api>/v1/auth/claim/<code>`). That sets a browser session cookie
+   on the API host.
+3. Optional verify UI: open the skinny dashboard on the same API origin
+   (`https://<api>/` or `/dashboard/` once M10 is live). Tokens, secret
+   labels, usage, and agents are read there. Until `cloud.agentpaas.ai`
+   DNS is live, the host is the workers.dev API URL above — not a separate
+   app domain.
+4. In the same terminal, approve the CLI login:
 
 ```bash
 agentpaas cloud login
