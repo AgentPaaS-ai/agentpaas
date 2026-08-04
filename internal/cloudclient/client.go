@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	// DefaultCloudAPIURL is the live production API (workers.dev until cloud.agentpaas.ai DNS is configured). Users can still override with AGENTPAAS_CLOUD_API_URL.
-	DefaultCloudAPIURL = "https://agentpaas-cloud-api.parvezsyed.workers.dev"
+	// DefaultCloudAPIURL is the production hostname. Override with
+	// AGENTPAAS_CLOUD_API_URL if needed; the workers.dev hostname remains a
+	// valid override during the transition.
+	DefaultCloudAPIURL = "https://cloud.agentpaas.ai"
 )
 
 // HTTPStatusError reports a non-successful HTTP response from the cloud API.
