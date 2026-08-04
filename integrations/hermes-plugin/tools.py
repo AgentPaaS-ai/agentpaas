@@ -350,7 +350,7 @@ def _check_daemon_socket():
     return True, None
 
 
-_NO_DAEMON_COMMANDS = frozenset({"doctor", "--version", "help", "--help"})
+_NO_DAEMON_COMMANDS = frozenset({"cloud", "doctor", "--version", "help", "--help"})
 
 
 def _needs_daemon(cmd_args):
@@ -564,6 +564,13 @@ def _parse_cli_result(proc):
         stderr_truncated = True
 
     if proc.returncode != 0:
+        try:
+            typed_error = json.loads(stdout)
+        except json.JSONDecodeError:
+            typed_error = None
+        if isinstance(typed_error, dict) and typed_error.get("error"):
+            typed_error.setdefault("exit_code", proc.returncode)
+            return typed_error
         result = {
             "error": stderr.strip(),
             "exit_code": proc.returncode,
@@ -1725,3 +1732,197 @@ def agentpaas_fork(args, **kwargs):
         return json.dumps(result)
     except Exception as e:
         return json.dumps({"error": str(e), "error_category": "tool_invocation_failed"})
+
+
+# ---------------------------------------------------------------------------
+# Cloud tool handlers
+# ---------------------------------------------------------------------------
+
+_CLOUD_SECRET_VALUE_KEYS = frozenset({
+    "value",
+    "secret_value",
+    "secretValue",
+    "token",
+    "api_token",
+    "apiToken",
+    "invoke_token",
+    "invokeToken",
+})
+
+
+def _cloud_tool_error(message):
+    return json.dumps({"error": message, "error_category": "tool_invocation_failed"})
+
+
+def _cloud_required_string(args, name, tool_name):
+    value = args.get(name) if isinstance(args, dict) else None
+    if not isinstance(value, str) or not value.strip():
+        return None, _cloud_tool_error(f"{tool_name}: {name} is required")
+    return value, None
+
+
+def _cloud_reject_sensitive_args(args, tool_name):
+    if not isinstance(args, dict):
+        return None
+    for key in _CLOUD_SECRET_VALUE_KEYS:
+        if key in args:
+            return _cloud_tool_error(
+                f"{tool_name}: {key} is not accepted; use the local secure store"
+            )
+    return None
+
+
+def _run_cloud_tool(cmd_args):
+    try:
+        return json.dumps(_run_cli(cmd_args))
+    except Exception as e:
+        return _cloud_tool_error(f"cloud tool invocation failed: {e}")
+
+
+def agentpaas_cloud_whoami(args, **kwargs):
+    """Show the authenticated AgentPaaS Cloud account."""
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_whoami")
+    if sensitive_error:
+        return sensitive_error
+    return _run_cloud_tool(["cloud", "whoami"])
+
+
+def agentpaas_cloud_push(args, **kwargs):
+    """Push and admit a packed image to AgentPaaS Cloud."""
+    args = args or {}
+    lock, error = _cloud_required_string(args, "lock", "agentpaas_cloud_push")
+    if error:
+        return error
+
+    cmd = ["cloud", "push", "--lock", lock]
+    optional_flags = (
+        ("digest", "--digest"),
+        ("platform", "--platform"),
+        ("registry_ref", "--registry-ref"),
+        ("image", "--image"),
+    )
+    for key, flag in optional_flags:
+        value = args.get(key)
+        if value is not None and value != "":
+            cmd.extend([flag, str(value)])
+    if args.get("skip_registry"):
+        cmd.append("--skip-registry")
+    return _run_cloud_tool(cmd)
+
+
+def agentpaas_cloud_deploy(args, **kwargs):
+    """Deploy an admitted image digest or the latest admitted image."""
+    args = args or {}
+    digest, error = _cloud_required_string(args, "digest", "agentpaas_cloud_deploy")
+    if error:
+        return error
+
+    cmd = ["cloud", "deploy", digest]
+    instance_type = args.get("instance_type")
+    if instance_type is not None and instance_type != "":
+        cmd.extend(["--instance-type", str(instance_type)])
+    return _run_cloud_tool(cmd)
+
+
+def agentpaas_cloud_deployments(args, **kwargs):
+    """List AgentPaaS Cloud deployments."""
+    return _run_cloud_tool(["cloud", "deployments"])
+
+
+def agentpaas_cloud_undeploy(args, **kwargs):
+    """Undeploy a Cloud deployment."""
+    args = args or {}
+    deployment_id, error = _cloud_required_string(
+        args, "deployment_id", "agentpaas_cloud_undeploy"
+    )
+    if error:
+        return error
+    return _run_cloud_tool(["cloud", "undeploy", deployment_id])
+
+
+def agentpaas_cloud_invoke(args, **kwargs):
+    """Invoke a Cloud deployment, waiting for a terminal result by default."""
+    args = args or {}
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_invoke")
+    if sensitive_error:
+        return sensitive_error
+    deployment_id, error = _cloud_required_string(
+        args, "deployment_id", "agentpaas_cloud_invoke"
+    )
+    if error:
+        return error
+
+    cmd = ["cloud", "invoke", deployment_id]
+    body = args.get("body")
+    if body is not None and body != "":
+        if not isinstance(body, str):
+            return _cloud_tool_error("agentpaas_cloud_invoke: body must be a string")
+        cmd.extend(["--body", body])
+    if args.get("wait", True):
+        cmd.append("--wait")
+    wait_timeout = args.get("wait_timeout")
+    if wait_timeout is not None and wait_timeout != "":
+        cmd.extend(["--wait-timeout", str(wait_timeout)])
+    return _run_cloud_tool(cmd)
+
+
+def agentpaas_cloud_result(args, **kwargs):
+    """Fetch the result for a Cloud run."""
+    args = args or {}
+    run_id, error = _cloud_required_string(args, "run_id", "agentpaas_cloud_result")
+    if error:
+        return error
+    return _run_cloud_tool(["cloud", "result", run_id])
+
+
+def agentpaas_cloud_logs(args, **kwargs):
+    """Fetch logs for a Cloud run."""
+    args = args or {}
+    run_id, error = _cloud_required_string(args, "run_id", "agentpaas_cloud_logs")
+    if error:
+        return error
+    return _run_cloud_tool(["cloud", "logs", run_id])
+
+
+def agentpaas_cloud_usage(args, **kwargs):
+    """Show AgentPaaS Cloud usage and limits."""
+    return _run_cloud_tool(["cloud", "usage"])
+
+
+def agentpaas_cloud_images(args, **kwargs):
+    """List admitted AgentPaaS Cloud images."""
+    return _run_cloud_tool(["cloud", "images"])
+
+
+def agentpaas_cloud_secrets_list(args, **kwargs):
+    """List Cloud secret labels without returning secret values."""
+    return _run_cloud_tool(["cloud", "secrets", "list"])
+
+
+def agentpaas_cloud_secrets_push(args, **kwargs):
+    """Push locally stored Cloud secrets by label only."""
+    args = args or {}
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_secrets_push")
+    if sensitive_error:
+        return sensitive_error
+
+    labels = args.get("names")
+    if labels is None and isinstance(args.get("name"), str):
+        labels = [args["name"]]
+    if not isinstance(labels, list) or not labels:
+        return _cloud_tool_error(
+            "agentpaas_cloud_secrets_push: names must contain at least one label"
+        )
+    if any(not isinstance(label, str) or not label.strip() for label in labels):
+        return _cloud_tool_error(
+            "agentpaas_cloud_secrets_push: names must contain non-empty labels"
+        )
+    return _run_cloud_tool(["cloud", "secrets", "push", *labels])
+
+
+def agentpaas_cloud_login(args, **kwargs):
+    """Start browser-based Cloud login; credentials are handled by the CLI."""
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_login")
+    if sensitive_error:
+        return sensitive_error
+    return _run_cloud_tool(["cloud", "login"])

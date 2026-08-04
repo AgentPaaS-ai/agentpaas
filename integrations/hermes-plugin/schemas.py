@@ -39,6 +39,19 @@ TOOL_NAMES = [
     "agentpaas_provenance_show",
     "agentpaas_trust_list",
     "agentpaas_fork",
+    "agentpaas_cloud_whoami",
+    "agentpaas_cloud_push",
+    "agentpaas_cloud_deploy",
+    "agentpaas_cloud_deployments",
+    "agentpaas_cloud_undeploy",
+    "agentpaas_cloud_invoke",
+    "agentpaas_cloud_result",
+    "agentpaas_cloud_logs",
+    "agentpaas_cloud_usage",
+    "agentpaas_cloud_images",
+    "agentpaas_cloud_secrets_list",
+    "agentpaas_cloud_secrets_push",
+    "agentpaas_cloud_login",
 ]
 
 AGENTPAAS_INIT_PROJECT = {
@@ -723,4 +736,152 @@ AGENTPAAS_FORK = {
         "required": ["installed_ref", "target_dir"],
         "additionalProperties": False,
     },
+}
+
+
+AGENTPAAS_CLOUD_WHOAMI = {
+    "name": "agentpaas_cloud_whoami",
+    "description": "Show the authenticated AgentPaaS Cloud account.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_PUSH = {
+    "name": "agentpaas_cloud_push",
+    "description": "Admit a signed packed image to AgentPaaS Cloud. Confirmation gates remain in the skill.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "lock": {"type": "string", "description": "Path to the signed agent.lock file."},
+            "digest": {"type": "string", "description": "Optional image digest override."},
+            "platform": {"type": "string", "description": "Cloud target platform."},
+            "registry_ref": {"type": "string", "description": "Optional existing registry reference."},
+            "skip_registry": {"type": "boolean", "description": "Skip image upload and admit only."},
+            "image": {"type": "string", "description": "Optional local image reference."},
+        },
+        "required": ["lock"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_DEPLOY = {
+    "name": "agentpaas_cloud_deploy",
+    "description": "Deploy an admitted image digest in AgentPaaS Cloud.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "digest": {"type": "string", "description": "Image digest; defaults to latest admitted image."},
+            "instance_type": {"type": "string", "description": "Cloud container preset."},
+        },
+        "required": ["digest"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_DEPLOYMENTS = {
+    "name": "agentpaas_cloud_deployments",
+    "description": "List AgentPaaS Cloud deployments.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_UNDEPLOY = {
+    "name": "agentpaas_cloud_undeploy",
+    "description": "Remove an AgentPaaS Cloud deployment.",
+    "parameters": {
+        "type": "object",
+        "properties": {"deployment_id": {"type": "string", "description": "Deployment identifier."}},
+        "required": ["deployment_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_INVOKE = {
+    "name": "agentpaas_cloud_invoke",
+    "description": "Invoke a stored-token AgentPaaS Cloud deployment and wait for its result by default.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "deployment_id": {"type": "string", "description": "Deployment identifier."},
+            "body": {"type": "string", "description": "Optional JSON request body."},
+            "wait": {"type": "boolean", "default": True, "description": "Wait for a terminal result."},
+            "wait_timeout": {"type": "string", "description": "Optional Go duration, for example 10m or 30s."},
+        },
+        "required": ["deployment_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_RESULT = {
+    "name": "agentpaas_cloud_result",
+    "description": "Fetch the final result object for a Cloud run.",
+    "parameters": {
+        "type": "object",
+        "properties": {"run_id": {"type": "string", "description": "Run identifier."}},
+        "required": ["run_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_LOGS = {
+    "name": "agentpaas_cloud_logs",
+    "description": "Fetch logs for a Cloud run.",
+    "parameters": {
+        "type": "object",
+        "properties": {"run_id": {"type": "string", "description": "Run identifier."}},
+        "required": ["run_id"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_USAGE = {
+    "name": "agentpaas_cloud_usage",
+    "description": "Show AgentPaaS Cloud usage and limits.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_IMAGES = {
+    "name": "agentpaas_cloud_images",
+    "description": "List admitted AgentPaaS Cloud images.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_SECRETS_LIST = {
+    "name": "agentpaas_cloud_secrets_list",
+    "description": "List Cloud secret labels only; values are never returned.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_SECRETS_PUSH = {
+    "name": "agentpaas_cloud_secrets_push",
+    "description": "Push locally stored secrets by label; never accepts a secret value.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "names": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "description": "Secret labels whose values are read from the local store.",
+            },
+        },
+        "required": ["names"],
+        "additionalProperties": False,
+    },
+}
+
+
+AGENTPAAS_CLOUD_LOGIN = {
+    "name": "agentpaas_cloud_login",
+    "description": "Start the existing AgentPaaS Cloud browser login flow. Use the terminal if browser interaction is required.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
 }
