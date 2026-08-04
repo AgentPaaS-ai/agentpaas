@@ -49,7 +49,7 @@ func TestCloudRegistry_SuccessText(t *testing.T) {
 		t.Fatalf("cloud registry: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
 	for _, want := range []string{
-		"Tenant: tenant-cli-1",
+		"Tenant assets (tenant-cli-1):",
 		"Deployments (1):",
 		"weather-agent",
 		"Images (1):",
