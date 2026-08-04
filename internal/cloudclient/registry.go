@@ -9,8 +9,16 @@ import (
 
 // RegistryResponse is the response from GET /v1/registry.
 type RegistryResponse struct {
-	TenantAssets []RegistryAsset  `json:"tenant_assets"`
-	Platform     RegistryPlatform `json:"platform"`
+	TenantID string           `json:"tenant_id"`
+	Assets   RegistryAssets   `json:"assets"`
+	Platform RegistryPlatform `json:"platform"`
+}
+
+// RegistryAssets contains the tenant-owned assets grouped by resource type.
+type RegistryAssets struct {
+	Deployments []RegistryAsset  `json:"deployments"`
+	Images      []RegistryAsset  `json:"images"`
+	Secrets     []RegistrySecret `json:"secrets"`
 }
 
 // RegistryAsset is an asset owned by the authenticated tenant.
@@ -24,6 +32,12 @@ type RegistryAsset struct {
 	ImageDigest string `json:"image_digest,omitempty"`
 	RegistryRef string `json:"registry_ref,omitempty"`
 	CreatedAt   string `json:"created_at,omitempty"`
+}
+
+// RegistrySecret is a tenant secret label returned by the registry endpoint.
+// Secret values are never part of the registry response.
+type RegistrySecret struct {
+	Label string `json:"label"`
 }
 
 // RegistryPlatform contains platform-managed registry data.
