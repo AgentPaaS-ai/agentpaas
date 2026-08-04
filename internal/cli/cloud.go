@@ -288,7 +288,9 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 
 // newCloudInvokeTokenCmd creates the `agentpaas cloud invoke-token` command.
 func newCloudInvokeTokenCmd() *cobra.Command {
-	return &cobra.Command{
+	var storeOutput bool
+
+	cmd := &cobra.Command{
 		Use:   "invoke-token <deployment_id>",
 		Short: "Mint a deployment invoke token",
 		Long: `Mint a token that can invoke a deployment without exposing the
@@ -323,6 +325,25 @@ The invoke token is displayed once. Store it securely and use it with
 				return fmt.Errorf("cloud invoke-token: store token: %w", err)
 			}
 
+			if storeOutput {
+				stored := struct {
+					DeploymentID      string `json:"deployment_id"`
+					InvokeTokenPrefix string `json:"invoke_token_prefix"`
+					Message           string `json:"message"`
+				}{
+					DeploymentID:      resp.DeploymentID,
+					InvokeTokenPrefix: resp.InvokeTokenPrefix,
+					Message:           "Invoke token stored securely.",
+				}
+				if jsonOutput(cmd) {
+					return printTextOrJSON(true, stored, nil)
+				}
+				out := cmd.OutOrStdout()
+				_, _ = fmt.Fprintf(out, "Invoke token stored for %s.\n", stored.DeploymentID)
+				_, _ = fmt.Fprintf(out, "Prefix: %s\n", stored.InvokeTokenPrefix)
+				return nil
+			}
+
 			if jsonOutput(cmd) {
 				return printTextOrJSON(true, resp, nil)
 			}
@@ -334,6 +355,8 @@ The invoke token is displayed once. Store it securely and use it with
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&storeOutput, "store", false, "Store the token and print only its prefix")
+	return cmd
 }
 
 // newCloudInvokeCmd creates the `agentpaas cloud invoke` command.
