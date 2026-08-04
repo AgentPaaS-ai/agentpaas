@@ -346,6 +346,21 @@ Before `agentpaas_pack`, verify:
 
 If ANY are missing, do NOT pack — ask only for the missing piece.
 
+### Hermes Cloud Tools
+
+The plugin exposes the cloud CLI through these structured tools: `agentpaas_cloud_whoami`,
+`agentpaas_cloud_push`, `agentpaas_cloud_deploy`, `agentpaas_cloud_deployments`,
+`agentpaas_cloud_undeploy`, `agentpaas_cloud_invoke`, `agentpaas_cloud_result`,
+`agentpaas_cloud_logs`, `agentpaas_cloud_usage`, `agentpaas_cloud_images`,
+`agentpaas_cloud_secrets_list`, `agentpaas_cloud_secrets_push`, and
+`agentpaas_cloud_login`. They call `agentpaas cloud ... --json` and return the
+CLI's structured response; `agentpaas_cloud_invoke` waits for a terminal result
+by default. Cloud login has no token argument and opens the CLI browser flow;
+cloud secret push accepts labels only and reads values from the local secure store.
+
+Treat push, deploy, undeploy, and invoke as paid or state-changing operations:
+explain the plan and obtain explicit user confirmation before calling them.
+
 ### Cloud Deploy and Run (MANDATORY ORDER AND CONSENT GATES)
 
 Cloud operations are side effects and paid cloud infrastructure. Never push

@@ -61,6 +61,30 @@ gRPC status codes used by handlers:
 
 **Typed control errors:** many B26 responses embed `TypedControlError` in the **response body** (gRPC OK) so callers branch on `code` / `code_name` without string-matching. Admission outcomes use `AdmissionOutcomeCode` on `InvokeDeploymentResponse`.
 
+### Cloud CLI exit codes and JSON errors
+
+Cloud CLI commands use semantic process exit codes. Exit code `0` means success;
+`2` means quota or trial exhaustion; `3` means authentication failure; `4`
+means the requested resource was not found; `5` means cloud capacity is
+unavailable; `6` means a conflict such as an already-running invocation; and
+`1` means another cloud or local CLI failure.
+
+With `--json`, a cloud command failure writes one JSON object to stdout using
+this stable envelope (fields with no value are emitted as empty values):
+
+```json
+{
+  "error": "quota_exceeded",
+  "reason": "trial_expired",
+  "message": "Cloud trial has expired",
+  "retry_after_sec": 0
+}
+```
+
+Callers should branch on `error` and `reason`, use the process exit code for
+shell control flow, and treat `message` as display text rather than a stable
+machine signal.
+
 ### Operator contract
 
 Operator methods (validate, summarize, explain, recommend, timeline, next-action) return structured fields with:
