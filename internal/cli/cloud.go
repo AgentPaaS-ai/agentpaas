@@ -1073,22 +1073,30 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			}
 
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Tenant assets (%d):\n", len(registry.TenantAssets))
-			if len(registry.TenantAssets) == 0 {
+			_, _ = fmt.Fprintf(out, "Tenant: %s\n", registry.TenantID)
+
+			_, _ = fmt.Fprintf(out, "Deployments (%d):\n", len(registry.Assets.Deployments))
+			if len(registry.Assets.Deployments) == 0 {
 				_, _ = fmt.Fprintln(out, "  (none)")
 			}
-			for _, asset := range registry.TenantAssets {
-				_, _ = fmt.Fprintf(out, "  %s", asset.Name)
-				if asset.Kind != "" {
-					_, _ = fmt.Fprintf(out, " [%s]", asset.Kind)
-				}
-				if asset.Version != "" {
-					_, _ = fmt.Fprintf(out, " @%s", asset.Version)
-				}
-				if asset.Status != "" {
-					_, _ = fmt.Fprintf(out, " (%s)", asset.Status)
-				}
-				_, _ = fmt.Fprintln(out)
+			for _, asset := range registry.Assets.Deployments {
+				printCloudRegistryAsset(out, asset)
+			}
+
+			_, _ = fmt.Fprintf(out, "Images (%d):\n", len(registry.Assets.Images))
+			if len(registry.Assets.Images) == 0 {
+				_, _ = fmt.Fprintln(out, "  (none)")
+			}
+			for _, asset := range registry.Assets.Images {
+				printCloudRegistryAsset(out, asset)
+			}
+
+			_, _ = fmt.Fprintf(out, "Secrets (%d):\n", len(registry.Assets.Secrets))
+			if len(registry.Assets.Secrets) == 0 {
+				_, _ = fmt.Fprintln(out, "  (none)")
+			}
+			for _, secret := range registry.Assets.Secrets {
+				_, _ = fmt.Fprintf(out, "  %s\n", secret.Label)
 			}
 
 			_, _ = fmt.Fprintf(out, "Platform MCP catalog (%d):\n", len(registry.Platform.MCPCatalog))
@@ -1108,6 +1116,33 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			return nil
 		},
 	}
+}
+
+func printCloudRegistryAsset(out io.Writer, asset cloudclient.RegistryAsset) {
+	label := asset.Name
+	if label == "" {
+		label = asset.ID
+	}
+	if label == "" {
+		label = asset.ImageDigest
+	}
+	_, _ = fmt.Fprintf(out, "  %s", label)
+	if asset.Kind != "" {
+		_, _ = fmt.Fprintf(out, " [%s]", asset.Kind)
+	}
+	if asset.Version != "" {
+		_, _ = fmt.Fprintf(out, " @%s", asset.Version)
+	}
+	if asset.Status != "" {
+		_, _ = fmt.Fprintf(out, " (%s)", asset.Status)
+	}
+	if asset.ImageDigest != "" && label != asset.ImageDigest {
+		_, _ = fmt.Fprintf(out, " digest=%s", asset.ImageDigest)
+	}
+	if asset.RegistryRef != "" {
+		_, _ = fmt.Fprintf(out, " registry=%s", asset.RegistryRef)
+	}
+	_, _ = fmt.Fprintln(out)
 }
 
 // newCloudSecretsCmd creates the `agentpaas cloud secrets` command.
