@@ -27,6 +27,7 @@ type DeploymentDeleteResult struct {
 // CreateDeploymentRequest is the body for POST /v1/deployments.
 type CreateDeploymentRequest struct {
 	ImageDigest  string  `json:"image_digest"`
+	Kind         string  `json:"kind,omitempty"`
 	SlotID       *string `json:"slot_id,omitempty"`
 	InstanceType *string `json:"instance_type,omitempty"`
 }
