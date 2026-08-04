@@ -338,10 +338,17 @@ flow and slash commands.
 ## Run in the cloud
 
 Cloud is optional and browser-first. After your provider gives you a tenant
-claim link, use this six-command path:
+claim link:
+
+1. Open the claim link in a browser (sets the session cookie on the API host).
+2. Optional: open the skinny dashboard on the same API origin (`/` or
+   `/dashboard/`) to verify tokens, secret labels, usage, and agents. Until
+   custom DNS is live, that origin is the workers.dev API URL your provider
+   gave you.
+3. Then:
 
 ```bash
-agentpaas cloud login                 # open the claim link in a browser first
+agentpaas cloud login                 # approve CLI access after the claim link
 agentpaas pack . --target linux/amd64
 agentpaas cloud push --lock "$LOCK"
 agentpaas cloud deploy latest
@@ -349,9 +356,9 @@ agentpaas cloud invoke "$DEPLOYMENT_ID" --body '{"query":"hello"}'
 agentpaas cloud result "$RUN_ID"
 ```
 
-Run `agentpaas cloud login` first; if you get **"Open your claim link first"**,
-ask your provider for your claim link (or use `--token-stdin` with the token
-they issued). See the [full cloud runbook](customer/golden-path.md).
+If you get **"Open your claim link first"**, finish step 1 (or use
+`--token-stdin` with the token they issued). See the
+[full cloud runbook](customer/golden-path.md).
 
 ## Next steps
 
