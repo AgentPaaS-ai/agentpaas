@@ -71,7 +71,7 @@ func TestCloudClient_GetAudit_QueryAndTypedError(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"events": []map[string]any{{"seq": 7, "event_type": "run_started"}},
+			"events":      []map[string]any{{"seq": 7, "event_type": "run_started"}},
 			"next_cursor": "cursor-2",
 		})
 	}))
