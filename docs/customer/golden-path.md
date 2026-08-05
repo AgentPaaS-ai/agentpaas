@@ -1,5 +1,13 @@
 # AgentPaaS Cloud — short golden path (terminal)
 
+## Automated
+
+For the founder-cold CLI equivalent of install → build a friendly LLM weather
+agent → cloud deploy → invoke → undeploy, run `make golden-founder-cold`; run
+`make golden-edge` for today's authentication, amd64, binding, undeploy, and
+slot-reuse regressions. See `docs/customer/golden-path-automated.md` for
+prerequisites and project override details.
+
 Copy each block top to bottom. Replace nothing except secrets when prompted.
 Do not commit tokens.
 
