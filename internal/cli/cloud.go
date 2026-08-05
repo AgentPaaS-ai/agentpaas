@@ -243,7 +243,7 @@ func trialLimitMessage(resp *cloudclient.UsageResponse) string {
 		return "Trial period ended. Request a new trial or convert to a paid plan at https://agentpaas.ai (or email contact@agentpaas.ai)."
 	}
 	if (resp.CPUMinutesRemaining != nil && *resp.CPUMinutesRemaining <= 0) ||
-		(resp.AgentLimit > 0 && resp.AgentsUsed >= resp.AgentLimit) {
+		resp.AgentsUsed >= resp.AgentLimit {
 		return "Trial limits crossed. Request a new trial or convert to a paid plan at https://agentpaas.ai (or email contact@agentpaas.ai)."
 	}
 	return ""
