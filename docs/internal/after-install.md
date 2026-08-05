@@ -4,16 +4,18 @@ The plugin is installed and enabled. But the agentpaas_* tools will NOT
 work until YOU complete the steps below. DO NOT relay these steps to
 the user — actually execute them yourself using your terminal tool.
 
-**CRITICAL: Do NOT run `hermes gateway restart`.** The Hermes CLI prints
-"Restart the gateway for the plugin to take effect: hermes gateway restart"
-after this message — IGNORE THAT. The gateway restart takes 30+ seconds
-and is NOT needed. The plugin's toolset registers live in the current
-session (no restart — see Step 4). Do not run gateway restart. Do not run
-any command containing the word "restart".
+**CRITICAL: Complete filesystem installation before continuing.** Run the
+completer and verification from the installed plugin tree:
 
-**CRITICAL: Do NOT clone the AgentPaaS repo.** You do NOT need to read
-the source code, Makefile, go.mod, or README. Everything you need is in
-this file. Do NOT `git clone` anything. Do NOT read dev files.
+```bash
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>
+```
+
+If verification exits non-zero, setup is not complete. Fix the reported state
+and rerun both commands. Filesystem changes do not require a restart, but
+slash commands and tools require one session reopen after this gate. Do not
+reinstall and do not ask for API keys yet.
 
 ## STEP 0 — VERIFY PREREQUISITES (DO NOT TELL THE USER TO DO IT)
 
@@ -113,19 +115,16 @@ instructions. YOU run it.
 
 ## STEP 4 — TELL THE USER SETUP IS COMPLETE (only this step is for the user)
 
-No restart is required — the plugin registers its toolset in the current
-session (verified 2026-08-03, Hermes v0.19.1). Tell the user:
+After the verification command exits 0, filesystem installation is complete.
+Slash commands and tools load only after one session reopen. Tell the user:
 
-"AgentPaaS setup complete. You can build agents now — no restart needed."
+"AgentPaaS install finished on disk. Reopen this Hermes session once so slash
+commands load (`/quit`, then `hermes -p <profile>`). Do NOT reinstall. Do NOT
+ask for API keys yet. After reopen, run `/agentpaas-doctor`."
 
-If the agentpaas tools do not appear, restart once (`/quit`, then reopen the
-profile) or reinstall the plugin with `hermes plugins install
-https://github.com/AgentPaaS-ai/agentpaas --force --enable`.
-
-**STOP HERE.** Say only the sentence above. Do NOT offer to build, pack,
-run, or test any agent. Do NOT say "when you're ready to build" or "just
-ask and I'll load the skill." Do NOT run `make test` or any Go commands.
-The setup is DONE.
+**STOP HERE.** Do NOT offer to build, pack, run, or test an agent. Do NOT ask
+for OpenRouter or other LLM keys during setup. Keys are requested only when
+building an agent that needs them.
 
 ## STEP 5 — AFTER RESTART, VERIFY
 

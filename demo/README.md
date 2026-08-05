@@ -38,12 +38,16 @@ In Hermes, tell it:
 
 > Install from https://github.com/AgentPaaS-ai/agentpaas
 
-Hermes installs the plugin and registers the toolset live — no restart needed.
-If the agentpaas tools don't appear, restart once:
+After install, complete the filesystem state and verify it before reopening:
+
+```bash
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>
 ```
-/quit
-hermes
-```
+
+Filesystem state completes without a restart. Slash commands and
+`agentpaas_*` tools require one session reopen because Hermes loads plugins at
+session start. Do not reinstall and do not ask for API keys yet.
 
 ### 2. Store your OpenRouter API key
 
