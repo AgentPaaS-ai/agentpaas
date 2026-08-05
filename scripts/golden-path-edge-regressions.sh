@@ -10,22 +10,32 @@ SECOND_DEP=""
 FAILURES=0
 ADMIN_SECRET="${ADMIN_SECRET:-}"
 ADMIN_TENANT=""
-ADMIN_ORIGINAL_FILE=""
 ADMIN_CPU_ORIGINAL=""
 ADMIN_CPU_LIMIT=""
 ADMIN_TRIAL_ORIGINAL=""
+ADMIN_AGENTS_USED=""
 ADMIN_AGENT_LIMIT_ORIGINAL=""
+ADMIN_CPU_PATCHED=0
+ADMIN_TRIAL_PATCHED=0
+ADMIN_AGENT_LIMIT_PATCHED=0
 
 pass() { printf 'PASS: %s\n' "$1"; }
 fail_case() { printf 'FAIL: %s\n' "$1" >&2; FAILURES=$((FAILURES + 1)); }
 cleanup() {
   if [[ -n "$ADMIN_TENANT" && -n "$ADMIN_SECRET" ]]; then
-    [[ -n "$ADMIN_CPU_ORIGINAL" ]] && admin_patch "{\"cpu_minutes_used\":$ADMIN_CPU_ORIGINAL}" || true
-    [[ -n "$ADMIN_TRIAL_ORIGINAL" ]] && admin_patch "{\"trial_expires_at\":\"$ADMIN_TRIAL_ORIGINAL\"}" || true
-    [[ -n "$ADMIN_AGENT_LIMIT_ORIGINAL" ]] && admin_patch "{\"agent_limit\":$ADMIN_AGENT_LIMIT_ORIGINAL}" || true
-  fi
-  if [[ -n "$ADMIN_ORIGINAL_FILE" ]]; then
-    rm -f "$ADMIN_ORIGINAL_FILE"
+    if [[ "$ADMIN_CPU_PATCHED" == 1 && -n "$ADMIN_CPU_ORIGINAL" ]]; then
+      admin_patch "{\"cpu_minutes_used\":$ADMIN_CPU_ORIGINAL}" || true
+    fi
+    if [[ "$ADMIN_TRIAL_PATCHED" == 1 ]]; then
+      ADMIN_TRIAL_RESTORE="$ADMIN_TRIAL_ORIGINAL"
+      if [[ -z "$ADMIN_TRIAL_RESTORE" ]]; then
+        ADMIN_TRIAL_RESTORE=$(python3 -c 'from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ"))')
+      fi
+      admin_patch "{\"trial_expires_at\":\"$ADMIN_TRIAL_RESTORE\"}" || true
+    fi
+    if [[ "$ADMIN_AGENT_LIMIT_PATCHED" == 1 && -n "$ADMIN_AGENT_LIMIT_ORIGINAL" ]]; then
+      admin_patch "{\"agent_limit\":$ADMIN_AGENT_LIMIT_ORIGINAL}" || true
+    fi
   fi
   if [[ -n "$DEP" ]]; then
     agentpaas cloud undeploy "$DEP" >/dev/null 2>&1 || true
@@ -47,31 +57,27 @@ admin_prepare() {
   if [[ -z "$ADMIN_SECRET" ]] && command -v security >/dev/null 2>&1; then
     ADMIN_SECRET=$(security find-generic-password -s agentpaas-cloud-admin-secret -w 2>/dev/null) || ADMIN_SECRET=""
   fi
-  [[ -n "$ADMIN_SECRET" ]] || return 1
-  ADMIN_TENANT=$(agentpaas cloud whoami | awk -F': ' '/^Tenant:/{print $2; exit}')
+  [[ -n "$ADMIN_SECRET" ]] || return 2
+  ADMIN_TENANT=$(agentpaas cloud whoami | awk -F': ' '/^Tenant:/{print $2; exit}') || return 1
   [[ -n "$ADMIN_TENANT" ]] || return 1
-  ADMIN_ORIGINAL_FILE=$(mktemp)
-  local status
-  status=$(curl -sS --max-time 15 -o "$ADMIN_ORIGINAL_FILE" -w '%{http_code}' \
-    -H "X-Admin-Secret: $ADMIN_SECRET" "$API/v1/admin/tenants/$ADMIN_TENANT") || return 1
-  [[ "$status" == 2* ]] || return 1
-  read -r ADMIN_CPU_ORIGINAL ADMIN_CPU_LIMIT ADMIN_TRIAL_ORIGINAL ADMIN_AGENT_LIMIT_ORIGINAL < <(
-    python3 - "$ADMIN_ORIGINAL_FILE" <<'PY'
+  local usage_json
+  usage_json=$(agentpaas cloud usage --json) || return 1
+  read -r ADMIN_CPU_ORIGINAL ADMIN_CPU_LIMIT ADMIN_TRIAL_ORIGINAL ADMIN_AGENTS_USED ADMIN_AGENT_LIMIT_ORIGINAL < <(
+    python3 -c '
 import json
 import sys
 
-with open(sys.argv[1], encoding="utf-8") as handle:
-    payload = json.load(handle)
-tenant = payload.get("tenant", payload)
+payload = json.load(sys.stdin)
 print(
-    tenant.get("cpu_minutes_used", ""),
-    tenant.get("cpu_minute_limit", ""),
-    tenant.get("trial_expires_at", ""),
-    tenant.get("agent_limit", ""),
+    payload.get("cpu_minutes_used", ""),
+    payload.get("cpu_minute_limit", ""),
+    payload.get("trial_expires_at", ""),
+    payload.get("agents_used", ""),
+    payload.get("agent_limit", ""),
 )
-PY
-  )
-  [[ -n "$ADMIN_CPU_ORIGINAL" && -n "$ADMIN_CPU_LIMIT" && -n "$ADMIN_TRIAL_ORIGINAL" && -n "$ADMIN_AGENT_LIMIT_ORIGINAL" ]]
+' <<<"$usage_json"
+  ) || return 1
+  [[ -n "$ADMIN_CPU_ORIGINAL" && -n "$ADMIN_CPU_LIMIT" && -n "$ADMIN_AGENTS_USED" && -n "$ADMIN_AGENT_LIMIT_ORIGINAL" ]]
 }
 
 command -v agentpaas >/dev/null 2>&1 || { printf 'FAIL: agentpaas is not on PATH\n' >&2; exit 1; }
@@ -198,6 +204,7 @@ fi
 printf 'Case 10: CPU exhausted customer message\n'
 if admin_prepare; then
   if admin_patch "{\"cpu_minutes_used\":$ADMIN_CPU_LIMIT}"; then
+    ADMIN_CPU_PATCHED=1
     CPU_LIMIT_OUT=$(agentpaas cloud invoke "$SECOND_DEP" --body '{"query":"What is the weather in Folsom?"}' 2>&1) && CPU_LIMIT_RC=0 || CPU_LIMIT_RC=$?
     if [[ "$CPU_LIMIT_RC" -ne 0 ]] && grep -Eqi 'Trial limits crossed|convert to a paid|quota|cpu minutes' <<<"$CPU_LIMIT_OUT"; then
       pass "CPU exhaustion explains trial limit"
@@ -205,31 +212,72 @@ if admin_prepare; then
       fail_case "CPU exhaustion did not return a trial/quota message"
     fi
   else
-    printf 'SKIP: Case 10 admin PATCH unavailable\n'
+    fail_case "CPU exhaustion admin PATCH failed"
   fi
 else
-  printf 'SKIP: Case 10 ADMIN_SECRET or admin API unavailable\n'
+  ADMIN_PREPARE_RC=$?
+  if [[ "$ADMIN_PREPARE_RC" -eq 2 ]]; then
+    printf 'SKIP: Case 10 ADMIN_SECRET unavailable\n'
+  else
+    fail_case "could not prepare tenant usage baseline for admin PATCH"
+  fi
 fi
 
 printf 'Case 11: trial expired customer message\n'
-if [[ -n "$ADMIN_TENANT" && -n "$ADMIN_SECRET" && -n "$ADMIN_TRIAL_ORIGINAL" ]]; then
-  if admin_patch "{\"cpu_minutes_used\":$ADMIN_CPU_ORIGINAL}" && \
-     admin_patch '{"trial_expires_at":"1970-01-01T00:00:00Z"}'; then
+if [[ -n "$ADMIN_TENANT" && -n "$ADMIN_SECRET" ]]; then
+  CPU_RESTORED=1
+  if [[ "$ADMIN_CPU_PATCHED" == 1 ]]; then
+    if admin_patch "{\"cpu_minutes_used\":$ADMIN_CPU_ORIGINAL}"; then
+      ADMIN_CPU_PATCHED=0
+    else
+      CPU_RESTORED=0
+      fail_case "could not restore CPU usage before Case 11"
+    fi
+  fi
+  ADMIN_TRIAL_PATCHED=1
+  if [[ "$CPU_RESTORED" == 1 ]] && admin_patch '{"trial_expires_at":"1970-01-01T00:00:00Z"}'; then
     EXPIRED_OUT=$(agentpaas cloud invoke "$SECOND_DEP" --body '{"query":"What is the weather in Folsom?"}' 2>&1) && EXPIRED_RC=0 || EXPIRED_RC=$?
     if [[ "$EXPIRED_RC" -ne 0 ]] && grep -Eqi 'Trial period ended|trial expired' <<<"$EXPIRED_OUT"; then
       pass "expired trial explains trial period ended"
     else
       fail_case "expired trial did not return Trial period ended"
     fi
+    ADMIN_TRIAL_RESTORE="$ADMIN_TRIAL_ORIGINAL"
+    if [[ -z "$ADMIN_TRIAL_RESTORE" ]]; then
+      ADMIN_TRIAL_RESTORE=$(python3 -c 'from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ"))')
+    fi
+    if admin_patch "{\"trial_expires_at\":\"$ADMIN_TRIAL_RESTORE\"}"; then
+      ADMIN_TRIAL_PATCHED=0
+    else
+      fail_case "could not restore trial expiration after Case 11"
+    fi
   else
-    printf 'SKIP: Case 11 admin PATCH unavailable\n'
+    fail_case "trial expiration admin PATCH failed"
   fi
 else
-  printf 'SKIP: Case 11 ADMIN_SECRET or admin API unavailable\n'
+  if [[ -z "$ADMIN_SECRET" ]]; then
+    printf 'SKIP: Case 11 ADMIN_SECRET unavailable\n'
+  else
+    fail_case "admin tenant usage baseline unavailable for Case 11"
+  fi
 fi
 
 printf 'Case 12: agent limit customer message\n'
-printf 'SKIP: Case 12 optional heavy quota mutation was not run\n'
+if [[ -n "$ADMIN_TENANT" && -n "$ADMIN_SECRET" ]]; then
+  if admin_patch "{\"agent_limit\":$ADMIN_AGENTS_USED}"; then
+    ADMIN_AGENT_LIMIT_PATCHED=1
+    AGENT_LIMIT_OUT=$(agentpaas cloud deploy latest 2>&1) && AGENT_LIMIT_RC=0 || AGENT_LIMIT_RC=$?
+    if [[ "$AGENT_LIMIT_RC" -ne 0 ]] && grep -Eqi 'Trial limits crossed|convert to a paid|agent limit|quota|limit' <<<"$AGENT_LIMIT_OUT"; then
+      pass "agent limit exhaustion explains deployment rejection"
+    else
+      fail_case "agent limit exhaustion did not reject deployment"
+    fi
+  else
+    fail_case "agent limit admin PATCH failed"
+  fi
+else
+  printf 'SKIP: Case 12 ADMIN_SECRET unavailable\n'
+fi
 
 if [[ "$FAILURES" -ne 0 ]]; then
   printf 'NO-GO: %d edge regression(s) failed\n' "$FAILURES" >&2
