@@ -127,6 +127,7 @@ section "usage"
 agentpaas cloud usage >/dev/null
 
 section "undeploy"
+MAIN_DEP="$DEP"
 agentpaas cloud undeploy "$DEP"
 DEPLOYMENTS=$(agentpaas cloud deployments)
 if grep -q "$DEP" <<<"$DEPLOYMENTS"; then
@@ -155,7 +156,7 @@ mkdir -p "$EVIDENCE_DIR"
 EXCERPT=$(printf '%s' "$FINAL_OUTPUT" | tr '\n' ' ' | cut -c1-500)
 {
   printf '# Founder-cold automated golden path\n\n'
-  printf -- '- Result: GO\n- API: %s\n- Project: %s\n- Deployment: %s\n- Run ID: %s\n- Final output excerpt: %s\n' "$API" "$PROJECT" "${DEP:-undeployed}" "$RUN" "$EXCERPT"
+  printf -- '- Result: GO\n- API: %s\n- Project: %s\n- Deployment: %s\n- Run ID: %s\n- Final output excerpt: %s\n' "$API" "$PROJECT" "$MAIN_DEP" "$RUN" "$EXCERPT"
 } > "$EVIDENCE"
 printf '\nEvidence: %s\n' "$EVIDENCE"
 printf 'GO founder-cold golden path\n'
