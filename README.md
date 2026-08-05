@@ -98,8 +98,6 @@ is in the [security features doc](docs/security-features.md#red-team-smoke).
   colima start
   ```
 
-- An LLM API key (OpenRouter, OpenAI, xAI, Anthropic, …). Store it with
-  `agentpaas secret add`. It never goes into the Hermes conversation.
 - macOS (Apple Silicon or Intel)
 
 ## Install
@@ -129,7 +127,6 @@ colima start
 brew tap AgentPaaS-ai/homebrew-tap
 brew install agentpaas
 xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux
-agentpaas daemon start
 agentpaas doctor
 agentpaas version
 ```
@@ -151,23 +148,33 @@ hermes
 
 ### Step 1: Install the AgentPaaS plugin
 
-Tell Hermes:
+Install the plugin from GitHub with the enable flag:
 
-> Install from https://github.com/AgentPaaS-ai/agentpaas
+```bash
+hermes plugins install https://github.com/AgentPaaS-ai/agentpaas --force --enable
+```
 
-Use `hermes plugins install` from GitHub. Do not use `make install-plugin`
-from a local clone. That skips after-install work (skill pointer, toolset
-registration), and a normal user does not have the source repo.
+Then complete and verify the filesystem state. Both commands are a hard gate;
+fix any reported failure before reopening Hermes:
 
-No restart needed — the plugin registers its toolset in the current session.
-If the agentpaas tools don't appear, restart once:
+```bash
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>
+```
+
+Reopen Hermes exactly once so it loads the slash commands and tools:
 
 ```
 /quit
 hermes
 ```
 
-### Step 2: Store your API key
+After reopening, run `/agentpaas-doctor`.
+
+### Step 2: Configure the build agent
+
+An LLM API key is not an install prerequisite. When you are ready to build an
+agent, store the selected provider key in a separate terminal:
 
 Keys never go through the Hermes chat. They go into macOS Keychain. In a
 separate terminal:
