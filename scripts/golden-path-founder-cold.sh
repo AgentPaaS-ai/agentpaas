@@ -11,6 +11,8 @@ SECOND_DEP=""
 MAIN_DEP=""
 RUN=""
 FINAL_OUTPUT=""
+CPU_BEFORE=""
+CPU_AFTER=""
 STATUS="NO-GO"
 EVIDENCE_DIR="$REPO_ROOT/docs/owa-records"
 TIMESTAMP=$(date +%Y%m%d-%H%M)
@@ -32,7 +34,7 @@ write_evidence() {
   EXCERPT=$(printf '%s' "$FINAL_OUTPUT" | tr '\n' ' ' | cut -c1-500)
   {
     printf '# Founder-cold automated golden path\n\n'
-    printf -- '- Result: %s\n- API: %s\n- Project: %s\n- Deployment: %s\n- Run ID: %s\n- Final output excerpt: %s\n' "$STATUS" "$API" "$PROJECT" "$MAIN_DEP" "$RUN" "$EXCERPT"
+    printf -- '- Result: %s\n- API: %s\n- Project: %s\n- Deployment: %s\n- Run ID: %s\n- CPU minutes used before invoke: %s\n- CPU minutes used after result: %s\n- Final output excerpt: %s\n' "$STATUS" "$API" "$PROJECT" "$MAIN_DEP" "$RUN" "${CPU_BEFORE:-unavailable}" "${CPU_AFTER:-unavailable}" "$EXCERPT"
   } > "$EVIDENCE"
   printf '\nEvidence: %s\n' "$EVIDENCE"
 }
@@ -120,6 +122,10 @@ printf '%s\n' "$BINDINGS"
 grep -q 'openrouter-key' <<<"$BINDINGS" || fail "deployment bindings are empty or missing openrouter-key"
 
 section "invoke"
+USAGE_BEFORE=$(agentpaas cloud usage)
+CPU_BEFORE=$(awk -F': |/' '/^CPU minutes used:/{print $2; exit}' <<<"$USAGE_BEFORE")
+[[ -n "$CPU_BEFORE" ]] || fail "could not parse CPU minutes used before invoke"
+printf 'CPU minutes used before invoke: %s\n' "$CPU_BEFORE"
 agentpaas cloud invoke-token "$DEP" >/dev/null
 INV_OUT=$(agentpaas cloud invoke "$DEP" --body "$BODY")
 printf '%s\n' "$INV_OUT"
@@ -133,6 +139,20 @@ printf '%s\n' "$RESULT_OUT"
 grep -q '^Status: succeeded$' <<<"$RESULT_OUT" || fail "cloud result did not succeed"
 FINAL_OUTPUT=$(awk '/^Final output:/{seen=1; next} /^Artifacts:/{seen=0} seen {print}' <<<"$RESULT_OUT" | sed '/^[[:space:]]*$/d')
 [[ -n "$FINAL_OUTPUT" && "$FINAL_OUTPUT" != "null" ]] || fail "cloud result final_output is empty or null"
+USAGE_AFTER=$(agentpaas cloud usage)
+CPU_AFTER=$(awk -F': |/' '/^CPU minutes used:/{print $2; exit}' <<<"$USAGE_AFTER")
+[[ -n "$CPU_AFTER" ]] || fail "could not parse CPU minutes used after result"
+printf 'CPU minutes used after result: %s\n' "$CPU_AFTER"
+if ! python3 - "$CPU_BEFORE" "$CPU_AFTER" <<'PY'
+import sys
+before = float(sys.argv[1])
+after = float(sys.argv[2])
+if after < before:
+    raise SystemExit(1)
+PY
+then
+  fail "CPU minutes used decreased after successful result: before=$CPU_BEFORE after=$CPU_AFTER"
+fi
 
 section "logs (best-effort)"
 agentpaas cloud logs "$RUN" || printf 'NOTE: cloud logs unavailable; continuing\n'
