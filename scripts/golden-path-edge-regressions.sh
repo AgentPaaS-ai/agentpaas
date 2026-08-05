@@ -18,10 +18,20 @@ ADMIN_AGENT_LIMIT_ORIGINAL=""
 ADMIN_CPU_PATCHED=0
 ADMIN_TRIAL_PATCHED=0
 ADMIN_AGENT_LIMIT_PATCHED=0
+CRON_CONFIGURED=0
+CRON_DEP=""
+CRON_TOKEN="${AGENTPAAS_CLOUD_API_TOKEN:-}"
 
 pass() { printf 'PASS: %s\n' "$1"; }
 fail_case() { printf 'FAIL: %s\n' "$1" >&2; FAILURES=$((FAILURES + 1)); }
 cleanup() {
+  if [[ "$CRON_CONFIGURED" == 1 && -n "$CRON_DEP" && -n "$CRON_TOKEN" ]]; then
+    curl -fsS --max-time 15 -X PUT \
+      -H "Authorization: Bearer $CRON_TOKEN" \
+      -H 'Content-Type: application/json' \
+      --data '{"expr":"every_1m","enabled":false}' \
+      "$API/v1/deployments/$CRON_DEP/cron" >/dev/null || true
+  fi
   if [[ -n "$ADMIN_TENANT" && -n "$ADMIN_SECRET" ]]; then
     if [[ "$ADMIN_CPU_PATCHED" == 1 && -n "$ADMIN_CPU_ORIGINAL" ]]; then
       admin_patch "{\"cpu_minutes_used\":$ADMIN_CPU_ORIGINAL}" || true
@@ -277,6 +287,57 @@ if [[ -n "$ADMIN_TENANT" && -n "$ADMIN_SECRET" ]]; then
   fi
 else
   printf 'SKIP: Case 12 ADMIN_SECRET unavailable\n'
+fi
+
+printf 'Case 13: cron tick smoke\n'
+if [[ -z "$ADMIN_SECRET" ]]; then
+  printf 'SKIP: Case 13 ADMIN_SECRET unavailable (cannot authenticate admin cron tick)\n'
+elif [[ -z "$CRON_TOKEN" ]]; then
+  printf 'SKIP: Case 13 AGENTPAAS_CLOUD_API_TOKEN unavailable (cannot configure tenant cron API)\n'
+elif [[ -z "$SECOND_DEP" ]]; then
+  fail_case "cron smoke has no deployment from Case 9"
+else
+  CRON_DEP="$SECOND_DEP"
+  if agentpaas cloud secrets push openrouter-key >/dev/null 2>&1 && \
+     agentpaas cloud secrets bind "$CRON_DEP" openrouter-key --as bearer --host openrouter.ai >/dev/null 2>&1; then
+    CRON_BEFORE=$(curl -fsS --max-time 15 \
+      -H "Authorization: Bearer $CRON_TOKEN" "$API/v1/runs") || CRON_BEFORE='[]'
+    CRON_BEFORE_IDS=$(python3 -c 'import json,sys; print(" ".join(r.get("id", "") for r in json.load(sys.stdin)))' <<<"$CRON_BEFORE")
+    CRON_CONFIGURED=1
+    CRON_CONFIG=$(curl -fsS --max-time 15 -X PUT \
+      -H "Authorization: Bearer $CRON_TOKEN" \
+      -H 'Content-Type: application/json' \
+      --data '{"expr":"every_1m","enabled":true}' \
+      "$API/v1/deployments/$CRON_DEP/cron") || CRON_CONFIG=''
+    if [[ -z "$CRON_CONFIG" ]]; then
+      fail_case "cron configuration failed"
+    else
+      CRON_TICK=$(curl -fsS --max-time 15 -X POST \
+        -H "X-Admin-Secret: $ADMIN_SECRET" \
+        "$API/v1/admin/cron/tick") || CRON_TICK=''
+      if [[ -z "$CRON_TICK" ]]; then
+        fail_case "admin cron tick failed"
+      else
+        CRON_RUN_FOUND=0
+        for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+          CRON_RUNS=$(curl -fsS --max-time 15 \
+            -H "Authorization: Bearer $CRON_TOKEN" "$API/v1/runs") || CRON_RUNS='[]'
+          if python3 -c 'import json,sys; before=set(sys.argv[1].split()); dep=sys.argv[2]; runs=json.load(sys.stdin); raise SystemExit(0 if any(r.get("id") not in before and r.get("deployment_id") == dep for r in runs) else 1)' "$CRON_BEFORE_IDS" "$CRON_DEP" <<<"$CRON_RUNS"; then
+            CRON_RUN_FOUND=1
+            break
+          fi
+          sleep 5
+        done
+        if [[ "$CRON_RUN_FOUND" == 1 ]]; then
+          pass "admin cron tick produced a new deployment run"
+        else
+          fail_case "admin cron tick produced no new run after 60 seconds"
+        fi
+      fi
+    fi
+  else
+    fail_case "openrouter-key push or cron binding failed"
+  fi
 fi
 
 if [[ "$FAILURES" -ne 0 ]]; then
