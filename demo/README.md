@@ -28,7 +28,7 @@ weather (they fabricate values).
    ```bash
    xattr -cr /opt/homebrew/bin/agentpaas
    ```
-5. **OpenRouter API key** (free tier): https://openrouter.ai/keys
+
 
 ## Quick Start (through Hermes)
 
@@ -36,7 +36,9 @@ weather (they fabricate values).
 
 In Hermes, tell it:
 
-> Install from https://github.com/AgentPaaS-ai/agentpaas
+```bash
+hermes plugins install https://github.com/AgentPaaS-ai/agentpaas --force --enable
+```
 
 After install, complete the filesystem state and verify it before reopening:
 
