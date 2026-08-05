@@ -95,60 +95,38 @@ Install the plugin from GitHub (NOT from a local clone):
 hermes plugins install --force --enable https://github.com/AgentPaaS-ai/agentpaas
 ```
 
-Then register the toolset and create the skill pointer:
+Resolve `<profile>` from `HERMES_HOME`, `hermes profile`, or the installed
+path, then run the filesystem completer and verification as a HARD GATE:
 
 ```bash
-python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/ensure-toolset.py <profile>
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>
 ```
 
-Create `~/.hermes/profiles/<profile>/skills/agentpaas/SKILL.md` with:
-```yaml
----
-name: agentpaas-build
-description: >
-  Build, deploy, package, run, and govern AI agents. Use when the user
-  asks to build, create, deploy, pack, or run any agent. You MUST load
-  the full skill with skill_view(name="agentpaas:deploy") for onboarding
-  instructions, code structure requirements (@agent.on_invoke SDK
-  pattern), egress policy rules, credential onboarding, and LLM
-  configuration.
----
-
-# AgentPaaS Deploy Pointer
-
-When the user asks to build, create, deploy, pack, run, or govern any
-agent, you MUST load the real skill immediately:
-
-skill_view(name="agentpaas:deploy")
-
-This pointer exists because plugin skills do not appear in the
-available_skills index. Load it BEFORE writing any agent code or calling
-agentpaas tools.
-```
+The completer writes the full `agentpaas-build` skill (including
+`@agent.on_invoke`), adds the toolset, and upserts SOUL.md. If
+`verify-installed-state.py` exits non-zero, setup is NOT complete: fix the
+reported state and re-run both commands. Do not reinstall the plugin.
 
 ### LLM secrets are not part of setup
 
-Do not ask the user to add an LLM secret during installation or setup. LLM
-keys are added later, when the user builds an agent that needs one (the build
-skill will prompt them).
+Do not ask the user to add an OpenRouter or other LLM secret during
+installation or setup. LLM keys are added later, when the user builds an
+agent that needs one (the build skill will prompt them).
 
-### 7. Verify live registration
+### 7. Reopen once for live registration
 
-The plugin and tools register live in the current session; no restart is
-needed. If `agentpaas_*` tools do not appear, restart Hermes once as a
-fallback:
+Filesystem state (toolset, skill, and SOUL.md) completes without a restart.
+Hermes loads slash commands (`/agentpaas-*`) and `agentpaas_*` tools only at
+session start, so one session reopen is required after the verification gate.
 
-```bash
-/quit
-hermes -p <profile>
-```
-
-**STOP HERE.** Setup is complete. Do NOT offer to build, pack, or run
-any agent. Do NOT ask "would you like me to build a test agent?" The
+**STOP HERE.** Setup is complete only after verification exits 0. Do NOT
+offer to build, pack, or run any agent. Do NOT ask for API keys yet. The
 correct end-of-setup message is:
 
-> AgentPaaS setup complete. The plugin and tools are available in this
-> session. Restart Hermes only if the `agentpaas_*` tools do not appear.
+> AgentPaaS install finished on disk. Reopen this Hermes session once so
+> slash commands load (`/quit`, then `hermes -p <profile>`). Do NOT reinstall.
+> Do NOT ask for API keys yet. After reopen, run `/agentpaas-doctor`.
 
 After setup, when the user asks to build something, THEN load
 `agentpaas:deploy`. Until then, do nothing.

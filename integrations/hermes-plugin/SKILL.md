@@ -31,14 +31,24 @@ Tell Hermes:
 
 > Install from https://github.com/AgentPaaS-ai/agentpaas
 
-Hermes installs the plugin, registers the toolset, and creates the skill
-pointer automatically — no restart needed; the toolset is available in the
-current session. If the agentpaas tools don't appear, restart once:
+Hermes installs the plugin, but cold installs require the filesystem
+completer before setup is complete:
+
+```bash
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
+python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>
+```
+
+Filesystem state completes on disk without a restart. Slash commands and
+`agentpaas_*` tools load only when Hermes starts, so reopen the session once:
 
 ```
 /quit
-hermes
+hermes -p <profile>
 ```
+
+Do not reinstall and do not ask for OpenRouter or other LLM/API keys during
+setup. Ask for keys only when building an agent that needs them.
 
 ### Prerequisites
 
