@@ -128,6 +128,59 @@ func TestCloudUsage_JSONOutput(t *testing.T) {
 	_ = stderr
 }
 
+func TestCloudUsage_HumanOutput_TrialLimitMessages(t *testing.T) {
+	tests := []struct {
+		name    string
+		usage   string
+		want    string
+		notWant string
+	}{
+		{
+			name:  "cpu exhausted",
+			usage: `{"cpu_minutes_remaining":0,"days_remaining":27,"agent_limit":10,"agents_used":1}`,
+			want:  "Trial limits crossed. Request a new trial or convert to a paid plan at https://agentpaas.ai (or email contact@agentpaas.ai).",
+		},
+		{
+			name:    "trial expired",
+			usage:   `{"cpu_minutes_remaining":98.75,"days_remaining":0,"agent_limit":10,"agents_used":1}`,
+			want:    "Trial period ended. Request a new trial or convert to a paid plan at https://agentpaas.ai (or email contact@agentpaas.ai).",
+			notWant: "Trial limits crossed.",
+		},
+		{
+			name:  "agent limit reached",
+			usage: `{"cpu_minutes_remaining":98.75,"days_remaining":27,"agent_limit":1,"agents_used":1}`,
+			want:  "Trial limits crossed. Request a new trial or convert to a paid plan at https://agentpaas.ai (or email contact@agentpaas.ai).",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+			store := setupFakeTokenStore(t)
+			if err := store.Set(context.Background(), "apc_usage_limit_test"); err != nil {
+				t.Fatalf("seed token: %v", err)
+			}
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tt.usage))
+			}))
+			defer func() { server.Close() }()
+			t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+
+			stdout, _, err := executeCloudCmd(t, "", "cloud", "usage")
+			if err != nil {
+				t.Fatalf("usage: %v", err)
+			}
+			if !strings.Contains(stdout, tt.want) {
+				t.Errorf("expected %q in output, got %q", tt.want, stdout)
+			}
+			if tt.notWant != "" && strings.Contains(stdout, tt.notWant) {
+				t.Errorf("did not expect %q in output, got %q", tt.notWant, stdout)
+			}
+		})
+	}
+}
+
 func TestCloudUsage_NotLoggedIn(t *testing.T) {
 	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
 	_ = setupFakeTokenStore(t)
