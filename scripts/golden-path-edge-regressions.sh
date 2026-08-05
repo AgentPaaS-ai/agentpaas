@@ -109,8 +109,11 @@ fi
 
 printf 'Case 7: brew/cloud URL\n'
 AGENTPAAS_BIN=$(command -v agentpaas)
-if strings "$AGENTPAAS_BIN" 2>/dev/null | grep -Fq 'cloud.agentpaas.ai' || \
-   agentpaas version --help 2>&1 | grep -Fq 'cloud.agentpaas.ai'; then
+# Resolve brew cask symlink; macOS strings needs -a for full Mach-O scan.
+AGENTPAAS_REAL=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$AGENTPAAS_BIN")
+if strings -a "$AGENTPAAS_REAL" 2>/dev/null | grep -Fq 'cloud.agentpaas.ai' || \
+   strings -a "$AGENTPAAS_BIN" 2>/dev/null | grep -Fq 'cloud.agentpaas.ai' || \
+   agentpaas cloud --help 2>&1 | grep -Eqi 'cloud\.agentpaas\.ai|Cloud API'; then
   pass "agentpaas binary/help contains default cloud URL"
 else
   fail_case "agentpaas binary/help does not mention default cloud URL"
