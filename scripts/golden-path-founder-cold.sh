@@ -8,6 +8,10 @@ PROJECT="${1:-$REPO_ROOT/demo/weather-agent}"
 BODY='{"query":"What is the weather in Folsom?"}'
 DEP=""
 SECOND_DEP=""
+MAIN_DEP=""
+RUN=""
+FINAL_OUTPUT=""
+STATUS="NO-GO"
 EVIDENCE_DIR="$REPO_ROOT/docs/owa-records"
 TIMESTAMP=$(date +%Y%m%d-%H%M)
 EVIDENCE="$EVIDENCE_DIR/golden-founder-cold-$TIMESTAMP.md"
@@ -23,7 +27,17 @@ cleanup() {
     agentpaas cloud undeploy "$DEP" >/dev/null 2>&1 || true
   fi
 }
-trap cleanup EXIT
+write_evidence() {
+  mkdir -p "$EVIDENCE_DIR"
+  EXCERPT=$(printf '%s' "$FINAL_OUTPUT" | tr '\n' ' ' | cut -c1-500)
+  {
+    printf '# Founder-cold automated golden path\n\n'
+    printf -- '- Result: %s\n- API: %s\n- Project: %s\n- Deployment: %s\n- Run ID: %s\n- Final output excerpt: %s\n' "$STATUS" "$API" "$PROJECT" "$MAIN_DEP" "$RUN" "$EXCERPT"
+  } > "$EVIDENCE"
+  printf '\nEvidence: %s\n' "$EVIDENCE"
+}
+
+trap 'cleanup; write_evidence' EXIT
 
 command -v agentpaas >/dev/null 2>&1 || fail "agentpaas is not on PATH; install the brew agentpaas binary first"
 AGENTPAAS_BIN=$(command -v agentpaas)
@@ -152,11 +166,5 @@ if [[ -n "${SECOND_OUT:-}" && "$SECOND_OUT" != *no_slot_capacity* ]]; then
   SECOND_DEP=""
 fi
 
-mkdir -p "$EVIDENCE_DIR"
-EXCERPT=$(printf '%s' "$FINAL_OUTPUT" | tr '\n' ' ' | cut -c1-500)
-{
-  printf '# Founder-cold automated golden path\n\n'
-  printf -- '- Result: GO\n- API: %s\n- Project: %s\n- Deployment: %s\n- Run ID: %s\n- Final output excerpt: %s\n' "$API" "$PROJECT" "$MAIN_DEP" "$RUN" "$EXCERPT"
-} > "$EVIDENCE"
-printf '\nEvidence: %s\n' "$EVIDENCE"
+STATUS="GO"
 printf 'GO founder-cold golden path\n'
