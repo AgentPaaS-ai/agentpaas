@@ -237,6 +237,18 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 	}
 }
 
+// trialLimitMessage returns the customer-facing message for exhausted trial limits.
+func trialLimitMessage(resp *cloudclient.UsageResponse) string {
+	if resp.DaysRemaining != nil && *resp.DaysRemaining <= 0 {
+		return "Trial period ended. Request a new trial or convert to a paid plan at https://agentpaas.ai (or email contact@agentpaas.ai)."
+	}
+	if (resp.CPUMinutesRemaining != nil && *resp.CPUMinutesRemaining <= 0) ||
+		(resp.AgentLimit > 0 && resp.AgentsUsed >= resp.AgentLimit) {
+		return "Trial limits crossed. Request a new trial or convert to a paid plan at https://agentpaas.ai (or email contact@agentpaas.ai)."
+	}
+	return ""
+}
+
 // newCloudUsageCmd creates the `agentpaas cloud usage` command.
 func newCloudUsageCmd() *cobra.Command {
 	return &cobra.Command{
@@ -283,6 +295,9 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 				_, _ = fmt.Fprintln(out, "Trial days remaining: no trial expiry")
 			} else {
 				_, _ = fmt.Fprintf(out, "Trial days remaining: %d\n", *resp.DaysRemaining)
+			}
+			if message := trialLimitMessage(resp); message != "" {
+				_, _ = fmt.Fprintln(out, message)
 			}
 			_, _ = fmt.Fprintf(out, "Meter formula: %s\n", resp.Meter.Formula)
 			return nil
