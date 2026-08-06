@@ -1091,34 +1091,37 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			}
 
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Tenant: %s\n", registry.TenantID)
-
-			_, _ = fmt.Fprintf(out, "Deployments (%d):\n", len(registry.Assets.Deployments))
+			_, _ = fmt.Fprintf(out, "Tenant assets (%s):\n", registry.TenantID)
+			_, _ = fmt.Fprintf(out, "  Deployments (%d):\n", len(registry.Assets.Deployments))
 			if len(registry.Assets.Deployments) == 0 {
-				_, _ = fmt.Fprintln(out, "  (none)")
+				_, _ = fmt.Fprintln(out, "    (none)")
 			}
 			for _, deployment := range registry.Assets.Deployments {
-				printCloudRegistryAsset(out, deployment.AgentName, deployment.ID, deployment.Kind, deployment.Status, deployment.ImageDigest)
+				label := deployment.AgentName
+				if label == "" {
+					label = deployment.ID
+				}
+				_, _ = fmt.Fprintf(out, "    %s [%s] %s (%s)\n", label, deployment.Kind, deployment.ImageDigest, deployment.Status)
 			}
 
-			_, _ = fmt.Fprintf(out, "Images (%d):\n", len(registry.Assets.Images))
+			_, _ = fmt.Fprintf(out, "  Images (%d):\n", len(registry.Assets.Images))
 			if len(registry.Assets.Images) == 0 {
-				_, _ = fmt.Fprintln(out, "  (none)")
+				_, _ = fmt.Fprintln(out, "    (none)")
 			}
 			for _, image := range registry.Assets.Images {
-				label := ""
-				if image.AgentName != nil {
+				label := image.ID
+				if image.AgentName != nil && *image.AgentName != "" {
 					label = *image.AgentName
 				}
-				printCloudRegistryAsset(out, label, image.ID, "", image.Status, image.ImageDigest)
+				_, _ = fmt.Fprintf(out, "    %s %s (%s)\n", label, image.ImageDigest, image.Status)
 			}
 
-			_, _ = fmt.Fprintf(out, "Secrets (%d):\n", len(registry.Assets.Secrets))
+			_, _ = fmt.Fprintf(out, "  Secrets (%d):\n", len(registry.Assets.Secrets))
 			if len(registry.Assets.Secrets) == 0 {
-				_, _ = fmt.Fprintln(out, "  (none)")
+				_, _ = fmt.Fprintln(out, "    (none)")
 			}
 			for _, secret := range registry.Assets.Secrets {
-				_, _ = fmt.Fprintf(out, "  %s\n", secret.Label)
+				_, _ = fmt.Fprintf(out, "    %s\n", secret.Label)
 			}
 
 			_, _ = fmt.Fprintf(out, "Platform MCP catalog (%d):\n", len(registry.Platform.MCPCatalog))
@@ -1127,37 +1130,17 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			}
 			for _, entry := range registry.Platform.MCPCatalog {
 				_, _ = fmt.Fprintf(out, "  %s", entry.Name)
-				if entry.Visibility != "" {
-					_, _ = fmt.Fprintf(out, " [%s]", entry.Visibility)
-				}
 				if entry.Description != "" {
 					_, _ = fmt.Fprintf(out, " — %s", entry.Description)
+				}
+				if entry.Visibility != "" {
+					_, _ = fmt.Fprintf(out, " [%s]", entry.Visibility)
 				}
 				_, _ = fmt.Fprintln(out)
 			}
 			return nil
 		},
 	}
-}
-
-func printCloudRegistryAsset(out io.Writer, label, id, kind, status, imageDigest string) {
-	if label == "" {
-		label = id
-	}
-	if label == "" {
-		label = imageDigest
-	}
-	_, _ = fmt.Fprintf(out, "  %s", label)
-	if kind != "" {
-		_, _ = fmt.Fprintf(out, " [%s]", kind)
-	}
-	if status != "" {
-		_, _ = fmt.Fprintf(out, " (%s)", status)
-	}
-	if imageDigest != "" && label != imageDigest {
-		_, _ = fmt.Fprintf(out, " digest=%s", imageDigest)
-	}
-	_, _ = fmt.Fprintln(out)
 }
 
 // newCloudSecretsCmd creates the `agentpaas cloud secrets` command.
