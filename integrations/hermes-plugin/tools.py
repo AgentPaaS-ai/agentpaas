@@ -1963,7 +1963,7 @@ def agentpaas_cloud_secrets_push(args, **kwargs):
 
 
 def agentpaas_cloud_login(args, **kwargs):
-    """Start browser-based Cloud login; credentials are handled by the CLI."""
+    """Start Cloud login; print the URL for the claim browser instead of opening one."""
     sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_login")
     if sensitive_error:
         return sensitive_error

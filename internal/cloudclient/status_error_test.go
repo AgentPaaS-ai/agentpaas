@@ -7,6 +7,21 @@ import (
 	"testing"
 )
 
+func TestStatusErrorRegistryAuthentication10000ProvidesPushCoaching(t *testing.T) {
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(strings.NewReader(`{"error":"Authentication error 10000","message":"registry authentication failed"}`)),
+	}
+
+	err := statusError("upload image", resp)
+	if !strings.Contains(err.Error(), "session is OK if cloud whoami works") {
+		t.Fatalf("error = %q, want whoami coaching", err)
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "log in again") {
+		t.Fatalf("error must not suggest a cloud login loop: %q", err)
+	}
+}
+
 func TestStatusErrorSurfacesAPIErrorField(t *testing.T) {
 	resp := &http.Response{
 		StatusCode: 503,

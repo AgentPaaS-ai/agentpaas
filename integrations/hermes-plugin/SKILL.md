@@ -263,8 +263,13 @@ This step MUST happen before `agentpaas_pack`. Do NOT skip it.
 
 ### Step 1: Configure LLM Provider (when needed)
 
-1. Ask only: "Which LLM provider? (openrouter / openai / anthropic / xai / nous)"
-2. Ask only: "Which model?"
+1. Ask only: "Which provider? (OpenRouter, OpenAI, or Anthropic)". For the
+   cold weather demo, offer OpenRouter first and use the simple API-key path;
+   do not offer Nous token-exchange or xAI OAuth.
+2. Ask only: "Which model?" Offer at most two cheap OpenRouter choices, for
+   example `deepseek/deepseek-chat-v3-0324` and
+   `deepseek/deepseek-r1-0528:free` (or equivalent currently supported
+   cheap models), not a long expensive model list.
 3. Tell the user to store the API key in a separate terminal (key never
    enters this conversation). Suggest a name, e.g. for OpenRouter:
    ```
@@ -345,8 +350,9 @@ field name for egress rules in policy.yaml. The schema field is
 
 User: "Build a weather agent that uses an LLM…"
 
-You (turn 1): "Which LLM provider? (openrouter / openai / anthropic / xai / nous)"
-You (turn 2): "Which model?"
+You (turn 1): "Which provider? (OpenRouter, OpenAI, or Anthropic)"
+You (turn 2): "Which cheap OpenRouter model: deepseek/deepseek-chat-v3-0324
+or deepseek/deepseek-r1-0528:free?"
 You (turn 3): "In your terminal run: `agentpaas secret add openrouter-key`
 then paste your OpenRouter API key. Tell me when done."
 You (turn 4): "This agent will access wttr.in and openrouter.ai. Allow these?"
@@ -378,7 +384,8 @@ The plugin exposes the cloud CLI through these structured tools: `agentpaas_clou
 `agentpaas_cloud_secrets_list`, `agentpaas_cloud_secrets_push`, and
 `agentpaas_cloud_login`. They call `agentpaas cloud ... --json` and return the
 CLI's structured response; `agentpaas_cloud_invoke` waits for a terminal result
-by default. Cloud login has no token argument and opens the CLI browser flow;
+by default. Cloud login has no token argument, prints a URL, and does not open
+the system browser unless `--open-browser` is explicitly requested;
 cloud secret push accepts labels only and reads values from the local secure store.
 
 Use `agentpaas_cloud_registry` (or `agentpaas cloud registry --json`) to discover tenant assets and the platform MCP catalog; its schema accepts no secret values and its output path never returns them. Cloud deployments are agents by default, while `agentpaas cloud deploy --type mcp` creates an MCP deployment, so obtain explicit user confirmation before either state-changing operation.
@@ -422,9 +429,23 @@ before any invoke:
 6. Only then run `agentpaas cloud invoke ...` and
    `agentpaas cloud result <run>`.
 
+**Single-invoke invariant:** a cloud walkthrough invokes exactly once after
+deployment. The skill owns that one `agentpaas cloud invoke` call; do not also
+call `agentpaas_trigger_invoke`, `agentpaas_run`, or repeat cloud invoke from
+the tool layer. Invoke again only when the user asks another question/city.
+
 A deployment with no secret bindings will return succeeded with EMPTY
 `final_output`. Always verify bindings before invoke; otherwise stop rather
 than retrying an invoke loop.
+
+### Local demo single-invoke invariant
+
+For a cold "Build a weather agent" walkthrough, the build skill owns exactly
+one local `agentpaas_run` (or exactly one trigger invoke if the trigger path
+was explicitly selected). The Hermes plugin/tool layer must not add a second
+run after the skill returns. Invoke again only when the user asks another
+question/city. Verify the existing run with status/result tools; those checks
+are reads and are not new invokes.
 
 ### Anti-Fabrication (Critical — user-facing results)
 

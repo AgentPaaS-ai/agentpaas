@@ -125,19 +125,25 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 func newCloudLoginCmd() *cobra.Command {
 	var tokenStdin bool
 	var tokenFlag string
+	var openBrowserFlag bool
 
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Log in to AgentPaaS Cloud",
 		Long: `Authenticate with AgentPaaS Cloud.
 
-By default, opens a browser for OAuth-style login. The token is stored
+Prints a claim URL for OAuth-style login. Open it manually in the same
+browser where you opened your claim link. Use --open-browser only when
+you explicitly want the system browser opened. The token is stored
 securely in your macOS Keychain.
 
 CI environments can use --token-stdin to read a token from stdin, or set
 the AGENTPAAS_CLOUD_API_TOKEN environment variable.`,
-		Example: `  # Interactive browser login (default)
+		Example: `  # Interactive login; copy the printed URL into the claim browser
   agentpaas cloud login
+
+  # Explicitly open the system browser
+  agentpaas cloud login --open-browser
 
   # CI login via environment variable
   export AGENTPAAS_CLOUD_API_TOKEN=apc_...
@@ -173,12 +179,13 @@ the AGENTPAAS_CLOUD_API_TOKEN environment variable.`,
 			apiURL := resolveAPIURL()
 			client := cloudclient.NewCloudClient(apiURL)
 
-			return runBrowserLoginFlow(cmd, store, client)
+			return runBrowserLoginFlow(cmd, store, client, openBrowserFlag)
 		},
 	}
 
 	cmd.Flags().BoolVar(&tokenStdin, "token-stdin", false, "Read API token from stdin (for CI)")
 	cmd.Flags().StringVar(&tokenFlag, "token", "", "API token value (for CI)")
+	cmd.Flags().BoolVar(&openBrowserFlag, "open-browser", false, "Open the login URL in the system browser")
 	// Mark --token as hidden from primary help.
 	_ = cmd.Flags().MarkHidden("token")
 
@@ -188,9 +195,12 @@ the AGENTPAAS_CLOUD_API_TOKEN environment variable.`,
 // whoamiDisplay is the founder-facing whoami output, intentionally omitting
 // SecretsBackend (founders should not see secrets infrastructure details).
 type whoamiDisplay struct {
-	TenantID         string `json:"tenant_id"`
-	Tier             string `json:"tier"`
-	ConcurrencyLimit int    `json:"concurrency_limit"`
+	TenantID       string  `json:"tenant_id"`
+	Tier           string  `json:"tier"`
+	AgentLimit     int     `json:"agent_limit"`
+	AgentsUsed     int     `json:"agents_used"`
+	CPUMinuteLimit int     `json:"cpu_minute_limit"`
+	CPUMinutesUsed float64 `json:"cpu_minutes_used"`
 }
 
 // newCloudWhoamiCmd creates the `agentpaas cloud whoami` command.
@@ -198,8 +208,9 @@ func newCloudWhoamiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "whoami",
 		Short: "Show authenticated cloud user info",
-		Long: `Display the currently authenticated cloud user's tenant, tier,
-and concurrency limit.
+		Long: `Display the currently authenticated cloud user's tenant, tier, agent
+limit, and CPU-minute usage. Use 'agentpaas cloud usage' for concurrency
+details.
 
 Requires a valid login. Use 'agentpaas cloud login' first.`,
 		Args: cobra.NoArgs,
@@ -222,16 +233,20 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			}
 
 			display := whoamiDisplay{
-				TenantID:         resp.TenantID,
-				Tier:             resp.Tier,
-				ConcurrencyLimit: resp.ConcurrencyLimit,
+				TenantID:       resp.TenantID,
+				Tier:           resp.Tier,
+				AgentLimit:     resp.AgentLimit,
+				AgentsUsed:     resp.AgentsUsed,
+				CPUMinuteLimit: resp.CPUMinuteLimit,
+				CPUMinutesUsed: resp.CPUMinutesUsed,
 			}
 
 			if jsonOutput(cmd) {
 				return printTextOrJSON(true, display, nil)
 			}
-			fmt.Printf("Tenant: %s\nTier: %s\nConcurrency limit: %d\n",
-				display.TenantID, display.Tier, display.ConcurrencyLimit)
+			fmt.Printf("Tenant: %s\nTier: %s\nAgent limit: %d/%d\nCPU minutes used: %g/%d\n",
+				display.TenantID, display.Tier, display.AgentsUsed, display.AgentLimit,
+				display.CPUMinutesUsed, display.CPUMinuteLimit)
 			return nil
 		},
 	}
@@ -1442,7 +1457,7 @@ func storeAndConfirmLogin(cmd *cobra.Command, store cloudclient.TokenStore, toke
 }
 
 // runBrowserLoginFlow implements the browser-based OAuth login flow.
-func runBrowserLoginFlow(cmd *cobra.Command, store cloudclient.TokenStore, client *cloudclient.CloudClient) error {
+func runBrowserLoginFlow(cmd *cobra.Command, store cloudclient.TokenStore, client *cloudclient.CloudClient, openBrowserFlag bool) error {
 	// 1. Start a callback HTTP server on 127.0.0.1:0.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1501,12 +1516,15 @@ func runBrowserLoginFlow(cmd *cobra.Command, store cloudclient.TokenStore, clien
 		}
 	}()
 
-	// 6. Open the browser with the approve URL.
+	// 6. Print the approve URL. Opening it is opt-in so the user can keep the
+	// claim and login sessions in the same browser.
 	approveURL := cloudclient.ResolveApproveURL(client.BaseURL, authResp.ApproveURL)
-	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Opening browser for login: %s\n", approveURL)
-	if err := openBrowser(approveURL); err != nil {
-		_ = server.Close()
-		return fmt.Errorf("cloud login: open browser: %w", err)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Open this URL in the SAME browser where you opened your claim link: %s\n", approveURL)
+	if openBrowserFlag {
+		if err := openBrowser(approveURL); err != nil {
+			_ = server.Close()
+			return fmt.Errorf("cloud login: open browser: %w", err)
+		}
 	}
 
 	// 7. Wait for the callback with a timeout.
