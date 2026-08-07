@@ -52,17 +52,6 @@ func sourceBytes(t *testing.T, relPath string) []byte {
 	return data
 }
 
-// mustContain asserts that data contains needle and fails with a message
-// citing relPath. The needle must be the durable-path ceiling under test.
-func mustContain(t *testing.T, relPath string, data []byte, needle string) {
-	t.Helper()
-	if !strings.Contains(string(data), needle) {
-		t.Fatalf("%s no longer contains %q - the durable-path ceiling was silently "+
-			"removed before its owning task replaced it with a policy-derived value. "+
-			"See B30-T01 FixedTimeoutOwnershipScanner.", relPath, needle)
-	}
-}
-
 // mustNOTContain asserts that data does NOT contain needle on the durable
 // path. Used by the inverted T03 ceiling tests: after Part B, the fixed
 // timeout must NOT appear as the authoritative durable-path value. It MAY
