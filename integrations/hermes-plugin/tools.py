@@ -1972,6 +1972,7 @@ def agentpaas_cloud_login(args, **kwargs):
     import json
     return json.dumps({
         "ok": False,
+        "error": "user_cli_login_required",
         "action_required": "user_cli_login",
         "message": (
             "Cloud login must be done by the user in their own terminal "
