@@ -1963,8 +1963,22 @@ def agentpaas_cloud_secrets_push(args, **kwargs):
 
 
 def agentpaas_cloud_login(args, **kwargs):
-    """Start Cloud login; print the URL for the claim browser instead of opening one."""
+    """Do NOT run blocking cloud login. Coach the user to run CLI themselves."""
     sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_login")
     if sensitive_error:
         return sensitive_error
-    return _run_cloud_tool(["cloud", "login"])
+    # P2-18b: blocking `cloud login` captures stderr and hangs Hermes until timeout.
+    # User must run login in their own terminal; agent only verifies with whoami after.
+    import json
+    return json.dumps({
+        "ok": False,
+        "action_required": "user_cli_login",
+        "message": (
+            "Cloud login must be done by the user in their own terminal "
+            "(not by this tool). Tell the user to run:\n\n"
+            "  agentpaas cloud login\n\n"
+            "Then open the printed URL in the SAME browser used for the claim link, "
+            "approve CLI access, and say 'done'. After that, call agentpaas_cloud_whoami."
+        ),
+        "user_command": "agentpaas cloud login",
+    })

@@ -88,13 +88,21 @@ func (c *CloudClient) ListSecrets(ctx context.Context, token string) ([]SecretLa
 
 // DeleteSecret calls DELETE /v1/secrets/:name with a Bearer token, expecting 204.
 func (c *CloudClient) DeleteSecret(ctx context.Context, token, name string) error {
+	return c.DeleteSecretOpts(ctx, token, name, false)
+}
+
+// DeleteSecretOpts deletes a secret; force=true allows delete while bindings exist.
+func (c *CloudClient) DeleteSecretOpts(ctx context.Context, token, name string, force bool) error {
 	// Sanitize: name must not contain path traversal or newlines.
 	if strings.ContainsAny(name, "/\\\n\r") {
 		return fmt.Errorf("delete secret: invalid name %q", name)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete,
-		c.BaseURL+"/v1/secrets/"+name, nil)
+	u := c.BaseURL + "/v1/secrets/" + name
+	if force {
+		u += "?force=1"
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
 	if err != nil {
 		return fmt.Errorf("delete secret: create request: %w", err)
 	}

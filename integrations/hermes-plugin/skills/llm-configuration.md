@@ -14,10 +14,17 @@ At build/pack time, after the user has chosen the project and LLM provider:
    provider, model, and credential
 
 ## Providers for the cold weather demo
-- openrouter (recommended first): simple API key, `openrouter-key`; offer
-  `deepseek/deepseek-chat-v3-0324` or `deepseek/deepseek-r1-0528:free`
-- openai: simple API key, if the user already has one
-- anthropic: simple API key, if the user already has one
+- openrouter (recommended first): simple API key, `openrouter-key`
+- openai: simple API key, `openai-key` (or user label)
+- anthropic: simple API key, `anthropic-key` (or user label)
+
+## OpenRouter model defaults (P2-16b)
+Do **not** offer stale IDs like `deepseek/deepseek-chat-v3-0324` or
+`deepseek/deepseek-r1-0528:free` (they fail). Prefer:
+- `deepseek/deepseek-chat` (default cheap)
+- `openai/gpt-4o-mini` (cheap OpenAI via OpenRouter)
+
+At most two choices. If the user has no preference, use `deepseek/deepseek-chat`.
 
 Do not offer Nous token-exchange or xAI OAuth in the first-time provider
 picker. Keep the list to these 2-3 API-key choices; other providers can be

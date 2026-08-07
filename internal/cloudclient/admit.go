@@ -32,9 +32,19 @@ type AdmitImageResponse struct {
 
 // ImageRecord represents a single image record returned by the API.
 type ImageRecord struct {
-	ID          string `json:"id"`
-	ImageDigest string `json:"image_digest"`
-	Status      string `json:"status"`
+	ID                    string                 `json:"id"`
+	TenantID              string                 `json:"tenant_id,omitempty"`
+	ImageDigest           string                 `json:"image_digest"`
+	RunDigest             string                 `json:"run_digest,omitempty"`
+	Platform              string                 `json:"platform,omitempty"`
+	RegistryRef           string                 `json:"registry_ref,omitempty"`
+	AgentName             string                 `json:"agent_name,omitempty"`
+	AgentVersion          string                 `json:"agent_version,omitempty"`
+	PublicKeyFingerprint  string                 `json:"public_key_fingerprint,omitempty"`
+	Status                string                 `json:"status"`
+	CreatedAt             string                 `json:"created_at,omitempty"`
+	PublisherName         string                 `json:"publisher_name,omitempty"`
+	AgentYAML             map[string]interface{} `json:"agent_yaml,omitempty"`
 }
 
 // MarshalJSON preserves the existing string field API while sending an
