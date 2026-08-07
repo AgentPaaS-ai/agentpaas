@@ -61,6 +61,7 @@ This is the single checklist of **what still needs a fix**. FIXED items are list
 | **P2-18b** | Cloud login: Hermes must **not** drive blocking login; **user runs** `agentpaas cloud login` in their terminal, opens printed URL in claim browser, then Hermes whoami | **OPEN 2026-08-07** — founder gate. Deprecate agent-run `agentpaas_cloud_login` block path; skill/handoff coach CLI-by-user. |
 | **P2-30** | Cloud **Logs UI empty/wrong** on succeeded invoke (thin run_events; classifier misses container.*; audit dupes; no final_output) | **OPEN 2026-08-07** — founder gate UX-9. |
 | **P2-31** | Dashboard Agent Inspect hardcodes provenance missing; lock has `publisher.name` (e.g. parvezsyed) but `GET /v1/images` strips lock_json | **OPEN 2026-08-07** — founder gate UX-10. Expose publisher_name on images API + show in UI. |
+| **P2-32** | **FEAT-1** Download agent from cloud, modify, version bump, push, redeploy (Hermes NL); no first-class pull today | **OPEN 2026-08-07** — founder post-gate. |
 | **P2-19** | Cloud browser auth pages (claim + Approve CLI Login) blank white | **FIXED LIVE 2026-08-05** — dashboard-styled `authPage`; claim/approve live with `/styles.css`. |
 | **P2-20** | Dashboard refresh claim flash | **FIXED LIVE 2026-08-05** — loading = “Loading dashboard”. |
 | **P2-21** | Trial browser login/logoff | **FIXED LIVE 2026-08-05** — `/login` email+password, set password after claim, logout; Google optional (needs GOOGLE_CLIENT_*). Cloud `2b9b643`+ mig 0023 deployed. |
