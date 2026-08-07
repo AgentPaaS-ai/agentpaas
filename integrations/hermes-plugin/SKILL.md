@@ -261,15 +261,28 @@ This is a one-time setup — subsequent packs reuse the same identity.
 
 This step MUST happen before `agentpaas_pack`. Do NOT skip it.
 
+### Cloud login (MANDATORY pattern)
+
+When the user is not logged in to cloud (`agentpaas_cloud_whoami` fails):
+1. Do **NOT** call `agentpaas_cloud_login` expecting it to finish auth (it only
+   returns coaching text).
+2. Tell the user to run in **their** terminal:
+   `agentpaas cloud login`
+3. They open the printed URL in the **same browser as their claim link**, approve,
+   then say done.
+4. Verify with `agentpaas_cloud_whoami` only after they confirm.
+
 ### Step 1: Configure LLM Provider (when needed)
 
 1. Ask only: "Which provider? (OpenRouter, OpenAI, or Anthropic)". For the
    cold weather demo, offer OpenRouter first and use the simple API-key path;
    do not offer Nous token-exchange or xAI OAuth.
-2. Ask only: "Which model?" Offer at most two cheap OpenRouter choices, for
-   example `deepseek/deepseek-chat-v3-0324` and
-   `deepseek/deepseek-r1-0528:free` (or equivalent currently supported
-   cheap models), not a long expensive model list.
+2. Ask only: "Which model?" For OpenRouter offer at most two **currently
+   cheap, known-good** IDs (do not hardcode stale deepseek-chat-v3-0324 /
+   r1-0528:free). Prefer defaults:
+   `deepseek/deepseek-chat` and `openai/gpt-4o-mini` (or whatever
+   `agentpaas_llm_configure` / OpenRouter docs list as active). If unsure,
+   default to `deepseek/deepseek-chat` without a long menu.
 3. Tell the user to store the API key in a separate terminal (key never
    enters this conversation). Suggest a name, e.g. for OpenRouter:
    ```
@@ -351,8 +364,8 @@ field name for egress rules in policy.yaml. The schema field is
 User: "Build a weather agent that uses an LLM…"
 
 You (turn 1): "Which provider? (OpenRouter, OpenAI, or Anthropic)"
-You (turn 2): "Which cheap OpenRouter model: deepseek/deepseek-chat-v3-0324
-or deepseek/deepseek-r1-0528:free?"
+You (turn 2): "Which cheap OpenRouter model: deepseek/deepseek-chat or
+openai/gpt-4o-mini? (default deepseek/deepseek-chat)"
 You (turn 3): "In your terminal run: `agentpaas secret add openrouter-key`
 then paste your OpenRouter API key. Tell me when done."
 You (turn 4): "This agent will access wttr.in and openrouter.ai. Allow these?"
@@ -612,3 +625,15 @@ for planned additions.
   Plugins load at startup, not mid-session.
 - **Agent code uses plain app() or main()** → The harness requires
   `@agent.on_invoke`. See "Agent Code Structure" above.
+
+
+### Cloud pull → edit → push (FEAT-1)
+
+When the user wants to download a cloud agent, modify it, and republish:
+
+1. Ensure logged in (`agentpaas_cloud_whoami`).
+2. Tell user / run: `agentpaas cloud pull <agent_name|img_id> --dir ./my-agent [--bump-version 0.1.1]`
+3. Edit code in that directory (confirm before overwrite).
+4. Pack amd64, push with lock, deploy latest, bind secrets if needed, invoke.
+
+Note: pull writes agent.yaml from cloud lock + stub main.py if source archive is absent.

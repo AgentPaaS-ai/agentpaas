@@ -104,6 +104,7 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudLogsCmd())
 	cmd.AddCommand(newCloudLogoutCmd())
 	cmd.AddCommand(newCloudPushCmd())
+	cmd.AddCommand(newCloudPullCmd())
 	cmd.AddCommand(newCloudImagesCmd())
 	cmd.AddCommand(newCloudRegistryCmd())
 	cmd.AddCommand(newCloudDeployCmd())
