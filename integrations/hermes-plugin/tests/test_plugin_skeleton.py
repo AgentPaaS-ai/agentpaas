@@ -175,7 +175,12 @@ class HandlerBehaviorTests(unittest.TestCase):
                     result = handler(args)
                     parsed = json.loads(result)
                     self.assertIn("error", parsed)
-                    self.assertEqual(parsed["error_category"], "tool_invocation_failed")
+                    # P2-18b: cloud_login intentionally does not call CLI; coaches user.
+                    if tool_name == "agentpaas_cloud_login":
+                        self.assertEqual(parsed["error"], "user_cli_login_required")
+                        self.assertEqual(parsed.get("action_required"), "user_cli_login")
+                    else:
+                        self.assertEqual(parsed["error_category"], "tool_invocation_failed")
 
 
 class BinaryResolverTests(unittest.TestCase):

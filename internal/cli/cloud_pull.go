@@ -87,9 +87,9 @@ the project (best-effort). Full source round-trip improves when pack embeds sour
 			// Minimal main.py if missing
 			mainPath := filepath.Join(dir, "main.py")
 			if _, err := os.Stat(mainPath); err != nil {
-				name := img.AgentName
-				if name == "" {
-					name = "agent"
+				agentLabel := img.AgentName
+				if agentLabel == "" {
+					agentLabel = "agent"
 				}
 				stub := fmt.Sprintf(`"""Pulled from cloud image %s (%s %s).
 Replace this stub with your agent logic, or restore source from git.
@@ -101,8 +101,8 @@ from agentpaas_sdk import agent
 @agent.on_invoke
 def handle(payload: dict) -> dict:
     query = payload.get("query") or payload.get("message") or "hello"
-    return {"final_output": f"[{name}] echo: {query}"}
-`, img.ID, img.AgentName, img.AgentVersion)
+    return {"final_output": f"[%s] echo: {query}"}
+`, img.ID, img.AgentName, img.AgentVersion, agentLabel)
 				if err := os.WriteFile(mainPath, []byte(stub), 0o644); err != nil {
 					return fmt.Errorf("cloud pull: write main.py: %w", err)
 				}
