@@ -1,6 +1,7 @@
 """Tests for the Hermes cloud CLI tool surface."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -149,3 +150,18 @@ def test_cloud_login_has_no_token_parameters():
     plugin = _load_plugin_package()
     properties = plugin.schemas.AGENTPAAS_CLOUD_LOGIN["parameters"]["properties"]
     assert properties == {}
+
+
+def test_walkthrough_uses_one_invoke_per_path_and_cold_provider_picker():
+    skill_text = (plugin_root := plugin_path()).joinpath("SKILL.md").read_text(encoding="utf-8")
+    assert "invokes exactly once" in skill_text
+    assert "do not also" in skill_text
+    assert "OpenRouter" in skill_text
+    assert "openrouter-key" in skill_text
+    assert "Nous token-exchange" in skill_text
+    assert "xAI OAuth" in skill_text
+    assert "deepseek" in skill_text.lower()
+
+
+def plugin_path():
+    return Path(__file__).resolve().parents[1]

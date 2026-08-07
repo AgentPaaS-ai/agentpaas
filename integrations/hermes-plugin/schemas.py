@@ -944,6 +944,6 @@ AGENTPAAS_CLOUD_SECRETS_PUSH = {
 
 AGENTPAAS_CLOUD_LOGIN = {
     "name": "agentpaas_cloud_login",
-    "description": "Start the existing AgentPaaS Cloud browser login flow. Use the terminal if browser interaction is required.",
+    "description": "Start AgentPaaS Cloud login, print the URL, and wait for the callback. The CLI does not open a browser by default; open the URL in the same browser as the claim link.",
     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
 }

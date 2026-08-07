@@ -13,10 +13,15 @@ At build/pack time, after the user has chosen the project and LLM provider:
 3. Configure the agent: call `agentpaas_llm_configure` with project_dir,
    provider, model, and credential
 
-## Providers
-- openai: models like gpt-4o, gpt-4o-mini
-- anthropic: models like claude-sonnet-4, claude-3-5-sonnet
-- xai: models like grok-beta
+## Providers for the cold weather demo
+- openrouter (recommended first): simple API key, `openrouter-key`; offer
+  `deepseek/deepseek-chat-v3-0324` or `deepseek/deepseek-r1-0528:free`
+- openai: simple API key, if the user already has one
+- anthropic: simple API key, if the user already has one
+
+Do not offer Nous token-exchange or xAI OAuth in the first-time provider
+picker. Keep the list to these 2-3 API-key choices; other providers can be
+configured explicitly later.
 
 ## Security
 - The credential arg is a Keychain secret NAME (label), never the value

@@ -237,7 +237,7 @@ func TestCloudLogin_BrowserFlow_CallbackSimulation(t *testing.T) {
 	}
 	defer func() { openBrowser = oldOpenBrowser }()
 
-	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "login")
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "login", "--open-browser")
 	if err != nil {
 		t.Fatalf("login browser: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
@@ -251,6 +251,17 @@ func TestCloudLogin_BrowserFlow_CallbackSimulation(t *testing.T) {
 	}
 	if got != "apc_browser_token_xyz" {
 		t.Errorf("stored token = %q, want apc_browser_token_xyz", got)
+	}
+}
+
+func TestCloudLogin_DefaultDoesNotOpenBrowser(t *testing.T) {
+	cmd := newCloudLoginCmd()
+	flag := cmd.Flags().Lookup("open-browser")
+	if flag == nil {
+		t.Fatal("cloud login missing --open-browser flag")
+	}
+	if flag.DefValue != "false" {
+		t.Fatalf("--open-browser default = %q, want false", flag.DefValue)
 	}
 }
 
@@ -269,6 +280,10 @@ func TestCloudWhoami_Success(t *testing.T) {
 				TenantID:         "tenant-42",
 				Tier:             "pro",
 				ConcurrencyLimit: 10,
+				AgentLimit:       25,
+				AgentsUsed:       3,
+				CPUMinuteLimit:   100,
+				CPUMinutesUsed:   12.5,
 				SecretsBackend:   "vault",
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -291,6 +306,11 @@ func TestCloudWhoami_Success(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "pro") {
 		t.Errorf("expected pro tier in output, got: %q", stdout)
+	}
+	for _, want := range []string{"Agent limit: 3/25", "CPU minutes used: 12.5/100"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("expected %q in output, got: %q", want, stdout)
+		}
 	}
 }
 
@@ -341,6 +361,10 @@ func TestCloudWhoami_JSONOutput(t *testing.T) {
 				TenantID:         "json-tenant",
 				Tier:             "free",
 				ConcurrencyLimit: 1,
+				AgentLimit:       2,
+				AgentsUsed:       1,
+				CPUMinuteLimit:   60,
+				CPUMinutesUsed:   4.5,
 				SecretsBackend:   "env",
 			}
 			w.Header().Set("Content-Type", "application/json")
@@ -364,9 +388,12 @@ func TestCloudWhoami_JSONOutput(t *testing.T) {
 	}
 
 	var parsed struct {
-		TenantID         string `json:"tenant_id"`
-		Tier             string `json:"tier"`
-		ConcurrencyLimit int    `json:"concurrency_limit"`
+		TenantID       string  `json:"tenant_id"`
+		Tier           string  `json:"tier"`
+		AgentLimit     int     `json:"agent_limit"`
+		AgentsUsed     int     `json:"agents_used"`
+		CPUMinuteLimit int     `json:"cpu_minute_limit"`
+		CPUMinutesUsed float64 `json:"cpu_minutes_used"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("unmarshal JSON: %v\noutput: %s", err, stdout)
@@ -377,8 +404,11 @@ func TestCloudWhoami_JSONOutput(t *testing.T) {
 	if parsed.Tier != "free" {
 		t.Errorf("Tier = %q, want free", parsed.Tier)
 	}
-	if parsed.ConcurrencyLimit != 1 {
-		t.Errorf("ConcurrencyLimit = %d, want 1", parsed.ConcurrencyLimit)
+	if parsed.AgentLimit != 2 || parsed.AgentsUsed != 1 {
+		t.Errorf("agent usage = %d/%d, want 1/2", parsed.AgentsUsed, parsed.AgentLimit)
+	}
+	if parsed.CPUMinuteLimit != 60 || parsed.CPUMinutesUsed != 4.5 {
+		t.Errorf("CPU usage = %g/%d, want 4.5/60", parsed.CPUMinutesUsed, parsed.CPUMinuteLimit)
 	}
 }
 

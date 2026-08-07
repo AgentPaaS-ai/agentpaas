@@ -49,10 +49,14 @@ type StartCLIAuthResponse struct {
 
 // WhoamiResponse is the response from GET /v1/whoami.
 type WhoamiResponse struct {
-	TenantID         string `json:"tenant_id"`
-	Tier             string `json:"tier"`
-	ConcurrencyLimit int    `json:"concurrency_limit"`
-	SecretsBackend   string `json:"secrets_backend"`
+	TenantID         string  `json:"tenant_id"`
+	Tier             string  `json:"tier"`
+	ConcurrencyLimit int     `json:"concurrency_limit"`
+	AgentLimit       int     `json:"agent_limit"`
+	AgentsUsed       int     `json:"agents_used"`
+	CPUMinuteLimit   int     `json:"cpu_minute_limit"`
+	CPUMinutesUsed   float64 `json:"cpu_minutes_used"`
+	SecretsBackend   string  `json:"secrets_backend"`
 }
 
 // CloudClient is an HTTP client for the AgentPaaS Cloud API.
@@ -113,6 +117,9 @@ func statusError(op string, resp *http.Response) error {
 			}
 			if payload.Hint != "" {
 				errMsg += " — " + payload.Hint
+			}
+			if strings.Contains(strings.ToLower(errMsg), "authentication error 10000") {
+				errMsg += " — session is OK if cloud whoami works; platform registry credential failed. Retry push; contact support if it persists. Do not re-login."
 			}
 			return &HTTPStatusError{
 				StatusCode:    resp.StatusCode,
