@@ -637,3 +637,8 @@ When the user wants to download a cloud agent, modify it, and republish:
 4. Pack amd64, push with lock, deploy latest, bind secrets if needed, invoke.
 
 Note: pull writes agent.yaml from cloud lock + stub main.py if source archive is absent.
+
+
+### Cloud cron
+
+Use tools `agentpaas_cloud_cron_set|disable|enable|list` (or CLI). Never tell users to edit cron in the dashboard (read-only). Expr: every_1m|every_5m|every_15m|every_1h.

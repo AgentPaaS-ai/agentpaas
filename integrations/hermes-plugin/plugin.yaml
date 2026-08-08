@@ -60,3 +60,7 @@ provides_tools:
   - agentpaas_cloud_secrets_list
   - agentpaas_cloud_secrets_push
   - agentpaas_cloud_login
+  - agentpaas_cloud_cron_list
+  - agentpaas_cloud_cron_set
+  - agentpaas_cloud_cron_disable
+  - agentpaas_cloud_cron_enable

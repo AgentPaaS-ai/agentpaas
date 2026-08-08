@@ -97,8 +97,29 @@ def test_cloud_handlers_forward_cli_arguments():
             {"names": ["openai-key", "anthropic-key"]},
             ["cloud", "secrets", "push", "openai-key", "anthropic-key"],
         ),
-        ("agentpaas_cloud_login", {}, ["cloud", "login"]),
+        (
+            "agentpaas_cloud_cron_list",
+            {},
+            ["cloud", "cron", "list"],
+        ),
+        (
+            "agentpaas_cloud_cron_set",
+            {"deployment": "dep_x", "expr": "every_5m"},
+            ["cloud", "cron", "set", "dep_x", "--expr", "every_5m"],
+        ),
+        (
+            "agentpaas_cloud_cron_disable",
+            {"deployment": "dep_x"},
+            ["cloud", "cron", "disable", "dep_x"],
+        ),
+        (
+            "agentpaas_cloud_cron_enable",
+            {"deployment": "dep_x"},
+            ["cloud", "cron", "enable", "dep_x"],
+        ),
     ]
+    # cloud_login intentionally does not call CLI (user_cli_login coaching)
+
 
     for tool_name, args, expected_command in cases:
         with mock.patch.object(plugin.tools, "_run_cli", return_value={"ok": True}) as run:
