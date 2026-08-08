@@ -1,5 +1,9 @@
 # Install on macOS
 
+Requires **AgentPaaS CLI 0.3.7+** (brew).
+
+# Install on macOS
+
 Mac required (darwin/arm64). Docker via Colima is expected for local pack/run.
 
 ```bash
