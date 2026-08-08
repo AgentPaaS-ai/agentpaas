@@ -1,9 +1,13 @@
-# Schedule with cron
+# Schedule with cron (cloud)
 
-Named intervals only: `every_1m`, `every_5m`, `every_15m`, `every_1h`.
+Cloud accepts:
+
+1. **Named intervals:** `every_1m`, `every_5m`, `every_15m`, `every_1h`
+2. **Standard 5-field cron in UTC** (minute hour day-of-month month day-of-week)
 
 ```bash
 agentpaas cloud cron set <deployment> --expr every_5m
+agentpaas cloud cron set <deployment> --expr "30 9 * * 1-5"   # 09:30 UTC Mon-Fri
 agentpaas cloud cron list
 agentpaas cloud cron disable <deployment>
 agentpaas cloud cron enable <deployment>
@@ -11,6 +15,6 @@ agentpaas cloud cron enable <deployment>
 
 `<deployment>` may be a `dep_…` id or agent name (error if ambiguous).
 
-The dashboard **Cron** tab is read-only. It shows schedule, enabled state, last fire, next fire estimate. Change schedules only via CLI or Hermes.
+The dashboard **Cron** tab is read-only. Change schedules via CLI or Hermes.
 
-Hermes: ask to run the agent every 5 minutes (tools call the same verbs).
+Five-field times are **UTC** — convert from your local timezone when setting wall-clock jobs.
