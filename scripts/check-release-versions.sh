@@ -3,12 +3,12 @@
 #
 # Builds all binaries with the current Makefile ldflags, then verifies:
 #   1. No binary reports 0.1.x or 0.2.x in its version output.
-#   2. Every binary reports 0.3.6-dev (dev) or the expected release version.
+#   2. Every binary reports 0.3.7-dev (dev) or the expected release version.
 #   3. The harness-linux cross-compile contains the correct version string.
 #
 # Usage:
-#   ./scripts/check-release-versions.sh              # check dev build (0.3.6-dev)
-#   ./scripts/check-release-versions.sh 0.3.6         # check release build
+#   ./scripts/check-release-versions.sh              # check dev build (0.3.7-dev)
+#   ./scripts/check-release-versions.sh 0.3.7         # check release build
 #
 # Exit codes:
 #   0 — all version checks passed
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-EXPECTED_VERSION="${1:-0.3.6-dev}"
+EXPECTED_VERSION="${1:-0.3.7-dev}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
