@@ -126,7 +126,7 @@ func runDaemonStatus(cmd *cobra.Command) error {
 }
 
 // daemonVersionFromString extracts the daemon version from a version string.
-// The string is formatted as "CLI: 0.3.6-dev | Daemon: 0.3.6-dev | ..."
+// The string is formatted as "CLI: 0.3.7-dev | Daemon: 0.3.7-dev | ..."
 func daemonVersionFromString(s string) string {
 	// Try to find "Daemon: <version>" in the string.
 	parts := strings.Split(s, "|")
