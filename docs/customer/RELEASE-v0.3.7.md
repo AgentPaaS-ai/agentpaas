@@ -40,7 +40,7 @@ agentpaas doctor
 | `agentpaas cloud pull <agent>` | Download cloud agent metadata into a local dir (edit → pack → push loop) |
 | `agentpaas cloud login` | Browser login (does **not** auto-open; you open the URL) |
 
-Named cron intervals only: `every_1m`, `every_5m`, `every_15m`, `every_1h`.
+Cron: named intervals (`every_1m`, `every_5m`, `every_15m`, `every_1h`) **or** standard 5-field UTC cron (e.g. `30 9 * * 1-5`).
 
 Hermes plugin tools: `agentpaas_cloud_cron_set|disable|enable|list` (plus existing cloud tools). Cloud login from Hermes **coaches** you to run CLI yourself (non-blocking).
 
@@ -89,7 +89,7 @@ Push my openrouter-key to cloud and bind it to the weather deployment
 
 - Preview vault (not isolation-grade).
 - OpenRouter is the proven cold LLM path; other providers listed but not stranger-proven yet.
-- Cron is named intervals only (not free-form cron syntax).
+- Cloud cron: named intervals or 5-field UTC cron (day/time schedules). Local `agentpaas cron` already supported 5-field + timezone.
 - `cloud pull` is metadata + stub source MVP; full image extract may be incomplete without a local pack.
 - Trial is invite-gated (claim links), not open self-serve signup.
 
