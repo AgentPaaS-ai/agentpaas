@@ -1983,3 +1983,48 @@ def agentpaas_cloud_login(args, **kwargs):
         ),
         "user_command": "agentpaas cloud login",
     })
+
+def agentpaas_cloud_cron_list(args, **kwargs):
+    """List cloud cron schedules."""
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_cron_list")
+    if sensitive_error:
+        return sensitive_error
+    return _run_cloud_tool(["cloud", "cron", "list"])
+
+
+def agentpaas_cloud_cron_set(args, **kwargs):
+    """Set cloud deployment cron expr (enables schedule)."""
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_cron_set")
+    if sensitive_error:
+        return sensitive_error
+    dep = (args or {}).get("deployment") or (args or {}).get("deployment_id")
+    expr = (args or {}).get("expr")
+    if not dep or not expr:
+        import json
+        return json.dumps({"error": "deployment and expr required", "error_category": "tool_invocation_failed"})
+    return _run_cloud_tool(["cloud", "cron", "set", str(dep), "--expr", str(expr)])
+
+
+def agentpaas_cloud_cron_disable(args, **kwargs):
+    """Disable cloud deployment cron (keeps expr)."""
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_cron_disable")
+    if sensitive_error:
+        return sensitive_error
+    dep = (args or {}).get("deployment") or (args or {}).get("deployment_id")
+    if not dep:
+        import json
+        return json.dumps({"error": "deployment required", "error_category": "tool_invocation_failed"})
+    return _run_cloud_tool(["cloud", "cron", "disable", str(dep)])
+
+
+def agentpaas_cloud_cron_enable(args, **kwargs):
+    """Enable previously configured cloud deployment cron."""
+    sensitive_error = _cloud_reject_sensitive_args(args, "agentpaas_cloud_cron_enable")
+    if sensitive_error:
+        return sensitive_error
+    dep = (args or {}).get("deployment") or (args or {}).get("deployment_id")
+    if not dep:
+        import json
+        return json.dumps({"error": "deployment required", "error_category": "tool_invocation_failed"})
+    return _run_cloud_tool(["cloud", "cron", "enable", str(dep)])
+

@@ -57,6 +57,10 @@ TOOL_NAMES = [
     "agentpaas_cloud_secrets_list",
     "agentpaas_cloud_secrets_push",
     "agentpaas_cloud_login",
+    "agentpaas_cloud_cron_list",
+    "agentpaas_cloud_cron_set",
+    "agentpaas_cloud_cron_disable",
+    "agentpaas_cloud_cron_enable",
 ]
 
 AGENTPAAS_INIT_PROJECT = {
@@ -946,4 +950,51 @@ AGENTPAAS_CLOUD_LOGIN = {
     "name": "agentpaas_cloud_login",
     "description": "Start AgentPaaS Cloud login, print the URL, and wait for the callback. The CLI does not open a browser by default; open the URL in the same browser as the claim link.",
     "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+
+AGENTPAAS_CLOUD_CRON_LIST = {
+    "name": "agentpaas_cloud_cron_list",
+    "description": "List cloud cron schedules for the logged-in tenant.",
+    "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+}
+
+AGENTPAAS_CLOUD_CRON_SET = {
+    "name": "agentpaas_cloud_cron_set",
+    "description": "Set or change a cloud deployment cron schedule (enables it). expr: every_1m|every_5m|every_15m|every_1h.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "deployment": {"type": "string", "description": "Deployment id or agent name."},
+            "expr": {"type": "string", "description": "every_1m, every_5m, every_15m, or every_1h"},
+        },
+        "required": ["deployment", "expr"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_CLOUD_CRON_DISABLE = {
+    "name": "agentpaas_cloud_cron_disable",
+    "description": "Disable cloud cron on a deployment without removing the stored schedule.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "deployment": {"type": "string", "description": "Deployment id or agent name."},
+        },
+        "required": ["deployment"],
+        "additionalProperties": False,
+    },
+}
+
+AGENTPAAS_CLOUD_CRON_ENABLE = {
+    "name": "agentpaas_cloud_cron_enable",
+    "description": "Re-enable a previously configured cloud cron schedule.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "deployment": {"type": "string", "description": "Deployment id or agent name."},
+        },
+        "required": ["deployment"],
+        "additionalProperties": False,
+    },
 }

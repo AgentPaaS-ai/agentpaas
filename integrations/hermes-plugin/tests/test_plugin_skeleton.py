@@ -207,6 +207,11 @@ class BinaryResolverTests(unittest.TestCase):
 
 
 def _sample_args(tool_name):
+    if tool_name == "agentpaas_cloud_cron_set":
+        return {"deployment": "dep_x", "expr": "every_5m"}
+    if tool_name in ("agentpaas_cloud_cron_disable", "agentpaas_cloud_cron_enable"):
+        return {"deployment": "dep_x"}
+
     samples = {
         "agentpaas_init_project": {"project_dir": ".", "runtime": "python"},
         "agentpaas_reconcile_project": {"project_dir": "."},
