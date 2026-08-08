@@ -1,21 +1,20 @@
-# Dashboard tour
+# Dashboard tour (cloud.agentpaas.ai)
 
-URL: https://cloud.agentpaas.ai
+The console shows what your agents did. It does **not** replace the CLI for deploys, cron, or invokes (except Tokens and Secrets forms).
 
-| Tab | Question it answers |
-|-----|---------------------|
-| Overview | Trial days, CPU, runs, agents used |
-| Agents | Pushed images, version, status, latest invoke |
-| Deployments | Live deps, cron chip, copyable invoke command |
-| Runs | Invoke history, search, row detail with summary/final output |
-| Cron | Schedules (read-only) |
-| Secrets | Labels only (preview vault) |
-| Tokens | Mint/revoke; bootstrap vs cli-login |
-| Usage | Quota and period |
-| Plan | Tier limits |
+## Tabs
 
-Write actions in UI: **tokens and secrets only**. Everything else mutates via CLI/Hermes.
+| Tab | What you see | How you change things |
+|-----|--------------|------------------------|
+| Overview | Trial days, CPU, runs, agents | — |
+| Agents | Images; expand row for provenance, invoke URLs | `cloud push` / Hermes |
+| Deployments | Live slots; expand for invoke + cron hint | `cloud deploy` / `undeploy` |
+| Runs | History; expand under row for summary/events | `cloud invoke` / cron |
+| Cron | Schedules (read-only) | `cloud cron set|disable|enable` |
+| Secrets | Labels only | UI or `cloud secrets push|bind` |
+| Tokens | API tokens | UI mint/revoke or CLI login |
+| Usage / Plan | Quota | Contact agentpaas.ai |
 
-Trial ending within 7 days: banner at top. Dismiss for this browser session; it returns next session.
+## Navigation
 
-Empty tabs show the one command that fills them.
+Agents, Deployments, and Runs support filter, page size, prev/next, and a **count on the top right**. Click a row to expand detail underneath (not a side drawer).
