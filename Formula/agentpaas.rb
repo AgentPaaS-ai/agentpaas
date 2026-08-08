@@ -26,6 +26,6 @@ class Agentpaas < Formula
 
   test do
     output = shell_output("#{bin}/agentpaas version")
-    assert_match(/0\.3\.6/, output)
+    assert_match(/0\.3\.7/, output)
   end
 end
