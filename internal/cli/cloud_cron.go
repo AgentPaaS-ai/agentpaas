@@ -8,11 +8,41 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cronExprs = map[string]struct{}{
+var cronNamedExprs = map[string]struct{}{
 	"every_1m":  {},
 	"every_5m":  {},
 	"every_15m": {},
 	"every_1h":  {},
+}
+
+// validCloudCronExpr accepts named intervals or standard 5-field cron (UTC).
+func validCloudCronExpr(expr string) bool {
+	expr = strings.TrimSpace(expr)
+	if expr == "" {
+		return false
+	}
+	if _, ok := cronNamedExprs[expr]; ok {
+		return true
+	}
+	fields := strings.Fields(expr)
+	if len(fields) != 5 {
+		return false
+	}
+	// Lightweight shape check; cloud API is the source of truth for field ranges.
+	for _, f := range fields {
+		if f == "" {
+			return false
+		}
+		for _, r := range f {
+			switch {
+			case r >= '0' && r <= '9':
+			case r == '*' || r == '/' || r == '-' || r == ',':
+			default:
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func newCloudCronCmd() *cobra.Command {
@@ -21,7 +51,8 @@ func newCloudCronCmd() *cobra.Command {
 		Short: "Manage cloud deployment cron schedules",
 		Long: `Set, enable, disable, or list cloud deployment cron schedules.
 
-Named intervals only: every_1m, every_5m, every_15m, every_1h.
+Named intervals: every_1m, every_5m, every_15m, every_1h.
+Or standard 5-field cron in UTC, e.g. "30 9 * * 1-5" (09:30 UTC Mon-Fri).
 Dashboard Cron tab is read-only; use these CLI verbs (or Hermes) to change schedules.`,
 	}
 	cmd.AddCommand(newCloudCronSetCmd())
@@ -38,9 +69,9 @@ func newCloudCronSetCmd() *cobra.Command {
 		Short: "Create or change a deployment cron schedule (enables it)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			expr = strings.TrimSpace(expr)
-			if _, ok := cronExprs[expr]; !ok {
-				return fmt.Errorf("cloud cron set: --expr must be every_1m, every_5m, every_15m, or every_1h")
+			expr = strings.Join(strings.Fields(strings.TrimSpace(expr)), " ")
+			if !validCloudCronExpr(expr) {
+				return fmt.Errorf("cloud cron set: --expr must be every_1m|every_5m|every_15m|every_1h or a 5-field cron in UTC (e.g. \"30 9 * * 1-5\")")
 			}
 			token, err := resolveToken(cmd)
 			if err != nil {
@@ -62,7 +93,7 @@ func newCloudCronSetCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&expr, "expr", "", "Schedule: every_1m|every_5m|every_15m|every_1h (required)")
+	cmd.Flags().StringVar(&expr, "expr", "", "Schedule: every_1m|every_5m|every_15m|every_1h or 5-field cron UTC (required)")
 	_ = cmd.MarkFlagRequired("expr")
 	return cmd
 }
