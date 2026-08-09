@@ -151,6 +151,18 @@ func (b *MCPBridge) Close() error {
 // parses the JSON-RPC body, dispatches to the worker, and writes the JSON-RPC
 // response.
 func (b *MCPBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Cloud CF containers only expose :8080. When the bridge owns that port,
+	// answer health probes so startRunContainer can green without the agent mux.
+	if r.Method == http.MethodGet {
+		switch r.URL.Path {
+		case "/healthz", "/health", "/readyz", "/":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"service":"mcp_bridge"}`))
+			return
+		}
+	}
+
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"jsonrpc":"2.0","error":{"code":-32600,"message":"Method not allowed"},"id":null}`, http.StatusMethodNotAllowed)
 		return
