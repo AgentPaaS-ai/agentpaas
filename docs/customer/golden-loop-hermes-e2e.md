@@ -27,7 +27,7 @@ bind/invoke/result. Disk-verify every phase. Orch never fabricates.
 
 ```bash
 export PATH="/opt/homebrew/bin:$PATH"
-export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.parvezsyed.workers.dev'
+export AGENTPAAS_CLOUD_API_URL='https://cloud.agentpaas.ai'
 agentpaas version    # CLI: 0.3.6
 agentpaas doctor     # 7/7
 # Cloud live:
@@ -142,8 +142,8 @@ Hermes runs (or coaches exact commands):
 Send this agent to AgentPaaS Cloud and prove invoke there.
 
 Required env (every shell):
-  export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.parvezsyed.workers.dev'
-  export CLOUDFLARE_API_TOKEN from Keychain label agentpaas-cloudflare-api-token (user pastes; never print)
+  export AGENTPAAS_CLOUD_API_URL='https://cloud.agentpaas.ai'
+  export CLOUDFLARE_API_TOKEN from your credential store (user pastes; never print)
 
 Steps:
 1) Open the tenant claim link in a browser, then run `cloud login`; fallback for CI/scripts: `cloud login --token-stdin` with the provider-issued token

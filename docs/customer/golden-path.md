@@ -21,8 +21,8 @@ state-changing cloud calls still require explicit user confirmation.
 export PATH="/opt/homebrew/bin:$PATH"
 # AGENTPAAS_CLOUD_API_URL is optional; the binary defaults to
 # https://cloud.agentpaas.ai.
-# For a legacy/transition API host, uncomment and set the override:
-# export AGENTPAAS_CLOUD_API_URL='https://agentpaas-cloud-api.parvezsyed.workers.dev'
+# To override the API host, uncomment and set:
+# export AGENTPAAS_CLOUD_API_URL='https://cloud.agentpaas.ai'
 # No Cloudflare credential needed — push/deploy/invoke use only your tenant token.
 ```
 

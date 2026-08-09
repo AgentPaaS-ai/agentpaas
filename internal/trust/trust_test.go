@@ -98,7 +98,7 @@ func TestIsValidAlias(t *testing.T) {
 		alias string
 		valid bool
 	}{
-		{"parvez", true},
+		{"alice", true},
 		{"my-publisher", true},
 		{"publisher-123", true},
 		{"a", true},
@@ -306,10 +306,10 @@ func TestCheckKeyConflict(t *testing.T) {
 	_, pem1, fp1 := generateTestKey(t)
 	_, _, fp2 := generateTestKey(t)
 
-	// Pin two different keys, both with alias "parvez".
+	// Pin two different keys, both with alias "alice".
 	// Only the first should succeed (second is duplicate alias? Actually,
 	// aliases are not unique — CheckKeyConflict just warns about it).
-	pub1 := Publisher{Fingerprint: fp1, PublicKeyPEM: pem1, Alias: "parvez"}
+	pub1 := Publisher{Fingerprint: fp1, PublicKeyPEM: pem1, Alias: "alice"}
 	if err := store.Pin(pub1, SourceManual); err != nil {
 		t.Fatalf("Pin pub1: %v", err)
 	}
@@ -323,16 +323,16 @@ func TestCheckKeyConflict(t *testing.T) {
 		t.Fatalf("reload: %v", err)
 	}
 
-	conflict := store.CheckKeyConflict("parvez", fp2)
+	conflict := store.CheckKeyConflict("alice", fp2)
 	if conflict == nil {
-		t.Fatal("expected conflict for alias 'parvez' with different fingerprint")
+		t.Fatal("expected conflict for alias 'alice' with different fingerprint")
 	}
 	if conflict.Fingerprint != fp1 {
 		t.Errorf("conflict fingerprint = %s, want %s", conflict.Fingerprint, fp1)
 	}
 
 	// CheckKeyConflict with same fp and alias should return nil.
-	conflict = store.CheckKeyConflict("parvez", fp1)
+	conflict = store.CheckKeyConflict("alice", fp1)
 	if conflict != nil {
 		t.Errorf("expected no conflict for same alias+fp, got %+v", conflict)
 	}

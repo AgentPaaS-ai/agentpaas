@@ -16,7 +16,7 @@ Generated stubs: `control.pb.go`, `control_grpc.pb.go`, `control.pb.gw.go`
 
 ## 1. Overview
 
-**ControlService** is the local operational control plane for AgentPaaS. It packs agent images, starts and stops governed runs, applies egress policy, manages secrets grants, queries the signed audit chain, runs operator diagnostics for coding-agent clients, schedules cron invocations, and exposes the B26+ deployment/workflow surface.
+**ControlService** is the local operational control plane for AgentPaaS. It packs agent images, starts and stops governed runs, applies egress policy, manages secrets grants, queries the signed audit chain, runs operator diagnostics for coding-agent clients, schedules cron invocations, and exposes the deployment/workflow surface.
 
 | Who calls it | How |
 |---|---|
@@ -42,7 +42,7 @@ Socket discovery: `internal/home` (`DiscoverSocketPath` / `AGENTPAAS_SOCKET`).
 | Control UDS | **Filesystem permissions only** (socket `0600`, home `0700`). No Bearer/mTLS interceptor on ControlService today. Any local principal that can open the socket can call all control RPCs. |
 | Readiness | Unary/stream interceptors return `UNAVAILABLE` until the daemon marks itself ready |
 | Trigger (separate) | Optional API key on TCP loopback — see [api-reference-trigger.md](api-reference-trigger.md) |
-| Authority scopes (B26) | Proto `AuthorityScope` documents `runs:control` and `runs:amend_limits`. Mutating workflow control RPCs currently **fail closed** with typed `FEATURE_NOT_ENABLED` rather than enforcing live scope checks |
+| Authority scopes (the workflow contract) | Proto `AuthorityScope` documents `runs:control` and `runs:amend_limits`. Mutating workflow control RPCs currently **fail closed** with typed `FEATURE_NOT_ENABLED` rather than enforcing live scope checks |
 
 ### Error conventions
 
@@ -59,7 +59,7 @@ gRPC status codes used by handlers:
 | `INTERNAL` | Pack/runtime/store failures |
 | `PERMISSION_DENIED` | Reserved in proto conventions; UDS relies on FS perms instead |
 
-**Typed control errors:** many B26 responses embed `TypedControlError` in the **response body** (gRPC OK) so callers branch on `code` / `code_name` without string-matching. Admission outcomes use `AdmissionOutcomeCode` on `InvokeDeploymentResponse`.
+**Typed control errors:** many the workflow contract responses embed `TypedControlError` in the **response body** (gRPC OK) so callers branch on `code` / `code_name` without string-matching. Admission outcomes use `AdmissionOutcomeCode` on `InvokeDeploymentResponse`.
 
 ### Cloud CLI exit codes and JSON errors
 
@@ -351,8 +351,8 @@ Start a governed agent run: verify lock/install, enforce credentials, create dua
 #### Behavior (high level)
 
 1. Require `agent_name`; home paths configured.
-2. **Fail closed** if `continue_run_id`, `recovery_action`, or `requested_attempt_lease_ms` set → `FAILED_PRECONDITION` (`routed_run_continuation_not_enabled` until B35).
-3. **Fail closed** if `deployment_ref` set → `FAILED_PRECONDITION` (`routed_run_invocation_not_enabled` until B28). Use `InvokeDeployment` instead.
+2. **Fail closed** if `continue_run_id`, `recovery_action`, or `requested_attempt_lease_ms` set → `FAILED_PRECONDITION` (`routed_run_continuation_not_enabled` until a later release).
+3. **Fail closed** if `deployment_ref` set → `FAILED_PRECONDITION` (`routed_run_invocation_not_enabled` until a later release). Use `InvokeDeployment` instead.
 4. `idempotency_key` on legacy Run is accepted but ignored.
 5. Enforce **max 3 concurrent** active runs → `RESOURCE_EXHAUSTED`.
 6. Installed vs packed agent verification (signatures, digests) **before** Docker.
@@ -373,11 +373,11 @@ Egress enforcement: see [how-enforcement-works.md](how-enforcement-works.md). Se
 | `agent_version` | string | `agentVersion` | no | Version label |
 | `trigger_payload` | bytes | `triggerPayload` | no | JSON payload to harness |
 | `budget` | BudgetConfig | `budget` | no | Optional ceilings |
-| `continue_run_id` | string | `continueRunId` | no | **Gated** B35 |
-| `recovery_action` | string | `recoveryAction` | no | **Gated** B35 |
-| `requested_attempt_lease_ms` | int64 | `requestedAttemptLeaseMs` | no | **Gated** B35 |
+| `continue_run_id` | string | `continueRunId` | no | **Gated** a later release |
+| `recovery_action` | string | `recoveryAction` | no | **Gated** a later release |
+| `requested_attempt_lease_ms` | int64 | `requestedAttemptLeaseMs` | no | **Gated** a later release |
 | `idempotency_key` | string | `idempotencyKey` | no | Ignored on legacy Run |
-| `deployment_ref` | string | `deploymentRef` | no | **Gated** B28 |
+| `deployment_ref` | string | `deploymentRef` | no | **Gated** a later release |
 
 #### `BudgetConfig`
 
@@ -393,8 +393,8 @@ Egress enforcement: see [how-enforcement-works.md](how-enforcement-works.md). Se
 | Field | Type | JSON | Description |
 |---|---|---|---|
 | `run_id` | string | `runId` | Started run |
-| `invocation_id` | string | `invocationId` | B26 (may be empty on legacy path) |
-| `workflow_id` | string | `workflowId` | B26 |
+| `invocation_id` | string | `invocationId` | the workflow contract (may be empty on legacy path) |
+| `workflow_id` | string | `workflowId` | the workflow contract |
 | `attempt_id` | string | `attemptId` | Empty until async claim |
 | `status` | string | `status` | e.g. `running` |
 | `requested_deployment_ref` | string | `requestedDeploymentRef` | Echo |
@@ -667,7 +667,7 @@ Requires `run_id`. Errors: `INVALID_ARGUMENT`, `INTERNAL` (audit query).
 | **RPC** | `ExplainFailure(ExplainFailureRequest) → ExplainFailureResponse` |
 | **HTTP** | `POST /v1/control/runs/{run_id}:explain-failure` |
 
-Root cause, contributing factors, suggested fixes, redacted excerpts, `next_action`, B26 `latest_reason` / `latest_action`.
+Root cause, contributing factors, suggested fixes, redacted excerpts, `next_action`, the workflow contract `latest_reason` / `latest_action`.
 
 ---
 
@@ -765,9 +765,9 @@ Requires `schedule_id`. Response `{ "removed": true }`.
 
 ---
 
-## 9. RPC methods — Deployments & aliases (B26 state — enabled)
+## 9. RPC methods — Deployments & aliases (the workflow contract state — enabled)
 
-These mutate durable routed stores when initialized. Proto comments that say “FEATURE_NOT_ENABLED until B28/B35” apply to **workflow runtime control**, not basic deployment CRUD.
+These mutate durable routed stores when initialized. Proto comments that say “FEATURE_NOT_ENABLED until a later release/a later release” apply to **workflow runtime control**, not basic deployment CRUD.
 
 ### 9.1 CreateDeployment
 
@@ -843,7 +843,7 @@ Common errors: `FailedPrecondition` (`routed store not initialized`), `InvalidAr
 
 ---
 
-## 10. RPC methods — Invocation & run status (B26/B30)
+## 10. RPC methods — Invocation & run status (the workflow contract/the durable-runtime release)
 
 ### 10.1 InvokeDeployment
 
@@ -921,10 +921,10 @@ Returns terminal status envelope; **result content / attempt_id may be empty** u
 |---|---|---|
 | `CreateWorkflow` | `POST /v1/control/workflows` | Validates `idempotency_key`; returns `FEATURE_NOT_ENABLED` in body (kind-dependent block) |
 | `GetWorkflow` | `GET /v1/control/workflows/{workflow_id}` | **Read enabled** when store init; else typed not-enabled |
-| `CancelWorkflow` | `POST /v1/control/workflows/{workflow_id}:cancel` | Validates ids; **B35** feature-not-enabled body |
-| `SetWorkflowDesiredState` | `POST /v1/control/workflows/{workflow_id}:desired-state` | **B35** gated (pause/resume/etc.) |
-| `RestartWorkflow` | `POST /v1/control/workflows/{source_workflow_id}:restart` | **B35** gated |
-| `AmendLimits` | `POST /v1/control/workflows/{workflow_id}:amend-limits` | Requires `reason` + `idempotency_key`; **B35** gated (`runs:amend_limits` intended) |
+| `CancelWorkflow` | `POST /v1/control/workflows/{workflow_id}:cancel` | Validates ids; **a later release** feature-not-enabled body |
+| `SetWorkflowDesiredState` | `POST /v1/control/workflows/{workflow_id}:desired-state` | **a later release** gated (pause/resume/etc.) |
+| `RestartWorkflow` | `POST /v1/control/workflows/{source_workflow_id}:restart` | **a later release** gated |
+| `AmendLimits` | `POST /v1/control/workflows/{workflow_id}:amend-limits` | Requires `reason` + `idempotency_key`; **a later release** gated (`runs:amend_limits` intended) |
 | `GetWorkflowGraph` | `GET /v1/control/workflows/{workflow_id}/graph` | **Read enabled**: workflow + nodes/services/handoffs/child batches |
 
 Gated responses look like:
@@ -934,10 +934,10 @@ Gated responses look like:
   "error": {
     "code": "TYPED_CONTROL_ERROR_FEATURE_NOT_ENABLED",
     "codeName": "routed_run_control_not_enabled",
-    "message": "workflow_control is not enabled until B35",
+    "message": "workflow_control is not enabled until a later release",
     "details": {
       "feature": "workflow_control",
-      "enabled_in_block": "B35"
+      "enabled_in_block": "a later release"
     }
   }
 }
@@ -988,7 +988,7 @@ Duration fields are **int64 ms**; spend fields are **decimal strings** (never fl
 **RedactedExcerpt:** `source`, `start_line`, `end_line`, `content`  
 **ConfirmationRequirement:** `requires_confirmation`, `confirmation_id`, `risk_level` (`low`|`medium`|`high`), `rationale`, `affected_destinations[]`, `credential_ids[]`, `evidence_refs[]`
 
-### Attempt / progress types (B26 portable report)
+### Attempt / progress types (the workflow contract portable report)
 
 - `ProgressSummary` — model/tool call counters  
 - `CheckpointSummary` — checkpoint metadata (**no host paths**)  
@@ -1037,7 +1037,7 @@ Duration fields are **int64 ms**; spend fields are **decimal strings** (never fl
 | `SecretSet` | “creates or updates a secret” | **No value field; does not write** Keychain material |
 | `LogsRequest.run_id` | Optional | **Required** by handler |
 | `LogsRequest.min_level` | Filter | **Ignored** (all lines as `info`) |
-| B26 service comment “FEATURE_NOT_ENABLED until B28/B35” | Blanket on B26 RPCs | **Deployment CRUD + InvokeDeployment + reads are live**; workflow mutations gated |
+| the workflow contract service comment “FEATURE_NOT_ENABLED until a later release/a later release” | Blanket on the workflow contract RPCs | **Deployment CRUD + InvokeDeployment + reads are live**; workflow mutations gated |
 | `Run` + `deployment_ref` / continuation fields | Present on RunRequest | **Rejected** with feature-not-enabled; use `InvokeDeployment` |
 | `Run.idempotency_key` | Documented for deployments | **Ignored** on legacy Run |
 | `GetRunResult` content | Structured result + artifacts | Often **empty envelope** until later blocks |

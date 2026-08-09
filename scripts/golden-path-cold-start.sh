@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Automated founder-cold golden path: install/build/cloud/undeploy equivalent.
+# Automated cold-start golden path: install/build/cloud/undeploy equivalent.
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -14,9 +14,9 @@ FINAL_OUTPUT=""
 CPU_BEFORE=""
 CPU_AFTER=""
 STATUS="NO-GO"
-EVIDENCE_DIR="$REPO_ROOT/docs/owa-records"
+EVIDENCE_DIR="$REPO_ROOT/docs/golden-records"
 TIMESTAMP=$(date +%Y%m%d-%H%M)
-EVIDENCE="$EVIDENCE_DIR/golden-founder-cold-$TIMESTAMP.md"
+EVIDENCE="$EVIDENCE_DIR/golden-cold-start-$TIMESTAMP.md"
 
 section() { printf '\n== %s ==\n' "$1"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
@@ -33,7 +33,7 @@ write_evidence() {
   mkdir -p "$EVIDENCE_DIR"
   EXCERPT=$(printf '%s' "$FINAL_OUTPUT" | tr '\n' ' ' | cut -c1-500)
   {
-    printf '# Founder-cold automated golden path\n\n'
+    printf '# Cold-start automated golden path\n\n'
     printf -- '- Result: %s\n- API: %s\n- Project: %s\n- Deployment: %s\n- Run ID: %s\n- CPU minutes used before invoke: %s\n- CPU minutes used after result: %s\n- Final output excerpt: %s\n' "$STATUS" "$API" "$PROJECT" "$MAIN_DEP" "$RUN" "${CPU_BEFORE:-unavailable}" "${CPU_AFTER:-unavailable}" "$EXCERPT"
   } > "$EVIDENCE"
   printf '\nEvidence: %s\n' "$EVIDENCE"
@@ -187,4 +187,4 @@ if [[ -n "${SECOND_OUT:-}" && "$SECOND_OUT" != *no_slot_capacity* ]]; then
 fi
 
 STATUS="GO"
-printf 'GO founder-cold golden path\n'
+printf 'GO cold-start golden path\n'

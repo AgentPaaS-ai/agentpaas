@@ -1,4 +1,4 @@
-.PHONY: build build-harness-linux build-harness-linux-amd64 build-all test proto lint race osv e2e-network redteam-smoke install-plugin golden-eval golden-fast golden-slow golden-docker golden-founder-cold golden-edge golden-founder-all
+.PHONY: build build-harness-linux build-harness-linux-amd64 build-all test proto lint race osv e2e-network redteam-smoke install-plugin golden-eval golden-fast golden-slow golden-docker golden-cold-start golden-edge golden-cold-all
 
 build:
 	go build ./...
@@ -875,13 +875,13 @@ restart-local-daemon:
 	@pgrep -f "$(CURDIR)/bin/agentpaasd" >/dev/null || (echo "failed to start local agentpaasd; see /tmp/agentpaasd-local.log"; exit 1)
 	@echo "    agentpaasd PID $$(pgrep -f '$(CURDIR)/bin/agentpaasd' | head -1)"
 
-golden-founder-cold:
-	bash scripts/golden-path-founder-cold.sh
+golden-cold-start:
+	bash scripts/golden-path-cold-start.sh
 
 golden-edge:
 	bash scripts/golden-path-edge-regressions.sh
 
-golden-founder-all: golden-founder-cold golden-edge
+golden-cold-all: golden-cold-start golden-edge
 
 golden-fast: build-all restart-local-daemon
 	@echo "==> Running golden dataset: fast tier (pass^k=3)"

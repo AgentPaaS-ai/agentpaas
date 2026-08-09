@@ -29,7 +29,7 @@ see [known-limitations.md](known-limitations.md).
 
 ## 3.1a Architecture invariant: one gateway per run
 
-Every agent run receives its own dedicated gateway sidecar (D68). A shared
+Every agent run receives its own dedicated gateway sidecar. A shared
 gateway across agents or runs is prohibited. The per-run gateway keeps
 isolation topological: agent containers on separate runs have no network
 path to each other, to each other's gateways, or to each other's brokered
@@ -78,7 +78,7 @@ uses a shared gateway.
 
 ---
 
-## 3.4 Cloud (AgentPaaS Cloud) enforcement and assurance class (D132-D136)
+## 3.4 Cloud (AgentPaaS Cloud) enforcement and assurance class
 
 The cloud managed service runs the same signed OCI images on Cloudflare, but
 the enforcement mechanism and the strength of the guarantee differ from the
@@ -103,15 +103,15 @@ and pins DNS, so if the carrier is absent the container has no internet.
   bytes leave." This is enforced by OUR code and is proven correct per
   release by verifier + adversary testing. There is no substrate backstop on
   the routing decision, so a carrier bug is a potential bypass. This is the
-  accepted assurance debt of the CF-only data plane (D132/D136).
-- **Cloud high-assurance tier (D135, paid, on-demand): substrate-enforced.**
-  For tenants who require it, workloads run in a dedicated Kubernetes
-  namespace with a Cilium FQDN NetworkPolicy floor compiled from the signed
-  policy.yaml and enforced by the kernel, independent of AgentPaaS
-  control-plane code. This restores the topological guarantee and answers
-  "who enforces the enforcer" with "the cluster, verifiably."
+ accepted assurance debt of the Cloudflare-only data plane.
+ - **Cloud high-assurance tier (paid, on-demand): substrate-enforced.**
+ For tenants who require it, workloads run in a dedicated Kubernetes
+ namespace with a Cilium FQDN NetworkPolicy floor compiled from the signed
+ policy.yaml and enforced by the kernel, independent of AgentPaaS
+ control-plane code. This restores the topological guarantee and answers
+ "who enforces the enforcer" with "the cluster, verifiably."
 
-**Cloud scope limits (accepted, D132).** HTTP/S egress only — no non-HTTP
+**Cloud scope limits (accepted).** HTTP/S egress only — no non-HTTP
 protocol governance. No external A2A federation. Both are deliberate scope
 decisions, revivable on demand, and are not represented as capabilities.
 
@@ -122,18 +122,16 @@ assurance class changes.
 
 ---
 
-## Phase 2 Threats (B21-B26)
+## Phase 2 Threats: secure agent sharing
 
 Phase 2 adds secure agent sharing: bundles, publisher identities, and
 provenance chains. The following adversaries are specific to the sharing
 surface. The P1 STRIDE table above still applies.
 
-| # | Adversary | Attack | Control | Block |
-|---|-----------|--------|---------|-------|
-| A2 | Impersonator | "This bundle is from Parvez" with an attacker-controlled key | TOFU pinning + out-of-band fingerprint verification; key-change hard fail for known publishers (no silent acceptance of a new key for a known publisher fingerprint). Trust store persists verified fingerprints so subsequent bundles from the same publisher are recognized without re-prompting. | B21/B23 |
-| A11 | Stolen publisher key | Attacker signs a malicious bundle with the publisher's real private key | **Out of scope for v0.2.0.** AgentPaaS v0.2.0 has no revocation mechanism; a stolen key is outside the current trust boundary. Revocation-list support is planned for B26. The docs acknowledge this limitation explicitly. Until B26 ships, users must treat the publisher keypair as a long-lived credential and protect it accordingly — export an encrypted backup and store it securely. | B26 |
+| # | Adversary | Attack | Control |
+|---|-----------|--------|---------|
+| A2 | Impersonator | "This bundle is from the publisher" with an attacker-controlled key | TOFU pinning + out-of-band fingerprint verification; key-change hard fail for known publishers (no silent acceptance of a new key for a known publisher fingerprint). Trust store persists verified fingerprints so subsequent bundles from the same publisher are recognized without re-prompting. |
+| A11 | Stolen publisher key | Attacker signs a malicious bundle with the publisher's real private key | **Out of scope for v0.2.0.** AgentPaaS v0.2.0 has no revocation mechanism; a stolen key is outside the current trust boundary. Revocation-list support is planned. The docs acknowledge this limitation explicitly. Until revocation ships, users must treat the publisher keypair as a long-lived credential and protect it accordingly — export an encrypted backup and store it securely. |
 
-For the full Phase 2 threat model delta (adversaries A1–A11), see
-the Phase 2 PRD (local-only: docs/execution/planning/phase2-sharing-prd-v1.md, §9).
 For what publisher signatures do and do not prove, see
 [trust-model.md](trust-model.md).

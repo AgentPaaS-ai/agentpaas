@@ -38,7 +38,7 @@ the manifest's recorded digests.
   "format": "agentpaas-bundle",
   "created_at": "2026-07-06T00:00:00Z",
   "publisher": {
-    "name": "parvez",
+    "name": "publisher",
     "fingerprint": "<64-hex sha256 of DER-encoded SPKI>",
     "public_key_pem": "-----BEGIN PUBLIC KEY-----...",
     "signed_at": "2026-07-06T00:00:00Z"
@@ -134,14 +134,14 @@ no trust store, and no network access:
 | 1 | `manifest_parse` | Manifest parses as JSON; `bundle_schema_version` is supported; publisher fields are present |
 | 2 | `manifest_signature` | `manifest_signature` verifies against `manifest.publisher.public_key_pem` |
 | 3 | `publisher_match` | `manifest.publisher` equals `lock.publisher` (fingerprint + PEM) |
-| 4 | `lock_provenance` | Lock verifies (both `lockfile_signature` and `publisher_signature` per B21 rules); provenance chain verifies (B21 T05) |
+| 4 | `lock_provenance` | Lock verifies (both `lockfile_signature` and `publisher_signature` per the signing rules); provenance chain verifies (the signing T05) |
 | 5 | `content_sha256` | Per-file SHA-256s for `agent.lock`, `policy.yaml`, `sbom.spdx.json` match manifest |
 | 6 | `policy_digest` | `policy.yaml` canonical digest == `lock.policy_digest` |
 | 7 | `sbom_digest` | SBOM SHA-256 matches manifest AND `lock.sbom_digest` |
 | 8 | `source_digest` | Recomputed source digest over extracted `source/` == `lock.build_input_digest` (uses the same `ComputeBuildInputDigest` routine as `internal/pack/build.go`) |
 | 9 | `image_digest` | If image present: OCI index digest == `manifest.contents.image.digest` AND `lock.image_digest`; platform recorded. Skipped (pass) if no image. |
 
-Any check failure sets `Verified = false`. Install (B23) must refuse a
+Any check failure sets `Verified = false`. Install (Install) must refuse a
 bundle that does not pass all checks.
 
 ## 6. Extra Files (`--include`)

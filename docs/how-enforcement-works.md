@@ -115,7 +115,7 @@ In P1, untrusted callers cannot reach the harness directly — the agent contain
 is on an internal-only Docker network. The trusted local daemon may use Docker
 exec and container loopback for agent lifecycle control (invoke, status, stop).
 Gateway-native ingress (trigger API requests routed through the gateway sidecar
-per `policy.yaml` ingress rules) is deferred to B19/B21. When implemented,
+per `policy.yaml` ingress rules) is planned. When implemented,
 ingress traffic will be policy-scoped and audited.
 
 ## Audit trail

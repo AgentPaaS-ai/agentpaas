@@ -1,6 +1,6 @@
-# Automated founder-cold golden path
+# Automated cold-start golden path
 
-This is the CLI equivalent of the founder prompts recorded on 2026-08-05:
+This is the CLI equivalent of a clean-machine first-run:
 
 1. Install AgentPaaS from GitHub (the installed brew `agentpaas` binary is used).
 2. Build a weather agent using an LLM with a friendly response.
@@ -27,7 +27,7 @@ flow.
 From the repository root:
 
 ```bash
-make golden-founder-cold
+make golden-cold-start
 make golden-edge
 ```
 
@@ -35,12 +35,12 @@ The default project is `demo/weather-agent`. Pass a project directory to either
 script to use another agent:
 
 ```bash
-bash scripts/golden-path-founder-cold.sh /absolute/path/to/weather-agent
+bash scripts/golden-path-cold-start.sh /absolute/path/to/weather-agent
 bash scripts/golden-path-edge-regressions.sh /absolute/path/to/weather-agent
 ```
 
-The founder-cold run writes a redacted GO/NO-GO record under
-`docs/owa-records/golden-founder-cold-YYYYMMDD-HHMM.md`. It checks the amd64
+The cold-start run writes a redacted GO/NO-GO record under
+`docs/golden-records/golden-cold-start-YYYYMMDD-HHMM.md`. It checks the amd64
 lock, tenant-only push, admitted image, non-empty bindings, successful invoke
 and result output, logs/usage, undeploy cleanup, and optional slot reuse.
 The edge script prints PASS/FAIL for unauthenticated HTTP, platform, invoke

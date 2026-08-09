@@ -170,7 +170,7 @@ func TestResolveTrust_TOFU_TTY_CorrectSuffix(t *testing.T) {
 	var events []auditEvent
 
 	result, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -194,8 +194,8 @@ func TestResolveTrust_TOFU_TTY_CorrectSuffix(t *testing.T) {
 	if !ok {
 		t.Fatal("publisher not found after TOFU pin")
 	}
-	if pinned.Alias != "parvez" {
-		t.Errorf("alias = %q, want parvez", pinned.Alias)
+	if pinned.Alias != "alice" {
+		t.Errorf("alias = %q, want alice", pinned.Alias)
 	}
 	if pinned.Source != trust.SourceTOFU {
 		t.Errorf("source = %q, want tofu", pinned.Source)
@@ -221,7 +221,7 @@ func TestResolveTrust_TOFU_TTY_WrongThenCorrect(t *testing.T) {
 	prompts := promptSequence("abcdef00", last8)
 
 	result, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -256,7 +256,7 @@ func TestResolveTrust_TOFU_TTY_WrongThreeTimes(t *testing.T) {
 	prompts := promptSequence("aaaaaaaa", "bbbbbbbb", "cccccccc")
 
 	_, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -289,7 +289,7 @@ func TestResolveTrust_TOFU_NonTTY_NoFlag(t *testing.T) {
 
 	var events []auditEvent
 	_, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -317,7 +317,7 @@ func TestResolveTrust_TOFU_NonTTY_CorrectFlag(t *testing.T) {
 
 	var events []auditEvent
 	result, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -348,7 +348,7 @@ func TestResolveTrust_TOFU_NonTTY_WrongFlag(t *testing.T) {
 
 	var events []auditEvent
 	_, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -463,7 +463,7 @@ func TestResolveTrust_TOFU_NonTTY_DisplayFormFingerprint(t *testing.T) {
 
 	var events []auditEvent
 	result, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: displayFP,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -491,7 +491,7 @@ func TestResolveTrust_StoreUnchangedOnFailure(t *testing.T) {
 
 		prompts := promptSequence("aaaaaaaa", "bbbbbbbb", "cccccccc")
 		_, err := ResolveTrust(TrustResolveOpts{
-			PublisherName:        "parvez",
+			PublisherName:        "alice",
 			PublisherFingerprint: tk.fp,
 			PublisherPublicKeyPEM: tk.pemData,
 			Store:                store,
@@ -546,7 +546,7 @@ func TestResolveTrust_StoreUnchangedOnFailure(t *testing.T) {
 		store, storePath := newTestStore(t)
 
 		_, err := ResolveTrust(TrustResolveOpts{
-			PublisherName:        "parvez",
+			PublisherName:        "alice",
 			PublisherFingerprint: tk.fp,
 			PublisherPublicKeyPEM: tk.pemData,
 			Store:                store,
@@ -604,7 +604,7 @@ func TestResolveTrust_TTY_PromptError(t *testing.T) {
 	}
 
 	_, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -632,7 +632,7 @@ func TestResolveTrust_EmitAuditNil(t *testing.T) {
 
 	last8 := tk.fp[len(tk.fp)-8:]
 	result, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:        "parvez",
+		PublisherName:        "alice",
 		PublisherFingerprint: tk.fp,
 		PublisherPublicKeyPEM: tk.pemData,
 		Store:                store,
@@ -679,7 +679,7 @@ func TestResolveTrust_SpacedLast8(t *testing.T) {
 
 	var events []auditEvent
 	result, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:         "parvez",
+		PublisherName:         "alice",
 		PublisherFingerprint:   tk.fp,
 		PublisherPublicKeyPEM:  tk.pemData,
 		Store:                  store,
@@ -714,7 +714,7 @@ func TestResolveTrust_SpacedLast8_WithTabs(t *testing.T) {
 	spacedLast8 := last8[:4] + "	 " + last8[4:]
 
 	result, err := ResolveTrust(TrustResolveOpts{
-		PublisherName:         "parvez",
+		PublisherName:         "alice",
 		PublisherFingerprint:   tk.fp,
 		PublisherPublicKeyPEM:  tk.pemData,
 		Store:                  store,
