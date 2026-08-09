@@ -4,6 +4,11 @@ AgentPaaS enforces policy at the network boundary. Every agent run gets an
 isolated agent container and a dual-homed gateway sidecar. This document
 explains the topology and how `policy.yaml` becomes runtime controls.
 
+> **Scope note (2026-08-08):** this document describes the LOCAL macOS runtime
+> (topological sidecar enforcement). For the AgentPaaS Cloud managed service,
+> the mechanism and assurance class differ by tier — see
+> [threat-model.md](threat-model.md) §3.4.
+
 See also: [policy-reference.md](policy-reference.md),
 [threat-model.md](threat-model.md), [quickstart.md](quickstart.md).
 

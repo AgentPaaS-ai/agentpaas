@@ -37,6 +37,11 @@ credentials. Cross-agent traffic uses workflow-scoped internal networks
 between the relevant gateways with per-binding capabilities; it never
 uses a shared gateway.
 
+> **Scope note (2026-08-08):** §3.1 and §3.1a describe the LOCAL macOS runtime,
+> where enforcement is topological (sidecar + internal network). For the
+> AgentPaaS Cloud managed service, see §3.4 — the enforcement point and its
+> assurance class differ by tier.
+
 ## 3.2 Hard security actions (all are execution-plan blocks)
 1. P1 applies macOS Docker Desktop/Colima container hardening by default
    (non-root, read-only rootfs, no shell, dropped capabilities, seccomp where
@@ -70,6 +75,50 @@ uses a shared gateway.
   payloads, and permanent red-team gating on every runtime/gateway change.
 - Local mode trusts the developer's machine; we protect against the AGENT,
   not against the user.
+
+---
+
+## 3.4 Cloud (AgentPaaS Cloud) enforcement and assurance class (D132-D136)
+
+The cloud managed service runs the same signed OCI images on Cloudflare, but
+the enforcement mechanism and the strength of the guarantee differ from the
+local sidecar model in §3.1a. This section exists so the cloud claims are
+never overstated against the local ones.
+
+**Enforcement mechanism (cloud default tier).** Each run is a Cloudflare
+Container (VM-per-instance). Egress is enforced by a control-plane
+message-carrier: the run's compiled `allowed_hosts` is pushed onto the
+container instance at admission (per-instance egress), and an outbound
+handler in the Workers runtime — outside the workload trust boundary —
+injects brokered credentials just-in-time. Agent code never holds a
+credential value. The platform fail-closed default denies non-HTTP/S ports
+and pins DNS, so if the carrier is absent the container has no internet.
+
+**Assurance class — the honest distinction.**
+
+- **Local (§3.1a): topological.** "No egress path exists except through the
+  gateway." Proven once, structurally, by the network shape.
+- **Cloud default tier: control-plane-enforced.** "Every egress path that
+  exists terminates at a carrier we control, which applies policy before any
+  bytes leave." This is enforced by OUR code and is proven correct per
+  release by verifier + adversary testing. There is no substrate backstop on
+  the routing decision, so a carrier bug is a potential bypass. This is the
+  accepted assurance debt of the CF-only data plane (D132/D136).
+- **Cloud high-assurance tier (D135, paid, on-demand): substrate-enforced.**
+  For tenants who require it, workloads run in a dedicated Kubernetes
+  namespace with a Cilium FQDN NetworkPolicy floor compiled from the signed
+  policy.yaml and enforced by the kernel, independent of AgentPaaS
+  control-plane code. This restores the topological guarantee and answers
+  "who enforces the enforcer" with "the cluster, verifiably."
+
+**Cloud scope limits (accepted, D132).** HTTP/S egress only — no non-HTTP
+protocol governance. No external A2A federation. Both are deliberate scope
+decisions, revivable on demand, and are not represented as capabilities.
+
+**What does NOT differ by tier.** Signed images, SBOM, per-run identity,
+brokered credentials invisible to agent code, default-deny egress, and the
+hash-chained audit log hold on every tier. Only the enforcement mechanism's
+assurance class changes.
 
 ---
 

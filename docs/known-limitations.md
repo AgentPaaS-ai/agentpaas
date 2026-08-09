@@ -18,6 +18,20 @@ For workarounds and authoring guidance, see
 [policy-reference.md](policy-reference.md) and
 [how-enforcement-works.md](how-enforcement-works.md).
 
+## Cloud data-plane assurance debt (D132/D136, 2026-08-08)
+
+AgentPaaS Cloud runs on a Cloudflare-only data plane. On the default tier,
+egress and topology are enforced by AgentPaaS control-plane carrier code
+(Workers message-carrier + per-instance egress), proven correct per release
+by verifier + adversary testing — NOT by the substrate. A carrier bug is a
+potential bypass; there is no kernel/substrate backstop on the routing
+decision as there is in the local sidecar model. This is the accepted
+assurance debt of the CF-only plane. Substrate-enforced isolation
+(kernel-enforced Cilium NetworkPolicy, independent of our code) is reserved
+for the D135 high-assurance Kubernetes tier (paid, on-demand). Cloud scope
+limits: HTTP/S egress only (no non-HTTP protocol governance), no external
+A2A federation. See threat-model.md §3.4.
+
 ## Current Development Status
 
 Blocks are numbered per the internal execution plan. Tracked status:
