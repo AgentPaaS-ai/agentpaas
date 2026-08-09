@@ -104,7 +104,7 @@ output, and --home / --socket to override local paths.`,
 		},
 		// Silence usage on RunE errors so we don't print the usage string
 		// for operational errors (daemon not running, etc.).
-		// SilenceErrors: cmd/agentpaas/main.go prints a single "error:" line —
+		// SilenceErrors: cmd/agent/main.go prints a single "error:" line —
 		// without this cobra also prints "Error:" (UX-DLOG double log).
 		SilenceUsage:  true,
 		SilenceErrors: true,
