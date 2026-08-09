@@ -58,15 +58,21 @@ t2-test-agent/
 # Internal / private docs — not part of the public tree
 docs/archive/
 docs/plans/
-# M10 T04: owa-records are builder-only; only README stays public (points to docs/customer)
-docs/owa-records/**
-!docs/owa-records/README.md
+# owa-records are builder-only work records; NONE are public.
+docs/owa-records/
+docs/internal/
 docs/*-resume-prompt*.md
 docs/*-checkpoint*.md
 docs/*-block-end.md
 docs/*-start-prompt.md
 docs/roadmap.md
 Agentpaas-pitch.md
+# Internal engineering self-assessments and ops tooling — not public.
+docs/*-risk-analysis.md
+docs/pre-*-crypto-security-review.md
+docs/manual-testing.md
+scripts/nuclear-teardown.sh
+scripts/golden-path-founder-cold.sh
 
 # Execution docs: keep planning/, reference/, blocks/, current-state, README, startup prompt.
 # Ignore only stale subtrees and one-off session artifacts under docs/execution/.
@@ -85,3 +91,14 @@ b16-test-workspace/
 # Previously tracked files were removed from the index in the untrack commit;
 # never re-add them. Public roadmap/known-limitations stay tracked.
 docs/execution/
+
+# ── PUBLIC-REPO GUARDRAIL (added 2026-08-08) ──────────────────────────────
+# This is the PUBLIC open-source CLI repo. It contains code + user-facing
+# product docs ONLY. Internal decision registers, PRDs, roadmaps, execution
+# plans, block/OWA work records, founder/session artifacts, and PII must
+# never be committed. The patterns above enforce path-based exclusion.
+# Content-based exclusion (decision IDs, internal block vocabulary, personal
+# identifiers, credential labels) is enforced by the guardrail CI workflow
+# (.github/workflows/guardrail.yml). If you are tempted to commit a file and
+# are unsure whether it is public-safe, it is not — keep it local or in the
+# private cloud repo.

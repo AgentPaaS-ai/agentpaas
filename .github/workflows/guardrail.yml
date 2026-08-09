@@ -1,0 +1,58 @@
+name: Public-repo guardrail
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# This is the PUBLIC open-source CLI repo. It must not leak secrets,
+# personal identifiers, private hostnames, or internal planning/decision
+# documents. This workflow is the content-based net; path exclusions live in
+# .gitignore.
+#
+# Scope note: internal block vocabulary (e.g. B30-T02) in code comments and
+# test names is accepted as engineering shorthand and is NOT blocked here.
+# This guardrail targets actual sensitive material only.
+
+jobs:
+  scan:
+    name: Scan for secrets and sensitive content
+    runs-on: self-hosted
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Forbid internal planning/decision file paths
+        run: |
+          set -e
+          if git ls-files | grep -E 'docs/owa-records/|docs/internal/|docs/execution/|Agentpaas-pitch\.md|docs/roadmap\.md|risk-analysis|crypto-security-review|docs/manual-testing\.md|nuclear-teardown'; then
+            echo "::error::Internal planning/decision file tracked in public repo. Keep it local or in the private repo."
+            exit 1
+          fi
+
+      - name: Forbid secrets, personal identifiers, and private hostnames
+        run: |
+          set -e
+          # Personal identifiers, the founder's private CF subdomain, credential
+          # store labels, and secret-looking assignments.
+          PATTERN='parvezsyed|pms88|agentpaas-cloudflare-api-token|agentpaas-cloud-api\.[a-z0-9-]+\.workers\.dev'
+          FILES=$(git ls-files | grep -vE '^\.github/workflows/guardrail\.yml$|^\.gitignore$' || true)
+          if [ -n "$FILES" ] && echo "$FILES" | xargs grep -nEI "$PATTERN" 2>/dev/null; then
+            echo "::error::Personal identifier / private hostname / credential label in public repo. See matches above."
+            exit 1
+          fi
+
+      - name: Forbid committed secret values
+        run: |
+          set -e
+          # Exclude tests, redaction/detection code, and docs — they legitimately
+          # contain sentinel/placeholder key shapes used to verify redaction.
+          if git grep -nE 'BEGIN (RSA |EC |OPENSSH |PGP )?PRIVATE KEY' -- ':!*_test.go' ':!*.md' ':!internal/logging/redact*.go' ':!internal/harness/progress_handler.go' ':!internal/delegation/validate.go' ':!testdata/*' 2>/dev/null; then
+            echo "::error::Private key material committed."
+            exit 1
+          fi
+          if git grep -nE '(api[_-]?key|secret|token)["'"'"']?\s*[:=]\s*["'"'"'][A-Za-z0-9_\-]{32,}' -- ':!*_test.go' ':!*.md' ':!testdata/*' 2>/dev/null; then
+            echo "::error::Possible hardcoded secret committed. Review matches above."
+            exit 1
+          fi
