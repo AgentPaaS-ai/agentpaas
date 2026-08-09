@@ -8,7 +8,7 @@ before:
 
 builds:
   - id: agentpaas
-    main: ./cmd/agentpaas
+    main: ./cmd/agent
     binary: agentpaas
     env:
       - CGO_ENABLED=0
