@@ -4,12 +4,7 @@ Get from zero to a running, policy-enforced agent on your Mac.
 
 ## What is AgentPaaS?
 
-AgentPaaS is a local-first runtime that runs AI agents inside locked-down
-containers with default-deny network policy. Every outbound call must match
-an allowlist you approve; credentials are brokered by a gateway sidecar and
-never appear in agent code; every decision is written to a tamper-evident
-audit trail. Even if the agent is prompt-injected or malicious, it cannot
-reach arbitrary hosts or steal raw API keys.
+AgentPaaS is a secure execution platform for agentic workflows. It runs AI agents you can't trust: the platform assumes the agent itself may be compromised by a poisoned prompt, a risky dependency, or its own generated code. Every agent runs in an isolated container with default-deny egress. Every outbound call must match an allowlist you approve; credentials are brokered by a gateway sidecar and never appear in agent code; every decision is written to a tamper-evident audit trail. Even if the agent is prompt-injected or malicious, it cannot reach arbitrary hosts or steal raw API keys.
 
 ## Prerequisites
 

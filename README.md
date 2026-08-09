@@ -8,9 +8,7 @@ that can call tools and hit the network. The hard part is trust. That stack
 might be buggy, prompt-injected, or straight-up hostile. One bad outbound call
 and your API keys, files, or PII are gone.
 
-AgentPaaS is the runtime that sits under those agents. You keep writing and
-running them the way you already do (usually through Hermes). Under the hood
-each agent is packed into a locked-down container on a default-deny network.
+AgentPaaS is the secure execution platform that sits under those agents. It runs agents you can't trust: you keep writing and running them the way you already do (usually through Hermes), and the platform assumes the agent itself may be compromised. Every agent runs in an isolated container on a default-deny network.
 Outbound traffic only leaves through a sidecar gateway that enforces your
 policy: approved hosts only. Secrets stay in the macOS Keychain and are
 injected by that gateway at request time, so the agent process never holds
