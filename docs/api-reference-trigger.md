@@ -389,8 +389,8 @@ GET /v1/trigger/runs?agentName=weather-agent&pageSize=10
 | `budget_summary` | BudgetSummary | `budgetSummary` | Usage summary (when populated) |
 | `policy_digest` | string | `policyDigest` | Policy digest at run time |
 | `image_digest` | string | `imageDigest` | Image digest |
-| `workflow_id` | string | `workflowId` | B26 hierarchy (additive) |
-| `invocation_id` | string | `invocationId` | B26 hierarchy (additive) |
+| `workflow_id` | string | `workflowId` | the workflow contract hierarchy (additive) |
+| `invocation_id` | string | `invocationId` | the workflow contract hierarchy (additive) |
 | `attempt_id` | string | `attemptId` | Present after async attempt claim; empty on immediate admission |
 
 ### 4.2 BudgetSummary
@@ -421,10 +421,10 @@ Documented with their RPCs above.
 | `RUN_STATUS_FAILED` | 4 | Terminal failure |
 | `RUN_STATUS_CANCELLED` | 5 | Cancelled |
 | `RUN_STATUS_BUDGET_EXCEEDED` | 6 | Budget terminal |
-| `RUN_STATUS_PAUSE_REQUESTED` | 7 | B26 routed-run (additive) |
-| `RUN_STATUS_PAUSED` | 8 | B26 routed-run |
-| `RUN_STATUS_NEEDS_REPLAN` | 9 | B26 routed-run |
-| `RUN_STATUS_EXPIRED` | 10 | B26 routed-run |
+| `RUN_STATUS_PAUSE_REQUESTED` | 7 | the workflow contract routed-run (additive) |
+| `RUN_STATUS_PAUSED` | 8 | the workflow contract routed-run |
+| `RUN_STATUS_NEEDS_REPLAN` | 9 | the workflow contract routed-run |
+| `RUN_STATUS_EXPIRED` | 10 | the workflow contract routed-run |
 
 New values are additive; clients must ignore unknown enum numbers.
 

@@ -37,7 +37,7 @@ func TestAdversaryT01_NoStoreMutationOnNonApproval(t *testing.T) {
 				prePin(t, store, "other-pub", tkOther)
 				prompts := promptSequence("aaaaaaaa", "bbbbbbbb", "cccccccc")
 				return store, storePath, TrustResolveOpts{
-					PublisherName:         "parvez",
+					PublisherName:         "alice",
 					PublisherFingerprint:  tk.fp,
 					PublisherPublicKeyPEM: tk.pemData,
 					Store:                 store,
@@ -58,7 +58,7 @@ func TestAdversaryT01_NoStoreMutationOnNonApproval(t *testing.T) {
 					return "", fmt.Errorf("input cancelled")
 				}
 				return store, storePath, TrustResolveOpts{
-					PublisherName:         "parvez",
+					PublisherName:         "alice",
 					PublisherFingerprint:  tk.fp,
 					PublisherPublicKeyPEM: tk.pemData,
 					Store:                 store,
@@ -76,7 +76,7 @@ func TestAdversaryT01_NoStoreMutationOnNonApproval(t *testing.T) {
 				tkOther := generateTestKey(t)
 				prePin(t, store, "other-pub", tkOther)
 				return store, storePath, TrustResolveOpts{
-					PublisherName:         "parvez",
+					PublisherName:         "alice",
 					PublisherFingerprint:  tk.fp,
 					PublisherPublicKeyPEM: tk.pemData,
 					Store:                 store,
@@ -94,7 +94,7 @@ func TestAdversaryT01_NoStoreMutationOnNonApproval(t *testing.T) {
 				tkOther := generateTestKey(t)
 				prePin(t, store, "other-pub", tkOther)
 				return store, storePath, TrustResolveOpts{
-					PublisherName:         "parvez",
+					PublisherName:         "alice",
 					PublisherFingerprint:  tk.fp,
 					PublisherPublicKeyPEM: tk.pemData,
 					Store:                 store,
@@ -302,7 +302,7 @@ func TestAdversaryT02_FingerprintBypassProof(t *testing.T) {
 			var events []auditEvent
 
 			result, err := ResolveTrust(TrustResolveOpts{
-				PublisherName:         "parvez",
+				PublisherName:         "alice",
 				PublisherFingerprint:  trueFP,
 				PublisherPublicKeyPEM: tk.pemData,
 				Store:                 store,
@@ -440,7 +440,7 @@ func TestAdversaryT03_TTYLast8BypassProof(t *testing.T) {
 			prompts := promptSequence(tt.responses...)
 
 			result, err := ResolveTrust(TrustResolveOpts{
-				PublisherName:         "parvez",
+				PublisherName:         "alice",
 				PublisherFingerprint:  trueFP,
 				PublisherPublicKeyPEM: tk.pemData,
 				Store:                 store,
@@ -647,7 +647,7 @@ func TestAdversaryT05_NoSecretsInAuditPayloads(t *testing.T) {
 		var events []auditEvent
 
 		_, err := ResolveTrust(TrustResolveOpts{
-			PublisherName:         "parvez",
+			PublisherName:         "alice",
 			PublisherFingerprint:  tk.fp,
 			PublisherPublicKeyPEM: tk.pemData,
 			Store:                 store,
@@ -693,7 +693,7 @@ func TestAdversaryT05_NoSecretsInAuditPayloads(t *testing.T) {
 		var events []auditEvent
 
 		_, err := ResolveTrust(TrustResolveOpts{
-			PublisherName:         "parvez",
+			PublisherName:         "alice",
 			PublisherFingerprint:  tk.fp,
 			PublisherPublicKeyPEM: tk.pemData,
 			Store:                 store,
@@ -757,7 +757,7 @@ func TestAdversaryT06_MismatchDistinguishableExit2(t *testing.T) {
 	t.Run("wrong-flag-is-confirm-mismatch", func(t *testing.T) {
 		store, _ := newTestStore(t)
 		_, err := ResolveTrust(TrustResolveOpts{
-			PublisherName:         "parvez",
+			PublisherName:         "alice",
 			PublisherFingerprint:  tk.fp,
 			PublisherPublicKeyPEM: tk.pemData,
 			Store:                 store,
@@ -802,7 +802,7 @@ func TestAdversaryT06_MismatchDistinguishableExit2(t *testing.T) {
 	t.Run("refused-is-not-confirm-mismatch", func(t *testing.T) {
 		store, _ := newTestStore(t)
 		_, err := ResolveTrust(TrustResolveOpts{
-			PublisherName:         "parvez",
+			PublisherName:         "alice",
 			PublisherFingerprint:  tk.fp,
 			PublisherPublicKeyPEM: tk.pemData,
 			Store:                 store,
@@ -822,7 +822,7 @@ func TestAdversaryT06_MismatchDistinguishableExit2(t *testing.T) {
 		store, _ := newTestStore(t)
 		prompts := promptSequence("aaaaaaaa", "bbbbbbbb", "cccccccc")
 		_, err := ResolveTrust(TrustResolveOpts{
-			PublisherName:         "parvez",
+			PublisherName:         "alice",
 			PublisherFingerprint:  tk.fp,
 			PublisherPublicKeyPEM: tk.pemData,
 			Store:                 store,

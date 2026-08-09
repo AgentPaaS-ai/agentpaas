@@ -1,4 +1,4 @@
-# AgentPaaS CLI + Cloud — Release v0.3.7 (M10.6)
+# AgentPaaS CLI + Cloud — Release v0.3.7
 
 **Shipped:** 2026-08-08  
 **CLI tag:** `v0.3.7` (brew cask `AgentPaaS-ai/homebrew-tap/agentpaas`)  
@@ -99,7 +99,7 @@ Push my openrouter-key to cloud and bind it to the weather deployment
 |---------|------------------|
 | CLI / daemon brew | **0.3.7** |
 | OSS git tag | **v0.3.7** |
-| Cloud worker | live at cloud.agentpaas.ai (M10.6 dashboard) |
+| Cloud worker | live at cloud.agentpaas.ai dashboard |
 | Site docs | /docs/ (this release hub + trial) |
 
 See also: [docs/VERSIONING.md](VERSIONING.md) for how we version docs, site, cloud, and CLI going forward.

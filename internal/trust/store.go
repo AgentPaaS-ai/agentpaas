@@ -76,7 +76,7 @@ type Publisher struct {
 	// PublicKeyPEM is the PEM-encoded public key (PKIX, SPKI block).
 	PublicKeyPEM string `json:"public_key_pem"`
 
-	// Alias is an optional human-readable slug for the publisher (e.g. "parvez").
+	// Alias is an optional human-readable slug for the publisher (e.g. "alice").
 	Alias string `json:"alias"`
 
 	// FirstSeen is the RFC 3339 timestamp when the publisher was first trusted.

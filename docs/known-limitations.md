@@ -1,90 +1,43 @@
 # Known Limitations
 
-AgentPaaS is a local-first governed runtime for macOS with secure agent sharing.
-**Shipped stable tag line:** v0.3.5 (B1–B34 + B34.5). This document records
-accepted trade-offs and capability gaps. A listed gap must not be mistaken for
-a shipped operator-ready feature merely because a library gate or
-execution-ready specification exists.
-
-**Product direction (2026-07-28):** the MVP is the AgentPaaS Cloud managed
-service (see `docs/roadmap.md` and `docs/execution/planning/managed-cloud-m-series-plan.md`).
-The classic v0.4–v0.5 train (B35–B41) is frozen per D77 and archived at
-`docs/execution/archive/classic-train-v0.4-v0.5/`. Parent/child (B35) returns
-post-POC per D85. Nothing from the frozen train is a current capability or a
-committed feature, and it must not be described as such.
+AgentPaaS is a local-first governed runtime for macOS with secure agent
+sharing. This document records accepted trade-offs and capability gaps in the
+current release. A listed gap must not be mistaken for a shipped,
+operator-ready feature merely because a design or specification exists.
 
 For the full security posture, see [threat-model.md](threat-model.md).
 For workarounds and authoring guidance, see
 [policy-reference.md](policy-reference.md) and
 [how-enforcement-works.md](how-enforcement-works.md).
 
-## Cloud data-plane assurance debt (D132/D136, 2026-08-08)
+## Cloud data-plane assurance debt
 
 AgentPaaS Cloud runs on a Cloudflare-only data plane. On the default tier,
 egress and topology are enforced by AgentPaaS control-plane carrier code
-(Workers message-carrier + per-instance egress), proven correct per release
-by verifier + adversary testing — NOT by the substrate. A carrier bug is a
+(per-instance egress plus the gateway boundary), proven correct per release
+by review and adversary testing — not by the substrate. A carrier bug is a
 potential bypass; there is no kernel/substrate backstop on the routing
 decision as there is in the local sidecar model. This is the accepted
-assurance debt of the CF-only plane. Substrate-enforced isolation
-(kernel-enforced Cilium NetworkPolicy, independent of our code) is reserved
-for the D135 high-assurance Kubernetes tier (paid, on-demand). Cloud scope
-limits: HTTP/S egress only (no non-HTTP protocol governance), no external
-A2A federation. See threat-model.md §3.4.
+assurance debt of the Cloudflare-only plane. Substrate-enforced isolation
+(kernel-enforced network policy, independent of our code) is reserved for
+the high-assurance Kubernetes tier (paid, on-demand). Cloud scope limits:
+HTTP/S egress only (no non-HTTP protocol governance), and no external
+agent-to-agent federation. See threat-model.md §3.4.
 
-## Current Development Status
+## Long-running and routed runs
 
-Blocks are numbered per the internal execution plan. Tracked status:
+The current shipped path has one configured provider/model/credential target.
+Remaining gaps not yet closed:
 
-| Block | Description | Status |
-|---|---|---|
-| B17 | LLM egress auto-derivation and secure terminal secret ingestion | ✅ Complete |
-| B18 | Manual testing suite (T1-T10 lifecycle), red-team smoke | ✅ Complete |
-| B19 | AgentGateway policy integration (token budgets, rate limiting, gateway-native ingress) | ✅ Complete |
-| B20 | Security claim closure — docs truth-sync, audit integrity, credential zero-visibility | ✅ Complete |
-| B21 | Publisher identity, trust store, provenance schema | ✅ Complete |
-| B22 | Bundle format, export, inspect | ✅ Complete |
-| B23 | Verified install, consent, credential mapping, run integration | ✅ Complete |
-| B24 | Fork, modify, redistribute: provenance chains | ✅ Complete |
-| B25 | Hermes sharing UX, vulnerability closure, v0.2.x release hardening | ✅ Complete |
-| B26 | Durable deployment, invocation, run, and workflow contracts/state foundation | ✅ Complete (in v0.3.0 tag lineage) |
-| B27 | SDK progress, checkpoint, and artifact protocol | ✅ Complete (in v0.3.0 tag lineage) |
-| B28 | Runtime portability and managed-PaaS feasibility gate | ✅ Complete (in v0.3.0 tag lineage) |
-| B29 | Agent runtime profiles, durable events, streaming, and efficiency | ✅ Complete (in v0.3.0 tag lineage) |
-| B30 | Long-running multi-turn execution and proof | ✅ Closed — operator soak proven (real agentpaasd + Docker, 3×≥30m + SIGKILL) |
-| B31 | Unified component catalog and constrained capability resolution | ✅ Complete (in v0.3.0 tag lineage) |
-| B32 | Secure A2A tasks, messages, events, and artifact transfer | ✅ Complete (in v0.3.0 tag lineage); live A2A depends on delegation trust (BUG-040 fixed) |
-| B33 | AgentPaaS-container MCP services | ✅ Complete (library + cross-container e2e); enable/product claims per block handoff |
-| B34 | Runtime-native sequential pipelines | ✅ Closed + B34.5 (cancel RPC, durable start tests, pipeline register+RuntimeStageLauncher, CAS claim fix). Packed multi-agent handoff residual |
-| B35 | Parent/child fan-out, fan-in, and collation | ⏭️ Next after GO — execution-ready spec; runtime not-enabled (`agentpaas_child_spawn_not_enabled`) |
-| B36 | Model catalog, route compiler, and deterministic selector | ⏭️ Planned for v0.5.0 |
-| B37 | Model-call failure classification and recovery | ⏭️ Planned for v0.5.0 |
-| B38 | Shared workflow LLM spend budget and cost ledger | ⏭️ Planned for v0.5.0 |
-| B39 | Integrated supervision, leases, guardrails, and operator control | ⏭️ Planned for v0.5.0 |
-| B40 | Hermes authoring, packaging, deployment, and operations skills/UX | ⏭️ Planned for v0.5.0 |
-| B41 | Golden proofs, hardening, and release | ⏭️ Planned for v0.5.0 |
-
-## Durable Routed Run is not available in v0.2.3
-
-The shipped v0.2.3 path has one configured provider/model/credential target.
-B30 soak has now proven a long-running multi-turn agent with real agentpaasd +
-Docker (3×≥30m + SIGKILL). Remaining gaps not yet closed:
-
-- A durable asynchronous invocation path (closed by B30 soak — real agentpaasd + Docker
-  with durable start wiring and operator soak gate).
 - Immutable deployment versions, audited aliases, atomic promotion/rollback,
   deactivation, or exact-version pinning for independent cron/API invocation.
 - Durable invocation idempotency and receiver-local per-deployment top-level
   workflow concurrency admission suitable for external schedulers.
-- One authoritative time model. Fixed 60-second, 2-minute, 5-minute, and
-  120-second layers conflict. Existing routed wall-clock/iteration request
-  fields are not a contract to wire through: the v0.3 plan supersedes them with
-  one accumulated workflow-active-time model that freezes only in fully
-  `PAUSED`/`NEEDS_REPLAN` states.
+- One authoritative time model. Several fixed wall-clock layers currently
+  conflict. A single accumulated workflow-active-time model is planned that
+  freezes only in fully paused states.
 - Policy-derived worker CPU/process limits. The worker bootstrap currently
   applies a fixed 30-second CPU rlimit and zero child-process allowance.
-- A long-running proof (closed by B30 soak — 3× RealDaemonRestart ≥30m each
-  + 3× RealWorkerSIGKILL, real agentpaasd + Docker containers).
 - First-class conversation/session state. Repeated `agent.llm()` calls work,
   but the worker must explicitly carry prior context.
 - Logical route selection across an approved local/cloud model pool.
@@ -94,32 +47,25 @@ Docker (3×≥30m + SIGKILL). Remaining gaps not yet closed:
 - `agent.progress(...)`, semantic checkpoints, or safe worker resume.
 - Explicit worker attempts, leases, fencing, or one bounded continuation.
 - Operator cancel, safe-boundary pause/resume, provenance-linked restart, or
-  active-time accounting that freezes only when fully paused/`NEEDS_REPLAN`.
+  active-time accounting that freezes only when fully paused.
 - A scoped append-only way to raise current active-time, attempt-lease, or LLM
   spend ceilings before terminal exhaustion.
 - Deterministic repeated-action/no-progress recovery guardrails.
 - Complete cached-input/cache-write/subscription/local cost representation.
-- A real production-wired AgentPaaS-container MCP registry/router. The current
+- A production-wired AgentPaaS-container MCP registry/router. The current
   harness path can validate an allowlist but fails closed with a typed
   not-enabled error (`agentpaas_mcp_service_not_enabled`) when no router is
-  installed, until B33 wires the production router in v0.4. Closed in B30 T00
-  (pulled forward from B33 per the 2026-07-19 architecture audit, risk R5):
-  the no-router path no longer returns a synthetic `{ok: true}` result in
-  production. Explicit test mode (`AGENTPAAS_TEST_FAKE_MCP=1`) keeps the
+  installed. Explicit test mode (`AGENTPAAS_TEST_FAKE_MCP=1`) keeps a
   synthetic result for fixtures that opt in, mirroring
   `AGENTPAAS_TEST_FAKE_LLM`.
-- Full multi-image **packed** pipeline stages with real handoff schemas (B34.5
-  registers pipeline on admit, RuntimeStageLauncher when Docker available,
-  alpine/sleep defaults via AGENTPAAS_PIPELINE_STAGE_IMAGE; not full pack UX).
-- Parent/child spawn and join (B35). Runtime remains fail-closed with
-  `agentpaas_child_spawn_not_enabled` until B35 implements spawn/join.
+- Full multi-image packed pipeline stages with real handoff schemas.
+- Parent/child spawn and join. The runtime remains fail-closed with
+  `agentpaas_child_spawn_not_enabled` until spawn/join is implemented.
 
-Current model timeout, quota, authentication, context, or subscription
-failures can therefore fail the worker. The v0.3–v0.5 B26–B41 plan closes
-these gaps across three cumulative releases. B30 is the mandatory
-long-running foundation gate and routing does not begin until B35 completes
-the native multi-container patterns. No intermediate block should be
-presented as shipped Durable Routed Run support.
+Model timeout, quota, authentication, context, or subscription failures can
+therefore fail the worker. These gaps close across cumulative releases; no
+intermediate state should be presented as shipped long-running routed-run
+support.
 
 ## Network enforcement
 
@@ -129,7 +75,7 @@ Outbound policy enforcement routes agent HTTP/HTTPS traffic through the
 gateway via `HTTP_PROXY` / `HTTPS_PROXY` environment variables. Non-HTTP
 protocols (raw TCP, UDP, ICMP) are blocked by internal-network isolation,
 not by deep packet inspection. A transparent proxy for all protocols is
-deferred to P2.
+deferred.
 
 ### llm_provider_lock restricts agent.llm() only, not agent.http()
 
@@ -152,19 +98,19 @@ Pass `--allow-unlocked-deps` to allow the rebuild without locked dependencies.
 ### LLM integration uses a dedicated RPC over shared gateway egress
 
 LLM calls (`agent.llm()`) route through the gateway as credentialed HTTP
-egress to the provider's chat-completions endpoint (B15-T02, Option B).
-The SDK uses the harness LLM RPC and provider adapters, while network policy
-and credential application share the governed egress boundary. The provider,
-model, and credential binding are configured in `agent.yaml`.
-Pre-deployment validation via `agentpaas secret test <name>` verifies the
-credential works before runtime use.
+egress to the provider's chat-completions endpoint. The SDK uses the harness
+LLM RPC and provider adapters, while network policy and credential application
+share the governed egress boundary. The provider, model, and credential
+binding are configured in `agent.yaml`. Pre-deployment validation via
+`agentpaas secret test <name>` verifies the credential works before runtime
+use.
 
 ### Trigger server uses API-key auth for --expose
 
 The trigger API supports API-key authentication via
-`AGENTPAAS_TRIGGER_API_KEY` (B15-T04). In default (loopback) mode, no key
-is required — any process on localhost can invoke an agent. When
-`--expose` is used, API-key auth is mandatory. mTLS is deferred to P2.
+`AGENTPAAS_TRIGGER_API_KEY`. In default (loopback) mode, no key is required —
+any process on localhost can invoke an agent. When `--expose` is used,
+API-key auth is mandatory. mTLS is deferred.
 
 ## Supply chain and signing
 
@@ -193,11 +139,11 @@ digest, lock signature, and policy digest are verified — but the image
 itself is not byte-identical. Use `--prefer-image` with a cosign-signed
 image for identical reproduction.
 
-### No revocation (P2)
+### No revocation
 
-There is no revocation mechanism in P1. A stolen publisher key can sign
-valid bundles until the receiver manually removes trust via
-`agentpaas trust remove <fingerprint>`. Revocation infrastructure is P2.
+There is no revocation mechanism in the current release. A stolen publisher
+key can sign valid bundles until the receiver manually removes trust via
+`agentpaas trust remove <fingerprint>`. Revocation infrastructure is planned.
 
 ### Plugin consent gate is client-side
 
@@ -213,11 +159,11 @@ auto-approval, not user-mediated manual approval.
 
 Truncating the last N records from a JSONL audit file leaves a valid prefix
 chain. Post-export tampering (deletion) cannot be detected on a second
-machine without an external anchor. The audit checkpoint signing key is now
-encrypted at rest (B15-T05 MC3, AES-256-GCM), and signed checkpoint export
-provides tamper evidence when anchored externally. Runtime daemon chain is
-authoritative during operation. Full external anchoring (transparency log
-for checkpoints) is P2.
+machine without an external anchor. The audit checkpoint signing key is
+encrypted at rest (AES-256-GCM), and signed checkpoint export provides tamper
+evidence when anchored externally. The runtime daemon chain is authoritative
+during operation. Full external anchoring (transparency log for checkpoints)
+is planned.
 
 ## Daemon lifecycle
 
@@ -226,7 +172,7 @@ for checkpoints) is P2.
 If the daemon crashes, orphaned gateway containers and Docker networks may
 remain. `ReconcileAfterCrash` removes orphaned agent containers but not
 gateway sidecars or per-run networks. Manual `docker ps` / `docker network ls`
-cleanup may be needed. P2 extends reconciliation.
+cleanup may be needed.
 
 ### maxConcurrentRuns and Docker resource multiplier
 
@@ -238,13 +184,10 @@ Docker networks (internal-only + egress). At the default limit that is up to
 On memory- or CPU-constrained machines (small Colima VMs, Docker Desktop with
 low resource limits), avoid overlapping runs: start the next `agentpaas run` only
 after the previous run finishes, or keep fewer than three runs active at once.
-v0.3 plans receiver-local per-deployment `max_concurrent_runs` admission
-inside the runtime-wide capacity, defaulting to one. Changing or distributing
-the runtime-wide capacity remains later work.
 
-## Production hardening (B15-T05)
+## Production hardening
 
-### CAP_NET_ADMIN: capset drop, not init container (P2)
+### CAP_NET_ADMIN: capset drop, not init container
 
 The agent container's iptables egress firewall is **defense-in-depth** — the
 **primary** egress control is Docker network topology isolation (internal-only
@@ -257,7 +200,7 @@ permitted, and inheritable sets before the Python worker starts. Docker
 it. If iptables is unavailable or any rule fails, the harness logs a warning
 and continues — topology isolation remains the hard boundary. The full
 init-container pattern (separate firewall-init container, `--net=container:`
-namespace sharing) is P2. Verified by Docker integration test (B15-T05 MC5).
+namespace sharing) is planned.
 
 ### RFC1918 tightened to gateway /16 (fail-closed, defense-in-depth)
 
@@ -286,46 +229,36 @@ unencrypted DER keys are migrated on next regeneration.
 
 `DockerRuntime.Stats()` casts uint64 CPU counters to int64. Very long-running
 containers with extremely high cumulative CPU usage can overflow the delta
-calculation. `computeCPUPercent` clamps to zero on negative deltas. P2 uses
-overflow-safe uint64 arithmetic.
+calculation. `computeCPUPercent` clamps to zero on negative deltas.
+Overflow-safe uint64 arithmetic is planned.
 
 ## Platform support
 
 ### No Linux support (macOS only)
 
-P1 targets macOS with Docker Desktop or Colima. Linux-native `dockerd` support,
-certified seccomp/AppArmor profiles, and Linux install paths are P2.
+The current release targets macOS with Docker Desktop or Colima.
+Linux-native `dockerd` support, certified seccomp/AppArmor profiles, and
+Linux install paths are planned.
 
 ## Release gate
 
-### Golden Loop is the current lifecycle gate
-
-The v0.2.3 Golden Loop covers the shipped build, modify, provenance, export,
-receive, inspect, install, and run lifecycle. It does not prove Durable Routed
-Run.
-Before v0.5.0 ships, B41 requires the Golden Loop to include a real
-long-running multi-turn worker, cross-container MCP, native sequential
-handoff, parent/child fan-out and collation, model recovery, one checkpoint
-continuation, shared workflow LLM spend, fencing, live local/cloud
-conformance, immutable deployment/alias lifecycle, Hermes-absent CLI/API
-invocation, idempotency/concurrency rejection, operator
-cancel/pause/resume/restart, limit amendment, and a fresh-install proof that
-authors through Hermes but invokes independently.
+The Golden Loop covers the shipped build, modify, provenance, export,
+receive, inspect, install, and run lifecycle. It does not yet prove
+long-running routed runs.
 
 ## Demo recordings
 
 Video or asciinema is not a current release guarantee. The authoritative
 evidence is the automated/manual Golden Loop and its sanitized release
-records. Any future recording must use the same fault labels and must not imply
-correctness certification or measured savings.
+records. Any future recording must not imply correctness certification or
+measured savings.
 
-## Additional P1 honesty statements
+## Additional honesty statements
 
-From the PRD threat model (§3.3):
-
-- Container hardening, not a kernel 0-day sandbox (no gVisor/Kata in P1).
+- Container hardening, not a kernel 0-day sandbox (no gVisor/Kata in the
+  current release).
 - Outbound DLP is fingerprint-based, not semantic.
-- Red-team suite is a release smoke gate, not full adversarial research.
+- The red-team suite is a release smoke gate, not full adversarial research.
 - Local mode trusts the developer's machine — we protect against the agent,
   not against the user.
 

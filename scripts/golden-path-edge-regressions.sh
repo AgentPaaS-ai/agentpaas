@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Automated founder-cold edge regressions. Uses at most one temporary deployment.
+# Automated cold-start edge regressions. Uses at most one temporary deployment.
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -97,7 +97,7 @@ command -v agentpaas >/dev/null 2>&1 || { printf 'FAIL: agentpaas is not on PATH
 command -v curl >/dev/null 2>&1 || { printf 'FAIL: curl is required\n' >&2; exit 1; }
 [[ -d "$PROJECT" ]] || { printf 'FAIL: project does not exist: %s\n' "$PROJECT" >&2; exit 1; }
 
-printf '== founder-cold edge regressions ==\n'
+printf '== cold-start edge regressions ==\n'
 printf 'API: %s\n' "$API"
 
 printf 'Case 1: unauth whoami HTTP\n'
@@ -176,11 +176,11 @@ else
 fi
 
 printf 'Case 6: bindings empty guard\n'
-if grep -q 'cloud secrets bindings' "$REPO_ROOT/scripts/golden-path-founder-cold.sh" && \
-   grep -q "grep -q 'openrouter-key'" "$REPO_ROOT/scripts/golden-path-founder-cold.sh"; then
-  pass "founder-cold path rejects empty bindings before invoke"
+if grep -q 'cloud secrets bindings' "$REPO_ROOT/scripts/golden-path-cold-start.sh" && \
+   grep -q "grep -q 'openrouter-key'" "$REPO_ROOT/scripts/golden-path-cold-start.sh"; then
+  pass "cold-start path rejects empty bindings before invoke"
 else
-  fail_case "founder-cold path has no binding assertion"
+  fail_case "cold-start path has no binding assertion"
 fi
 
 printf 'Case 7: brew/cloud URL\n'
@@ -347,4 +347,4 @@ if [[ "$FAILURES" -ne 0 ]]; then
   printf 'NO-GO: %d edge regression(s) failed\n' "$FAILURES" >&2
   exit 1
 fi
-printf 'GO: all founder-cold edge regressions passed\n'
+printf 'GO: all cold-start edge regressions passed\n'

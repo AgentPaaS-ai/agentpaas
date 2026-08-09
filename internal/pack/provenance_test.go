@@ -478,7 +478,7 @@ func TestFormatProvenance_OneEntry(t *testing.T) {
 			{
 				Index:                0,
 				Action:               "created",
-				PublisherName:        "parvez",
+				PublisherName:        "alice",
 				PublisherFingerprint: "a1b2c3d4e5f6789012345678abcdef0123456789abcdef0123456789abcdef01",
 				AgentName:            "weather-agent",
 				AgentVersion:         "1.0.0",
@@ -498,7 +498,7 @@ func TestFormatProvenance_OneEntry(t *testing.T) {
 	if !strings.Contains(got, "weather-agent 1.0.0") {
 		t.Fatalf("missing agent/version: %s", got)
 	}
-	if !strings.Contains(got, "parvez") {
+	if !strings.Contains(got, "alice") {
 		t.Fatalf("missing publisher name: %s", got)
 	}
 	if !strings.Contains(got, "a1b2c3d4") {
@@ -520,7 +520,7 @@ func TestFormatProvenance_ThreeEntries(t *testing.T) {
 			{
 				Index:                0,
 				Action:               "created",
-				PublisherName:        "parvez",
+				PublisherName:        "alice",
 				PublisherFingerprint: "a1b2c3d4e5f6789012345678abcdef0123456789abcdef0123456789abcdef01",
 				AgentName:            "weather-agent",
 				AgentVersion:         "1.0.0",
@@ -560,8 +560,8 @@ func TestFormatProvenance_ThreeEntries(t *testing.T) {
 	if !strings.Contains(got, "1. created") {
 		t.Fatalf("missing entry 1 'created': %s", got)
 	}
-	if !strings.Contains(got, "parvez") {
-		t.Fatalf("missing parvez: %s", got)
+	if !strings.Contains(got, "alice") {
+		t.Fatalf("missing alice: %s", got)
 	}
 
 	// Entry 2

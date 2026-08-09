@@ -20,10 +20,10 @@ public keys with TOFU (trust on first use) and manual pre-pinning support.
 
 The trust store is stored at <home>/trust/publishers.json. Commands operate
 directly on the store file (no daemon required).`,
-		Example: `  agentpaas trust add a1b2c3d4... --key publisher.pem --alias parvez
+		Example: `  agentpaas trust add a1b2c3d4... --key publisher.pem --alias alice
   agentpaas trust list
-  agentpaas trust show parvez
-  agentpaas trust remove parvez --yes`,
+  agentpaas trust show alice
+  agentpaas trust remove alice --yes`,
 	}
 
 	cmd.AddCommand(newTrustAddCmd())
@@ -80,7 +80,7 @@ The fingerprint accepts both compact form (64 hex chars) and display form
 (with spaces between 4-char blocks). The public key PEM must be an ECDSA
 P-256 key. The fingerprint is validated against the PEM to ensure
 self-consistency before the publisher is trusted.`,
-		Example: `  agentpaas trust add a1b2c3d4e5f6... --key publisher.pem --alias parvez
+		Example: `  agentpaas trust add a1b2c3d4e5f6... --key publisher.pem --alias alice
   agentpaas trust add "a1b2 c3d4 e5f6 ..." --key ./keys/pub.pem`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -238,9 +238,9 @@ func newTrustShowCmd() *cobra.Command {
 		Long: `Show full details for one trusted publisher, including public key PEM.
 
 Accepts a full fingerprint, display-form fingerprint, or alias.`,
-		Example: `  agentpaas trust show parvez
+		Example: `  agentpaas trust show alice
   agentpaas trust show a1b2c3d4e5f6...
-  agentpaas trust show parvez --json`,
+  agentpaas trust show alice --json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			storePath, err := trustStorePath(cmd)
@@ -305,7 +305,7 @@ func newTrustRemoveCmd() *cobra.Command {
 By default, when running in a terminal, you must type the first 8 characters
 of the fingerprint to confirm removal. Use --yes to skip confirmation in
 non-interactive mode.`,
-		Example: `  agentpaas trust remove parvez --yes
+		Example: `  agentpaas trust remove alice --yes
   agentpaas trust rm a1b2c3d4e5f6... --yes`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

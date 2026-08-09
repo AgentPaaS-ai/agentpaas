@@ -2,7 +2,7 @@
 
 This document describes what AgentPaaS publisher signatures prove,
 what they do not prove, and how receivers should establish trust.
-It covers the Phase 2 sharing feature set (B21–B25).
+It covers the Phase 2 sharing feature set .
 
 For the overall security threat model, see
 [threat-model.md](threat-model.md). For known limitations, see
@@ -58,12 +58,12 @@ holder. It does NOT establish any of the following:
 
 - **Key custody.** The publisher's private key may be compromised (see
   adversary A11 in the threat model). AgentPaaS v0.2.0 does not ship
-  a revocation mechanism; this is scoped for B26.
+  a revocation mechanism; this is scoped for a later release.
 
 - **Binary-level tamper-proofing.** The signature covers the lock file
   and provenance entries. It does not cover the container image layers
   independently — those are verified through digest chaining during
-  install (B23). A signed lock with a tampered image payload fails at
+  install (install). A signed lock with a tampered image payload fails at
   the digest-verification stage, not at signature verification.
 
 ---
@@ -133,7 +133,7 @@ generates a new ECDSA P-256 keypair with a new fingerprint.
   fingerprint just as they did on first use.
 - Revocation-list support (where a publisher can declare a key
   compromised and receivers can automatically reject it) is planned
-  for B26.
+  for a later release.
 
 ### Best practice
 
@@ -225,9 +225,9 @@ The word **`signed`** must always co-occur with provenance wording
 that clarifies what the signature establishes (integrity + key
 possession) and does not establish (safety, intent). Examples:
 
-- "Signed by `parvez` (`a1b2 c3d4 …`), unmodified since signing."
+- "Signed by `alice` (`a1b2 c3d4 …`), unmodified since signing."
 - "Provenance chain signed by 2 publishers; last signer `maria`."
-- "Lock file from `parvez`, cryptographically signed and unmodified."
+- "Lock file from `alice`, cryptographically signed and unmodified."
 
 These rules exist because **signing is not a safety guarantee**, and
 any language that implies otherwise trains users to click through a
