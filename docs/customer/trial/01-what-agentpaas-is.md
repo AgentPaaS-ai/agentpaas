@@ -1,6 +1,9 @@
 # What AgentPaaS is
+<!-- COPY TWIN: docs-site/docs/trial/what-is-agentpaas.md — change both or neither (D-W7) -->
 
-AgentPaaS turns agent code into a **signed, sandboxed, policy-controlled, audited** workload.
+AgentPaaS is a secure execution platform for agentic workflows. It runs AI agents you can't trust: agents can be steered by poisoned prompts, risky dependencies, or their own generated code, so the platform assumes the agent itself may be compromised. Every agent runs in an isolated container, behind default-deny egress, with gateway-brokered credentials and a tamper-evident audit trail.
+
+Build, test, and run agents locally with the open-source CLI (macOS). Deploy the same governed agents to AgentPaaS Cloud in one command.
 
 ## Two surfaces
 
