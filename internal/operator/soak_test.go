@@ -1,3 +1,5 @@
+//go:build soak
+
 package operator
 
 import (
