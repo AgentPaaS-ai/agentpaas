@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	MaxPayloadBytes = 10 * 1024 * 1024
+	MaxPayloadBytes = 50 * 1024 * 1024
 
 	defaultAddr          = "127.0.0.1:8080"
 	defaultImportTimeout = 60 * time.Second
