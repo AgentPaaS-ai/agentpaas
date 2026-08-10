@@ -85,18 +85,19 @@ func TestCloudClient_InvokeDeployment_Success(t *testing.T) {
 		t.Fatalf("InvokeDeployment: %v", err)
 	}
 	if result.RunID != "run-123" {
-		t.Errorf("RunID = %q, want run-123", result.RunID)
+			t.Errorf("RunID = %q, want run-123", result.RunID)
+		}
+		if result.Status != "succeeded" {
+			t.Errorf("Status = %q, want succeeded", result.Status)
+		}
+		var fo string
+		if err := json.Unmarshal(result.FinalOutput, &fo); err != nil || fo != "hi" {
+			t.Fatalf("FinalOutput = %s, want hi (%v)", string(result.FinalOutput), err)
+		}
+		if result.ErrorString() != "" {
+			t.Fatalf("Error = %q, want empty", result.ErrorString())
+		}
 	}
-	if result.Status != "succeeded" {
-		t.Errorf("Status = %q, want succeeded", result.Status)
-	}
-	if result.FinalOutput == nil || *result.FinalOutput != "hi" {
-		t.Errorf("FinalOutput = %v, want hi", result.FinalOutput)
-	}
-	if result.Error != nil {
-		t.Errorf("Error = %v, want nil", result.Error)
-	}
-}
 
 func TestCloudClient_InvokeDeployment_EmptyBodyUsesObject(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
