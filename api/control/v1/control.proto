@@ -189,6 +189,9 @@ message RunRequest {
   string idempotency_key = 8;
   // Optional deployment reference (alias or exact). Representational in B26.
   string deployment_ref = 9;
+  // M13.8: absolute host path to a large input file. Daemon bind-mounts
+  // read-only at /agentpaas/input and records sha256 in audit.
+  string input_file_path = 10;
 }
 
 message BudgetConfig {

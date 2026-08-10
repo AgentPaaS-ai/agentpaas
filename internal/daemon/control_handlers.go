@@ -527,6 +527,16 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	// Idempotency key alone on legacy Run is accepted as ignored additive field
 	// (API-required only for InvokeDeployment).
 
+	// M13.8 SC4: validate input file before any Docker resources.
+	var inputPrep *preparedInputFile
+	if p := strings.TrimSpace(req.GetInputFilePath()); p != "" {
+		prep, perr := prepareInputFilePath(p)
+		if perr != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "input_file_path: %v", perr)
+		}
+		inputPrep = prep
+	}
+
 	resolvedName, agentRefLabel, err := s.resolveDaemonAgentRef(agentName)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
@@ -956,6 +966,16 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		proxyEnv = append(proxyEnv, "AGENTPAAS_MCP_BINDING_SIDECAR_PATH=/agentpaas/mcp-bindings.json")
 	}
 
+	// M13.8 SC4: optional large input bind-mounted read-only.
+	if inputPrep != nil {
+		agentBinds = append(agentBinds, inputPrep.Bind)
+		proxyEnv = append(proxyEnv,
+			"AGENTPAAS_INPUT_PATH="+agentpaasInputMountPath,
+			"AGENTPAAS_INPUT_SHA256="+inputPrep.SHA256,
+			fmt.Sprintf("AGENTPAAS_INPUT_SIZE_BYTES=%d", inputPrep.Size),
+		)
+	}
+
 	agentSpec := runtime.ContainerSpec{
 		Labels:     runtime.LabelsWithAgentRef(runtime.ResourceTypeAgent, runID, agentRefLabel),
 		NetworkIDs: []string{string(netID)},
@@ -1033,12 +1053,20 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 	s.trackRunPtr(runID, tracked)
 	if s.eventBus != nil {
 		s.eventBus.RegisterRun(runID)
-		s.eventBus.Publish(runID, trigger.EventRunStarted, map[string]interface{}{
+		startMeta := map[string]interface{}{
 			"agent_name":   agentName,
 			"image_ref":    imageRef,
 			"container_id": string(containerID),
 			"network":      string(netID),
-		})
+		}
+		if inputPrep != nil {
+			startMeta["input_file_path"] = inputPrep.HostPath
+			startMeta["input_sha256"] = inputPrep.SHA256
+			startMeta["input_size_bytes"] = inputPrep.Size
+			startMeta["input_mount"] = agentpaasInputMountPath
+			startMeta["input_readonly"] = true
+		}
+		s.eventBus.Publish(runID, trigger.EventRunStarted, startMeta)
 	}
 
 	// Start real-time audit tailer for live egress visibility.

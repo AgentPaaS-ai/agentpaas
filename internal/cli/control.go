@@ -443,6 +443,13 @@ invocation flags. Requires a running daemon and a prior pack/install.`,
 			if idempotencyKey != "" {
 				runReq.IdempotencyKey = idempotencyKey
 			}
+			if inputFileFlag, _ := cmd.Flags().GetString("input-file"); inputFileFlag != "" {
+				abs, aerr := filepath.Abs(inputFileFlag)
+				if aerr != nil {
+					return fmt.Errorf("new run cmd: --input-file: %w", aerr)
+				}
+				runReq.InputFilePath = abs
+			}
 
 			resp, err := client.Run(ctx, runReq)
 			if err != nil {
@@ -479,6 +486,7 @@ invocation flags. Requires a running daemon and a prior pack/install.`,
 	cmd.Flags().String("action", "", "Recovery action: more_time, capability_up, or larger_context (reserved)")
 	cmd.Flags().Duration("attempt-lease", 0, "Requested attempt lease duration (reserved; e.g. 30m)")
 	cmd.Flags().String("input", "", "Deployment input as JSON string or @path/to/file.json")
+	cmd.Flags().String("input-file", "", "Large input file bind-mounted read-only at /agentpaas/input (M13.8)")
 	cmd.Flags().String("idempotency-key", "", "Idempotency key for deployment invoke (auto-generated when omitted)")
 	cmd.Flags().String("deployment-ref", "", "Deployment alias or exact deployment ID to invoke")
 

@@ -970,6 +970,9 @@ type RunRequest struct {
 	IdempotencyKey string `protobuf:"bytes,8,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
 	// Optional deployment reference (alias or exact). Representational in B26.
 	DeploymentRef string `protobuf:"bytes,9,opt,name=deployment_ref,json=deploymentRef,proto3" json:"deployment_ref,omitempty"`
+	// M13.8: absolute host path to a large input file. Daemon bind-mounts
+	// read-only at /agentpaas/input and records sha256 in audit.
+	InputFilePath string `protobuf:"bytes,10,opt,name=input_file_path,json=inputFilePath,proto3" json:"input_file_path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1063,6 +1066,13 @@ func (x *RunRequest) GetIdempotencyKey() string {
 func (x *RunRequest) GetDeploymentRef() string {
 	if x != nil {
 		return x.DeploymentRef
+	}
+	return ""
+}
+
+func (x *RunRequest) GetInputFilePath() string {
+	if x != nil {
+		return x.InputFilePath
 	}
 	return ""
 }
@@ -10759,7 +10769,7 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\vtotal_bytes\x18\x04 \x01(\x03R\n" +
 	"totalBytes\x12\x1f\n" +
 	"\voutput_path\x18\x05 \x01(\tR\n" +
-	"outputPath\"\x93\x03\n" +
+	"outputPath\"\xbb\x03\n" +
 	"\n" +
 	"RunRequest\x12\x1d\n" +
 	"\n" +
@@ -10771,7 +10781,9 @@ const file_control_v1_control_proto_rawDesc = "" +
 	"\x0frecovery_action\x18\x06 \x01(\tR\x0erecoveryAction\x12;\n" +
 	"\x1arequested_attempt_lease_ms\x18\a \x01(\x03R\x17requestedAttemptLeaseMs\x12'\n" +
 	"\x0fidempotency_key\x18\b \x01(\tR\x0eidempotencyKey\x12%\n" +
-	"\x0edeployment_ref\x18\t \x01(\tR\rdeploymentRef\"\xa1\x01\n" +
+	"\x0edeployment_ref\x18\t \x01(\tR\rdeploymentRef\x12&\n" +
+	"\x0finput_file_path\x18\n" +
+	" \x01(\tR\rinputFilePath\"\xa1\x01\n" +
 	"\fBudgetConfig\x12\x1d\n" +
 	"\n" +
 	"max_tokens\x18\x01 \x01(\x03R\tmaxTokens\x12 \n" +

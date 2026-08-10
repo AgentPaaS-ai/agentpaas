@@ -469,6 +469,74 @@ func TestRun_MountsAuditVolume(t *testing.T) {
 	}
 }
 
+func TestRun_MountsInputFileReadOnly(t *testing.T) {
+	dir := t.TempDir()
+	hp := home.NewHomePaths(dir)
+	if err := home.Ensure(hp); err != nil {
+		t.Fatalf("home.Ensure: %v", err)
+	}
+	deployTestAgent(t, hp, "test-agent")
+
+	inputPath := filepath.Join(dir, "payload.bin")
+	if err := os.WriteFile(inputPath, []byte("payload-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var capturedSpec runtime.ContainerSpec
+	mock := &mockRuntimeDriver{
+		createNetworkFunc: func(_ context.Context, spec runtime.NetworkSpec) (runtime.NetworkID, error) {
+			if spec.Internal {
+				return runtime.NetworkID("network-internal"), nil
+			}
+			return runtime.NetworkID("network-egress"), nil
+		},
+		createFunc: func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+			if spec.Image == runtime.GatewayImage {
+				return runtime.ContainerID("gateway-test"), nil
+			}
+			capturedSpec = spec
+			return runtime.ContainerID("container-test"), nil
+		},
+		startFunc: func(_ context.Context, _ runtime.ContainerID) error {
+			return nil
+		},
+	}
+
+	server := &controlServer{homePaths: hp}
+	server.runtimeOnce.Do(func() {})
+	server.dockerRT = runtime.NewDockerRuntimeWithDriver(mock)
+
+	_, err := server.Run(context.Background(), &controlv1.RunRequest{
+		AgentName:     "test-agent",
+		InputFilePath: inputPath,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	wantBind := inputPath + ":/agentpaas/input:ro"
+	found := false
+	for _, b := range capturedSpec.Binds {
+		if b == wantBind {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Binds = %v, want %q", capturedSpec.Binds, wantBind)
+	}
+	if !containsEnv(capturedSpec.Env, "AGENTPAAS_INPUT_PATH=/agentpaas/input") {
+		t.Fatalf("Env missing INPUT_PATH: %v", capturedSpec.Env)
+	}
+	// Ensure :ro — no RW bind of same path
+	for _, b := range capturedSpec.Binds {
+		if strings.HasPrefix(b, inputPath+":") && !strings.HasSuffix(b, ":ro") {
+			t.Fatalf("non-ro bind for input: %q", b)
+		}
+	}
+}
+
+
 func TestStop_IngestsHarnessAudit(t *testing.T) {
 	dir := t.TempDir()
 	hp := home.NewHomePaths(dir)
