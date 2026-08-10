@@ -274,25 +274,22 @@ When the user is not logged in to cloud (`agentpaas_cloud_whoami` fails):
 
 ### Step 1: Configure LLM Provider (when needed)
 
-1. Ask only: "Which provider? (OpenRouter, OpenAI, or Anthropic)". For the
-   cold weather demo, offer OpenRouter first and use the simple API-key path;
-   do not offer Nous token-exchange or xAI OAuth.
-2. Ask only: "Which model?" For OpenRouter offer at most two **currently
-   cheap, known-good** IDs (do not hardcode stale deepseek-chat-v3-0324 /
-   r1-0528:free). Prefer defaults:
-   `deepseek/deepseek-chat` and `openai/gpt-4o-mini` (or whatever
-   `agentpaas_llm_configure` / OpenRouter docs list as active). If unsure,
-   default to `deepseek/deepseek-chat` without a long menu.
-3. Tell the user to store the API key in a separate terminal (key never
-   enters this conversation). Suggest a name, e.g. for OpenRouter:
+1. Cold weather demo: do **not** offer a provider/model menu. State once:
+   "Using OpenRouter `deepseek/deepseek-v4-flash`." Only change if the user
+   explicitly asks. No Nous token-exchange / xAI OAuth on cold path.
+   Stale IDs forbidden: `deepseek/deepseek-chat`, `gpt-4o-mini`,
+   `deepseek-chat-v3-0324`, `r1-0528:free`, long pickers.
+2. Tell the user to store the API key in a separate terminal (key never
+   enters this conversation):
    ```
    agentpaas secret add openrouter-key
    ```
    Then: "Paste your OpenRouter API key when prompted, then tell me when done."
-4. After the user confirms, verify via `agentpaas_secret_list` (labels only)
+3. After the user confirms, verify via `agentpaas_secret_list` (labels only)
    and `agentpaas_secret_test`.
-5. Later call `agentpaas_llm_configure` with provider, model, credential name.
-6. Agent code uses `agent.llm()` — never reads the key from env.
+4. Call `agentpaas_llm_configure` with provider=openrouter,
+   model=deepseek/deepseek-v4-flash, credential=openrouter-key.
+5. Agent code uses `agent.llm()` — never reads the key from env.
 
 Provider → hostname map (for YOU when writing policy; do not show as
 `host:port` to the user):
@@ -363,14 +360,13 @@ field name for egress rules in policy.yaml. The schema field is
 
 User: "Build a weather agent that uses an LLM…"
 
-You (turn 1): "Which provider? (OpenRouter, OpenAI, or Anthropic)"
-You (turn 2): "Which cheap OpenRouter model: deepseek/deepseek-chat or
-openai/gpt-4o-mini? (default deepseek/deepseek-chat)"
-You (turn 3): "In your terminal run: `agentpaas secret add openrouter-key`
-then paste your OpenRouter API key. Tell me when done."
-You (turn 4): "This agent will access wttr.in and openrouter.ai. Allow these?"
+You (turn 1): "Using OpenRouter deepseek/deepseek-v4-flash. In your terminal
+run: `agentpaas secret add openrouter-key` then paste your OpenRouter API
+key. Tell me when done."
+You (turn 2): "This agent will access wttr.in and openrouter.ai. Allow these?"
 Then: scaffold project, write main.py (http fetch + llm summarize), write
-policy.yaml with hostnames + port 443, configure LLM, pack, run.
+policy.yaml with hostnames + port 443, configure LLM
+(openrouter + deepseek/deepseek-v4-flash + openrouter-key), pack, run.
 
 ### Pre-Pack Gate (silent checks — do not dump this list to the user)
 
