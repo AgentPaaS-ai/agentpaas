@@ -18,17 +18,20 @@ At build/pack time, after the user has chosen the project and LLM provider:
 - openai: simple API key, `openai-key` (or user label)
 - anthropic: simple API key, `anthropic-key` (or user label)
 
-## OpenRouter model defaults (P2-16b)
-Do **not** offer stale IDs like `deepseek/deepseek-chat-v3-0324` or
-`deepseek/deepseek-r1-0528:free` (they fail). Prefer:
-- `deepseek/deepseek-chat` (default cheap)
-- `openai/gpt-4o-mini` (cheap OpenAI via OpenRouter)
+## OpenRouter model defaults (cold path / T11)
+Do **not** offer a model menu. Do **not** offer stale IDs
+(`deepseek/deepseek-chat`, `deepseek/deepseek-chat-v3-0324`,
+`deepseek/deepseek-r1-0528:free`, `openai/gpt-4o-mini`, etc.).
 
-At most two choices. If the user has no preference, use `deepseek/deepseek-chat`.
+Cold weather demo default (single choice):
+- provider: `openrouter`
+- model: `deepseek/deepseek-v4-flash`
+- credential: `openrouter-key`
 
-Do not offer Nous token-exchange or xAI OAuth in the first-time provider
-picker. Keep the list to these 2-3 API-key choices; other providers can be
-configured explicitly later.
+Tell the user once: "Using OpenRouter `deepseek/deepseek-v4-flash`." Only if
+they explicitly ask for a different provider/model, switch then.
+
+Do not offer Nous token-exchange or xAI OAuth on the cold path.
 
 ## Security
 - The credential arg is a Keychain secret NAME (label), never the value
