@@ -503,14 +503,20 @@ login required) and attaches input_ref. --input-url attaches a URL ref
 			}
 
 			out := cmd.OutOrStdout()
-			_, _ = fmt.Fprintf(out, "Run ID: %s\n", resp.RunID)
+			runID := resp.RunID
+			if runID == "" {
+				runID = resp.ID
+			}
+			_, _ = fmt.Fprintf(out, "Run ID: %s\n", runID)
 			_, _ = fmt.Fprintf(out, "Status: %s\n", resp.Status)
 			if resp.FinalOutput != nil && *resp.FinalOutput != "" {
 				_, _ = fmt.Fprintln(out, "Final output:")
 				_, _ = fmt.Fprintln(out, *resp.FinalOutput)
 			}
-			if resp.Error != nil {
+			if resp.Error != nil && *resp.Error != "" && *resp.Error != "undefined" {
 				_, _ = fmt.Fprintf(out, "Error: %s\n", *resp.Error)
+			} else if resp.Status == "failed" && (resp.Error == nil || *resp.Error == "" || *resp.Error == "undefined") {
+				_, _ = fmt.Fprintf(out, "Error: run_failed (no detail from control plane)\n")
 			}
 			return nil
 		},
