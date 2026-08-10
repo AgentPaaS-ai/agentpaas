@@ -424,3 +424,93 @@ func TestCloudInvoke_WaitPollsAndPrintsFinalResult(t *testing.T) {
 		t.Fatalf("status calls = %d, want 2", statusCalls)
 	}
 }
+
+func TestCloudInvoke_InputURL_MergesRef(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_url_token")
+	_ = setupFakeTokenStore(t)
+
+	sha := strings.Repeat("ab", 32)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/deployments/dep-url/invoke" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		var m map[string]interface{}
+		if err := json.Unmarshal(body, &m); err != nil {
+			t.Fatalf("body json: %v", err)
+		}
+		ref, _ := m["input_ref"].(map[string]interface{})
+		if ref == nil || ref["url"] != "https://cdn.example.com/big.bin" {
+			t.Fatalf("input_ref = %#v", m["input_ref"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_id":"run-url","status":"queued"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-url",
+		"--input-url", "https://cdn.example.com/big.bin",
+		"--input-sha256", sha,
+		"--input-size-bytes", "1024",
+	)
+	if err != nil {
+		t.Fatalf("err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "run-url") {
+		t.Fatalf("stdout=%q", stdout)
+	}
+}
+
+func TestCloudInvoke_InputFile_UploadsThenInvokes(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_file_in")
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_tenant_in"); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "blob.bin")
+	if err := os.WriteFile(path, []byte("blob-data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sawUpload := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/inputs":
+			sawUpload = true
+			if got := r.Header.Get("Authorization"); got != "Bearer apc_tenant_in" {
+				t.Errorf("upload auth = %q", got)
+			}
+			b, _ := io.ReadAll(r.Body)
+			if string(b) != "blob-data" {
+				t.Errorf("upload body = %q", b)
+			}
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"input_id":"inp_x","r2_key":"tenants/t1/inputs/inp_x","sha256":"` + strings.Repeat("c", 64) + `","size_bytes":9}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/deployments/dep-in/invoke":
+			body, _ := io.ReadAll(r.Body)
+			if !strings.Contains(string(body), "tenants/t1/inputs/inp_x") {
+				t.Errorf("invoke body missing r2_key: %s", body)
+			}
+			_, _ = w.Write([]byte(`{"run_id":"run-in","status":"queued"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-in", "--input-file", path)
+	if err != nil {
+		t.Fatalf("err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !sawUpload {
+		t.Fatal("expected upload")
+	}
+	if !strings.Contains(stdout, "run-in") {
+		t.Fatalf("stdout=%q", stdout)
+	}
+}

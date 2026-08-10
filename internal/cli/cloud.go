@@ -402,6 +402,10 @@ func newCloudInvokeCmd() *cobra.Command {
 	var token string
 	var wait bool
 	var waitTimeout time.Duration
+	var inputFile string
+	var inputURL string
+	var inputSHA256 string
+	var inputSizeBytes int64
 
 	cmd := &cobra.Command{
 		Use:   "invoke <deployment_id>",
@@ -409,9 +413,17 @@ func newCloudInvokeCmd() *cobra.Command {
 		Long: `Invoke a deployment with a deployment invoke token.
 
 Use --token or AGENTPAAS_CLOUD_INVOKE_TOKEN for the invoke token. This
-command never uses the tenant cloud login token for the invoke request.`,
+command never uses the tenant cloud login token for the invoke request.
+
+Large inputs (M13.8): --input-file uploads via POST /v1/inputs (tenant
+login required) and attaches input_ref. --input-url attaches a URL ref
+(requires --input-sha256 and --input-size-bytes).`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if inputFile != "" && inputURL != "" {
+				return fmt.Errorf("cloud invoke: --input-file and --input-url are mutually exclusive")
+			}
+
 			invokeToken, err := resolveCloudInvokeToken(cmd, token, args[0])
 			if err != nil {
 				return err
@@ -423,6 +435,47 @@ command never uses the tenant cloud login token for the invoke request.`,
 			}
 
 			client := cloudclient.NewCloudClient(resolveAPIURL())
+
+			if inputFile != "" {
+				data, readErr := os.ReadFile(inputFile)
+				if readErr != nil {
+					return fmt.Errorf("cloud invoke: --input-file: %w", readErr)
+				}
+				tenantToken, tokErr := resolveToken(cmd)
+				if tokErr != nil {
+					return fmt.Errorf("cloud invoke: --input-file requires cloud login: %w", tokErr)
+				}
+				up, upErr := client.UploadInput(cmd.Context(), tenantToken, data, "application/octet-stream")
+				if upErr != nil {
+					return fmt.Errorf("cloud invoke: upload input: %w", upErr)
+				}
+				requestBody, err = cloudclient.MergeInputRefIntoBody(requestBody, map[string]any{
+					"r2_key":     up.R2Key,
+					"sha256":     up.SHA256,
+					"size_bytes": up.SizeBytes,
+				})
+				if err != nil {
+					return fmt.Errorf("cloud invoke: %w", err)
+				}
+			}
+
+			if inputURL != "" {
+				if inputSHA256 == "" || inputSizeBytes < 0 {
+					return fmt.Errorf("cloud invoke: --input-url requires --input-sha256 and --input-size-bytes")
+				}
+				if len(inputSHA256) != 64 {
+					return fmt.Errorf("cloud invoke: --input-sha256 must be 64 hex chars")
+				}
+				requestBody, err = cloudclient.MergeInputRefIntoBody(requestBody, map[string]any{
+					"url":        inputURL,
+					"sha256":     strings.ToLower(inputSHA256),
+					"size_bytes": inputSizeBytes,
+				})
+				if err != nil {
+					return fmt.Errorf("cloud invoke: %w", err)
+				}
+			}
+
 			resp, err := client.InvokeDeployment(cmd.Context(), invokeToken, args[0], requestBody)
 			if err != nil {
 				if message, ok := cloudAlreadyRunningMessage(err); ok {
@@ -468,6 +521,10 @@ command never uses the tenant cloud login token for the invoke request.`,
 	cmd.Flags().StringVar(&token, "token", "", "Deployment invoke token")
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for a terminal run result")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "Maximum time to wait when --wait is set")
+	cmd.Flags().StringVar(&inputFile, "input-file", "", "Upload local file as input_ref (M13.8; requires cloud login)")
+	cmd.Flags().StringVar(&inputURL, "input-url", "", "Attach URL input_ref (requires --input-sha256 and --input-size-bytes)")
+	cmd.Flags().StringVar(&inputSHA256, "input-sha256", "", "SHA-256 hex for --input-url")
+	cmd.Flags().Int64Var(&inputSizeBytes, "input-size-bytes", -1, "size_bytes for --input-url")
 	return cmd
 }
 
