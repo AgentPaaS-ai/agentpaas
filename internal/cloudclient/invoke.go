@@ -54,11 +54,11 @@ func (c *CloudClient) MintInvokeToken(ctx context.Context, tenantToken, deployme
 // InvokeDeploymentResult is the response from POST
 // /v1/deployments/{id}/invoke.
 type InvokeDeploymentResult struct {
-	RunID       string  `json:"run_id"`
-	ID          string  `json:"id"` // some failure paths return RunRecord.id only
-	Status      string  `json:"status"`
-	Error       *string `json:"error"`
-	FinalOutput *string `json:"final_output"`
+	RunID       string          `json:"run_id"`
+	ID          string          `json:"id"` // some failure paths return RunRecord.id only
+	Status      string          `json:"status"`
+	Error       json.RawMessage `json:"error"` // string or object
+	FinalOutput json.RawMessage `json:"final_output"`
 }
 
 // EffectiveRunID returns run_id, falling back to id for older/error envelopes.
@@ -70,6 +70,21 @@ func (r *InvokeDeploymentResult) EffectiveRunID() string {
 		return r.RunID
 	}
 	return r.ID
+}
+
+// ErrorString returns a displayable error, or "" if none.
+func (r *InvokeDeploymentResult) ErrorString() string {
+	if r == nil || len(r.Error) == 0 || string(r.Error) == "null" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(r.Error, &s); err == nil {
+		if s == "" || s == "undefined" {
+			return ""
+		}
+		return s
+	}
+	return string(r.Error)
 }
 
 // InvokeDeployment invokes a deployment with an invoke token and returns the

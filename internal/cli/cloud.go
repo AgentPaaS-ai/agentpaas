@@ -503,19 +503,16 @@ login required) and attaches input_ref. --input-url attaches a URL ref
 			}
 
 			out := cmd.OutOrStdout()
-			runID := resp.RunID
-			if runID == "" {
-				runID = resp.ID
-			}
+			runID := resp.EffectiveRunID()
 			_, _ = fmt.Fprintf(out, "Run ID: %s\n", runID)
 			_, _ = fmt.Fprintf(out, "Status: %s\n", resp.Status)
-			if resp.FinalOutput != nil && *resp.FinalOutput != "" {
+			if len(resp.FinalOutput) > 0 && string(resp.FinalOutput) != "null" {
 				_, _ = fmt.Fprintln(out, "Final output:")
-				_, _ = fmt.Fprintln(out, *resp.FinalOutput)
+				_, _ = fmt.Fprintln(out, displayJSONRaw(resp.FinalOutput))
 			}
-			if resp.Error != nil && *resp.Error != "" && *resp.Error != "undefined" {
-				_, _ = fmt.Fprintf(out, "Error: %s\n", *resp.Error)
-			} else if resp.Status == "failed" && (resp.Error == nil || *resp.Error == "" || *resp.Error == "undefined") {
+			if errStr := resp.ErrorString(); errStr != "" {
+				_, _ = fmt.Fprintf(out, "Error: %s\n", errStr)
+			} else if resp.Status == "failed" {
 				_, _ = fmt.Fprintf(out, "Error: run_failed (no detail from control plane)\n")
 			}
 			return nil
@@ -537,10 +534,11 @@ login required) and attaches input_ref. --input-url attaches a URL ref
 var cloudInvokePollInterval = time.Second
 
 func waitForCloudInvoke(cmd *cobra.Command, client *cloudclient.CloudClient, invoked *cloudclient.InvokeDeploymentResult, timeout time.Duration) (*cloudclient.RunResult, error) {
-	if invoked.RunID == "" {
+	runID := invoked.EffectiveRunID()
+	if runID == "" {
 		return nil, fmt.Errorf("cloud invoke: response has no run_id")
 	}
-	if cloudRunTerminal(invoked.Status) && invoked.FinalOutput != nil {
+	if cloudRunTerminal(invoked.Status) && len(invoked.FinalOutput) > 0 && string(invoked.FinalOutput) != "null" {
 		return invokeResultAsRunResult(invoked), nil
 	}
 
@@ -552,12 +550,12 @@ func waitForCloudInvoke(cmd *cobra.Command, client *cloudclient.CloudClient, inv
 	defer cancel()
 
 	for {
-		run, err := client.GetRun(waitCtx, tenantToken, invoked.RunID)
+		run, err := client.GetRun(waitCtx, tenantToken, runID)
 		if err != nil {
 			return nil, fmt.Errorf("cloud invoke --wait: poll status: %w", err)
 		}
 		if cloudRunTerminal(run.Status) {
-			result, err := client.GetRunResult(waitCtx, tenantToken, invoked.RunID)
+			result, err := client.GetRunResult(waitCtx, tenantToken, runID)
 			if err != nil {
 				return nil, fmt.Errorf("cloud invoke --wait: fetch result: %w", err)
 			}
@@ -587,21 +585,29 @@ func cloudRunTerminal(status string) bool {
 
 func invokeResultAsRunResult(invoked *cloudclient.InvokeDeploymentResult) *cloudclient.RunResult {
 	finalOutput := json.RawMessage("null")
-	if invoked.FinalOutput != nil {
-		value := strings.TrimSpace(*invoked.FinalOutput)
-		if json.Valid([]byte(value)) {
-			finalOutput = json.RawMessage(value)
-		} else if encoded, err := json.Marshal(*invoked.FinalOutput); err == nil {
-			finalOutput = json.RawMessage(encoded)
-		}
+	if len(invoked.FinalOutput) > 0 && string(invoked.FinalOutput) != "null" {
+		finalOutput = append(json.RawMessage(nil), invoked.FinalOutput...)
+	}
+	var errPtr *string
+	if s := invoked.ErrorString(); s != "" {
+		errPtr = &s
 	}
 	return &cloudclient.RunResult{
-		RunID:       invoked.RunID,
+		RunID:       invoked.EffectiveRunID(),
 		Status:      invoked.Status,
-		Error:       invoked.Error,
+		Error:       errPtr,
 		FinalOutput: finalOutput,
 		Artifacts:   []cloudclient.RunArtifact{},
 	}
+}
+
+// displayJSONRaw prints JSON strings unquoted; objects/arrays as compact JSON.
+func displayJSONRaw(raw json.RawMessage) string {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return string(raw)
 }
 
 func cloudAlreadyRunningMessage(err error) (string, bool) {
