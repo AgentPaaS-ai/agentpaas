@@ -18,8 +18,8 @@ type Policy struct {
 	Transformations *Transformation  `yaml:"transformations,omitempty"`
 	Observability   *Observability   `yaml:"observability,omitempty"`
 	// v1.1 routed fields
-	RoutedRun   *RoutedRunPolicy       `yaml:"routed_run,omitempty"`
-	ModelRoutes map[string]ModelRoute  `yaml:"model_routes,omitempty"`
+	RoutedRun   *RoutedRunPolicy      `yaml:"routed_run,omitempty"`
+	ModelRoutes map[string]ModelRoute `yaml:"model_routes,omitempty"`
 }
 
 // Transformation defines request/response transformations applied by the gateway.
@@ -44,9 +44,9 @@ type ResponseTransform struct {
 // LLMBudget defines per-invoke and per-request token budget limits.
 // The gateway enforces these via budget limit policies on the LLM route.
 type LLMBudget struct {
-	MaxTokens           int    `yaml:"max_tokens"`              // total tokens per invoke
+	MaxTokens           int    `yaml:"max_tokens"`             // total tokens per invoke
 	MaxTokensPerRequest int    `yaml:"max_tokens_per_request"` // per-LLM-call limit
-	MaxCostUSD          string `yaml:"max_cost_usd,omitempty"`  // v1.1: exact decimal (nano-USD precision)
+	MaxCostUSD          string `yaml:"max_cost_usd,omitempty"` // v1.1: exact decimal (nano-USD precision)
 }
 
 // LLMRateLimit defines rate limiting for LLM calls.
@@ -66,8 +66,8 @@ type LLMProviderLock struct {
 
 // IngressAuth defines authentication for incoming trigger requests.
 type IngressAuth struct {
-	Type   string      `yaml:"type"`            // "jwt" or "api_key"
-	JWT    *JWTAuth    `yaml:"jwt,omitempty"`    // JWT auth config
+	Type   string      `yaml:"type"`              // "jwt" or "api_key"
+	JWT    *JWTAuth    `yaml:"jwt,omitempty"`     // JWT auth config
 	APIKey *APIKeyAuth `yaml:"api_key,omitempty"` // API key auth config
 }
 
@@ -92,15 +92,15 @@ type AgentConfig struct {
 
 // EgressRule defines an outbound network access rule.
 type EgressRule struct {
-	Domain        string      `yaml:"domain"`
-	CIDR          string      `yaml:"cidr"`
-	Ports         []int       `yaml:"ports"`
-	Methods       []string    `yaml:"methods"`
-	AllowWildcard *bool       `yaml:"allow_wildcard"`
-	AllowPrivate  *bool       `yaml:"allow_private"`
-	Credential    string      `yaml:"credential"`
-	MCPServerID   string      `yaml:"mcp_server_id"` // if set, this rule applies to MCP server egress
-	Timeout       string      `yaml:"timeout,omitempty"`
+	Domain        string       `yaml:"domain"`
+	CIDR          string       `yaml:"cidr"`
+	Ports         []int        `yaml:"ports"`
+	Methods       []string     `yaml:"methods"`
+	AllowWildcard *bool        `yaml:"allow_wildcard"`
+	AllowPrivate  *bool        `yaml:"allow_private"`
+	Credential    string       `yaml:"credential"`
+	MCPServerID   string       `yaml:"mcp_server_id"` // if set, this rule applies to MCP server egress
+	Timeout       string       `yaml:"timeout,omitempty"`
 	Retry         *RetryConfig `yaml:"retry,omitempty"`
 }
 
@@ -112,7 +112,7 @@ type RetryConfig struct {
 }
 
 // Credential defines a credential source for the agent.
-// Type may be "header", "brokered", "oauth", or "direct_lease".
+// Type may be "header", "brokered", "oauth", "direct_lease", or "oauth_delegated".
 type Credential struct {
 	ID      string `yaml:"id"`
 	Type    string `yaml:"type"`
@@ -122,12 +122,28 @@ type Credential struct {
 	Path    string `yaml:"path"`
 	// Mode is required for direct-lease credentials: "file" or "env".
 	Mode string `yaml:"mode"`
-	// Reason is required for direct-lease credentials.
+	// Reason is required for direct-lease credentials. For type=oauth_delegated,
+	// Reason serves a dual purpose: it is REQUIRED when any entry in max_scopes
+	// is a wildcard scope (see IsWildcardScope). This documents why the broad
+	// scope is policy-pinned.
 	Reason string `yaml:"reason"`
-	// OAuth fields (type: oauth).
+	// OAuth fields (type: oauth — backend token refresh, B19-T5).
 	TokenEndpoint          string `yaml:"token_endpoint,omitempty"`
 	ClientID               string `yaml:"client_id,omitempty"`
 	RefreshTokenCredential string `yaml:"refresh_token_credential,omitempty"`
+
+	// OAuth delegated fields (type: oauth_delegated — M13.9-T1).
+	// Provider is one of: google | github | slack | generic. For known
+	// providers auth_endpoint/token_endpoint are optional (defaults filled at
+	// validate/compile time). For provider "generic" (or any unknown value),
+	// both endpoints are REQUIRED and must be https.
+	Provider               string   `yaml:"provider,omitempty"`
+	AuthEndpoint           string   `yaml:"auth_endpoint,omitempty"`
+	ClientIDCredential     string   `yaml:"client_id_credential,omitempty"`
+	ClientSecretCredential string   `yaml:"client_secret_credential,omitempty"`
+	Scopes                 []string `yaml:"scopes,omitempty"`
+	MaxScopes              []string `yaml:"max_scopes,omitempty"`
+	RedirectPath           string   `yaml:"redirect_path,omitempty"`
 }
 
 // MCPServer defines an MCP (Model Context Protocol) server endpoint.

@@ -63,6 +63,21 @@ type CanonicalCredential struct {
 	Service string `json:"service,omitempty"`
 	Path    string `json:"path,omitempty"`
 	// Value is deliberately absent — secret values never enter canonical form.
+
+	// oauth (B19) non-secret metadata.
+	TokenEndpoint          string `json:"token_endpoint,omitempty"`
+	ClientID               string `json:"client_id,omitempty"`
+	RefreshTokenCredential string `json:"refresh_token_credential,omitempty"`
+
+	// oauth_delegated (M13.9) non-secret metadata. Scopes/MaxScopes are sorted.
+	Provider               string   `json:"provider,omitempty"`
+	AuthEndpoint           string   `json:"auth_endpoint,omitempty"`
+	ClientIDCredential     string   `json:"client_id_credential,omitempty"`
+	ClientSecretCredential string   `json:"client_secret_credential,omitempty"`
+	Scopes                 []string `json:"scopes,omitempty"`
+	MaxScopes              []string `json:"max_scopes,omitempty"`
+	RedirectPath           string   `json:"redirect_path,omitempty"`
+	Reason                 string   `json:"reason,omitempty"`
 }
 
 // CanonicalMCPServer is the canonical form of MCPServer.
@@ -417,12 +432,37 @@ func canonicalizeCredentials(creds []Credential, warnings *[]string) []Canonical
 		seen[c.ID] = true
 
 		cr := CanonicalCredential{
-			ID:      c.ID,
-			Type:    c.Type,
-			Header:  c.Header,
-			Service: c.Service,
-			Path:    c.Path,
+			ID:                     c.ID,
+			Type:                   c.Type,
+			Header:                 c.Header,
+			Service:                c.Service,
+			Path:                   c.Path,
+			TokenEndpoint:          c.TokenEndpoint,
+			ClientID:               c.ClientID,
+			RefreshTokenCredential: c.RefreshTokenCredential,
+			Provider:               c.Provider,
+			AuthEndpoint:           c.AuthEndpoint,
+			ClientIDCredential:     c.ClientIDCredential,
+			ClientSecretCredential: c.ClientSecretCredential,
+			RedirectPath:           c.RedirectPath,
+			Reason:                 c.Reason,
 			// Value deliberately omitted — no secret values in canonical form.
+		}
+		if len(c.Scopes) > 0 {
+			scopes := append([]string(nil), c.Scopes...)
+			for i := range scopes {
+				scopes[i] = NormalizeScope(scopes[i])
+			}
+			sort.Strings(scopes)
+			cr.Scopes = scopes
+		}
+		if len(c.MaxScopes) > 0 {
+			maxScopes := append([]string(nil), c.MaxScopes...)
+			for i := range maxScopes {
+				maxScopes[i] = NormalizeScope(maxScopes[i])
+			}
+			sort.Strings(maxScopes)
+			cr.MaxScopes = maxScopes
 		}
 		result = append(result, cr)
 	}
