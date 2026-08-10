@@ -66,9 +66,9 @@ func isPrivateCIDR(cidr string) bool {
 		"10.0.0.0/8",
 		"172.16.0.0/12",
 		"192.168.0.0/16",
-		"100.64.0.0/10",   // RFC6598 (CGNAT)
-		"127.0.0.0/8",     // loopback
-		"169.254.0.0/16",  // link-local
+		"100.64.0.0/10",  // RFC6598 (CGNAT)
+		"127.0.0.0/8",    // loopback
+		"169.254.0.0/16", // link-local
 	}
 	for _, pr := range privateRanges {
 		_, privNet, err := net.ParseCIDR(pr)
@@ -308,6 +308,7 @@ func ValidatePolicy(p *Policy) []ValidationError {
 					Severity: "error",
 				})
 			}
+			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
 		case "brokered":
 			if c.Service == "" {
 				errs = append(errs, ValidationError{
@@ -316,6 +317,7 @@ func ValidatePolicy(p *Policy) []ValidationError {
 					Severity: "error",
 				})
 			}
+			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
 		case "oauth":
 			if c.TokenEndpoint == "" {
 				errs = append(errs, ValidationError{
@@ -353,6 +355,8 @@ func ValidatePolicy(p *Policy) []ValidationError {
 					Severity: "error",
 				})
 			}
+			// oauth (B19 backend refresh) must not carry delegated-only fields.
+			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
 		case "direct_lease":
 			if c.Mode == "" {
 				errs = append(errs, ValidationError{
@@ -375,6 +379,11 @@ func ValidatePolicy(p *Policy) []ValidationError {
 					Severity: "error",
 				})
 			}
+			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
+		case "file":
+			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
+		case "oauth_delegated":
+			errs = append(errs, validateOAuthDelegated(c, credIDs, prefix)...)
 		default:
 			// Unknown credential types should have been caught by the strict YAML
 			// parser from B4-T01, but we handle non-empty unknown gracefully.

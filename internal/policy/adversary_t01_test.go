@@ -64,7 +64,7 @@ credentials:
   - id: k
     type: header
     value: x
-    provider: aws
+    smuggled_aws_role: admin
 `,
 		"mcp": `version: "1.0"
 agent: {name: x}
