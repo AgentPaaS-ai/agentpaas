@@ -350,7 +350,6 @@ Full guide: [docs/sharing.md](docs/sharing.md).
 - [Bundle format](docs/bundle-format.md)
 - [Audit export](docs/audit-export.md)
 - [Troubleshooting](docs/troubleshooting.md)
-- [Golden loop test](docs/execution/reference/e2e-test-plan.md)
 - [Hermes plugin setup](integrations/hermes-plugin/SKILL.md)
 - [Known limitations](docs/known-limitations.md)
 - [Changelog](CHANGELOG.md)

@@ -14,7 +14,7 @@
 ## Rules
 
 1. **CLI point release** (e.g. 0.3.7): bump Makefile + version.go + tests; tag `vX.Y.Z`; goreleaser → brew; update release notes under `docs/customer/RELEASE-vX.Y.Z.md` **in the same tag**.
-2. **Cloud-only UI/API** (no CLI bump): ship on cloud main; note in cloud `docs/execution/current-state.md` and add a dated entry under site `/docs/releases/` and OSS `docs/customer/`. Do **not** pretend brew changed.
+2. **Cloud-only UI/API** (no CLI bump): ship on cloud main; note in the planning repo's cloud current-state and add a dated entry under site `/docs/releases/` and OSS `docs/customer/`. Do **not** pretend brew changed.
 3. **Docs always name the CLI version** they assume (`Requires CLI 0.3.7+`).
 4. **Breaking API or dashboard IA** → bump cloud M-series label and open a docs version (keep previous docs readable).
 5. **Never** put vendor infra brands (e.g. Cloudflare) in customer docs or UI copy.
