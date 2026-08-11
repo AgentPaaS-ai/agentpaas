@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
+	"github.com/AgentPaaS-ai/agentpaas/internal/oauth"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 )
 
@@ -30,6 +31,12 @@ type BrokerConfig struct {
 	Now                func() time.Time
 	CredentialResolver CredentialResolver
 	InstallRef         string
+	// OAuthStore optional local delegated token store (M13.9).
+	OAuthStore oauth.Store
+	// OAuthEndUser resolves end-user identity for a run; default "default".
+	OAuthEndUser func(runID string) string
+	// OAuthConsentBase is loopback or cloud origin for consent URLs.
+	OAuthConsentBase string
 }
 
 // Broker is the sole credential access path for agent workloads. SecretStore
@@ -47,6 +54,9 @@ type Broker struct {
 	now                func() time.Time
 	resolver           CredentialResolver
 	installRef         string
+	oauthStore         oauth.Store
+	oauthEndUser       func(runID string) string
+	oauthConsentBase   string
 }
 
 type CredentialInjection struct {
@@ -118,6 +128,9 @@ func NewBroker(cfg BrokerConfig) (*Broker, error) {
 		now:                now,
 		resolver:           cfg.CredentialResolver,
 		installRef:         strings.TrimSpace(cfg.InstallRef),
+		oauthStore:         cfg.OAuthStore,
+		oauthEndUser:       cfg.OAuthEndUser,
+		oauthConsentBase:   strings.TrimSpace(cfg.OAuthConsentBase),
 	}, nil
 }
 
