@@ -163,9 +163,6 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 	if err != nil {
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "%w", err)
 	}
-	if credential.Type != "brokered" {
-		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "credential %s is not brokered", credentialID)
-	}
 	if err := validateRuleDestination(rule, dest); err != nil {
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "%w", err)
 	}
@@ -179,6 +176,16 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 	}
 	if err := validateHeaderName(headerName); err != nil {
 		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "%w", err)
+	}
+
+	// Branch on credential type: oauth_delegated sources tokens from the local
+	// OAuth Store only; it never falls through to the static SecretStore.
+	if credential.Type == "oauth_delegated" {
+		return b.requestOAuthDelegated(ctx, runID, policyRuleID, credentialID, credential, dest.String(), method, headerName)
+	}
+
+	if credential.Type != "brokered" {
+		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, dest.String(), method, "credential %s is not brokered", credentialID)
 	}
 
 	lookupName := credentialID
@@ -217,6 +224,67 @@ func (b *Broker) RequestCredential(ctx context.Context, runID, policyRuleID, des
 		return CredentialInjection{}, fmt.Errorf("broker request credential: %w", err)
 	}
 	return CredentialInjection{HeaderName: headerName, HeaderValue: string(value)}, nil
+}
+
+// requestOAuthDelegated sources a delegated OAuth token from the local OAuth
+// Store only. It never falls through to the static SecretStore. If no valid
+// token exists, it returns a typed AuthorizationRequiredError with a safe
+// loopback consent URL. Bearer token is injected only at this boundary.
+// Audit records type/metadata only — no token values.
+func (b *Broker) requestOAuthDelegated(ctx context.Context, runID, policyRuleID, credentialID string, _ policy.Credential, destination, method, headerName string) (CredentialInjection, error) {
+	if b.oauthStore == nil {
+		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, destination, method, "oauth_delegated credential %s requires OAuthStore to be configured", credentialID)
+	}
+	endUser := "default"
+	if b.oauthEndUser != nil {
+		endUser = b.oauthEndUser(runID)
+	}
+	key := oauth.TokenKey{
+		CredentialID:    credentialID,
+		EndUserIdentity: endUser,
+		DeploymentID:    b.installRef,
+	}
+	token, err := oauth.EnsureAccess(b.oauthStore, key, time.Minute)
+	if err != nil {
+		if authReq, ok := oauth.IsAuthorizationRequired(err); ok {
+			authReq.CredentialID = credentialID
+			authReq.ConsentURL = b.buildConsentURL(credentialID)
+			if auditErr := b.auditSecret(ctx, "denied", runID, policyRuleID, credentialID, destination, method, "authorization_required"); auditErr != nil {
+				return CredentialInjection{}, fmt.Errorf("broker oauth audit: %w", auditErr)
+			}
+			return CredentialInjection{}, authReq
+		}
+		return CredentialInjection{}, b.deny(ctx, runID, policyRuleID, credentialID, destination, method, "oauth token access for %s: %w", credentialID, err)
+	}
+	if err := b.auditSecret(ctx, "injected", runID, policyRuleID, credentialID, destination, method); err != nil {
+		return CredentialInjection{}, fmt.Errorf("broker request credential: %w", err)
+	}
+	return CredentialInjection{HeaderName: headerName, HeaderValue: "Bearer " + token}, nil
+}
+
+// buildConsentURL constructs a safe loopback consent URL for the given
+// credential ID. If OAuthConsentBase is configured, it uses that base;
+// otherwise it falls back to a placeholder loopback origin.
+func (b *Broker) buildConsentURL(credentialID string) string {
+	base := b.oauthConsentBase
+	if base == "" {
+		base = "http://127.0.0.1:0"
+	}
+	return base + "/oauth/start/" + credentialID
+}
+
+// RevokeOAuthToken deletes a delegated OAuth token from the local OAuth Store.
+// This is an immediate local revoke; it does not contact the cloud provider.
+func (b *Broker) RevokeOAuthToken(_ context.Context, credentialID, endUser string) error {
+	if b.oauthStore == nil {
+		return errors.New("oauth store is not configured")
+	}
+	key := oauth.TokenKey{
+		CredentialID:    credentialID,
+		EndUserIdentity: endUser,
+		DeploymentID:    b.installRef,
+	}
+	return b.oauthStore.Delete(key)
 }
 
 // Broker.Revoke revokes broker.
