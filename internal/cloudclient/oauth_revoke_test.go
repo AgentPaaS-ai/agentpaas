@@ -54,11 +54,11 @@ func TestRevokeOAuthGrant_Success(t *testing.T) {
 		}
 
 		resp := OAuthRevokeResult{
-			DeploymentID:     "dep-123",
-			CredentialID:     "cred-abc",
-			EndUserIdentity:  "user@example.com",
-			Revoked:          true,
-			RevokedAt:        "2025-08-10T12:00:00Z",
+			DeploymentID:    "dep-123",
+			CredentialID:    "cred-abc",
+			EndUserIdentity: "user@example.com",
+			Revoked:         true,
+			RevokedAt:       "2025-08-10T12:00:00Z",
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
