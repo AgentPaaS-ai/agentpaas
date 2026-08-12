@@ -50,6 +50,10 @@ type AgentYAML struct {
 	// Capabilities is additive optional metadata from the package manifest (B31-T01).
 	// Stored verbatim; not schema-validated against other packages in v0.3.
 	Capabilities []DeclaredCapability `yaml:"capabilities,omitempty" json:"capabilities,omitempty"`
+	// Egress is a string-list of allowed egress hosts stamped from policy.yaml
+	// domains (and optionally declared in agent.yaml). String list only so
+	// `egress: [example.com]` still unmarshals.
+	Egress []string `yaml:"egress,omitempty" json:"egress,omitempty"`
 	Metadata     struct {
 		Name        string `yaml:"name" json:"name,omitempty"`
 		Version     string `yaml:"version" json:"version,omitempty"`
