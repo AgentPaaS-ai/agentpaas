@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -489,9 +490,26 @@ func (lc *Lifecycle) httpCrashContext(serverID string) *CrashContext {
 	return crash
 }
 
+// blockedEnvKeys is a case-insensitive blocklist of environment variables
+// that may hijack executable resolution or library loading in the child
+// process. The sandbox minimalPATH must always be the only PATH, and the
+// dynamic-loader hooks must never come from declared (potentially
+// attacker-controlled) policy env.
+var blockedEnvKeys = map[string]struct{}{
+	"path":                  {},
+	"ld_preload":            {},
+	"ld_library_path":       {},
+	"dyld_library_path":     {},
+	"dyld_insert_libraries": {},
+}
+
 func lifecycleEnv(declared map[string]string) []string {
 	env := []string{minimalPATH}
 	for key, value := range declared {
+		if _, blocked := blockedEnvKeys[strings.ToLower(key)]; blocked {
+			fmt.Fprintf(os.Stderr, "mcpmanager: blocked dangerous env var %q from MCP server lifecycle (PATH/LD hijack prevention)\n", key)
+			continue
+		}
 		env = append(env, key+"="+value)
 	}
 	return env
