@@ -1445,11 +1445,11 @@ plus this binding). Use --only to set exactly one binding.`,
 					maxScopes = oauthScopes
 				}
 				b.OAuthConfig = &cloudclient.OAuthBindingConfig{
-					Provider:           oauthProvider,
-					ClientIDCredential: oauthClientIDCred,
-					ClientSecretCred:   oauthClientSecretCred,
-					Scopes:             oauthScopes,
-					MaxScopes:          maxScopes,
+					Provider:        oauthProvider,
+					ClientIDSecret:  oauthClientIDCred,
+					ClientSecretSec: oauthClientSecretCred,
+					Scopes:          oauthScopes,
+					MaxScopes:       maxScopes,
 				}
 			}
 

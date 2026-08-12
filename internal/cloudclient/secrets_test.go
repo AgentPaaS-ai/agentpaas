@@ -251,11 +251,11 @@ func TestDeploymentSecretBinding_OAuthDelegatedJSON(t *testing.T) {
 		InjectAs:        "oauth_delegated",
 		EndUserIdentity: &eui,
 		OAuthConfig: &OAuthBindingConfig{
-			Provider:           "google",
-			ClientIDCredential: "google-client-id",
-			ClientSecretCred:   "google-client-secret",
-			Scopes:             []string{"https://www.googleapis.com/auth/gmail.readonly"},
-			MaxScopes:          []string{"https://www.googleapis.com/auth/gmail.readonly"},
+			Provider:        "google",
+			ClientIDSecret:  "google-client-id",
+			ClientSecretSec: "google-client-secret",
+			Scopes:          []string{"https://www.googleapis.com/auth/gmail.readonly"},
+			MaxScopes:       []string{"https://www.googleapis.com/auth/gmail.readonly"},
 		},
 	}
 
@@ -284,11 +284,11 @@ func TestDeploymentSecretBinding_OAuthDelegatedJSON(t *testing.T) {
 	if oauth["provider"] != "google" {
 		t.Errorf("provider = %v", oauth["provider"])
 	}
-	if oauth["client_id_credential"] != "google-client-id" {
-		t.Errorf("client_id_credential = %v", oauth["client_id_credential"])
+	if oauth["client_id_secret"] != "google-client-id" {
+		t.Errorf("client_id_secret = %v", oauth["client_id_secret"])
 	}
-	if oauth["client_secret_credential"] != "google-client-secret" {
-		t.Errorf("client_secret_credential = %v", oauth["client_secret_credential"])
+	if oauth["client_secret_secret"] != "google-client-secret" {
+		t.Errorf("client_secret_secret = %v", oauth["client_secret_secret"])
 	}
 
 	// Round-trip through typed struct.
@@ -329,11 +329,11 @@ func TestCloudClient_SetDeploymentSecrets_OAuthDelegated(t *testing.T) {
 		InjectAs:        "oauth_delegated",
 		EndUserIdentity: &eui,
 		OAuthConfig: &OAuthBindingConfig{
-			Provider:           "google",
-			ClientIDCredential: "cid",
-			ClientSecretCred:   "csec",
-			Scopes:             []string{"scope-a"},
-			MaxScopes:          []string{"scope-a", "scope-b"},
+			Provider:        "google",
+			ClientIDSecret:  "cid",
+			ClientSecretSec: "csec",
+			Scopes:          []string{"scope-a"},
+			MaxScopes:       []string{"scope-a", "scope-b"},
 		},
 	}})
 	if err != nil {
@@ -345,7 +345,7 @@ func TestCloudClient_SetDeploymentSecrets_OAuthDelegated(t *testing.T) {
 	if !strings.Contains(string(captured), `"end_user_identity":"alice@example.com"`) {
 		t.Errorf("body missing end_user_identity: %s", captured)
 	}
-	if !strings.Contains(string(captured), `"client_secret_credential":"csec"`) {
-		t.Errorf("body missing client_secret_credential: %s", captured)
+	if !strings.Contains(string(captured), `"client_secret_secret":"csec"`) {
+		t.Errorf("body missing client_secret_secret: %s", captured)
 	}
 }

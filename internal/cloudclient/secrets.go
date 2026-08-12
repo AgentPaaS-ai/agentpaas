@@ -135,11 +135,11 @@ type DeploymentSecretBinding struct {
 
 // OAuthBindingConfig is the oauth_delegated binding configuration.
 type OAuthBindingConfig struct {
-	Provider           string   `json:"provider"`
-	ClientIDCredential string   `json:"client_id_credential"`
-	ClientSecretCred   string   `json:"client_secret_credential"`
-	Scopes             []string `json:"scopes"`
-	MaxScopes          []string `json:"max_scopes,omitempty"`
+	Provider         string   `json:"provider"`
+	ClientIDSecret   string   `json:"client_id_secret"`
+	ClientSecretSec  string   `json:"client_secret_secret,omitempty"`
+	Scopes           []string `json:"scopes"`
+	MaxScopes        []string `json:"max_scopes,omitempty"`
 }
 
 // SetDeploymentSecretsRequest is the body for PUT /v1/deployments/:id/secrets.
