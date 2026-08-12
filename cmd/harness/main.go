@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -15,6 +16,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "-version", "version":
+			fmt.Println(harness.HarnessVersion)
+			return
+		}
+	}
+
 	harness.InitEgressFirewall()
 	harness.DropNetAdminCapability()
 

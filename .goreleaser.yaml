@@ -52,6 +52,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/harness.HarnessVersion={{.Version}}-{{.ShortCommit}}
 
   - id: agentpaas-harness-linux-amd64
     main: ./cmd/harness
@@ -66,6 +67,7 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
+      - -X github.com/AgentPaaS-ai/agentpaas/internal/harness.HarnessVersion={{.Version}}-{{.ShortCommit}}
 
 archives:
   - id: default
