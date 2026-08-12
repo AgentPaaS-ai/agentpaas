@@ -620,6 +620,8 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, fmt.Errorf("policy validation: %w", err)
 	}
 
+	mergePolicyEgressIntoAgentYAML(&cfg)
+
 	lock := assembleAgentLock(cfg, sbom, sbomDigest, string(publicKeyPEM), privateKey, signatureReferrer, policyDigest)
 
 	pubIdentity, err := loadRequiredPublisherIdentity(cfg)
@@ -1323,7 +1325,52 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 		out["spec"] = specMap
 	}
 
+	if len(ay.Egress) > 0 {
+		egressCopy := make([]string, len(ay.Egress))
+		copy(egressCopy, ay.Egress)
+		out["egress"] = egressCopy
+	}
+
 	return out
+}
+
+// mergePolicyEgressIntoAgentYAML copies unique, trimmed, lowercased policy
+// egress domains onto AgentYAML.Egress so every pack path (CLI and daemon)
+// stamps hosts into the signed lock. Parse failures leave AgentYAML.Egress
+// unchanged.
+func mergePolicyEgressIntoAgentYAML(cfg *LockConfig) {
+	if cfg == nil || cfg.AgentYAML == nil || len(cfg.PolicyYAML) == 0 {
+		return
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(cfg.PolicyYAML))
+	if err != nil || parsed == nil {
+		return
+	}
+	seen := make(map[string]struct{}, len(cfg.AgentYAML.Egress)+len(parsed.Egress))
+	out := make([]string, 0, len(cfg.AgentYAML.Egress)+len(parsed.Egress))
+	for _, host := range cfg.AgentYAML.Egress {
+		host = strings.ToLower(strings.TrimSpace(host))
+		if host == "" {
+			continue
+		}
+		if _, dup := seen[host]; dup {
+			continue
+		}
+		seen[host] = struct{}{}
+		out = append(out, host)
+	}
+	for _, rule := range parsed.Egress {
+		host := strings.ToLower(strings.TrimSpace(rule.Domain))
+		if host == "" {
+			continue
+		}
+		if _, dup := seen[host]; dup {
+			continue
+		}
+		seen[host] = struct{}{}
+		out = append(out, host)
+	}
+	cfg.AgentYAML.Egress = out
 }
 
 // setIfNotEmpty sets m[key]=val only when val (string) is non-empty.
