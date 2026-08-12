@@ -99,6 +99,80 @@ func TestLogEnvSummary_EmptyDoesNotPanic(t *testing.T) {
 	}
 }
 
+// B5: expectation marker vs bindings cross-check.
+const oauthExpectedWarn = "WARN: harness: AGENTPAAS_OAUTH_EXPECTED"
+
+func TestLogEnvSummary_OAuthExpectedEmptyBindingsWarns(t *testing.T) {
+	t.Setenv("AGENTPAAS_OAUTH_EXPECTED", "1")
+	t.Setenv("AGENTPAAS_OAUTH_BINDINGS_JSON", "")
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+
+	logEnvSummary()
+
+	out := buf.String()
+	if !strings.Contains(out, oauthExpectedWarn) {
+		t.Fatalf("want WARN when expected=1 and bindings empty; out=%q", out)
+	}
+	// Never log env values (bindings empty anyway; still guard expected marker value path).
+	if strings.Contains(out, "SUPER_SECRET") {
+		t.Fatalf("log leaked secret fragment; out=%q", out)
+	}
+}
+
+func TestLogEnvSummary_OAuthExpectedWithBindingsNoWarn(t *testing.T) {
+	const bindings = `[{"credential_id":"gmail","host_pattern":"gmail.googleapis.com"}]`
+	t.Setenv("AGENTPAAS_OAUTH_EXPECTED", "1")
+	t.Setenv("AGENTPAAS_OAUTH_BINDINGS_JSON", bindings)
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+
+	logEnvSummary()
+
+	out := buf.String()
+	if strings.Contains(out, oauthExpectedWarn) {
+		t.Fatalf("must not WARN when bindings present; out=%q", out)
+	}
+	if !strings.Contains(out, "harness: OAuth expected and present") {
+		t.Fatalf("want present confirmation log; out=%q", out)
+	}
+	if !strings.Contains(out, strconv.Itoa(len(bindings))+" chars") {
+		t.Fatalf("want bindings char count in present log; out=%q", out)
+	}
+	// Never log binding values.
+	for _, leak := range []string{bindings, "gmail.googleapis.com", "credential_id"} {
+		if strings.Contains(out, leak) {
+			t.Fatalf("log leaked value fragment %q; out=%q", leak, out)
+		}
+	}
+}
+
+func TestLogEnvSummary_OAuthExpectedUnsetNoWarn(t *testing.T) {
+	t.Setenv("AGENTPAAS_OAUTH_EXPECTED", "")
+	t.Setenv("AGENTPAAS_OAUTH_BINDINGS_JSON", "")
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+
+	logEnvSummary()
+
+	out := buf.String()
+	if strings.Contains(out, oauthExpectedWarn) {
+		t.Fatalf("must not WARN when EXPECTED unset; out=%q", out)
+	}
+	if strings.Contains(out, "OAuth expected and present") {
+		t.Fatalf("must not log present confirmation when EXPECTED unset; out=%q", out)
+	}
+}
+
 func TestBuildConfig_AgentKindFromEnv(t *testing.T) {
 	t.Setenv("AGENTPAAS_AGENT_KIND", "mcp_service")
 	t.Setenv("AGENTPAAS_MCP_DECLARED_TOOLS", "echo,ping")
