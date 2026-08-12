@@ -243,3 +243,109 @@ func TestCloudClient_DeleteSecret_InvalidName(t *testing.T) {
 		t.Errorf("error should mention invalid name, got: %v", err)
 	}
 }
+
+func TestDeploymentSecretBinding_OAuthDelegatedJSON(t *testing.T) {
+	eui := "alice@example.com"
+	b := DeploymentSecretBinding{
+		SecretName:      "gmail-oauth",
+		InjectAs:        "oauth_delegated",
+		EndUserIdentity: &eui,
+		OAuthConfig: &OAuthBindingConfig{
+			Provider:           "google",
+			ClientIDCredential: "google-client-id",
+			ClientSecretCred:   "google-client-secret",
+			Scopes:             []string{"https://www.googleapis.com/auth/gmail.readonly"},
+			MaxScopes:          []string{"https://www.googleapis.com/auth/gmail.readonly"},
+		},
+	}
+
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got["secret_name"] != "gmail-oauth" {
+		t.Errorf("secret_name = %v", got["secret_name"])
+	}
+	if got["inject_as"] != "oauth_delegated" {
+		t.Errorf("inject_as = %v", got["inject_as"])
+	}
+	if got["end_user_identity"] != "alice@example.com" {
+		t.Errorf("end_user_identity = %v", got["end_user_identity"])
+	}
+	oauth, ok := got["oauth_config"].(map[string]any)
+	if !ok {
+		t.Fatalf("oauth_config missing or wrong type: %T", got["oauth_config"])
+	}
+	if oauth["provider"] != "google" {
+		t.Errorf("provider = %v", oauth["provider"])
+	}
+	if oauth["client_id_credential"] != "google-client-id" {
+		t.Errorf("client_id_credential = %v", oauth["client_id_credential"])
+	}
+	if oauth["client_secret_credential"] != "google-client-secret" {
+		t.Errorf("client_secret_credential = %v", oauth["client_secret_credential"])
+	}
+
+	// Round-trip through typed struct.
+	var back DeploymentSecretBinding
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("round-trip: %v", err)
+	}
+	if back.EndUserIdentity == nil || *back.EndUserIdentity != "alice@example.com" {
+		t.Errorf("round-trip EndUserIdentity = %v", back.EndUserIdentity)
+	}
+	if back.OAuthConfig == nil || back.OAuthConfig.Provider != "google" {
+		t.Errorf("round-trip OAuthConfig = %+v", back.OAuthConfig)
+	}
+	if len(back.OAuthConfig.Scopes) != 1 {
+		t.Errorf("scopes = %v", back.OAuthConfig.Scopes)
+	}
+}
+
+func TestCloudClient_SetDeploymentSecrets_OAuthDelegated(t *testing.T) {
+	var captured []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/deployments/dep_abc/secrets" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		captured = body
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := NewCloudClient(server.URL)
+	eui := "alice@example.com"
+	err := client.SetDeploymentSecrets(context.Background(), "apc_test_token", "dep_abc", []DeploymentSecretBinding{{
+		SecretName:      "gmail-oauth",
+		InjectAs:        "oauth_delegated",
+		EndUserIdentity: &eui,
+		OAuthConfig: &OAuthBindingConfig{
+			Provider:           "google",
+			ClientIDCredential: "cid",
+			ClientSecretCred:   "csec",
+			Scopes:             []string{"scope-a"},
+			MaxScopes:          []string{"scope-a", "scope-b"},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("SetDeploymentSecrets: %v", err)
+	}
+	if !strings.Contains(string(captured), `"inject_as":"oauth_delegated"`) {
+		t.Errorf("body missing inject_as: %s", captured)
+	}
+	if !strings.Contains(string(captured), `"end_user_identity":"alice@example.com"`) {
+		t.Errorf("body missing end_user_identity: %s", captured)
+	}
+	if !strings.Contains(string(captured), `"client_secret_credential":"csec"`) {
+		t.Errorf("body missing client_secret_credential: %s", captured)
+	}
+}
