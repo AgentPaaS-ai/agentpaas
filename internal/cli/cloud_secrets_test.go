@@ -467,11 +467,11 @@ func TestCloudSecretsBind_OAuthDelegated_Success(t *testing.T) {
 	if b.OAuthConfig.Provider != "google" {
 		t.Errorf("Provider = %q", b.OAuthConfig.Provider)
 	}
-	if b.OAuthConfig.ClientIDCredential != "google-client-id" {
-		t.Errorf("ClientIDCredential = %q", b.OAuthConfig.ClientIDCredential)
+	if b.OAuthConfig.ClientIDSecret != "google-client-id" {
+		t.Errorf("ClientIDSecret = %q", b.OAuthConfig.ClientIDSecret)
 	}
-	if b.OAuthConfig.ClientSecretCred != "google-client-secret" {
-		t.Errorf("ClientSecretCred = %q", b.OAuthConfig.ClientSecretCred)
+	if b.OAuthConfig.ClientSecretSec != "google-client-secret" {
+		t.Errorf("ClientSecretSec = %q", b.OAuthConfig.ClientSecretSec)
 	}
 	if len(b.OAuthConfig.Scopes) != 1 || b.OAuthConfig.Scopes[0] != "https://www.googleapis.com/auth/gmail.readonly" {
 		t.Errorf("Scopes = %v", b.OAuthConfig.Scopes)
