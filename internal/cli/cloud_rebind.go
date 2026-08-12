@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,7 +20,9 @@ import (
 
 const (
 	rebindDefaultPollInterval = 3 * time.Second
-	rebindDefaultTimeout      = 120 * time.Second
+	rebindDefaultTimeout       = 120 * time.Second
+	rebindMaxTimeout           = 10 * time.Minute
+	maxResponseBodyBytes       = 1 << 20 // 1 MiB cap on API response body reads
 )
 
 var rebindValidInstanceTypes = map[string]bool{
@@ -27,6 +32,42 @@ var rebindValidInstanceTypes = map[string]bool{
 	"standard-2": true,
 	"standard-3": true,
 	"standard-4": true,
+}
+
+// rebindAppIDRe validates app IDs before URL interpolation to prevent path
+// injection. Allows alphanumeric characters, hyphens, and underscores; must
+// start with an alphanumeric character. This rejects ../, ?, #, %, spaces,
+// newlines, and other URL-special characters.
+var rebindAppIDRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// rebindAccountIDRe validates account IDs before URL interpolation, same
+// constraints as app IDs.
+var rebindAccountIDRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+// rebindImageSanitizeRe matches any character that is NOT in the safe set for
+// terminal display of image refs. Only [a-zA-Z0-9._:/@-] are allowed; all
+// other characters (including ANSI escape sequences, control chars, etc.)
+// are replaced with '_'.
+var rebindImageSanitizeRe = regexp.MustCompile(`[^a-zA-Z0-9._:/@-]`)
+
+// sanitizeImageRef strips terminal-unsafe characters from an image ref for
+// display in confirmation prompts. ANSI escape sequences and other
+// non-printable/non-ASCII characters are replaced with '_'.
+func sanitizeImageRef(ref string) string {
+	return rebindImageSanitizeRe.ReplaceAllString(ref, "_")
+}
+
+// isLoopbackHost returns true if host is a loopback address (127.0.0.1,
+// ::1, or localhost). Port is stripped if present.
+func isLoopbackHost(host string) bool {
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // rebindOptions holds the resolved flags for the cloud rebind command.
@@ -44,14 +85,14 @@ type rebindOptions struct {
 
 // rebindSummary is the JSON output for a successful rebind.
 type rebindSummary struct {
-	AppID       string `json:"app_id"`
-	Env         string `json:"env"`
-	Image       string `json:"image"`
-	RolloutID   string `json:"rollout_id"`
-	Status      string `json:"status"`
-	Verified    bool   `json:"verified"`
-	Entrypoint  string `json:"entrypoint"`
-	FailedInst  int    `json:"failed_instances"`
+	AppID      string `json:"app_id"`
+	Env        string `json:"env"`
+	Image      string `json:"image"`
+	RolloutID  string `json:"rollout_id"`
+	Status     string `json:"status"`
+	Verified   bool   `json:"verified"`
+	Entrypoint string `json:"entrypoint"`
+	FailedInst int    `json:"failed_instances"`
 }
 
 // newCloudRebindCmd creates the `agentpaas cloud rebind` command.
@@ -115,6 +156,15 @@ func runCloudRebind(cmd *cobra.Command, opts *rebindOptions) error {
 		return fmt.Errorf("cloud rebind: --instance-type must be one of: lite, basic, standard-1, standard-2, standard-3, standard-4")
 	}
 
+	// Validate timeout — cap at 10 minutes to prevent absurd values.
+	timeout := opts.timeout
+	if timeout <= 0 {
+		timeout = rebindDefaultTimeout
+	}
+	if timeout > rebindMaxTimeout {
+		return fmt.Errorf("cloud rebind: timeout must be <= 10m")
+	}
+
 	// Resolve CF_ACCOUNT_ID.
 	accountID := strings.TrimSpace(opts.accountID)
 	if accountID == "" {
@@ -122,6 +172,10 @@ func runCloudRebind(cmd *cobra.Command, opts *rebindOptions) error {
 	}
 	if accountID == "" {
 		return fmt.Errorf("cloud rebind: CF_ACCOUNT_ID is required (set --account-id or CF_ACCOUNT_ID env var)")
+	}
+	// Validate account ID format to prevent path injection.
+	if !rebindAccountIDRe.MatchString(accountID) {
+		return fmt.Errorf("cloud rebind: invalid CF_ACCOUNT_ID format")
 	}
 
 	// Resolve CF_API_TOKEN.
@@ -139,17 +193,44 @@ func runCloudRebind(cmd *cobra.Command, opts *rebindOptions) error {
 		apiBaseURL = "https://api.cloudflare.com/client/v4"
 	}
 
+	// Enforce https:// for non-loopback base URLs to prevent token
+	// interception over plaintext connections.
+	parsedURL, err := url.Parse(apiBaseURL)
+	if err != nil {
+		return fmt.Errorf("cloud rebind: invalid CF_API_BASE_URL: %v", err)
+	}
+	if parsedURL.Scheme == "http" {
+		if !isLoopbackHost(parsedURL.Hostname()) {
+			return fmt.Errorf("cloud rebind: CF_API_BASE_URL must use https:// (http:// is only allowed for loopback testing)")
+		}
+	} else if parsedURL.Scheme != "https" {
+		return fmt.Errorf("cloud rebind: CF_API_BASE_URL must use https://")
+	}
+
 	client := &rebindHTTPClient{
-		baseURL:  apiBaseURL,
-		token:    apiToken,
-		http:     &http.Client{Timeout: 30 * time.Second},
+		baseURL: apiBaseURL,
+		token:   apiToken,
+		http: &http.Client{
+			Timeout: 30 * time.Second,
+			// CheckRedirect strips the Authorization header when a redirect
+			// targets a non-cloudflare.com host, preventing token leak via
+			// cross-host redirect (SSRF).
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if !strings.HasSuffix(req.URL.Host, "cloudflare.com") {
+					req.Header.Del("Authorization")
+				}
+				return nil
+			},
+		},
 	}
 
 	out := cmd.OutOrStdout()
 
-	// Confirm unless --yes.
+	// Confirm unless --yes. Sanitize the image ref to prevent terminal
+	// escape sequence injection in the confirmation prompt.
 	if !opts.yes {
-		_, _ = fmt.Fprintf(out, "Rebind %s container app to %s? (y/N) ", env, image)
+		safeImage := sanitizeImageRef(image)
+		_, _ = fmt.Fprintf(out, "Rebind %s container app to %s? (y/N) ", env, safeImage)
 		reader := bufio.NewReader(cmd.InOrStdin())
 		response, err := reader.ReadString('\n')
 		if err != nil && err != io.EOF {
@@ -172,8 +253,17 @@ func runCloudRebind(cmd *cobra.Command, opts *rebindOptions) error {
 			return fmt.Errorf("cloud rebind: %w", err)
 		}
 		appID = resolved
+		// Validate resolved app ID format to prevent path injection.
+		if !rebindAppIDRe.MatchString(appID) {
+			return fmt.Errorf("cloud rebind: resolved app ID has invalid format")
+		}
 		if !jsonOutput(cmd) {
 			_, _ = fmt.Fprintf(out, "Resolved app ID: %s\n", appID)
+		}
+	} else {
+		// Validate explicit app ID format to prevent path injection.
+		if !rebindAppIDRe.MatchString(appID) {
+			return fmt.Errorf("cloud rebind: invalid --app-id format")
 		}
 	}
 
@@ -196,10 +286,6 @@ func runCloudRebind(cmd *cobra.Command, opts *rebindOptions) error {
 	pollInterval := opts.pollInterval
 	if pollInterval <= 0 {
 		pollInterval = rebindDefaultPollInterval
-	}
-	timeout := opts.timeout
-	if timeout <= 0 {
-		timeout = rebindDefaultTimeout
 	}
 
 	finalStatus, err := pollRollout(cmd.Context(), client, accountID, appID, rolloutID, pollInterval, timeout, out, jsonOutput(cmd))
@@ -244,12 +330,17 @@ type rebindHTTPClient struct {
 }
 
 func (c *rebindHTTPClient) do(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
-	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	fullURL := c.baseURL + path
+	req, err := http.NewRequestWithContext(ctx, method, fullURL, body)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	// Only send the CF API token over https:// to prevent token interception
+	// over plaintext connections. For http:// loopback (test only), the
+	// Authorization header is omitted.
+	if req.URL.Scheme == "https" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	return c.http.Do(req)
 }
@@ -311,13 +402,13 @@ func resolveContainerAppID(ctx context.Context, client *rebindHTTPClient, accoun
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("list applications: read body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("list applications: CF API returned %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("list applications: CF API returned %d (CF API token may be invalid)", resp.StatusCode)
 	}
 
 	var apiResp cfAPIResponse
@@ -393,13 +484,13 @@ func postRollout(ctx context.Context, client *rebindHTTPClient, accountID, appID
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 	if err != nil {
 		return "", fmt.Errorf("post rollout: read body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("post rollout: CF API returned %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("post rollout: CF API returned %d (CF API token may be invalid)", resp.StatusCode)
 	}
 
 	var apiResp cfAPIResponse
@@ -429,14 +520,14 @@ func pollRollout(ctx context.Context, client *rebindHTTPClient, accountID, appID
 			return "", fmt.Errorf("poll rollout: %w", err)
 		}
 
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 		_ = resp.Body.Close()
 		if err != nil {
 			return "", fmt.Errorf("poll rollout: read body: %w", err)
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("poll rollout: CF API returned %d: %s", resp.StatusCode, string(body))
+			return "", fmt.Errorf("poll rollout: CF API returned %d (CF API token may be invalid)", resp.StatusCode)
 		}
 
 		var apiResp cfAPIResponse
@@ -478,13 +569,13 @@ func getAppConfig(ctx context.Context, client *rebindHTTPClient, accountID, appI
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("get app config: read body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("get app config: CF API returned %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("get app config: CF API returned %d (CF API token may be invalid)", resp.StatusCode)
 	}
 
 	var apiResp cfAPIResponse
@@ -518,12 +609,12 @@ func verifyAppConfig(cfg *cfAppConfig, expectedImage string) (bool, error) {
 // buildRebindSummary constructs the success summary from the app config.
 func buildRebindSummary(appID, env, image, rolloutID string, cfg *cfAppConfig) rebindSummary {
 	summary := rebindSummary{
-		AppID:     appID,
-		Env:       env,
-		Image:     cfg.Configuration.Image,
-		RolloutID: rolloutID,
-		Status:    "completed",
-		Verified:  true,
+		AppID:      appID,
+		Env:        env,
+		Image:      cfg.Configuration.Image,
+		RolloutID:  rolloutID,
+		Status:     "completed",
+		Verified:   true,
 		Entrypoint: fmt.Sprintf("%v", cfg.Configuration.Entrypoint),
 	}
 	if cfg.LatestRollout != nil {
