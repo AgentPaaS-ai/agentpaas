@@ -155,6 +155,7 @@ func buildConfig() harness.Config {
 		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
 		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
 		CredentialsJSON: os.Getenv("AGENTPAAS_CREDENTIALS_JSON"),
+		OAuthBindingsJSON: os.Getenv("AGENTPAAS_OAUTH_BINDINGS_JSON"),
 		JournalKeyPath:  os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
 		JournalPath:     os.Getenv("AGENTPAAS_JOURNAL_PATH"),
 		AttemptID:       os.Getenv("AGENTPAAS_ATTEMPT_ID"),

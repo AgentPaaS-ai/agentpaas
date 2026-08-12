@@ -38,6 +38,9 @@ type harnessRPCServer struct {
 	router      *mcpmanager.Router
 	mcpManager  *mcpmanager.Manager
 	credentials map[string]rpcCredential // Pre-loaded credential values (from sidecar file)
+	// oauthBindings are host→credential metadata for oauth_delegated inject
+	// (AGENTPAAS_OAUTH_BINDINGS_JSON). Consent URLs only — never tokens.
+	oauthBindings []oauthBinding
 
 	// Delegation trust state (B32-T03) — injected at invoke bootstrap.
 	// NEVER serialized to agent responses.
@@ -93,6 +96,15 @@ type rpcInvokeState struct {
 type rpcCredential struct {
 	Header string
 	Value  string
+}
+
+// oauthBinding is metadata for oauth_delegated host-match inject in handleHTTP.
+// Loaded from AGENTPAAS_OAUTH_BINDINGS_JSON (no token values).
+type oauthBinding struct {
+	CredentialID    string `json:"credential_id"`
+	HostPattern     string `json:"host_pattern"`
+	ConsentURL      string `json:"consent_url"`
+	EndUserIdentity string `json:"end_user_identity"`
 }
 
 type rpcRequest struct {
@@ -444,6 +456,30 @@ func (s *harnessRPCServer) LoadCredentialsFromJSON(jsonStr string) error {
 
 	s.mu.Lock()
 	s.credentials = creds
+	s.mu.Unlock()
+	return nil
+}
+
+// LoadOAuthBindingsFromJSON parses AGENTPAAS_OAUTH_BINDINGS_JSON:
+// [{credential_id, host_pattern, consent_url, end_user_identity}].
+// Metadata only — never contains tokens.
+func (s *harnessRPCServer) LoadOAuthBindingsFromJSON(jsonStr string) error {
+	if jsonStr == "" {
+		return nil
+	}
+	var entries []oauthBinding
+	if err := json.Unmarshal([]byte(jsonStr), &entries); err != nil {
+		return fmt.Errorf("harness rpcserver load oauth bindings from json: %w", err)
+	}
+	out := make([]oauthBinding, 0, len(entries))
+	for _, e := range entries {
+		if e.CredentialID == "" || e.HostPattern == "" {
+			continue
+		}
+		out = append(out, e)
+	}
+	s.mu.Lock()
+	s.oauthBindings = out
 	s.mu.Unlock()
 	return nil
 }
@@ -877,6 +913,13 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		httpReq.Header.Set(header, cred.Value)
 		credentialValue = cred.Value
 	}
+
+	// M13.9: oauth_delegated host-match for agent.http() (direct harness egress).
+	// Pre-resolved tokens live in credentials; pending consent in oauthBindings.
+	if errResp := s.applyOAuthBinding(req.ID, rawURL, method, httpReq, state, start, bodyHash, bodyMarker, &credentialValue); errResp != nil {
+		return *errResp
+	}
+
 	// BUG-033/034 fix: deny HTTP redirects. Same rationale as handleLLM —
 	// a redirect target bypasses the gateway's egress policy and may produce
 	// TLS handshake errors when the client tries to connect directly.
@@ -1421,4 +1464,103 @@ func rewriteURLForGateway(rawURL, gatewayURL string) (string, error) {
 	u.Scheme = "http"
 	u.Host = gw.Host
 	return u.String(), nil
+}
+
+// applyOAuthBinding enforces oauth_delegated host-match before client.Do.
+// If a pre-resolved credential exists, inject Authorization. Otherwise return
+// authorization_required with consent_url (metadata only, no tokens).
+func (s *harnessRPCServer) applyOAuthBinding(
+	reqID, rawURL, method string,
+	httpReq *http.Request,
+	state *rpcInvokeState,
+	start time.Time,
+	bodyHash, bodyMarker string,
+	credentialValue *string,
+) *rpcResponse {
+	host := requestHost(rawURL)
+	if host == "" {
+		return nil
+	}
+	s.mu.RLock()
+	bindings := s.oauthBindings
+	s.mu.RUnlock()
+	var match *oauthBinding
+	for i := range bindings {
+		if strings.EqualFold(bindings[i].HostPattern, host) {
+			match = &bindings[i]
+			break
+		}
+	}
+	if match == nil {
+		return nil
+	}
+	if cred, ok := state.credentials[match.CredentialID]; ok && cred.Value != "" {
+		header := defaultString(cred.Header, "Authorization")
+		// Inject only when not already set (withCredential path may have set it).
+		if httpReq.Header.Get(header) == "" {
+			httpReq.Header.Set(header, cred.Value)
+			if credentialValue != nil {
+				*credentialValue = cred.Value
+			}
+		}
+		return nil
+	}
+	// Consent still required — return structured RPC error for the agent SDK.
+	grantID := grantIDFromConsentURL(match.ConsentURL)
+	payload := map[string]string{
+		"error":         "authorization_required",
+		"consent_url":   match.ConsentURL,
+		"grant_id":      grantID,
+		"credential_id": match.CredentialID,
+	}
+	msg, err := json.Marshal(payload)
+	if err != nil {
+		msg = []byte(`{"error":"authorization_required"}`)
+	}
+	s.auditEgressDecision("harness", rawURL, method, match.CredentialID, "", "denied", "oauth authorization required")
+	state.setFailureEvidence(&UpstreamEvidence{
+		Availability: AvailabilityForbidden,
+		Method:       method,
+		URL:          sanitizedURL(rawURL),
+		TimingMS:     elapsedMS(start),
+		Headers:      hashedHeaders(httpReq.Header),
+		BodyHash:     bodyHash,
+		BodyRedacted: bodyMarker,
+		Credential:   redactedCredentialEvidence(),
+	})
+	resp := rpcError(reqID, string(msg), "authorization_required")
+	return &resp
+}
+
+func requestHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Hostname()
+}
+
+func grantIDFromConsentURL(consentURL string) string {
+	if consentURL == "" {
+		return ""
+	}
+	u, err := url.Parse(consentURL)
+	if err != nil {
+		return ""
+	}
+	// .../oauth/start/<grant_id>
+	const marker = "/oauth/start/"
+	path := u.Path
+	idx := strings.Index(path, marker)
+	if idx < 0 {
+		return ""
+	}
+	rest := path[idx+len(marker):]
+	if rest == "" {
+		return ""
+	}
+	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+		rest = rest[:slash]
+	}
+	return rest
 }

@@ -93,6 +93,16 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		}
 	}
 
+	// oauth_delegated host-match metadata (consent URLs only; never tokens).
+	if cfg.OAuthBindingsJSON != "" {
+		if err := rpcServer.LoadOAuthBindingsFromJSON(cfg.OAuthBindingsJSON); err != nil {
+			_ = rpcServer.Close()     // best-effort cleanup
+			_ = stderrCapture.Close() // best-effort cleanup
+			errResp := &ErrorResponse{Status: "FAILED", Reason: "oauth_bindings_load_failed", Detail: err.Error()}
+			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+		}
+	}
+
 	// Load progress journal metadata from the sidecar key file before
 	// starting the Python worker, so the journal writer is wired into
 	// the RPC server before agent code begins executing. The daemon
