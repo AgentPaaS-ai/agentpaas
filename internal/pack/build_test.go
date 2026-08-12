@@ -140,7 +140,7 @@ func TestDefaultBaseImage(t *testing.T) {
 
 func TestRenderDockerfileMultiStageWithDeps(t *testing.T) {
 	tmpHarness := filepath.Join(t.TempDir(), "agentpaas-harness-linux")
-	if err := os.WriteFile(tmpHarness, []byte("#!/bin/sh\n"), 0o755); err != nil {
+	if err := os.WriteFile(tmpHarness, []byte("#!/bin/sh\noauth_bindings_load_failed\n"), 0o755); err != nil {
 		t.Fatalf("create dummy harness: %v", err)
 	}
 	cfg := BuildConfig{
@@ -517,7 +517,8 @@ func minimalDockerProject(t *testing.T) string {
 func writeHarness(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "harness")
-	if err := os.WriteFile(path, []byte("not executed by image build tests\n"), 0o755); err != nil {
+	// Include oauth_bindings_load_failed so pack sentinel gate accepts stubs.
+	if err := os.WriteFile(path, []byte("not executed by image build tests\noauth_bindings_load_failed\n"), 0o755); err != nil {
 		t.Fatalf("os.WriteFile(harness) error = %v", err)
 	}
 

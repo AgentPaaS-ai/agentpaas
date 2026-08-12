@@ -42,12 +42,12 @@ func TestHarnessBinaryForPlatform_FallsBackToDefault(t *testing.T) {
 	oldExe := Executable
 	Executable = func() (string, error) { return daemonBinary, nil }
 	t.Cleanup(func() { Executable = oldExe })
-	t.Setenv("PATH", dir)
 
 	if got := HarnessBinaryForPlatform("linux/amd64"); got != armHarness {
 		t.Fatalf("HarnessBinaryForPlatform fallback = %q, want %q", got, armHarness)
 	}
 }
+
 func TestHarnessBinary_PrefersLinuxNextToExe(t *testing.T) {
 	dir := t.TempDir()
 	linuxHarness := filepath.Join(dir, "agentpaas-harness-linux")
@@ -85,26 +85,108 @@ func TestHarnessBinary_FallsBackToMacWhenNoLinux(t *testing.T) {
 	}
 }
 
-func TestHarnessBinary_PathFallback(t *testing.T) {
-	// When no harness is next to the exe, fall back to PATH.
+func TestHarnessBinary_NoPathFallback(t *testing.T) {
+	// PATH must not silently resolve a harness; only adjacent/env paths count.
 	dir := t.TempDir()
 	fakeBin := filepath.Join(dir, "agentpaas-harness-linux")
 	writeStub(t, fakeBin)
 
-	// Point the exe to a directory with NO harness files so we exercise PATH.
 	emptyDir := t.TempDir()
 	oldExe := Executable
 	Executable = func() (string, error) { return filepath.Join(emptyDir, "agentpaasd"), nil }
 	t.Cleanup(func() { Executable = oldExe })
 
-	// Save and restore PATH.
-	oldPath := os.Getenv("PATH")
 	t.Setenv("PATH", dir)
-	t.Cleanup(func() { _ = os.Setenv("PATH", oldPath) })
+	t.Setenv("AGENTPAAS_HARNESS_PATH", "")
 
 	got := HarnessBinary()
-	if got != fakeBin {
-		t.Fatalf("HarnessBinary() PATH fallback = %q, want %q", got, fakeBin)
+	if got != "" {
+		t.Fatalf("HarnessBinary() PATH fallback = %q, want \"\" (PATH lookup removed)", got)
+	}
+}
+
+func TestHarnessBinaryForPlatform_NoPathFallback(t *testing.T) {
+	dir := t.TempDir()
+	fakeBin := filepath.Join(dir, "agentpaas-harness-linux-amd64")
+	writeStub(t, fakeBin)
+
+	emptyDir := t.TempDir()
+	oldExe := Executable
+	Executable = func() (string, error) { return filepath.Join(emptyDir, "agentpaasd"), nil }
+	t.Cleanup(func() { Executable = oldExe })
+
+	t.Setenv("PATH", dir)
+	t.Setenv("AGENTPAAS_HARNESS_PATH", "")
+
+	got := HarnessBinaryForPlatform("linux/amd64")
+	if got != "" {
+		t.Fatalf("HarnessBinaryForPlatform PATH fallback = %q, want \"\"", got)
+	}
+}
+
+func TestHarnessBinary_EnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	envHarness := filepath.Join(dir, "pinned-harness")
+	writeStub(t, envHarness)
+
+	// Sibling harness would otherwise win without env override.
+	exeDir := t.TempDir()
+	sibling := filepath.Join(exeDir, "agentpaas-harness-linux")
+	daemonBinary := filepath.Join(exeDir, "agentpaasd")
+	writeStub(t, sibling)
+	writeStub(t, daemonBinary)
+
+	oldExe := Executable
+	Executable = func() (string, error) { return daemonBinary, nil }
+	t.Cleanup(func() { Executable = oldExe })
+
+	t.Setenv("AGENTPAAS_HARNESS_PATH", envHarness)
+
+	got := HarnessBinary()
+	if got != envHarness {
+		t.Fatalf("HarnessBinary() env override = %q, want %q", got, envHarness)
+	}
+}
+
+func TestHarnessBinaryForPlatform_EnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	envHarness := filepath.Join(dir, "pinned-harness-amd64")
+	writeStub(t, envHarness)
+
+	exeDir := t.TempDir()
+	amd64Sibling := filepath.Join(exeDir, "agentpaas-harness-linux-amd64")
+	daemonBinary := filepath.Join(exeDir, "agentpaasd")
+	writeStub(t, amd64Sibling)
+	writeStub(t, daemonBinary)
+
+	oldExe := Executable
+	Executable = func() (string, error) { return daemonBinary, nil }
+	t.Cleanup(func() { Executable = oldExe })
+
+	t.Setenv("AGENTPAAS_HARNESS_PATH", envHarness)
+
+	got := HarnessBinaryForPlatform("linux/amd64")
+	if got != envHarness {
+		t.Fatalf("HarnessBinaryForPlatform env override = %q, want %q", got, envHarness)
+	}
+}
+
+func TestHarnessBinary_EnvOverrideMissingFallsThrough(t *testing.T) {
+	exeDir := t.TempDir()
+	sibling := filepath.Join(exeDir, "agentpaas-harness-linux")
+	daemonBinary := filepath.Join(exeDir, "agentpaasd")
+	writeStub(t, sibling)
+	writeStub(t, daemonBinary)
+
+	oldExe := Executable
+	Executable = func() (string, error) { return daemonBinary, nil }
+	t.Cleanup(func() { Executable = oldExe })
+
+	t.Setenv("AGENTPAAS_HARNESS_PATH", filepath.Join(t.TempDir(), "nonexistent"))
+
+	got := HarnessBinary()
+	if got != sibling {
+		t.Fatalf("HarnessBinary() with missing env path = %q, want sibling %q", got, sibling)
 	}
 }
 
@@ -114,11 +196,9 @@ func TestHarnessBinary_NotFound(t *testing.T) {
 	Executable = func() (string, error) { return filepath.Join(emptyDir, "agentpaasd"), nil }
 	t.Cleanup(func() { Executable = oldExe })
 
-	// PATH with no harness binary.
 	otherDir := t.TempDir()
-	oldPath := os.Getenv("PATH")
 	t.Setenv("PATH", otherDir)
-	t.Cleanup(func() { _ = os.Setenv("PATH", oldPath) })
+	t.Setenv("AGENTPAAS_HARNESS_PATH", "")
 
 	if got := HarnessBinary(); got != "" {
 		t.Fatalf("HarnessBinary() = %q, want \"\"", got)
@@ -191,6 +271,7 @@ func TestHarnessBinary_ResolvesExeSymlink(t *testing.T) {
 	oldExe := Executable
 	Executable = func() (string, error) { return symlinkDaemon, nil }
 	t.Cleanup(func() { Executable = oldExe })
+	t.Setenv("AGENTPAAS_HARNESS_PATH", "")
 
 	got := HarnessBinary()
 	// Resolve both paths through EvalSymlinks for comparison — on macOS

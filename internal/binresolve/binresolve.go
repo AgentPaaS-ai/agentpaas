@@ -7,7 +7,6 @@ package binresolve
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 )
 
@@ -19,17 +18,24 @@ var Executable = os.Executable
 // darwin/arm64 Mac binary (agentpaas-harness).
 //
 // Resolution order:
-//  1. Sibling in the same directory as the running executable (preferred —
+//  1. AGENTPAAS_HARNESS_PATH env var (CI/operator pin).
+//  2. Sibling in the same directory as the running executable (preferred —
 //     keeps the harness bundled with the daemon, avoiding stale brew
 //     installations when running from a repo build).
-//  2. ../bin/ relative to the executable (repo build layout).
-//  3. The darwin binary as a fallback sibling.
-//  4. PATH lookup for agentpaas-harness-linux.
-//  5. PATH lookup for agentpaas-harness.
+//  3. ../bin/ relative to the executable (repo build layout).
+//  4. The darwin binary as a fallback sibling.
 //
-// Returns an empty string if not found; callers fall back to pack.BuildImage's
-// own exec.LookPath and clear error.
+// PATH is intentionally not consulted — a stale brew binary on PATH would
+// otherwise be embedded silently. Callers must treat "" as an error.
 func HarnessBinary() string {
+	// AGENTPAAS_HARNESS_PATH env var overrides all resolution logic.
+	// Used by CI and operators who want to pin a specific binary.
+	if p := os.Getenv("AGENTPAAS_HARNESS_PATH"); p != "" {
+		if p := harnessCandidate(p); p != "" {
+			return p
+		}
+	}
+
 	exePath, err := Executable()
 	if err == nil {
 		// If the executable is itself a symlink (common with brew
@@ -54,19 +60,28 @@ func HarnessBinary() string {
 			return p
 		}
 	}
-	if p, err := exec.LookPath("agentpaas-harness-linux"); err == nil {
-		return p
-	}
-	if p, err := exec.LookPath("agentpaas-harness"); err == nil {
-		return p
-	}
 	return ""
 }
 
 // HarnessBinaryForPlatform resolves a harness for an explicit target platform.
 // linux/amd64 uses the architecture-qualified binary first so a host ARM
 // installation cannot accidentally be embedded in an x86-64 image.
+//
+// Resolution order:
+//  1. AGENTPAAS_HARNESS_PATH env var (CI/operator pin).
+//  2. For linux/amd64: sibling / ../bin agentpaas-harness-linux-amd64.
+//  3. HarnessBinary() (sibling linux then darwin; no PATH).
+//
+// Returns "" if not found; callers must treat that as an error.
 func HarnessBinaryForPlatform(platform string) string {
+	// AGENTPAAS_HARNESS_PATH env var overrides all resolution logic.
+	// Used by CI and operators who want to pin a specific binary.
+	if p := os.Getenv("AGENTPAAS_HARNESS_PATH"); p != "" {
+		if p := harnessCandidate(p); p != "" {
+			return p
+		}
+	}
+
 	if platform != "linux/amd64" {
 		return HarnessBinary()
 	}
@@ -87,9 +102,6 @@ func HarnessBinaryForPlatform(platform string) string {
 				return p
 			}
 		}
-	}
-	if p, err := exec.LookPath("agentpaas-harness-linux-amd64"); err == nil {
-		return p
 	}
 	return HarnessBinary()
 }

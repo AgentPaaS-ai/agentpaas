@@ -154,12 +154,14 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 
 	imageTag := fmt.Sprintf("agentpaas/%s:%s", agentName, agentVersion)
 	harnessPath := binresolve.HarnessBinaryForPlatform(resolvedPlatform)
-	if harnessPath != "" {
-		if info, err := os.Stat(harnessPath); err == nil {
-			fmt.Fprintf(os.Stderr, "daemon: pack using harness %s (modified %s)\n", harnessPath, info.ModTime().Format(time.RFC3339))
-		} else {
-			fmt.Fprintf(os.Stderr, "daemon: pack using harness %s (mtime unknown)\n", harnessPath)
-		}
+	if harnessPath == "" {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"harness binary not found: build with `make build-harness-linux` or set AGENTPAAS_HARNESS_PATH")
+	}
+	if info, err := os.Stat(harnessPath); err == nil {
+		fmt.Fprintf(os.Stderr, "daemon: pack using harness %s (modified %s)\n", harnessPath, info.ModTime().Format(time.RFC3339))
+	} else {
+		fmt.Fprintf(os.Stderr, "daemon: pack using harness %s (mtime unknown)\n", harnessPath)
 	}
 	sdkDir := binresolve.SDKDir(harnessPath)
 	// If the SDK is not on disk (brew-only install, release tarball without
