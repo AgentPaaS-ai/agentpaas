@@ -350,7 +350,36 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "OK"})
+	s.mu.RLock()
+	resp := map[string]any{
+		"status":         "OK",
+		"oauth_bindings": s.oauthBindingCount(),
+		"credentials":    s.credentialCount(),
+	}
+	s.mu.RUnlock()
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// oauthBindingCount returns how many OAuth bindings were loaded at startup.
+// Caller must hold s.mu (at least RLock).
+func (s *Server) oauthBindingCount() int {
+	if s.rpcServer == nil {
+		return 0
+	}
+	s.rpcServer.mu.RLock()
+	defer s.rpcServer.mu.RUnlock()
+	return len(s.rpcServer.oauthBindings)
+}
+
+// credentialCount returns how many credentials were loaded at startup.
+// Caller must hold s.mu (at least RLock).
+func (s *Server) credentialCount() int {
+	if s.rpcServer == nil {
+		return 0
+	}
+	s.rpcServer.mu.RLock()
+	defer s.rpcServer.mu.RUnlock()
+	return len(s.rpcServer.credentials)
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
