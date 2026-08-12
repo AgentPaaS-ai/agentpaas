@@ -345,11 +345,7 @@ func validateBuildConfig(cfg *BuildConfig) error {
 		return errors.New("image tag is required")
 	}
 	if cfg.HarnessPath == "" {
-		harnessPath, err := exec.LookPath("agentpaas-harness")
-		if err != nil {
-			return fmt.Errorf("harness path is required: %w", err)
-		}
-		cfg.HarnessPath = harnessPath
+		return fmt.Errorf("harness path is required: set cfg.HarnessPath or AGENTPAAS_HARNESS_PATH env var")
 	}
 	if !filepath.IsAbs(cfg.HarnessPath) {
 		absPath, err := filepath.Abs(cfg.HarnessPath)
@@ -368,6 +364,12 @@ func validateBuildConfig(cfg *BuildConfig) error {
 	if err := validateHarnessArchitecture(cfg.HarnessPath, cfg.Platform); err != nil {
 		return fmt.Errorf("validate build config: %w", err)
 	}
+	// Sentinel scan: verify the harness binary contains the OAuth bindings
+	// error string. A stale binary without this code will fail at runtime
+	// with a silent OAuth bindings miss.
+	if err := verifyHarnessSentinel(cfg.HarnessPath); err != nil {
+		return fmt.Errorf("validate build config: %w", err)
+	}
 	if cfg.SDKDir == "" {
 		harnessDir := filepath.Dir(cfg.HarnessPath)
 		candidate := filepath.Join(filepath.Dir(harnessDir), "python")
@@ -381,6 +383,22 @@ func validateBuildConfig(cfg *BuildConfig) error {
 		}
 	}
 
+	return nil
+}
+
+// verifyHarnessSentinel checks that the harness binary contains the
+// oauth_bindings_load_failed sentinel string. This confirms the binary
+// has the M13.9 OAuth bindings code. A stale binary without this code
+// would silently fail to load OAuth bindings at runtime.
+func verifyHarnessSentinel(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read harness for sentinel scan: %w", err)
+	}
+	sentinel := []byte("oauth_bindings_load_failed")
+	if !bytes.Contains(data, sentinel) {
+		return fmt.Errorf("harness binary %s is stale: missing oauth_bindings_load_failed sentinel (rebuild with `make build-harness-linux`)", path)
+	}
 	return nil
 }
 

@@ -93,5 +93,6 @@ func testELF64(machine elf.Machine) []byte {
 	binary.LittleEndian.PutUint32(header[20:24], 1)
 	binary.LittleEndian.PutUint16(header[52:54], 64)
 	binary.LittleEndian.PutUint16(header[58:60], 64)
-	return header
+	// Append pack sentinel so validateBuildConfig stubs pass the OAuth gate.
+	return append(header, []byte("oauth_bindings_load_failed")...)
 }
