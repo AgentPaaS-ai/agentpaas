@@ -140,6 +140,7 @@ type OAuthBindingConfig struct {
 	ClientSecretSec  string   `json:"client_secret_secret,omitempty"`
 	Scopes           []string `json:"scopes"`
 	MaxScopes        []string `json:"max_scopes,omitempty"`
+	EndUserIdentity  string   `json:"end_user_identity"`
 }
 
 // SetDeploymentSecretsRequest is the body for PUT /v1/deployments/:id/secrets.
