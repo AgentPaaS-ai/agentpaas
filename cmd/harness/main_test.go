@@ -1,9 +1,103 @@
 package main
 
 import (
+	"bytes"
+	"log"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestLogEnvSummary_LogsKeysAndLengthsNotValues(t *testing.T) {
+	// Secret-looking values must never appear in log output.
+	const secretBindings = `[{"credential_id":"gmail","host_pattern":"gmail.googleapis.com","consent_url":"https://example/oauth"}]`
+	const secretCreds = `[{"id":"k","header":"Authorization","value":"Bearer SUPER_SECRET_NEVER_LOG"}]`
+
+	t.Setenv("AGENTPAAS_OAUTH_BINDINGS_JSON", secretBindings)
+	t.Setenv("AGENTPAAS_CREDENTIALS_JSON", secretCreds)
+	t.Setenv("AGENTPAAS_CREDENTIALS_PATH", "")
+	t.Setenv("AGENTPAAS_AGENT_KIND", "worker")
+	t.Setenv("AGENTPAAS_MCP_DECLARED_TOOLS", "")
+	t.Setenv("AGENTPAAS_MCP_CAPABILITY", "")
+	t.Setenv("AGENTPAAS_DURABLE_PATH", "")
+	t.Setenv("AGENTPAAS_CPU_QUOTA_SECONDS", "")
+	t.Setenv("AGENTPAAS_MAX_PIDS", "")
+	t.Setenv("AGENTPAAS_ADDR", "127.0.0.1:9090")
+	t.Setenv("AGENTPAAS_MCP_HTTP_ADDR", "")
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+
+	logEnvSummary()
+
+	out := buf.String()
+	wantKeys := []string{
+		"AGENTPAAS_OAUTH_BINDINGS_JSON",
+		"AGENTPAAS_CREDENTIALS_JSON",
+		"AGENTPAAS_CREDENTIALS_PATH",
+		"AGENTPAAS_AGENT_KIND",
+		"AGENTPAAS_MCP_DECLARED_TOOLS",
+		"AGENTPAAS_MCP_CAPABILITY",
+		"AGENTPAAS_DURABLE_PATH",
+		"AGENTPAAS_CPU_QUOTA_SECONDS",
+		"AGENTPAAS_MAX_PIDS",
+		"AGENTPAAS_ADDR",
+		"AGENTPAAS_MCP_HTTP_ADDR",
+	}
+	for _, k := range wantKeys {
+		if !strings.Contains(out, "harness: env "+k) {
+			t.Errorf("log missing key %s; out=%q", k, out)
+		}
+	}
+	if !strings.Contains(out, "AGENTPAAS_OAUTH_BINDINGS_JSON = "+strconv.Itoa(len(secretBindings))+" chars") {
+		t.Errorf("want bindings length log; out=%q", out)
+	}
+	if !strings.Contains(out, "AGENTPAAS_CREDENTIALS_JSON = "+strconv.Itoa(len(secretCreds))+" chars") {
+		t.Errorf("want credentials length log; out=%q", out)
+	}
+	if !strings.Contains(out, "AGENTPAAS_CREDENTIALS_PATH = (empty)") {
+		t.Errorf("want empty credentials path; out=%q", out)
+	}
+	if !strings.Contains(out, "AGENTPAAS_ADDR = "+strconv.Itoa(len("127.0.0.1:9090"))+" chars") {
+		t.Errorf("want addr length log; out=%q", out)
+	}
+	// Never log values.
+	for _, leak := range []string{secretBindings, secretCreds, "SUPER_SECRET", "Bearer ", "gmail.googleapis.com", "127.0.0.1:9090"} {
+		if strings.Contains(out, leak) {
+			t.Errorf("log leaked value fragment %q; out=%q", leak, out)
+		}
+	}
+}
+
+func TestLogEnvSummary_EmptyDoesNotPanic(t *testing.T) {
+	keys := []string{
+		"AGENTPAAS_OAUTH_BINDINGS_JSON",
+		"AGENTPAAS_CREDENTIALS_JSON",
+		"AGENTPAAS_CREDENTIALS_PATH",
+		"AGENTPAAS_AGENT_KIND",
+		"AGENTPAAS_MCP_DECLARED_TOOLS",
+		"AGENTPAAS_MCP_CAPABILITY",
+		"AGENTPAAS_DURABLE_PATH",
+		"AGENTPAAS_CPU_QUOTA_SECONDS",
+		"AGENTPAAS_MAX_PIDS",
+		"AGENTPAAS_ADDR",
+		"AGENTPAAS_MCP_HTTP_ADDR",
+	}
+	for _, k := range keys {
+		t.Setenv(k, "")
+	}
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+	logEnvSummary()
+	if !strings.Contains(buf.String(), "(empty)") {
+		t.Fatalf("expected empty markers; out=%q", buf.String())
+	}
+}
 
 func TestBuildConfig_AgentKindFromEnv(t *testing.T) {
 	t.Setenv("AGENTPAAS_AGENT_KIND", "mcp_service")

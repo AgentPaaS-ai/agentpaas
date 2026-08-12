@@ -29,6 +29,10 @@ func main() {
 
 	cfg := buildConfig()
 
+	// B4: Log env keys and value lengths at startup for diagnostics.
+	// Never log values — they may contain credentials or OAuth tokens.
+	logEnvSummary()
+
 	// B30-T04: durable-path resource ceilings. On the durable
 	// (InvokeDeployment) path, the daemon sets AGENTPAAS_DURABLE_PATH=1 and
 	// the policy-derived CPU/PID limits. On the legacy v0.2.3 path, these
@@ -147,6 +151,32 @@ func envInt(key string, defaultVal int) int {
 		}
 	}
 	return defaultVal
+}
+
+// logEnvSummary logs harness-relevant env keys and value lengths at startup.
+// Never logs values — they may contain credentials or OAuth tokens.
+func logEnvSummary() {
+	keys := []string{
+		"AGENTPAAS_OAUTH_BINDINGS_JSON",
+		"AGENTPAAS_CREDENTIALS_JSON",
+		"AGENTPAAS_CREDENTIALS_PATH",
+		"AGENTPAAS_AGENT_KIND",
+		"AGENTPAAS_MCP_DECLARED_TOOLS",
+		"AGENTPAAS_MCP_CAPABILITY",
+		"AGENTPAAS_DURABLE_PATH",
+		"AGENTPAAS_CPU_QUOTA_SECONDS",
+		"AGENTPAAS_MAX_PIDS",
+		"AGENTPAAS_ADDR",
+		"AGENTPAAS_MCP_HTTP_ADDR",
+	}
+	for _, k := range keys {
+		v := os.Getenv(k)
+		if v == "" {
+			log.Printf("harness: env %s = (empty)", k)
+		} else {
+			log.Printf("harness: env %s = %d chars", k, len(v))
+		}
+	}
 }
 
 // buildConfig constructs harness.Config from env.

@@ -95,6 +95,77 @@ func TestHealthzAndReadyzReturnOKWhenAgentLoaded(t *testing.T) {
 	}
 }
 
+func TestHealthzReportsZeroCountsWhenNoBindingsOrCredentials(t *testing.T) {
+	srv := newReadyServer(t, `def invoke(payload):
+    return payload
+`)
+	defer func() { _ = srv.Close() }()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("healthz status = %d, want %d; body %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal healthz: %v body=%s", err, rec.Body.String())
+	}
+	if got["status"] != "OK" {
+		t.Fatalf("status = %v, want OK", got["status"])
+	}
+	if got["oauth_bindings"] != float64(0) {
+		t.Fatalf("oauth_bindings = %v, want 0", got["oauth_bindings"])
+	}
+	if got["credentials"] != float64(0) {
+		t.Fatalf("credentials = %v, want 0", got["credentials"])
+	}
+}
+
+func TestHealthzReportsLoadedBindingAndCredentialCounts(t *testing.T) {
+	bindings := `[
+		{"credential_id":"gmail_oauth","host_pattern":"gmail.googleapis.com","consent_url":"https://example/oauth/g1"},
+		{"credential_id":"drive_oauth","host_pattern":"www.googleapis.com","consent_url":"https://example/oauth/g2"}
+	]`
+	creds := `[
+		{"id":"api_key","header":"Authorization","value":"Bearer secret-never-in-healthz"},
+		{"id":"other","header":"X-Api-Key","value":"also-secret"}
+	]`
+	cfg := Config{
+		CredentialsJSON:   creds,
+		OAuthBindingsJSON: bindings,
+	}
+	srv := newReadyServerWithConfig(t, cfg, `def invoke(payload):
+    return payload
+`)
+	defer func() { _ = srv.Close() }()
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("healthz status = %d; body %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "secret-never-in-healthz") || strings.Contains(body, "also-secret") {
+		t.Fatalf("healthz leaked credential value: %s", body)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal: %v body=%s", err, body)
+	}
+	if got["status"] != "OK" {
+		t.Fatalf("status = %v", got["status"])
+	}
+	if got["oauth_bindings"] != float64(2) {
+		t.Fatalf("oauth_bindings = %v, want 2", got["oauth_bindings"])
+	}
+	if got["credentials"] != float64(2) {
+		t.Fatalf("credentials = %v, want 2", got["credentials"])
+	}
+}
+
 func TestInvokeRunsPythonAndCapturesStdoutStderrPointers(t *testing.T) {
 	srv := newReadyServer(t, `import sys
 
