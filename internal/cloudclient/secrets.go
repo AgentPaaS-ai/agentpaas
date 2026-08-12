@@ -125,10 +125,21 @@ func (c *CloudClient) DeleteSecretOpts(ctx context.Context, token, name string, 
 
 // DeploymentSecretBinding is metadata for a deployment secret binding (never values).
 type DeploymentSecretBinding struct {
-	SecretName  string  `json:"secret_name"`
-	InjectAs    string  `json:"inject_as"`
-	HeaderName  *string `json:"header_name,omitempty"`
-	HostPattern *string `json:"host_pattern,omitempty"`
+	SecretName      string              `json:"secret_name"`
+	InjectAs        string              `json:"inject_as"`
+	HeaderName      *string             `json:"header_name,omitempty"`
+	HostPattern     *string             `json:"host_pattern,omitempty"`
+	EndUserIdentity *string             `json:"end_user_identity,omitempty"`
+	OAuthConfig     *OAuthBindingConfig `json:"oauth_config,omitempty"`
+}
+
+// OAuthBindingConfig is the oauth_delegated binding configuration.
+type OAuthBindingConfig struct {
+	Provider           string   `json:"provider"`
+	ClientIDCredential string   `json:"client_id_credential"`
+	ClientSecretCred   string   `json:"client_secret_credential"`
+	Scopes             []string `json:"scopes"`
+	MaxScopes          []string `json:"max_scopes,omitempty"`
 }
 
 // SetDeploymentSecretsRequest is the body for PUT /v1/deployments/:id/secrets.

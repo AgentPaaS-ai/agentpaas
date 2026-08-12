@@ -405,3 +405,194 @@ func TestCloudSecretsList_Help(t *testing.T) {
 		t.Errorf("help should mention values are never displayed, got: %s", stdout)
 	}
 }
+
+func TestCloudSecretsBind_OAuthDelegated_Success(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_test_token")
+
+	var captured []byte
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/deployments/dep_abc/secrets":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"bindings": []any{}})
+		case r.Method == http.MethodPut && r.URL.Path == "/v1/deployments/dep_abc/secrets":
+			body, _ := io.ReadAll(r.Body)
+			captured = body
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer apiServer.Close()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "",
+		"cloud", "secrets", "bind", "dep_abc", "gmail-oauth",
+		"--as", "oauth_delegated",
+		"--end-user-identity", "alice@example.com",
+		"--oauth-provider", "google",
+		"--oauth-client-id-credential", "google-client-id",
+		"--oauth-client-secret-credential", "google-client-secret",
+		"--oauth-scopes", "https://www.googleapis.com/auth/gmail.readonly",
+		"--only",
+	)
+	if err != nil {
+		t.Fatalf("bind oauth_delegated: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if len(captured) == 0 {
+		t.Fatal("expected PUT body to be captured")
+	}
+
+	var req cloudclient.SetDeploymentSecretsRequest
+	if err := json.Unmarshal(captured, &req); err != nil {
+		t.Fatalf("unmarshal request: %v body=%s", err, captured)
+	}
+	if len(req.Bindings) != 1 {
+		t.Fatalf("bindings len = %d, want 1", len(req.Bindings))
+	}
+	b := req.Bindings[0]
+	if b.SecretName != "gmail-oauth" {
+		t.Errorf("SecretName = %q", b.SecretName)
+	}
+	if b.InjectAs != "oauth_delegated" {
+		t.Errorf("InjectAs = %q", b.InjectAs)
+	}
+	if b.EndUserIdentity == nil || *b.EndUserIdentity != "alice@example.com" {
+		t.Errorf("EndUserIdentity = %v", b.EndUserIdentity)
+	}
+	if b.OAuthConfig == nil {
+		t.Fatal("OAuthConfig is nil")
+	}
+	if b.OAuthConfig.Provider != "google" {
+		t.Errorf("Provider = %q", b.OAuthConfig.Provider)
+	}
+	if b.OAuthConfig.ClientIDCredential != "google-client-id" {
+		t.Errorf("ClientIDCredential = %q", b.OAuthConfig.ClientIDCredential)
+	}
+	if b.OAuthConfig.ClientSecretCred != "google-client-secret" {
+		t.Errorf("ClientSecretCred = %q", b.OAuthConfig.ClientSecretCred)
+	}
+	if len(b.OAuthConfig.Scopes) != 1 || b.OAuthConfig.Scopes[0] != "https://www.googleapis.com/auth/gmail.readonly" {
+		t.Errorf("Scopes = %v", b.OAuthConfig.Scopes)
+	}
+	// MaxScopes defaults to Scopes when omitted.
+	if len(b.OAuthConfig.MaxScopes) != 1 || b.OAuthConfig.MaxScopes[0] != "https://www.googleapis.com/auth/gmail.readonly" {
+		t.Errorf("MaxScopes = %v (want default to scopes)", b.OAuthConfig.MaxScopes)
+	}
+}
+
+func TestCloudSecretsBind_OAuthDelegated_MaxScopesOverride(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_test_token")
+
+	var captured []byte
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			body, _ := io.ReadAll(r.Body)
+			captured = body
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"bindings": []any{}})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer apiServer.Close()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, _, err := executeCloudCmd(t, "",
+		"cloud", "secrets", "bind", "dep_abc", "gmail-oauth",
+		"--as", "oauth_delegated",
+		"--end-user-identity", "alice@example.com",
+		"--oauth-provider", "google",
+		"--oauth-client-id-credential", "cid",
+		"--oauth-client-secret-credential", "csec",
+		"--oauth-scopes", "scope-a",
+		"--oauth-max-scopes", "scope-a,scope-b",
+		"--only",
+	)
+	if err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	var req cloudclient.SetDeploymentSecretsRequest
+	if err := json.Unmarshal(captured, &req); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	max := req.Bindings[0].OAuthConfig.MaxScopes
+	if len(max) != 2 || max[0] != "scope-a" || max[1] != "scope-b" {
+		t.Errorf("MaxScopes = %v", max)
+	}
+}
+
+func TestCloudSecretsBind_OAuthDelegated_RequiresEndUserIdentity(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_test_token")
+
+	_, _, err := executeCloudCmd(t, "",
+		"cloud", "secrets", "bind", "dep_abc", "gmail-oauth",
+		"--as", "oauth_delegated",
+		"--oauth-provider", "google",
+		"--oauth-client-id-credential", "cid",
+		"--oauth-client-secret-credential", "csec",
+		"--oauth-scopes", "scope-a",
+	)
+	if err == nil {
+		t.Fatal("expected error when --end-user-identity missing")
+	}
+	if !strings.Contains(err.Error(), "--end-user-identity") {
+		t.Errorf("error should mention --end-user-identity, got: %v", err)
+	}
+}
+
+func TestCloudSecretsBind_OAuthDelegated_RequiresProviderAndCreds(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_test_token")
+
+	_, _, err := executeCloudCmd(t, "",
+		"cloud", "secrets", "bind", "dep_abc", "gmail-oauth",
+		"--as", "oauth_delegated",
+		"--end-user-identity", "alice@example.com",
+		"--oauth-scopes", "scope-a",
+	)
+	if err == nil {
+		t.Fatal("expected error when oauth provider/creds missing")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "--oauth-provider") || !strings.Contains(msg, "--oauth-client-id-credential") {
+		t.Errorf("error should mention oauth flags, got: %v", err)
+	}
+}
+
+func TestCloudSecretsBind_OAuthDelegated_RequiresScopes(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_test_token")
+
+	_, _, err := executeCloudCmd(t, "",
+		"cloud", "secrets", "bind", "dep_abc", "gmail-oauth",
+		"--as", "oauth_delegated",
+		"--end-user-identity", "alice@example.com",
+		"--oauth-provider", "google",
+		"--oauth-client-id-credential", "cid",
+		"--oauth-client-secret-credential", "csec",
+	)
+	if err == nil {
+		t.Fatal("expected error when --oauth-scopes missing")
+	}
+	if !strings.Contains(err.Error(), "--oauth-scopes") {
+		t.Errorf("error should mention --oauth-scopes, got: %v", err)
+	}
+}
+
+func TestCloudSecretsBind_HelpMentionsOAuthDelegated(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "secrets", "bind", "--help")
+	if err != nil {
+		t.Fatalf("bind --help: %v", err)
+	}
+	if !strings.Contains(stdout, "oauth_delegated") {
+		t.Errorf("help should mention oauth_delegated, got: %s", stdout)
+	}
+}

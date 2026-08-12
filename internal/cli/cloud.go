@@ -1383,6 +1383,8 @@ or displayed. Requires a valid cloud login.`,
 // newCloudSecretsBindCmd binds a vault secret onto a deployment for inject at invoke.
 func newCloudSecretsBindCmd() *cobra.Command {
 	var injectAs, headerName, hostPattern string
+	var endUserIdentity, oauthProvider, oauthClientIDCred, oauthClientSecretCred string
+	var oauthScopes, oauthMaxScopes []string
 	cmd := &cobra.Command{
 		Use:   "bind <deployment_id> <secret_name>",
 		Short: "Bind a cloud secret to a deployment (inject at invoke)",
@@ -1426,6 +1428,30 @@ plus this binding). Use --only to set exactly one binding.`,
 				h := hostPattern
 				b.HostPattern = &h
 			}
+			if injectAs == "oauth_delegated" {
+				if endUserIdentity == "" {
+					return fmt.Errorf("cloud secrets bind: --end-user-identity is required when --as=oauth_delegated")
+				}
+				if oauthProvider == "" || oauthClientIDCred == "" || oauthClientSecretCred == "" {
+					return fmt.Errorf("cloud secrets bind: --oauth-provider, --oauth-client-id-credential, and --oauth-client-secret-credential are required when --as=oauth_delegated")
+				}
+				if len(oauthScopes) == 0 {
+					return fmt.Errorf("cloud secrets bind: --oauth-scopes is required when --as=oauth_delegated")
+				}
+				eui := endUserIdentity
+				b.EndUserIdentity = &eui
+				maxScopes := oauthMaxScopes
+				if len(maxScopes) == 0 {
+					maxScopes = oauthScopes
+				}
+				b.OAuthConfig = &cloudclient.OAuthBindingConfig{
+					Provider:           oauthProvider,
+					ClientIDCredential: oauthClientIDCred,
+					ClientSecretCred:   oauthClientSecretCred,
+					Scopes:             oauthScopes,
+					MaxScopes:          maxScopes,
+				}
+			}
 
 			var bindings []cloudclient.DeploymentSecretBinding
 			if only {
@@ -1460,9 +1486,15 @@ plus this binding). Use --only to set exactly one binding.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&injectAs, "as", "bearer", "Injection mode: bearer, header, or none")
+	cmd.Flags().StringVar(&injectAs, "as", "bearer", "Injection mode: bearer, header, none, or oauth_delegated")
 	cmd.Flags().StringVar(&headerName, "header", "", "Header name when --as=header")
 	cmd.Flags().StringVar(&hostPattern, "host", "", "Host pattern for credential scope (e.g. openrouter.ai)")
+	cmd.Flags().StringVar(&endUserIdentity, "end-user-identity", "", "End-user identity for oauth_delegated (e.g. alice@example.com)")
+	cmd.Flags().StringVar(&oauthProvider, "oauth-provider", "", "OAuth provider for oauth_delegated (e.g. google)")
+	cmd.Flags().StringVar(&oauthClientIDCred, "oauth-client-id-credential", "", "Secret name holding the OAuth client ID")
+	cmd.Flags().StringVar(&oauthClientSecretCred, "oauth-client-secret-credential", "", "Secret name holding the OAuth client secret")
+	cmd.Flags().StringSliceVar(&oauthScopes, "oauth-scopes", nil, "OAuth scopes (comma-separated, e.g. https://www.googleapis.com/auth/gmail.readonly)")
+	cmd.Flags().StringSliceVar(&oauthMaxScopes, "oauth-max-scopes", nil, "Maximum allowed OAuth scopes (comma-separated). Defaults to --oauth-scopes if omitted")
 	cmd.Flags().Bool("only", false, "Replace all bindings with only this one")
 	return cmd
 }
