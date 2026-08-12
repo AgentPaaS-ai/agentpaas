@@ -26,6 +26,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/binresolve"
 	"github.com/AgentPaaS-ai/agentpaas/internal/delegation"
+	"github.com/AgentPaaS-ai/agentpaas/internal/harness"
 	"github.com/AgentPaaS-ai/agentpaas/internal/identity"
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
@@ -225,7 +226,7 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		AgentYAML:         agentYAML,
 		Runtime:           det.Runtime,
 		BaseImageDigest:   cfg.BaseImage,
-		HarnessVersion:    "embedded",
+		HarnessVersion:    harness.HarnessVersion,
 		Platform:          resolvedPlatform,
 		SourceDateEpoch:   time.Unix(0, 0).UTC(),
 		KeyStore:          &packKeyStoreAdapter{store: keyStore},

@@ -1,27 +1,32 @@
 .PHONY: build build-harness-linux build-harness-linux-amd64 build-all test soak-test proto lint race osv install-plugin clean fmt vet
 
-build:
-	go build ./...
-
 # LDFLAGS_VERSION stamps the dev version into all binaries when building without
 # a release tag. goreleaser overrides these at tag time with the actual version.
 LDFLAGS_VERSION := -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion=0.3.7-dev
 LDFLAGS_VERSION += -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion=0.3.7-dev
 LDFLAGS_VERSION += -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
+LDFLAGS_HARNESS := $(LDFLAGS_VERSION)
+LDFLAGS_HARNESS += -X github.com/AgentPaaS-ai/agentpaas/internal/harness.HarnessVersion=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+
 BUILD_FLAGS := -trimpath -ldflags "$(LDFLAGS_VERSION)"
-BUILD_FLAGS_HARNESS := -trimpath -ldflags "$(LDFLAGS_VERSION) -s -w"
+BUILD_FLAGS_HARNESS := -trimpath -ldflags "$(LDFLAGS_HARNESS) -s -w"
 
-build-harness-linux:
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness-linux ./cmd/harness
-
-build-harness-linux-amd64:
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness-linux-amd64 ./cmd/harness
-
-build-all: build build-harness-linux build-harness-linux-amd64
+build:
+	mkdir -p bin
 	go build $(BUILD_FLAGS) -o bin/agentpaas ./cmd/agent
 	go build $(BUILD_FLAGS) -o bin/agentpaasd ./cmd/agentpaasd
 	go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness ./cmd/harness
+
+build-harness-linux:
+	mkdir -p bin
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness-linux ./cmd/harness
+
+build-harness-linux-amd64:
+	mkdir -p bin
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness-linux-amd64 ./cmd/harness
+
+build-all: build build-harness-linux build-harness-linux-amd64
 
 test:
 	go test ./...
