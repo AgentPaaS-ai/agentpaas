@@ -1450,6 +1450,7 @@ plus this binding). Use --only to set exactly one binding.`,
 					ClientSecretSec: oauthClientSecretCred,
 					Scopes:          oauthScopes,
 					MaxScopes:       maxScopes,
+					EndUserIdentity: endUserIdentity,
 				}
 			}
 
