@@ -177,6 +177,16 @@ func logEnvSummary() {
 			log.Printf("harness: env %s = %d chars", k, len(v))
 		}
 	}
+
+	// B5: Cross-check expectation marker vs actual bindings.
+	if os.Getenv("AGENTPAAS_OAUTH_EXPECTED") == "1" {
+		bindings := os.Getenv("AGENTPAAS_OAUTH_BINDINGS_JSON")
+		if bindings == "" {
+			log.Printf("WARN: harness: AGENTPAAS_OAUTH_EXPECTED=1 but AGENTPAAS_OAUTH_BINDINGS_JSON is empty — OAuth bindings were lost in transit (DO eviction? configure_egress miss?)")
+		} else {
+			log.Printf("harness: OAuth expected and present (%d chars)", len(bindings))
+		}
+	}
 }
 
 // buildConfig constructs harness.Config from env.
