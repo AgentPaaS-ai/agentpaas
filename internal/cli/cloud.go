@@ -1665,6 +1665,7 @@ func newCloudDeployCmd() *cobra.Command {
 	var lockPath string
 	var instanceType string
 	var deployType string
+	var maxConcurrentRuns int
 
 	cmd := &cobra.Command{
 		Use:   "deploy [digest|latest]",
@@ -1683,6 +1684,8 @@ control plane assigns one automatically.
 Use --instance-type to select a Cloudflare Container preset, from smallest to
 largest: lite, basic (default; 1/4 vCPU, 1GiB), standard-1, standard-2,
 standard-3, standard-4.
+
+Use --max-concurrent-runs to set an optional lock; omit to leave unbounded (tenant cap).
 
 Use --type to deploy an agent or an MCP server. The default is agent.`,
 		Example: `  # Deploy an admitted image
@@ -1710,6 +1713,9 @@ Use --type to deploy an agent or an MCP server. The default is agent.`,
 			case "lite", "basic", "standard-1", "standard-2", "standard-3", "standard-4":
 			default:
 				return fmt.Errorf("instance_type must be one of: lite, basic, standard-1, standard-2, standard-3, standard-4")
+			}
+			if cmd.Flags().Changed("max-concurrent-runs") && maxConcurrentRuns < 1 {
+				return fmt.Errorf("max_concurrent_runs must be an integer >= 1")
 			}
 
 			// Resolve token.
@@ -1783,6 +1789,9 @@ Use --type to deploy an agent or an MCP server. The default is agent.`,
 			if slotID != "" {
 				req.SlotID = &slotID
 			}
+			if cmd.Flags().Changed("max-concurrent-runs") {
+				req.MaxConcurrentRuns = &maxConcurrentRuns
+			}
 
 			resp, err := client.CreateDeployment(cmd.Context(), token, req)
 			if err != nil {
@@ -1802,6 +1811,9 @@ Use --type to deploy an agent or an MCP server. The default is agent.`,
 			if resp.SlotID != nil && *resp.SlotID != "" {
 				fmt.Printf("  Slot:   %s\n", *resp.SlotID)
 			}
+			if resp.MaxConcurrentRuns != nil {
+				fmt.Printf("  Max concurrent runs: %d\n", *resp.MaxConcurrentRuns)
+			}
 			return nil
 		},
 	}
@@ -1810,6 +1822,75 @@ Use --type to deploy an agent or an MCP server. The default is agent.`,
 	cmd.Flags().StringVar(&lockPath, "lock", "", "Absolute path to agent.lock (uses its image_digest)")
 	cmd.Flags().StringVar(&instanceType, "instance-type", "basic", "Cloudflare Container preset (default: basic; lite, basic, standard-1, standard-2, standard-3, standard-4)")
 	cmd.Flags().StringVar(&deployType, "type", "agent", "Deployment type: agent|mcp (default: agent)")
+	cmd.Flags().IntVar(&maxConcurrentRuns, "max-concurrent-runs", 0, "Optional concurrency lock (>= 1); omit to leave unbounded (tenant cap)")
+
+	cmd.AddCommand(newCloudDeployUpdateCmd())
+
+	return cmd
+}
+
+// newCloudDeployUpdateCmd creates the `agentpaas cloud deploy update` command.
+func newCloudDeployUpdateCmd() *cobra.Command {
+	var maxConcurrentRuns int
+	var unlockConcurrency bool
+
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update a deployment concurrency lock",
+		Long: `Set or clear a deployment's max_concurrent_runs lock.
+
+Exactly one of --max-concurrent-runs or --unlock-concurrency is required.`,
+		Example: `  agentpaas cloud deploy update <id> --max-concurrent-runs 1
+  agentpaas cloud deploy update <id> --unlock-concurrency`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lockChanged := cmd.Flags().Changed("max-concurrent-runs")
+			if lockChanged == unlockConcurrency {
+				return fmt.Errorf("cloud deploy update: exactly one of --max-concurrent-runs or --unlock-concurrency is required")
+			}
+			if lockChanged && maxConcurrentRuns < 1 {
+				return fmt.Errorf("max_concurrent_runs must be an integer >= 1")
+			}
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud deploy update: %w", err)
+			}
+
+			req := cloudclient.PatchDeploymentRequest{}
+			if lockChanged {
+				req.MaxConcurrentRuns = &maxConcurrentRuns
+			}
+
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			resp, err := client.PatchDeployment(cmd.Context(), token, args[0], req)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("cloud deploy update: %w", err)
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, resp, nil)
+			}
+			fmt.Printf("Deployment updated: %s\n", resp.ID)
+			if resp.MaxConcurrentRuns != nil {
+				fmt.Printf("  Max concurrent runs: %d\n", *resp.MaxConcurrentRuns)
+			} else {
+				fmt.Printf("  Max concurrent runs: unlocked\n")
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&maxConcurrentRuns, "max-concurrent-runs", 0, "Set concurrency lock to N (>= 1)")
+	cmd.Flags().BoolVar(&unlockConcurrency, "unlock-concurrency", false, "Clear the concurrency lock (JSON null)")
+	cmd.MarkFlagsMutuallyExclusive("max-concurrent-runs", "unlock-concurrency")
+	cmd.MarkFlagsOneRequired("max-concurrent-runs", "unlock-concurrency")
 
 	return cmd
 }

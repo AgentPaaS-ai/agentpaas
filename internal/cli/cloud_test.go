@@ -780,6 +780,267 @@ func TestCloudDeploy_InvalidInstanceType(t *testing.T) {
 	}
 }
 
+func TestCloudDeploy_Latest_WithMaxConcurrentRuns(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_max_concurrent")
+
+	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/images":
+			if r.Method != http.MethodGet {
+				t.Errorf("images method = %s, want GET", r.Method)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]cloudclient.ImageRecord{{
+				ID:          "img-latest-001",
+				ImageDigest: digest,
+				Status:      "admitted",
+			}})
+		case "/v1/deployments":
+			if r.Method != http.MethodPost {
+				t.Errorf("deployments method = %s, want POST", r.Method)
+			}
+			var body map[string]json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode deployment body: %v", err)
+			}
+			raw, ok := body["max_concurrent_runs"]
+			if !ok {
+				t.Fatal("max_concurrent_runs missing from POST body")
+			}
+			var got int
+			if err := json.Unmarshal(raw, &got); err != nil {
+				t.Errorf("decode max_concurrent_runs: %v", err)
+			}
+			if got != 2 {
+				t.Errorf("max_concurrent_runs = %d, want 2", got)
+			}
+			lock := 2
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(cloudclient.DeploymentRecord{
+				ID:                "dep-max-concurrent-001",
+				ImageDigest:       digest,
+				Status:            "pending",
+				MaxConcurrentRuns: &lock,
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--max-concurrent-runs", "2")
+	if err != nil {
+		t.Fatalf("deploy latest --max-concurrent-runs 2: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "dep-max-concurrent-001") {
+		t.Errorf("expected dep-max-concurrent-001 in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "2") {
+		t.Errorf("expected lock value in output, got: %q", stdout)
+	}
+}
+
+func TestCloudDeploy_Latest_OmitsMaxConcurrentRuns(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_no_max_concurrent")
+
+	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/images":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode([]cloudclient.ImageRecord{{
+				ID:          "img-latest-001",
+				ImageDigest: digest,
+				Status:      "admitted",
+			}})
+		case "/v1/deployments":
+			var body map[string]json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode deployment body: %v", err)
+			}
+			if _, ok := body["max_concurrent_runs"]; ok {
+				t.Error("max_concurrent_runs should be omitted when flag is unset")
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(cloudclient.DeploymentRecord{
+				ID:          "dep-no-lock-001",
+				ImageDigest: digest,
+				Status:      "pending",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest")
+	if err != nil {
+		t.Fatalf("deploy latest: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "dep-no-lock-001") {
+		t.Errorf("expected dep-no-lock-001 in output, got: %q", stdout)
+	}
+}
+
+func TestCloudDeploy_MaxConcurrentRunsZeroRejected(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_zero_lock")
+
+	hits := 0
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "latest", "--max-concurrent-runs", "0")
+	if err == nil {
+		t.Fatal("expected error for --max-concurrent-runs 0")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "max_concurrent_runs must be an integer >= 1") {
+		t.Errorf("error should mention max_concurrent_runs must be an integer >= 1, got: %s", combined)
+	}
+	if hits != 0 {
+		t.Errorf("expected no HTTP requests, got %d", hits)
+	}
+}
+
+func TestCloudDeploy_Update_MaxConcurrentRuns(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_update_lock")
+
+	var gotMethod, gotPath string
+	var gotBody map[string]json.RawMessage
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		lock := 1
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(cloudclient.DeploymentRecord{
+			ID:                "dep_x",
+			Status:            "running",
+			MaxConcurrentRuns: &lock,
+		})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "update", "dep_x", "--max-concurrent-runs", "1")
+	if err != nil {
+		t.Fatalf("deploy update --max-concurrent-runs 1: err=%v stderr=%q", err, stderr)
+	}
+	if gotMethod != http.MethodPatch {
+		t.Errorf("method = %s, want PATCH", gotMethod)
+	}
+	if gotPath != "/v1/deployments/dep_x" {
+		t.Errorf("path = %s, want /v1/deployments/dep_x", gotPath)
+	}
+	raw, ok := gotBody["max_concurrent_runs"]
+	if !ok {
+		t.Fatal("max_concurrent_runs missing from PATCH body")
+	}
+	var got int
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("decode max_concurrent_runs: %v", err)
+	}
+	if got != 1 {
+		t.Errorf("max_concurrent_runs = %d, want 1", got)
+	}
+}
+
+func TestCloudDeploy_Update_UnlockConcurrency(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_update_unlock")
+
+	var gotMethod, gotPath string
+	var gotBody map[string]json.RawMessage
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(cloudclient.DeploymentRecord{
+			ID:     "dep_x",
+			Status: "running",
+		})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "update", "dep_x", "--unlock-concurrency")
+	if err != nil {
+		t.Fatalf("deploy update --unlock-concurrency: err=%v stderr=%q", err, stderr)
+	}
+	if gotMethod != http.MethodPatch {
+		t.Errorf("method = %s, want PATCH", gotMethod)
+	}
+	if gotPath != "/v1/deployments/dep_x" {
+		t.Errorf("path = %s, want /v1/deployments/dep_x", gotPath)
+	}
+	raw, ok := gotBody["max_concurrent_runs"]
+	if !ok {
+		t.Fatal("max_concurrent_runs missing from PATCH body")
+	}
+	if string(raw) != "null" {
+		t.Errorf("max_concurrent_runs = %s, want null", raw)
+	}
+}
+
+func TestCloudDeploy_Update_RequiresExactlyOneFlag(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_update_flags")
+
+	hits := 0
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "update", "dep_x")
+	if err == nil {
+		t.Fatal("expected error when neither flag is set")
+	}
+	if hits != 0 {
+		t.Errorf("neither-flag case should not hit HTTP, got %d", hits)
+	}
+	combined := err.Error() + stderr
+	if combined == "" {
+		t.Error("expected an error message for neither flag")
+	}
+
+	_, stderr, err = executeCloudCmd(t, "", "cloud", "deploy", "update", "dep_x", "--max-concurrent-runs", "1", "--unlock-concurrency")
+	if err == nil {
+		t.Fatal("expected error when both flags are set")
+	}
+	if hits != 0 {
+		t.Errorf("both-flags case should not hit HTTP, got %d", hits)
+	}
+	combined = err.Error() + stderr
+	if combined == "" {
+		t.Error("expected an error message for both flags")
+	}
+}
+
 func TestCloudDeploy_Success_WithSlotID(t *testing.T) {
 	store := setupFakeTokenStore(t)
 	_ = store.Set(context.Background(), "apc_deploy_slot")
@@ -1142,6 +1403,9 @@ func TestCloudDeploy_Help(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "default: basic") {
 		t.Errorf("help should mention basic as the default, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "max-concurrent-runs") {
+		t.Errorf("help should mention max-concurrent-runs, got: %s", stdout)
 	}
 }
 
