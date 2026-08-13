@@ -221,6 +221,14 @@ func TestCloudPush_Success(t *testing.T) {
 	if savedRef != "agentpaas/test-agent:1.0.0" {
 		t.Errorf("docker save ref = %q, want agentpaas/test-agent:1.0.0", savedRef)
 	}
+	for _, want := range []string{"Saving image…", "Uploading…", "chunk 1", "chunk 2", "Admitting image…"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr missing %q, got %q", want, stderr)
+		}
+	}
+	if strings.Contains(stdout, "Saving image") || strings.Contains(stdout, "Uploading") || strings.Contains(stdout, "Admitting image") {
+		t.Errorf("stdout must not contain progress, got %q", stdout)
+	}
 }
 
 func TestCloudPush_SkipRegistryAdmitsWithNullRegistryRef(t *testing.T) {
