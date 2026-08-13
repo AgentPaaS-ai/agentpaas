@@ -487,6 +487,9 @@ login required) and attaches input_ref. --input-url attaches a URL ref
 				if message, ok := cloudAlreadyRunningMessage(err); ok {
 					return errors.New(message)
 				}
+				if message, ok := cloudBindTimeoutMessage(err); ok {
+					return errors.New(message)
+				}
 				return fmt.Errorf("cloud invoke: %w", err)
 			}
 
@@ -647,6 +650,22 @@ func cloudAlreadyRunningMessage(err error) (string, bool) {
 		retryAfter = 30
 	}
 	return fmt.Sprintf("agent already running; retry in %ds", retryAfter), true
+}
+
+func cloudBindTimeoutMessage(err error) (string, bool) {
+	var statusErr *cloudclient.HTTPStatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusServiceUnavailable {
+		return "", false
+	}
+	if statusErr.ErrorCode != "bind_timeout" && statusErr.Reason != "bind_timeout" {
+		return "", false
+	}
+
+	retryAfter := statusErr.RetryAfterSec
+	if retryAfter <= 0 {
+		retryAfter = 15
+	}
+	return fmt.Sprintf("platform busy binding image; retry in %ds", retryAfter), true
 }
 
 func resolveCloudInvokeToken(cmd *cobra.Command, flagToken, deploymentID string) (string, error) {
@@ -2069,6 +2088,9 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			resp, err := client.CreateRun(cmd.Context(), token, req)
 			if err != nil {
 				if message, ok := cloudAlreadyRunningMessage(err); ok {
+					return errors.New(message)
+				}
+				if message, ok := cloudBindTimeoutMessage(err); ok {
 					return errors.New(message)
 				}
 				if strings.Contains(err.Error(), "not authenticated") {

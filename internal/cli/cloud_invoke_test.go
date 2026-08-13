@@ -370,6 +370,110 @@ func TestCloudInvoke_AlreadyRunning429(t *testing.T) {
 	}
 }
 
+func TestCloudInvoke_BindTimeout503(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_bind_token")
+	_ = setupFakeTokenStore(t)
+
+	tests := []struct {
+		name    string
+		body    string
+		wantMsg string
+	}{
+		{
+			name:    "retry after supplied",
+			body:    `{"error":"bind_timeout","retry_after_sec":15}`,
+			wantMsg: "platform busy binding image; retry in 15s",
+		},
+		{
+			name:    "retry after default",
+			body:    `{"error":"bind_timeout"}`,
+			wantMsg: "platform busy binding image; retry in 15s",
+		},
+		{
+			name:    "retry after custom",
+			body:    `{"error":"bind_timeout","retry_after_sec":22}`,
+			wantMsg: "platform busy binding image; retry in 22s",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer func() { server.Close() }()
+
+			t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+			_, stderr, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-bind")
+			if err == nil {
+				t.Fatal("expected bind_timeout error")
+			}
+			combined := err.Error() + stderr
+			if !strings.Contains(combined, tt.wantMsg) {
+				t.Errorf("error = %q, want %q", combined, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestCloudBindTimeoutMessage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		err     error
+		wantMsg string
+		wantOK  bool
+	}{
+		{
+			name: "retry after supplied",
+			err: &cloudclient.HTTPStatusError{
+				StatusCode:    http.StatusServiceUnavailable,
+				ErrorCode:     "bind_timeout",
+				RetryAfterSec: 15,
+			},
+			wantMsg: "platform busy binding image; retry in 15s",
+			wantOK:  true,
+		},
+		{
+			name: "reason field and default retry",
+			err: &cloudclient.HTTPStatusError{
+				StatusCode: http.StatusServiceUnavailable,
+				Reason:     "bind_timeout",
+			},
+			wantMsg: "platform busy binding image; retry in 15s",
+			wantOK:  true,
+		},
+		{
+			name: "ignores other 503s",
+			err: &cloudclient.HTTPStatusError{
+				StatusCode: http.StatusServiceUnavailable,
+				ErrorCode:  "no_slot_capacity",
+			},
+		},
+		{
+			name: "ignores non-503 bind_timeout",
+			err: &cloudclient.HTTPStatusError{
+				StatusCode: http.StatusTooManyRequests,
+				ErrorCode:  "bind_timeout",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := cloudBindTimeoutMessage(tt.err)
+			if ok != tt.wantOK || got != tt.wantMsg {
+				t.Fatalf("cloudBindTimeoutMessage() = %q, %v; want %q, %v", got, ok, tt.wantMsg, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestCloudInvoke_WaitPollsAndPrintsFinalResult(t *testing.T) {
 	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
 	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_wait_token")
