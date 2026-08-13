@@ -1688,7 +1688,7 @@ standard-3, standard-4.
 
 Use --max-concurrent-runs to set an optional lock; omit to leave unbounded (tenant cap).
 
-Use --type to deploy an agent or an MCP server. The default is agent.`,
+Use --type to deploy an agent, an MCP server, or a tool. The default is agent.`,
 		Example: `  # Deploy an admitted image
   agentpaas cloud deploy sha256:abcd1234...
 
@@ -1705,8 +1705,8 @@ Use --type to deploy an agent or an MCP server. The default is agent.`,
   agentpaas cloud deploy sha256:abcd1234... --slot-id slot-42`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if deployType != "agent" && deployType != "mcp" {
-				return fmt.Errorf("cloud deploy: --type must be agent or mcp")
+			if deployType != "agent" && deployType != "mcp" && deployType != "tool" {
+				return fmt.Errorf("cloud deploy: --type must be agent, mcp, or tool")
 			}
 			switch instanceType {
 			case "dev":
@@ -1822,7 +1822,7 @@ Use --type to deploy an agent or an MCP server. The default is agent.`,
 	cmd.Flags().StringVar(&slotID, "slot-id", "", "Pin deployment to a specific slot")
 	cmd.Flags().StringVar(&lockPath, "lock", "", "Absolute path to agent.lock (uses its image_digest)")
 	cmd.Flags().StringVar(&instanceType, "instance-type", "basic", "Cloudflare Container preset (default: basic; lite, basic, standard-1, standard-2, standard-3, standard-4)")
-	cmd.Flags().StringVar(&deployType, "type", "agent", "Deployment type: agent|mcp (default: agent)")
+	cmd.Flags().StringVar(&deployType, "type", "agent", "Deployment type: agent|mcp|tool (default: agent)")
 	cmd.Flags().IntVar(&maxConcurrentRuns, "max-concurrent-runs", 0, "Optional concurrency lock (>= 1); omit to leave unbounded (tenant cap)")
 
 	cmd.AddCommand(newCloudDeployUpdateCmd())

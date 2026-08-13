@@ -162,12 +162,64 @@ func TestCloudDeploy_MCPType(t *testing.T) {
 	}
 }
 
+func TestCloudDeploy_ToolType(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_tool_deploy"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/deployments" || r.Method != http.MethodPost {
+			t.Errorf("request = %s %s, want POST /v1/deployments", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode deployment request: %v", err)
+		}
+		if got, ok := body["kind"].(string); !ok || got != "tool" {
+			t.Errorf("kind = %#v, want tool", body["kind"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(cloudclient.DeploymentRecord{
+			ID: "dep-tool", ImageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Status: "pending",
+		})
+	}))
+	defer func() { server.Close() }()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "--type", "tool", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err != nil {
+		t.Fatalf("cloud deploy --type tool: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "dep-tool") {
+		t.Fatalf("deploy output = %q, want dep-tool", stdout)
+	}
+}
+
+func TestCloudDeploy_UnknownType(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_widget_deploy"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "deploy", "--type", "widget", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err == nil {
+		t.Fatal("expected error for --type widget")
+	}
+	combined := err.Error() + stderr
+	want := "--type must be agent, mcp, or tool"
+	if !strings.Contains(combined, want) {
+		t.Fatalf("error should contain %q, got: %s", want, combined)
+	}
+}
+
 func TestCloudDeploy_TypeHelp(t *testing.T) {
 	stdout, _, err := executeCloudCmd(t, "", "cloud", "deploy", "--help")
 	if err != nil {
 		t.Fatalf("cloud deploy --help: %v", err)
 	}
-	if !strings.Contains(stdout, "agent|mcp") {
-		t.Fatalf("deploy help = %q, want agent|mcp type help", stdout)
+	if !strings.Contains(stdout, "agent|mcp|tool") {
+		t.Fatalf("deploy help = %q, want agent|mcp|tool type help", stdout)
 	}
 }
