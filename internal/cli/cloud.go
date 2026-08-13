@@ -348,6 +348,9 @@ The invoke token is displayed once. Store it securely and use it with
 			}
 
 			client := cloudclient.NewCloudClient(resolveAPIURL())
+			if !jsonOutput(cmd) {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Minting invoke token…")
+			}
 			resp, err := client.MintInvokeToken(cmd.Context(), tenantToken, args[0])
 			if err != nil {
 				if strings.Contains(err.Error(), "not authenticated") {
@@ -535,6 +538,7 @@ login required) and attaches input_ref. --input-url attaches a URL ref
 }
 
 var cloudInvokePollInterval = time.Second
+var cloudInvokeProgressInterval = 10 * time.Second
 
 func waitForCloudInvoke(cmd *cobra.Command, client *cloudclient.CloudClient, invoked *cloudclient.InvokeDeploymentResult, timeout time.Duration) (*cloudclient.RunResult, error) {
 	runID := invoked.EffectiveRunID()
@@ -552,17 +556,33 @@ func waitForCloudInvoke(cmd *cobra.Command, client *cloudclient.CloudClient, inv
 	waitCtx, cancel := context.WithTimeout(cmd.Context(), timeout)
 	defer cancel()
 
+	showProgress := !jsonOutput(cmd)
+	errOut := cmd.ErrOrStderr()
+	latestStatus := invoked.Status
+	if showProgress {
+		_, _ = fmt.Fprintf(errOut, "Waiting for run %s (status=%s)\n", runID, latestStatus)
+	}
+	started := time.Now()
+	lastProgress := started
+
 	for {
 		run, err := client.GetRun(waitCtx, tenantToken, runID)
 		if err != nil {
 			return nil, fmt.Errorf("cloud invoke --wait: poll status: %w", err)
 		}
+		latestStatus = run.Status
 		if cloudRunTerminal(run.Status) {
 			result, err := client.GetRunResult(waitCtx, tenantToken, runID)
 			if err != nil {
 				return nil, fmt.Errorf("cloud invoke --wait: fetch result: %w", err)
 			}
 			return result, nil
+		}
+
+		if showProgress && time.Since(lastProgress) >= cloudInvokeProgressInterval {
+			elapsed := int(time.Since(started).Seconds())
+			_, _ = fmt.Fprintf(errOut, "still waiting (%ds) status=%s\n", elapsed, latestStatus)
+			lastProgress = time.Now()
 		}
 
 		timer := time.NewTimer(cloudInvokePollInterval)
@@ -881,7 +901,7 @@ func uploadCloudChunkWithRetry(ctx context.Context, client *cloudclient.CloudCli
 	return err
 }
 
-func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, token, imageRef string, startReq cloudclient.UploadImageStartRequest) (*cloudclient.AdmitImageResponse, error) {
+func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, token, imageRef string, startReq cloudclient.UploadImageStartRequest, progress io.Writer) (*cloudclient.AdmitImageResponse, error) {
 	startResp, err := client.UploadImageStart(ctx, token, startReq)
 	if err != nil {
 		return nil, err
@@ -893,6 +913,7 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 		return nil, fmt.Errorf("upload-start returned an invalid chunk_size_bytes: %d", startResp.ChunkSizeBytes)
 	}
 
+	writeCloudProgress(progress, "Saving image…")
 	saved, err := dockerSaveImage(ctx, imageRef)
 	if err != nil {
 		return nil, err
@@ -907,6 +928,7 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 		}
 	}()
 
+	writeCloudProgress(progress, "Uploading…")
 	reader := bufio.NewReaderSize(saved, startResp.ChunkSizeBytes)
 	chunk := make([]byte, startResp.ChunkSizeBytes)
 	for index := 1; ; index++ {
@@ -918,6 +940,7 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 			if err := uploadCloudChunkWithRetry(ctx, client, token, startResp.UploadID, index, chunk[:n]); err != nil {
 				return nil, err
 			}
+			writeCloudProgress(progress, fmt.Sprintf("Uploading… (chunk %d)", index))
 		}
 		if readErr != nil {
 			break
@@ -930,7 +953,15 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 	}
 	closed = true
 
+	writeCloudProgress(progress, "Admitting image…")
 	return client.UploadImageComplete(ctx, token, startResp.UploadID)
+}
+
+func writeCloudProgress(w io.Writer, line string) {
+	if w == nil {
+		return
+	}
+	_, _ = fmt.Fprintln(w, line)
 }
 
 // newCloudPushCmd creates the `agentpaas cloud push` command.
@@ -1043,7 +1074,12 @@ the cloud registry.`,
 			}
 
 			var resp *cloudclient.AdmitImageResponse
+			var progress io.Writer
+			if !jsonOutput(cmd) {
+				progress = cmd.ErrOrStderr()
+			}
 			if skipRegistry || registryRef != "" {
+				writeCloudProgress(progress, "Admitting image…")
 				admReq := cloudclient.AdmitImageRequest{
 					ImageDigest: resolvedDigest,
 					Platform:    resolvedPlatform,
@@ -1061,7 +1097,7 @@ the cloud registry.`,
 					Platform:    resolvedPlatform,
 					AgentLock:   lockMap,
 				}
-				resp, err = uploadCloudImage(cmd.Context(), client, token, localRef, startReq)
+				resp, err = uploadCloudImage(cmd.Context(), client, token, localRef, startReq, progress)
 			}
 			if err != nil {
 				// Check if 401 — token may be expired.
@@ -1794,6 +1830,9 @@ Use --type to deploy an agent, an MCP server, or a tool. The default is agent.`,
 				req.MaxConcurrentRuns = &maxConcurrentRuns
 			}
 
+			if !jsonOutput(cmd) {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Creating deployment…")
+			}
 			resp, err := client.CreateDeployment(cmd.Context(), token, req)
 			if err != nil {
 				if strings.Contains(err.Error(), "not authenticated") {

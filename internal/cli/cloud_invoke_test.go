@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -10,8 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/cloudclient"
+	"github.com/spf13/cobra"
 )
 
 func TestCloudInvokeCommandsRegistered(t *testing.T) {
@@ -512,5 +515,104 @@ func TestCloudInvoke_InputFile_UploadsThenInvokes(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "run-in") {
 		t.Fatalf("stdout=%q", stdout)
+	}
+}
+
+func TestWaitForCloudInvoke_ProgressOnStderr(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_wait_progress"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+
+	oldPoll := cloudInvokePollInterval
+	oldProgress := cloudInvokeProgressInterval
+	cloudInvokePollInterval = 5 * time.Millisecond
+	cloudInvokeProgressInterval = 20 * time.Millisecond
+	t.Cleanup(func() {
+		cloudInvokePollInterval = oldPoll
+		cloudInvokeProgressInterval = oldProgress
+	})
+
+	statusCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run-slow":
+			statusCalls++
+			if statusCalls == 1 {
+				time.Sleep(30 * time.Millisecond)
+				_, _ = w.Write([]byte(`{"id":"run-slow","deployment_id":"dep-slow","status":"starting"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"id":"run-slow","deployment_id":"dep-slow","status":"completed"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/runs/run-slow/result":
+			_, _ = w.Write([]byte(`{"run_id":"run-slow","status":"completed","error":null,"final_output":{"answer":"done"},"artifacts":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer func() { server.Close() }()
+
+	var stdout, stderr bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetContext(context.Background())
+
+	client := cloudclient.NewCloudClient(server.URL)
+	invoked := &cloudclient.InvokeDeploymentResult{
+		RunID:  "run-slow",
+		Status: "starting",
+	}
+	result, err := waitForCloudInvoke(cmd, client, invoked, 2*time.Second)
+	if err != nil {
+		t.Fatalf("waitForCloudInvoke: %v\nstderr=%q", err, stderr.String())
+	}
+	if result == nil || result.RunID != "run-slow" {
+		t.Fatalf("result = %#v, want run-slow", result)
+	}
+
+	errText := stderr.String()
+	outText := stdout.String()
+	if !strings.Contains(errText, "Waiting for run run-slow") {
+		t.Errorf("stderr missing Waiting for run, got %q", errText)
+	}
+	if !strings.Contains(errText, "(status=starting)") {
+		t.Errorf("stderr missing initial status, got %q", errText)
+	}
+	if !strings.Contains(errText, "still waiting") {
+		t.Errorf("stderr missing still waiting, got %q", errText)
+	}
+	if strings.Contains(outText, "Waiting for run") || strings.Contains(outText, "still waiting") {
+		t.Errorf("stdout must not contain progress, got %q", outText)
+	}
+}
+
+func TestCloudInvokeToken_ProgressOnStderr(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_tenant_token")
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"deployment_id":"dep-abc","invoke_token":"inv_secret_token","invoke_token_prefix":"inv_secret","message":"Store this token securely."}`))
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "invoke-token", "dep-abc")
+	if err != nil {
+		t.Fatalf("invoke-token: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stderr, "Minting invoke token…") {
+		t.Errorf("stderr missing mint progress, got %q", stderr)
+	}
+	if strings.Contains(stdout, "Minting invoke token") {
+		t.Errorf("stdout must not contain progress, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "Invoke token: inv_secret_token") {
+		t.Errorf("stdout missing token, got %q", stdout)
 	}
 }

@@ -692,6 +692,12 @@ func TestCloudDeploy_Success(t *testing.T) {
 	if !strings.Contains(stdout, "pending") {
 		t.Errorf("expected 'pending' status in output, got: %q", stdout)
 	}
+	if !strings.Contains(stderr, "Creating deployment…") {
+		t.Errorf("stderr missing deploy progress, got %q", stderr)
+	}
+	if strings.Contains(stdout, "Creating deployment") {
+		t.Errorf("stdout must not contain progress, got %q", stdout)
+	}
 }
 
 func TestCloudDeploy_Latest_WithInstanceTypeStandard2(t *testing.T) {
