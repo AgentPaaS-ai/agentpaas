@@ -158,6 +158,114 @@ func TestCloudClient_CreateDeployment_InstanceTypeJSON(t *testing.T) {
 	}
 }
 
+func TestCloudClient_CreateDeployment_MaxConcurrentRunsJSON(t *testing.T) {
+	n := 2
+	requests := []CreateDeploymentRequest{
+		{
+			ImageDigest:       "sha256:with-max-concurrent-runs",
+			MaxConcurrentRuns: &n,
+		},
+		{
+			ImageDigest: "sha256:without-max-concurrent-runs",
+		},
+	}
+	requestNumber := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+
+		if requestNumber == 0 {
+			raw, ok := body["max_concurrent_runs"]
+			if !ok {
+				t.Error("max_concurrent_runs should be present when set")
+			} else {
+				var got int
+				if err := json.Unmarshal(raw, &got); err != nil {
+					t.Errorf("decode max_concurrent_runs: %v", err)
+				} else if got != 2 {
+					t.Errorf("max_concurrent_runs = %d, want 2", got)
+				}
+			}
+		} else if _, ok := body["max_concurrent_runs"]; ok {
+			t.Error("max_concurrent_runs should be omitted when nil")
+		}
+		requestNumber++
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(DeploymentRecord{ID: "dep-max-concurrent", Status: "pending"})
+	}))
+	defer func() { server.Close() }()
+
+	client := NewCloudClient(server.URL)
+	for _, req := range requests {
+		if _, err := client.CreateDeployment(context.Background(), "token", req); err != nil {
+			t.Fatalf("CreateDeployment: %v", err)
+		}
+	}
+}
+
+func TestCloudClient_PatchDeployment(t *testing.T) {
+	one := 1
+	cases := []struct {
+		name string
+		req  PatchDeploymentRequest
+		want string
+	}{
+		{name: "lock", req: PatchDeploymentRequest{MaxConcurrentRuns: &one}, want: "1"},
+		{name: "unlock", req: PatchDeploymentRequest{MaxConcurrentRuns: nil}, want: "null"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPatch {
+					t.Errorf("expected PATCH, got %s", r.Method)
+				}
+				if r.URL.Path != "/v1/deployments/dep_x" {
+					t.Errorf("expected /v1/deployments/dep_x, got %s", r.URL.Path)
+				}
+				if auth := r.Header.Get("Authorization"); auth != "Bearer apc_test_token" {
+					t.Errorf("Authorization = %q, want Bearer apc_test_token", auth)
+				}
+
+				var body map[string]json.RawMessage
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Errorf("decode body: %v", err)
+				}
+				raw, ok := body["max_concurrent_runs"]
+				if !ok {
+					t.Fatal("max_concurrent_runs key missing from PATCH body")
+				}
+				if string(raw) != tc.want {
+					t.Errorf("max_concurrent_runs = %s, want %s", raw, tc.want)
+				}
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(DeploymentRecord{
+					ID:                "dep_x",
+					Status:            "running",
+					MaxConcurrentRuns: tc.req.MaxConcurrentRuns,
+				})
+			}))
+			defer func() { server.Close() }()
+
+			client := NewCloudClient(server.URL)
+			result, err := client.PatchDeployment(context.Background(), "apc_test_token", "dep_x", tc.req)
+			if err != nil {
+				t.Fatalf("PatchDeployment: %v", err)
+			}
+			if result.ID != "dep_x" {
+				t.Errorf("ID = %q, want dep_x", result.ID)
+			}
+		})
+	}
+}
+
 func TestCloudClient_CreateDeployment_400(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

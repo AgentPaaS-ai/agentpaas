@@ -11,11 +11,12 @@ import (
 
 // DeploymentRecord represents a single deployment record returned by the API.
 type DeploymentRecord struct {
-	ID          string  `json:"id"`
-	ImageDigest string  `json:"image_digest"`
-	SlotID      *string `json:"slot_id,omitempty"`
-	Status      string  `json:"status"`
-	CreatedAt   string  `json:"created_at"`
+	ID                string  `json:"id"`
+	ImageDigest       string  `json:"image_digest"`
+	SlotID            *string `json:"slot_id,omitempty"`
+	Status            string  `json:"status"`
+	CreatedAt         string  `json:"created_at"`
+	MaxConcurrentRuns *int    `json:"max_concurrent_runs,omitempty"`
 }
 
 // DeploymentDeleteResult is the response from DELETE /v1/deployments/{id}.
@@ -26,10 +27,17 @@ type DeploymentDeleteResult struct {
 
 // CreateDeploymentRequest is the body for POST /v1/deployments.
 type CreateDeploymentRequest struct {
-	ImageDigest  string  `json:"image_digest"`
-	Kind         string  `json:"kind,omitempty"`
-	SlotID       *string `json:"slot_id,omitempty"`
-	InstanceType *string `json:"instance_type,omitempty"`
+	ImageDigest       string  `json:"image_digest"`
+	Kind              string  `json:"kind,omitempty"`
+	SlotID            *string `json:"slot_id,omitempty"`
+	InstanceType      *string `json:"instance_type,omitempty"`
+	MaxConcurrentRuns *int    `json:"max_concurrent_runs,omitempty"`
+}
+
+// PatchDeploymentRequest is the body for PATCH /v1/deployments/{id}.
+// MaxConcurrentRuns has no omitempty so a nil pointer marshals as JSON null (unlock).
+type PatchDeploymentRequest struct {
+	MaxConcurrentRuns *int `json:"max_concurrent_runs"`
 }
 
 // CreateDeployment calls POST /v1/deployments with a Bearer token.
@@ -123,6 +131,44 @@ func (c *CloudClient) GetDeployment(ctx context.Context, token string, id string
 	var result DeploymentRecord
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("get deployment: decode response: %w", err)
+	}
+	return &result, nil
+}
+
+// PatchDeployment calls PATCH /v1/deployments/{id} with a Bearer token.
+func (c *CloudClient) PatchDeployment(ctx context.Context, token string, id string, req PatchDeploymentRequest) (*DeploymentRecord, error) {
+	if strings.ContainsAny(id, "/\\\n\r") {
+		return nil, fmt.Errorf("patch deployment: invalid id %q", id)
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("patch deployment: marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.BaseURL+"/v1/deployments/"+id, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("patch deployment: create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, wrapTransportError("patch deployment", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("patch deployment: not authenticated (token may be expired or invalid)")
+	}
+	if !jsonOK(resp.StatusCode) {
+		return nil, statusError("patch deployment", resp)
+	}
+
+	var result DeploymentRecord
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("patch deployment: decode response: %w", err)
 	}
 	return &result, nil
 }
