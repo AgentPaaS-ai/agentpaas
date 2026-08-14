@@ -32,8 +32,8 @@ def _full_skill_content() -> str:
         f"---\n"
         f"name: {_POINTER_NAME}\n"
         f"description: >\n"
-        f"  Build, deploy, package, run, and govern AI agents. Load this skill\n"
-        f"  BEFORE writing agent code. Contains mandatory onboarding (LLM provider,\n"
+        f"  Build, deploy, package, run, and govern AI agents and workflows. Load this skill\n"
+        f"  BEFORE writing agent or workflow files. Contains mandatory onboarding (LLM provider,\n"
         f"  model, secret add, hostname confirm — no ports in chat), @agent.on_invoke\n"
         f"  pattern, pack/run, and anti-fabrication rules.\n"
         f"---\n\n"
@@ -50,11 +50,12 @@ def _soul_snippet() -> str:
 {_SOUL_MARK_BEGIN}
 
 CRITICAL: When the user asks to build, create, deploy, pack, run, or
-govern any agent, you MUST load the full skill FIRST by calling
-skill_view(name="{_POINTER_NAME}") BEFORE writing any code or calling
-any agentpaas tools. That skill contains onboarding (LLM provider/model,
-secret add in the user terminal, hostname confirm without ports),
-@agent.on_invoke requirements, and pack gates.
+govern any agent or workflow, you MUST load the full skill FIRST by
+calling skill_view(name="{_POINTER_NAME}") BEFORE writing any code or
+calling any agentpaas tools. That skill contains onboarding (LLM
+provider/model, secret add in the user terminal, hostname confirm
+without ports), @agent.on_invoke requirements, pack gates, and the
+Build a Workflow envelope path.
 
 Do NOT skip onboarding. Do NOT pre-fill openrouter/model/secrets without
 asking. Do NOT copy demo/weather-agent as a substitute for onboarding.

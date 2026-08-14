@@ -7,3 +7,7 @@
 4. Confirm tools exist (doctor / agentpaas tools).
 
 Hermes must **not** block on cloud login. You run login in a normal terminal.
+
+To compose more than one agent, tell Hermes:
+
+`Build a support workflow. Classify the ticket as refund, escalate, or close, then run only the matching specialist.`

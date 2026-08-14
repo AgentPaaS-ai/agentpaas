@@ -1,8 +1,10 @@
 # AgentPaaS — Hermes Plugin
 
-This plugin lets you build, deploy, and govern AI agents entirely through
-Hermes. Every agent runs inside a locked-down container with default-deny
-network policy, brokered credentials, and a tamper-evident audit trail.
+This plugin lets you build, deploy, and govern AI agents and workflows
+entirely through Hermes. Every agent runs inside a locked-down container
+with default-deny network policy, brokered credentials, and a
+tamper-evident audit trail. Multi-agent jobs are a signed workflow
+envelope that AgentPaaS runs after you hang up.
 
 ## How It's Secure by Default
 
@@ -76,6 +78,9 @@ All commands are also available as natural language — just ask Hermes.
 | `/agentpaas-run <name>` | Start a governed agent run |
 | `/agentpaas-deploy <path>` | Pack + run in one step |
 | `/agentpaas-trigger <agent_name>` | Invoke an agent via trigger API |
+
+Workflows have no slash command. When the user says "build a workflow"
+or names stages/branches/specialists, follow **Build a Workflow** below.
 
 ### Monitoring & Debugging
 
@@ -456,6 +461,222 @@ run after the skill returns. Invoke again only when the user asks another
 question/city. Verify the existing run with status/result tools; those checks
 are reads and are not new invokes.
 
+## Build a Workflow
+
+Use this section when the user wants more than one agent to cooperate:
+pipelines, a classifier that picks a specialist, fan-out, or "A stays up
+and phones B". AgentPaaS is the runtime. You write the workers and the
+signed envelope. You do not draw boxes. The cloud console shows a frozen
+Mermaid graph of that envelope with live stage lights.
+
+A standalone agent is a one-node workflow. If they only asked for one
+agent, stay on the single-agent path above.
+
+### What you compose (v0.4)
+
+Three envelope stage shapes. Nothing else.
+
+1. **Linear stage** (omit `kind`). Runs one already-deployed agent.
+   Requires `id`, `component_ref`, `deployment_id`, `max_context_bytes`.
+2. **Fan-out stage** (`kind: "fanout"`). Spawns N copies of one child
+   workflow and waits for all of them. Requires `id`,
+   `child_workflow_id`, `fanout_max` (1-64), `join: "all"`,
+   `max_context_bytes`. No `component_ref`. No other join policy.
+3. **Choice stage** (`kind: "choice"`). Reads one key from the previous
+   stage's committed handoff and starts exactly one child workflow from
+   a closed `routes` map. Requires `id`, `choice_key`, `routes`,
+   `max_context_bytes`. Each route value is `{ "child_workflow_id": "wf_..." }`.
+   No `component_ref`. No default route. No in-envelope jump to another
+   stage index.
+
+Hard rules:
+
+- Every name in the envelope must already be packed, signed, and
+  deployed. You cannot invent a child at runtime.
+- A prompt cannot add a host, a secret, a route, or a budget.
+- Never set `hitl: true`. Create rejects it.
+- `max_context_bytes` on the envelope and on every stage is a positive
+  integer, at most 262144.
+- At most 32 stages.
+- Choice targets are child workflow ids only. Create the branch
+  workflows first, then the parent.
+- An unmatched choice value fails the run closed. That is success of
+  the security model, not a bug to paper over.
+- Do not `agentpaas run` a multi-stage composition locally. Local run
+  is one agent. Multi-stage execution is
+  `agentpaas cloud workflow create` then `start`.
+- Do not put a second orchestrator (LangGraph/CrewAI driving stages)
+  inside a worker. Library code may run inside one stage only.
+
+### User-facing turns
+
+Same tone as the weather agent. One short question at a time. Hostnames
+only, never ports. Secrets stay in the user's terminal.
+
+User: "Build a support workflow. Classify the ticket as refund, escalate,
+or close, then run only the matching specialist."
+
+You (turn 1): "Using OpenRouter. I will make four agents: classifier,
+refund, escalate, close. Name a new project directory for them."
+You (turn 2): same LLM + secret gate as a single agent
+(`agentpaas secret add openrouter-key` in their terminal).
+You (turn 3): list every hostname all four agents will call. "Allow these?"
+You (turn 4): show this Mermaid, then wait for yes before any pack or
+cloud write:
+
+```text
+classifier --> choice
+choice -->|refund| refund
+choice -->|escalate| escalate
+choice -->|close| close
+```
+
+Then: write each worker with `@agent.on_invoke`, pack, push, deploy,
+bind secrets, write `envelope.json`, create the workflow, start it once.
+
+### Step order (do not skip)
+
+1. **Directory.** Ask before any filesystem write. One parent folder,
+   one subfolder per worker.
+2. **Onboard each worker** with the single-agent gates (identity, LLM
+   secret, hostname confirm, `policy.yaml`, `agent.yaml`). Reuse one
+   LLM secret across workers unless the user asks otherwise.
+3. **Show the graph.** Text or Mermaid of the closed menu. Wait for yes.
+4. **Pack each worker** for cloud: `agentpaas pack <dir> --target linux/amd64`.
+   Pre-pack gates still apply per worker.
+5. **Cloud consent, per worker, in order:**
+   `agentpaas cloud login` is the user's terminal, never yours.
+   Confirm, then `agentpaas cloud push --lock <lock>`.
+   Confirm, then `agentpaas cloud deploy latest`. Record `DEPLOYMENT_ID`.
+   Push and bind every secret that worker needs. Verify bindings.
+   Do not invoke the workers individually on a workflow walkthrough.
+6. **Discover ids.** Use `agentpaas cloud deployments` and
+   `agentpaas cloud registry` (or `agentpaas_cloud_registry`). Put the
+   returned component/deployment ids into the envelope. Never invent them.
+7. **Child workflows first** when the graph has choice or fan-out.
+   A one-stage child is still its own workflow:
+
+```json
+{
+  "max_context_bytes": 262144,
+  "stages": [
+    {
+      "id": "refund",
+      "component_ref": "<component id from registry>",
+      "deployment_id": "<DEPLOYMENT_ID>",
+      "max_context_bytes": 262144
+    }
+  ]
+}
+```
+
+   Confirm, then:
+   `agentpaas cloud workflow create --name support-refund --envelope refund.json`
+   Record the returned workflow id. Repeat for each branch.
+
+8. **Write the parent envelope** (example: classifier then choice):
+
+```json
+{
+  "max_context_bytes": 262144,
+  "stages": [
+    {
+      "id": "classify",
+      "component_ref": "<classifier component id>",
+      "deployment_id": "<classifier DEPLOYMENT_ID>",
+      "max_context_bytes": 262144
+    },
+    {
+      "id": "route-on-intent",
+      "kind": "choice",
+      "choice_key": "route",
+      "max_context_bytes": 262144,
+      "routes": {
+        "refund": { "child_workflow_id": "<wf id from step 7>" },
+        "escalate": { "child_workflow_id": "<wf id from step 7>" },
+        "close": { "child_workflow_id": "<wf id from step 7>" }
+      }
+    }
+  ]
+}
+```
+
+   Classifier `return` must include a committed handoff key that matches
+   `choice_key`, for example `{"status":"OK","route":"refund"}`. The
+   controller reads the committed handoff, not chat text.
+
+   Linear-only example (fetch then summarize):
+
+```json
+{
+  "max_context_bytes": 262144,
+  "stages": [
+    {
+      "id": "fetch",
+      "component_ref": "<fetch component id>",
+      "deployment_id": "<fetch DEPLOYMENT_ID>",
+      "max_context_bytes": 262144
+    },
+    {
+      "id": "summarize",
+      "component_ref": "<summarize component id>",
+      "deployment_id": "<summarize DEPLOYMENT_ID>",
+      "max_context_bytes": 262144
+    }
+  ]
+}
+```
+
+   Fan-out example (one child workflow, N copies, join all):
+
+```json
+{
+  "id": "expand",
+  "kind": "fanout",
+  "child_workflow_id": "<wf id>",
+  "fanout_max": 8,
+  "join": "all",
+  "max_context_bytes": 262144
+}
+```
+
+9. **Create the parent.** Confirm billed cloud write, then:
+   `agentpaas cloud workflow create --name support-triage --envelope envelope.json`
+10. **Start once.** Confirm, then:
+    `agentpaas cloud workflow start <id> --handoff-file handoff.json`
+    Optional `--handoff-file` is a JSON object. Start exactly once on a
+    cold walkthrough. Poll with
+    `agentpaas cloud workflow instance <instance-id>`.
+    Do not also `agentpaas_cloud_invoke` the workers.
+11. **Show proof.** Give the user the workflow id, instance id, and
+    https://cloud.agentpaas.ai Workflows page. The graph is the signed
+    envelope. Only node state lights up.
+
+### Classifier contract
+
+The stage before a choice must return a string in the declared
+`choice_key`. Allowed values are exactly the keys in `routes`.
+If it returns anything else, the instance ends FAILED. Tell the user
+that plainly. Do not add a default route to "make it work".
+
+### Live mid-invoke call
+
+If the user wants "A stays up and phones B like a tool", that is not a
+second workflow engine. A may call only specialists already named in
+the same signed envelope. Use the installed SDK peer-call documented
+in the AgentPaaS SDK on this machine. If that call is not in the
+installed SDK, say so and compose with envelope stages instead. Do not
+invent an SDK verb. Standalone A cannot call other agents.
+
+### Anti-fabrication for workflows
+
+Never claim create or start succeeded unless the CLI printed an id.
+Never claim a route ran unless `agentpaas cloud workflow instance`
+shows that stage succeeded. If create rejects `kind`, `hitl`, a
+missing child id, or `max_context_bytes`, report the error and fix
+the envelope. Do not start a different graph than the one the user
+approved.
+
 ### Anti-Fabrication (Critical — user-facing results)
 
 Never claim an invoke succeeded unless you verified it from tool output:
@@ -621,6 +842,9 @@ for planned additions.
   Plugins load at startup, not mid-session.
 - **Agent code uses plain app() or main()** → The harness requires
   `@agent.on_invoke`. See "Agent Code Structure" above.
+- **User asked for a workflow** → Do not flatten it into one agent.
+  Follow **Build a Workflow**. Create child workflows before the parent.
+  Do not `agentpaas run` the composition locally.
 
 
 ### Cloud pull → edit → push (FEAT-1)
