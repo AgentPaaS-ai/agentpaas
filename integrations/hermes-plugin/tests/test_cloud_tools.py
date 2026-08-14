@@ -182,6 +182,9 @@ def test_walkthrough_uses_one_invoke_per_path_and_cold_provider_picker():
     assert "Nous token-exchange" in skill_text
     assert "xAI OAuth" in skill_text
     assert "deepseek" in skill_text.lower()
+    assert "Build a Workflow" in skill_text
+    assert "agentpaas cloud workflow create" in skill_text
+    assert "kind: \"choice\"" in skill_text or 'kind: "choice"' in skill_text
 
 
 def plugin_path():
