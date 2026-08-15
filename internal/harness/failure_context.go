@@ -154,6 +154,8 @@ func failureCategory(reason, status, detail string, evidence *UpstreamEvidence) 
 		return FailureCategoryResourceLimit
 	case reason == "mcp_denied" || strings.Contains(detail, "mcp_denied"):
 		return FailureCategoryMCPDenied
+	case isHTTPCredentialOrToolFailure(reason, detail, evidence):
+		return FailureCategorySaaSFailed
 	case strings.Contains(detail, "mcp") || strings.Contains(reason, "mcp"):
 		return FailureCategoryMCPFailed
 	case evidence != nil:
@@ -163,6 +165,23 @@ func failureCategory(reason, status, detail string, evidence *UpstreamEvidence) 
 	default:
 		return FailureCategoryTaskFailed
 	}
+}
+
+// isHTTPCredentialOrToolFailure reports SaaS/tool HTTP egress failures.
+// Worker tracebacks include source paths; a checkout named *mcp* must not
+// flip these to mcp_failed. MCP list/call failures do not set HTTP method,
+// URL, or credential evidence and keep the mcp_* categories.
+func isHTTPCredentialOrToolFailure(reason, detail string, evidence *UpstreamEvidence) bool {
+	if evidence != nil && (evidence.Credential != "" || evidence.URL != "" || evidence.Method != "") {
+		return true
+	}
+	if strings.Contains(reason, "http_failed") || strings.Contains(reason, "http_with_credential") {
+		return true
+	}
+	if strings.Contains(detail, "http_failed") || strings.Contains(detail, "http_with_credential") {
+		return true
+	}
+	return false
 }
 
 // isResourceLimitTermination reports whether the failure reason/detail

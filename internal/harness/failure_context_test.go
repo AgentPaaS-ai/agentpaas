@@ -179,6 +179,67 @@ func TestFailureContextInvokeIDsAreUniqueAndPolicyDigestStable(t *testing.T) {
 	}
 }
 
+func TestFailureCategoryHTTPCredentialNotMCPWhenTracebackPathContainsMCP(t *testing.T) {
+	detail := `Traceback (most recent call last):
+  File "/worktrees/oss/ap-t12a-g4-mcp-client/python/agentpaas_sdk/agent.py", line 290, in http_with_credential
+    return self._call("http_with_credential", params)
+agentpaas_sdk._rpc.RPCError: RPCError(http_failed): dial tcp 127.0.0.1:1: connect: connection refused`
+	evidence := &UpstreamEvidence{
+		Availability: AvailabilityUnavailable,
+		Method:       "POST",
+		URL:          "http://127.0.0.1:1/submit[REDACTED:query]",
+		Credential:   "[REDACTED:credential]",
+		BodyRedacted: "[REDACTED:body]",
+	}
+	got := failureCategory("invoke_failed", "FAILED", detail, evidence)
+	if got != FailureCategorySaaSFailed && got != FailureCategoryToolFailed {
+		t.Fatalf("category = %q, want saas/tool for HTTP credential failure", got)
+	}
+}
+
+func TestFailureCategoryMCPListAndCallStayMCP(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		reason   string
+		detail   string
+		evidence *UpstreamEvidence
+		want     string
+	}{
+		{
+			name:   "mcp_denied_reason",
+			reason: "mcp_denied",
+			detail: "mcp server/tool is not declared",
+			want:   FailureCategoryMCPDenied,
+		},
+		{
+			name:   "mcp_list_not_enabled",
+			reason: "invoke_failed",
+			detail: mcpServiceNotEnabledReason,
+			want:   FailureCategoryMCPFailed,
+		},
+		{
+			name:   "mcp_call_error",
+			reason: "invoke_failed",
+			detail: "RPCError(mcp_error): tools/call failed",
+			evidence: &UpstreamEvidence{
+				Availability: AvailabilityForbidden,
+				BodyRedacted: "[REDACTED:body]",
+			},
+			want: FailureCategoryMCPFailed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := failureCategory(tc.reason, "FAILED", tc.detail, tc.evidence)
+			if got != tc.want {
+				t.Fatalf("failureCategory(%q, %q) = %q, want %q", tc.reason, tc.detail, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRedactFailureDetailPatterns(t *testing.T) {
 	detail := redactFailureDetail(`Authorization: Bearer abc.def-123
 url=https://user:pass@example.test/path?token=secret
