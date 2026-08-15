@@ -196,6 +196,42 @@ func TestCloudClient_GetWorkflowInstance_HitsWorkflowInstances(t *testing.T) {
 	}
 }
 
+func TestCloudClient_GetWorkflowInstance_UnmarshalsStageCommits(t *testing.T) {
+	const marker = "handoff-marker-stage-commits"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/workflow-instances/wfi_1" {
+			t.Errorf("expected /v1/workflow-instances/wfi_1, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":                  "wfi_1",
+			"workflow_id":         "wf_abc",
+			"status":              "running",
+			"current_stage_index": 1,
+			"stage_commits": []map[string]any{
+				{
+					"stage_index":     0,
+					"terminal_status": "succeeded",
+					"handoff":         map[string]any{"summary": marker},
+				},
+			},
+		})
+	}))
+	defer func() { server.Close() }()
+
+	client := NewCloudClient(server.URL)
+	result, err := client.GetWorkflowInstance(context.Background(), "apc_test_token", "wfi_1")
+	if err != nil {
+		t.Fatalf("GetWorkflowInstance: %v", err)
+	}
+	if !strings.Contains(string(result.StageCommits), marker) {
+		t.Errorf("StageCommits = %s, want to contain %q", result.StageCommits, marker)
+	}
+}
+
 func TestCloudClient_Workflow_PathTraversalIDRejected(t *testing.T) {
 	hits := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
