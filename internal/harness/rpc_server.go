@@ -1209,7 +1209,7 @@ func (s *harnessRPCServer) handleMCPList(req rpcRequest, state *rpcInvokeState, 
 
 // mcpCallContext creates a context with a deadline derived from the invoke
 // state's TimeEnvelope (B30 operation deadline). When no envelope is present,
-// falls back to a 30s bound.
+// falls back to a 120s bound.
 //
 // B30-T03 Part B (legacy/compat): mcpDefaultTimeoutSeconds is a documented
 // ceiling on the non-envelope fallback path. This path is exercised only
@@ -1217,7 +1217,7 @@ func (s *harnessRPCServer) handleMCPList(req rpcRequest, state *rpcInvokeState, 
 // legacy compat). On the durable path the effective operation deadline from
 // the TimeEnvelope takes precedence. Registered in b30T01Ceilings.
 func (s *harnessRPCServer) mcpCallContext(state *rpcInvokeState) (context.Context, context.CancelFunc) {
-	const mcpDefaultTimeoutSeconds = 30
+	const mcpDefaultTimeoutSeconds = 120
 	if state != nil && state.timeEnvelope != nil {
 		nowMs := routedrun.NowMonotonicMs(nil)
 		if s.nowMonotonicMs != nil {
