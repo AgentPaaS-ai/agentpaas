@@ -40,3 +40,27 @@ func TestMCP_CallContext_LongEnvelopeNotCappedAt30s(t *testing.T) {
 		t.Fatalf("mcpCallContext timeout = %v, want %v (envelope 90s, not 30s legacy cap)", got, want)
 	}
 }
+
+// TestMCP_CallContext_NoEnvelopeUses120sFallback verifies the cloud
+// no-envelope path: when TimeEnvelope is absent, mcpCallContext uses
+// the 120s default, not the former 30s hard cap.
+func TestMCP_CallContext_NoEnvelopeUses120sFallback(t *testing.T) {
+	s := &harnessRPCServer{}
+	state := &rpcInvokeState{
+		payload: map[string]any{},
+	}
+
+	ctx, cancel := s.mcpCallContext(state)
+	defer cancel()
+
+	deadline, hasDeadline := ctx.Deadline()
+	if !hasDeadline {
+		t.Fatal("mcpCallContext returned context without deadline")
+	}
+	got := time.Until(deadline)
+	want := 120 * time.Second
+	const slack = 200 * time.Millisecond
+	if got < want-slack || got > want+slack {
+		t.Fatalf("mcpCallContext timeout = %v, want %v (no-envelope fallback, not 30s)", got, want)
+	}
+}
