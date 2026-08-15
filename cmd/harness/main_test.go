@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -25,6 +26,7 @@ func TestLogEnvSummary_LogsKeysAndLengthsNotValues(t *testing.T) {
 	t.Setenv("AGENTPAAS_MAX_PIDS", "")
 	t.Setenv("AGENTPAAS_ADDR", "127.0.0.1:9090")
 	t.Setenv("AGENTPAAS_MCP_HTTP_ADDR", "")
+	t.Setenv("AGENTPAAS_MCP_BINDINGS_JSON", secretBindings)
 
 	var buf bytes.Buffer
 	prev := log.Writer()
@@ -46,6 +48,7 @@ func TestLogEnvSummary_LogsKeysAndLengthsNotValues(t *testing.T) {
 		"AGENTPAAS_MAX_PIDS",
 		"AGENTPAAS_ADDR",
 		"AGENTPAAS_MCP_HTTP_ADDR",
+		"AGENTPAAS_MCP_BINDINGS_JSON",
 	}
 	for _, k := range wantKeys {
 		if !strings.Contains(out, "harness: env "+k) {
@@ -63,6 +66,9 @@ func TestLogEnvSummary_LogsKeysAndLengthsNotValues(t *testing.T) {
 	}
 	if !strings.Contains(out, "AGENTPAAS_ADDR = "+strconv.Itoa(len("127.0.0.1:9090"))+" chars") {
 		t.Errorf("want addr length log; out=%q", out)
+	}
+	if !strings.Contains(out, "AGENTPAAS_MCP_BINDINGS_JSON = "+strconv.Itoa(len(secretBindings))+" chars") {
+		t.Errorf("want MCP bindings length log; out=%q", out)
 	}
 	// Never log values.
 	for _, leak := range []string{secretBindings, secretCreds, "SUPER_SECRET", "Bearer ", "gmail.googleapis.com", "127.0.0.1:9090"} {
@@ -85,6 +91,7 @@ func TestLogEnvSummary_EmptyDoesNotPanic(t *testing.T) {
 		"AGENTPAAS_MAX_PIDS",
 		"AGENTPAAS_ADDR",
 		"AGENTPAAS_MCP_HTTP_ADDR",
+		"AGENTPAAS_MCP_BINDINGS_JSON",
 	}
 	for _, k := range keys {
 		t.Setenv(k, "")
@@ -170,6 +177,29 @@ func TestLogEnvSummary_OAuthExpectedUnsetNoWarn(t *testing.T) {
 	}
 	if strings.Contains(out, "OAuth expected and present") {
 		t.Fatalf("must not log present confirmation when EXPECTED unset; out=%q", out)
+	}
+}
+
+func TestMainUsesHTTPDefaultClient(t *testing.T) {
+	data, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("read main.go: %v", err)
+	}
+	src := string(data)
+	if !strings.Contains(src, "http.DefaultClient") {
+		t.Fatal("main.go must pass http.DefaultClient to NewRouter")
+	}
+	if strings.Contains(src, "NewRouter(manager, lifecycle, nil, cfg.Audit)") {
+		t.Fatal("main.go still passes nil HTTP gateway to NewRouter")
+	}
+}
+
+func TestBuildConfig_MCPBindingsJSON(t *testing.T) {
+	const raw = `[{"name":"ext","url":"http://127.0.0.1:9/mcp"}]`
+	t.Setenv("AGENTPAAS_MCP_BINDINGS_JSON", raw)
+	cfg := buildConfig()
+	if cfg.MCPBindingsJSON != raw {
+		t.Fatalf("MCPBindingsJSON = %q, want %q", cfg.MCPBindingsJSON, raw)
 	}
 }
 
