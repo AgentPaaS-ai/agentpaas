@@ -313,6 +313,10 @@ func (s *harnessRPCServer) handleRequest(req rpcRequest) rpcResponse {
 		return s.handleHTTP(req, state, true)
 	case "mcp":
 		return s.handleMCP(req, state)
+	case "mcp_list_tools":
+		return s.handleMCPList(req, state, "tools")
+	case "mcp_list_prompts":
+		return s.handleMCPList(req, state, "prompts")
 	case "progress":
 		return s.handleProgress(req, state)
 	case "workflow_input":
@@ -1162,6 +1166,45 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 		BodyRedacted: "[REDACTED:body]",
 	})
 	return rpcError(req.ID, mcpServiceNotEnabledReason, mcpServiceNotEnabledCode)
+}
+
+func (s *harnessRPCServer) handleMCPList(req rpcRequest, state *rpcInvokeState, kind string) rpcResponse {
+	serverID := stringParam(req.Params, "server_id")
+	listName := "list_" + kind
+
+	s.mu.RLock()
+	router := s.router
+	s.mu.RUnlock()
+	if router == nil {
+		if state == nil || state.mcpAllowed[serverID] == nil {
+			s.auditMCPDenied(serverID, listName, "undeclared")
+			return rpcError(req.ID, "mcp server/tool is not declared", "mcp_denied")
+		}
+		s.auditMCPDenied(serverID, listName, mcpServiceNotEnabledReason)
+		return rpcError(req.ID, mcpServiceNotEnabledReason, mcpServiceNotEnabledCode)
+	}
+
+	ctx, cancel := s.mcpCallContext(state)
+	defer cancel()
+	var (
+		result any
+		err    error
+	)
+	switch kind {
+	case "prompts":
+		result, err = router.ListPrompts(ctx, serverID)
+	default:
+		result, err = router.ListTools(ctx, serverID)
+	}
+	if err != nil {
+		s.auditMCPDenied(serverID, listName, err.Error())
+		return rpcError(req.ID, err.Error(), mcpErrorCode(err))
+	}
+	return rpcResponse{
+		ID:     req.ID,
+		OK:     true,
+		Result: result,
+	}
 }
 
 // mcpCallContext creates a context with a deadline derived from the invoke

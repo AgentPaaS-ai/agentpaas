@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -72,7 +73,7 @@ func main() {
 	// closed with ErrCodeRouterUnavail.
 	manager := mcpmanager.NewManager()
 	lifecycle := mcpmanager.NewLifecycle(manager, nil, "")
-	router := mcpmanager.NewRouter(manager, lifecycle, nil, cfg.Audit)
+	router := mcpmanager.NewRouter(manager, lifecycle, http.DefaultClient, cfg.Audit)
 	server.SetRouter(router, manager)
 	log.Printf("harness: MCP router installed (production mode, fail-closed)")
 
@@ -82,6 +83,13 @@ func main() {
 			log.Printf("harness: MCP binding sidecar load failed: %v", err)
 		} else {
 			log.Printf("harness: MCP binding sidecar loaded from %s", cfg.MCPBindingSidecarPath)
+		}
+	}
+	if cfg.MCPBindingsJSON != "" {
+		if err := server.InstallHTTPMCPBindingsJSON(cfg.MCPBindingsJSON); err != nil {
+			log.Printf("harness: MCP bindings JSON install failed: %v", err)
+		} else {
+			log.Printf("harness: MCP bindings JSON installed")
 		}
 	}
 
@@ -168,6 +176,7 @@ func logEnvSummary() {
 		"AGENTPAAS_MAX_PIDS",
 		"AGENTPAAS_ADDR",
 		"AGENTPAAS_MCP_HTTP_ADDR",
+		"AGENTPAAS_MCP_BINDINGS_JSON",
 	}
 	for _, k := range keys {
 		v := os.Getenv(k)
@@ -194,24 +203,25 @@ func logEnvSummary() {
 // Config.InvokeTimeout is only the v0.2.3 legacy/compat fallback when no envelope is present.
 func buildConfig() harness.Config {
 	return harness.Config{
-		Addr:            envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
-		AgentPath:       envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
-		Python:          detectPython(),
-		ImportTimeout:   envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),  // legacy/compat default
-		InvokeTimeout:   envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy/compat fallback; durable uses invokeTimeoutForPayload
-		TerminateGrace:  envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy/compat operational grace
-		StdoutPath:      envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
-		StderrPath:      envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
-		CredentialsPath: os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
-		CredentialsJSON: os.Getenv("AGENTPAAS_CREDENTIALS_JSON"),
-		OAuthBindingsJSON: os.Getenv("AGENTPAAS_OAUTH_BINDINGS_JSON"),
-		JournalKeyPath:  os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
-		JournalPath:     os.Getenv("AGENTPAAS_JOURNAL_PATH"),
-		AttemptID:       os.Getenv("AGENTPAAS_ATTEMPT_ID"),
-		LeaseID:         os.Getenv("AGENTPAAS_LEASE_ID"),
-		RunID:           os.Getenv("AGENTPAAS_RUN_ID"),
+		Addr:                   envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
+		AgentPath:              envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
+		Python:                 detectPython(),
+		ImportTimeout:          envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),  // legacy/compat default
+		InvokeTimeout:          envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy/compat fallback; durable uses invokeTimeoutForPayload
+		TerminateGrace:         envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy/compat operational grace
+		StdoutPath:             envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
+		StderrPath:             envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
+		CredentialsPath:        os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
+		CredentialsJSON:        os.Getenv("AGENTPAAS_CREDENTIALS_JSON"),
+		OAuthBindingsJSON:      os.Getenv("AGENTPAAS_OAUTH_BINDINGS_JSON"),
+		JournalKeyPath:         os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
+		JournalPath:            os.Getenv("AGENTPAAS_JOURNAL_PATH"),
+		AttemptID:              os.Getenv("AGENTPAAS_ATTEMPT_ID"),
+		LeaseID:                os.Getenv("AGENTPAAS_LEASE_ID"),
+		RunID:                  os.Getenv("AGENTPAAS_RUN_ID"),
 		DelegationSnapshotPath: os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_PATH"),
 		MCPBindingSidecarPath:  os.Getenv("AGENTPAAS_MCP_BINDING_SIDECAR_PATH"),
+		MCPBindingsJSON:        os.Getenv("AGENTPAAS_MCP_BINDINGS_JSON"),
 		AgentKind:              os.Getenv("AGENTPAAS_AGENT_KIND"),
 		MCPDeclaredTools:       os.Getenv("AGENTPAAS_MCP_DECLARED_TOOLS"),
 		MCPMaxConcurrency:      envInt("AGENTPAAS_MCP_MAX_CONCURRENCY", 0),

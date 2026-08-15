@@ -110,6 +110,34 @@ func (m *Manager) Register(servers []policy.MCPServer, agentID, runID string) {
 	}
 }
 
+// AddServers inserts servers without resetting existing registrations.
+func (m *Manager) AddServers(servers []policy.MCPServer, agentID, runID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.resources == nil {
+		m.resources = make(map[string]*Resource)
+	}
+	if m.servers == nil {
+		m.servers = make(map[string]policy.MCPServer)
+	}
+	for _, s := range servers {
+		tools := make([]string, len(s.AllowedTools))
+		copy(tools, s.AllowedTools)
+		m.servers[s.Name] = s
+		m.resources[s.Name] = &Resource{
+			ResourceType: "mcp_server",
+			AgentID:      agentID,
+			RunID:        runID,
+			ServerID:     s.Name,
+			Transport:    s.Transport,
+			AllowedTools: tools,
+			Readiness:    ReadinessStopped,
+			Health:       HealthUnknown,
+			PolicyDigest: computePolicyDigest(s),
+		}
+	}
+}
+
 // IsToolAllowed returns true if the server exists and the tool is in its
 // allowed list. Empty allowed list denies all tools.
 func (m *Manager) IsToolAllowed(serverID, tool string) bool {

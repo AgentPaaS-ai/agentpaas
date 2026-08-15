@@ -292,6 +292,12 @@ class Agent:
     def mcp(self, server_id: str, tool: str, input: dict[str, Any]) -> dict[str, Any]:
         return self._call("mcp", {"server_id": server_id, "tool": tool, "input": input})
 
+    def mcp_list_tools(self, server_id: str) -> dict[str, Any]:
+        return self._call("mcp_list_tools", {"server_id": server_id})
+
+    def mcp_list_prompts(self, server_id: str) -> dict[str, Any]:
+        return self._call("mcp_list_prompts", {"server_id": server_id})
+
     # ---- workflow handoff (B34-T03) ----------------------------------------
 
     def workflow_input(self) -> dict[str, Any] | None:

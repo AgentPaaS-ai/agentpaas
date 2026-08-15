@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,16 +162,16 @@ func (r *Router) CallTool(ctx context.Context, serverID, tool string, input any,
 	store := r.getEvidenceStore()
 	if store != nil {
 		_ = store.RecordCall(MCPCallRecord{
-			CorrelationID:   correlationID,
-			CallerRunID:     runID,
-			CallerAgentID:   agentID,
-			WorkflowID:      r.getManagedWorkflowID(),
-			BindingID:       serverID,
-			Tool:            tool,
-			InputDigest:     ComputeInputDigest(input),
-			Status:          CallStatusUnknown,
-			StartedAt:       start,
-			EvidenceRefs:    []string{"correlation_id:" + correlationID},
+			CorrelationID: correlationID,
+			CallerRunID:   runID,
+			CallerAgentID: agentID,
+			WorkflowID:    r.getManagedWorkflowID(),
+			BindingID:     serverID,
+			Tool:          tool,
+			InputDigest:   ComputeInputDigest(input),
+			Status:        CallStatusUnknown,
+			StartedAt:     start,
+			EvidenceRefs:  []string{"correlation_id:" + correlationID},
 		})
 	}
 
@@ -302,6 +303,46 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 	if err != nil {
 		return nil, fmt.Errorf("marshal http MCP request: %w", err)
 	}
+	return r.postJSONRPC(ctx, server, body)
+}
+
+// ListTools POSTs JSON-RPC tools/list to an HTTP MCP server and returns result.
+func (r *Router) ListTools(ctx context.Context, serverID string) (any, error) {
+	return r.listJSONRPC(ctx, serverID, "tools/list")
+}
+
+// ListPrompts POSTs JSON-RPC prompts/list to an HTTP MCP server and returns result.
+func (r *Router) ListPrompts(ctx context.Context, serverID string) (any, error) {
+	return r.listJSONRPC(ctx, serverID, "prompts/list")
+}
+
+func (r *Router) listJSONRPC(ctx context.Context, serverID, method string) (any, error) {
+	if r == nil || r.manager == nil {
+		return nil, errors.New("mcp router manager is nil")
+	}
+	server, ok := r.server(serverID)
+	if !ok {
+		return nil, errors.New("unknown mcp server")
+	}
+	if r.gateway == nil {
+		return nil, errors.New("mcp router http gateway is nil")
+	}
+	request := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      r.nextRequestID(),
+		"method":  method,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshal http MCP request: %w", err)
+	}
+	return r.postJSONRPC(ctx, server, body)
+}
+
+func (r *Router) postJSONRPC(ctx context.Context, server policy.MCPServer, body []byte) (any, error) {
+	if r.gateway == nil {
+		return nil, errors.New("mcp router http gateway is nil")
+	}
 	endpoint := server.Endpoint
 	if endpoint == "" {
 		endpoint = server.URL
@@ -311,6 +352,12 @@ func (r *Router) routeHTTP(ctx context.Context, server policy.MCPServer, tool st
 		return nil, fmt.Errorf("create http MCP request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range server.Headers {
+		if strings.TrimSpace(k) == "" || strings.TrimSpace(v) == "" {
+			continue
+		}
+		req.Header.Set(k, v)
+	}
 	resp, err := r.gateway.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send http MCP request: %w", err)
