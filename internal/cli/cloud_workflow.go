@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -181,9 +182,95 @@ func newCloudWorkflowInstanceCmd() *cobra.Command {
 				return printTextOrJSON(true, inst, nil)
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s  %s  %s  %d\n", inst.ID, inst.WorkflowID, inst.Status, inst.CurrentStageIndex)
+			printWorkflowInstanceStageCommits(cmd.OutOrStdout(), inst.StageCommits)
 			return nil
 		},
 	}
+}
+
+func printWorkflowInstanceStageCommits(out io.Writer, raw json.RawMessage) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '[' {
+		return
+	}
+	var commits []json.RawMessage
+	if err := json.Unmarshal(trimmed, &commits); err != nil || len(commits) == 0 {
+		return
+	}
+	for _, commit := range commits {
+		var rec struct {
+			StageIndex     int             `json:"stage_index"`
+			TerminalStatus string          `json:"terminal_status"`
+			Summary        string          `json:"summary"`
+			Query          string          `json:"query"`
+			Text           string          `json:"text"`
+			Handoff        json.RawMessage `json:"handoff"`
+		}
+		if err := json.Unmarshal(commit, &rec); err != nil {
+			continue
+		}
+		preview := firstNonEmptyHandoffPreview(rec.Summary, rec.Query, rec.Text)
+		if preview == "" {
+			preview = handoffPreviewFromJSON(rec.Handoff)
+		}
+		preview = truncateHandoffPreview(preview, 80)
+		if preview == "" {
+			_, _ = fmt.Fprintf(out, "%d  %s\n", rec.StageIndex, rec.TerminalStatus)
+			continue
+		}
+		_, _ = fmt.Fprintf(out, "%d  %s  %s\n", rec.StageIndex, rec.TerminalStatus, preview)
+	}
+}
+
+func firstNonEmptyHandoffPreview(values ...string) string {
+	for _, v := range values {
+		if s := sanitizeHandoffPreview(v); s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func handoffPreviewFromJSON(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return ""
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return ""
+	}
+	return firstNonEmptyHandoffPreview(
+		stringFromAny(obj["summary"]),
+		stringFromAny(obj["query"]),
+		stringFromAny(obj["text"]),
+	)
+}
+
+func stringFromAny(v any) string {
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+func sanitizeHandoffPreview(s string) string {
+	s = strings.ReplaceAll(s, "\x00", "")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.TrimSpace(s)
+}
+
+func truncateHandoffPreview(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
 }
 
 func readWorkflowJSONObjectFile(path, flagName string) (json.RawMessage, error) {

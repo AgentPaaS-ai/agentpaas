@@ -202,6 +202,13 @@ func TestCloudWorkflowInstance_PrintsStatus(t *testing.T) {
 			"current_stage_index": 3,
 			"created_at":          "2026-04-01T00:00:00Z",
 			"updated_at":          "2026-04-01T00:00:01Z",
+			"stage_commits": []map[string]any{
+				{
+					"stage_index":     0,
+					"terminal_status": "succeeded",
+					"handoff":         map[string]any{"summary": "handoff-preview-ok"},
+				},
+			},
 		})
 	}))
 	defer func() { server.Close() }()
@@ -222,5 +229,16 @@ func TestCloudWorkflowInstance_PrintsStatus(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "3") {
 		t.Errorf("stdout should print current_stage_index, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "0") || !strings.Contains(stdout, "succeeded") || !strings.Contains(stdout, "handoff-preview-ok") {
+		t.Errorf("stdout should print stage_commits preview, got: %q", stdout)
+	}
+
+	jsonOut, jsonErrOut, err := executeCloudCmd(t, "", "cloud", "workflow", "instance", "--json", "wfi_1")
+	if err != nil {
+		t.Fatalf("instance --json: err=%v stdout=%q stderr=%q", err, jsonOut, jsonErrOut)
+	}
+	if !strings.Contains(jsonOut, "stage_commits") || !strings.Contains(jsonOut, "handoff-preview-ok") {
+		t.Errorf("JSON should include stage_commits, got: %q", jsonOut)
 	}
 }

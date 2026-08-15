@@ -38,15 +38,16 @@ type StartWorkflowRequest struct {
 
 // WorkflowInstanceRecord is one workflow instance returned by the cloud API.
 type WorkflowInstanceRecord struct {
-	ID                string  `json:"id"`
-	TenantID          string  `json:"tenant_id"`
-	WorkflowID        string  `json:"workflow_id"`
-	CFInstanceID      *string `json:"cf_instance_id,omitempty"`
-	Status            string  `json:"status"`
-	CurrentStageIndex int     `json:"current_stage_index"`
-	CreatedAt         string  `json:"created_at"`
-	UpdatedAt         string  `json:"updated_at"`
-	ParentInstanceID  *string `json:"parent_instance_id,omitempty"`
+	ID                string          `json:"id"`
+	TenantID          string          `json:"tenant_id"`
+	WorkflowID        string          `json:"workflow_id"`
+	CFInstanceID      *string         `json:"cf_instance_id,omitempty"`
+	Status            string          `json:"status"`
+	CurrentStageIndex int             `json:"current_stage_index"`
+	CreatedAt         string          `json:"created_at"`
+	UpdatedAt         string          `json:"updated_at"`
+	ParentInstanceID  *string         `json:"parent_instance_id,omitempty"`
+	StageCommits      json.RawMessage `json:"stage_commits,omitempty"`
 }
 
 func invalidWorkflowID(id string) bool {
