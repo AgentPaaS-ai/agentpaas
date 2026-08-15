@@ -1224,7 +1224,8 @@ func (s *harnessRPCServer) mcpCallContext(state *rpcInvokeState) (context.Contex
 			nowMs = s.nowMonotonicMs()
 		}
 		deadlineMs := state.timeEnvelope.EffectiveOperationDeadlineMs(nowMs, state.timeEnvelope.StallTimeoutMs)
-		if deadlineMs > 0 && time.Duration(deadlineMs)*time.Millisecond < mcpDefaultTimeoutSeconds*time.Second { // legacy/compat ceiling override
+		if deadlineMs > 0 {
+			// TimeEnvelope takes precedence; do not cap long envelopes at 30s.
 			return context.WithTimeout(context.Background(), time.Duration(deadlineMs)*time.Millisecond)
 		}
 	}
