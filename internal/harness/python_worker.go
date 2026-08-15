@@ -667,6 +667,9 @@ func workerEnv(base []string, rpcAddr string) []string {
 		if strings.HasPrefix(item, "AGENTPAAS_MCP_MAX_CONCURRENCY=") {
 			continue
 		}
+		if strings.HasPrefix(item, "AGENTPAAS_MCP_BINDINGS_JSON=") {
+			continue
+		}
 		if strings.HasPrefix(item, "PYTHONPATH=") {
 			sawPythonPath = true
 			env = append(env, item+string(os.PathListSeparator)+pythonPath)

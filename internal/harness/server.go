@@ -74,6 +74,11 @@ type Config struct {
 	// declared (backward compat).
 	MCPBindingSidecarPath string
 
+	// MCPBindingsJSON is AGENTPAAS_MCP_BINDINGS_JSON: HTTP MCP client
+	// bindings (name, url, headers, allowed_tools). Tokens stay in the
+	// harness process and must never reach the Python worker env.
+	MCPBindingsJSON string
+
 	// B30-T04: policy-derived resource ceilings. On the durable path
 	// (InvokeDeployment), the daemon populates these from the deployment
 	// policy and the harness propagates them to the Python worker via
