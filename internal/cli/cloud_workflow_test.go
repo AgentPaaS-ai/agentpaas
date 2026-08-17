@@ -24,6 +24,7 @@ func TestCloudWorkflow_CommandsRegistered(t *testing.T) {
 		{"cloud", "workflow", "instance"},
 		{"cloud", "workflow", "live-call"},
 		{"cloud", "workflow", "hangup"},
+		{"cloud", "workflow", "compose"},
 	}
 	for _, p := range paths {
 		if _, _, err := cmd.Find(p); err != nil {
@@ -428,6 +429,109 @@ func TestReadWorkflowJSONFile_SymlinkSwapDenied(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("error should mention symlink, got: %v", err)
+	}
+}
+
+func TestCloudWorkflowCompose_PostsNameAndComposeToWorkflows(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_wf_token")
+
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.json")
+	if err := os.WriteFile(composePath, []byte(`{"stages":[{"component":"writer"},{"component":"reviewer"}],"max_duration":180}`), 0o600); err != nil {
+		t.Fatalf("write compose: %v", err)
+	}
+
+	var gotName string
+	var gotCompose map[string]any
+	var gotEnvelope any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workflows" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		if auth := r.Header.Get("Authorization"); auth != "Bearer apc_wf_token" {
+			t.Errorf("Authorization = %q", auth)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if name, _ := body["name"].(string); name != "" {
+			gotName = name
+		}
+		gotEnvelope = body["envelope"]
+		if compose, ok := body["compose"].(map[string]any); ok {
+			gotCompose = compose
+		}
+		if _, hasMode := body["mode"]; hasMode {
+			t.Error("compose request must not invent a mode field")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":         "wf_composed",
+			"tenant_id":  "ten_1",
+			"name":       body["name"],
+			"version":    1,
+			"status":     "active",
+			"created_at": "2026-04-01T00:00:00Z",
+		})
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "workflow", "compose",
+		"--name", "then-pipeline", "--compose", composePath)
+	if err != nil {
+		t.Fatalf("compose: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if gotName != "then-pipeline" {
+		t.Errorf("POST name = %q, want then-pipeline", gotName)
+	}
+	if gotEnvelope != nil {
+		t.Errorf("POST must send compose, not a prebuilt envelope, got envelope=%v", gotEnvelope)
+	}
+	if gotCompose == nil {
+		t.Fatal("POST body missing compose")
+	}
+	stages, _ := gotCompose["stages"].([]any)
+	if len(stages) != 2 {
+		t.Errorf("compose.stages len = %d, want 2", len(stages))
+	}
+	if gotCompose["max_duration"] != float64(180) {
+		t.Errorf("compose.max_duration = %v, want 180", gotCompose["max_duration"])
+	}
+	if _, hasMode := gotCompose["mode"]; hasMode {
+		t.Error("compose object must not invent a mode field")
+	}
+	if !strings.Contains(stdout, "wf_composed") {
+		t.Errorf("stdout should print id, got: %q", stdout)
+	}
+}
+
+func TestCloudWorkflowCompose_MissingCompose_NoHTTP(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_wf_token")
+
+	hits := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		t.Errorf("HTTP must not be sent when --compose is missing, got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer func() { server.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "workflow", "compose", "--name", "pipeline")
+	if err == nil {
+		t.Fatal("expected error for missing --compose")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "compose") {
+		t.Errorf("error should mention compose, got: %v", combined)
+	}
+	if hits != 0 {
+		t.Errorf("HTTP hits = %d, want 0", hits)
 	}
 }
 

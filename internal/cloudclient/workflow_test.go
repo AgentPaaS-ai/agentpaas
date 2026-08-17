@@ -72,6 +72,47 @@ func TestCloudClient_CreateWorkflow_PostsNameAndEnvelope(t *testing.T) {
 	}
 }
 
+func TestCloudClient_CreateWorkflow_PostsComposeWithoutEnvelope(t *testing.T) {
+	compose := json.RawMessage(`{"stages":[{"component":"writer"}]}`)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/workflows" {
+			t.Errorf("request = %s %s", r.Method, r.URL.Path)
+		}
+		var req CreateWorkflowRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if req.Name != "then-pipeline" {
+			t.Errorf("Name = %q, want then-pipeline", req.Name)
+		}
+		if len(req.Envelope) != 0 {
+			t.Errorf("Envelope should be omitted, got %s", string(req.Envelope))
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(req.Compose, &obj); err != nil {
+			t.Errorf("decode compose: %v", err)
+		}
+		if _, ok := obj["stages"]; !ok {
+			t.Errorf("compose missing stages, got %s", string(req.Compose))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(WorkflowRecord{ID: "wf_composed", Name: req.Name, Status: "active"})
+	}))
+	defer func() { server.Close() }()
+
+	result, err := NewCloudClient(server.URL).CreateWorkflow(context.Background(), "apc_test_token", CreateWorkflowRequest{
+		Name:    "then-pipeline",
+		Compose: compose,
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkflow: %v", err)
+	}
+	if result.ID != "wf_composed" {
+		t.Errorf("ID = %q, want wf_composed", result.ID)
+	}
+}
+
 func TestCloudClient_ListWorkflows_DecodesWrappedList(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
