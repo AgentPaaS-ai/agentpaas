@@ -40,6 +40,10 @@ type DelegationTrustState struct {
 
 	// CalleeIngressAllow is the callee's ingress policy.
 	CalleeIngressAllow []delegation.CalleeIngressRule
+
+	// LiveCallForbidden, when true, refuses live delegate_task authorization.
+	// Child/pipeline invokes set this (typically with empty Bindings).
+	LiveCallForbidden bool
 }
 
 // ---------------------------------------------------------------------------
@@ -56,16 +60,16 @@ var delegateTaskResponseFields = map[string]bool{
 
 // getTaskResponseFields is the explicit allowlist for get_task responses.
 var getTaskResponseFields = map[string]bool{
-	"task_id":       true,
-	"status":        true,
-	"workflow_id":   true,
-	"tenant_id":     true,
-	"binding_id":    true,
-	"capability":    true,
-	"operation":     true,
-	"created_at":    true,
-	"updated_at":    true,
-	"denial_reason": true,
+	"task_id":        true,
+	"status":         true,
+	"workflow_id":    true,
+	"tenant_id":      true,
+	"binding_id":     true,
+	"capability":     true,
+	"operation":      true,
+	"created_at":     true,
+	"updated_at":     true,
+	"denial_reason":  true,
 	"failure_reason": true,
 }
 
@@ -156,6 +160,28 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 
 	now := time.Now().UTC()
 
+	// M13.15: caller-supplied parent/deployment ids are not authorization
+	// inputs. Discard them so they cannot be copied into AuthorizeRequest.
+	if req.Params != nil {
+		delete(req.Params, "parent_instance_id")
+		delete(req.Params, "deployment_id")
+	}
+
+	// M13.15: pipeline/child and empty-binding snapshots cannot live-call.
+	if dts.LiveCallForbidden || len(dts.Snapshot.Bindings) == 0 {
+		reason := "pipeline_or_child"
+		if dts.Snapshot.WorkflowID == "" {
+			reason = "standalone"
+		}
+		return s.writeDeniedDelegateTask(req, dts, taskID, capability, operation, idempotencyKey, reason, now)
+	}
+
+	// M13.15: capability must be a BindingID on the signed snapshot.
+	// Do not look up a caller-supplied deployment id from params.
+	if lookupBinding(dts.Snapshot, capability) == nil {
+		return s.writeDeniedDelegateTask(req, dts, taskID, capability, operation, idempotencyKey, "not_on_list", now)
+	}
+
 	// Build authorization request from trust state.
 	authReq := delegation.AuthorizeRequest{
 		Snapshot:                   &dts.Snapshot,
@@ -186,38 +212,6 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 	}
 
 	if !decision.Allowed {
-		// Create DENIED task.
-		deniedTask := delegation.Task{
-			SchemaVersion:                   delegation.CurrentSchemaVersion,
-			TaskID:                          taskID,
-			WorkflowID:                      dts.Snapshot.WorkflowID,
-			TenantID:                        dts.Snapshot.TenantID,
-			Caller:                          callerRef,
-			Callee:                          delegation.CalleeRef{PackageName: authReq.CalleePackageName, PackageVersion: authReq.CalleePackageVersion, PackageDigest: authReq.CalleeBundleDigest},
-			BindingID:                       capability,
-			Capability:                      capability,
-			Operation:                       operation,
-			Status:                          delegation.TaskStatusDenied,
-			Generation:                      0,
-			IdempotencyKey:                  idempotencyKey,
-			CallerIdentity:                  dts.Snapshot.CallerDeploymentID,
-			CommunicationSnapshotGeneration: dts.Snapshot.SnapshotGeneration,
-			DenialReason:                    decision.DenialCode,
-			CreatedAt:                       now,
-			UpdatedAt:                       now,
-		}
-
-		// Denied task goes straight to store without validation;
-		// callee fields may be empty when binding is unknown.
-		if err := dts.Store.CreateTask(context.Background(), deniedTask); err != nil {
-			// On idempotent replay, don't fail — return the existing.
-			log.Printf("harness: delegate_task create denied task: %v", err)
-		}
-
-		// Append audit event.
-		appendDelegateEvent(dts.Store, taskID, dts.Snapshot.WorkflowID, dts.Snapshot.TenantID, delegation.EventTaskDenied)
-
-		// Audit the denial (logs only — not returned to agent).
 		auditRec := delegation.NewAuthzAuditRecord(
 			string(taskID), dts.Snapshot.WorkflowID,
 			dts.Snapshot.SnapshotGeneration, dts.Snapshot.SnapshotDigest,
@@ -225,15 +219,7 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 		)
 		log.Printf("harness: delegate_task DENIED: task_id=%s denial=%s caller_decision=%+v callee_decision=%+v",
 			auditRec.TaskID, auditRec.DenialCode, auditRec.CallerDecision, auditRec.CalleeDecision)
-
-		return rpcResponse{
-			ID: req.ID,
-			OK: true,
-			Result: scrubResponse(map[string]any{
-				"task_id": string(taskID),
-				"status":  delegation.TaskStatusDenied.String(),
-			}, delegateTaskResponseFields),
-		}
+		return s.writeDeniedDelegateTask(req, dts, taskID, capability, operation, idempotencyKey, decision.DenialCode, now)
 	}
 
 	// W1: Gateway self-check — lookup binding capability token, Attach + ValidateAndStrip.
@@ -332,6 +318,61 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 	}
 }
 
+// writeDeniedDelegateTask persists a DENIED task and returns the allowlisted
+// delegate_task response. Used for both authz denials and envelope ACL denials.
+func (s *harnessRPCServer) writeDeniedDelegateTask(
+	req rpcRequest,
+	dts *DelegationTrustState,
+	taskID delegation.TaskID,
+	capability, operation, idempotencyKey, denialReason string,
+	now time.Time,
+) rpcResponse {
+	callerRef := delegation.CallerRef{
+		DeploymentID:  dts.Snapshot.CallerDeploymentID,
+		RunID:         "run-harness",
+		AttemptID:     "at-harness",
+		PackageName:   dts.Snapshot.CallerPackageName,
+		PackageDigest: dts.Snapshot.CallerPackageDigest,
+	}
+	deniedTask := delegation.Task{
+		SchemaVersion:                   delegation.CurrentSchemaVersion,
+		TaskID:                          taskID,
+		WorkflowID:                      dts.Snapshot.WorkflowID,
+		TenantID:                        dts.Snapshot.TenantID,
+		Caller:                          callerRef,
+		Callee:                          delegation.CalleeRef{PackageName: lookupBindingCallee(dts.Snapshot, capability, "package_name"), PackageVersion: lookupBindingCallee(dts.Snapshot, capability, "package_version"), PackageDigest: lookupBindingCallee(dts.Snapshot, capability, "bundle_digest")},
+		BindingID:                       capability,
+		Capability:                      capability,
+		Operation:                       operation,
+		Status:                          delegation.TaskStatusDenied,
+		Generation:                      0,
+		IdempotencyKey:                  idempotencyKey,
+		CallerIdentity:                  dts.Snapshot.CallerDeploymentID,
+		CommunicationSnapshotGeneration: dts.Snapshot.SnapshotGeneration,
+		DenialReason:                    denialReason,
+		CreatedAt:                       now,
+		UpdatedAt:                       now,
+	}
+
+	// Denied task goes straight to store without validation;
+	// callee fields may be empty when binding is unknown.
+	if err := dts.Store.CreateTask(context.Background(), deniedTask); err != nil {
+		log.Printf("harness: delegate_task create denied task: %v", err)
+	}
+
+	appendDelegateEvent(dts.Store, taskID, dts.Snapshot.WorkflowID, dts.Snapshot.TenantID, delegation.EventTaskDenied)
+	log.Printf("harness: delegate_task DENIED: task_id=%s denial=%s", taskID, denialReason)
+
+	return rpcResponse{
+		ID: req.ID,
+		OK: true,
+		Result: scrubResponse(map[string]any{
+			"task_id": string(taskID),
+			"status":  delegation.TaskStatusDenied.String(),
+		}, delegateTaskResponseFields),
+	}
+}
+
 // lookupBinding returns the full binding from the snapshot by ID, or nil.
 func lookupBinding(snap delegation.CommunicationSnapshot, bindingID string) *delegation.WorkflowDelegationBinding {
 	for i := range snap.Bindings {
@@ -391,12 +432,12 @@ func (s *harnessRPCServer) handleGetTask(req rpcRequest) rpcResponse {
 		"task_id":     string(task.TaskID),
 		"status":      task.Status.String(),
 		"workflow_id": task.WorkflowID,
-		"tenant_id":     task.TenantID,
-		"binding_id":    task.BindingID,
-		"capability":    task.Capability,
-		"operation":     task.Operation,
-		"created_at":    task.CreatedAt.Format(time.RFC3339Nano),
-		"updated_at":    task.UpdatedAt.Format(time.RFC3339Nano),
+		"tenant_id":   task.TenantID,
+		"binding_id":  task.BindingID,
+		"capability":  task.Capability,
+		"operation":   task.Operation,
+		"created_at":  task.CreatedAt.Format(time.RFC3339Nano),
+		"updated_at":  task.UpdatedAt.Format(time.RFC3339Nano),
 	}
 	if task.DenialReason != "" {
 		result["denial_reason"] = task.DenialReason
