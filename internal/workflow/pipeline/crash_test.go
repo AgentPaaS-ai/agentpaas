@@ -451,8 +451,8 @@ func TestRestartMidLaunchingSharedStores(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // TestCollectStageContextParamsFullEnvelope
-// Mid-stage IncomingHandoffJSON must unmarshal to an object with handoff_id
-// and workflow_id fields (full envelope, not bare context only).
+// Mid-stage IncomingHandoffJSON is the work order only — envelope metadata
+// (handoff_id, workflow_id, context_json) must not be forwarded.
 // ---------------------------------------------------------------------------
 
 func TestCollectStageContextParamsFullEnvelope(t *testing.T) {
@@ -511,29 +511,22 @@ func TestCollectStageContextParamsFullEnvelope(t *testing.T) {
 		t.Fatalf("stage1: want StageOrder=1, got %d", params1.StageOrder)
 	}
 
-	// Stage 1 incoming handoff must be the full envelope.
 	if len(params1.IncomingHandoffJSON) == 0 {
-		t.Fatal("stage1: expected non-empty IncomingHandoffJSON (full envelope)")
+		t.Fatal("stage1: expected non-empty IncomingHandoffJSON (work order)")
 	}
 
-	// Unmarshal and verify envelope fields.
 	var env map[string]any
 	if err := json.Unmarshal(params1.IncomingHandoffJSON, &env); err != nil {
 		t.Fatalf("stage1: failed to unmarshal IncomingHandoffJSON: %v (%s)", err, string(params1.IncomingHandoffJSON))
 	}
 
-	// Must have handoff_id and workflow_id (not bare context only).
-	if _, ok := env["handoff_id"]; !ok {
-		t.Fatalf("stage1: expected handoff_id in envelope, got keys: %v", mapKeys(env))
+	if env["value"] != "hello" {
+		t.Fatalf("stage1: expected work-order value=hello, got keys: %v", mapKeys(env))
 	}
-	if _, ok := env["workflow_id"]; !ok {
-		t.Fatalf("stage1: expected workflow_id in envelope, got keys: %v", mapKeys(env))
-	}
-	if _, ok := env["context_json"]; !ok {
-		t.Fatalf("stage1: expected context_json in envelope, got keys: %v", mapKeys(env))
-	}
-	if _, ok := env["source_node_id"]; !ok {
-		t.Fatalf("stage1: expected source_node_id in envelope, got keys: %v", mapKeys(env))
+	for _, leaked := range []string{"handoff_id", "workflow_id", "context_json", "source_node_id"} {
+		if _, ok := env[leaked]; ok {
+			t.Fatalf("stage1: leaked envelope key %q: %v", leaked, mapKeys(env))
+		}
 	}
 }
 
