@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/cloudclient"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 )
 
 func newCloudWorkflowCmd() *cobra.Command {
@@ -428,11 +430,33 @@ func readWorkflowJSONFile(path, flagName string) ([]byte, error) {
 		}
 	}
 
-	data, err := os.ReadFile(absPath)
+	return readWorkflowJSONFileNoFollow(absPath, flagName, path)
+}
+
+func readWorkflowJSONFileNoFollow(absPath, flagName, origPath string) ([]byte, error) {
+	fd, err := unix.Open(absPath, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("--%s file not found: %s", flagName, path)
+		if errors.Is(err, unix.ELOOP) || errors.Is(err, unix.EMLINK) {
+			return nil, fmt.Errorf("--%s path contains a symlink: %s", flagName, absPath)
 		}
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("--%s file not found: %s", flagName, origPath)
+		}
+		return nil, fmt.Errorf("read --%s: %w", flagName, err)
+	}
+	f := os.NewFile(uintptr(fd), absPath)
+	defer func() { _ = f.Close() }()
+
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return nil, fmt.Errorf("inspect --%s path: %w", flagName, err)
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFREG {
+		return nil, fmt.Errorf("--%s path is not a regular file: %s", flagName, absPath)
+	}
+
+	data, err := io.ReadAll(f)
+	if err != nil {
 		return nil, fmt.Errorf("read --%s: %w", flagName, err)
 	}
 	return data, nil

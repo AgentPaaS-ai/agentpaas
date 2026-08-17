@@ -385,3 +385,49 @@ func TestCloudWorkflowLiveCallAndHangup_HTTPMock(t *testing.T) {
 		})
 	}
 }
+
+func TestReadWorkflowJSONFile_RegularFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "envelope.json")
+	want := []byte(`{"stages":[{"id":"s1"}]}`)
+	if err := os.WriteFile(path, want, 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := readWorkflowJSONFile(path, "envelope")
+	if err != nil {
+		t.Fatalf("readWorkflowJSONFile: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
+
+func TestReadWorkflowJSONFile_SymlinkSwapDenied(t *testing.T) {
+	dir := t.TempDir()
+	secretPath := filepath.Join(dir, "secret.json")
+	if err := os.WriteFile(secretPath, []byte(`{"secret":"LEAKME"}`), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+	path := filepath.Join(dir, "envelope.json")
+	if err := os.WriteFile(path, []byte(`{"ok":true}`), 0o600); err != nil {
+		t.Fatalf("write envelope: %v", err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := os.Symlink(secretPath, path); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	data, err := readWorkflowJSONFile(path, "envelope")
+	if err == nil {
+		t.Fatalf("expected symlink swap to be denied, read %s", data)
+	}
+	if strings.Contains(string(data), "LEAKME") {
+		t.Fatalf("symlink swap leaked secret contents: %s", data)
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("error should mention symlink, got: %v", err)
+	}
+}
+
