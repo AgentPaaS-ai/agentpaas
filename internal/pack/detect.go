@@ -54,7 +54,10 @@ type AgentYAML struct {
 	// domains (and optionally declared in agent.yaml). String list only so
 	// `egress: [example.com]` still unmarshals.
 	Egress []string `yaml:"egress,omitempty" json:"egress,omitempty"`
-	Metadata     struct {
+	// ComponentIndex is an optional pack-time overlay (tools/schemas/_meta).
+	// It is compiled into lock.component_index and is not copied into agent_yaml.
+	ComponentIndex map[string]interface{} `yaml:"component_index,omitempty" json:"-"`
+	Metadata       struct {
 		Name        string `yaml:"name" json:"name,omitempty"`
 		Version     string `yaml:"version" json:"version,omitempty"`
 		Description string `yaml:"description" json:"description,omitempty"`
@@ -76,9 +79,9 @@ type DeclaredCapability struct {
 // MCPServiceConfig represents the mcp_service block in agent.yaml for
 // kind: mcp_service packages (v0.4).
 type MCPServiceConfig struct {
-	Transport      string   `yaml:"transport" json:"transport,omitempty"`               // Only "streamable_http" is supported in v0.4.
-	Tools          []string `yaml:"tools" json:"tools,omitempty"`                       // Non-empty, unique tool names.
-	MaxConcurrency int      `yaml:"max_concurrency" json:"max_concurrency,omitempty"`   // 1..32, default 1 if omitted.
+	Transport      string   `yaml:"transport" json:"transport,omitempty"`             // Only "streamable_http" is supported in v0.4.
+	Tools          []string `yaml:"tools" json:"tools,omitempty"`                     // Non-empty, unique tool names.
+	MaxConcurrency int      `yaml:"max_concurrency" json:"max_concurrency,omitempty"` // 1..32, default 1 if omitted.
 }
 
 func (agent *AgentYAML) normalize() {
