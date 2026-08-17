@@ -27,6 +27,8 @@ Use 'agentpaas cloud workflow instance' to inspect a started instance.`,
 	cmd.AddCommand(newCloudWorkflowGetCmd())
 	cmd.AddCommand(newCloudWorkflowStartCmd())
 	cmd.AddCommand(newCloudWorkflowInstanceCmd())
+	cmd.AddCommand(newCloudWorkflowLiveCallCmd())
+	cmd.AddCommand(newCloudWorkflowHangupCmd())
 	return cmd
 }
 
@@ -186,6 +188,105 @@ func newCloudWorkflowInstanceCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newCloudWorkflowLiveCallCmd() *cobra.Command {
+	var callee string
+	var workOrderJSON string
+	var idempotencyKey string
+	cmd := &cobra.Command{
+		Use:   "live-call <instance_id>",
+		Short: "Start a live-call child run from a parent workflow instance",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			callee = strings.TrimSpace(callee)
+			if callee == "" {
+				return fmt.Errorf("cloud workflow live-call: --callee is required")
+			}
+			if strings.ContainsAny(callee, "\n\r\x00") {
+				return fmt.Errorf("cloud workflow live-call: --callee contains invalid characters")
+			}
+			idempotencyKey = strings.TrimSpace(idempotencyKey)
+			if idempotencyKey == "" {
+				return fmt.Errorf("cloud workflow live-call: --idempotency-key is required")
+			}
+			if strings.ContainsAny(idempotencyKey, "\n\r\x00") {
+				return fmt.Errorf("cloud workflow live-call: --idempotency-key contains invalid characters")
+			}
+			workOrder, err := parseWorkflowJSONObjectFlag(workOrderJSON, "work-order-json")
+			if err != nil {
+				return fmt.Errorf("cloud workflow live-call: %w", err)
+			}
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				return err
+			}
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			res, err := client.LiveCall(cmd.Context(), token, args[0], cloudclient.LiveCallRequest{
+				NamedCallee:    callee,
+				WorkOrder:      workOrder,
+				IdempotencyKey: idempotencyKey,
+			})
+			if err != nil {
+				return fmt.Errorf("cloud workflow live-call: %w", err)
+			}
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, res, nil)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s  %s  %v\n", res.ChildID, res.ParentInstanceID, res.Reused)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&callee, "callee", "", "Named callee deployment id (required)")
+	cmd.Flags().StringVar(&workOrderJSON, "work-order-json", "", "Work-order JSON object (required)")
+	cmd.Flags().StringVar(&idempotencyKey, "idempotency-key", "", "Idempotency key (required)")
+	_ = cmd.MarkFlagRequired("callee")
+	_ = cmd.MarkFlagRequired("work-order-json")
+	_ = cmd.MarkFlagRequired("idempotency-key")
+	return cmd
+}
+
+func newCloudWorkflowHangupCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "hangup <instance_id>",
+		Short: "Hang up live-call children of a workflow instance",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			token, err := resolveToken(cmd)
+			if err != nil {
+				return err
+			}
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			res, err := client.Hangup(cmd.Context(), token, args[0])
+			if err != nil {
+				return fmt.Errorf("cloud workflow hangup: %w", err)
+			}
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, res, nil)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%d\n", res.Cancelled)
+			return nil
+		},
+	}
+}
+
+func parseWorkflowJSONObjectFlag(raw, flagName string) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, fmt.Errorf("--%s is required", flagName)
+	}
+	if strings.ContainsRune(trimmed, '\x00') {
+		return nil, fmt.Errorf("--%s contains a null byte", flagName)
+	}
+	if !json.Valid([]byte(trimmed)) || trimmed[0] != '{' {
+		return nil, fmt.Errorf("--%s must be a JSON object", flagName)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &obj); err != nil {
+		return nil, fmt.Errorf("--%s must be a JSON object: %w", flagName, err)
+	}
+	return json.RawMessage(trimmed), nil
 }
 
 func printWorkflowInstanceStageCommits(out io.Writer, raw json.RawMessage) {

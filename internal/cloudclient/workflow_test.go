@@ -268,6 +268,18 @@ func TestCloudClient_Workflow_PathTraversalIDRejected(t *testing.T) {
 			_, err := client.GetWorkflowInstance(ctx, "token", "../../secret")
 			return err
 		}},
+		{"live-call slash", func() error {
+			_, err := client.LiveCall(ctx, "token", "../../secret", LiveCallRequest{
+				NamedCallee:    "dep_1",
+				WorkOrder:      json.RawMessage(`{}`),
+				IdempotencyKey: "k1",
+			})
+			return err
+		}},
+		{"hangup slash", func() error {
+			_, err := client.Hangup(ctx, "token", "bad/id")
+			return err
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -282,5 +294,130 @@ func TestCloudClient_Workflow_PathTraversalIDRejected(t *testing.T) {
 	}
 	if hits != 0 {
 		t.Errorf("HTTP hits = %d, want 0", hits)
+	}
+}
+
+func TestCloudClient_LiveCallAndHangup_HTTPMock(t *testing.T) {
+	cases := []struct {
+		name       string
+		method     string
+		path       string
+		wantStatus int
+		wantBody   any
+		call       func(t *testing.T, client *CloudClient)
+		checkReq   func(t *testing.T, r *http.Request)
+	}{
+		{
+			name:       "live-call posts named_callee work_order idempotency_key",
+			method:     http.MethodPost,
+			path:       "/v1/workflow-instances/wfi_parent/live-calls",
+			wantStatus: http.StatusCreated,
+			wantBody: LiveCallResponse{
+				ChildID:          "run_child",
+				RunID:            "run_child",
+				ParentInstanceID: "wfi_parent",
+				Reused:           false,
+			},
+			checkReq: func(t *testing.T, r *http.Request) {
+				t.Helper()
+				if auth := r.Header.Get("Authorization"); auth != "Bearer apc_test_token" {
+					t.Errorf("Authorization = %q, want Bearer apc_test_token", auth)
+				}
+				if ct := r.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+					t.Errorf("Content-Type = %q, want application/json", ct)
+				}
+				var req LiveCallRequest
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Fatalf("decode body: %v", err)
+				}
+				if req.NamedCallee != "dep_callee" {
+					t.Errorf("named_callee = %q, want dep_callee", req.NamedCallee)
+				}
+				if req.IdempotencyKey != "idem-1" {
+					t.Errorf("idempotency_key = %q, want idem-1", req.IdempotencyKey)
+				}
+				var wo map[string]any
+				if err := json.Unmarshal(req.WorkOrder, &wo); err != nil {
+					t.Fatalf("decode work_order: %v", err)
+				}
+				if wo["task"] != "summarize" {
+					t.Errorf("work_order.task = %v, want summarize", wo["task"])
+				}
+			},
+			call: func(t *testing.T, client *CloudClient) {
+				t.Helper()
+				got, err := client.LiveCall(context.Background(), "apc_test_token", "wfi_parent", LiveCallRequest{
+					NamedCallee:    "dep_callee",
+					WorkOrder:      json.RawMessage(`{"task":"summarize"}`),
+					IdempotencyKey: "idem-1",
+				})
+				if err != nil {
+					t.Fatalf("LiveCall: %v", err)
+				}
+				if got.ChildID != "run_child" {
+					t.Errorf("ChildID = %q, want run_child", got.ChildID)
+				}
+				if got.RunID != "run_child" {
+					t.Errorf("RunID = %q, want run_child", got.RunID)
+				}
+				if got.ParentInstanceID != "wfi_parent" {
+					t.Errorf("ParentInstanceID = %q, want wfi_parent", got.ParentInstanceID)
+				}
+				if got.Reused {
+					t.Error("Reused = true, want false")
+				}
+			},
+		},
+		{
+			name:       "hangup posts empty path and decodes cancelled",
+			method:     http.MethodPost,
+			path:       "/v1/workflow-instances/wfi_parent/hangup",
+			wantStatus: http.StatusOK,
+			wantBody:   HangupResponse{Cancelled: 2},
+			checkReq: func(t *testing.T, r *http.Request) {
+				t.Helper()
+				if auth := r.Header.Get("Authorization"); auth != "Bearer apc_test_token" {
+					t.Errorf("Authorization = %q, want Bearer apc_test_token", auth)
+				}
+			},
+			call: func(t *testing.T, client *CloudClient) {
+				t.Helper()
+				got, err := client.Hangup(context.Background(), "apc_test_token", "wfi_parent")
+				if err != nil {
+					t.Fatalf("Hangup: %v", err)
+				}
+				if got.Cancelled != 2 {
+					t.Errorf("Cancelled = %d, want 2", got.Cancelled)
+				}
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hits := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits++
+				if r.Method != tc.method {
+					t.Errorf("method = %s, want %s", r.Method, tc.method)
+				}
+				if r.URL.Path != tc.path {
+					t.Errorf("path = %s, want %s", r.URL.Path, tc.path)
+				}
+				if tc.checkReq != nil {
+					tc.checkReq(t, r)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.wantStatus)
+				_ = json.NewEncoder(w).Encode(tc.wantBody)
+			}))
+			defer func() { server.Close() }()
+
+			client := NewCloudClient(server.URL)
+			tc.call(t, client)
+			if hits != 1 {
+				t.Errorf("HTTP hits = %d, want 1", hits)
+			}
+		})
 	}
 }
