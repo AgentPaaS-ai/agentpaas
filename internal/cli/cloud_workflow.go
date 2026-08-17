@@ -25,6 +25,7 @@ func newCloudWorkflowCmd() *cobra.Command {
 Use 'agentpaas cloud workflow instance' to inspect a started instance.`,
 	}
 	cmd.AddCommand(newCloudWorkflowCreateCmd())
+	cmd.AddCommand(newCloudWorkflowComposeCmd())
 	cmd.AddCommand(newCloudWorkflowListCmd())
 	cmd.AddCommand(newCloudWorkflowGetCmd())
 	cmd.AddCommand(newCloudWorkflowStartCmd())
@@ -74,6 +75,49 @@ func newCloudWorkflowCreateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&envelopePath, "envelope", "", "Path to envelope JSON object file (required)")
 	_ = cmd.MarkFlagRequired("name")
 	_ = cmd.MarkFlagRequired("envelope")
+	return cmd
+}
+
+func newCloudWorkflowComposeCmd() *cobra.Command {
+	var name string
+	var composePath string
+	cmd := &cobra.Command{
+		Use:   "compose",
+		Short: "Compose registry components and create a cloud workflow",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				return fmt.Errorf("cloud workflow compose: --name is required")
+			}
+			compose, err := readWorkflowJSONObjectFile(composePath, "compose")
+			if err != nil {
+				return fmt.Errorf("cloud workflow compose: %w", err)
+			}
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				return err
+			}
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			rec, err := client.CreateWorkflow(cmd.Context(), token, cloudclient.CreateWorkflowRequest{
+				Name:    name,
+				Compose: compose,
+			})
+			if err != nil {
+				return fmt.Errorf("cloud workflow compose: %w", err)
+			}
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, rec, nil)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s  %s  %s\n", rec.ID, rec.Name, rec.Status)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "Workflow name (required)")
+	cmd.Flags().StringVar(&composePath, "compose", "", "Path to compose JSON object file (required)")
+	_ = cmd.MarkFlagRequired("name")
+	_ = cmd.MarkFlagRequired("compose")
 	return cmd
 }
 

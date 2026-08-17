@@ -12,7 +12,8 @@ import (
 // CreateWorkflowRequest is the body for POST /v1/workflows.
 type CreateWorkflowRequest struct {
 	Name     string          `json:"name"`
-	Envelope json.RawMessage `json:"envelope"`
+	Envelope json.RawMessage `json:"envelope,omitempty"`
+	Compose  json.RawMessage `json:"compose,omitempty"`
 }
 
 // WorkflowRecord is one workflow returned by the cloud API.
