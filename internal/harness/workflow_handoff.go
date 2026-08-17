@@ -94,9 +94,20 @@ func (s *harnessRPCServer) handleWorkflowInput(req rpcRequest, state *rpcInvokeS
 		}
 	}
 
-	// Mid-stage: return the incoming handoff envelope.
+	// Mid-stage: return the work order only. A full prior envelope (notes,
+	// smash, parent conversation, handoff metadata) must not reach the child.
+	workOrder := pipeline.WorkOrderFromIncoming(ctx.IncomingHandoffJSON)
+	if len(workOrder) == 0 {
+		return rpcResponse{
+			ID: req.ID,
+			OK: true,
+			Result: map[string]any{
+				"available": false,
+			},
+		}
+	}
 	var handoff map[string]any
-	if err := json.Unmarshal(ctx.IncomingHandoffJSON, &handoff); err != nil {
+	if err := json.Unmarshal(workOrder, &handoff); err != nil {
 		return rpcError(req.ID, "failed to marshal handoff envelope", "WORKFLOW_CONTEXT_UNAVAILABLE")
 	}
 
