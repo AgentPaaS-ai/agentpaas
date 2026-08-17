@@ -220,3 +220,93 @@ func (c *CloudClient) GetWorkflowInstance(ctx context.Context, token string, id 
 	}
 	return &result, nil
 }
+
+// LiveCallRequest is the body for POST /v1/workflow-instances/{id}/live-calls.
+type LiveCallRequest struct {
+	NamedCallee    string          `json:"named_callee"`
+	WorkOrder      json.RawMessage `json:"work_order"`
+	IdempotencyKey string          `json:"idempotency_key"`
+}
+
+// LiveCallResponse is returned by POST /v1/workflow-instances/{id}/live-calls.
+type LiveCallResponse struct {
+	ChildID          string `json:"child_id"`
+	RunID            string `json:"run_id"`
+	ParentInstanceID string `json:"parent_instance_id"`
+	Reused           bool   `json:"reused"`
+}
+
+// HangupResponse is returned by POST /v1/workflow-instances/{id}/hangup.
+type HangupResponse struct {
+	Cancelled int `json:"cancelled"`
+}
+
+// LiveCall calls POST /v1/workflow-instances/{id}/live-calls with a Bearer token.
+func (c *CloudClient) LiveCall(ctx context.Context, token string, id string, req LiveCallRequest) (*LiveCallResponse, error) {
+	if invalidWorkflowID(id) {
+		return nil, fmt.Errorf("live-call: invalid id %q", id)
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("live-call: marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/workflow-instances/"+id+"/live-calls", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("live-call: create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, wrapTransportError("live-call", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("live-call: not authenticated (token may be expired or invalid)")
+	}
+	if !jsonOK(resp.StatusCode) {
+		return nil, statusError("live-call", resp)
+	}
+
+	var result LiveCallResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("live-call: decode response: %w", err)
+	}
+	return &result, nil
+}
+
+// Hangup calls POST /v1/workflow-instances/{id}/hangup with a Bearer token.
+func (c *CloudClient) Hangup(ctx context.Context, token string, id string) (*HangupResponse, error) {
+	if invalidWorkflowID(id) {
+		return nil, fmt.Errorf("hangup: invalid id %q", id)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/workflow-instances/"+id+"/hangup", nil)
+	if err != nil {
+		return nil, fmt.Errorf("hangup: create request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, wrapTransportError("hangup", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("hangup: not authenticated (token may be expired or invalid)")
+	}
+	if !jsonOK(resp.StatusCode) {
+		return nil, statusError("hangup", resp)
+	}
+
+	var result HangupResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("hangup: decode response: %w", err)
+	}
+	return &result, nil
+}

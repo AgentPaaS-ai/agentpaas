@@ -22,6 +22,8 @@ func TestCloudWorkflow_CommandsRegistered(t *testing.T) {
 		{"cloud", "workflow", "get"},
 		{"cloud", "workflow", "start"},
 		{"cloud", "workflow", "instance"},
+		{"cloud", "workflow", "live-call"},
+		{"cloud", "workflow", "hangup"},
 	}
 	for _, p := range paths {
 		if _, _, err := cmd.Find(p); err != nil {
@@ -240,5 +242,146 @@ func TestCloudWorkflowInstance_PrintsStatus(t *testing.T) {
 	}
 	if !strings.Contains(jsonOut, "stage_commits") || !strings.Contains(jsonOut, "handoff-preview-ok") {
 		t.Errorf("JSON should include stage_commits, got: %q", jsonOut)
+	}
+}
+
+func TestCloudWorkflowLiveCallAndHangup_HTTPMock(t *testing.T) {
+	cases := []struct {
+		name       string
+		args       []string
+		wantMethod string
+		wantPath   string
+		wantStatus int
+		resp       any
+		checkReq   func(t *testing.T, r *http.Request)
+		wantOut    []string
+		wantErr    string
+		wantHits   int
+	}{
+		{
+			name:       "live-call posts callee work_order and idempotency_key",
+			args:       []string{"cloud", "workflow", "live-call", "wfi_parent", "--callee", "dep_callee", "--work-order-json", `{"task":"summarize"}`, "--idempotency-key", "idem-1"},
+			wantMethod: http.MethodPost,
+			wantPath:   "/v1/workflow-instances/wfi_parent/live-calls",
+			wantStatus: http.StatusCreated,
+			resp: map[string]any{
+				"child_id":           "run_child",
+				"run_id":             "run_child",
+				"parent_instance_id": "wfi_parent",
+				"reused":             false,
+			},
+			checkReq: func(t *testing.T, r *http.Request) {
+				t.Helper()
+				if auth := r.Header.Get("Authorization"); auth != "Bearer apc_wf_token" {
+					t.Errorf("Authorization = %q", auth)
+				}
+				var body struct {
+					NamedCallee    string          `json:"named_callee"`
+					WorkOrder      json.RawMessage `json:"work_order"`
+					IdempotencyKey string          `json:"idempotency_key"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatalf("decode body: %v", err)
+				}
+				if body.NamedCallee != "dep_callee" {
+					t.Errorf("named_callee = %q, want dep_callee", body.NamedCallee)
+				}
+				if body.IdempotencyKey != "idem-1" {
+					t.Errorf("idempotency_key = %q, want idem-1", body.IdempotencyKey)
+				}
+				var wo map[string]any
+				if err := json.Unmarshal(body.WorkOrder, &wo); err != nil {
+					t.Fatalf("decode work_order: %v", err)
+				}
+				if wo["task"] != "summarize" {
+					t.Errorf("work_order.task = %v, want summarize", wo["task"])
+				}
+			},
+			wantOut:  []string{"run_child", "wfi_parent"},
+			wantHits: 1,
+		},
+		{
+			name:       "hangup posts instance hangup and prints cancelled",
+			args:       []string{"cloud", "workflow", "hangup", "wfi_parent"},
+			wantMethod: http.MethodPost,
+			wantPath:   "/v1/workflow-instances/wfi_parent/hangup",
+			wantStatus: http.StatusOK,
+			resp:       map[string]any{"cancelled": 3},
+			wantOut:    []string{"3"},
+			wantHits:   1,
+		},
+		{
+			name:     "live-call missing callee sends no HTTP",
+			args:     []string{"cloud", "workflow", "live-call", "wfi_parent", "--work-order-json", `{}`, "--idempotency-key", "k"},
+			wantErr:  "callee",
+			wantHits: 0,
+		},
+		{
+			name:     "live-call missing work-order-json sends no HTTP",
+			args:     []string{"cloud", "workflow", "live-call", "wfi_parent", "--callee", "dep_callee", "--idempotency-key", "k"},
+			wantErr:  "work-order-json",
+			wantHits: 0,
+		},
+		{
+			name:     "live-call missing idempotency-key sends no HTTP",
+			args:     []string{"cloud", "workflow", "live-call", "wfi_parent", "--callee", "dep_callee", "--work-order-json", `{}`},
+			wantErr:  "idempotency-key",
+			wantHits: 0,
+		},
+		{
+			name:     "live-call rejects non-object work-order-json",
+			args:     []string{"cloud", "workflow", "live-call", "wfi_parent", "--callee", "dep_callee", "--work-order-json", `[]`, "--idempotency-key", "k"},
+			wantErr:  "work-order-json",
+			wantHits: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := setupFakeTokenStore(t)
+			_ = store.Set(context.Background(), "apc_wf_token")
+
+			hits := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				hits++
+				if tc.wantHits == 0 {
+					t.Errorf("HTTP must not be sent, got %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				if r.Method != tc.wantMethod || r.URL.Path != tc.wantPath {
+					t.Errorf("request = %s %s, want %s %s", r.Method, r.URL.Path, tc.wantMethod, tc.wantPath)
+				}
+				if tc.checkReq != nil {
+					tc.checkReq(t, r)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.wantStatus)
+				_ = json.NewEncoder(w).Encode(tc.resp)
+			}))
+			defer func() { server.Close() }()
+
+			t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+			stdout, stderr, err := executeCloudCmd(t, "", tc.args...)
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got stdout=%q", tc.wantErr, stdout)
+				}
+				combined := err.Error() + stderr
+				if !strings.Contains(combined, tc.wantErr) {
+					t.Errorf("error should mention %q, got: %v", tc.wantErr, combined)
+				}
+			} else if err != nil {
+				t.Fatalf("cmd: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+			}
+			for _, want := range tc.wantOut {
+				if !strings.Contains(stdout, want) {
+					t.Errorf("stdout should contain %q, got: %q", want, stdout)
+				}
+			}
+			if hits != tc.wantHits {
+				t.Errorf("HTTP hits = %d, want %d", hits, tc.wantHits)
+			}
+		})
 	}
 }
