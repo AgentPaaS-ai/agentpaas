@@ -1362,6 +1362,14 @@ func runCloudRegistryList(cmd *cobra.Command, kind, q string) error {
 		}
 		return fmt.Errorf("cloud registry list: %w", err)
 	}
+	if err := rejectPresentComponentSchema(result.SchemaVersion); err != nil {
+		return err
+	}
+	for _, c := range result.Components {
+		if err := rejectPresentComponentSchema(c.SchemaVersion); err != nil {
+			return err
+		}
+	}
 	if jsonOutput(cmd) {
 		return printTextOrJSON(true, result, nil)
 	}
@@ -1392,6 +1400,11 @@ func runCloudRegistryGet(cmd *cobra.Command, idOrName string, inspect bool) erro
 			return printNotLoggedIn(cmd)
 		}
 		return fmt.Errorf("cloud registry get: %w", err)
+	}
+	if card.Raw != nil {
+		if lockHad, ok := card.Raw["_lock_had_schema_version"].(bool); ok && !lockHad {
+			return fmt.Errorf("unsupported schema_version: missing (want %s)", cloudclient.ComponentIndexSchemaV1)
+		}
 	}
 	if err := rejectUnknownComponentSchema(card.SchemaVersion); err != nil {
 		return err
@@ -1425,6 +1438,13 @@ func rejectUnknownComponentSchema(version string) error {
 		return fmt.Errorf("unsupported schema_version: missing (want %s)", cloudclient.ComponentIndexSchemaV1)
 	}
 	return fmt.Errorf("unsupported schema_version %q (want %s)", version, cloudclient.ComponentIndexSchemaV1)
+}
+
+func rejectPresentComponentSchema(version string) error {
+	if version == "" {
+		return nil
+	}
+	return rejectUnknownComponentSchema(version)
 }
 
 func printCloudRegistryAsset(out io.Writer, label, id, kind, status, imageDigest string) {

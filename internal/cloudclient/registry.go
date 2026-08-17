@@ -83,19 +83,21 @@ const ComponentIndexSchemaV1 = "component-index/1"
 
 // RegistryComponentSummary is one list/search row.
 type RegistryComponentSummary struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	Name        string `json:"name"`
-	Title       string `json:"title,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Description string `json:"description,omitempty"`
-	EgressCount int    `json:"egress_count"`
+	ID            string `json:"id"`
+	Kind          string `json:"kind"`
+	Name          string `json:"name"`
+	Title         string `json:"title,omitempty"`
+	Version       string `json:"version,omitempty"`
+	Description   string `json:"description,omitempty"`
+	EgressCount   int    `json:"egress_count"`
+	SchemaVersion string `json:"schema_version,omitempty"`
 }
 
 // RegistryComponentList is GET /v1/registry/components.
 type RegistryComponentList struct {
-	Components []RegistryComponentSummary `json:"components"`
-	NextCursor string                     `json:"next_cursor,omitempty"`
+	SchemaVersion string                     `json:"schema_version,omitempty"`
+	Components    []RegistryComponentSummary `json:"components"`
+	NextCursor    string                     `json:"next_cursor,omitempty"`
 }
 
 // RegistryComponentCard is the full component index JSON.

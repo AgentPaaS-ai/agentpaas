@@ -74,8 +74,12 @@ func TestAdversaryT14_GetAcceptsServerStampedV1(t *testing.T) {
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
 
 	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "registry", "inspect", "noschema-mcp", "--json")
-	if err != nil {
-		t.Fatalf("inspect: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	if err == nil {
+		t.Fatal("expected reject of server-stamped v1 when lock omitted schema_version")
+	}
+	combined := err.Error() + stderr + stdout
+	if !strings.Contains(combined, "schema_version") {
+		t.Fatalf("ADVERSARY BREAK: inspect error must mention schema_version, got %s", combined)
 	}
 	// ADVERSARY BREAK: CLI must not treat a server-stamped v1 as authentic when
 	// the lock omitted schema_version. Presence of the stamp-only card is the leak.
