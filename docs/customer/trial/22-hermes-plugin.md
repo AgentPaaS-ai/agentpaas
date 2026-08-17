@@ -22,3 +22,18 @@ A choice stage does not run an agent. After a classifier stage succeeds, the pla
 - **Audited.** A match records the value and the child that started. A miss records the value and the allowed set.
 
 Create the branch workflows first, then the parent. Classify as refund, escalate, or close — anything else fails closed.
+
+## Pipeline and phone call
+
+The default is a pipeline: A writes a work order, then dies. B and C run.
+A starts again with its notes plus their answers. Children never see A's
+notes.
+
+Use a phone call only when a living A is required. One supervisor stays
+up and phones named teammates from the signed list. A call outside that
+list fails. Stopping A cancels that A's children only.
+
+The platform infers the shape from the pack. Set the max duration from
+the human's job.
+
+See [Compose workflows](../compose-workflows.md).
