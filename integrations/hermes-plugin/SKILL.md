@@ -472,6 +472,21 @@ Mermaid graph of that envelope with live stage lights.
 A standalone agent is a one-node workflow. If they only asked for one
 agent, stay on the single-agent path above.
 
+### Pipeline and phone call
+
+Infer the shape from the pack.
+
+**Pipeline (default).** A writes a work order, then dies. B and C run.
+A starts again with its notes plus their answers. Children never see
+A's notes. Use this when A does not need to stay up.
+
+**Phone call.** Use only when a living A is required. One supervisor
+stays up and phones named teammates from the signed list. A call
+outside that list fails. Stopping A cancels that A's children only.
+
+Set the max duration from the human's job (seconds under the hood).
+Do not tell the user to set sleepAfter.
+
 ### What you compose (v0.4)
 
 Three envelope stage shapes. Nothing else.
@@ -661,12 +676,15 @@ that plainly. Do not add a default route to "make it work".
 
 ### Live mid-invoke call
 
-If the user wants "A stays up and phones B like a tool", that is not a
-second workflow engine. A may call only specialists already named in
-the same signed envelope. Use the installed SDK peer-call documented
+Use a phone call only when a living A is required. One supervisor stays
+up and phones named teammates from the signed list. A call outside that
+list fails. Stopping A cancels that A's children only.
+
+This is not a second workflow engine. A may phone only teammates already
+named on the signed list. Use the installed SDK peer-call documented
 in the AgentPaaS SDK on this machine. If that call is not in the
-installed SDK, say so and compose with envelope stages instead. Do not
-invent an SDK verb. Standalone A cannot call other agents.
+installed SDK, say so and compose a pipeline instead. Do not invent an
+SDK verb. Standalone A cannot call other agents.
 
 ### Anti-fabrication for workflows
 
