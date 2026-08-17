@@ -118,6 +118,9 @@ type AgentLock struct {
 	// (BUG-040). Populated at pack time when workflow.yaml contains delegations.
 	// It is signed into the lockfile and injected into the harness at run time.
 	CommunicationSnapshot *delegation.CommunicationSnapshot `json:"communication_snapshot,omitempty"`
+	// ComponentIndex is the pack-time tenant component card. Signed into the
+	// lock so a same-name repack with different tools yields a new digest.
+	ComponentIndex *ComponentIndex `json:"component_index,omitempty"`
 }
 
 // ReproducibilityMeta holds metadata for verifying build reproducibility.
@@ -634,6 +637,8 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, err
 	}
 
+	stampComponentIndex(lock)
+
 	if err := signAgentLock(lock, cfg); err != nil {
 		return nil, err
 	}
@@ -707,7 +712,7 @@ func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID strin
 			agentName,                   // callerDeploymentID placeholder (set at deploy time)
 			agentName,                   // callerPackageName from lock
 			cfg.BuildResult.ImageDigest, // callerPackageDigest from image digest
-			0,                          // snapshotGeneration starts at 0
+			0,                           // snapshotGeneration starts at 0
 		)
 		if err != nil {
 			log.Printf("pack: build communication snapshot for agent %s: %v", agentName, err)
@@ -1251,7 +1256,44 @@ func lockCanonicalMap(lock *AgentLock, includeSignatures bool) map[string]interf
 	if lock.CommunicationSnapshot != nil {
 		m["communication_snapshot"] = lock.CommunicationSnapshot
 	}
+	if lock.ComponentIndex != nil {
+		if ci := componentIndexCanonicalMap(lock.ComponentIndex); ci != nil {
+			m["component_index"] = ci
+		}
+	}
 	return m
+}
+
+func componentIndexCanonicalMap(idx *ComponentIndex) map[string]interface{} {
+	if idx == nil {
+		return nil
+	}
+	raw, err := json.Marshal(idx)
+	if err != nil {
+		return nil
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(raw, &out); err != nil || len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func stampComponentIndex(lock *AgentLock) {
+	if lock == nil {
+		return
+	}
+	publisher := ""
+	if lock.Publisher != nil {
+		publisher = lock.Publisher.Name
+	}
+	lock.ComponentIndex = BuildComponentIndex(lock.AgentYAML, ComponentIndexProvenance{
+		ImageDigest:  lock.ImageDigest,
+		SBOMDigest:   lock.SBOMDigest,
+		PolicyDigest: lock.PolicyDigest,
+		Signature:    lock.SignatureReferrer,
+		Publisher:    publisher,
+	})
 }
 
 // agentYAMLCanonicalMap returns a deterministic map representation of AgentYAML
