@@ -2785,17 +2785,29 @@ func (s *controlServer) writeDelegationSnapshotForRun(deployedDir, gatewayConfig
 		})
 	}
 
+	workflowKind := ""
+	if lock.WorkflowYAML != nil {
+		workflowKind = lock.WorkflowYAML.Kind
+	}
+	// Pipeline stages have no live-call verb. Persist the bit so a binding
+	// on the snapshot cannot re-enable delegate_task after load.
+	liveCallForbidden := workflowKind == pack.WorkflowKindPipeline
+
 	sidecar := struct {
-		Snapshot            delegation.CommunicationSnapshot    `json:"snapshot"`
-		BindingCapabilities map[string]string                   `json:"binding_capabilities"`
-		NetworkAlias        string                              `json:"network_alias"`
-		WorkflowID          string                              `json:"workflow_id"`
-		CalleeIngressAllow  []delegation.CalleeIngressRule     `json:"callee_ingress_allow"`
+		Snapshot            delegation.CommunicationSnapshot `json:"snapshot"`
+		BindingCapabilities map[string]string                `json:"binding_capabilities"`
+		NetworkAlias        string                           `json:"network_alias"`
+		WorkflowID          string                           `json:"workflow_id"`
+		WorkflowKind        string                           `json:"workflow_kind"`
+		LiveCallForbidden   bool                             `json:"live_call_forbidden"`
+		CalleeIngressAllow  []delegation.CalleeIngressRule   `json:"callee_ingress_allow"`
 	}{
 		Snapshot:            *snap,
 		BindingCapabilities: bindingCapabilities,
 		NetworkAlias:        snap.CallerDeploymentID,
 		WorkflowID:          snap.WorkflowID,
+		WorkflowKind:        workflowKind,
+		LiveCallForbidden:   liveCallForbidden,
 		CalleeIngressAllow:  calleeIngressAllow,
 	}
 
