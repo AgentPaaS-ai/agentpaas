@@ -80,7 +80,7 @@ func TestWorkflowInput_MidStage_ReturnsEnvelope(t *testing.T) {
 	s := newTestRPCServer(t)
 	setTestInvoke(t, s)
 
-	incomingJSON := json.RawMessage(`{"schema_version":"agentpaas.workflow.handoff/v1","workflow_id":"wf_1","handoff_id":"ho_1","from_node_id":"stage_a","to_node_id":"stage_b","producer_run_id":"run_1","producer_attempt_id":"att_1","producer_result_digest":"sha256:` + strings.Repeat("a", 64) + `","sequence":1,"created_at":"2026-07-16T00:00:00Z","classification":"internal","context":{"schema":"ns/test/v1","value":{"notes":"hello"}}}`)
+	incomingJSON := json.RawMessage(`{"schema_version":"agentpaas.workflow.handoff/v1","workflow_id":"wf_1","handoff_id":"ho_1","from_node_id":"stage_a","to_node_id":"stage_b","producer_run_id":"run_1","producer_attempt_id":"att_1","producer_result_digest":"sha256:` + strings.Repeat("a", 64) + `","sequence":1,"created_at":"2026-07-16T00:00:00Z","classification":"internal","context":{"schema":"ns/test/v1","value":{"work_order":{"task":"hello"}}}}`)
 
 	setPipelineContext(s, PipelineStageContext{
 		WorkflowKind:       "pipeline",
@@ -107,6 +107,59 @@ func TestWorkflowInput_MidStage_ReturnsEnvelope(t *testing.T) {
 	}
 	if result["handoff"] == nil {
 		t.Fatal("expected handoff in result")
+	}
+}
+
+func TestWorkflowInput_MidStage_WorkOrderOnly(t *testing.T) {
+	s := newTestRPCServer(t)
+	setTestInvoke(t, s)
+
+	incomingJSON := json.RawMessage(`{
+		"schema_version":"agentpaas.workflow.handoff/v1",
+		"workflow_id":"wf_1",
+		"handoff_id":"ho_1",
+		"from_node_id":"stage_a",
+		"to_node_id":"stage_b",
+		"classification":"internal",
+		"context":{"schema":"ns/test/v1","value":{
+			"work_order":{"task":"summarize"},
+			"notes":"private A notes",
+			"query":"smash-query",
+			"conversation":[{"role":"user","text":"parent chat"}]
+		}}
+	}`)
+
+	setPipelineContext(s, PipelineStageContext{
+		WorkflowKind:        "pipeline",
+		NodeID:              "stage_b",
+		StageOrder:          1,
+		IsFinalStage:        false,
+		IncomingHandoffJSON: incomingJSON,
+		LeaseExpiresAt:      time.Now().Add(time.Hour),
+	})
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "wo-1",
+		Method: "workflow_input",
+	})
+	if !resp.OK {
+		t.Fatalf("expected ok, got error: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected map result, got %T", resp.Result)
+	}
+	handoff, ok := result["handoff"].(map[string]any)
+	if !ok {
+		t.Fatalf("handoff is %T, want map", result["handoff"])
+	}
+	if handoff["task"] != "summarize" {
+		t.Fatalf("work order task missing: %#v", handoff)
+	}
+	for _, leaked := range []string{"notes", "query", "conversation", "handoff_id", "workflow_id", "work_order", "context"} {
+		if _, ok := handoff[leaked]; ok {
+			t.Errorf("workflow_input leaked %q: %#v", leaked, handoff)
+		}
 	}
 }
 
@@ -555,7 +608,7 @@ func TestWorkflowInputRPC_FromPipelineParams_MidStage(t *testing.T) {
 	setTestInvoke(t, s)
 
 	// Build a full handoff envelope JSON for a mid-stage scenario.
-	handoffJSON := json.RawMessage(`{"schema_version":"0.3.0","handoff_id":"ho_test","workflow_id":"wf_test","source_node_id":"stage_0","target_node_id":"stage_1","context_json":"{\"notes\":\"hello\"}","classification":"internal","created_at":"2026-07-24T00:00:00Z"}`)
+	handoffJSON := json.RawMessage(`{"schema_version":"0.3.0","handoff_id":"ho_test","workflow_id":"wf_test","source_node_id":"stage_0","target_node_id":"stage_1","context_json":"{\"work_order\":{\"task\":\"hello\"},\"notes\":\"secret\"}","classification":"internal","created_at":"2026-07-24T00:00:00Z"}`)
 
 	params := pipeline.StageContextParams{
 		WorkflowKind:        "pipeline",
@@ -586,7 +639,10 @@ func TestWorkflowInputRPC_FromPipelineParams_MidStage(t *testing.T) {
 	if handoff == nil {
 		t.Fatal("expected handoff in result for mid-stage from params")
 	}
-	if handoff["handoff_id"] != "ho_test" {
-		t.Fatalf("expected handoff_id=ho_test, got %v", handoff["handoff_id"])
+	if handoff["task"] != "hello" {
+		t.Fatalf("expected work-order task=hello, got %v", handoff["task"])
+	}
+	if _, ok := handoff["handoff_id"]; ok {
+		t.Fatalf("workflow_input must not return envelope metadata: %v", handoff)
 	}
 }
