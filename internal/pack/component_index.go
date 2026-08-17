@@ -299,6 +299,9 @@ func applyComponentIndexOverlay(idx *ComponentIndex, overlay map[string]interfac
 	if idx == nil || overlay == nil {
 		return
 	}
+	if v := asTrimmedString(overlay["schema_version"]); v != "" {
+		idx.SchemaVersion = v
+	}
 	if v := asTrimmedString(overlay["kind"]); v != "" {
 		idx.Kind = mapComponentKind(v)
 	}
@@ -315,7 +318,7 @@ func applyComponentIndexOverlay(idx *ComponentIndex, overlay map[string]interfac
 		idx.Description = v
 	}
 	if hosts := stringList(overlay["egress"]); hosts != nil {
-		idx.Egress = hosts
+		idx.Egress = intersectEgressWithPolicy(hosts, idx.Egress)
 	}
 	if raw, ok := overlay["bindings"]; ok {
 		idx.Bindings = parseBindings(raw)
@@ -697,6 +700,36 @@ func stringList(v interface{}) []string {
 		if s := asTrimmedString(item); s != "" {
 			out = append(out, s)
 		}
+	}
+	return out
+}
+
+// intersectEgressWithPolicy keeps overlay hosts that already exist on the
+// signed agent policy. Overlay cannot grant a host the agent did not declare.
+func intersectEgressWithPolicy(overlay, policy []string) []string {
+	allowed := make(map[string]string, len(policy))
+	for _, host := range policy {
+		key := strings.ToLower(strings.TrimSpace(host))
+		if key == "" {
+			continue
+		}
+		if _, exists := allowed[key]; !exists {
+			allowed[key] = host
+		}
+	}
+	out := make([]string, 0, len(overlay))
+	seen := make(map[string]struct{}, len(overlay))
+	for _, host := range overlay {
+		key := strings.ToLower(strings.TrimSpace(host))
+		canon, ok := allowed[key]
+		if !ok {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, canon)
 	}
 	return out
 }
