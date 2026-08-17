@@ -1203,12 +1203,15 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 
 // newCloudRegistryCmd creates the `agentpaas cloud registry` command.
 func newCloudRegistryCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "registry",
 		Aliases: []string{"list"},
 		Short:   "List tenant assets and the platform MCP catalog",
 		Long: `List assets owned by the authenticated tenant together with the
 platform-provided MCP server catalog.
+
+Use 'agentpaas cloud registry list|get|inspect|search' for the tenant
+component index. Bare 'registry' still prints the catalog dump.
 
 Requires a valid login. Use 'agentpaas cloud login' first.`,
 		Args: cobra.NoArgs,
@@ -1282,6 +1285,146 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			return nil
 		},
 	}
+	cmd.AddCommand(newCloudRegistryListCmd())
+	cmd.AddCommand(newCloudRegistryGetCmd())
+	cmd.AddCommand(newCloudRegistryInspectCmd())
+	cmd.AddCommand(newCloudRegistrySearchCmd())
+	return cmd
+}
+
+func newCloudRegistryListCmd() *cobra.Command {
+	var kind, q string
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List tenant components from the component index",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCloudRegistryList(cmd, kind, q)
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "", "Filter by kind: agent, mcp, or tool")
+	cmd.Flags().StringVar(&q, "q", "", "Substring match on name, title, or description")
+	return cmd
+}
+
+func newCloudRegistrySearchCmd() *cobra.Command {
+	var kind string
+	cmd := &cobra.Command{
+		Use:   "search <query>",
+		Short: "Search tenant components by name, title, or description",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCloudRegistryList(cmd, kind, args[0])
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "", "Filter by kind: agent, mcp, or tool")
+	return cmd
+}
+
+func newCloudRegistryGetCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "get <id|name>",
+		Short: "Get a tenant component index card",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCloudRegistryGet(cmd, args[0], false)
+		},
+	}
+}
+
+func newCloudRegistryInspectCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "inspect <id|name>",
+		Short: "Inspect a tenant component index card with provenance",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCloudRegistryGet(cmd, args[0], true)
+		},
+	}
+}
+
+func runCloudRegistryList(cmd *cobra.Command, kind, q string) error {
+	token, err := resolveToken(cmd)
+	if err != nil {
+		if strings.Contains(err.Error(), "not logged in") {
+			return printNotLoggedIn(cmd)
+		}
+		return fmt.Errorf("cloud registry list: %w", err)
+	}
+	client := cloudclient.NewCloudClient(resolveAPIURL())
+	result, err := client.ListRegistryComponents(cmd.Context(), token, cloudclient.ListRegistryComponentsQuery{
+		Kind: strings.TrimSpace(kind),
+		Q:    strings.TrimSpace(q),
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "not authenticated") {
+			return printNotLoggedIn(cmd)
+		}
+		return fmt.Errorf("cloud registry list: %w", err)
+	}
+	if jsonOutput(cmd) {
+		return printTextOrJSON(true, result, nil)
+	}
+	out := cmd.OutOrStdout()
+	if len(result.Components) == 0 {
+		_, _ = fmt.Fprintln(out, "No components.")
+		return nil
+	}
+	_, _ = fmt.Fprintf(out, "%-8s %-24s %-10s %-8s %s\n", "KIND", "NAME", "VERSION", "EGRESS", "DESCRIPTION")
+	for _, c := range result.Components {
+		_, _ = fmt.Fprintf(out, "%-8s %-24s %-10s %-8d %s\n", c.Kind, c.Name, c.Version, c.EgressCount, c.Description)
+	}
+	return nil
+}
+
+func runCloudRegistryGet(cmd *cobra.Command, idOrName string, inspect bool) error {
+	token, err := resolveToken(cmd)
+	if err != nil {
+		if strings.Contains(err.Error(), "not logged in") {
+			return printNotLoggedIn(cmd)
+		}
+		return fmt.Errorf("cloud registry get: %w", err)
+	}
+	client := cloudclient.NewCloudClient(resolveAPIURL())
+	card, err := client.GetRegistryComponent(cmd.Context(), token, strings.TrimSpace(idOrName))
+	if err != nil {
+		if strings.Contains(err.Error(), "not authenticated") {
+			return printNotLoggedIn(cmd)
+		}
+		return fmt.Errorf("cloud registry get: %w", err)
+	}
+	if err := rejectUnknownComponentSchema(card.SchemaVersion); err != nil {
+		return err
+	}
+	if jsonOutput(cmd) {
+		payload := any(card.Raw)
+		if payload == nil {
+			payload = card
+		}
+		return printTextOrJSON(true, payload, nil)
+	}
+	out := cmd.OutOrStdout()
+	_, _ = fmt.Fprintf(out, "%s  %s  %s\n", card.Kind, card.Name, card.Version)
+	if card.Description != "" {
+		_, _ = fmt.Fprintf(out, "%s\n", card.Description)
+	}
+	_, _ = fmt.Fprintf(out, "egress: %d\n", len(card.Egress))
+	if inspect {
+		if v, ok := card.Raw["provenance"]; ok {
+			_, _ = fmt.Fprintf(out, "provenance: %v\n", v)
+		}
+	}
+	return nil
+}
+
+func rejectUnknownComponentSchema(version string) error {
+	if version == cloudclient.ComponentIndexSchemaV1 {
+		return nil
+	}
+	if version == "" {
+		return fmt.Errorf("unsupported schema_version: missing (want %s)", cloudclient.ComponentIndexSchemaV1)
+	}
+	return fmt.Errorf("unsupported schema_version %q (want %s)", version, cloudclient.ComponentIndexSchemaV1)
 }
 
 func printCloudRegistryAsset(out io.Writer, label, id, kind, status, imageDigest string) {

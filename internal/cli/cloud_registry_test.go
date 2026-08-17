@@ -223,3 +223,201 @@ func TestCloudDeploy_TypeHelp(t *testing.T) {
 		t.Fatalf("deploy help = %q, want agent|mcp|tool type help", stdout)
 	}
 }
+
+func sampleComponentCard() map[string]any {
+	return map[string]any{
+		"schema_version": "component-index/1",
+		"id":             "img_github",
+		"kind":           "mcp",
+		"name":           "github-mcp",
+		"title":          "GitHub helpers",
+		"version":        "1.0.0",
+		"description":    "GitHub issues",
+		"egress":         []string{"api.github.com"},
+		"mcp": map[string]any{
+			"protocolVersion": "2025-06-18",
+			"tools": []map[string]any{{
+				"name":         "list_issues",
+				"title":        "List issues",
+				"inputSchema":  map[string]any{"type": "object"},
+				"outputSchema": map[string]any{"type": "object"},
+			}},
+		},
+	}
+}
+
+func TestCloudRegistry_ListComponentsJSON(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_reg_list"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/registry/components" {
+			t.Errorf("path = %q, want /v1/registry/components", r.URL.Path)
+		}
+		if r.URL.Query().Get("kind") != "mcp" {
+			t.Errorf("kind = %q, want mcp", r.URL.Query().Get("kind"))
+		}
+		if r.URL.Query().Get("q") != "github" {
+			t.Errorf("q = %q, want github", r.URL.Query().Get("q"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"components": []map[string]any{{
+				"id":           "img_github",
+				"kind":         "mcp",
+				"name":         "github-mcp",
+				"title":        "GitHub helpers",
+				"version":      "1.0.0",
+				"description":  "GitHub issues",
+				"egress_count": 1,
+			}},
+			"next_cursor": nil,
+		})
+	}))
+	defer func() { server.Close() }()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "registry", "list", "--kind", "mcp", "--q", "github", "--json")
+	if err != nil {
+		t.Fatalf("registry list --json: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "github-mcp") || !strings.Contains(stdout, "egress_count") {
+		t.Fatalf("list json = %q", stdout)
+	}
+}
+
+func TestCloudRegistry_ListComponentsText(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_reg_list_text"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"components": []map[string]any{{
+				"id":           "img_github",
+				"kind":         "mcp",
+				"name":         "github-mcp",
+				"version":      "1.0.0",
+				"description":  "GitHub issues",
+				"egress_count": 2,
+			}},
+		})
+	}))
+	defer func() { server.Close() }()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "registry", "list")
+	if err != nil {
+		t.Fatalf("registry list: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	for _, want := range []string{"mcp", "github-mcp", "1.0.0", "2", "GitHub issues"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("list text = %q, want %q", stdout, want)
+		}
+	}
+}
+
+func TestCloudRegistry_GetInspectSearchJSON(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_reg_get"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/registry/components/github-mcp":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(sampleComponentCard())
+		case r.URL.Path == "/v1/registry/components" && r.URL.Query().Get("q") == "github issues":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"components": []map[string]any{{
+					"id":           "img_github",
+					"kind":         "mcp",
+					"name":         "github-mcp",
+					"version":      "1.0.0",
+					"description":  "GitHub issues",
+					"egress_count": 1,
+				}},
+			})
+		default:
+			t.Errorf("unexpected path %s?%s", r.URL.Path, r.URL.RawQuery)
+			http.NotFound(w, r)
+		}
+	}))
+	defer func() { server.Close() }()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "registry", "get", "github-mcp", "--json")
+	if err != nil {
+		t.Fatalf("registry get: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, `"schema_version": "component-index/1"`) || !strings.Contains(stdout, "list_issues") {
+		t.Fatalf("get json = %q", stdout)
+	}
+
+	stdout, stderr, err = executeCloudCmd(t, "", "cloud", "registry", "inspect", "github-mcp", "--json")
+	if err != nil {
+		t.Fatalf("registry inspect: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "list_issues") || !strings.Contains(stdout, "inputSchema") {
+		t.Fatalf("inspect json = %q", stdout)
+	}
+
+	stdout, stderr, err = executeCloudCmd(t, "", "cloud", "registry", "search", "github issues", "--json")
+	if err != nil {
+		t.Fatalf("registry search: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "github-mcp") {
+		t.Fatalf("search json = %q", stdout)
+	}
+}
+
+func TestCloudRegistry_SchemaVersionFailClosed(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_reg_schema"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		card := sampleComponentCard()
+		card["schema_version"] = "component-index/99"
+		_ = json.NewEncoder(w).Encode(card)
+	}))
+	defer func() { server.Close() }()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "registry", "inspect", "github-mcp", "--json")
+	if err == nil {
+		t.Fatal("expected error for unknown schema_version")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "schema_version") {
+		t.Fatalf("error = %s, want schema_version rejection", combined)
+	}
+}
+
+func TestCloudRegistry_CrossTenantNotFound(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	if err := store.Set(context.Background(), "apc_reg_404"); err != nil {
+		t.Fatalf("store token: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "not_found"})
+	}))
+	defer func() { server.Close() }()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "registry", "get", "secret-mcp")
+	if err == nil {
+		t.Fatal("expected not found")
+	}
+	combined := err.Error() + stderr
+	if !strings.Contains(combined, "not found") && !strings.Contains(combined, "404") && !strings.Contains(combined, "not_found") {
+		t.Fatalf("error = %s, want not found", combined)
+	}
+}
