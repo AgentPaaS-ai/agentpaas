@@ -539,6 +539,8 @@ func (s *harnessRPCServer) LoadDelegationSnapshot(path string) error {
 		BindingCapabilities map[string]string                `json:"binding_capabilities"`
 		NetworkAlias        string                           `json:"network_alias"`
 		WorkflowID          string                           `json:"workflow_id"`
+		WorkflowKind        string                           `json:"workflow_kind"`
+		LiveCallForbidden   bool                             `json:"live_call_forbidden"`
 		CalleeIngressAllow  []delegation.CalleeIngressRule   `json:"callee_ingress_allow"`
 	}
 	if err := json.Unmarshal(data, &sidecar); err != nil {
@@ -551,6 +553,7 @@ func (s *harnessRPCServer) LoadDelegationSnapshot(path string) error {
 		NetworkAlias:        sidecar.NetworkAlias,
 		Store:               delegation.NewMemoryStore(),
 		CalleeIngressAllow:  sidecar.CalleeIngressAllow,
+		LiveCallForbidden:   sidecar.LiveCallForbidden || sidecar.WorkflowKind == "pipeline",
 	}
 
 	s.setDelegationTrustState(dts)
