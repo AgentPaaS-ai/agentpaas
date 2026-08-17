@@ -12,13 +12,13 @@ import (
 // makeSnapshot creates a test CommunicationSnapshot with the given bindings.
 func makeDelegationSnapshot() delegation.CommunicationSnapshot {
 	snap := delegation.CommunicationSnapshot{
-		SchemaVersion:        delegation.CurrentSchemaVersion,
-		SnapshotGeneration:   1,
-		WorkflowID:           "wf-deleg-test",
-		TenantID:             "tenant-test",
-		CallerDeploymentID:   "dep-caller-1",
-		CallerPackageName:    "weather-agent",
-		CallerPackageDigest:  "sha256:caller-digest",
+		SchemaVersion:       delegation.CurrentSchemaVersion,
+		SnapshotGeneration:  1,
+		WorkflowID:          "wf-deleg-test",
+		TenantID:            "tenant-test",
+		CallerDeploymentID:  "dep-caller-1",
+		CallerPackageName:   "weather-agent",
+		CallerPackageDigest: "sha256:caller-digest",
 		Bindings: []delegation.WorkflowDelegationBinding{
 			{
 				BindingID:            "report.verify",
@@ -312,11 +312,11 @@ func TestListTaskEvents(t *testing.T) {
 func TestResponse_NoForbiddenFields(t *testing.T) {
 	// Test that scrubResponse strips forbidden patterns.
 	scrubbed := scrubResponse(map[string]any{
-		"task_id":  "task-abc",
+		"task_id":          "task-abc",
 		"capability_token": "leak-this",
-		"endpoint": "http://evil.test",
-		"host":     "bad-host",
-		"status":   "ADMITTED",
+		"endpoint":         "http://evil.test",
+		"host":             "bad-host",
+		"status":           "ADMITTED",
 	}, delegateTaskResponseFields)
 
 	// Only task_id and status should remain.
@@ -454,5 +454,164 @@ func TestDelegateTask_MissingIdempotencyKey(t *testing.T) {
 	}
 	if resp.Code != "invalid_params" {
 		t.Errorf("expected code invalid_params, got %q", resp.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// M13.15: signed snapshot ACL — no live-call unless callee is on the list
+// ---------------------------------------------------------------------------
+
+func TestDelegateTask_EmptyBindingsDenied(t *testing.T) {
+	s := setupDelegationServer(t)
+	dts := s.getDelegationTrustState()
+	dts.Snapshot.Bindings = nil
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-empty-bindings",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "report.verify",
+			"idempotency_key": "idem-empty-bindings",
+		},
+	})
+	if !resp.OK {
+		t.Fatalf("empty bindings must return a DENIED task, not an RPC error: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	status, _ := result["status"].(string)
+	if status != delegation.TaskStatusDenied.String() {
+		t.Fatalf("expected status DENIED (not a start), got %q", status)
+	}
+	taskID, _ := result["task_id"].(string)
+	task, err := dts.Store.GetTask(context.Background(), delegation.TaskID(taskID))
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.Status != delegation.TaskStatusDenied {
+		t.Errorf("stored task status = %s, want DENIED", task.Status)
+	}
+	if task.DenialReason != "pipeline_or_child" {
+		t.Errorf("DenialReason = %q, want pipeline_or_child", task.DenialReason)
+	}
+}
+
+func TestDelegateTask_LiveCallForbiddenDenied(t *testing.T) {
+	s := setupDelegationServer(t)
+	dts := s.getDelegationTrustState()
+	dts.LiveCallForbidden = true
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-live-forbidden",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "report.verify",
+			"idempotency_key": "idem-live-forbidden",
+		},
+	})
+	if !resp.OK {
+		t.Fatalf("LiveCallForbidden must return a DENIED task, not an RPC error: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	status, _ := result["status"].(string)
+	if status != delegation.TaskStatusDenied.String() {
+		t.Fatalf("expected status DENIED, got %q", status)
+	}
+	taskID, _ := result["task_id"].(string)
+	task, err := dts.Store.GetTask(context.Background(), delegation.TaskID(taskID))
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.DenialReason != "pipeline_or_child" {
+		t.Errorf("DenialReason = %q, want pipeline_or_child", task.DenialReason)
+	}
+}
+
+func TestDelegateTask_CapabilityNotOnListDenied(t *testing.T) {
+	s := setupDelegationServer(t)
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-not-on-list",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "dep_other",
+			"idempotency_key": "idem-not-on-list",
+			"deployment_id":   "dep_other",
+		},
+	})
+	if !resp.OK {
+		t.Fatalf("unknown capability must return a DENIED task, not an RPC error: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	status, _ := result["status"].(string)
+	if status != delegation.TaskStatusDenied.String() {
+		t.Fatalf("expected status DENIED, got %q", status)
+	}
+	taskID, _ := result["task_id"].(string)
+	dts := s.getDelegationTrustState()
+	task, err := dts.Store.GetTask(context.Background(), delegation.TaskID(taskID))
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.DenialReason != "not_on_list" {
+		t.Errorf("DenialReason = %q, want not_on_list", task.DenialReason)
+	}
+}
+
+func TestDelegateTask_IgnoresParentInstanceID(t *testing.T) {
+	s := setupDelegationServer(t)
+	dts := s.getDelegationTrustState()
+	wantWorkflow := dts.Snapshot.WorkflowID
+	wantCaller := dts.Snapshot.CallerDeploymentID
+	wantBindings := len(dts.Snapshot.Bindings)
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-ignore-parent",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":         "report.verify",
+			"idempotency_key":    "idem-ignore-parent",
+			"parent_instance_id": "wfi_evil",
+			"deployment_id":      "dep_evil",
+		},
+	})
+	if !resp.OK {
+		t.Fatalf("on-list capability should still admit: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	status, _ := result["status"].(string)
+	if status != delegation.TaskStatusAdmitted.String() {
+		t.Fatalf("expected status ADMITTED, got %q", status)
+	}
+	if dts.Snapshot.WorkflowID != wantWorkflow {
+		t.Errorf("snapshot WorkflowID changed to %q", dts.Snapshot.WorkflowID)
+	}
+	if dts.Snapshot.CallerDeploymentID != wantCaller {
+		t.Errorf("snapshot CallerDeploymentID changed to %q", dts.Snapshot.CallerDeploymentID)
+	}
+	if len(dts.Snapshot.Bindings) != wantBindings {
+		t.Errorf("snapshot Bindings length changed to %d", len(dts.Snapshot.Bindings))
+	}
+	taskID, _ := result["task_id"].(string)
+	task, err := dts.Store.GetTask(context.Background(), delegation.TaskID(taskID))
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.Caller.DeploymentID != wantCaller {
+		t.Errorf("task caller deployment = %q, want snapshot caller %q (params must not override)", task.Caller.DeploymentID, wantCaller)
+	}
+	if task.BindingID != "report.verify" {
+		t.Errorf("task BindingID = %q, want report.verify", task.BindingID)
 	}
 }
