@@ -126,7 +126,7 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 	if dts == nil {
 		return rpcError(req.ID, "delegation trust state not set", "no_trust_state")
 	}
-	if dts.Snapshot.WorkflowID == "" {
+	if dts.Snapshot.WorkflowID == "" && !dts.LiveCallForbidden && len(dts.Snapshot.Bindings) > 0 {
 		return rpcError(req.ID, "delegation snapshot not configured", "no_snapshot")
 	}
 
