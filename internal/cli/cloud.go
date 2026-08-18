@@ -794,7 +794,7 @@ Idempotent — succeeds even if not currently logged in.`,
 	}
 }
 
-const cloudDockerSaveTimeout = 10 * time.Second
+const cloudDockerSaveTimeout = 5 * time.Minute
 
 type dockerSaveProcess struct {
 	stdout io.ReadCloser
