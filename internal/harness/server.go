@@ -252,6 +252,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", s.handleHealthz)
 	s.mux.HandleFunc("/readyz", s.handleReadyz)
 	s.mux.HandleFunc("/invoke", s.handleInvoke)
+	s.mux.HandleFunc("/agui/", s.handleAguiProxy)
+	s.mux.HandleFunc("/agui", s.handleAguiProxy)
 }
 
 func (s *Server) startWorker() {
