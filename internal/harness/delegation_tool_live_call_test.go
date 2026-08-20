@@ -2,6 +2,10 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/delegation"
@@ -193,5 +197,153 @@ func TestDelegateTask_UnsetToolKindPhoneCallAdmits(t *testing.T) {
 	}
 	if status, _ := result["status"].(string); status != delegation.TaskStatusAdmitted.String() {
 		t.Fatalf("expected status ADMITTED, got %q", status)
+	}
+}
+
+type liveCallRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f liveCallRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestDelegateTask_AdmittedToolSurfacesChildOutput(t *testing.T) {
+	t.Setenv("AGENTPAAS_AGENT_KIND", "tool")
+	s := setupToolDelegationServer(t, phoneCallToolSnapshot(), false)
+	s.liveCallHop = liveCallRoundTrip(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("method = %s", req.Method)
+		}
+		if req.URL.Host != "livecall.agentpaas.internal" {
+			t.Fatalf("host = %q, want livecall.agentpaas.internal", req.URL.Host)
+		}
+		if req.URL.Path != "/delegate" {
+			t.Fatalf("path = %q, want /delegate", req.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatalf("decode hop body: %v", err)
+		}
+		if _, ok := body["parent_instance_id"]; ok {
+			t.Fatal("harness must not send parent_instance_id")
+		}
+		if _, ok := body["deployment_id"]; ok {
+			t.Fatal("harness must not send deployment_id")
+		}
+		if body["named_callee"] != "dep-agent-peer" {
+			t.Fatalf("named_callee = %v", body["named_callee"])
+		}
+		if _, ok := body["work_order"]; !ok {
+			t.Fatal("work_order missing")
+		}
+		if _, ok := body["idempotency_key"]; !ok {
+			t.Fatal("idempotency_key missing")
+		}
+		if _, ok := body["parent_remaining_ms"]; !ok {
+			t.Fatal("parent_remaining_ms missing")
+		}
+		// Real wire shape of child /invoke (handleRunInvoke returns the container body).
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"final_output":"agent A answer"}`)),
+		}, nil
+	})
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-tool-hop",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "dep-agent-peer",
+			"idempotency_key": "idem-tool-hop",
+			"message":         map[string]any{"task": "lookup"},
+		},
+	})
+	if !resp.OK {
+		t.Fatalf("admitted hop must succeed: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	if status, _ := result["status"].(string); status != delegation.TaskStatusSucceeded.String() {
+		t.Fatalf("expected status SUCCEEDED after hop, got %q", status)
+	}
+	taskID, _ := result["task_id"].(string)
+
+	got := s.handleRequest(rpcRequest{
+		ID:     "req-tool-hop-get",
+		Method: "get_task",
+		Params: map[string]any{"task_id": taskID},
+	})
+	if !got.OK {
+		t.Fatalf("get_task: %s", got.Error)
+	}
+	taskResult, ok := got.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("get_task result is not a map: %T", got.Result)
+	}
+	if status, _ := taskResult["status"].(string); status != delegation.TaskStatusSucceeded.String() {
+		t.Fatalf("get_task status = %q, want SUCCEEDED", status)
+	}
+	output, ok := taskResult["output"].(map[string]any)
+	if !ok {
+		t.Fatalf("get_task output missing or wrong type: %#v", taskResult["output"])
+	}
+	if output["final_output"] != "agent A answer" {
+		t.Fatalf("output.final_output = %v", output["final_output"])
+	}
+
+	events := s.handleRequest(rpcRequest{
+		ID:     "req-tool-hop-events",
+		Method: "list_task_events",
+		Params: map[string]any{"task_id": taskID},
+	})
+	if !events.OK {
+		t.Fatalf("list_task_events: %s", events.Error)
+	}
+	evMap, _ := events.Result.(map[string]any)
+	evList, _ := evMap["events"].([]map[string]any)
+	if evList == nil {
+		if raw, ok := evMap["events"].([]any); ok {
+			found := false
+			for _, item := range raw {
+				m, _ := item.(map[string]any)
+				if m["type"] == string(delegation.EventTaskSucceeded) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("events missing TASK_SUCCEEDED: %#v", raw)
+			}
+			return
+		}
+		t.Fatalf("events type %T", evMap["events"])
+	}
+}
+
+func TestDelegateTask_HopTimeoutFailsTask(t *testing.T) {
+	t.Setenv("AGENTPAAS_AGENT_KIND", "tool")
+	s := setupToolDelegationServer(t, phoneCallToolSnapshot(), false)
+	s.liveCallHop = liveCallRoundTrip(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: 504,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":"invoke_timeout"}`)),
+		}, nil
+	})
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-tool-timeout",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "dep-agent-peer",
+			"idempotency_key": "idem-tool-timeout",
+		},
+	})
+	if resp.OK {
+		t.Fatalf("timeout hop must be an RPC error so the parent stage fails, got OK %+v", resp.Result)
+	}
+	if resp.Code != "invoke_timeout" {
+		t.Fatalf("code = %q, want invoke_timeout", resp.Code)
 	}
 }

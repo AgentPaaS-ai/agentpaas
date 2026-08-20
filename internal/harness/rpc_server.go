@@ -64,6 +64,14 @@ type harnessRPCServer struct {
 	// mcpMaxConcurrency configures the caller-side MCP concurrency limit.
 	// 0 (default) uses the package-level DefaultMaxConcurrentMCPCalls.
 	mcpMaxConcurrency int
+
+	// liveCallHop is the transport for the parent-DO live-call hop after
+	// an ADMITTED delegate_task. Nil skips the hop (unit tests).
+	liveCallHop http.RoundTripper
+
+	// liveCallOutputs holds A's invoke JSON keyed by task id. Never contains
+	// endpoints or tokens.
+	liveCallOutputs map[string]any
 }
 
 type rpcInvokeState struct {
@@ -138,11 +146,13 @@ func startHarnessRPCServer(appender AuditAppender) (*harnessRPCServer, error) {
 		return nil, fmt.Errorf("start harness rpcserver: %w", err)
 	}
 	s := &harnessRPCServer{
-		listener: listener,
-		addr:     socket,
-		socket:   socket,
-		done:     make(chan struct{}),
-		audit:    appender,
+		listener:        listener,
+		addr:            socket,
+		socket:          socket,
+		done:            make(chan struct{}),
+		audit:           appender,
+		liveCallHop:     http.DefaultTransport,
+		liveCallOutputs: make(map[string]any),
 	}
 	go s.serve()
 	return s, nil

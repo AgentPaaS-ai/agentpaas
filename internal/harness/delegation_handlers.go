@@ -1,10 +1,13 @@
 package harness
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"strings"
 	"time"
 
@@ -71,6 +74,7 @@ var getTaskResponseFields = map[string]bool{
 	"updated_at":     true,
 	"denial_reason":  true,
 	"failure_reason": true,
+	"output":         true,
 }
 
 // listTaskEventsResponseFields is the explicit allowlist for list_task_events responses.
@@ -308,12 +312,24 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 	log.Printf("harness: delegate_task ADMITTED: task_id=%s capability=%s operation=%s data_class=%s",
 		taskID, capability, operation, dataClass)
 
+	status := delegation.TaskStatusAdmitted
+	if s.liveCallHop != nil {
+		if hopErr := s.performLiveCallHop(req, dts, admittedTask, capability); hopErr != nil {
+			if hopErr.rpc {
+				return rpcError(req.ID, hopErr.msg, hopErr.code)
+			}
+		}
+		if updated, gerr := dts.Store.GetTask(context.Background(), taskID); gerr == nil && updated != nil {
+			status = updated.Status
+		}
+	}
+
 	return rpcResponse{
 		ID: req.ID,
 		OK: true,
 		Result: scrubResponse(map[string]any{
 			"task_id": string(taskID),
-			"status":  delegation.TaskStatusAdmitted.String(),
+			"status":  status.String(),
 		}, delegateTaskResponseFields),
 	}
 }
@@ -444,6 +460,9 @@ func (s *harnessRPCServer) handleGetTask(req rpcRequest) rpcResponse {
 	}
 	if task.FailureReason != "" {
 		result["failure_reason"] = task.FailureReason
+	}
+	if out, ok := s.loadLiveCallOutput(string(task.TaskID)); ok {
+		result["output"] = out
 	}
 
 	return rpcResponse{
@@ -598,4 +617,167 @@ func int64Param(params map[string]any, key string) int64 {
 		return i
 	}
 	return 0
+}
+
+// platformLiveCallURL is intercepted by the parent RunContainer DO
+// (injectEgressHandler) before handleOutbound. Not an allowlisted customer host.
+const platformLiveCallURL = "https://livecall.agentpaas.internal/delegate"
+
+type liveCallHopError struct {
+	msg  string
+	code string
+	rpc  bool
+}
+
+func (e *liveCallHopError) Error() string { return e.msg }
+
+func (s *harnessRPCServer) parentRemainingMs() int64 {
+	s.mu.RLock()
+	inv := s.invoke
+	s.mu.RUnlock()
+	const defaultMs int64 = 120000
+	if inv == nil || inv.budget == nil {
+		return defaultMs
+	}
+	rem := inv.budget.WallClockBudget() - inv.budget.Elapsed()
+	if rem <= 0 {
+		return 0
+	}
+	return rem.Milliseconds()
+}
+
+func (s *harnessRPCServer) storeLiveCallOutput(taskID string, output any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.liveCallOutputs == nil {
+		s.liveCallOutputs = make(map[string]any)
+	}
+	s.liveCallOutputs[taskID] = output
+}
+
+func (s *harnessRPCServer) loadLiveCallOutput(taskID string) (any, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.liveCallOutputs == nil {
+		return nil, false
+	}
+	v, ok := s.liveCallOutputs[taskID]
+	return v, ok
+}
+
+func (s *harnessRPCServer) casTaskStatus(dts *DelegationTrustState, task delegation.Task, fromGen int64, next delegation.TaskStatus, failureReason string) (delegation.Task, error) {
+	now := time.Now().UTC()
+	task.Status = next
+	task.UpdatedAt = now
+	if failureReason != "" {
+		task.FailureReason = failureReason
+	}
+	if err := dts.Store.CASTask(context.Background(), task, fromGen); err != nil {
+		return task, err
+	}
+	task.Generation = fromGen + 1
+	return task, nil
+}
+
+func (s *harnessRPCServer) succeedLiveCallTask(dts *DelegationTrustState, task delegation.Task) *liveCallHopError {
+	running, err := s.casTaskStatus(dts, task, task.Generation, delegation.TaskStatusRunning, "")
+	if err != nil {
+		log.Printf("harness: live-call hop CAS running: %v", err)
+		return &liveCallHopError{msg: "live-call status update failed", code: "internal_error", rpc: true}
+	}
+	appendDelegateEvent(dts.Store, task.TaskID, dts.Snapshot.WorkflowID, dts.Snapshot.TenantID, delegation.EventTaskStarted)
+	if _, err := s.casTaskStatus(dts, running, running.Generation, delegation.TaskStatusSucceeded, ""); err != nil {
+		log.Printf("harness: live-call hop CAS succeeded: %v", err)
+		return &liveCallHopError{msg: "live-call status update failed", code: "internal_error", rpc: true}
+	}
+	appendDelegateEvent(dts.Store, task.TaskID, dts.Snapshot.WorkflowID, dts.Snapshot.TenantID, delegation.EventTaskSucceeded)
+	return nil
+}
+
+func (s *harnessRPCServer) failLiveCallTask(dts *DelegationTrustState, task delegation.Task, reason string, rpc bool) *liveCallHopError {
+	running, err := s.casTaskStatus(dts, task, task.Generation, delegation.TaskStatusRunning, "")
+	if err != nil {
+		log.Printf("harness: live-call hop CAS running (fail): %v", err)
+		return &liveCallHopError{msg: reason, code: reason, rpc: rpc}
+	}
+	appendDelegateEvent(dts.Store, task.TaskID, dts.Snapshot.WorkflowID, dts.Snapshot.TenantID, delegation.EventTaskStarted)
+	if _, err := s.casTaskStatus(dts, running, running.Generation, delegation.TaskStatusFailed, reason); err != nil {
+		log.Printf("harness: live-call hop CAS failed: %v", err)
+	}
+	appendDelegateEvent(dts.Store, task.TaskID, dts.Snapshot.WorkflowID, dts.Snapshot.TenantID, delegation.EventTaskFailed)
+	return &liveCallHopError{msg: reason, code: reason, rpc: rpc}
+}
+
+func (s *harnessRPCServer) performLiveCallHop(req rpcRequest, dts *DelegationTrustState, task delegation.Task, namedCallee string) *liveCallHopError {
+	remaining := s.parentRemainingMs()
+	workOrder := any(map[string]any{})
+	if req.Params != nil {
+		if msg, ok := req.Params["message"]; ok && msg != nil {
+			workOrder = msg
+		}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"named_callee":        namedCallee,
+		"work_order":          workOrder,
+		"idempotency_key":     task.IdempotencyKey,
+		"parent_remaining_ms": remaining,
+	})
+	if err != nil {
+		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+	}
+
+	timeout := time.Duration(remaining) * time.Millisecond
+	if timeout <= 0 {
+		return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, platformLiveCallURL, bytes.NewReader(payload))
+	if err != nil {
+		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.liveCallHop.RoundTrip(httpReq)
+	if err != nil {
+		if ctx.Err() != nil {
+			return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+		}
+		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+	}
+
+	if resp.StatusCode == http.StatusGatewayTimeout {
+		return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+	}
+
+	var parsed any
+	if len(body) > 0 {
+		if uerr := json.Unmarshal(body, &parsed); uerr != nil {
+			parsed = string(body)
+		}
+	}
+
+	if resp.StatusCode >= 400 {
+		code := "live_call_denied"
+		if rec, ok := parsed.(map[string]any); ok {
+			if c, ok := rec["code"].(string); ok && c != "" {
+				code = c
+			} else if e, ok := rec["error"].(string); ok && e != "" {
+				code = e
+			}
+		}
+		if code == "invoke_timeout" {
+			return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+		}
+		return s.failLiveCallTask(dts, task, code, false)
+	}
+
+	s.storeLiveCallOutput(string(task.TaskID), parsed)
+	return s.succeedLiveCallTask(dts, task)
 }
