@@ -20,13 +20,13 @@ func TestLoadDelegationSnapshot_LiveCallForbiddenDeniesWithBindings(t *testing.T
 	dir := t.TempDir()
 	path := filepath.Join(dir, "delegation-snapshot.json")
 	sidecar := map[string]any{
-		"snapshot":              snap,
-		"binding_capabilities":  map[string]string{"report.verify": "cap-token"},
-		"network_alias":         "net-alias-test",
-		"workflow_id":           snap.WorkflowID,
-		"workflow_kind":         "pipeline",
-		"live_call_forbidden":   true,
-		"callee_ingress_allow":  makeDelegationIngress(),
+		"snapshot":             snap,
+		"binding_capabilities": map[string]string{"report.verify": "cap-token"},
+		"network_alias":        "net-alias-test",
+		"workflow_id":          snap.WorkflowID,
+		"workflow_kind":        "pipeline",
+		"live_call_forbidden":  true,
+		"callee_ingress_allow": makeDelegationIngress(),
 	}
 	data, err := json.Marshal(sidecar)
 	if err != nil {
@@ -75,5 +75,115 @@ func TestLoadDelegationSnapshot_LiveCallForbiddenDeniesWithBindings(t *testing.T
 	}
 	if task.DenialReason != "pipeline_or_child" {
 		t.Errorf("DenialReason = %q, want pipeline_or_child", task.DenialReason)
+	}
+}
+
+func marshalDelegationSidecar(t *testing.T, snap delegation.CommunicationSnapshot, alias string) []byte {
+	t.Helper()
+	sidecar := map[string]any{
+		"snapshot":             snap,
+		"binding_capabilities": map[string]string{"report.verify": "cap-token"},
+		"network_alias":        alias,
+		"workflow_id":          snap.WorkflowID,
+		"workflow_kind":        "fanout",
+		"callee_ingress_allow": makeDelegationIngress(),
+	}
+	data, err := json.Marshal(sidecar)
+	if err != nil {
+		t.Fatalf("marshal sidecar: %v", err)
+	}
+	return data
+}
+
+func TestLoadDelegationSnapshot_FilePathSetsTrustState(t *testing.T) {
+	s := &harnessRPCServer{done: make(chan struct{})}
+	snap := makeDelegationSnapshot()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "delegation-snapshot.json")
+	if err := os.WriteFile(path, marshalDelegationSidecar(t, snap, "net-alias-file"), 0o600); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+
+	if err := s.LoadDelegationSnapshot(path); err != nil {
+		t.Fatalf("LoadDelegationSnapshot: %v", err)
+	}
+	dts := s.getDelegationTrustState()
+	if dts == nil {
+		t.Fatal("file path load must set trust state")
+	}
+	if dts.NetworkAlias != "net-alias-file" {
+		t.Fatalf("NetworkAlias = %q, want net-alias-file", dts.NetworkAlias)
+	}
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-file-delegate",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "report.verify",
+			"idempotency_key": "idem-file-path",
+		},
+	})
+	if !resp.OK {
+		t.Fatalf("delegate after file load failed: %s (code=%s)", resp.Error, resp.Code)
+	}
+}
+
+func TestLoadDelegationSnapshotJSON_SetsTrustState(t *testing.T) {
+	s := &harnessRPCServer{done: make(chan struct{})}
+	snap := makeDelegationSnapshot()
+	data := marshalDelegationSidecar(t, snap, "net-alias-json")
+
+	if err := s.LoadDelegationSnapshotJSON(string(data)); err != nil {
+		t.Fatalf("LoadDelegationSnapshotJSON: %v", err)
+	}
+	dts := s.getDelegationTrustState()
+	if dts == nil {
+		t.Fatal("JSON-only load must set trust state")
+	}
+	if dts.NetworkAlias != "net-alias-json" {
+		t.Fatalf("NetworkAlias = %q, want net-alias-json", dts.NetworkAlias)
+	}
+	if len(dts.Snapshot.Bindings) == 0 {
+		t.Fatal("expected bindings from JSON snapshot")
+	}
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-json-delegate",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "report.verify",
+			"idempotency_key": "idem-json-only",
+		},
+	})
+	if !resp.OK {
+		t.Fatalf("delegate after JSON load failed: %s (code=%s)", resp.Error, resp.Code)
+	}
+}
+
+func TestLoadDelegationSnapshot_EmptyBoth_NoTrustState(t *testing.T) {
+	s := &harnessRPCServer{done: make(chan struct{})}
+	if err := s.LoadDelegationSnapshot(""); err != nil {
+		t.Fatalf("empty path: %v", err)
+	}
+	if err := s.LoadDelegationSnapshotJSON(""); err != nil {
+		t.Fatalf("empty JSON: %v", err)
+	}
+	if s.getDelegationTrustState() != nil {
+		t.Fatal("empty path and JSON must leave trust state unset")
+	}
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-empty-both",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "report.verify",
+			"idempotency_key": "idem-empty-both",
+		},
+	})
+	if resp.OK {
+		t.Fatal("expected OK=false when both path and JSON are empty")
+	}
+	if resp.Code != "no_trust_state" {
+		t.Errorf("expected code no_trust_state, got %q", resp.Code)
 	}
 }

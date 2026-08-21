@@ -66,6 +66,11 @@ type Config struct {
 	// declared (backward compat).
 	DelegationSnapshotPath string
 
+	// DelegationSnapshotJSON is AGENTPAAS_DELEGATION_SNAPSHOT_JSON: the same
+	// sidecar payload as DelegationSnapshotPath. Used when the platform
+	// injects the snapshot via env (cloud CF) and does not set the path.
+	DelegationSnapshotJSON string
+
 	// MCPBindingSidecarPath is the path to the MCP binding sidecar file (B33-T08 c3).
 	// The daemon writes it before starting the harness. The harness reads it at
 	// startup, wires the managed resolver onto the Router, and registers each
