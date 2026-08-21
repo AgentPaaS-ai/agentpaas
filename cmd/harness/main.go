@@ -220,6 +220,7 @@ func buildConfig() harness.Config {
 		LeaseID:                os.Getenv("AGENTPAAS_LEASE_ID"),
 		RunID:                  os.Getenv("AGENTPAAS_RUN_ID"),
 		DelegationSnapshotPath: os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_PATH"),
+		DelegationSnapshotJSON: os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_JSON"),
 		MCPBindingSidecarPath:  os.Getenv("AGENTPAAS_MCP_BINDING_SIDECAR_PATH"),
 		MCPBindingsJSON:        os.Getenv("AGENTPAAS_MCP_BINDINGS_JSON"),
 		AgentKind:              os.Getenv("AGENTPAAS_AGENT_KIND"),

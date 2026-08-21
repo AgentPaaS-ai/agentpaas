@@ -543,7 +543,26 @@ func (s *harnessRPCServer) LoadDelegationSnapshot(path string) error {
 	if err != nil {
 		return fmt.Errorf("harness rpcserver load delegation snapshot: %w", err)
 	}
+	if err := s.applyDelegationSnapshot(data); err != nil {
+		return fmt.Errorf("unmarshal delegation snapshot file: %w", err)
+	}
+	return nil
+}
 
+// LoadDelegationSnapshotJSON parses AGENTPAAS_DELEGATION_SNAPSHOT_JSON into
+// the same DelegationTrustState as LoadDelegationSnapshot. Cloud CF sets
+// the JSON env and does not set the snapshot path.
+func (s *harnessRPCServer) LoadDelegationSnapshotJSON(jsonStr string) error {
+	if jsonStr == "" {
+		return nil
+	}
+	if err := s.applyDelegationSnapshot([]byte(jsonStr)); err != nil {
+		return fmt.Errorf("unmarshal delegation snapshot json: %w", err)
+	}
+	return nil
+}
+
+func (s *harnessRPCServer) applyDelegationSnapshot(data []byte) error {
 	var sidecar struct {
 		Snapshot            delegation.CommunicationSnapshot `json:"snapshot"`
 		BindingCapabilities map[string]string                `json:"binding_capabilities"`
@@ -554,7 +573,7 @@ func (s *harnessRPCServer) LoadDelegationSnapshot(path string) error {
 		CalleeIngressAllow  []delegation.CalleeIngressRule   `json:"callee_ingress_allow"`
 	}
 	if err := json.Unmarshal(data, &sidecar); err != nil {
-		return fmt.Errorf("unmarshal delegation snapshot file: %w", err)
+		return err
 	}
 
 	dts := &DelegationTrustState{

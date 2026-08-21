@@ -120,14 +120,20 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		}
 	}
 
-	// Load delegation trust state from the sidecar file before starting
-	// the Python worker (BUG-040). The daemon writes the pre-built
-	// CommunicationSnapshot and per-binding capability tokens to a JSON
-	// file and bind-mounts it read-only. The harness reads it at startup
-	// and injects it into the RPC server. If no delegation snapshot path
-	// is set, delegation is disabled (backward compat).
+	// Load delegation trust state before starting the Python worker
+	// (BUG-040). Prefer the sidecar file path (daemon bind-mount). Fall
+	// back to AGENTPAAS_DELEGATION_SNAPSHOT_JSON (cloud CF injects the
+	// snapshot via env and does not set the path). If both are empty,
+	// delegation is disabled (backward compat → no_trust_state).
 	if cfg.DelegationSnapshotPath != "" {
 		if err := rpcServer.LoadDelegationSnapshot(cfg.DelegationSnapshotPath); err != nil {
+			_ = rpcServer.Close()     // best-effort cleanup
+			_ = stderrCapture.Close() // best-effort cleanup
+			errResp := &ErrorResponse{Status: "FAILED", Reason: "delegation_snapshot_load_failed", Detail: err.Error()}
+			return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+		}
+	} else if cfg.DelegationSnapshotJSON != "" {
+		if err := rpcServer.LoadDelegationSnapshotJSON(cfg.DelegationSnapshotJSON); err != nil {
 			_ = rpcServer.Close()     // best-effort cleanup
 			_ = stderrCapture.Close() // best-effort cleanup
 			errResp := &ErrorResponse{Status: "FAILED", Reason: "delegation_snapshot_load_failed", Detail: err.Error()}
@@ -668,6 +674,9 @@ func workerEnv(base []string, rpcAddr string) []string {
 			continue
 		}
 		if strings.HasPrefix(item, "AGENTPAAS_MCP_BINDINGS_JSON=") {
+			continue
+		}
+		if strings.HasPrefix(item, "AGENTPAAS_DELEGATION_SNAPSHOT_JSON=") {
 			continue
 		}
 		if strings.HasPrefix(item, "PYTHONPATH=") {
