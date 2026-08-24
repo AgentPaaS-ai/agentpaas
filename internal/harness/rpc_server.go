@@ -581,6 +581,32 @@ func (s *harnessRPCServer) applyDelegationSnapshot(data []byte) error {
 	standaloneLive := (sidecar.WorkflowKind == "standalone_live" || sidecar.Standalone) &&
 		!liveCallForbidden && len(sidecar.Snapshot.Bindings) > 0
 
+	// Cloud standalone_live sidecars omit snapshot_digest and
+	// callee_ingress_allow. Synthesize both so AuthorizeDelegation can
+	// ADMIT. Do not mint WorkflowID. Do not do this for phone_call /
+	// pipeline / child — those must keep fail-closed authz.
+	if standaloneLive {
+		if sidecar.Snapshot.SnapshotDigest == "" {
+			dg, err := delegation.ComputeSnapshotDigest(&sidecar.Snapshot)
+			if err != nil {
+				return fmt.Errorf("standalone_live snapshot digest: %w", err)
+			}
+			sidecar.Snapshot.SnapshotDigest = dg
+		}
+		if len(sidecar.CalleeIngressAllow) == 0 {
+			bindingIDs := make([]string, len(sidecar.Snapshot.Bindings))
+			for i, b := range sidecar.Snapshot.Bindings {
+				bindingIDs[i] = b.BindingID
+			}
+			sidecar.CalleeIngressAllow = []delegation.CalleeIngressRule{{
+				CallerPackageName:   sidecar.Snapshot.CallerPackageName,
+				CallerPackageDigest: sidecar.Snapshot.CallerPackageDigest,
+				AllowedBindings:     bindingIDs,
+				MaxDataClass:        string(delegation.ClassificationInternal),
+			}}
+		}
+	}
+
 	dts := &DelegationTrustState{
 		Snapshot:            sidecar.Snapshot,
 		BindingCapabilities: sidecar.BindingCapabilities,
