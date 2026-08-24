@@ -87,8 +87,16 @@ func TestDelegateTask_StandaloneLiveSidecarNotNoSnapshot(t *testing.T) {
 	}
 
 	resp := delegateStandaloneLive(s, "req-ss-live")
-	if resp.Code == "no_snapshot" {
-		t.Fatalf("standalone_live sidecar must not be rejected as no_snapshot: %s", resp.Error)
+	if !resp.OK {
+		t.Fatalf("standalone_live sidecar must ADMIT, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	status, _ := result["status"].(string)
+	if status != delegation.TaskStatusAdmitted.String() {
+		t.Fatalf("expected status %s, got %q result=%+v", delegation.TaskStatusAdmitted.String(), status, result)
 	}
 }
 
@@ -134,5 +142,50 @@ func TestDelegateTask_NoSnapshotHalfConfiguredSidecar(t *testing.T) {
 	}
 	if resp.Code != "no_snapshot" {
 		t.Fatalf("expected code no_snapshot, got %q (%s)", resp.Code, resp.Error)
+	}
+}
+
+// TestDelegateTask_StandaloneLiveNoDigestNoIngressAdmits covers the cloud
+// sidecar shape: workflow_kind=standalone_live, bindings present, no
+// snapshot_digest, no callee_ingress_allow. Load must still ADMIT.
+func TestDelegateTask_StandaloneLiveNoDigestNoIngressAdmits(t *testing.T) {
+	sidecar := standaloneLiveSidecar("standalone_live", nil)
+	if _, ok := sidecar["callee_ingress_allow"]; ok {
+		t.Fatal("fixture must omit callee_ingress_allow (cloud sidecar shape)")
+	}
+	snap, ok := sidecar["snapshot"].(delegation.CommunicationSnapshot)
+	if !ok {
+		t.Fatalf("snapshot type %T", sidecar["snapshot"])
+	}
+	if snap.SnapshotDigest != "" {
+		t.Fatal("fixture must omit snapshot_digest (cloud sidecar shape)")
+	}
+
+	s := loadStandaloneSidecar(t, sidecar)
+	dts := s.getDelegationTrustState()
+	if dts == nil {
+		t.Fatal("expected trust state after standalone_live sidecar load")
+	}
+	if dts.Snapshot.WorkflowID != "" {
+		t.Fatalf("must not mint WorkflowID, got %q", dts.Snapshot.WorkflowID)
+	}
+	if dts.Snapshot.SnapshotDigest == "" {
+		t.Fatal("standalone_live load must synthesize SnapshotDigest when sidecar omits it")
+	}
+	if len(dts.CalleeIngressAllow) == 0 {
+		t.Fatal("standalone_live load must synthesize CalleeIngressAllow when sidecar omits it")
+	}
+
+	resp := delegateStandaloneLive(s, "req-ss-noload")
+	if !resp.OK {
+		t.Fatalf("sidecar with no digest and no ingress must ADMIT after load: error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	status, _ := result["status"].(string)
+	if status != delegation.TaskStatusAdmitted.String() {
+		t.Fatalf("expected status %s, got %q result=%+v", delegation.TaskStatusAdmitted.String(), status, result)
 	}
 }
