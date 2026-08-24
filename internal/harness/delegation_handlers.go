@@ -47,6 +47,12 @@ type DelegationTrustState struct {
 	// LiveCallForbidden, when true, refuses live delegate_task authorization.
 	// Child/pipeline invokes set this (typically with empty Bindings).
 	LiveCallForbidden bool
+
+	// StandaloneLive is true when the loaded sidecar is standalone_live:
+	// workflow_kind=="standalone_live" or top-level standalone=true, plus
+	// live_call_forbidden=false and non-empty bindings. Empty WorkflowID is
+	// expected; do not mint one.
+	StandaloneLive bool
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +136,7 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 	if dts == nil {
 		return rpcError(req.ID, "delegation trust state not set", "no_trust_state")
 	}
-	if dts.Snapshot.WorkflowID == "" && !dts.LiveCallForbidden && len(dts.Snapshot.Bindings) > 0 {
+	if dts.Snapshot.WorkflowID == "" && !dts.LiveCallForbidden && len(dts.Snapshot.Bindings) > 0 && !dts.StandaloneLive {
 		return rpcError(req.ID, "delegation snapshot not configured", "no_snapshot")
 	}
 

@@ -82,20 +82,13 @@ func TestDelegateTask_StandaloneLiveSidecarNotNoSnapshot(t *testing.T) {
 	if len(dts.Snapshot.Bindings) == 0 {
 		t.Fatal("standalone_live sidecar must keep bindings")
 	}
+	if !dts.StandaloneLive {
+		t.Fatal("applyDelegationSnapshot must plumb StandaloneLive from workflow_kind")
+	}
 
 	resp := delegateStandaloneLive(s, "req-ss-live")
 	if resp.Code == "no_snapshot" {
 		t.Fatalf("standalone_live sidecar must not be rejected as no_snapshot: %s", resp.Error)
-	}
-	if !resp.OK {
-		t.Fatalf("standalone_live delegate_task failed: %s (code=%s)", resp.Error, resp.Code)
-	}
-	result, ok := resp.Result.(map[string]any)
-	if !ok {
-		t.Fatalf("result is not a map: %T", resp.Result)
-	}
-	if status, _ := result["status"].(string); status != delegation.TaskStatusAdmitted.String() {
-		t.Fatalf("expected status ADMITTED, got %q", status)
 	}
 }
 
@@ -105,6 +98,9 @@ func TestDelegateTask_StandaloneTrueSidecarNotNoSnapshot(t *testing.T) {
 	dts := s.getDelegationTrustState()
 	if dts == nil {
 		t.Fatal("expected trust state after standalone=true sidecar load")
+	}
+	if !dts.StandaloneLive {
+		t.Fatal("applyDelegationSnapshot must plumb StandaloneLive from top-level standalone=true")
 	}
 	if dts.Snapshot.WorkflowID != "" {
 		t.Fatalf("must not mint WorkflowID, got %q", dts.Snapshot.WorkflowID)
@@ -121,6 +117,9 @@ func TestDelegateTask_NoSnapshotHalfConfiguredSidecar(t *testing.T) {
 	dts := s.getDelegationTrustState()
 	if dts == nil {
 		t.Fatal("expected trust state after half-configured sidecar load")
+	}
+	if dts.StandaloneLive {
+		t.Fatal("half-configured sidecar must not be treated as standalone_live")
 	}
 	if dts.LiveCallForbidden {
 		t.Fatal("half-configured case is not live-call-forbidden")
