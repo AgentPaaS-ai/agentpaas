@@ -1090,6 +1090,53 @@ func TestCloudDeploy_Success_WithSlotID(t *testing.T) {
 	}
 }
 
+func TestCloudDeploy_CalleesFlag(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_deploy_callee")
+
+	var got cloudclient.CreateDeploymentRequest
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/deployments" {
+			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+				t.Errorf("decode body: %v", err)
+			}
+			resp := cloudclient.DeploymentRecord{
+				ID:          "dep-callee-001",
+				ImageDigest: got.ImageDigest,
+				Status:      "pending",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "deploy",
+		"--callee", "dep_aaa000000000000000000000000aa",
+		"--callee", "dep_bbb000000000000000000000000aa",
+		"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	if err != nil {
+		t.Fatalf("deploy: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if len(got.Callees) != 2 {
+		t.Fatalf("callees len = %d, want 2", len(got.Callees))
+	}
+	if got.Callees[0].DeploymentID != "dep_aaa000000000000000000000000aa" {
+		t.Errorf("callees[0] = %q", got.Callees[0].DeploymentID)
+	}
+	if got.Callees[1].DeploymentID != "dep_bbb000000000000000000000000aa" {
+		t.Errorf("callees[1] = %q", got.Callees[1].DeploymentID)
+	}
+	if !strings.Contains(stdout, "dep-callee-001") {
+		t.Errorf("expected dep-callee-001 in output, got: %q", stdout)
+	}
+}
+
 func TestCloudDeploy_JSONOutput(t *testing.T) {
 	store := setupFakeTokenStore(t)
 	_ = store.Set(context.Background(), "apc_deploy_json")

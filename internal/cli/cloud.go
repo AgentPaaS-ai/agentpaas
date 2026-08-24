@@ -1885,6 +1885,7 @@ func newCloudDeployCmd() *cobra.Command {
 	var instanceType string
 	var deployType string
 	var maxConcurrentRuns int
+	var callees []string
 
 	cmd := &cobra.Command{
 		Use:   "deploy [digest|latest]",
@@ -2011,6 +2012,23 @@ Use --type to deploy an agent, an MCP server, or a tool. The default is agent.`,
 			if cmd.Flags().Changed("max-concurrent-runs") {
 				req.MaxConcurrentRuns = &maxConcurrentRuns
 			}
+			if len(callees) > 0 {
+				req.Callees = make([]struct {
+					DeploymentID string `json:"deployment_id"`
+				}, 0, len(callees))
+				for _, raw := range callees {
+					id := strings.TrimSpace(raw)
+					if id == "" {
+						return fmt.Errorf("cloud deploy: --callee is empty")
+					}
+					if strings.ContainsAny(id, "\n\r\x00") {
+						return fmt.Errorf("cloud deploy: --callee contains invalid characters")
+					}
+					req.Callees = append(req.Callees, struct {
+						DeploymentID string `json:"deployment_id"`
+					}{DeploymentID: id})
+				}
+			}
 
 			if !jsonOutput(cmd) {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Creating deployment…")
@@ -2045,6 +2063,7 @@ Use --type to deploy an agent, an MCP server, or a tool. The default is agent.`,
 	cmd.Flags().StringVar(&instanceType, "instance-type", "basic", "Cloudflare Container preset (default: basic; lite, basic, standard-1, standard-2, standard-3, standard-4)")
 	cmd.Flags().StringVar(&deployType, "type", "agent", "Deployment type: agent|mcp|tool (default: agent)")
 	cmd.Flags().IntVar(&maxConcurrentRuns, "max-concurrent-runs", 0, "Optional concurrency lock (>= 1); omit to leave unbounded (tenant cap)")
+	cmd.Flags().StringArrayVar(&callees, "callee", nil, "Callee deployment id (repeatable)")
 
 	cmd.AddCommand(newCloudDeployUpdateCmd())
 
