@@ -32,6 +32,9 @@ type CreateDeploymentRequest struct {
 	SlotID            *string `json:"slot_id,omitempty"`
 	InstanceType      *string `json:"instance_type,omitempty"`
 	MaxConcurrentRuns *int    `json:"max_concurrent_runs,omitempty"`
+	Callees           []struct {
+		DeploymentID string `json:"deployment_id"`
+	} `json:"callees,omitempty"`
 }
 
 // PatchDeploymentRequest is the body for PATCH /v1/deployments/{id}.
