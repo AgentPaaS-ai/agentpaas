@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -288,9 +289,12 @@ func (s *harnessRPCServer) handleDelegateTask(req rpcRequest) rpcResponse {
 		UpdatedAt:                       now,
 	}
 
-	// N1: Validate before CreateTask.
+	// N1: Validate before CreateTask. standalone_live keeps WorkflowID
+	// empty by design — do not mint one; ignore only that field.
 	if err := delegation.ValidateTask(&admittedTask); err != nil {
-		return rpcError(req.ID, "task validation failed: "+err.Error(), "internal_error")
+		if !standaloneLiveEmptyWorkflow(dts, err) {
+			return rpcError(req.ID, "task validation failed: "+err.Error(), "internal_error")
+		}
 	}
 
 	if err := dts.Store.CreateTask(context.Background(), admittedTask); err != nil {
@@ -393,6 +397,19 @@ func (s *harnessRPCServer) writeDeniedDelegateTask(
 			"status":  delegation.TaskStatusDenied.String(),
 		}, delegateTaskResponseFields),
 	}
+}
+
+// standaloneLiveEmptyWorkflow is true when ValidateTask failed only because
+// standalone_live left WorkflowID empty. Do not mint a workflow id.
+func standaloneLiveEmptyWorkflow(dts *DelegationTrustState, err error) bool {
+	if dts == nil || !dts.StandaloneLive {
+		return false
+	}
+	var ve *delegation.ValidationError
+	if !errors.As(err, &ve) {
+		return false
+	}
+	return ve.Field == "workflow_id" && ve.Message == "empty"
 }
 
 // lookupBinding returns the full binding from the snapshot by ID, or nil.
