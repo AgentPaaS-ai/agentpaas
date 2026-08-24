@@ -208,6 +208,66 @@ func TestCloudClient_CreateDeployment_MaxConcurrentRunsJSON(t *testing.T) {
 	}
 }
 
+func TestCloudClient_CreateDeployment_CalleesJSON(t *testing.T) {
+	requests := []CreateDeploymentRequest{
+		{
+			ImageDigest: "sha256:with-callees",
+			Callees: []struct {
+				DeploymentID string `json:"deployment_id"`
+			}{
+				{DeploymentID: "dep_aaa000000000000000000000000aa"},
+				{DeploymentID: "dep_bbb000000000000000000000000aa"},
+			},
+		},
+		{
+			ImageDigest: "sha256:without-callees",
+		},
+	}
+	requestNumber := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+
+		if requestNumber == 0 {
+			raw, ok := body["callees"]
+			if !ok {
+				t.Error("callees should be present when set")
+			} else {
+				var got []struct {
+					DeploymentID string `json:"deployment_id"`
+				}
+				if err := json.Unmarshal(raw, &got); err != nil {
+					t.Errorf("decode callees: %v", err)
+				} else if len(got) != 2 {
+					t.Errorf("callees len = %d, want 2", len(got))
+				} else if got[0].DeploymentID != "dep_aaa000000000000000000000000aa" {
+					t.Errorf("callees[0] = %q", got[0].DeploymentID)
+				} else if got[1].DeploymentID != "dep_bbb000000000000000000000000aa" {
+					t.Errorf("callees[1] = %q", got[1].DeploymentID)
+				}
+			}
+		} else if _, ok := body["callees"]; ok {
+			t.Error("callees should be omitted when empty")
+		}
+		requestNumber++
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(DeploymentRecord{ID: "dep-callees", Status: "pending"})
+	}))
+	defer func() { server.Close() }()
+
+	client := NewCloudClient(server.URL)
+	for _, req := range requests {
+		if _, err := client.CreateDeployment(context.Background(), "token", req); err != nil {
+			t.Fatalf("CreateDeployment: %v", err)
+		}
+	}
+}
+
 func TestCloudClient_PatchDeployment(t *testing.T) {
 	one := 1
 	cases := []struct {
