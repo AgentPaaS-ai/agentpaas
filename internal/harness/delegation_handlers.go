@@ -669,6 +669,14 @@ func (s *harnessRPCServer) parentRemainingMs() int64 {
 	return rem.Milliseconds()
 }
 
+func (s *harnessRPCServer) sleepLiveCallHop(d time.Duration) {
+	if s.liveCallHopSleep != nil {
+		s.liveCallHopSleep(d)
+		return
+	}
+	time.Sleep(d)
+}
+
 func (s *harnessRPCServer) storeLiveCallOutput(taskID string, output any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -731,76 +739,106 @@ func (s *harnessRPCServer) failLiveCallTask(dts *DelegationTrustState, task dele
 	return &liveCallHopError{msg: reason, code: reason, rpc: rpc}
 }
 
+func hopResponseCode(parsed any) string {
+	rec, ok := parsed.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if c, ok := rec["code"].(string); ok && c != "" {
+		return c
+	}
+	if e, ok := rec["error"].(string); ok && e != "" {
+		return e
+	}
+	return ""
+}
+
 func (s *harnessRPCServer) performLiveCallHop(req rpcRequest, dts *DelegationTrustState, task delegation.Task, namedCallee string) *liveCallHopError {
-	remaining := s.parentRemainingMs()
 	workOrder := any(map[string]any{})
 	if req.Params != nil {
 		if msg, ok := req.Params["message"]; ok && msg != nil {
 			workOrder = msg
 		}
 	}
-	payload, err := json.Marshal(map[string]any{
-		"named_callee":        namedCallee,
-		"work_order":          workOrder,
-		"idempotency_key":     task.IdempotencyKey,
-		"parent_remaining_ms": remaining,
-	})
-	if err != nil {
-		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
-	}
 
-	timeout := time.Duration(remaining) * time.Millisecond
-	if timeout <= 0 {
-		return s.failLiveCallTask(dts, task, "invoke_timeout", true)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, platformLiveCallURL, bytes.NewReader(payload))
-	if err != nil {
-		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.liveCallHop.RoundTrip(httpReq)
-	if err != nil {
-		if ctx.Err() != nil {
+	for {
+		remaining := s.parentRemainingMs()
+		if remaining <= 0 {
 			return s.failLiveCallTask(dts, task, "invoke_timeout", true)
 		}
-		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
-	}
 
-	if resp.StatusCode == http.StatusGatewayTimeout {
-		return s.failLiveCallTask(dts, task, "invoke_timeout", true)
-	}
-
-	var parsed any
-	if len(body) > 0 {
-		if uerr := json.Unmarshal(body, &parsed); uerr != nil {
-			parsed = string(body)
+		payload, err := json.Marshal(map[string]any{
+			"named_callee":        namedCallee,
+			"work_order":          workOrder,
+			"idempotency_key":     task.IdempotencyKey,
+			"parent_remaining_ms": remaining,
+		})
+		if err != nil {
+			return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
 		}
-	}
 
-	if resp.StatusCode >= 400 {
-		code := "live_call_denied"
-		if rec, ok := parsed.(map[string]any); ok {
-			if c, ok := rec["code"].(string); ok && c != "" {
-				code = c
-			} else if e, ok := rec["error"].(string); ok && e != "" {
-				code = e
+		timeout := time.Duration(remaining) * time.Millisecond
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, platformLiveCallURL, bytes.NewReader(payload))
+		if err != nil {
+			cancel()
+			return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+
+		resp, err := s.liveCallHop.RoundTrip(httpReq)
+		if err != nil {
+			cancel()
+			if ctx.Err() != nil {
+				return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+			}
+			return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+		}
+
+		body, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		cancel()
+		if readErr != nil {
+			return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+		}
+
+		var parsed any
+		if len(body) > 0 {
+			if uerr := json.Unmarshal(body, &parsed); uerr != nil {
+				parsed = string(body)
 			}
 		}
-		if code == "invoke_timeout" {
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			s.storeLiveCallOutput(string(task.TaskID), parsed)
+			return s.succeedLiveCallTask(dts, task)
+		}
+
+		code := hopResponseCode(parsed)
+		if resp.StatusCode == http.StatusConflict && code == "waiting_seat" {
+			if s.parentRemainingMs() < 15000 {
+				return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+			}
+			s.sleepLiveCallHop(10 * time.Second)
+			continue
+		}
+		if resp.StatusCode == http.StatusGatewayTimeout && code == "seat_wait_timeout" {
+			return s.failLiveCallTask(dts, task, "seat_wait_timeout", true)
+		}
+		if resp.StatusCode == http.StatusGatewayTimeout {
 			return s.failLiveCallTask(dts, task, "invoke_timeout", true)
 		}
-		return s.failLiveCallTask(dts, task, code, false)
-	}
+		if resp.StatusCode >= 400 {
+			if code == "" {
+				code = "live_call_denied"
+			}
+			if code == "invoke_timeout" {
+				return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+			}
+			return s.failLiveCallTask(dts, task, code, false)
+		}
 
-	s.storeLiveCallOutput(string(task.TaskID), parsed)
-	return s.succeedLiveCallTask(dts, task)
+		s.storeLiveCallOutput(string(task.TaskID), parsed)
+		return s.succeedLiveCallTask(dts, task)
+	}
 }

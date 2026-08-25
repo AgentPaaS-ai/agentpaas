@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/delegation"
 )
@@ -345,5 +346,70 @@ func TestDelegateTask_HopTimeoutFailsTask(t *testing.T) {
 	}
 	if resp.Code != "invoke_timeout" {
 		t.Fatalf("code = %q, want invoke_timeout", resp.Code)
+	}
+}
+
+func TestDelegateTask_WaitingSeatThenSeatWaitTimeoutDoesNotSucceed(t *testing.T) {
+	t.Setenv("AGENTPAAS_AGENT_KIND", "tool")
+	s := setupToolDelegationServer(t, phoneCallToolSnapshot(), false)
+	s.liveCallHopSleep = func(time.Duration) {}
+	var hops int
+	s.liveCallHop = liveCallRoundTrip(func(req *http.Request) (*http.Response, error) {
+		var body map[string]any
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			t.Fatalf("decode hop body: %v", err)
+		}
+		if body["named_callee"] != "dep-agent-peer" {
+			t.Fatalf("named_callee = %v", body["named_callee"])
+		}
+		if body["idempotency_key"] != "idem-wait-then-timeout" {
+			t.Fatalf("idempotency_key = %v", body["idempotency_key"])
+		}
+		if _, ok := body["work_order"]; !ok {
+			t.Fatal("work_order missing")
+		}
+		hops++
+		if hops == 1 {
+			return &http.Response{
+				StatusCode: 409,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":"waiting_seat","code":"waiting_seat","run_id":"run_wait"}`)),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: 504,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":"seat_wait_timeout","code":"seat_wait_timeout","run_id":"run_wait"}`)),
+		}, nil
+	})
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-wait-then-timeout",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "dep-agent-peer",
+			"idempotency_key": "idem-wait-then-timeout",
+			"message":         map[string]any{"task": "lookup"},
+		},
+	})
+	if hops != 2 {
+		t.Fatalf("hops = %d, want 2 (retry after waiting_seat)", hops)
+	}
+	dts := s.getDelegationTrustState()
+	task, err := dts.Store.GetTaskByIdempotencyKey(context.Background(), dts.Snapshot.CallerDeploymentID, "idem-wait-then-timeout")
+	if err != nil || task == nil {
+		t.Fatalf("GetTaskByIdempotencyKey: %v", err)
+	}
+	if task.Status == delegation.TaskStatusSucceeded {
+		t.Fatal("409 waiting_seat then 504 seat_wait_timeout must not succeed the task")
+	}
+	if task.FailureReason != "seat_wait_timeout" {
+		t.Fatalf("FailureReason = %q, want seat_wait_timeout", task.FailureReason)
+	}
+	if resp.OK {
+		t.Fatalf("seat_wait_timeout must be an RPC error, got OK %+v", resp.Result)
+	}
+	if resp.Code != "seat_wait_timeout" {
+		t.Fatalf("code = %q, want seat_wait_timeout", resp.Code)
 	}
 }
