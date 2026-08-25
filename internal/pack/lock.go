@@ -1375,12 +1375,22 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 
 	if len(ay.MCPServers) > 0 {
 		servers := make([]map[string]interface{}, 0, len(ay.MCPServers))
+		failClosed := false
 		for _, s := range ay.MCPServers {
-			if strings.TrimSpace(s.Name) == "" || mcpServerNameRejected(s.Name) {
+			if s.rejected {
+				failClosed = true
+				break
+			}
+			name := strings.TrimSpace(s.Name)
+			if name == "" {
 				continue
 			}
+			if mcpServerNameRejected(s.Name) || mcpServerNameRejected(name) {
+				failClosed = true
+				break
+			}
 			entry := make(map[string]interface{})
-			setIfNotEmpty(entry, "name", s.Name)
+			setIfNotEmpty(entry, "name", name)
 			setIfNotEmpty(entry, "transport", s.Transport)
 			setIfNotEmpty(entry, "url", s.URL)
 			if len(s.AllowedTools) > 0 {
@@ -1393,7 +1403,7 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 			}
 			servers = append(servers, entry)
 		}
-		if len(servers) > 0 {
+		if !failClosed && len(servers) > 0 {
 			out["mcp_servers"] = servers
 		}
 	}
