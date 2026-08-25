@@ -1542,6 +1542,12 @@ func mcpServerCanonicalEntry(s MCPServerDecl, name string) map[string]interface{
 		copy(toolsCopy, s.AllowedTools)
 		entry["allowed_tools"] = toolsCopy
 	}
+	for k, v := range s.Extra {
+		if _, exists := entry[k]; exists {
+			continue
+		}
+		entry[k] = v
+	}
 	return entry
 }
 
