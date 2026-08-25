@@ -1169,7 +1169,7 @@ func rejectPackedMCPServers(ay *AgentYAML) error {
 		return nil
 	}
 	for _, s := range ay.MCPServers {
-		if s.rejected || mcpServerNameRejected(s.Name) {
+		if s.rejected || mcpServerNameRejected(s.Name) || mcpNameHasInvisible(s.Name) {
 			return errors.New("mcp_servers name rejected")
 		}
 	}
