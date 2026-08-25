@@ -105,6 +105,10 @@ type MCPServerDecl struct {
 	Command      string            `yaml:"command" json:"command,omitempty"`
 	Args         []string          `yaml:"args,omitempty" json:"args,omitempty"`
 	Headers      map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
+	// Extra holds unknown mcp_servers[] siblings (env / timeout / secrets /
+	// any other key) so the stamp is the whole subtree (SC8). Not a named
+	// allowlist. Unexported JSON so only mcpServerCanonicalEntry emits them.
+	Extra map[string]interface{} `yaml:"-" json:"-"`
 	// rejected is set when the declared name is injected (newline / NUL /
 	// control / ".." / unicode-dot). Unexported so it cannot be stamped.
 	// LoadAgentYAML fail-closes when any entry is rejected.
@@ -211,16 +215,46 @@ func mcpUnicodeSpaceRune(r rune) bool {
 	return unicode.Is(unicode.Zs, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
 }
 
-// mcpLeftoverFormatRune reports Cf / Mn glyphs that are not already on the
-// mcpInvisibleRune strip path. General category reject (not per-plane
-// instance patches): Mongolian FVS (U+180B–U+180D), Khmer inherent vowels
-// (U+17B4/U+17B5), musical format (U+1D173–U+1D17A), Kaithi U+110BD, and
-// any other leftover Cf/Mn. Must fail-close, not strip-then-stamp.
+// mcpLeftoverFormatRune reports leftover format / combining / blank glyphs
+// that are not already on the mcpInvisibleRune strip path. General category
+// reject (not per-plane instance patches): leftover Cf/Mn, spacing combining
+// Mc, enclosing Me, remaining default-ignorables, and blank So. Must
+// fail-close, not strip-then-stamp.
 func mcpLeftoverFormatRune(r rune) bool {
 	if mcpInvisibleRune(r) {
 		return false
 	}
-	return unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Mn, r)
+	switch {
+	case unicode.Is(unicode.Cf, r), unicode.Is(unicode.Mn, r),
+		unicode.Is(unicode.Mc, r), unicode.Is(unicode.Me, r):
+		return true
+	case unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r):
+		return true
+	case mcpBlankSoRune(r):
+		return true
+	default:
+		return false
+	}
+}
+
+// mcpBlankSoRune reports leftover blank-ish Other symbols that can hide or
+// replace a hosted slug. Category+block class (control pictures, specials
+// replacement, remaining default-ignorable So), not listed adversary
+// code points.
+func mcpBlankSoRune(r rune) bool {
+	if !unicode.Is(unicode.So, r) {
+		return false
+	}
+	switch {
+	case unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r):
+		return true
+	case r >= 0x2400 && r <= 0x243F:
+		return true
+	case r >= 0xFFF9 && r <= 0xFFFD:
+		return true
+	default:
+		return false
+	}
 }
 
 func mcpNameHasLeftoverFormat(name string) bool {
@@ -331,12 +365,42 @@ func (s *MCPServerDecl) UnmarshalYAML(value *yaml.Node) error {
 	s.Command = raw.Command
 	s.Args = raw.Args
 	s.Headers = raw.Headers
+	s.Extra = extraMCPServerSiblings(value)
 	s.rejected = false
 	if mcpServerNameRejected(s.Name) || mcpNameHasInvisible(s.Name) {
 		s.rejected = true
 		s.Name = ""
 	}
 	return nil
+}
+
+var mcpServerNamedFields = map[string]struct{}{
+	"name": {}, "transport": {}, "url": {}, "allowed_tools": {},
+	"type": {}, "disabled": {}, "enabled": {}, "oauth": {},
+	"cwd": {}, "notes": {}, "command": {}, "args": {}, "headers": {},
+}
+
+// extraMCPServerSiblings captures unknown mcp_servers[] keys so the stamp
+// is the whole subtree. Named-field allowlist is not SC8.
+func extraMCPServerSiblings(value *yaml.Node) map[string]interface{} {
+	if value == nil {
+		return nil
+	}
+	var all map[string]interface{}
+	if err := value.Decode(&all); err != nil || len(all) == 0 {
+		return nil
+	}
+	extra := make(map[string]interface{})
+	for k, v := range all {
+		if _, known := mcpServerNamedFields[k]; known {
+			continue
+		}
+		extra[k] = v
+	}
+	if len(extra) == 0 {
+		return nil
+	}
+	return extra
 }
 
 func (agent *AgentYAML) normalize() {
