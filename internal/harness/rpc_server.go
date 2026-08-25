@@ -69,6 +69,10 @@ type harnessRPCServer struct {
 	// an ADMITTED delegate_task. Nil skips the hop (unit tests).
 	liveCallHop http.RoundTripper
 
+	// liveCallHopSleep is the wait between waiting_seat hop retries.
+	// Nil uses time.Sleep.
+	liveCallHopSleep func(time.Duration)
+
 	// liveCallOutputs holds A's invoke JSON keyed by task id. Never contains
 	// endpoints or tokens.
 	liveCallOutputs map[string]any
