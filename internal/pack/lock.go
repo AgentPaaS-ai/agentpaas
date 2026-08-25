@@ -1381,7 +1381,7 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 				failClosed = true
 				break
 			}
-			name := strings.TrimSpace(s.Name)
+			name := stripMCPInvisibleName(strings.TrimSpace(s.Name))
 			if name == "" {
 				continue
 			}
