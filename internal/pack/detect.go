@@ -95,12 +95,41 @@ type MCPServerDecl struct {
 	Transport    string   `yaml:"transport" json:"transport,omitempty"`
 	URL          string   `yaml:"url" json:"url,omitempty"`
 	AllowedTools []string `yaml:"allowed_tools,omitempty" json:"allowed_tools,omitempty"`
+	// rejected is set when the declared name is injected (newline / NUL /
+	// control / ".." / unicode-dot). Unexported so it cannot be stamped.
+	// LoadAgentYAML fail-closes when any entry is rejected.
+	rejected bool
+}
+
+// mcpDotEquivalents maps unicode-dot / fullwidth-dot / ellipsis runes to
+// ASCII "." so ".." traversal homoglyphs are rejected before stamp.
+func mcpDotEquivalents(r rune) string {
+	switch r {
+	case '\u2024', '\uff0e', '\ufe52', '\uff61', '\u00b7', '\u2219', '\u22c5':
+		return "."
+	case '\u2025':
+		return ".."
+	case '\u2026', '\u22ef':
+		return "..."
+	default:
+		return string(r)
+	}
+}
+
+func mcpNameDotFold(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		b.WriteString(mcpDotEquivalents(r))
+	}
+	return b.String()
 }
 
 // mcpServerNameRejected reports names that must not be stamped: newline, NUL,
-// other control characters, or a ".." path token.
+// other control characters, ASCII "..", or unicode-dot / fullwidth-dot / "..."
+// traversal equivalents.
 func mcpServerNameRejected(name string) bool {
-	if strings.Contains(name, "..") {
+	if strings.Contains(mcpNameDotFold(name), "..") {
 		return true
 	}
 	for _, r := range name {
@@ -111,17 +140,27 @@ func mcpServerNameRejected(name string) bool {
 	return false
 }
 
-// UnmarshalYAML rejects newline / NUL / control / ".." names before stamp.
-// The entry is kept so YAML still parses; the name is dropped so pack cannot
-// sign the injected token.
+// UnmarshalYAML rejects newline / NUL / control / ".." / unicode-dot names
+// before stamp. The glyph is dropped; rejected is set so LoadAgentYAML and
+// the stamp path fail the whole list instead of signing a sibling.
 func (s *MCPServerDecl) UnmarshalYAML(value *yaml.Node) error {
-	type rawMCPServerDecl MCPServerDecl
+	type rawMCPServerDecl struct {
+		Name         string   `yaml:"name"`
+		Transport    string   `yaml:"transport"`
+		URL          string   `yaml:"url"`
+		AllowedTools []string `yaml:"allowed_tools"`
+	}
 	var raw rawMCPServerDecl
 	if err := value.Decode(&raw); err != nil {
 		return err
 	}
-	*s = MCPServerDecl(raw)
+	s.Name = raw.Name
+	s.Transport = raw.Transport
+	s.URL = raw.URL
+	s.AllowedTools = raw.AllowedTools
+	s.rejected = false
 	if mcpServerNameRejected(s.Name) {
+		s.rejected = true
 		s.Name = ""
 	}
 	return nil
@@ -152,7 +191,8 @@ func (agent *AgentYAML) normalize() {
 		}
 	}
 	for i := range agent.MCPServers {
-		if mcpServerNameRejected(agent.MCPServers[i].Name) {
+		if agent.MCPServers[i].rejected || mcpServerNameRejected(agent.MCPServers[i].Name) {
+			agent.MCPServers[i].rejected = true
 			agent.MCPServers[i].Name = ""
 		}
 	}
@@ -232,12 +272,27 @@ func LoadAgentYAML(projectDir string) (*AgentYAML, error) {
 		return nil, fmt.Errorf("parse agent.yaml: %w", err)
 	}
 	agent.normalize()
+	if mcpServersRejected(&agent) {
+		return nil, fmt.Errorf("parse agent.yaml: mcp_servers name rejected")
+	}
 
 	if err := ValidateMCPServiceConfig(&agent); err != nil {
 		return nil, fmt.Errorf("validate agent.yaml: %w", err)
 	}
 
 	return &agent, nil
+}
+
+func mcpServersRejected(agent *AgentYAML) bool {
+	if agent == nil {
+		return false
+	}
+	for _, s := range agent.MCPServers {
+		if s.rejected {
+			return true
+		}
+	}
+	return false
 }
 
 // resolveRuntime maps the agent.yaml runtime: string to a RuntimeType.

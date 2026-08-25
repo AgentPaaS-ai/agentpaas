@@ -80,7 +80,8 @@ func TestAdversaryT15_NewlineNameNotRejected(t *testing.T) {
 	}
 	ay, err := LoadAgentYAML(dir)
 	if err != nil {
-		t.Fatalf("LoadAgentYAML: %v", err)
+		// Fail-closed pack error is a reject of the injected name (SC11).
+		return
 	}
 	if ay == nil || len(ay.MCPServers) == 0 {
 		t.Fatal("expected mcp_servers to parse")
