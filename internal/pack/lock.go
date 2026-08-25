@@ -626,6 +626,9 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	mergePolicyEgressIntoAgentYAML(&cfg)
 
 	lock := assembleAgentLock(cfg, sbom, sbomDigest, string(publicKeyPEM), privateKey, signatureReferrer, policyDigest)
+	if lock == nil {
+		return nil, fmt.Errorf("create agent lock: mcp_servers name rejected")
+	}
 
 	pubIdentity, err := loadRequiredPublisherIdentity(cfg)
 	if err != nil {
@@ -665,7 +668,12 @@ func preparePackageSigningMaterial(cfg LockConfig) (privateKey *ecdsa.PrivateKey
 }
 
 // assembleAgentLock builds the unsigned lock struct fields from pack inputs.
+// Fail-closes (returns nil) when any MCP name is rejected so callers that
+// skip validateLockConfig cannot copy "../evil" or lookalike tokens.
 func assembleAgentLock(cfg LockConfig, sbom []byte, sbomDigest, packageAID string, privateKey *ecdsa.PrivateKey, signatureReferrer, policyDigest string) *AgentLock {
+	if err := rejectPackedMCPServers(cfg.AgentYAML); err != nil {
+		return nil
+	}
 	var caps []DeclaredCapability
 	if cfg.AgentYAML != nil {
 		caps = cfg.AgentYAML.Capabilities

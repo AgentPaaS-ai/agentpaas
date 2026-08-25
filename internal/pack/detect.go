@@ -202,11 +202,32 @@ func mcpUnicodeSpaceRune(r rune) bool {
 	return unicode.Is(unicode.Zs, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
 }
 
+// mcpVisibleBlankRune reports leftover lookalike / blank / format glyphs
+// outside the r6 Cf/Zs window. These must fail-close (not strip-then-stamp):
+// Hangul fillers (U+115F / U+1160 / U+3164 / U+FFA0), Braille blank
+// (U+2800), leftover TAG (U+E0001), and ideographic VS supplement
+// (U+E0100–U+E01EF). Distinct from mcpInvisibleRune, which still strips.
+func mcpVisibleBlankRune(r rune) bool {
+	switch {
+	case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0':
+		return true
+	case r == '\u2800':
+		return true
+	case r == '\U000E0001':
+		return true
+	case r >= '\U000E0100' && r <= '\U000E01EF':
+		return true
+	default:
+		return false
+	}
+}
+
 // mcpServerNameRejected reports names that must not be stamped: newline, NUL,
 // other C0/C1 controls, unicode Zs/Zl/Zp (other than ASCII space / NBSP),
-// ASCII "..", or any unicode-dot / fullwidth-dot / "..." homoglyph
-// (including a single folded '.'). Invisible format runes are stripped
-// before stamp rather than fail-closing the whole list.
+// leftover visible-blank / format glyphs (Hangul filler, Braille blank,
+// VS17+, LANGUAGE TAG), ASCII "..", or any unicode-dot / fullwidth-dot /
+// "..." homoglyph (including a single folded '.'). Invisible format runes
+// are stripped before stamp rather than fail-closing the whole list.
 func mcpServerNameRejected(name string) bool {
 	if strings.Contains(mcpNameDotFold(name), "..") {
 		return true
@@ -216,6 +237,9 @@ func mcpServerNameRejected(name string) bool {
 			return true
 		}
 		if mcpUnicodeSpaceRune(r) {
+			return true
+		}
+		if mcpVisibleBlankRune(r) {
 			return true
 		}
 		folded := mcpDotEquivalents(r)
