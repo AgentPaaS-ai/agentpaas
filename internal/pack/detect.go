@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/fsutil"
 	"gopkg.in/yaml.v3"
@@ -123,14 +124,15 @@ func mcpDotEquivalents(r rune) string {
 
 // mcpInvisibleRune reports format / invisible glyphs that must not appear
 // inside a stamped MCP name token: ZWSP/ZWNJ/ZWJ/BOM, leftover Cf (WJ,
-// soft hyphen, CGJ, MVS, U+2061–U+2064), bidi marks/embeds/isolates
-// (U+200E/U+200F, U+202A–U+202E, U+2066–U+2069), and variation selectors
-// (U+FE00–U+FE0F).
+// soft hyphen, CGJ, MVS, U+2061–U+2064, U+206A–U+206F), bidi marks /
+// embeds / isolates (U+200E/U+200F, U+202A–U+202E, U+2066–U+2069,
+// U+061C), variation selectors (U+FE00–U+FE0F), TAG (U+E0020–U+E007F),
+// and interlinear annotation (U+FFF9–U+FFFB).
 func mcpInvisibleRune(r rune) bool {
 	switch {
 	case r == '\u200b' || r == '\u200c' || r == '\u200d' || r == '\ufeff':
 		return true
-	case r == '\u200e' || r == '\u200f':
+	case r == '\u200e' || r == '\u200f' || r == '\u061c':
 		return true
 	case r >= '\u202a' && r <= '\u202e':
 		return true
@@ -138,9 +140,13 @@ func mcpInvisibleRune(r rune) bool {
 		return true
 	case r >= '\u2061' && r <= '\u2064':
 		return true
-	case r >= '\u2066' && r <= '\u2069':
+	case r >= '\u2066' && r <= '\u206f':
 		return true
 	case r >= '\ufe00' && r <= '\ufe0f':
+		return true
+	case r >= '\U000E0020' && r <= '\U000E007F':
+		return true
+	case r >= '\ufff9' && r <= '\ufffb':
 		return true
 	default:
 		return false
@@ -186,16 +192,30 @@ func mcpNameDotFold(name string) string {
 	return b.String()
 }
 
+// mcpUnicodeSpaceRune reports Zs/Zl/Zp that TrimSpace would fold onto a
+// different hosted slug. ASCII space stays trim-able. NBSP (U+00A0) is
+// left to the existing T16 TrimSpace fold so r2 stays green.
+func mcpUnicodeSpaceRune(r rune) bool {
+	if r == ' ' || r == '\u00a0' {
+		return false
+	}
+	return unicode.Is(unicode.Zs, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
+}
+
 // mcpServerNameRejected reports names that must not be stamped: newline, NUL,
-// other C0/C1 controls, ASCII "..", or any unicode-dot / fullwidth-dot / "..."
-// homoglyph (including a single folded '.'). Invisible format runes are
-// stripped before stamp rather than fail-closing the whole list.
+// other C0/C1 controls, unicode Zs/Zl/Zp (other than ASCII space / NBSP),
+// ASCII "..", or any unicode-dot / fullwidth-dot / "..." homoglyph
+// (including a single folded '.'). Invisible format runes are stripped
+// before stamp rather than fail-closing the whole list.
 func mcpServerNameRejected(name string) bool {
 	if strings.Contains(mcpNameDotFold(name), "..") {
 		return true
 	}
 	for _, r := range name {
 		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return true
+		}
+		if mcpUnicodeSpaceRune(r) {
 			return true
 		}
 		folded := mcpDotEquivalents(r)
