@@ -1402,41 +1402,59 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 	if len(ay.MCPServers) > 0 {
 		servers := make([]map[string]interface{}, 0, len(ay.MCPServers))
 		failClosed := false
+		illegal := false
+		legal := 0
+		leftoverOnly := true
 		for _, s := range ay.MCPServers {
-			if s.rejected {
-				failClosed = true
-				break
+			if s.rejected || mcpServerNameRejected(s.Name) {
+				illegal = true
+				if !mcpNameHasLeftoverFormat(s.Name) {
+					leftoverOnly = false
+				}
+				continue
 			}
-			// Reject C1 / unicode-dot on the raw token before TrimSpace so
-			// NEL (U+0085) cannot fold onto a different hosted slug.
-			if mcpServerNameRejected(s.Name) {
-				failClosed = true
-				break
-			}
+			leftoverOnly = false
 			name := stripMCPInvisibleName(strings.TrimSpace(s.Name))
 			if name == "" {
 				continue
 			}
 			if mcpServerNameRejected(name) {
-				failClosed = true
-				break
-			}
-			entry := make(map[string]interface{})
-			setIfNotEmpty(entry, "name", name)
-			setIfNotEmpty(entry, "transport", s.Transport)
-			setIfNotEmpty(entry, "url", s.URL)
-			if len(s.AllowedTools) > 0 {
-				toolsCopy := make([]string, len(s.AllowedTools))
-				copy(toolsCopy, s.AllowedTools)
-				entry["allowed_tools"] = toolsCopy
-			}
-			if len(entry) == 0 {
+				illegal = true
+				leftoverOnly = false
 				continue
 			}
-			servers = append(servers, entry)
+			legal++
 		}
-		if !failClosed && len(servers) > 0 {
-			out["mcp_servers"] = servers
+		// SC13: mixed illegal+legal is not stamped. Other rejects omit.
+		// Leftover-only Cf/Mn lists replace those runes so the glyph is
+		// not signed and is not strip-folded onto the hosted slug.
+		if illegal && (legal > 0 || !leftoverOnly) {
+			failClosed = true
+		}
+		if !failClosed {
+			for _, s := range ay.MCPServers {
+				name := s.Name
+				if mcpNameHasLeftoverFormat(name) {
+					name = replaceLeftoverFormatRunes(name)
+				}
+				if s.rejected || mcpServerNameRejected(s.Name) {
+					if !mcpNameHasLeftoverFormat(s.Name) {
+						continue
+					}
+				}
+				name = stripMCPInvisibleName(strings.TrimSpace(name))
+				if name == "" {
+					continue
+				}
+				entry := mcpServerCanonicalEntry(s, name)
+				if len(entry) == 0 {
+					continue
+				}
+				servers = append(servers, entry)
+			}
+			if len(servers) > 0 {
+				out["mcp_servers"] = servers
+			}
 		}
 	}
 
@@ -1487,6 +1505,44 @@ func setIfNotEmpty(m map[string]interface{}, key, val string) {
 	if val != "" {
 		m[key] = val
 	}
+}
+
+func mcpServerCanonicalEntry(s MCPServerDecl, name string) map[string]interface{} {
+	entry := make(map[string]interface{})
+	setIfNotEmpty(entry, "name", name)
+	setIfNotEmpty(entry, "transport", s.Transport)
+	setIfNotEmpty(entry, "url", s.URL)
+	setIfNotEmpty(entry, "type", s.Type)
+	setIfNotEmpty(entry, "cwd", s.Cwd)
+	setIfNotEmpty(entry, "notes", s.Notes)
+	setIfNotEmpty(entry, "command", s.Command)
+	if s.Disabled != nil {
+		entry["disabled"] = s.Disabled
+	}
+	if s.Enabled != nil {
+		entry["enabled"] = s.Enabled
+	}
+	if s.OAuth != nil {
+		entry["oauth"] = s.OAuth
+	}
+	if len(s.Args) > 0 {
+		argsCopy := make([]string, len(s.Args))
+		copy(argsCopy, s.Args)
+		entry["args"] = argsCopy
+	}
+	if len(s.Headers) > 0 {
+		headersCopy := make(map[string]string, len(s.Headers))
+		for k, v := range s.Headers {
+			headersCopy[k] = v
+		}
+		entry["headers"] = headersCopy
+	}
+	if len(s.AllowedTools) > 0 {
+		toolsCopy := make([]string, len(s.AllowedTools))
+		copy(toolsCopy, s.AllowedTools)
+		entry["allowed_tools"] = toolsCopy
+	}
+	return entry
 }
 
 func privateKeyFromMaterial(material interface{}) (*ecdsa.PrivateKey, []byte, error) {

@@ -92,10 +92,19 @@ type MCPServiceConfig struct {
 // matches name to a same-tenant kind=mcp deploy. URL is optional: bind
 // fills the hosted /v1/deployments/:id/mcp URL when absent.
 type MCPServerDecl struct {
-	Name         string   `yaml:"name" json:"name,omitempty"`
-	Transport    string   `yaml:"transport" json:"transport,omitempty"`
-	URL          string   `yaml:"url" json:"url,omitempty"`
-	AllowedTools []string `yaml:"allowed_tools,omitempty" json:"allowed_tools,omitempty"`
+	Name         string            `yaml:"name" json:"name,omitempty"`
+	Transport    string            `yaml:"transport" json:"transport,omitempty"`
+	URL          string            `yaml:"url" json:"url,omitempty"`
+	AllowedTools []string          `yaml:"allowed_tools,omitempty" json:"allowed_tools,omitempty"`
+	Type         string            `yaml:"type" json:"type,omitempty"`
+	Disabled     interface{}       `yaml:"disabled" json:"disabled,omitempty"`
+	Enabled      interface{}       `yaml:"enabled" json:"enabled,omitempty"`
+	OAuth        interface{}       `yaml:"oauth" json:"oauth,omitempty"`
+	Cwd          string            `yaml:"cwd" json:"cwd,omitempty"`
+	Notes        string            `yaml:"notes" json:"notes,omitempty"`
+	Command      string            `yaml:"command" json:"command,omitempty"`
+	Args         []string          `yaml:"args,omitempty" json:"args,omitempty"`
+	Headers      map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
 	// rejected is set when the declared name is injected (newline / NUL /
 	// control / ".." / unicode-dot). Unexported so it cannot be stamped.
 	// LoadAgentYAML fail-closes when any entry is rejected.
@@ -202,11 +211,45 @@ func mcpUnicodeSpaceRune(r rune) bool {
 	return unicode.Is(unicode.Zs, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
 }
 
+// mcpLeftoverFormatRune reports Cf / Mn glyphs that are not already on the
+// mcpInvisibleRune strip path. General category reject (not per-plane
+// instance patches): Mongolian FVS (U+180B–U+180D), Khmer inherent vowels
+// (U+17B4/U+17B5), musical format (U+1D173–U+1D17A), Kaithi U+110BD, and
+// any other leftover Cf/Mn. Must fail-close, not strip-then-stamp.
+func mcpLeftoverFormatRune(r rune) bool {
+	if mcpInvisibleRune(r) {
+		return false
+	}
+	return unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Mn, r)
+}
+
+func mcpNameHasLeftoverFormat(name string) bool {
+	for _, r := range name {
+		if mcpLeftoverFormatRune(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func replaceLeftoverFormatRunes(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		if mcpLeftoverFormatRune(r) {
+			b.WriteRune('\uFFFD')
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // mcpVisibleBlankRune reports leftover lookalike / blank / format glyphs
 // outside the r6 Cf/Zs window. These must fail-close (not strip-then-stamp):
 // Hangul fillers (U+115F / U+1160 / U+3164 / U+FFA0), Braille blank
-// (U+2800), leftover TAG (U+E0001), and ideographic VS supplement
-// (U+E0100–U+E01EF). Distinct from mcpInvisibleRune, which still strips.
+// (U+2800), leftover TAG (U+E0001), ideographic VS supplement
+// (U+E0100–U+E01EF), and leftover Cf/Mn not on the invisible-strip path.
 func mcpVisibleBlankRune(r rune) bool {
 	switch {
 	case r == '\u115f' || r == '\u1160' || r == '\u3164' || r == '\uffa0':
@@ -216,6 +259,8 @@ func mcpVisibleBlankRune(r rune) bool {
 	case r == '\U000E0001':
 		return true
 	case r >= '\U000E0100' && r <= '\U000E01EF':
+		return true
+	case mcpLeftoverFormatRune(r):
 		return true
 	default:
 		return false
@@ -255,10 +300,19 @@ func mcpServerNameRejected(name string) bool {
 // the stamp path fail the whole list instead of signing a sibling.
 func (s *MCPServerDecl) UnmarshalYAML(value *yaml.Node) error {
 	type rawMCPServerDecl struct {
-		Name         string   `yaml:"name"`
-		Transport    string   `yaml:"transport"`
-		URL          string   `yaml:"url"`
-		AllowedTools []string `yaml:"allowed_tools"`
+		Name         string            `yaml:"name"`
+		Transport    string            `yaml:"transport"`
+		URL          string            `yaml:"url"`
+		AllowedTools []string          `yaml:"allowed_tools"`
+		Type         string            `yaml:"type"`
+		Disabled     interface{}       `yaml:"disabled"`
+		Enabled      interface{}       `yaml:"enabled"`
+		OAuth        interface{}       `yaml:"oauth"`
+		Cwd          string            `yaml:"cwd"`
+		Notes        string            `yaml:"notes"`
+		Command      string            `yaml:"command"`
+		Args         []string          `yaml:"args"`
+		Headers      map[string]string `yaml:"headers"`
 	}
 	var raw rawMCPServerDecl
 	if err := value.Decode(&raw); err != nil {
@@ -268,6 +322,15 @@ func (s *MCPServerDecl) UnmarshalYAML(value *yaml.Node) error {
 	s.Transport = raw.Transport
 	s.URL = raw.URL
 	s.AllowedTools = raw.AllowedTools
+	s.Type = raw.Type
+	s.Disabled = raw.Disabled
+	s.Enabled = raw.Enabled
+	s.OAuth = raw.OAuth
+	s.Cwd = raw.Cwd
+	s.Notes = raw.Notes
+	s.Command = raw.Command
+	s.Args = raw.Args
+	s.Headers = raw.Headers
 	s.rejected = false
 	if mcpServerNameRejected(s.Name) || mcpNameHasInvisible(s.Name) {
 		s.rejected = true
