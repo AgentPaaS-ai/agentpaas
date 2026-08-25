@@ -97,6 +97,36 @@ type MCPServerDecl struct {
 	AllowedTools []string `yaml:"allowed_tools,omitempty" json:"allowed_tools,omitempty"`
 }
 
+// mcpServerNameRejected reports names that must not be stamped: newline, NUL,
+// other control characters, or a ".." path token.
+func mcpServerNameRejected(name string) bool {
+	if strings.Contains(name, "..") {
+		return true
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
+// UnmarshalYAML rejects newline / NUL / control / ".." names before stamp.
+// The entry is kept so YAML still parses; the name is dropped so pack cannot
+// sign the injected token.
+func (s *MCPServerDecl) UnmarshalYAML(value *yaml.Node) error {
+	type rawMCPServerDecl MCPServerDecl
+	var raw rawMCPServerDecl
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*s = MCPServerDecl(raw)
+	if mcpServerNameRejected(s.Name) {
+		s.Name = ""
+	}
+	return nil
+}
+
 func (agent *AgentYAML) normalize() {
 	if agent == nil {
 		return
@@ -119,6 +149,11 @@ func (agent *AgentYAML) normalize() {
 			agent.Entry = agent.Spec.Entrypoint
 		case strings.TrimSpace(agent.Spec.Entry) != "":
 			agent.Entry = agent.Spec.Entry
+		}
+	}
+	for i := range agent.MCPServers {
+		if mcpServerNameRejected(agent.MCPServers[i].Name) {
+			agent.MCPServers[i].Name = ""
 		}
 	}
 }
