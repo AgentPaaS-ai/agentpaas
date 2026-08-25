@@ -105,7 +105,9 @@ type MCPServerDecl struct {
 // ASCII "." so ".." traversal homoglyphs are rejected before stamp.
 func mcpDotEquivalents(r rune) string {
 	switch r {
-	case '\u2024', '\uff0e', '\ufe52', '\uff61', '\u00b7', '\u2219', '\u22c5':
+	case '\u2024', '\uff0e', '\ufe52', '\uff61', '\u00b7', '\u2219', '\u22c5',
+		'\u3002', '\u2027', '\u30fb', '\uff65', '\u06d4', '\u0701', '\u0702',
+		'\ufe12', '\u2022', '\u2e31', '\ua4f8', '\ua60e':
 		return "."
 	case '\u2025':
 		return ".."
@@ -114,6 +116,36 @@ func mcpDotEquivalents(r rune) string {
 	default:
 		return string(r)
 	}
+}
+
+// mcpInvisibleRune reports ZWSP / ZWNJ / ZWJ / BOM, which must not appear
+// inside a stamped MCP name token.
+func mcpInvisibleRune(r rune) bool {
+	switch r {
+	case '\u200b', '\u200c', '\u200d', '\ufeff':
+		return true
+	default:
+		return false
+	}
+}
+
+// stripMCPInvisibleName drops ZWSP / ZWNJ / ZWJ / BOM so the signed token
+// is the visible hosted slug.
+func stripMCPInvisibleName(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	changed := false
+	for _, r := range name {
+		if mcpInvisibleRune(r) {
+			changed = true
+			continue
+		}
+		b.WriteRune(r)
+	}
+	if !changed {
+		return name
+	}
+	return b.String()
 }
 
 func mcpNameDotFold(name string) string {
@@ -127,7 +159,8 @@ func mcpNameDotFold(name string) string {
 
 // mcpServerNameRejected reports names that must not be stamped: newline, NUL,
 // other control characters, ASCII "..", or unicode-dot / fullwidth-dot / "..."
-// traversal equivalents.
+// traversal equivalents. Invisible format runes are stripped before stamp
+// rather than fail-closing the whole list.
 func mcpServerNameRejected(name string) bool {
 	if strings.Contains(mcpNameDotFold(name), "..") {
 		return true
