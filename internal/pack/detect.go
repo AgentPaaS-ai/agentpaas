@@ -54,6 +54,9 @@ type AgentYAML struct {
 	// domains (and optionally declared in agent.yaml). String list only so
 	// `egress: [example.com]` still unmarshals.
 	Egress []string `yaml:"egress,omitempty" json:"egress,omitempty"`
+	// MCPServers are client MCP servers declared in agent.yaml. Stamped
+	// onto lock agent_yaml so hosted bind can grant matching kind=mcp deploys.
+	MCPServers []MCPServerDecl `yaml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
 	// ComponentIndex is an optional pack-time overlay (tools/schemas/_meta).
 	// It is compiled into lock.component_index and is not copied into agent_yaml.
 	ComponentIndex map[string]interface{} `yaml:"component_index,omitempty" json:"-"`
@@ -82,6 +85,16 @@ type MCPServiceConfig struct {
 	Transport      string   `yaml:"transport" json:"transport,omitempty"`             // Only "streamable_http" is supported in v0.4.
 	Tools          []string `yaml:"tools" json:"tools,omitempty"`                     // Non-empty, unique tool names.
 	MaxConcurrency int      `yaml:"max_concurrency" json:"max_concurrency,omitempty"` // 1..32, default 1 if omitted.
+}
+
+// MCPServerDecl is a client MCP server named in agent.yaml. Hosted bind
+// matches name to a same-tenant kind=mcp deploy. URL is optional: bind
+// fills the hosted /v1/deployments/:id/mcp URL when absent.
+type MCPServerDecl struct {
+	Name         string   `yaml:"name" json:"name,omitempty"`
+	Transport    string   `yaml:"transport" json:"transport,omitempty"`
+	URL          string   `yaml:"url" json:"url,omitempty"`
+	AllowedTools []string `yaml:"allowed_tools,omitempty" json:"allowed_tools,omitempty"`
 }
 
 func (agent *AgentYAML) normalize() {

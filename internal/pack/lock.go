@@ -1373,6 +1373,23 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 		out["egress"] = egressCopy
 	}
 
+	if len(ay.MCPServers) > 0 {
+		servers := make([]map[string]interface{}, 0, len(ay.MCPServers))
+		for _, s := range ay.MCPServers {
+			entry := make(map[string]interface{})
+			setIfNotEmpty(entry, "name", s.Name)
+			setIfNotEmpty(entry, "transport", s.Transport)
+			setIfNotEmpty(entry, "url", s.URL)
+			if len(s.AllowedTools) > 0 {
+				toolsCopy := make([]string, len(s.AllowedTools))
+				copy(toolsCopy, s.AllowedTools)
+				entry["allowed_tools"] = toolsCopy
+			}
+			servers = append(servers, entry)
+		}
+		out["mcp_servers"] = servers
+	}
+
 	return out
 }
 
