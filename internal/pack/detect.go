@@ -107,7 +107,10 @@ func mcpDotEquivalents(r rune) string {
 	switch r {
 	case '\u2024', '\uff0e', '\ufe52', '\uff61', '\u00b7', '\u2219', '\u22c5',
 		'\u3002', '\u2027', '\u30fb', '\uff65', '\u06d4', '\u0701', '\u0702',
-		'\ufe12', '\u2022', '\u2e31', '\ua4f8', '\ua60e':
+		'\ufe12', '\u2022', '\u2e31', '\ua4f8', '\ua60e',
+		'\ua78f', '\u2e33', '\u1362', '\u166e', '\u1803', '\u1809',
+		'\u16eb', '\u0387', '\u1427', '\u1c3e', '\u2e3c', '\u02d9',
+		'\u0700':
 		return "."
 	case '\u2025':
 		return ".."
@@ -118,18 +121,21 @@ func mcpDotEquivalents(r rune) string {
 	}
 }
 
-// mcpInvisibleRune reports ZWSP / ZWNJ / ZWJ / BOM, which must not appear
-// inside a stamped MCP name token.
+// mcpInvisibleRune reports format / invisible glyphs that must not appear
+// inside a stamped MCP name token (ZWSP / ZWNJ / ZWJ / BOM plus leftover
+// Cf-adjacent: WORD JOINER, SOFT HYPHEN, CGJ, MVS, U+2061–U+2064).
 func mcpInvisibleRune(r rune) bool {
 	switch r {
-	case '\u200b', '\u200c', '\u200d', '\ufeff':
+	case '\u200b', '\u200c', '\u200d', '\ufeff',
+		'\u2060', '\u00ad', '\u034f', '\u180e',
+		'\u2061', '\u2062', '\u2063', '\u2064':
 		return true
 	default:
 		return false
 	}
 }
 
-// stripMCPInvisibleName drops ZWSP / ZWNJ / ZWJ / BOM so the signed token
+// stripMCPInvisibleName drops invisible format runes so the signed token
 // is the visible hosted slug.
 func stripMCPInvisibleName(name string) string {
 	var b strings.Builder
