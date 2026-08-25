@@ -122,17 +122,40 @@ func mcpDotEquivalents(r rune) string {
 }
 
 // mcpInvisibleRune reports format / invisible glyphs that must not appear
-// inside a stamped MCP name token (ZWSP / ZWNJ / ZWJ / BOM plus leftover
-// Cf-adjacent: WORD JOINER, SOFT HYPHEN, CGJ, MVS, U+2061–U+2064).
+// inside a stamped MCP name token: ZWSP/ZWNJ/ZWJ/BOM, leftover Cf (WJ,
+// soft hyphen, CGJ, MVS, U+2061–U+2064), bidi marks/embeds/isolates
+// (U+200E/U+200F, U+202A–U+202E, U+2066–U+2069), and variation selectors
+// (U+FE00–U+FE0F).
 func mcpInvisibleRune(r rune) bool {
-	switch r {
-	case '\u200b', '\u200c', '\u200d', '\ufeff',
-		'\u2060', '\u00ad', '\u034f', '\u180e',
-		'\u2061', '\u2062', '\u2063', '\u2064':
+	switch {
+	case r == '\u200b' || r == '\u200c' || r == '\u200d' || r == '\ufeff':
+		return true
+	case r == '\u200e' || r == '\u200f':
+		return true
+	case r >= '\u202a' && r <= '\u202e':
+		return true
+	case r == '\u2060' || r == '\u00ad' || r == '\u034f' || r == '\u180e':
+		return true
+	case r >= '\u2061' && r <= '\u2064':
+		return true
+	case r >= '\u2066' && r <= '\u2069':
+		return true
+	case r >= '\ufe00' && r <= '\ufe0f':
 		return true
 	default:
 		return false
 	}
+}
+
+// mcpNameHasInvisible reports whether name contains a format / bidi /
+// variation-selector rune. Load/unmarshal fail-closes; stamp strips.
+func mcpNameHasInvisible(name string) bool {
+	for _, r := range name {
+		if mcpInvisibleRune(r) {
+			return true
+		}
+	}
+	return false
 }
 
 // stripMCPInvisibleName drops invisible format runes so the signed token
@@ -164,15 +187,19 @@ func mcpNameDotFold(name string) string {
 }
 
 // mcpServerNameRejected reports names that must not be stamped: newline, NUL,
-// other control characters, ASCII "..", or unicode-dot / fullwidth-dot / "..."
-// traversal equivalents. Invisible format runes are stripped before stamp
-// rather than fail-closing the whole list.
+// other C0/C1 controls, ASCII "..", or any unicode-dot / fullwidth-dot / "..."
+// homoglyph (including a single folded '.'). Invisible format runes are
+// stripped before stamp rather than fail-closing the whole list.
 func mcpServerNameRejected(name string) bool {
 	if strings.Contains(mcpNameDotFold(name), "..") {
 		return true
 	}
 	for _, r := range name {
-		if r < 0x20 || r == 0x7f {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+			return true
+		}
+		folded := mcpDotEquivalents(r)
+		if folded != string(r) && strings.Contains(folded, ".") {
 			return true
 		}
 	}
@@ -198,7 +225,7 @@ func (s *MCPServerDecl) UnmarshalYAML(value *yaml.Node) error {
 	s.URL = raw.URL
 	s.AllowedTools = raw.AllowedTools
 	s.rejected = false
-	if mcpServerNameRejected(s.Name) {
+	if mcpServerNameRejected(s.Name) || mcpNameHasInvisible(s.Name) {
 		s.rejected = true
 		s.Name = ""
 	}
@@ -230,7 +257,7 @@ func (agent *AgentYAML) normalize() {
 		}
 	}
 	for i := range agent.MCPServers {
-		if agent.MCPServers[i].rejected || mcpServerNameRejected(agent.MCPServers[i].Name) {
+		if agent.MCPServers[i].rejected || mcpServerNameRejected(agent.MCPServers[i].Name) || mcpNameHasInvisible(agent.MCPServers[i].Name) {
 			agent.MCPServers[i].rejected = true
 			agent.MCPServers[i].Name = ""
 		}

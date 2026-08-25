@@ -1155,6 +1155,24 @@ func validateLockConfig(cfg LockConfig) error {
 	if strings.TrimSpace(cfg.KeyID) == "" {
 		return errors.New("key ID must not be empty")
 	}
+	if err := rejectPackedMCPServers(cfg.AgentYAML); err != nil {
+		return err
+	}
+	return nil
+}
+
+// rejectPackedMCPServers fail-closes CreateAgentLock when any declared
+// MCP name is injected / rejected. Silent omit from the canonical map
+// is not SC11.
+func rejectPackedMCPServers(ay *AgentYAML) error {
+	if ay == nil {
+		return nil
+	}
+	for _, s := range ay.MCPServers {
+		if s.rejected || mcpServerNameRejected(s.Name) {
+			return errors.New("mcp_servers name rejected")
+		}
+	}
 	return nil
 }
 
@@ -1381,11 +1399,17 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 				failClosed = true
 				break
 			}
+			// Reject C1 / unicode-dot on the raw token before TrimSpace so
+			// NEL (U+0085) cannot fold onto a different hosted slug.
+			if mcpServerNameRejected(s.Name) {
+				failClosed = true
+				break
+			}
 			name := stripMCPInvisibleName(strings.TrimSpace(s.Name))
 			if name == "" {
 				continue
 			}
-			if mcpServerNameRejected(s.Name) || mcpServerNameRejected(name) {
+			if mcpServerNameRejected(name) {
 				failClosed = true
 				break
 			}
