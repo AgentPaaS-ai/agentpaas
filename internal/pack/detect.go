@@ -1,6 +1,7 @@
 package pack
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -107,7 +108,8 @@ type MCPServerDecl struct {
 	Headers      map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
 	// Extra holds unknown mcp_servers[] siblings (env / timeout / secrets /
 	// any other key) so the stamp is the whole subtree (SC8). Not a named
-	// allowlist. Unexported JSON so only mcpServerCanonicalEntry emits them.
+	// allowlist. json:"-" so encoding/json does not nest Extra; UnmarshalJSON
+	// rehydrates unknown siblings after WriteAgentLock so persist is not a hole.
 	Extra map[string]interface{} `yaml:"-" json:"-"`
 	// rejected is set when the declared name is injected (newline / NUL /
 	// control / ".." / unicode-dot). Unexported so it cannot be stamped.
@@ -237,24 +239,11 @@ func mcpLeftoverFormatRune(r rune) bool {
 	}
 }
 
-// mcpBlankSoRune reports leftover blank-ish Other symbols that can hide or
-// replace a hosted slug. Category+block class (control pictures, specials
-// replacement, remaining default-ignorable So), not listed adversary
-// code points.
+// mcpBlankSoRune reports leftover Other symbols that can hide or replace
+// a hosted slug. General category So — not Control Pictures / Specials
+// range patches. U+1D159 / U+237D fail-close like U+FFFC / U+2423.
 func mcpBlankSoRune(r rune) bool {
-	if !unicode.Is(unicode.So, r) {
-		return false
-	}
-	switch {
-	case unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r):
-		return true
-	case r >= 0x2400 && r <= 0x243F:
-		return true
-	case r >= 0xFFF9 && r <= 0xFFFD:
-		return true
-	default:
-		return false
-	}
+	return unicode.Is(unicode.So, r)
 }
 
 func mcpNameHasLeftoverFormat(name string) bool {
@@ -374,6 +363,50 @@ func (s *MCPServerDecl) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// UnmarshalJSON rehydrates named fields plus unknown siblings into Extra.
+// encoding/json drops unknown keys; json:"-" on Extra is the persist hole
+// unless we capture them here after WriteAgentLock.
+func (s *MCPServerDecl) UnmarshalJSON(data []byte) error {
+	type rawMCPServerDecl struct {
+		Name         string            `json:"name"`
+		Transport    string            `json:"transport"`
+		URL          string            `json:"url"`
+		AllowedTools []string          `json:"allowed_tools"`
+		Type         string            `json:"type"`
+		Disabled     interface{}       `json:"disabled"`
+		Enabled      interface{}       `json:"enabled"`
+		OAuth        interface{}       `json:"oauth"`
+		Cwd          string            `json:"cwd"`
+		Notes        string            `json:"notes"`
+		Command      string            `json:"command"`
+		Args         []string          `json:"args"`
+		Headers      map[string]string `json:"headers"`
+	}
+	var raw rawMCPServerDecl
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	s.Name = raw.Name
+	s.Transport = raw.Transport
+	s.URL = raw.URL
+	s.AllowedTools = raw.AllowedTools
+	s.Type = raw.Type
+	s.Disabled = raw.Disabled
+	s.Enabled = raw.Enabled
+	s.OAuth = raw.OAuth
+	s.Cwd = raw.Cwd
+	s.Notes = raw.Notes
+	s.Command = raw.Command
+	s.Args = raw.Args
+	s.Headers = raw.Headers
+	var all map[string]interface{}
+	if err := json.Unmarshal(data, &all); err != nil {
+		return err
+	}
+	s.Extra = extraMCPServerSiblingsFromMap(all)
+	return nil
+}
+
 var mcpServerNamedFields = map[string]struct{}{
 	"name": {}, "transport": {}, "url": {}, "allowed_tools": {},
 	"type": {}, "disabled": {}, "enabled": {}, "oauth": {},
@@ -388,6 +421,13 @@ func extraMCPServerSiblings(value *yaml.Node) map[string]interface{} {
 	}
 	var all map[string]interface{}
 	if err := value.Decode(&all); err != nil || len(all) == 0 {
+		return nil
+	}
+	return extraMCPServerSiblingsFromMap(all)
+}
+
+func extraMCPServerSiblingsFromMap(all map[string]interface{}) map[string]interface{} {
+	if len(all) == 0 {
 		return nil
 	}
 	extra := make(map[string]interface{})
