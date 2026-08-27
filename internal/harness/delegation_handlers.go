@@ -809,7 +809,7 @@ func (s *harnessRPCServer) performLiveCallHop(req rpcRequest, dts *DelegationTru
 			}
 		}
 
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if resp.StatusCode == http.StatusOK {
 			s.storeLiveCallOutput(string(task.TaskID), parsed)
 			return s.succeedLiveCallTask(dts, task)
 		}
@@ -838,7 +838,9 @@ func (s *harnessRPCServer) performLiveCallHop(req rpcRequest, dts *DelegationTru
 			return s.failLiveCallTask(dts, task, code, false)
 		}
 
-		s.storeLiveCallOutput(string(task.TaskID), parsed)
-		return s.succeedLiveCallTask(dts, task)
+		if code == "" {
+			code = "live_call_denied"
+		}
+		return s.failLiveCallTask(dts, task, code, true)
 	}
 }
