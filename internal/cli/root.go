@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
 
@@ -108,6 +109,7 @@ output, and --home / --socket to override local paths.`,
 		// without this cobra also prints "Error:" (UX-DLOG double log).
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Version:       daemon.CLIVersion,
 	}
 
 	// Global persistent flags.
