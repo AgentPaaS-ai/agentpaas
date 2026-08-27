@@ -764,6 +764,17 @@ func TestVersionCommand_ContainsCurrentDevVersion(t *testing.T) {
 	}
 }
 
+func TestRootVersionFlag(t *testing.T) {
+	out, errOut, err := executeCmd("--version")
+	if err != nil {
+		t.Fatalf("execute --version: %v errOut=%q", err, errOut)
+	}
+	got := strings.ToLower(out + errOut)
+	if !strings.Contains(got, "agentpaas") {
+		t.Fatalf("--version output %q %q must contain agentpaas (Hermes doctor)", out, errOut)
+	}
+}
+
 func TestSecretSetReadsFromStdinNeverArgv(t *testing.T) {
 	store := secrets.NewFakeKeyStore()
 	secretValue := "sensitive-value-from-stdin"
