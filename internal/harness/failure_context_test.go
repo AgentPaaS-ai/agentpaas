@@ -240,6 +240,47 @@ func TestFailureCategoryMCPListAndCallStayMCP(t *testing.T) {
 	}
 }
 
+func TestFailureCategoryMCPBusyAndQuotaExceeded(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		reason string
+		detail string
+		want   string
+	}{
+		{
+			name:   "mcp_busy",
+			reason: "mcp_busy",
+			detail: "MCP server busy",
+			want:   FailureCategoryMCPBusy,
+		},
+		{
+			name:   "quota_exceeded",
+			reason: "quota_exceeded",
+			detail: "rate limit",
+			want:   FailureCategoryMCPBusy,
+		},
+		{
+			name:   "plain_mcp_tool_error",
+			reason: "invoke_failed",
+			detail: "RPCError(mcp_error): tools/call failed",
+			want:   FailureCategoryMCPFailed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := failureCategory(tc.reason, "FAILED", tc.detail, nil)
+			if got != tc.want {
+				t.Fatalf("failureCategory(%q, %q) = %q, want %q", tc.reason, tc.detail, got, tc.want)
+			}
+			if tc.want == FailureCategoryMCPBusy && got != "mcp_busy" {
+				t.Fatalf("mcp_busy category rendered %q, want literal mcp_busy", got)
+			}
+		})
+	}
+}
+
 func TestRedactFailureDetailPatterns(t *testing.T) {
 	detail := redactFailureDetail(`Authorization: Bearer abc.def-123
 url=https://user:pass@example.test/path?token=secret
