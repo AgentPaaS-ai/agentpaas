@@ -28,6 +28,7 @@ const (
 	FailureCategoryInvokeTimeout  = "invoke_timeout"
 	FailureCategoryWorkerKilled   = "worker_killed"
 	FailureCategoryMCPDenied      = "mcp_denied"
+	FailureCategoryMCPBusy        = "mcp_busy"
 
 	// FailureCategoryResourceLimit (B30-T04) records that the worker was
 	// terminated by an explicit resource-limit policy: CPU quota exhausted
@@ -154,6 +155,9 @@ func failureCategory(reason, status, detail string, evidence *UpstreamEvidence) 
 		return FailureCategoryResourceLimit
 	case reason == "mcp_denied" || strings.Contains(detail, "mcp_denied"):
 		return FailureCategoryMCPDenied
+	case strings.Contains(reason, "mcp_busy") || strings.Contains(detail, "mcp_busy") ||
+		strings.Contains(reason, "quota_exceeded") || strings.Contains(detail, "quota_exceeded"):
+		return FailureCategoryMCPBusy
 	case isHTTPCredentialOrToolFailure(reason, detail, evidence):
 		return FailureCategorySaaSFailed
 	case strings.Contains(detail, "mcp") || strings.Contains(reason, "mcp"):
