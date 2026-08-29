@@ -961,12 +961,12 @@ AGENTPAAS_CLOUD_CRON_LIST = {
 
 AGENTPAAS_CLOUD_CRON_SET = {
     "name": "agentpaas_cloud_cron_set",
-    "description": "Set or change a cloud deployment cron schedule (enables it). expr: every_1m|every_5m|every_15m|every_1h.",
+    "description": "Set or change a cloud deployment cron schedule (enables it). expr: every_5m|every_15m|every_1h.",
     "parameters": {
         "type": "object",
         "properties": {
             "deployment": {"type": "string", "description": "Deployment id or agent name."},
-            "expr": {"type": "string", "description": "every_1m, every_5m, every_15m, or every_1h"},
+            "expr": {"type": "string", "description": "every_5m, every_15m, or every_1h"},
         },
         "required": ["deployment", "expr"],
         "additionalProperties": False,
