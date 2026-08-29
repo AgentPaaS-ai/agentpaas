@@ -32,7 +32,7 @@ cleanup() {
     curl -fsS --max-time 15 -X PUT \
       -H "Authorization: Bearer $CRON_TOKEN" \
       -H 'Content-Type: application/json' \
-      --data '{"expr":"every_1m","enabled":false}' \
+      --data '{"expr":"every_5m","enabled":false}' \
       "$API/v1/deployments/$CRON_DEP/cron" >/dev/null || true
   fi
   if [[ -n "$ADMIN_TENANT" && -n "$ADMIN_SECRET" ]]; then
@@ -310,7 +310,7 @@ else
     CRON_CONFIG=$(curl -fsS --max-time 15 -X PUT \
       -H "Authorization: Bearer $CRON_TOKEN" \
       -H 'Content-Type: application/json' \
-      --data '{"expr":"every_1m","enabled":true}' \
+      --data '{"expr":"every_5m","enabled":true}' \
       "$API/v1/deployments/$CRON_DEP/cron") || CRON_CONFIG=''
     if [[ -z "$CRON_CONFIG" ]]; then
       fail_case "cron configuration failed"

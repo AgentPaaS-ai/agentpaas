@@ -42,6 +42,8 @@ agentpaas doctor
 
 Cron: named intervals (`every_1m`, `every_5m`, `every_15m`, `every_1h`) **or** standard 5-field UTC cron (e.g. `30 9 * * 1-5`).
 
+*0.4 minimum interval is `every_5m`.*
+
 Hermes plugin tools: `agentpaas_cloud_cron_set|disable|enable|list` (plus existing cloud tools). Cloud login from Hermes **coaches** you to run CLI yourself (non-blocking).
 
 ### Cloud API

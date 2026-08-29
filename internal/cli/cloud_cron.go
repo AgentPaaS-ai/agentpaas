@@ -9,7 +9,6 @@ import (
 )
 
 var cronNamedExprs = map[string]struct{}{
-	"every_1m":  {},
 	"every_5m":  {},
 	"every_15m": {},
 	"every_1h":  {},
@@ -42,6 +41,18 @@ func validCloudCronExpr(expr string) bool {
 			}
 		}
 	}
+	// Product floor is 5 minutes: reject * and */1–*/4 on the minute field.
+	// Allow */5 and a single minute; remaining field semantics are the API's.
+	minute := fields[0]
+	if minute == "*" {
+		return false
+	}
+	if strings.HasPrefix(minute, "*/") {
+		switch minute[2:] {
+		case "1", "2", "3", "4":
+			return false
+		}
+	}
 	return true
 }
 
@@ -51,7 +62,7 @@ func newCloudCronCmd() *cobra.Command {
 		Short: "Manage cloud deployment cron schedules",
 		Long: `Set, enable, disable, or list cloud deployment cron schedules.
 
-Named intervals: every_1m, every_5m, every_15m, every_1h.
+Named intervals: every_5m, every_15m, every_1h.
 Or standard 5-field cron in UTC, e.g. "30 9 * * 1-5" (09:30 UTC Mon-Fri).
 Dashboard Cron tab is read-only; use these CLI verbs (or Hermes) to change schedules.`,
 	}
@@ -71,7 +82,7 @@ func newCloudCronSetCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			expr = strings.Join(strings.Fields(strings.TrimSpace(expr)), " ")
 			if !validCloudCronExpr(expr) {
-				return fmt.Errorf("cloud cron set: --expr must be every_1m|every_5m|every_15m|every_1h or a 5-field cron in UTC (e.g. \"30 9 * * 1-5\")")
+				return fmt.Errorf("cloud cron set: --expr must be every_5m|every_15m|every_1h or a 5-field cron in UTC (e.g. \"30 9 * * 1-5\")")
 			}
 			token, err := resolveToken(cmd)
 			if err != nil {
@@ -93,7 +104,7 @@ func newCloudCronSetCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&expr, "expr", "", "Schedule: every_1m|every_5m|every_15m|every_1h or 5-field cron UTC (required)")
+	cmd.Flags().StringVar(&expr, "expr", "", "Schedule: every_5m|every_15m|every_1h or 5-field cron UTC (required)")
 	_ = cmd.MarkFlagRequired("expr")
 	return cmd
 }

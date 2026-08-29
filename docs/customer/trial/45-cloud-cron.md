@@ -2,8 +2,10 @@
 
 Cloud accepts:
 
-1. **Named intervals:** `every_1m`, `every_5m`, `every_15m`, `every_1h`
+1. **Named intervals:** `every_5m`, `every_15m`, `every_1h`
 2. **Standard 5-field cron in UTC** (minute hour day-of-month month day-of-week)
+
+Minimum interval is **5 minutes**.
 
 ```bash
 agentpaas cloud cron set <deployment> --expr every_5m
