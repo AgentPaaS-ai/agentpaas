@@ -124,6 +124,11 @@ There is no `agentpaas cloud webhook` command. Do not invent one.
 `agentpaas cloud login` in their terminal, configure webhooks with the
 logged-in cloud API. Never print HMAC secrets or tenant tokens in chat.
 
+When calling the API from Python, set `User-Agent: agentpaas-cli/0.1`.
+Never use Python's default `Python-urllib/*`. Cloudflare blocks that
+header (bot fight). Retrying as curl is a workaround, not the path.
+The CLI already sends a non-Python UA; match it.
+
 Base URL: `$AGENTPAAS_CLOUD_API_URL` (staging or prod). Auth for PUT/GET:
 the same tenant token the CLI already has (Keychain). Inject via env in
 Python/subprocess. Never argv. Never paste `apc_` into chat.
