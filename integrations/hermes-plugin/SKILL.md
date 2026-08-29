@@ -117,6 +117,57 @@ CLI or the matching Hermes tools:
 All four cloud commands support `--json`. Hermes passes filters and run IDs to
 the CLI and never accepts cloud API tokens as tool parameters.
 
+## Cloud webhooks (API after login; no CLI verb)
+
+There is no `agentpaas cloud webhook` command. Do not invent one.
+`agentpaas cloud --help` will not list webhooks. After the user has run
+`agentpaas cloud login` in their terminal, configure webhooks with the
+logged-in cloud API. Never print HMAC secrets or tenant tokens in chat.
+
+Base URL: `$AGENTPAAS_CLOUD_API_URL` (staging or prod). Auth for PUT/GET:
+the same tenant token the CLI already has (Keychain). Inject via env in
+Python/subprocess. Never argv. Never paste `apc_` into chat.
+
+### Ingress (doorbell)
+
+Someone else POSTs to AgentPaaS and a run starts.
+
+```
+PUT /v1/deployments/<dep_id>/webhook
+{"provider":"generic_hmac","secret":"<generate; do not print>"}
+```
+
+Response `{configured:true, provider, deployment_id}` — no secret.
+
+Fire (no tenant token):
+
+```
+POST /v1/deployments/<dep_id>/hooks/generic_hmac
+Header: X-Agentpaas-Signature: t=<unix_seconds>,v1=<64 hex>
+Body: raw JSON bytes you HMAC
+```
+
+`v1` is HMAC-SHA256(secret, `{t}.{raw_body}`) as lowercase hex.
+Signed POST admits a `run_`. Missing/bad/stale (>300s) signature: 401
+and no run. Stripe: `"provider":"stripe"` and `Stripe-Signature` with
+the same `t=,v1=` shape; path `/hooks/stripe`.
+
+### Completion (receipt) and delivery (the answer)
+
+Public HTTPS destinations only (webhook.site is fine for a test).
+
+```
+PUT /v1/deployments/<dep_id>/completion-webhook
+{"url":"https://..."}
+PUT /v1/deployments/<dep_id>/delivery-webhook
+{"url":"https://..."}
+```
+
+Use two different URLs so the two POSTs are distinguishable.
+Completion is run id + terminal state. Delivery is declared
+`final_output` only (no logs, secrets, artifacts). Hermes still polls.
+Do not POST `/v1/runs/:id/terminal` to fake a delivery.
+
 ### Sharing
 
 | Command | Description |
