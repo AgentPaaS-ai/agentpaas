@@ -35,8 +35,8 @@ func shortTempPaths(t *testing.T) *home.HomePaths {
 // testVersion returns a VersionInfo used in tests.
 func testVersion() VersionInfo {
 	return VersionInfo{
-		CLIVersion:    "0.3.7-dev",
-		DaemonVersion: "0.3.7-dev",
+		CLIVersion:    "0.4.0-dev",
+		DaemonVersion: "0.4.0-dev",
 		ProtoVersion:  "v1",
 		GitCommit:     "test-commit",
 		GoVersion:     runtime.Version(),
@@ -553,11 +553,11 @@ func TestShutdownIsIdempotent(t *testing.T) {
 func TestCurrentVersionHasExpectedFields(t *testing.T) {
 	v := CurrentVersion()
 
-	if v.CLIVersion != "0.3.7-dev" {
-		t.Errorf("CLIVersion = %q, want %q", v.CLIVersion, "0.3.7-dev")
+	if v.CLIVersion != "0.4.0-dev" {
+		t.Errorf("CLIVersion = %q, want %q", v.CLIVersion, "0.4.0-dev")
 	}
-	if v.DaemonVersion != "0.3.7-dev" {
-		t.Errorf("DaemonVersion = %q, want %q", v.DaemonVersion, "0.3.7-dev")
+	if v.DaemonVersion != "0.4.0-dev" {
+		t.Errorf("DaemonVersion = %q, want %q", v.DaemonVersion, "0.4.0-dev")
 	}
 	if v.ProtoVersion != "v1" {
 		t.Errorf("ProtoVersion = %q, want %q", v.ProtoVersion, "v1")

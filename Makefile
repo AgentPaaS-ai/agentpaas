@@ -2,8 +2,8 @@
 
 # LDFLAGS_VERSION stamps the dev version into all binaries when building without
 # a release tag. goreleaser overrides these at tag time with the actual version.
-LDFLAGS_VERSION := -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion=0.3.7-dev
-LDFLAGS_VERSION += -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion=0.3.7-dev
+LDFLAGS_VERSION := -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.CLIVersion=0.4.0-dev
+LDFLAGS_VERSION += -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion=0.4.0-dev
 LDFLAGS_VERSION += -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 LDFLAGS_HARNESS := $(LDFLAGS_VERSION)
