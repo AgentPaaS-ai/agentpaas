@@ -29,7 +29,7 @@ export PATH="/opt/homebrew/bin:$PATH"
 Check:
 
 ```bash
-agentpaas version          # expect 0.3.6
+agentpaas version          # expect 0.4.0
 agentpaas doctor           # 7/7
 echo "API=${AGENTPAAS_CLOUD_API_URL:-https://cloud.agentpaas.ai}"
 ```
@@ -174,3 +174,8 @@ new deployment instead of `no_slot_capacity`.
 
 Use `docs/customer/golden-loop-hermes-e2e.md` — profile teardown → install →
 local build → egress deny/allow → cloud path, all through Hermes.
+
+
+## Optional: compose a workflow
+
+Weather is a single-agent run. After it works, you may compose a linear, fan-out, choice, or phone-call envelope in Hermes. A workflow is a recipe, not a deployment. Create children first, then the parent, then start once.

@@ -10,6 +10,12 @@ For workarounds and authoring guidance, see
 [policy-reference.md](policy-reference.md) and
 [how-enforcement-works.md](how-enforcement-works.md).
 
+## Cloud composition vs local run
+
+Cloud workflow envelopes are the multi-step path (linear, fan-out join-all, choice, phone-call). Local `agentpaas run` of a multi-stage composition remains fail-closed.
+
+A single agent does not need a workflow. Native HITL, join-any, for-each, wait/delay, spawn deeper than 1, and standalone agent-to-agent calls are not shipped.
+
 ## Cloud data-plane assurance debt
 
 AgentPaaS Cloud runs on a Cloudflare-only data plane. On the default tier,

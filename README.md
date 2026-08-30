@@ -24,10 +24,7 @@ records each hop: who published the original, who forked it, and what egress
 or credentials they added. Receivers can verify the provenance chain before
 accepting and running the agent.
 
-**Coming soon (v0.4):**
-- Governed MCP services inside AgentPaaS containers
-- Linear agent pipelines with durable stage handoffs
-- Bounded parent/child fan-out and result collation
+**In 0.4:** governed MCP and tool deployments, linear workflows, fan-out, choice, and phone-call envelopes on AgentPaaS Cloud. A single agent does not need a workflow: pack, deploy, invoke. Local multi-stage run stays fail-closed; the cloud envelope is the multi-step path.
 
 ## How it works
 

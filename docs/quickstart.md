@@ -18,7 +18,7 @@ AgentPaaS is a secure execution platform for agentic workflows. It runs AI agent
 
 You do **not** need Go, `make`, or a source checkout to use AgentPaaS as an
 operator. Install the Homebrew cask — do not run `make build-all` for day-to-day
-use (dev builds are stamped `0.3.0-dev` and may omit a proper harness bundle).
+use (dev builds are stamped `0.4.0` and may omit a proper harness bundle).
 
 ## Install
 
@@ -67,7 +67,7 @@ when missing):
 agentpaas doctor
 ===============
 Version:           ok
-                   0.3.0 (darwin/arm64)
+                   0.4.0 (darwin/arm64)
 Docker CLI:        ok
                    (29.x.x)
 Docker daemon:     ok
