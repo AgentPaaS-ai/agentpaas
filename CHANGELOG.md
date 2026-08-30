@@ -3,6 +3,16 @@
 All notable changes to AgentPaaS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.4.0 — 2026-08-29
+
+### Added
+- Cloud workflows (linear, fan-out, choice), live-call, file/url invoke inputs
+- Cloud cron (every_5m minimum), ingress HMAC webhook, completion/delivery webhooks
+- MCP and tool deployment kinds
+
+### Changed
+- Trial concurrent runs: 10 (docs). Cron named min every_5m.
+
 ## 0.3.6 — cloud result/logs, invoke-token store, golden-path doc, M5–M7 cloud CLI
 
 ### Added
