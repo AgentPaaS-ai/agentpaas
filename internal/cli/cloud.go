@@ -118,6 +118,7 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudOauthCmd())
 	cmd.AddCommand(newCloudRebindCmd())
 	cmd.AddCommand(newCloudWorkflowCmd())
+	cmd.AddCommand(newCloudWebhookCmd())
 
 	// All cloud descendants return errors through one renderer so API reason
 	// codes and semantic exit codes stay consistent across verbs.
@@ -422,8 +423,9 @@ Use --token or AGENTPAAS_CLOUD_INVOKE_TOKEN for the invoke token. This
 command never uses the tenant cloud login token for the invoke request.
 
 Large inputs (M13.8): --input-file uploads via POST /v1/inputs (tenant
-login required) and attaches input_ref. --input-url attaches a URL ref
-(requires --input-sha256 and --input-size-bytes).`,
+login required) and attaches input_ref. --input-url attaches a URL ref.
+--input-sha256 and --input-size-bytes are optional; the CLI does not
+invent them.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if inputFile != "" && inputURL != "" {
@@ -466,17 +468,17 @@ login required) and attaches input_ref. --input-url attaches a URL ref
 			}
 
 			if inputURL != "" {
-				if inputSHA256 == "" || inputSizeBytes < 0 {
-					return fmt.Errorf("cloud invoke: --input-url requires --input-sha256 and --input-size-bytes")
+				ref := map[string]any{"url": inputURL}
+				if inputSHA256 != "" {
+					if len(inputSHA256) != 64 {
+						return fmt.Errorf("cloud invoke: --input-sha256 must be 64 hex chars")
+					}
+					ref["sha256"] = strings.ToLower(inputSHA256)
 				}
-				if len(inputSHA256) != 64 {
-					return fmt.Errorf("cloud invoke: --input-sha256 must be 64 hex chars")
+				if inputSizeBytes >= 0 {
+					ref["size_bytes"] = inputSizeBytes
 				}
-				requestBody, err = cloudclient.MergeInputRefIntoBody(requestBody, map[string]any{
-					"url":        inputURL,
-					"sha256":     strings.ToLower(inputSHA256),
-					"size_bytes": inputSizeBytes,
-				})
+				requestBody, err = cloudclient.MergeInputRefIntoBody(requestBody, ref)
 				if err != nil {
 					return fmt.Errorf("cloud invoke: %w", err)
 				}
@@ -534,9 +536,9 @@ login required) and attaches input_ref. --input-url attaches a URL ref
 	cmd.Flags().BoolVar(&wait, "wait", false, "Wait for a terminal run result")
 	cmd.Flags().DurationVar(&waitTimeout, "wait-timeout", 10*time.Minute, "Maximum time to wait when --wait is set")
 	cmd.Flags().StringVar(&inputFile, "input-file", "", "Upload local file as input_ref (M13.8; requires cloud login)")
-	cmd.Flags().StringVar(&inputURL, "input-url", "", "Attach URL input_ref (requires --input-sha256 and --input-size-bytes)")
-	cmd.Flags().StringVar(&inputSHA256, "input-sha256", "", "SHA-256 hex for --input-url")
-	cmd.Flags().Int64Var(&inputSizeBytes, "input-size-bytes", -1, "size_bytes for --input-url")
+	cmd.Flags().StringVar(&inputURL, "input-url", "", "Attach URL input_ref (sha256 and size_bytes optional)")
+	cmd.Flags().StringVar(&inputSHA256, "input-sha256", "", "Optional SHA-256 hex for --input-url")
+	cmd.Flags().Int64Var(&inputSizeBytes, "input-size-bytes", -1, "Optional size_bytes for --input-url")
 	return cmd
 }
 
@@ -920,7 +922,7 @@ func uploadCloudChunkWithRetry(ctx context.Context, client *cloudclient.CloudCli
 	return err
 }
 
-func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, token, imageRef string, startReq cloudclient.UploadImageStartRequest, progress io.Writer) (*cloudclient.AdmitImageResponse, error) {
+func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, token, imageRef string, startReq cloudclient.UploadImageStartRequest, progress cloudProgress) (*cloudclient.AdmitImageResponse, error) {
 	startResp, err := client.UploadImageStart(ctx, token, startReq)
 	if err != nil {
 		return nil, err
@@ -932,7 +934,7 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 		return nil, fmt.Errorf("upload-start returned an invalid chunk_size_bytes: %d", startResp.ChunkSizeBytes)
 	}
 
-	writeCloudProgress(progress, "Saving image…")
+	progress.line("Saving image…")
 	saved, err := dockerSaveImage(ctx, imageRef)
 	if err != nil {
 		return nil, err
@@ -947,7 +949,7 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 		}
 	}()
 
-	writeCloudProgress(progress, "Uploading…")
+	progress.line("Uploading…")
 	reader := bufio.NewReaderSize(saved, startResp.ChunkSizeBytes)
 	chunk := make([]byte, startResp.ChunkSizeBytes)
 	for index := 1; ; index++ {
@@ -959,7 +961,7 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 			if err := uploadCloudChunkWithRetry(ctx, client, token, startResp.UploadID, index, chunk[:n]); err != nil {
 				return nil, err
 			}
-			writeCloudProgress(progress, fmt.Sprintf("Uploading… (chunk %d)", index))
+			progress.chunk(index)
 		}
 		if readErr != nil {
 			break
@@ -972,15 +974,40 @@ func uploadCloudImage(ctx context.Context, client *cloudclient.CloudClient, toke
 	}
 	closed = true
 
-	writeCloudProgress(progress, "Admitting image…")
+	progress.line("Admitting image…")
 	return client.UploadImageComplete(ctx, token, startResp.UploadID)
 }
 
-func writeCloudProgress(w io.Writer, line string) {
-	if w == nil {
+// cloudProgress writes human lines or JSON progress events to stderr.
+// --json still emits progress here so Hermes can see "chunk N" before the
+// final stdout blob.
+type cloudProgress struct {
+	w    io.Writer
+	json bool
+}
+
+func (p cloudProgress) line(msg string) {
+	p.emit(map[string]any{"event": "progress", "message": msg}, msg)
+}
+
+func (p cloudProgress) chunk(index int) {
+	msg := fmt.Sprintf("Uploading… (chunk %d)", index)
+	p.emit(map[string]any{"event": "progress", "message": msg, "chunk": index}, msg)
+}
+
+func (p cloudProgress) emit(ev map[string]any, human string) {
+	if p.w == nil {
 		return
 	}
-	_, _ = fmt.Fprintln(w, line)
+	if p.json {
+		b, err := json.Marshal(ev)
+		if err != nil {
+			return
+		}
+		_, _ = fmt.Fprintln(p.w, string(b))
+		return
+	}
+	_, _ = fmt.Fprintln(p.w, human)
 }
 
 // newCloudPushCmd creates the `agentpaas cloud push` command.
@@ -1093,12 +1120,9 @@ the cloud registry.`,
 			}
 
 			var resp *cloudclient.AdmitImageResponse
-			var progress io.Writer
-			if !jsonOutput(cmd) {
-				progress = cmd.ErrOrStderr()
-			}
+			progress := cloudProgress{w: cmd.ErrOrStderr(), json: jsonOutput(cmd)}
 			if skipRegistry || registryRef != "" {
-				writeCloudProgress(progress, "Admitting image…")
+				progress.line("Admitting image…")
 				admReq := cloudclient.AdmitImageRequest{
 					ImageDigest: resolvedDigest,
 					Platform:    resolvedPlatform,
