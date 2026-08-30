@@ -6,12 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ## 0.4.0 — 2026-08-29
 
 ### Added
-- Cloud workflows (linear, fan-out, choice), live-call, file/url invoke inputs
-- Cloud cron (every_5m minimum), ingress HMAC webhook, completion/delivery webhooks
-- MCP and tool deployment kinds
+- MCP and tool deployments (`--type mcp`, `--type tool`)
+- Signed cloud workflows: linear, fan-out (join all), choice (fail-closed), phone-call (depth 1)
+- Component Registry and read-only console: Components, Workflows, Deployments, Runs, Logs
+- Hermes path for one agent and for a workflow
+- Cloud cron (named minimum every_5m)
+- Ingress HMAC webhook, completion webhook, delivery webhook (Hermes or API)
+- File inputs (50 MiB), URL inputs for packed hosts, stage file pointer, bounded retry (3, transient)
 
 ### Changed
-- Trial concurrent runs: 10 (docs). Cron named min every_5m.
+- Trial: 5 agents + 5 tools + 5 MCP deployed; unlimited workflow recipes; 10 concurrent runs
+- Cron named minimum every_5m (one-minute rejected)
 
 ## 0.3.6 — cloud result/logs, invoke-token store, golden-path doc, M5–M7 cloud CLI
 
