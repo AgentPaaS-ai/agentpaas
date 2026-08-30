@@ -688,3 +688,71 @@ func TestResolveLocalImageRef_DigestMatchNormalized(t *testing.T) {
 		t.Errorf("expected ref %q, got %q", preferredRef, ref)
 	}
 }
+
+func TestCloudPush_JSONProgressBeforeFinalBlob(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_push_json")
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+
+	dir := t.TempDir()
+	lockPath := newTestLock(t, dir)
+	tarData := append(bytes.Repeat([]byte("a"), 8<<20), []byte("tail")...)
+	oldDockerSave := dockerSaveImage
+	dockerSaveImage = func(ctx context.Context, imageRef string) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(tarData)), nil
+	}
+	t.Cleanup(func() { dockerSaveImage = oldDockerSave })
+	oldInspect := dockerImageInspect
+	dockerImageInspect = func(ctx context.Context, ref string) (string, error) {
+		return "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil
+	}
+	t.Cleanup(func() { dockerImageInspect = oldInspect })
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/images/upload-start":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(cloudclient.UploadImageStartResponse{
+				UploadID:       "upload-json-001",
+				ImageID:        "img-json-001",
+				ChunkSizeBytes: 8 << 20,
+			})
+		case strings.HasPrefix(r.URL.Path, "/v1/images/upload/upload-json-001/chunk/"):
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/images/upload/upload-json-001/complete":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(cloudclient.AdmitImageResponse{
+				ID:          "img-json-001",
+				ImageDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				Status:      "admitted",
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer apiServer.Close()
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "--json", "cloud", "push",
+		"--lock", lockPath, "--platform", "linux/amd64")
+	if err != nil {
+		t.Fatalf("push --json: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stderr, `"event":"progress"`) {
+		t.Fatalf("stderr missing JSON progress event before final blob: %q", stderr)
+	}
+	if !strings.Contains(stderr, `"chunk":1`) && !strings.Contains(stderr, `"chunk": 1`) {
+		t.Fatalf("stderr missing chunk progress: %q", stderr)
+	}
+	var final map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout), &final); err != nil {
+		t.Fatalf("stdout must be a single final JSON blob: %v stdout=%q", err, stdout)
+	}
+	if final["id"] != "img-json-001" {
+		t.Fatalf("final blob = %#v", final)
+	}
+	if strings.Contains(stdout, `"event":"progress"`) {
+		t.Fatalf("progress must not mix into stdout blob: %q", stdout)
+	}
+}
