@@ -19,7 +19,27 @@ const (
 	// AGENTPAAS_CLOUD_API_URL if needed; the workers.dev hostname remains a
 	// valid override during the transition.
 	DefaultCloudAPIURL = "https://cloud.agentpaas.ai"
+
+	// UserAgent is the product User-Agent on every cloud API call.
+	// Cloudflare bot fight blocks Python's default Python-urllib/* header.
+	UserAgent = "agentpaas-cli/0.1"
 )
+
+// userAgentTransport stamps UserAgent on outbound requests without mutating
+// the caller's *http.Request.
+type userAgentTransport struct {
+	base http.RoundTripper
+}
+
+func (t userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("User-Agent", UserAgent)
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(req)
+}
 
 // HTTPStatusError reports a non-successful HTTP response from the cloud API.
 // The message is kept user-facing while StatusCode lets callers distinguish
@@ -71,8 +91,11 @@ func NewCloudClient(baseURL string) *CloudClient {
 		baseURL = DefaultCloudAPIURL
 	}
 	return &CloudClient{
-		BaseURL:    strings.TrimRight(baseURL, "/"),
-		HTTPClient: &http.Client{Timeout: 180 * time.Second},
+		BaseURL: strings.TrimRight(baseURL, "/"),
+		HTTPClient: &http.Client{
+			Timeout:   180 * time.Second,
+			Transport: userAgentTransport{},
+		},
 	}
 }
 

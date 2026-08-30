@@ -93,6 +93,9 @@ func TestCloudClient_Whoami_Success(t *testing.T) {
 		if auth != "Bearer apc_test_token" {
 			t.Errorf("Authorization = %q, want Bearer apc_test_token", auth)
 		}
+		if got := r.Header.Get("User-Agent"); got != UserAgent {
+			t.Errorf("User-Agent = %q, want %q", got, UserAgent)
+		}
 
 		resp := WhoamiResponse{
 			TenantID:         "tenant-42",

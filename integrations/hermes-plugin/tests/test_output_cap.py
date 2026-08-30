@@ -33,12 +33,22 @@ class CliTimeoutTests(unittest.TestCase):
             self.assertEqual(self.tools._get_cli_timeout(), 10)
 
     def test_timeout_max_clamp(self):
-        with mock.patch.dict(os.environ, {"AGENTPAAS_CLI_TIMEOUT": "999"}):
-            self.assertEqual(self.tools._get_cli_timeout(), 600)
+        with mock.patch.dict(os.environ, {"AGENTPAAS_CLI_TIMEOUT": "9999"}):
+            self.assertEqual(self.tools._get_cli_timeout(), 1800)
 
     def test_invalid_timeout(self):
         with mock.patch.dict(os.environ, {"AGENTPAAS_CLI_TIMEOUT": "abc"}):
             self.assertEqual(self.tools._get_cli_timeout(), 300)
+
+    def test_cloud_push_default_timeout(self):
+        os.environ.pop("AGENTPAAS_CLI_TIMEOUT", None)
+        self.assertEqual(self.tools._get_cli_timeout(["cloud", "push", "--lock", "x"]), 1800)
+
+    def test_cloud_http_user_agent(self):
+        self.assertEqual(self.tools.CLOUD_API_USER_AGENT, "agentpaas-cli/0.1")
+        headers = self.tools._cloud_http_headers({"Authorization": "Bearer x"})
+        self.assertEqual(headers["User-Agent"], "agentpaas-cli/0.1")
+        self.assertEqual(headers["Authorization"], "Bearer x")
 
 
 class OutputCapTests(unittest.TestCase):
