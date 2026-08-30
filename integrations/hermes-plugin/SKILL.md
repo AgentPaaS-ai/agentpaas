@@ -117,29 +117,28 @@ CLI or the matching Hermes tools:
 All four cloud commands support `--json`. Hermes passes filters and run IDs to
 the CLI and never accepts cloud API tokens as tool parameters.
 
-## Cloud webhooks (API after login; no CLI verb)
+## Cloud webhooks
 
-There is no `agentpaas cloud webhook` command. Do not invent one.
-`agentpaas cloud --help` will not list webhooks. After the user has run
-`agentpaas cloud login` in their terminal, configure webhooks with the
-logged-in cloud API. Never print HMAC secrets or tenant tokens in chat.
+Use `agentpaas cloud webhook` (listed under `agentpaas cloud --help`). Do not
+call the cloud API from Python urllib. HMAC secrets are never printed; pass
+them with `--secret-stdin`. Never paste secrets or `apc_` tokens into chat.
 
-When calling the API from Python, set `User-Agent: agentpaas-cli/0.1`.
+When any Python path must call the API, set `User-Agent: agentpaas-cli/0.1`.
 Never use Python's default `Python-urllib/*`. Cloudflare blocks that
-header (bot fight). Retrying as curl is a workaround, not the path.
-The CLI already sends a non-Python UA; match it.
+header (bot fight). The CLI already sends that UA.
 
 Base URL: `$AGENTPAAS_CLOUD_API_URL` (staging or prod). Auth for PUT/GET:
 the same tenant token the CLI already has (Keychain). Inject via env in
-Python/subprocess. Never argv. Never paste `apc_` into chat.
+subprocess. Never argv. Never paste `apc_` into chat.
 
 ### Ingress (doorbell)
 
 Someone else POSTs to AgentPaaS and a run starts.
 
 ```
-PUT /v1/deployments/<dep_id>/webhook
-{"provider":"generic_hmac","secret":"<generate; do not print>"}
+agentpaas cloud webhook set <dep_id> --provider generic_hmac --secret-stdin
+# PUT /v1/deployments/<dep_id>/webhook
+# {"provider":"generic_hmac","secret":"<generate; do not print>"}
 ```
 
 Response `{configured:true, provider, deployment_id}` — no secret.
@@ -147,14 +146,14 @@ Response `{configured:true, provider, deployment_id}` — no secret.
 Fire (no tenant token):
 
 ```
-POST /v1/deployments/<dep_id>/hooks/generic_hmac
-Header: X-Agentpaas-Signature: t=<unix_seconds>,v1=<64 hex>
-Body: raw JSON bytes you HMAC
+agentpaas cloud webhook fire <dep_id> --body '{"ok":true}' --secret-stdin
+# POST /v1/deployments/<dep_id>/hooks/generic_hmac
+# Header: X-Agentpaas-Signature: t=<unix_seconds>,v1=<64 hex>
 ```
 
 `v1` is HMAC-SHA256(secret, `{t}.{raw_body}`) as lowercase hex.
 Signed POST admits a `run_`. Missing/bad/stale (>300s) signature: 401
-and no run. Stripe: `"provider":"stripe"` and `Stripe-Signature` with
+and no run. Stripe: `--provider stripe` and `Stripe-Signature` with
 the same `t=,v1=` shape; path `/hooks/stripe`.
 
 ### Completion (receipt) and delivery (the answer)
@@ -162,10 +161,10 @@ the same `t=,v1=` shape; path `/hooks/stripe`.
 Public HTTPS destinations only (webhook.site is fine for a test).
 
 ```
-PUT /v1/deployments/<dep_id>/completion-webhook
-{"url":"https://..."}
-PUT /v1/deployments/<dep_id>/delivery-webhook
-{"url":"https://..."}
+agentpaas cloud webhook completion <dep_id> --url https://...
+agentpaas cloud webhook delivery <dep_id> --url https://...
+# PUT /v1/deployments/<dep_id>/completion-webhook
+# PUT /v1/deployments/<dep_id>/delivery-webhook
 ```
 
 Use two different URLs so the two POSTs are distinguishable.

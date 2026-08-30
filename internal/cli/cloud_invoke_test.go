@@ -570,6 +570,78 @@ func TestCloudInvoke_InputURL_MergesRef(t *testing.T) {
 	}
 }
 
+func TestCloudInvoke_InputURL_WithoutSHAOrSize(t *testing.T) {
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_url_only")
+	_ = setupFakeTokenStore(t)
+
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/deployments/dep-url-only/invoke" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_id":"run-url-only","status":"queued"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-url-only",
+		"--input-url", "https://cdn.example.com/big.bin",
+	)
+	if err != nil {
+		t.Fatalf("CLI must accept --input-url without sha/size: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(gotBody, &m); err != nil {
+		t.Fatalf("body json: %v body=%s", err, gotBody)
+	}
+	ref, _ := m["input_ref"].(map[string]interface{})
+	if ref == nil || ref["url"] != "https://cdn.example.com/big.bin" {
+		t.Fatalf("input_ref = %#v", m["input_ref"])
+	}
+	if _, ok := ref["sha256"]; ok {
+		t.Fatalf("CLI must not invent sha256: %#v", ref)
+	}
+	if _, ok := ref["size_bytes"]; ok {
+		t.Fatalf("CLI must not invent size_bytes: %#v", ref)
+	}
+}
+
+func TestCloudInvoke_GoogleDriveShareLink_PassedThroughUnchanged(t *testing.T) {
+	// GAP (nit 37): Drive/Docs share links are not rewritten to export/download
+	// URLs, hosts are not packed, and cloud fetch refuses 302. CLI passes the
+	// URL through unchanged. Cloud + pack follow-up needed.
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_gdrive")
+	_ = setupFakeTokenStore(t)
+
+	share := "https://docs.google.com/document/d/abc123/edit?usp=sharing"
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"run_id":"run-gdrive","status":"queued"}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
+	_, _, err := executeCloudCmd(t, "", "cloud", "invoke", "dep-gdrive", "--input-url", share)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(gotBody, &m); err != nil {
+		t.Fatalf("body json: %v", err)
+	}
+	ref, _ := m["input_ref"].(map[string]interface{})
+	if ref["url"] != share {
+		t.Fatalf("CLI rewrote Drive share URL (not implemented): %#v", ref)
+	}
+	t.Log("named gap: Google Drive/Docs share links are not export/download rewritten; host not packed; fetch refuses 302")
+}
+
 func TestCloudInvoke_InputFile_UploadsThenInvokes(t *testing.T) {
 	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_file_in")
 	store := setupFakeTokenStore(t)
