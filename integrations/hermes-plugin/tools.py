@@ -497,12 +497,38 @@ _STDOUT_CAP = 51200  # 50KB
 _STDERR_CAP = 10240  # 10KB
 
 
-def _get_cli_timeout():
+CLOUD_API_USER_AGENT = "agentpaas-cli/0.1"
+_LONG_CLOUD_CMDS = frozenset({"push", "deploy"})
+_CLI_TIMEOUT_MAX = 1800
+_LONG_CLOUD_TIMEOUT = 1800
+
+
+def _cloud_http_headers(extra=None):
+    """Headers for any Python HTTP call to the cloud API.
+
+    Cloudflare bot fight blocks Python-urllib/*. Always send the product UA.
+    """
+    headers = {"User-Agent": CLOUD_API_USER_AGENT}
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+def _is_long_cloud_cmd(cmd_args):
+    return (
+        isinstance(cmd_args, (list, tuple))
+        and len(cmd_args) >= 2
+        and cmd_args[0] == "cloud"
+        and cmd_args[1] in _LONG_CLOUD_CMDS
+    )
+
+
+def _get_cli_timeout(cmd_args=None):
     """Get CLI timeout from AGENTPAAS_CLI_TIMEOUT env var, with bounds.
 
-    Default: 300s. Min: 10s. Max: 600s.
+    Default: 300s (1800s for cloud push/deploy). Min: 10s. Max: 1800s.
     """
-    default = 300
+    default = _LONG_CLOUD_TIMEOUT if _is_long_cloud_cmd(cmd_args) else 300
     env_val = os.environ.get("AGENTPAAS_CLI_TIMEOUT", "")
     if not env_val:
         return default
@@ -510,7 +536,7 @@ def _get_cli_timeout():
         timeout = int(env_val)
     except (ValueError, TypeError):
         return default
-    return max(10, min(600, timeout))
+    return max(10, min(_CLI_TIMEOUT_MAX, timeout))
 
 
 def _run_cli(cmd_args):
@@ -538,8 +564,19 @@ def _run_cli(cmd_args):
     home = _resolve_home_dir()
     full.extend(["--home", home])
     full.extend([a for a in cmd_args if a])
-    timeout = _get_cli_timeout()
-    proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+    timeout = _get_cli_timeout(cmd_args)
+    try:
+        proc = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        stderr = e.stderr or ""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return {
+            "error": f"CLI timed out after {timeout}s",
+            "error_category": "cli_timeout",
+            "stderr": stderr[-_STDERR_CAP:],
+            "hint": "cloud push/deploy emit JSON progress on stderr; raise AGENTPAAS_CLI_TIMEOUT if needed",
+        }
     return _parse_cli_result(proc)
 
 
@@ -632,11 +669,21 @@ def _run_cli_with_stdin(cmd_args, stdin_input):
     home = _resolve_home_dir()
     full.extend(["--home", home])
     full.extend([a for a in cmd_args if a])
-    timeout = _get_cli_timeout()
-    proc = subprocess.run(
-        full, capture_output=True, text=True, timeout=timeout,
-        input=stdin_input,
-    )
+    timeout = _get_cli_timeout(cmd_args)
+    try:
+        proc = subprocess.run(
+            full, capture_output=True, text=True, timeout=timeout,
+            input=stdin_input,
+        )
+    except subprocess.TimeoutExpired as e:
+        stderr = e.stderr or ""
+        if isinstance(stderr, bytes):
+            stderr = stderr.decode("utf-8", errors="replace")
+        return {
+            "error": f"CLI timed out after {timeout}s",
+            "error_category": "cli_timeout",
+            "stderr": stderr[-_STDERR_CAP:],
+        }
     return _parse_cli_result(proc)
 
 
