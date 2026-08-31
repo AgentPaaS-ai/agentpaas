@@ -468,6 +468,7 @@ invent them.`,
 			}
 
 			if inputURL != "" {
+				inputURL = rewriteGoogleShareURL(inputURL)
 				ref := map[string]any{"url": inputURL}
 				if inputSHA256 != "" {
 					if len(inputSHA256) != 64 {
