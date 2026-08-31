@@ -609,15 +609,13 @@ func TestCloudInvoke_InputURL_WithoutSHAOrSize(t *testing.T) {
 	}
 }
 
-func TestCloudInvoke_GoogleDriveShareLink_PassedThroughUnchanged(t *testing.T) {
-	// GAP (nit 37): Drive/Docs share links are not rewritten to export/download
-	// URLs, hosts are not packed, and cloud fetch refuses 302. CLI passes the
-	// URL through unchanged. Cloud + pack follow-up needed.
+func TestCloudInvoke_GoogleDriveShareLink_RewrittenToExport(t *testing.T) {
 	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
 	t.Setenv("AGENTPAAS_CLOUD_INVOKE_TOKEN", "inv_gdrive")
 	_ = setupFakeTokenStore(t)
 
 	share := "https://docs.google.com/document/d/abc123/edit?usp=sharing"
+	want := "https://docs.google.com/document/d/abc123/export?format=txt"
 	var gotBody []byte
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotBody, _ = io.ReadAll(r.Body)
@@ -636,10 +634,9 @@ func TestCloudInvoke_GoogleDriveShareLink_PassedThroughUnchanged(t *testing.T) {
 		t.Fatalf("body json: %v", err)
 	}
 	ref, _ := m["input_ref"].(map[string]interface{})
-	if ref["url"] != share {
-		t.Fatalf("CLI rewrote Drive share URL (not implemented): %#v", ref)
+	if ref["url"] != want {
+		t.Fatalf("input_ref.url = %#v, want %q", ref["url"], want)
 	}
-	t.Log("named gap: Google Drive/Docs share links are not export/download rewritten; host not packed; fetch refuses 302")
 }
 
 func TestCloudInvoke_InputFile_UploadsThenInvokes(t *testing.T) {
