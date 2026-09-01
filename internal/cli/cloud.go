@@ -2216,7 +2216,8 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 
 // newCloudUndeployCmd creates the `agentpaas cloud undeploy` command.
 func newCloudUndeployCmd() *cobra.Command {
-	return &cobra.Command{
+	var yes bool
+	cmd := &cobra.Command{
 		Use:   "undeploy <dep_id>",
 		Short: "Undeploy a cloud deployment and free its slot",
 		Long: `Undeploy a cloud deployment by ID.
@@ -2224,9 +2225,14 @@ func newCloudUndeployCmd() *cobra.Command {
 This calls DELETE /v1/deployments/:id and frees the deployment's slot for
 reuse.
 
+Requires --yes. This deletes a live deployment. JSON mode still requires --yes.
+
 Requires a valid login. Use 'agentpaas cloud login' first.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !yes {
+				return fmt.Errorf("cloud undeploy: refusing without --yes (this deletes a live deployment)")
+			}
 			depID := args[0]
 			if strings.ContainsAny(depID, "/\\\n\r") {
 				return fmt.Errorf("cloud undeploy: invalid deployment id %q: must not contain '/', '\\', newline, or carriage return", depID)
@@ -2259,6 +2265,8 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm undeploy (required; this deletes a live deployment)")
+	return cmd
 }
 
 // newCloudRunCmd creates the `agentpaas cloud run` command.

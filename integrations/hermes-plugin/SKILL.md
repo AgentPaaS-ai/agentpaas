@@ -640,6 +640,11 @@ Use `agentpaas_cloud_registry` (or `agentpaas cloud registry --json`) to discove
 Treat push, deploy, undeploy, and invoke as paid or state-changing operations:
 explain the plan and obtain explicit user confirmation before calling them.
 
+On cloud deploy error protected_app or slot not free: STOP. Explain. Never
+undeploy another deployment to retry. Undeploy requires explicit user
+confirmation for THAT dep id AND tool arg yes=true. "yes deploy X" is not
+consent to delete Y.
+
 ### Cloud Deploy and Run (MANDATORY ORDER AND CONSENT GATES)
 
 Cloud operations are side effects and paid cloud infrastructure. Never push

@@ -1892,7 +1892,11 @@ def agentpaas_cloud_undeploy(args, **kwargs):
     )
     if error:
         return error
-    return _run_cloud_tool(["cloud", "undeploy", deployment_id])
+    if args.get("yes") is not True:
+        return _cloud_tool_error(
+            "agentpaas_cloud_undeploy: yes=true is required (this deletes a live deployment)"
+        )
+    return _run_cloud_tool(["cloud", "undeploy", deployment_id, "--yes"])
 
 
 def agentpaas_cloud_invoke(args, **kwargs):

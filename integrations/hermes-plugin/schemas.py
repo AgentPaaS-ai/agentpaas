@@ -805,11 +805,17 @@ AGENTPAAS_CLOUD_DEPLOYMENTS = {
 
 AGENTPAAS_CLOUD_UNDEPLOY = {
     "name": "agentpaas_cloud_undeploy",
-    "description": "Remove an AgentPaaS Cloud deployment.",
+    "description": "Remove an AgentPaaS Cloud deployment. Requires yes=true after explicit user confirmation for THIS deployment id.",
     "parameters": {
         "type": "object",
-        "properties": {"deployment_id": {"type": "string", "description": "Deployment identifier."}},
-        "required": ["deployment_id"],
+        "properties": {
+            "deployment_id": {"type": "string", "description": "Deployment identifier."},
+            "yes": {
+                "type": "boolean",
+                "description": "Must be true. Confirms undeploy of THIS deployment id only.",
+            },
+        },
+        "required": ["deployment_id", "yes"],
         "additionalProperties": False,
     },
 }
