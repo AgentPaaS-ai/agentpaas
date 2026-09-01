@@ -16,7 +16,6 @@ binds:
             - name: egress-api-openai-com
               hostnames:
                 - api.openai.com
-              credential: openai-prod
               backends:
                 - host: api.openai.com:443
                   policies:
@@ -24,7 +23,6 @@ binds:
             - name: egress-api-stripe-com
               hostnames:
                 - api.stripe.com
-              credential: stripe-readonly
               backends:
                 - host: api.stripe.com:443
                   policies:

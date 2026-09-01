@@ -288,8 +288,8 @@ func TestCompileGatewayConfig_OAuthBackendConfig(t *testing.T) {
 		t.Errorf("backendOAuth is not a valid agentgateway v1.3.0 route policy field and must be omitted, got:\n%s", outStr)
 	}
 
-	if !strings.Contains(outStr, "credential: xai-oauth") {
-		t.Errorf("expected route credential binding xai-oauth, got:\n%s", outStr)
+	if strings.Contains(outStr, "credential:") {
+		t.Errorf("agentgateway v1.3.0 rejects route credential; harness injects via http_with_credential, got:\n%s", outStr)
 	}
 }
 
@@ -325,8 +325,8 @@ func TestCompileGatewayConfig_OAuthBackendConfig_CustomHeader(t *testing.T) {
 	if strings.Contains(outStr, "backendOAuth") {
 		t.Errorf("backendOAuth must be omitted, got:\n%s", outStr)
 	}
-	if !strings.Contains(outStr, "credential: xai-oauth") {
-		t.Errorf("expected route credential binding xai-oauth, got:\n%s", outStr)
+	if strings.Contains(outStr, "credential:") {
+		t.Errorf("agentgateway v1.3.0 rejects route credential; harness injects via http_with_credential, got:\n%s", outStr)
 	}
 }
 
