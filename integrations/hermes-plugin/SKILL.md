@@ -334,10 +334,9 @@ value is what is sent on that header, with ONE transform.
   or `Digest ` (scheme plus space) → send as-is
 - Else if the value contains `:` (`user:pass` or `email:token`) →
   send `Basic ` + standard base64(value)
-- Else → send as-is (raw token). If the SaaS docs say
-  `Authorization: Bearer <token>`, the user must store
-  `Bearer <token>` (scheme included). Do not store a naked token
-  and hope Bearer is added.
+- Else → send as-is (raw token). If the SaaS docs require an
+  Authorization Bearer token, the user must store `Bearer <token>`
+  (scheme included). Do not store a naked token and hope Bearer is added.
 
 **Any other header** (`X-API-Key`, `X-Atlassian-Token`, …): send
 the Keychain value unchanged. Set `header:` to that name.
@@ -362,10 +361,10 @@ Basic+base64.
 
 ### HTTP
 
-Worker / local invoke may use `agent.http_with_credential`. True
-`kind: mcp_service` does not connect harness RPC;
-`http_with_credential` fails `rpc_not_connected`. Do not close an
-MCP-server demo on trigger invoke of a worker agent.
+`kind: mcp_service` connects harness RPC. Tools use
+`agent.http_with_credential`. Do not add `@agent.on_invoke` to make
+`agentpaas run` work. Local prove is MCP tools/list and tools/call,
+not a worker invoke dispatcher.
 
 ### Verified
 
