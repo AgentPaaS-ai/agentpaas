@@ -644,7 +644,23 @@ class Agent:
                 )
 
         try:
-            result = fn(arguments)
+            import inspect
+
+            sig = inspect.signature(fn)
+            params = [
+                p
+                for p in sig.parameters.values()
+                if p.kind
+                in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    inspect.Parameter.KEYWORD_ONLY,
+                )
+            ]
+            if len(params) == 1 and params[0].name in ("arguments", "args", "payload"):
+                result = fn(arguments)
+            else:
+                result = fn(**arguments)
         except Exception as exc:
             # Map to bounded error without traceback leakage.
             msg = str(exc)
