@@ -201,6 +201,48 @@ def t1(args):
         proc.wait(timeout=5)
         self.assertEqual(proc.returncode, 0)
 
+    def test_dummy_service_agent_ready_without_rpc(self):
+        """A service agent with a dummy tool is ready when RPC addr is unset."""
+        agent_dir = tempfile.mkdtemp(prefix="ap_svc_norpc_")
+        self.addCleanup(lambda: _rmtree(agent_dir))
+        agent_path = os.path.join(agent_dir, "service_agent.py")
+        with open(agent_path, "w") as f:
+            f.write(
+                "from agentpaas_sdk import agent\n"
+                "\n"
+                "@agent.mcp_tool(\"dummy\")\n"
+                "def dummy(args):\n"
+                "    return {\"ok\": True}\n"
+            )
+        stdout_path = os.path.join(agent_dir, "stdout.txt")
+        env = {k: v for k, v in os.environ.items() if k != "AGENTPAAS_RPC_ADDR"}
+        env.update({
+            "PYTHONPATH": REPO_PYTHON,
+            "AGENTPAAS_AGENT_KIND": "mcp_service",
+            "AGENTPAAS_AGENT_PATH": agent_path,
+            "AGENTPAAS_STDOUT_PATH": stdout_path,
+            "AGENTPAAS_MCP_DECLARED_TOOLS": "dummy",
+        })
+        proc = subprocess.Popen(
+            [sys.executable, "-u", "-c",
+             "from agentpaas_sdk.runner import run; run()"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env,
+            text=True,
+            bufsize=1,
+        )
+        self.addCleanup(_close_proc, proc)
+        first_line = proc.stdout.readline().strip()
+        if not first_line:
+            stderr_data = proc.stderr.read()
+            proc.wait()
+            self.fail(f"no output from runner; stderr: {stderr_data}")
+        msg = json.loads(first_line)
+        self.assertEqual(msg.get("type"), "ready",
+                         f"expected ready without RPC, got {first_line}")
+
     # ---- Serial calls test ----
 
     def test_serial_calls_work(self):

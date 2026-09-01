@@ -97,7 +97,8 @@ def _run_worker_mode(agent_path: str, stdout_path: str) -> None:
 def _run_service_mode(agent_path: str, stdout_path: str) -> None:
     """Service runner mode for kind=mcp_service (B33-T02).
 
-    No unix socket / RPC required. Reads line-delimited JSON on stdin.
+    RPC is connected when AGENTPAAS_RPC_ADDR is set so mcp tools can
+    http_with_credential. Reads line-delimited JSON on stdin.
     Supports: mcp_tools_list, mcp_tools_call, shutdown.
     Loops until EOF or shutdown; one tool returning does not exit.
     """
@@ -111,6 +112,10 @@ def _run_service_mode(agent_path: str, stdout_path: str) -> None:
     # Load user module so @mcp_tool registrations run.
     try:
         _load_user_agent(agent_path)
+        rpc_addr = os.environ.get("AGENTPAAS_RPC_ADDR")
+        if rpc_addr:
+            rpc = RPCClient(rpc_addr)
+            agent.set_rpc(rpc)
     except Exception:
         send(
             {
