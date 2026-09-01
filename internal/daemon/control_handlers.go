@@ -1152,6 +1152,22 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			// Self-cleanup: finalizeRun ensures harness audit ingestion
 			// and resource cleanup happen exactly once.
 			s.finalizeRun(context.Background(), runID, tr)
+		} else if invokeStdoutIndicatesError(stdout) {
+			failReason := invokeStdoutErrorReason(stdout)
+			invokeErr := fmt.Errorf("%s", failReason)
+			s.runMu.Lock()
+			tr.Status = "failed"
+			tr.InvokeErr = invokeErr
+			tr.FailReason = failReason
+			s.runMu.Unlock()
+			s.recordAudit("run_failed", "daemon", map[string]interface{}{
+				"run_id":       runID,
+				"agent_name":   agentName,
+				"container_id": string(containerID),
+				"fail_reason":  failReason,
+			})
+			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, invokeErr)
+			s.finalizeRun(context.Background(), runID, tr)
 		} else {
 			s.runMu.Lock()
 			tr.Status = "succeeded"
