@@ -40,6 +40,12 @@ type MCPBridgeConfig struct {
 	// ErrorLog is an optional logger for bridge errors. If nil, a default
 	// logger writing to os.Stderr is used.
 	ErrorLog *log.Logger
+	// OnCallStart is invoked at the start of tools/call with the tool name
+	// and arguments. Nil is a no-op (existing tests leave it unset).
+	OnCallStart func(payload map[string]any)
+	// OnCallEnd is deferred at the start of tools/call so it always runs
+	// after the call completes. Nil is a no-op.
+	OnCallEnd func()
 }
 
 // MCPBridge is an HTTP server that translates JSON-RPC MCP requests to the
@@ -272,6 +278,12 @@ func (b *MCPBridge) handleToolsList(w http.ResponseWriter, id any) {
 func (b *MCPBridge) handleToolsCall(w http.ResponseWriter, id any, tool string, args map[string]any) {
 	if args == nil {
 		args = map[string]any{}
+	}
+	if b.cfg.OnCallStart != nil {
+		b.cfg.OnCallStart(map[string]any{"tool": tool, "arguments": args})
+	}
+	if b.cfg.OnCallEnd != nil {
+		defer b.cfg.OnCallEnd()
 	}
 
 	b.stdinMu.Lock()

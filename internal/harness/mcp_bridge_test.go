@@ -216,6 +216,62 @@ func TestMCPBridge_ToolsCall(t *testing.T) {
 	}
 }
 
+func TestMCPBridge_ToolsCall_InvokesOnCallStartAndEnd(t *testing.T) {
+	var started, ended atomic.Int32
+	var startPayload map[string]any
+	worker := startFakeMCPWorker(t, []string{"echo"}, func(tool string, args map[string]any) (map[string]any, error) {
+		if started.Load() == 0 {
+			t.Error("OnCallStart not called before worker handled tools/call")
+		}
+		if ended.Load() != 0 {
+			t.Error("OnCallEnd called before tools/call completed")
+		}
+		return map[string]any{"ok": true}, nil
+	})
+
+	cap := randomCapability(t)
+	bridge := NewMCPBridge(MCPBridgeConfig{
+		Addr:       "127.0.0.1:0",
+		Capability: cap,
+		Stdin:      worker.stdin,
+		Stdout:     worker.stdout,
+		OnCallStart: func(p map[string]any) {
+			started.Add(1)
+			startPayload = p
+		},
+		OnCallEnd: func() {
+			ended.Add(1)
+		},
+	})
+	_ = bridge.Start()
+	defer func() { _ = bridge.Close() }()
+
+	reqBody := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hello-invoke"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-AgentPaaS-MCP-Capability", cap)
+
+	rec := httptest.NewRecorder()
+	bridge.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d, body: %s", rec.Code, rec.Body.String())
+	}
+	if started.Load() != 1 {
+		t.Fatalf("OnCallStart calls = %d, want 1", started.Load())
+	}
+	if ended.Load() != 1 {
+		t.Fatalf("OnCallEnd calls = %d, want 1", ended.Load())
+	}
+	if startPayload["tool"] != "echo" {
+		t.Fatalf("OnCallStart tool = %v, want echo", startPayload["tool"])
+	}
+	args, _ := startPayload["arguments"].(map[string]any)
+	if args["message"] != "hello-invoke" {
+		t.Fatalf("OnCallStart arguments = %v, want message=hello-invoke", startPayload["arguments"])
+	}
+}
+
 func TestMCPBridge_MissingCapabilityHeader(t *testing.T) {
 	worker := startFakeMCPWorker(t, []string{"echo"}, nil)
 
