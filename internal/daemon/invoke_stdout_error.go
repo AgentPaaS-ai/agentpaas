@@ -27,11 +27,75 @@ func invokeStdoutIndicatesError(stdout string) bool {
 	if statusIsError(result["status"]) {
 		return true
 	}
+	if contentTextsIndicateError(result["content"]) {
+		return true
+	}
 	nested, ok := result["result"].(map[string]any)
 	if !ok {
 		return false
 	}
 	return statusIsError(nested["status"])
+}
+
+// contentTextsIndicateError reports whether any MCP content[].text is JSON
+// whose status is ERROR (case-insensitive), including truncated objects.
+func contentTextsIndicateError(v any) bool {
+	items, ok := v.([]any)
+	if !ok {
+		return false
+	}
+	for _, item := range items {
+		obj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		text, ok := obj["text"].(string)
+		if !ok || text == "" {
+			continue
+		}
+		if jsonTextStatusIsError(text) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsonTextStatusIsError(text string) bool {
+	var inner map[string]any
+	if err := json.Unmarshal([]byte(text), &inner); err == nil {
+		return statusIsError(inner["status"])
+	}
+	dec := json.NewDecoder(strings.NewReader(text))
+	tok, err := dec.Token()
+	if err != nil {
+		return false
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok || delim != '{' {
+		return false
+	}
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return false
+		}
+		if key == "status" {
+			var status any
+			if err := dec.Decode(&status); err != nil {
+				return false
+			}
+			return statusIsError(status)
+		}
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return false
+		}
+	}
+	return false
 }
 
 func statusIsError(v any) bool {

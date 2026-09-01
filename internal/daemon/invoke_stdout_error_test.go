@@ -41,6 +41,11 @@ func TestInvokeStdoutIndicatesError(t *testing.T) {
 			want:   false,
 		},
 		{
+			name:   "mcp tools/call ERROR content is failed run",
+			stdout: `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"{\"status\":\"ERROR\",\"http_status\":404,...}"}]}}`,
+			want:   true,
+		},
+		{
 			name:   "non-json stdout is not an error",
 			stdout: "not json",
 			want:   false,
