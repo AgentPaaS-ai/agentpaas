@@ -168,6 +168,27 @@ class DelegationTests(unittest.TestCase):
             self.sdk_agent.delegate("report.verify", {"text": "hello"})
         self.assertEqual(ctx.exception.code, "forbidden_response_key")
 
+    def test_delegate_allows_description_summary_support_keys(self):
+        rpc = FakeRPC({
+            "task_id": "task-abc",
+            "description": "Jira issue body",
+            "summary": "KAN-4",
+            "support": "ok",
+        })
+        self.sdk_agent.set_rpc(rpc)
+
+        handle = self.sdk_agent.delegate("report.verify", {"text": "hello"})
+        self.assertEqual(handle.task_id, "task-abc")
+
+    def test_delegate_rejects_secret_and_access_token_keys(self):
+        for leak_key in ("secret", "access_token"):
+            with self.subTest(leak_key=leak_key):
+                rpc = FakeRPC({"task_id": "task-abc", leak_key: "leaked"})
+                self.sdk_agent.set_rpc(rpc)
+                with self.assertRaises(RPCError) as ctx:
+                    self.sdk_agent.delegate("report.verify", {"text": "hello"})
+                self.assertEqual(ctx.exception.code, "forbidden_response_key")
+
     def test_delegate_rejects_empty_capability(self):
         rpc = FakeRPC({"task_id": "task-abc", "status": "ADMITTED"})
         self.sdk_agent.set_rpc(rpc)

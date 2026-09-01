@@ -32,8 +32,9 @@ def _validate_response_no_leaks(result: dict[str, Any]) -> None:
     """Reject any response that contains forbidden key patterns."""
     for key in result:
         key_lower = key.lower()
+        tokens = key_lower.replace("-", "_").split("_")
         for forbidden in _FORBIDDEN_RESPONSE_KEYS:
-            if forbidden in key_lower:
+            if key_lower == forbidden or forbidden in tokens:
                 raise RPCError(
                     f"response contains forbidden key {key!r}",
                     "forbidden_response_key",
