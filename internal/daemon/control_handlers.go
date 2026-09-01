@@ -849,6 +849,17 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		)
 	}
 
+	kind := ""
+	var mcpTools []string
+	mcpMaxConc := 0
+	lockPath := filepath.Join(pack.DeployedAgentPath(s.homePaths.Home, agentName), "agent.lock")
+	if lock, lockErr := pack.ReadAgentLock(lockPath); lockErr == nil && lock != nil && lock.AgentYAML != nil {
+		kind = lock.AgentYAML.Kind
+		mcpTools = lock.AgentYAML.MCPService.Tools
+		mcpMaxConc = lock.AgentYAML.MCPService.MaxConcurrency
+	}
+	proxyEnv = append(proxyEnv, mcpServiceEnv(kind, mcpTools, mcpMaxConc)...)
+
 	// Write resolved credential values to a sidecar file that is bind-mounted
 	// into the agent container. The harness reads this file at startup, loads
 	// credential values into memory, and the daemon removes the file after the
@@ -1533,6 +1544,17 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 			"no_proxy=localhost,127.0.0.1,"+gatewayIP,
 		)
 	}
+
+	kind := ""
+	var mcpTools []string
+	mcpMaxConc := 0
+	lockPath := filepath.Join(pack.DeployedAgentPath(s.homePaths.Home, agentName), "agent.lock")
+	if lock, lockErr := pack.ReadAgentLock(lockPath); lockErr == nil && lock != nil && lock.AgentYAML != nil {
+		kind = lock.AgentYAML.Kind
+		mcpTools = lock.AgentYAML.MCPService.Tools
+		mcpMaxConc = lock.AgentYAML.MCPService.MaxConcurrency
+	}
+	proxyEnv = append(proxyEnv, mcpServiceEnv(kind, mcpTools, mcpMaxConc)...)
 
 	// Write credential sidecar.
 	credsPath, credsFileWritten := s.writeCredentialsForRun(runID, deployedDir, gatewayConfigDir, nil)
@@ -2363,9 +2385,9 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 
 	// Invoke the agent. The payload is passed via stdin to keep the credential
 	// value out of process args (visible via ps). The python script reads stdin.
-	// mcp_service (or payloads with "tool") POST JSON-RPC tools/call|list to
-	// the harness root; otherwise POST /invoke. Capability header is taken
-	// from the container env, never argv.
+	// mcp_service POSTs JSON-RPC tools/call|list to the harness root;
+	// otherwise POST /invoke (including worker payloads that contain "tool").
+	// Capability header is taken from the container env, never argv.
 	invokeCmd := []string{"python3", "-c",
 		fmt.Sprintf(
 			"import urllib.request,json,sys,os;"+
@@ -2374,7 +2396,7 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 				"cap=os.environ.get('AGENTPAAS_MCP_CAPABILITY','');"+
 				"kind=os.environ.get('AGENTPAAS_AGENT_KIND','');"+
 				"tool=p.get('tool') or p.get('name');"+
-				"use_mcp=(kind=='mcp_service') or ('tool' in p);"+
+				"use_mcp=(kind=='mcp_service');"+
 				"h={'Content-Type':'application/json'};"+
 				"h.update({'X-AgentPaaS-MCP-Capability':cap} if (use_mcp and cap) else {});"+
 				"body=json.dumps({'jsonrpc':'2.0','id':1,'method':('tools/call' if tool else 'tools/list'),'params':({'name':tool,'arguments':p.get('arguments',p.get('args',{}))} if tool else {})}).encode() if use_mcp else raw;"+
@@ -3739,6 +3761,68 @@ func (s *controlServer) CronRemove(ctx context.Context, req *controlv1.CronRemov
 		return nil, fmt.Errorf("control server cron remove: %w", err)
 	}
 	return &controlv1.CronRemoveResponse{Removed: true}, nil
+}
+
+// mcpServiceEnv returns container env vars that select harness mode.
+// kind is sanitized to [a-z0-9_] max 32, default "worker". MCP bridge
+// vars (including a 32-byte hex capability) are added only for mcp_service.
+// The capability value is never logged.
+func mcpServiceEnv(kind string, tools []string, maxConc int) []string {
+	kind = sanitizeAgentKind(kind)
+	env := []string{"AGENTPAAS_AGENT_KIND=" + kind}
+	if kind != "mcp_service" {
+		return env
+	}
+	env = append(env,
+		"AGENTPAAS_ADDR=127.0.0.1:8090",
+		"AGENTPAAS_MCP_HTTP_ADDR=0.0.0.0:8080",
+		"AGENTPAAS_MCP_DECLARED_TOOLS="+joinMCPDeclaredTools(tools),
+	)
+	var capBuf [32]byte
+	if _, err := rand.Read(capBuf[:]); err == nil {
+		env = append(env, "AGENTPAAS_MCP_CAPABILITY="+hex.EncodeToString(capBuf[:]))
+	}
+	if maxConc >= 1 && maxConc <= 32 {
+		env = append(env, "AGENTPAAS_MCP_MAX_CONCURRENCY="+strconv.Itoa(maxConc))
+	}
+	return env
+}
+
+func sanitizeAgentKind(kind string) string {
+	if kind == "" || len(kind) > 32 {
+		return "worker"
+	}
+	for i := 0; i < len(kind); i++ {
+		c := kind[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '_' {
+			return "worker"
+		}
+	}
+	return kind
+}
+
+func joinMCPDeclaredTools(tools []string) string {
+	ok := make([]string, 0, len(tools))
+	for _, name := range tools {
+		if validMCPDeclaredTool(name) {
+			ok = append(ok, name)
+		}
+	}
+	return strings.Join(ok, ",")
+}
+
+func validMCPDeclaredTool(name string) bool {
+	if name == "" || len(name) > 64 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func cronScheduleToProto(s *trigger.CronSchedule, scheduleID string) *controlv1.CronScheduleInfo {
