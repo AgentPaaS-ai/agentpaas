@@ -259,6 +259,77 @@ resp = agent.http_with_credential("my-api-key", "https://api.example.com/data")
 A plain `main()` function will fail with: "agent must register an invoke
 handler with @agent.on_invoke".
 
+## MCP servers (kind: mcp_service)
+
+Three objects. Do not mix.
+
+- **MCP server:** agent.yaml `kind: mcp_service`. Protocol: initialize /
+  tools/list / tools/call.
+- **MCP client (agent):** default worker + `mcp_servers:`. Calls
+  `agent.mcp(...)`.
+- **Tool:** deterministic worker, no LLM.
+
+Server = hosted component. Agent = client. The workflow controller is not
+an MCP client.
+
+Cloud deploy of a server is `agentpaas cloud deploy --type mcp` after
+explicit user OK. Default deploy is an agent. Ask.
+
+### agent.yaml required
+
+```yaml
+name: <slug>
+version: 0.1.0
+runtime: python3.12
+entry: main.py
+kind: mcp_service
+description: <one line>
+mcp_service:
+  transport: streamable_http
+  tools:
+    - <exact @agent.mcp_tool name>
+  max_concurrency: 4
+```
+
+Without `kind: mcp_service` the harness stays in worker mode and MCP HTTP
+never listens. `transport` is only `streamable_http` on 0.4. No `llm:` on
+a pure server. `mcp_servers:` is the client declaration. Do not copy
+`demo/weather-agent`.
+
+### policy.yaml
+
+- `domain:` not host
+- ports 443 written by you; hostnames confirmed with the user, no ports
+  in chat
+- NEVER put `credential:` on an egress rule. agentgateway 1.3.0 rejects
+  unknown field `credential` and the sidecar exits 1; internal-net DNS
+  then looks broken.
+- Brokered secrets only under `credentials:` (`id`, `type: header`,
+  `header: Authorization`)
+- No wildcard egress unless the user asks
+
+### main.py
+
+`@agent.mcp_tool` names must match the agent.yaml list. Read-only unless
+the user asked for writes. Cap list/search. Never return secrets.
+
+### HTTP
+
+Worker / local invoke may use `agent.http_with_credential`. True
+`kind: mcp_service` does not connect harness RPC;
+`http_with_credential` fails `rpc_not_connected`. Do not close an
+MCP-server demo on trigger invoke of a worker agent.
+
+### Verified
+
+Verified is not pack success, not run status completed, not HTTP 404,
+not search count 0. Verified = inner tool OK + a real record +
+`egress_allowed` HTTP 200 for the declared host. If the user named a
+live id, get that id.
+
+Hermes must not search `~/projects/agentpaas` or
+`plugins/agentpaas/internal`. Must not copy `weather-agent`.
+
 ## Build-Time Onboarding (Mandatory)
 
 When building an agent, complete these steps BEFORE packing. Ask the user
@@ -441,6 +512,8 @@ Before `agentpaas_pack`, verify:
    policy.yaml `credentials:`.
 5. If LLM: agent.yaml has `llm:` pointing at the credential.
 6. The LLM provider hostname is in the egress policy.
+7. If the user asked for an MCP server, agent.yaml `kind` is
+   `mcp_service` and `mcp_service.tools` is non-empty.
 
 If ANY are missing, do NOT pack — ask only for the missing piece.
 
