@@ -982,7 +982,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 			return rpcError(req.ID, "credential is not declared", "credential_denied")
 		}
 		header := defaultString(cred.Header, "Authorization")
-		httpReq.Header.Set(header, cred.Value)
+		httpReq.Header.Set(header, authorizationHeaderValue(header, cred.Value))
 		credentialValue = cred.Value
 	}
 
@@ -1610,7 +1610,7 @@ func (s *harnessRPCServer) applyOAuthBinding(
 		header := defaultString(cred.Header, "Authorization")
 		// Inject only when not already set (withCredential path may have set it).
 		if httpReq.Header.Get(header) == "" {
-			httpReq.Header.Set(header, cred.Value)
+			httpReq.Header.Set(header, authorizationHeaderValue(header, cred.Value))
 			if credentialValue != nil {
 				*credentialValue = cred.Value
 			}
