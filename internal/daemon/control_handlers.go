@@ -1806,6 +1806,22 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 			})
 			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, err)
 			s.finalizeRun(context.Background(), runID, tr)
+		} else if invokeStdoutIndicatesError(stdout) {
+			failReason := invokeStdoutErrorReason(stdout)
+			invokeErr := fmt.Errorf("%s", failReason)
+			s.runMu.Lock()
+			tr.Status = "failed"
+			tr.InvokeErr = invokeErr
+			tr.FailReason = failReason
+			s.runMu.Unlock()
+			s.recordAudit("run_failed", "daemon", map[string]interface{}{
+				"run_id":       runID,
+				"agent_name":   agentName,
+				"container_id": string(containerID),
+				"fail_reason":  failReason,
+			})
+			fmt.Fprintf(os.Stderr, "daemon: auto-invoke (%s): %v\n", runID, invokeErr)
+			s.finalizeRun(context.Background(), runID, tr)
 		} else {
 			s.runMu.Lock()
 			tr.Status = "succeeded"
@@ -2347,13 +2363,23 @@ func (s *controlServer) invokeAgent(ctx context.Context, containerID runtime.Con
 
 	// Invoke the agent. The payload is passed via stdin to keep the credential
 	// value out of process args (visible via ps). The python script reads stdin.
+	// mcp_service (or payloads with "tool") POST JSON-RPC tools/call|list to
+	// the harness root; otherwise POST /invoke. Capability header is taken
+	// from the container env, never argv.
 	invokeCmd := []string{"python3", "-c",
 		fmt.Sprintf(
-			"import urllib.request,json,sys;"+
-				"payload=sys.stdin.buffer.read();"+
-				"req=urllib.request.Request('http://127.0.0.1:8080/invoke',"+
-				"data=payload,"+
-				"headers={'Content-Type':'application/json'});"+
+			"import urllib.request,json,sys,os;"+
+				"raw=sys.stdin.buffer.read();"+
+				"p=json.loads(raw);"+
+				"cap=os.environ.get('AGENTPAAS_MCP_CAPABILITY','');"+
+				"kind=os.environ.get('AGENTPAAS_AGENT_KIND','');"+
+				"tool=p.get('tool') or p.get('name');"+
+				"use_mcp=(kind=='mcp_service') or ('tool' in p);"+
+				"h={'Content-Type':'application/json'};"+
+				"h.update({'X-AgentPaaS-MCP-Capability':cap} if (use_mcp and cap) else {});"+
+				"body=json.dumps({'jsonrpc':'2.0','id':1,'method':('tools/call' if tool else 'tools/list'),'params':({'name':tool,'arguments':p.get('arguments',p.get('args',{}))} if tool else {})}).encode() if use_mcp else raw;"+
+				"url='http://127.0.0.1:8080/' if use_mcp else 'http://127.0.0.1:8080/invoke';"+
+				"req=urllib.request.Request(url,data=body,headers=h);"+
 				"print(urllib.request.urlopen(req,timeout=%d).read().decode())",
 			urlopenTimeoutSec,
 		)}
