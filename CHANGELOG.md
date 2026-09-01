@@ -3,6 +3,14 @@
 All notable changes to AgentPaaS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.4.1 — 2026-08-31
+
+### Added
+- MCP server plugin card (kind mcp_service)
+
+### Fixed
+- Do not emit credential on agentgateway 1.3.0 routes
+
 ## 0.4.0 — 2026-08-29
 
 ### Added
