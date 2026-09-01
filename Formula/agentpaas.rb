@@ -9,11 +9,11 @@ class Agentpaas < Formula
   on_macos do
     on_arm do
       url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.0/agentpaas_0.4.0_darwin_arm64.tar.gz"
-      sha256 "ada24c4e4d02d6b469e1e35f5cd8ea0a0c5d66a36b744efd572c67cb14ef4efa"
+      sha256 "1a0edb0801759981bbd2da80c0e1d6a2887a1cc13972576be3e24e2ed8c23e11"
     end
     on_intel do
       url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.0/agentpaas_0.4.0_darwin_amd64.tar.gz"
-      sha256 "0fab891ab2137554d19fc35da7e1318f47904061c223d33b7247eb8f3fab8080"
+      sha256 "80f6409ccf9885085cd1e01a5d5fbef77a2a12a1b14ac17a3327fa05a8e24fb7"
     end
   end
 
