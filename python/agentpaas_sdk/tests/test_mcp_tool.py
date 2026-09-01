@@ -241,9 +241,14 @@ class MCPToolSDKTests(unittest.TestCase):
     def test_mcp_result_rejects_secret_and_access_token(self):
         for leak_key in ("secret", "access_token"):
             with self.subTest(leak_key=leak_key):
-                @self.sdk_agent.mcp_tool("leaky_" + leak_key)
-                def leaky(arguments, _key=leak_key):
-                    return {_key: "leaked"}
+                def make_leaky(key):
+                    @self.sdk_agent.mcp_tool("leaky_" + key)
+                    def leaky(arguments):
+                        return {key: "leaked"}
+
+                    return leaky
+
+                make_leaky(leak_key)
 
                 with self.assertRaises(RPCError) as ctx:
                     self.sdk_agent.call_mcp_tool("leaky_" + leak_key, {})
@@ -257,6 +262,23 @@ class MCPToolSDKTests(unittest.TestCase):
         tools = self.sdk_agent.list_mcp_tools()
         tools.append("injected")
         self.assertNotIn("injected", self.sdk_agent.list_mcp_tools())
+
+    def test_call_mcp_tool_echo_arguments_dict_still_works(self):
+        @self.sdk_agent.mcp_tool("echo")
+        def echo(arguments):
+            return arguments
+
+        payload = {"issue_key": "KAN-4"}
+        result = self.sdk_agent.call_mcp_tool("echo", payload)
+        self.assertEqual(result, payload)
+
+    def test_call_mcp_tool_kwargs_named_params(self):
+        @self.sdk_agent.mcp_tool("get_issue")
+        def get_issue(issue_key: str):
+            return {"issue_key": issue_key}
+
+        result = self.sdk_agent.call_mcp_tool("get_issue", {"issue_key": "KAN-4"})
+        self.assertEqual(result, {"issue_key": "KAN-4"})
 
 
 if __name__ == "__main__":
