@@ -313,6 +313,21 @@ a pure server. `mcp_servers:` is the client declaration. Do not copy
 `@agent.mcp_tool` names must match the agent.yaml list. Read-only unless
 the user asked for writes. Cap list/search. Never return secrets.
 
+NEVER add `@agent.on_invoke` to an MCP server to make `agentpaas run`
+work. That is a worker agent. If `mcp_service` cannot call out, that is
+a product bug, not a reason to change `kind`.
+
+### Jira and similar email+token APIs
+
+First instruction: store `email:token` (email contains `@`). Tell the
+user to run in their terminal:
+
+```
+agentpaas secret add <name>
+```
+
+Do not lead with Basic/base64. The stored value is `email:token`.
+
 ### HTTP
 
 Worker / local invoke may use `agent.http_with_credential`. True
@@ -326,6 +341,15 @@ Verified is not pack success, not run status completed, not HTTP 404,
 not search count 0. Verified = inner tool OK + a real record +
 `egress_allowed` HTTP 200 for the declared host. If the user named a
 live id, get that id.
+
+Verified is forbidden when: 0 projects, 0 issues, or `get_issue` /
+`get_comments` on `NOSUCH-1` / `FOO-1` / any key the user did not name.
+If the user named `KAN-4`, that key must 200 with real fields.
+
+### Local prove
+
+Local prove for a server is MCP `tools/list` and `tools/call`, not
+trigger invoke `{"tool":...}` of an `on_invoke` dispatcher.
 
 Hermes must not search `~/projects/agentpaas` or
 `plugins/agentpaas/internal`. Must not copy `weather-agent`.
@@ -513,7 +537,10 @@ Before `agentpaas_pack`, verify:
 5. If LLM: agent.yaml has `llm:` pointing at the credential.
 6. The LLM provider hostname is in the egress policy.
 7. If the user asked for an MCP server, agent.yaml `kind` is
-   `mcp_service` and `mcp_service.tools` is non-empty.
+   `mcp_service` and `mcp_service.tools` is non-empty. Do not add
+   `@agent.on_invoke` so `agentpaas run` works. Jira-like APIs: secret
+   is `email:token` via `agentpaas secret add <name>` — do not lead
+   with Basic/base64.
 
 If ANY are missing, do NOT pack — ask only for the missing piece.
 
@@ -833,6 +860,13 @@ Never claim an invoke succeeded unless you verified it from tool output:
 4. If `result.status` is ERROR, or there is no LLM egress when LLM was
    required, report FAILURE with the real error — do NOT scrape weather
    numbers out of an error body and call it success.
+
+MCP server: local prove is MCP `tools/list` and `tools/call`, not
+trigger invoke of an `on_invoke` dispatcher. Do not add
+`@agent.on_invoke` to make `agentpaas run` work. Verified is forbidden
+when 0 projects, 0 issues, or `get_issue`/`get_comments` on
+`NOSUCH-1` / `FOO-1` / any key the user did not name. If the user named
+`KAN-4`, that key must 200 with real fields.
 
 ### Security: Secret Ingestion (Critical)
 
