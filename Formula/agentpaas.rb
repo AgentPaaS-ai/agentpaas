@@ -9,11 +9,11 @@ class Agentpaas < Formula
   on_macos do
     on_arm do
       url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.0/agentpaas_0.4.0_darwin_arm64.tar.gz"
-      sha256 "1a0edb0801759981bbd2da80c0e1d6a2887a1cc13972576be3e24e2ed8c23e11"
+      sha256 "81d549e8289fe372ed70aa8010c7ccce9b3db1ea3b3ca7bb59c77cbe3c1ce5a8"
     end
     on_intel do
       url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.0/agentpaas_0.4.0_darwin_amd64.tar.gz"
-      sha256 "80f6409ccf9885085cd1e01a5d5fbef77a2a12a1b14ac17a3327fa05a8e24fb7"
+      sha256 "4c8f17af20b9a6cafdf2f73d6bf4f1cda3d4e2dc075735b9bdd510d02c7479b4"
     end
   end
 
@@ -26,6 +26,6 @@ class Agentpaas < Formula
 
   test do
     output = shell_output("#{bin}/agentpaas version")
-    assert_match(/0\.4\.1/, output)
+    assert_match(/0\.4\.0/, output)
   end
 end
