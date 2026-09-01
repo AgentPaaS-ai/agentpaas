@@ -281,6 +281,16 @@ func (s *Server) startWorker() {
 		bridge := NewMCPBridge(MCPBridgeConfig{
 			Stdin:  worker.stdin,
 			Stdout: worker.stdout,
+			OnCallStart: func(p map[string]any) {
+				if worker.rpc != nil {
+					worker.rpc.SetInvoke(p, NewBudgetEnforcer(BudgetConfig{}), func() {})
+				}
+			},
+			OnCallEnd: func() {
+				if worker.rpc != nil {
+					worker.rpc.ClearInvoke()
+				}
+			},
 		})
 		if err := bridge.Start(); err != nil {
 			log.Printf("harness: MCP bridge start failed: %v", err)
