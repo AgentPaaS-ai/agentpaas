@@ -54,6 +54,10 @@ One short status when `agentpaas doctor` is 7/7.
 
 2. If `docker` or `colima` is missing: `brew install docker colima lima`,
    then `colima start --mount /Users:w`, then `agentpaas daemon start`.
+   NEVER set `DOCKER_HOST`. NEVER sudo `/var/run/docker.sock`. NEVER
+   "point the daemon at Colima's Docker socket." Colima registers the
+   docker context. Unset `DOCKER_HOST` if it is set. Daemon uses Docker
+   CLI as-is.
 
 3. `agentpaas doctor` must be 7/7 before any authoring. Do not ask for
    Jira hostname or secrets until doctor is 7/7.
