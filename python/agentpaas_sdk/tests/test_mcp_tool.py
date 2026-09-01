@@ -224,6 +224,31 @@ class MCPToolSDKTests(unittest.TestCase):
             self.sdk_agent.call_mcp_tool("leaky", {})
         self.assertIn("forbidden", str(ctx.exception).lower())
 
+    def test_mcp_result_allows_description_summary_support(self):
+        @self.sdk_agent.mcp_tool("get_issue")
+        def get_issue(arguments):
+            return {
+                "description": "contains letters i-p",
+                "summary": "KAN-4",
+                "support": True,
+            }
+
+        result = self.sdk_agent.call_mcp_tool("get_issue", {})
+        self.assertEqual(result["description"], "contains letters i-p")
+        self.assertEqual(result["summary"], "KAN-4")
+        self.assertTrue(result["support"])
+
+    def test_mcp_result_rejects_secret_and_access_token(self):
+        for leak_key in ("secret", "access_token"):
+            with self.subTest(leak_key=leak_key):
+                @self.sdk_agent.mcp_tool("leaky_" + leak_key)
+                def leaky(arguments, _key=leak_key):
+                    return {_key: "leaked"}
+
+                with self.assertRaises(RPCError) as ctx:
+                    self.sdk_agent.call_mcp_tool("leaky_" + leak_key, {})
+                self.assertEqual(ctx.exception.code, "forbidden_response_key")
+
     def test_list_mcp_tools_returns_copy_not_reference(self):
         @self.sdk_agent.mcp_tool("t1")
         def t1(args):
