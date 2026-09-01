@@ -319,6 +319,11 @@ a product bug, not a reason to change `kind`.
 
 ### Jira and similar email+token APIs
 
+The Keychain value for HTTP Basic APIs is `user:pass` or `email:token`
+(email has `@`). The PLATFORM turns that into
+`Authorization: Basic <base64>`. Authors must NOT store Basic+base64.
+Authors must NOT put `credential:` on egress.
+
 First instruction: store `email:token` (email contains `@`). Tell the
 user to run in their terminal:
 
@@ -341,6 +346,11 @@ Verified is not pack success, not run status completed, not HTTP 404,
 not search count 0. Verified = inner tool OK + a real record +
 `egress_allowed` HTTP 200 for the declared host. If the user named a
 live id, get that id.
+
+If `tools/call` returns HTTP 200 with empty lists or 404 on a
+user-named id, that is FAIL (auth inject or wrong user) — not an empty
+site. Do not ask to re-add the secret until `get_issue` of the named
+id is 404 AND `/myself` (or equivalent) is 401 after Basic encoding.
 
 Verified is forbidden when: 0 projects, 0 issues, or `get_issue` /
 `get_comments` on `NOSUCH-1` / `FOO-1` / any key the user did not name.
@@ -510,6 +520,10 @@ field name for egress rules in policy.yaml. The schema field is
    - `id` must match the Keychain secret name
    - `type` must be `header`
    - `header` defaults to `Authorization` if omitted
+   - HTTP Basic APIs: Keychain value is `user:pass` or `email:token`
+     (email has `@`). The platform turns that into
+     `Authorization: Basic <base64>`. Do not store Basic+base64.
+     Do not put `credential:` on egress.
 
 ### Example: Weather Agent (user-facing turns)
 
@@ -538,9 +552,11 @@ Before `agentpaas_pack`, verify:
 6. The LLM provider hostname is in the egress policy.
 7. If the user asked for an MCP server, agent.yaml `kind` is
    `mcp_service` and `mcp_service.tools` is non-empty. Do not add
-   `@agent.on_invoke` so `agentpaas run` works. Jira-like APIs: secret
-   is `email:token` via `agentpaas secret add <name>` — do not lead
-   with Basic/base64.
+   `@agent.on_invoke` so `agentpaas run` works. Jira-like HTTP Basic
+   APIs: Keychain value is `user:pass` or `email:token` (email has `@`);
+   the platform encodes `Authorization: Basic <base64>`. Do not store
+   Basic+base64. Do not put `credential:` on egress. Add via
+   `agentpaas secret add <name>` — do not lead with Basic/base64.
 
 If ANY are missing, do NOT pack — ask only for the missing piece.
 
