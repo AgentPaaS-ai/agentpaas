@@ -408,9 +408,13 @@ func TestCompileGatewayConfig_CredentialBinding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile failed: %v", err)
 	}
-	// The credential must appear on the route.
-	if !strings.Contains(string(out), "credential: my-key") {
-		t.Errorf("expected credential binding 'my-key' on route, got:\n%s", string(out))
+	// agentgateway v1.3.0 rejects unknown field `credential` on routes.
+	// Harness injects credentials via http_with_credential, not gateway YAML.
+	if strings.Contains(string(out), "credential: my-key") {
+		t.Errorf("gateway YAML must not contain 'credential: my-key', got:\n%s", string(out))
+	}
+	if strings.Contains(string(out), "credential:") {
+		t.Errorf("gateway YAML must not contain 'credential:', got:\n%s", string(out))
 	}
 }
 
@@ -442,17 +446,11 @@ func TestCompileGatewayConfig_CredentialScopedToRoute(t *testing.T) {
 	routeASection := string(out)[routeAIdx:min(routeAIdx+200, len(out))]
 	routeBSection := string(out)[routeBIdx:min(routeBIdx+200, len(out))]
 
-	if !strings.Contains(routeASection, "credential: key-a") {
-		t.Errorf("route A should have credential: key-a\nroute A section:\n%s", routeASection)
+	if strings.Contains(routeASection, "credential:") {
+		t.Errorf("route A must not contain credential:\nroute A section:\n%s", routeASection)
 	}
-	if strings.Contains(routeASection, "credential: key-b") {
-		t.Errorf("route A must NOT have credential: key-b\nroute A section:\n%s", routeASection)
-	}
-	if !strings.Contains(routeBSection, "credential: key-b") {
-		t.Errorf("route B should have credential: key-b\nroute B section:\n%s", routeBSection)
-	}
-	if strings.Contains(routeBSection, "credential: key-a") {
-		t.Errorf("route B must NOT have credential: key-a\nroute B section:\n%s", routeBSection)
+	if strings.Contains(routeBSection, "credential:") {
+		t.Errorf("route B must not contain credential:\nroute B section:\n%s", routeBSection)
 	}
 }
 
@@ -567,9 +565,9 @@ func TestCompileGatewayConfig_FullSemantics(t *testing.T) {
 		t.Error("ports field should not appear on routes (agentgateway v1.3.0 rejects it)")
 	}
 
-	// Credential binding.
-	if !strings.Contains(outStr, "credential: prod-key") {
-		t.Error("expected credential binding prod-key on route")
+	// agentgateway v1.3.0 rejects unknown field `credential` on routes.
+	if strings.Contains(outStr, "credential:") {
+		t.Error("credential: must not appear in gateway YAML")
 	}
 
 	// Hostname enforcement.
@@ -624,17 +622,20 @@ func TestCompileGatewayConfig_EnforcementFieldsNotLost(t *testing.T) {
 
 	outStr := string(out)
 
-	// Every enforcement field must be present.
+	// Every remaining gateway-emitted enforcement field must be present.
 	// Note: port enforcement is handled by Docker network topology, not
 	// gateway route config (agentgateway v1.3.0 matches by hostname only).
+	// Credential is injected by the harness via http_with_credential, not YAML.
 	checks := map[string]string{
-		"hostname":   "secure.example.com",
-		"method":     "method: GET",
-		"credential": "credential: secure-key",
+		"hostname": "secure.example.com",
+		"method":   "method: GET",
 	}
 	for field, expected := range checks {
 		if !strings.Contains(outStr, expected) {
 			t.Errorf("enforcement field %q missing; expected %q in output:\n%s", field, expected, outStr)
 		}
+	}
+	if strings.Contains(outStr, "credential:") {
+		t.Errorf("credential: must not appear in gateway YAML, got:\n%s", outStr)
 	}
 }

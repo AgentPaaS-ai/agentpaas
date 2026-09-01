@@ -531,13 +531,13 @@ func buildEgressRoutes(p *Policy) []gatewayRoute {
 			}
 		}
 
+		// agentgateway v1.3.0 rejects route credential (unknown field); harness injects via http_with_credential.
 		routes = append(routes, gatewayRoute{
-			Name:       routeName,
-			Hostnames:  []string{e.Domain},
-			Matches:    matches,
-			Credential: e.Credential,
-			Policies:   policies,
-			Backends:   []gatewayBackend{backend},
+			Name:      routeName,
+			Hostnames: []string{e.Domain},
+			Matches:   matches,
+			Policies:  policies,
+			Backends:  []gatewayBackend{backend},
 		})
 	}
 
