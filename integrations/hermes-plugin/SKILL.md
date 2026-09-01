@@ -29,41 +29,47 @@ HTTP request at call time.
 
 ### From inside Hermes (recommended for users)
 
-Tell Hermes:
+When the user says:
 
-> Install from https://github.com/AgentPaaS-ai/agentpaas
+> Install AgentPaaS from github https://github.com/AgentPaaS-ai/agentpaas
 
-Hermes installs the plugin, but cold installs require the filesystem
-completer before setup is complete:
+that one sentence means the FULL product: CLI, daemon, linux harness,
+Docker/Colima, then the Hermes plugin. NEVER treat it as "install the
+plugin". Plugin-only is a fail.
 
-```bash
-python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
-python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>
-```
+The GitHub URL is how they found us. Brew is how the CLI lands. Both
+are required.
 
-Filesystem state completes on disk without a restart. Slash commands and
-`agentpaas_*` tools load only when Hermes starts, so reopen the session once:
+You run brew and the plugin. Do not dump a 5-step shell script in chat.
+One short status when `agentpaas doctor` is 7/7.
 
-```
-/quit
-hermes -p <profile>
-```
+1. Install CLI + daemon + linux harness:
 
-Do not reinstall and do not ask for OpenRouter or other LLM/API keys during
-setup. Ask for keys only when building an agent that needs them.
+   `brew install agentpaas-ai/tap/agentpaas`
 
-### Prerequisites
+   Then clear quarantine on the four unsigned adhoc cask bins (first run
+   is SIGKILL without this):
 
-The AgentPaaS Go binary (daemon, CLI, harness) must be installed
-separately from the plugin:
+   `xattr -cr "$(brew --prefix)/bin/agentpaas" "$(brew --prefix)/bin/agentpaasd" "$(brew --prefix)/bin/agentpaas-harness-linux" "$(brew --prefix)/bin/agentpaas-harness-linux-amd64"`
 
-```bash
-brew install agentpaas-ai/tap/agentpaas
-agentpaas doctor
-```
+2. If `docker` or `colima` is missing: `brew install docker colima lima`,
+   then `colima start --mount /Users:w`, then `agentpaas daemon start`.
 
-See the [main README](https://github.com/AgentPaaS-ai/agentpaas#install)
-for full install instructions including Hermes and Docker.
+3. `agentpaas doctor` must be 7/7 before any authoring. Do not ask for
+   Jira hostname or secrets until doctor is 7/7.
+
+4. Then install the plugin from that same GitHub URL and complete this
+   profile:
+
+   `hermes plugins install --force --enable https://github.com/AgentPaaS-ai/agentpaas`
+
+   `python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>`
+
+   `python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>`
+
+5. Reopen the session once so slash commands and `agentpaas_*` tools
+   load (`/quit`, then `hermes -p <profile>`). Do not reinstall. Do not
+   ask for LLM keys during setup.
 
 ## Slash Commands
 
