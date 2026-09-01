@@ -305,7 +305,8 @@ a pure server. `mcp_servers:` is the client declaration. Do not copy
   unknown field `credential` and the sidecar exits 1; internal-net DNS
   then looks broken.
 - Brokered secrets only under `credentials:` (`id`, `type: header`,
-  `header: Authorization`)
+  `header:` name from the SaaS docs). Platform inject for
+  `agent.http_with_credential` is ONLY this map.
 - No wildcard egress unless the user asks
 
 ### main.py
@@ -317,21 +318,47 @@ NEVER add `@agent.on_invoke` to an MCP server to make `agentpaas run`
 work. That is a worker agent. If `mcp_service` cannot call out, that is
 a product bug, not a reason to change `kind`.
 
-### Jira and similar email+token APIs
+### SaaS header-auth map (any backend)
 
-The Keychain value for HTTP Basic APIs is `user:pass` or `email:token`
-(email has `@`). The PLATFORM turns that into
-`Authorization: Basic <base64>`. Authors must NOT store Basic+base64.
-Authors must NOT put `credential:` on egress.
+Do not assume Jira. GitHub PAT, Stripe, OpenRouter, custom
+`X-API-Key` are all the same header map. OAuth delegated is a
+different type; do not use it for a first MCP server unless the
+user asked for OAuth.
 
-First instruction: store `email:token` (email contains `@`). Tell the
-user to run in their terminal:
+Platform inject for `agent.http_with_credential` is ONLY policy
+`credentials:` with `type: header` and a header name. The Keychain
+value is what is sent on that header, with ONE transform.
 
-```
-agentpaas secret add <name>
-```
+**Authorization header:**
+- If the value already starts with `Basic `, `Bearer `, `Token `,
+  or `Digest ` (scheme plus space) → send as-is
+- Else if the value contains `:` (`user:pass` or `email:token`) →
+  send `Basic ` + standard base64(value)
+- Else → send as-is (raw token). If the SaaS docs say
+  `Authorization: Bearer <token>`, the user must store
+  `Bearer <token>` (scheme included). Do not store a naked token
+  and hope Bearer is added.
 
-Do not lead with Basic/base64. The stored value is `email:token`.
+**Any other header** (`X-API-Key`, `X-Atlassian-Token`, …): send
+the Keychain value unchanged. Set `header:` to that name.
+
+How you enable auth for ANY backend:
+
+1. From the SaaS docs, name the header and the value shape.
+   Confirm hostname with the user (no ports).
+2. Ask them to `agentpaas secret add <id>` in their terminal.
+   Tell them in one line what to paste (`email:token` / `Bearer tok`
+   / raw API key). Never ask them to base64. Never paste the
+   secret in chat.
+3. `policy.yaml`: credentials `id`=<same>, `type: header`,
+   `header:` <name from docs>
+4. Code: `agent.http_with_credential("<id>", "GET", url)` — never
+   urllib, never env keys
+5. NEVER `credential:` on egress
+
+Jira example (one path, not the only path): store `email:token`,
+`header: Authorization`; the platform adds `Basic`. Do not store
+Basic+base64.
 
 ### HTTP
 
@@ -519,11 +546,37 @@ field name for egress rules in policy.yaml. The schema field is
 
    - `id` must match the Keychain secret name
    - `type` must be `header`
-   - `header` defaults to `Authorization` if omitted
-   - HTTP Basic APIs: Keychain value is `user:pass` or `email:token`
-     (email has `@`). The platform turns that into
-     `Authorization: Basic <base64>`. Do not store Basic+base64.
-     Do not put `credential:` on egress.
+   - `header` is the name from the SaaS docs (defaults to
+     `Authorization` if omitted)
+   - Platform inject for `agent.http_with_credential` is ONLY this
+     map. The Keychain value is sent on that header, with ONE
+     transform:
+     - **Authorization:** if the value already starts with
+       `Basic ` / `Bearer ` / `Token ` / `Digest ` (scheme plus
+       space) → send as-is. Else if it contains `:` (`user:pass`
+       or `email:token`) → send `Basic ` + standard base64(value).
+       Else → send as-is (raw token). If docs say
+       `Authorization: Bearer <token>`, store `Bearer <token>`
+       (scheme included). Do not store a naked token and hope
+       Bearer is added.
+     - **Any other header** (`X-API-Key`, `X-Atlassian-Token`, …):
+       send the Keychain value unchanged. Set `header:` to that
+       name.
+   - Do not assume Jira. GitHub PAT, Stripe, OpenRouter, custom
+     `X-API-Key` are all header maps. OAuth delegated is a
+     different type; do not use it unless the user asked for OAuth.
+   - How you enable auth for ANY backend: (1) from the SaaS docs,
+     name the header and value shape; confirm hostname (no ports);
+     (2) `agentpaas secret add <id>` in their terminal — one line
+     on what to paste (`email:token` / `Bearer tok` / raw API key);
+     never ask them to base64; never paste the secret in chat;
+     (3) policy `credentials:` id=<same>, `type: header`,
+     `header:` <name from docs>; (4) code
+     `agent.http_with_credential("<id>", "GET", url)` — never
+     urllib, never env keys; (5) NEVER `credential:` on egress.
+   - Jira example (one path, not the only path): store
+     `email:token`, `header: Authorization`; the platform adds
+     `Basic`. Do not store Basic+base64.
 
 ### Example: Weather Agent (user-facing turns)
 
