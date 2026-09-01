@@ -1340,7 +1340,7 @@ func TestCloudUndeploy_Success(t *testing.T) {
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
 
-	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001")
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001", "--yes")
 	if err != nil {
 		t.Fatalf("undeploy: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
@@ -1365,7 +1365,7 @@ func TestCloudUndeploy_NotFound(t *testing.T) {
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
 
-	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment")
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--yes")
 	if err == nil {
 		t.Fatal("expected error for 404 response")
 	}
@@ -1389,7 +1389,7 @@ func TestCloudUndeploy_NotFoundJSONExitCode(t *testing.T) {
 	defer func() { server.Close() }()
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
-	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--json")
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--json", "--yes")
 	if err == nil {
 		t.Fatal("expected not-found error")
 	}
@@ -1405,6 +1405,29 @@ func TestCloudUndeploy_NotFoundJSONExitCode(t *testing.T) {
 	}
 	if got["error"] != "not_found" || got["reason"] != "not_found" || got["message"] != "deployment missing" {
 		t.Fatalf("not-found envelope = %#v", got)
+	}
+}
+
+func TestCloudUndeploy_RequiresYes(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_undeploy_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("cloud undeploy without --yes must not call DELETE; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001")
+	if err == nil {
+		t.Fatal("expected error without --yes")
+	}
+	combined := err.Error() + stderr
+	want := "cloud undeploy: refusing without --yes (this deletes a live deployment)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
 	}
 }
 

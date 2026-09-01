@@ -67,8 +67,8 @@ def test_cloud_handlers_forward_cli_arguments():
         ("agentpaas_cloud_deployments", {}, ["cloud", "deployments"]),
         (
             "agentpaas_cloud_undeploy",
-            {"deployment_id": "dep-1"},
-            ["cloud", "undeploy", "dep-1"],
+            {"deployment_id": "dep-1", "yes": True},
+            ["cloud", "undeploy", "dep-1", "--yes"],
         ),
         (
             "agentpaas_cloud_invoke",
@@ -126,6 +126,18 @@ def test_cloud_handlers_forward_cli_arguments():
             result = json.loads(getattr(plugin.tools, tool_name)(args))
         assert result == {"ok": True}
         run.assert_called_once_with(expected_command)
+
+
+def test_cloud_undeploy_missing_yes_does_not_invoke_cli():
+    plugin = _load_plugin_package()
+    with mock.patch.object(plugin.tools, "_run_cli") as run:
+        result = json.loads(
+            plugin.tools.agentpaas_cloud_undeploy({"deployment_id": "dep-1"})
+        )
+
+    assert result["error_category"] == "tool_invocation_failed"
+    assert "yes" in result["error"]
+    run.assert_not_called()
 
 
 def test_cloud_secret_push_accepts_labels_only():
