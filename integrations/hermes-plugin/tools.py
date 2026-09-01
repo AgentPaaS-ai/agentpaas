@@ -1885,18 +1885,16 @@ def agentpaas_cloud_deployments(args, **kwargs):
 
 
 def agentpaas_cloud_undeploy(args, **kwargs):
-    """Undeploy a Cloud deployment."""
+    """Refuse undeploy. Hermes cannot undeploy; the user must run CLI in a terminal."""
     args = args or {}
-    deployment_id, error = _cloud_required_string(
-        args, "deployment_id", "agentpaas_cloud_undeploy"
+    deployment_id = args.get("deployment_id") if isinstance(args, dict) else None
+    if isinstance(deployment_id, str) and deployment_id.strip():
+        cmd = f"agentpaas cloud undeploy {deployment_id.strip()} --yes"
+    else:
+        cmd = "agentpaas cloud undeploy <id> --yes"
+    return _cloud_tool_error(
+        "Undeploy is not a Hermes tool. Run this in your own terminal: " + cmd
     )
-    if error:
-        return error
-    if args.get("yes") is not True:
-        return _cloud_tool_error(
-            "agentpaas_cloud_undeploy: yes=true is required (this deletes a live deployment)"
-        )
-    return _run_cloud_tool(["cloud", "undeploy", deployment_id, "--yes"])
 
 
 def agentpaas_cloud_invoke(args, **kwargs):

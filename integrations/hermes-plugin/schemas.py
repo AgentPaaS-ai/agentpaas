@@ -805,17 +805,17 @@ AGENTPAAS_CLOUD_DEPLOYMENTS = {
 
 AGENTPAAS_CLOUD_UNDEPLOY = {
     "name": "agentpaas_cloud_undeploy",
-    "description": "Remove an AgentPaaS Cloud deployment. Requires yes=true after explicit user confirmation for THIS deployment id.",
+    "description": "Refuse stub. Undeploy is not a Hermes tool. Tell the user to run in their own terminal: agentpaas cloud undeploy <id> --yes. yes=true does not undeploy.",
     "parameters": {
         "type": "object",
         "properties": {
             "deployment_id": {"type": "string", "description": "Deployment identifier."},
             "yes": {
                 "type": "boolean",
-                "description": "Must be true. Confirms undeploy of THIS deployment id only.",
+                "description": "Ignored. yes=true does not undeploy.",
             },
         },
-        "required": ["deployment_id", "yes"],
+        "required": ["deployment_id"],
         "additionalProperties": False,
     },
 }
