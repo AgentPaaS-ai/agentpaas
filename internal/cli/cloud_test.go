@@ -1340,7 +1340,7 @@ func TestCloudUndeploy_Success(t *testing.T) {
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
 
-	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001", "--yes")
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001", "--yes", "--confirm-id", "dep-delete-001")
 	if err != nil {
 		t.Fatalf("undeploy: err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
@@ -1365,7 +1365,7 @@ func TestCloudUndeploy_NotFound(t *testing.T) {
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
 
-	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--yes")
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--yes", "--confirm-id", "missing-deployment")
 	if err == nil {
 		t.Fatal("expected error for 404 response")
 	}
@@ -1389,7 +1389,7 @@ func TestCloudUndeploy_NotFoundJSONExitCode(t *testing.T) {
 	defer func() { server.Close() }()
 
 	t.Setenv("AGENTPAAS_CLOUD_API_URL", server.URL)
-	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--json", "--yes")
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "missing-deployment", "--json", "--yes", "--confirm-id", "missing-deployment")
 	if err == nil {
 		t.Fatal("expected not-found error")
 	}
@@ -1426,6 +1426,66 @@ func TestCloudUndeploy_RequiresYes(t *testing.T) {
 	}
 	combined := err.Error() + stderr
 	want := "cloud undeploy: refusing without --yes (this deletes a live deployment)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudUndeploy_YesWithoutConfirmID_NonTTY(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_undeploy_test")
+
+	deleted := false
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = true
+		}
+		t.Errorf("cloud undeploy without --confirm-id must not call DELETE; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001", "--yes")
+	if err == nil {
+		t.Fatal("expected error without --confirm-id on non-TTY")
+	}
+	if deleted {
+		t.Fatal("undeploy without --confirm-id deleted the deployment")
+	}
+	combined := err.Error() + stderr
+	want := "cloud undeploy: confirmation failed (run this in your own terminal, not via an agent)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudUndeploy_YesConfirmIDMismatch_NonTTY(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_undeploy_test")
+
+	deleted := false
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = true
+		}
+		t.Errorf("cloud undeploy with mismatched --confirm-id must not call DELETE; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "undeploy", "dep-delete-001", "--yes", "--confirm-id", "other-dep")
+	if err == nil {
+		t.Fatal("expected error for mismatched --confirm-id")
+	}
+	if deleted {
+		t.Fatal("undeploy with mismatched --confirm-id deleted the deployment")
+	}
+	combined := err.Error() + stderr
+	want := "cloud undeploy: confirmation failed (run this in your own terminal, not via an agent)"
 	if !strings.Contains(combined, want) {
 		t.Errorf("error = %q, want containing %q", combined, want)
 	}

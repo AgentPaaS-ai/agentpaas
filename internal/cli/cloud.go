@@ -21,6 +21,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 const (
@@ -2214,9 +2215,39 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 	return cmd
 }
 
+const cloudUndeployConfirmFailed = "cloud undeploy: confirmation failed (run this in your own terminal, not via an agent)"
+
+func stdinIsTTY(in io.Reader) bool {
+	f, ok := in.(*os.File)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
+
+func confirmCloudUndeploy(cmd *cobra.Command, depID, confirmID string) error {
+	in := cmd.InOrStdin()
+	if stdinIsTTY(in) {
+		fmt.Fprint(cmd.ErrOrStderr(), "Type the deployment id to confirm undeploy: ")
+		line, err := bufio.NewReader(in).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return errors.New(cloudUndeployConfirmFailed)
+		}
+		if strings.TrimRight(line, "\r\n") != depID {
+			return errors.New(cloudUndeployConfirmFailed)
+		}
+		return nil
+	}
+	if confirmID != depID {
+		return errors.New(cloudUndeployConfirmFailed)
+	}
+	return nil
+}
+
 // newCloudUndeployCmd creates the `agentpaas cloud undeploy` command.
 func newCloudUndeployCmd() *cobra.Command {
 	var yes bool
+	var confirmID string
 	cmd := &cobra.Command{
 		Use:   "undeploy <dep_id>",
 		Short: "Undeploy a cloud deployment and free its slot",
@@ -2226,6 +2257,9 @@ This calls DELETE /v1/deployments/:id and frees the deployment's slot for
 reuse.
 
 Requires --yes. This deletes a live deployment. JSON mode still requires --yes.
+When stdin is not a TTY, also requires --confirm-id equal to the deployment id.
+When stdin is a TTY, type the deployment id at the prompt (even with --yes).
+Never prints or accepts a password.
 
 Requires a valid login. Use 'agentpaas cloud login' first.`,
 		Args: cobra.ExactArgs(1),
@@ -2236,6 +2270,9 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			depID := args[0]
 			if strings.ContainsAny(depID, "/\\\n\r") {
 				return fmt.Errorf("cloud undeploy: invalid deployment id %q: must not contain '/', '\\', newline, or carriage return", depID)
+			}
+			if err := confirmCloudUndeploy(cmd, depID, confirmID); err != nil {
+				return err
 			}
 
 			token, err := resolveToken(cmd)
@@ -2266,6 +2303,7 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 		},
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm undeploy (required; this deletes a live deployment)")
+	cmd.Flags().StringVar(&confirmID, "confirm-id", "", "Exact deployment id (required when stdin is not a TTY)")
 	return cmd
 }
 

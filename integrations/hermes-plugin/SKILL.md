@@ -626,7 +626,7 @@ If ANY are missing, do NOT pack — ask only for the missing piece.
 
 The plugin exposes the cloud CLI through these structured tools: `agentpaas_cloud_whoami`,
 `agentpaas_cloud_registry`, `agentpaas_cloud_push`, `agentpaas_cloud_deploy`, `agentpaas_cloud_deployments`,
-`agentpaas_cloud_undeploy`, `agentpaas_cloud_invoke`, `agentpaas_cloud_result`,
+`agentpaas_cloud_invoke`, `agentpaas_cloud_result`,
 `agentpaas_cloud_logs`, `agentpaas_cloud_usage`, `agentpaas_cloud_images`,
 `agentpaas_cloud_secrets_list`, `agentpaas_cloud_secrets_push`, and
 `agentpaas_cloud_login`. They call `agentpaas cloud ... --json` and return the
@@ -637,13 +637,16 @@ cloud secret push accepts labels only and reads values from the local secure sto
 
 Use `agentpaas_cloud_registry` (or `agentpaas cloud registry --json`) to discover tenant assets and the platform MCP catalog; its schema accepts no secret values and its output path never returns them. Cloud deployments are agents by default, while `agentpaas cloud deploy --type mcp` creates an MCP deployment, so obtain explicit user confirmation before either state-changing operation.
 
-Treat push, deploy, undeploy, and invoke as paid or state-changing operations:
+Treat push, deploy, and invoke as paid or state-changing operations:
 explain the plan and obtain explicit user confirmation before calling them.
 
+Undeploy is not a Hermes tool. Never call `agentpaas_cloud_undeploy` to delete,
+and never call `terminal` undeploy. Tell the user to run in their own terminal:
+
+`agentpaas cloud undeploy <id> --yes`
+
 On cloud deploy error protected_app or slot not free: STOP. Explain. Never
-undeploy another deployment to retry. Undeploy requires explicit user
-confirmation for THAT dep id AND tool arg yes=true. "yes deploy X" is not
-consent to delete Y.
+undeploy another deployment to retry.
 
 ### Cloud Deploy and Run (MANDATORY ORDER AND CONSENT GATES)
 
