@@ -1376,6 +1376,12 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 		out["capabilities"] = caps
 	}
 
+	if len(ay.Delegates) > 0 {
+		delegatesCopy := make([]string, len(ay.Delegates))
+		copy(delegatesCopy, ay.Delegates)
+		out["delegates"] = delegatesCopy
+	}
+
 	// Metadata block — only include when at least one field is non-empty.
 	if ay.Metadata.Name != "" || ay.Metadata.Version != "" || ay.Metadata.Description != "" {
 		metaMap := make(map[string]interface{})
