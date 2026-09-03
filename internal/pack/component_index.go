@@ -19,6 +19,7 @@ type ComponentIndex struct {
 	Title         string              `json:"title,omitempty"`
 	Version       string              `json:"version,omitempty"`
 	Description   string              `json:"description,omitempty"`
+	Delegates     []string            `json:"delegates,omitempty"`
 	Egress        []string            `json:"egress"`
 	Bindings      []ComponentBinding  `json:"bindings"`
 	Provenance    ComponentProvenance `json:"provenance"`
@@ -181,6 +182,9 @@ func BuildComponentIndex(agent *AgentYAML, prov ComponentIndexProvenance) *Compo
 		idx.Kind = mapComponentKind(agent.Kind)
 		if len(agent.Egress) > 0 {
 			idx.Egress = append([]string{}, agent.Egress...)
+		}
+		if len(agent.Delegates) > 0 {
+			idx.Delegates = append([]string{}, agent.Delegates...)
 		}
 	}
 	applyComponentIndexOverlay(idx, overlayFromAgent(agent))
