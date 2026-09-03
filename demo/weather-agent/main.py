@@ -92,6 +92,21 @@ def invoke(payload):
         results["llm_summary_error"] = str(e)
         answer = f"Got weather data for {city} but couldn't generate a summary (error: {e})."
 
+    callee = payload.get("callee")
+    if isinstance(callee, str) and callee.startswith("dep_"):
+        child_text = payload.get("child_query")
+        if not isinstance(child_text, str) or not child_text.strip():
+            child_text = "https://example.com/"
+        try:
+            handle = agent.delegate(callee, {"text": child_text})
+            child_res = handle.result()
+            results["live_call"] = child_res if child_res is not None else {
+                "task_id": handle.task_id,
+                "status": "pending",
+            }
+        except Exception as e:
+            results["live_call_error"] = str(e)
+
     return {
         "scenario": "weather-agent",
         "results": results,
