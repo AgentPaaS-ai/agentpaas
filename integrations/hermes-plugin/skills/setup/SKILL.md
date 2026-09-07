@@ -34,17 +34,7 @@ how they found us. Brew is how the CLI lands. Both are required.
 
 ## Step-by-Step
 
-### 1. Install Docker Runtime
-
-```bash
-brew install colima docker
-colima start
-```
-
-**Pitfall:** Docker CLI must be installed (`brew install docker`) before
-`colima start` will succeed — Colima needs the `docker` binary on PATH.
-
-### 2. Install AgentPaaS CLI
+### 1. Install AgentPaaS CLI
 
 Official tap only. This MUST land **0.4.0** (not HEAD, not 0.4.1):
 
@@ -54,7 +44,7 @@ brew install agentpaas-ai/tap/agentpaas
 
 Never `--HEAD`. Never a testing tap.
 
-### 3. Quarantine HARD GATE (before any agentpaas command / doctor)
+### 2. Quarantine HARD GATE (before any agentpaas command / doctor)
 
 Brew post-install clears macOS quarantine on the four bins (`agentpaas`,
 `agentpaasd`, `agentpaas-harness-linux`, `agentpaas-harness-linux-amd64`).
@@ -75,7 +65,7 @@ before doctor:
 Then `agentpaas version` must show 0.4.0. If it shows HEAD, 0.4.1, or
 anything else: STOP. Do not doctor.
 
-### 4. Verify Harness Binary (bundled since v0.2.1)
+### 3. Verify Harness Binary (bundled since v0.2.1)
 
 ```bash
 file "$(brew --prefix)/bin/agentpaas-harness-linux"
@@ -85,16 +75,17 @@ file "$(brew --prefix)/bin/agentpaas-harness-linux"
 Skip — only build from source if this binary is missing (pre-v0.2.1 or
 custom modifications).
 
-### 5. Run Doctor
+### 4. Docker runtime (agent, not the user)
 
-```bash
-agentpaas daemon start
-agentpaas doctor
-```
+GitHub install ALWAYS runs `ensure-docker-runtime.py` via
+`complete-install.py` BEFORE `agentpaas doctor`. Do not tell the user to brew install docker or colima.
+The agent runs the script.
 
-Expected: **7/7 checks passed**. 7/7 is the only success line.
+NEVER set `DOCKER_HOST`. NEVER sudo `/var/run/docker.sock`. Runtime
+start is `colima start --mount /Users:w`. Unset `DOCKER_HOST` if it is
+set. Daemon uses Docker CLI as-is.
 
-### 6. Install the Hermes Plugin
+### 5. Install the Hermes Plugin (Docker runtime + doctor)
 
 Install the plugin from GitHub (NOT from a local clone):
 
@@ -103,7 +94,9 @@ hermes plugins install --force --enable https://github.com/AgentPaaS-ai/agentpaa
 ```
 
 Resolve `<profile>` from `HERMES_HOME`, `hermes profile`, or the installed
-path, then run the filesystem completer and verification as a HARD GATE:
+path, then run the filesystem completer and verification as a HARD GATE.
+`complete-install.py` ALWAYS runs `ensure-docker-runtime.py` BEFORE
+`agentpaas doctor`. Do not tell the user to brew install docker or colima.
 
 ```bash
 python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
@@ -111,9 +104,12 @@ python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-
 ```
 
 The completer writes the full `agentpaas-build` skill (including
-`@agent.on_invoke`), adds the toolset, and upserts SOUL.md. If
+`@agent.on_invoke`), adds the toolset, upserts SOUL.md, starts Colima/Docker,
+starts the daemon, and requires `Overall: 7/7 checks passed`. If
 `verify-installed-state.py` exits non-zero, setup is NOT complete: fix the
 reported state and re-run both commands. Do not reinstall the plugin.
+Do not report installed or verified if doctor is not 7/7. 7/7 is the only
+success line.
 
 ### LLM secrets are not part of setup
 
@@ -153,7 +149,7 @@ After setup, when the user asks to build something, THEN load
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `colima start` fails with "docker not found" | Docker CLI not installed | `brew install docker` |
+| `colima start` fails with "docker not found" | Docker CLI not installed | Agent re-runs `ensure-docker-runtime.py`. Do not tell the user to brew install docker. |
 | doctor shows harness not found | Pre-v0.2.1 or built from source without harness | `brew upgrade agentpaas` (v0.2.1+ bundles it) |
 | Plugin tools not in Hermes | Toolset not registered | Run `ensure-toolset.py` or add `agentpaas` to `platform_toolsets.cli` manually |
 | "Apple could not verify agentpaas is free of malware" | `com.apple.quarantine` xattr is still set | Agent re-runs `ensure-unquarantined.py` or `xattr -cr` on `$(brew --prefix)/bin` for all four bins, then re-verifies `xattr -l "$(brew --prefix)/bin/agentpaas"` does not list `com.apple.quarantine`. Do not tell the user to run xattr. |

@@ -64,6 +64,7 @@ class VerifyInstalledStateTests(unittest.TestCase):
     def _run(script, home):
         env = os.environ.copy()
         env["HOME"] = home
+        env["AGENTPAAS_SKIP_RUNTIME"] = "1"
         return subprocess.run(
             [sys.executable, str(script), "cold-test"],
             capture_output=True,

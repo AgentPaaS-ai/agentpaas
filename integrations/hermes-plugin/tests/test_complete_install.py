@@ -51,6 +51,7 @@ class CompleteInstallTests(unittest.TestCase):
     def _run_script(script, home, profile):
         env = os.environ.copy()
         env["HOME"] = home
+        env["AGENTPAAS_SKIP_RUNTIME"] = "1"
         return subprocess.run(
             [sys.executable, str(script), profile],
             capture_output=True,

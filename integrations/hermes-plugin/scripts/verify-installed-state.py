@@ -3,13 +3,16 @@
 
 Usage: python3 scripts/verify-installed-state.py <profile-name>
 
-The check is filesystem-only. It validates the plugin shim, completed
-onboarding files, and the relevant Hermes configuration. A daemon socket is
-informational because a cold install does not start the daemon.
+The check is filesystem-only when AGENTPAAS_SKIP_RUNTIME=1 (daemon
+socket informational). Otherwise docker, a live daemon, and
+`Overall: 7/7 checks passed` are required.
 """
 from pathlib import Path
+import os
 import re
+import shutil
 import socket
+import subprocess
 import sys
 
 
@@ -19,6 +22,28 @@ def _has_list_item(config_text: str, section: str, item: str) -> bool:
     if not match:
         return False
     return bool(re.search(rf"(?m)^\s*-\s*{re.escape(item)}\s*$", match.group("body")))
+
+
+def _skip_runtime() -> bool:
+    return os.environ.get("AGENTPAAS_SKIP_RUNTIME") == "1"
+
+
+def _prepend_brew_path() -> bool:
+    brew = shutil.which("brew") or "brew"
+    result = subprocess.run(
+        [brew, "--prefix"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    prefix = (result.stdout or "").strip()
+    if result.returncode != 0 or not prefix:
+        return False
+    brew_bin = str(Path(prefix) / "bin")
+    os.environ["PATH"] = brew_bin + os.pathsep + os.environ.get("PATH", "")
+    os.environ.pop("DOCKER_HOST", None)
+    return True
 
 
 def _plugin_files(plugin_dir: Path):
@@ -105,20 +130,67 @@ def main() -> int:
     else:
         issues.append("config.yaml does not exist")
 
+    skip_runtime = _skip_runtime()
     daemon_socket = Path.home() / ".agentpaas" / "daemon.sock"
+    daemon_live = False
     if daemon_socket.is_socket():
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             sock.settimeout(0.5)
             sock.connect(str(daemon_socket))
+            daemon_live = True
         except OSError:
-            info.append("daemon socket exists but is not connectable (informational)")
-        else:
-            info.append("daemon socket is live")
+            daemon_live = False
         finally:
             sock.close()
+    if skip_runtime:
+        if daemon_live:
+            info.append("daemon socket is live")
+        elif daemon_socket.is_socket():
+            info.append("daemon socket exists but is not connectable (informational)")
+        else:
+            info.append("daemon socket not found (daemon not running — informational)")
+    elif daemon_live:
+        passed.append("daemon is running")
     else:
-        info.append("daemon socket not found (daemon not running — informational)")
+        issues.append("daemon not running")
+
+    if not skip_runtime:
+        if not _prepend_brew_path():
+            issues.append("brew --prefix failed; cannot locate docker")
+        if not shutil.which("docker"):
+            issues.append("docker CLI not on PATH")
+        else:
+            try:
+                docker_info = subprocess.run(
+                    ["docker", "info"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=30,
+                )
+            except (OSError, subprocess.SubprocessError):
+                issues.append("docker info failed")
+            else:
+                if docker_info.returncode != 0:
+                    issues.append("docker info failed")
+                else:
+                    passed.append("docker info ok")
+        try:
+            doctor = subprocess.run(
+                ["agentpaas", "doctor"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=120,
+            )
+            doctor_out = doctor.stdout or ""
+        except (OSError, subprocess.SubprocessError):
+            doctor_out = ""
+        if "Overall: 7/7 checks passed" not in doctor_out:
+            issues.append("agentpaas doctor is not Overall: 7/7 checks passed")
+        else:
+            passed.append("agentpaas doctor Overall: 7/7 checks passed")
 
     print(f"\nProfile: {profile_name}")
     print(f"Path:    {profile_dir}")

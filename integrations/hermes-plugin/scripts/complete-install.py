@@ -8,6 +8,8 @@ plugin tools and slash commands at session start, but these filesystem changes
 must be available immediately after installation.
 """
 from pathlib import Path
+import os
+import shutil
 import subprocess
 import sys
 
@@ -83,6 +85,74 @@ instructions.
 """
 
 
+def _brew_bin_dir() -> Path:
+    brew = shutil.which("brew") or "brew"
+    result = subprocess.run(
+        [brew, "--prefix"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    prefix = (result.stdout or "").strip()
+    if result.returncode != 0 or not prefix:
+        raise RuntimeError("brew --prefix failed")
+    return Path(prefix) / "bin"
+
+
+def _runtime_env() -> dict:
+    env = os.environ.copy()
+    env["PATH"] = str(_brew_bin_dir()) + os.pathsep + env.get("PATH", "")
+    env.pop("DOCKER_HOST", None)
+    return env
+
+
+def _run_runtime(plugin_dir: Path) -> None:
+    scripts = plugin_dir / "scripts"
+    unq = scripts / "ensure-unquarantined.py"
+    result = subprocess.run(
+        [sys.executable, str(unq)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or "ensure-unquarantined.py failed")
+
+    docker = scripts / "ensure-docker-runtime.py"
+    result = subprocess.run(
+        [sys.executable, str(docker)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=600,
+    )
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or "ensure-docker-runtime.py failed")
+
+    env = _runtime_env()
+    subprocess.run(
+        ["agentpaas", "daemon", "start"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+        env=env,
+    )
+    doctor = subprocess.run(
+        ["agentpaas", "doctor"],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+        env=env,
+    )
+    if "Overall: 7/7 checks passed" not in (doctor.stdout or ""):
+        raise RuntimeError("agentpaas doctor did not report Overall: 7/7 checks passed")
+    print("[ok] agentpaas doctor: Overall: 7/7 checks passed")
+
+
 def upsert_soul(path: Path) -> None:
     """Replace the marked block or append it, preserving unrelated SOUL text."""
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -129,6 +199,8 @@ def main() -> int:
         upsert_soul(soul)
         print(f"[ok] upserted onboarding rules: {soul}")
         print("AgentPaaS filesystem install complete. Reopen Hermes once for slash commands and tools.")
+        if os.environ.get("AGENTPAAS_SKIP_RUNTIME") != "1":
+            _run_runtime(plugin_dir)
         return 0
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         print(f"[error] complete-install failed: {exc}", file=sys.stderr)
