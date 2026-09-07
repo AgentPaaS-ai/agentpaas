@@ -1766,11 +1766,13 @@ func TestCloudStatus_GetRun(t *testing.T) {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
+			agentName := "weather-agent"
 			run := cloudclient.RunRecord{
 				ID:           "run-abc",
 				DeploymentID: "dep-xyz",
 				Status:       "running",
 				CreatedAt:    "2025-01-15T10:30:00Z",
+				AgentName:    &agentName,
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(run)
@@ -1791,6 +1793,9 @@ func TestCloudStatus_GetRun(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "running") {
 		t.Errorf("expected 'running' status in output, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "weather-agent") {
+		t.Errorf("expected weather-agent in output, got: %q", stdout)
 	}
 }
 

@@ -2408,6 +2408,9 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 				}
 				fmt.Printf("Run:        %s\n", resp.ID)
 				fmt.Printf("  Deployment: %s\n", resp.DeploymentID)
+				if resp.AgentName != nil && *resp.AgentName != "" {
+					fmt.Printf("  Agent:       %s\n", *resp.AgentName)
+				}
 				fmt.Printf("  Status:     %s\n", resp.Status)
 				if resp.CreatedAt != "" {
 					fmt.Printf("  Created:    %s\n", resp.CreatedAt)
