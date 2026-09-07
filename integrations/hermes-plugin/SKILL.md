@@ -89,9 +89,9 @@ when `agentpaas doctor` is 7/7. 7/7 is the only success line.
    only success line. Do not report installed or verified if doctor is
    not 7/7. Do not ask for Jira hostname or secrets until doctor is 7/7.
 
-4. Reopen the session once so slash commands and `agentpaas_*` tools
-   load (`/quit`, then `hermes -p <profile>`). Do not reinstall. Do not
-   ask for LLM keys during setup.
+4. Reopen this session: /quit then hermes -p <profile>
+   After reopen, run `/agentpaas-doctor`. Slash commands and
+   `agentpaas_*` tools load at session start.
 
 ## Slash Commands
 

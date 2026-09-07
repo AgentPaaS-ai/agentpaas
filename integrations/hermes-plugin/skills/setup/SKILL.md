@@ -119,17 +119,14 @@ agent that needs one (the build skill will prompt them).
 
 ### 7. Reopen once for live registration
 
-Filesystem state (toolset, skill, and SOUL.md) completes without a restart.
-Hermes loads slash commands (`/agentpaas-*`) and `agentpaas_*` tools only at
+Hermes loads slash commands (`/agentpaas-*`) and `agentpaas_*` tools at
 session start, so one session reopen is required after the verification gate.
 
-**STOP HERE.** Setup is complete only after verification exits 0. Do NOT
-offer to build, pack, or run any agent. Do NOT ask for API keys yet. The
+**STOP HERE.** Setup is complete only after verification exits 0. The
 correct end-of-setup message is:
 
-> AgentPaaS install finished on disk. Reopen this Hermes session once so
-> slash commands load (`/quit`, then `hermes -p <profile>`). Do NOT reinstall.
-> Do NOT ask for API keys yet. After reopen, run `/agentpaas-doctor`.
+> Reopen this session: /quit then hermes -p <profile>
+> After reopen, run `/agentpaas-doctor`.
 
 After setup, when the user asks to build something, THEN load
 `agentpaas:deploy`. Until then, do nothing.
