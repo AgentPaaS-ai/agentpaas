@@ -41,16 +41,32 @@ The GitHub URL is how they found us. Brew is how the CLI lands. Both
 are required.
 
 You run brew and the plugin. Do not dump a 5-step shell script in chat.
-One short status when `agentpaas doctor` is 7/7.
+Quarantine must be gone and version must be 0.4.0, then one short status
+when `agentpaas doctor` is 7/7. 7/7 is the only success line.
 
-1. Install CLI + daemon + linux harness:
+1. Install CLI + daemon + linux harness from the official tap. This MUST
+   land **0.4.0** (not HEAD, not 0.4.1). Never `--HEAD`.
 
    `brew install agentpaas-ai/tap/agentpaas`
 
-   Then clear quarantine on the four unsigned adhoc cask bins (first run
-   is SIGKILL without this):
+   Brew post-install clears macOS quarantine on the four bins
+   (`agentpaas`, `agentpaasd`, `agentpaas-harness-linux`,
+   `agentpaas-harness-linux-amd64`). Do not tell the user to run xattr.
 
-   `xattr -cr "$(brew --prefix)/bin/agentpaas" "$(brew --prefix)/bin/agentpaasd" "$(brew --prefix)/bin/agentpaas-harness-linux" "$(brew --prefix)/bin/agentpaas-harness-linux-amd64"`
+   HARD GATE before any `agentpaas` command (including version) and
+   before doctor: VERIFY
+
+   `xattr -l "$(brew --prefix)/bin/agentpaas"`
+
+   does not list `com.apple.quarantine`. If it does, the **agent** runs
+   `xattr -cr` on all four bins using `$(brew --prefix)/bin/<name>`
+   (never hardcode `/opt/homebrew` only), then re-verify. Do not proceed
+   until clean. Preferred: run
+   `python3 <plugin-or-clone>/scripts/ensure-unquarantined.py` after
+   brew, before `agentpaas version`.
+
+   Then `agentpaas version` must show 0.4.0. If it shows HEAD, 0.4.1, or
+   anything else: STOP. Do not doctor.
 
 2. If `docker` or `colima` is missing: `brew install docker colima lima`,
    then `colima start --mount /Users:w`, then `agentpaas daemon start`.
@@ -59,8 +75,9 @@ One short status when `agentpaas doctor` is 7/7.
    docker context. Unset `DOCKER_HOST` if it is set. Daemon uses Docker
    CLI as-is.
 
-3. `agentpaas doctor` must be 7/7 before any authoring. Do not ask for
-   Jira hostname or secrets until doctor is 7/7.
+3. `agentpaas doctor` must be 7/7 before any authoring. 7/7 is the only
+   success line. Do not ask for Jira hostname or secrets until doctor is
+   7/7.
 
 4. Then install the plugin from that same GitHub URL and complete this
    profile:
