@@ -8,11 +8,11 @@
 | Hermes stuck on cloud login | Stop. Run `agentpaas cloud login` yourself; open URL in claim browser |
 | Wrong browser | Approve CLI login in the **same** browser as claim |
 
-## 6.2 Install / Gatekeeper
+## 6.2 Install
 
 | Symptom | Fix |
 |---------|-----|
-| macOS malware warning | `xattr -cr` on brew binaries, or right-click Open |
+| macOS malware warning | Reinstall with `brew reinstall agentpaas`, then `agentpaas doctor`. Brew post-install clears macOS quarantine. |
 | Tools missing in Hermes | `/quit` and reopen after plugin install |
 
 ## 6.3 Invoke empty / no weather

@@ -37,20 +37,10 @@ docker info >/dev/null && echo "Docker OK"
 ```bash
 brew tap AgentPaaS-ai/homebrew-tap
 brew install agentpaas
+agentpaas doctor
 ```
 
-The cask is not notarized. Clear quarantine **before** any `agentpaas`
-command (skipping this yields exit 137 / “killed”):
-
-```bash
-xattr -cr \
-  /opt/homebrew/bin/agentpaas \
-  /opt/homebrew/bin/agentpaasd \
-  /opt/homebrew/bin/agentpaas-harness-linux
-```
-
-On Intel Homebrew prefixes, paths are under `/usr/local/bin/` instead of
-`/opt/homebrew/bin/`.
+Brew post-install clears macOS quarantine on the installed binaries.
 
 ### 3. Start the daemon and verify
 

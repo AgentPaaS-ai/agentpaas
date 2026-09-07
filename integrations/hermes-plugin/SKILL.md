@@ -125,7 +125,7 @@ or names stages/branches/specialists, follow **Build a Workflow** below.
 
 | Command | Description |
 |---------|-------------|
-| `/agentpaas-doctor` | Run system diagnostics (6 checks) |
+| `/agentpaas-doctor` | Run system diagnostics (7 checks) |
 | `/agentpaas-policy-show [dir\|run_id]` | Show active policy |
 | `/agentpaas-audit [run_id]` | Show audit events |
 | `/agentpaas-secret-list` | List stored credentials (by label, never value) |

@@ -2,11 +2,13 @@
 
 ## `agentpaas` killed with exit 137 after brew install
 
-Cask is not notarized. Clear quarantine on all three binaries before any
-command:
+Reinstall with Homebrew so post-install can clear macOS quarantine, then
+run `agentpaas doctor`:
 
 ```bash
-xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux
+brew tap AgentPaaS-ai/homebrew-tap
+brew reinstall agentpaas
+agentpaas doctor
 ```
 
 ## Daemon won't start (checkpoint key error)

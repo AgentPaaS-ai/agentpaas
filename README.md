@@ -121,15 +121,11 @@ colima start
 ```bash
 brew tap AgentPaaS-ai/homebrew-tap
 brew install agentpaas
-xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux
 agentpaas doctor
 agentpaas version
 ```
 
-The brew cask is not notarized. Run `xattr -cr` before any `agentpaas`
-command or macOS will kill the binaries (exit 137). Once after install is
-enough.
-
+Brew post-install clears macOS quarantine on the installed binaries.
 `agentpaas doctor` checks Docker, the daemon, keychain, and the harness.
 If something fails, it says what to fix.
 
