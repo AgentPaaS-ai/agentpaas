@@ -11,15 +11,16 @@ import (
 
 // RunRecord represents a single run record returned by the API.
 type RunRecord struct {
+	AgentName        *string `json:"agent_name,omitempty"`
 	ID               string  `json:"id"`
 	TenantID         string  `json:"tenant_id"`
 	DeploymentID     string  `json:"deployment_id"`
 	Status           string  `json:"status"`
 	Admission        *string `json:"admission,omitempty"`
-	QueuePosition    *int `json:"queue_position,omitempty"`
+	QueuePosition    *int    `json:"queue_position,omitempty"`
 	CreatedAt        string  `json:"created_at"`
 	ConcurrencyLimit int     `json:"concurrency_limit"`
-	ActiveBefore     int  `json:"active_before"`
+	ActiveBefore     int     `json:"active_before"`
 	SlotID           *string `json:"slot_id,omitempty"`
 	ContainerID      *string `json:"container_id,omitempty"`
 	UpdatedAt        *string `json:"updated_at,omitempty"`
