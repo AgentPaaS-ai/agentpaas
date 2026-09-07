@@ -24,6 +24,17 @@ class Agentpaas < Formula
     bin.install "agentpaas-harness-linux-amd64"
   end
 
+  def post_install
+    %w[
+      agentpaas
+      agentpaasd
+      agentpaas-harness-linux
+      agentpaas-harness-linux-amd64
+    ].each do |name|
+      system "/usr/bin/xattr", "-cr", bin/name
+    end
+  end
+
   test do
     output = shell_output("#{bin}/agentpaas version")
     assert_match(/0\.4\.0/, output)

@@ -21,6 +21,11 @@ This skill covers the **one-time bootstrap** on macOS. For building and
 running an agent after setup is complete, load `agentpaas:deploy` via the
 `agentpaas-build` pointer skill.
 
+When the user says "Install AgentPaaS from github
+https://github.com/AgentPaaS-ai/agentpaas", that is the FULL product:
+CLI + Colima/Docker + plugin. Plugin-only is a fail. The GitHub URL is
+how they found us. Brew is how the CLI lands. Both are required.
+
 ## Prerequisites
 
 - **Hermes Agent** — already installed and running
@@ -41,37 +46,39 @@ colima start
 
 ### 2. Install AgentPaaS CLI
 
+Official tap only. This MUST land **0.4.0** (not HEAD, not 0.4.1):
+
 ```bash
 brew install agentpaas-ai/tap/agentpaas
 ```
 
-### 3. Clear macOS Quarantine (HARD GATE — before any agentpaas command)
+Never `--HEAD`. Never a testing tap.
 
-The brew cask is not notarized. macOS can KILL the binaries (exit 137) or
-show a Gatekeeper dialog if you run them before clearing quarantine.
+### 3. Quarantine HARD GATE (before any agentpaas command / doctor)
 
-**HARD GATE:** Run `xattr -cr` on all four binaries (`agentpaas`,
-`agentpaasd`, `agentpaas-harness-linux`, and `agentpaas-harness-linux-amd64`)
-**BEFORE any agentpaas command**. Then VERIFY quarantine is cleared:
+Brew post-install clears macOS quarantine on the four bins (`agentpaas`,
+`agentpaasd`, `agentpaas-harness-linux`, `agentpaas-harness-linux-amd64`).
+Do not tell the user to run xattr.
 
-```bash
-xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux /opt/homebrew/bin/agentpaas-harness-linux-amd64
-xattr -l /opt/homebrew/bin/agentpaas
-```
+**HARD GATE** before any `agentpaas` command (including version) and
+before doctor:
 
-The verification output must NOT list `com.apple.quarantine`. Do not proceed
-to `agentpaas version` until this xattr check passes — a skipped xattr will
-SIGKILL the binary (exit 137) or show the Gatekeeper dialog.
+1. Run `python3 <plugin-or-clone>/scripts/ensure-unquarantined.py`
+   (or the installed plugin copy). The script uses `$(brew --prefix)/bin`,
+   never `/opt/homebrew` only.
+2. VERIFY `xattr -l "$(brew --prefix)/bin/agentpaas"` does not list
+   `com.apple.quarantine`.
+3. If it still does, the **agent** runs `xattr -cr` on all four bins
+   using `$(brew --prefix)/bin/<name>`, then re-verifies.
+4. Do not proceed until clean. A skipped gate is SIGKILL 137 / Gatekeeper.
 
-- [ ] Ran `xattr -cr` on all four binaries.
-- [ ] Confirmed `xattr -l /opt/homebrew/bin/agentpaas` does not list
-      `com.apple.quarantine`.
-- [ ] Only after both checks pass, continue to `agentpaas version`.
+Then `agentpaas version` must show 0.4.0. If it shows HEAD, 0.4.1, or
+anything else: STOP. Do not doctor.
 
 ### 4. Verify Harness Binary (bundled since v0.2.1)
 
 ```bash
-file /opt/homebrew/bin/agentpaas-harness-linux
+file "$(brew --prefix)/bin/agentpaas-harness-linux"
 # Expected: ELF 64-bit LSB executable, ARM aarch64, statically linked
 ```
 
@@ -85,7 +92,7 @@ agentpaas daemon start
 agentpaas doctor
 ```
 
-Expected: **7/7 checks passed**.
+Expected: **7/7 checks passed**. 7/7 is the only success line.
 
 ### 6. Install the Hermes Plugin
 
@@ -149,6 +156,6 @@ After setup, when the user asks to build something, THEN load
 | `colima start` fails with "docker not found" | Docker CLI not installed | `brew install docker` |
 | doctor shows harness not found | Pre-v0.2.1 or built from source without harness | `brew upgrade agentpaas` (v0.2.1+ bundles it) |
 | Plugin tools not in Hermes | Toolset not registered | Run `ensure-toolset.py` or add `agentpaas` to `platform_toolsets.cli` manually |
-| "Apple could not verify agentpaas is free of malware" | `com.apple.quarantine` xattr is still set | Run `xattr -cr /opt/homebrew/bin/agentpaas /opt/homebrew/bin/agentpaasd /opt/homebrew/bin/agentpaas-harness-linux /opt/homebrew/bin/agentpaas-harness-linux-amd64`, then verify `xattr -l /opt/homebrew/bin/agentpaas` does not list `com.apple.quarantine` |
-| "xattr: No such file" | Binary path wrong | Check with `which agentpaas`; path varies by Homebrew install location |
+| "Apple could not verify agentpaas is free of malware" | `com.apple.quarantine` xattr is still set | Agent re-runs `ensure-unquarantined.py` or `xattr -cr` on `$(brew --prefix)/bin` for all four bins, then re-verifies `xattr -l "$(brew --prefix)/bin/agentpaas"` does not list `com.apple.quarantine`. Do not tell the user to run xattr. |
+| "xattr: No such file" | Binary path wrong | Use `$(brew --prefix)/bin`, not a hardcoded prefix; `which agentpaas` if still missing |
 | Plugin changes not reflected during development | Dev session needs refresh | `/quit` then relaunch Hermes |

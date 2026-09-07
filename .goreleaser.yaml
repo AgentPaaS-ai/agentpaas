@@ -121,6 +121,14 @@ homebrew_casks:
     commit_author:
       name: github-actions[bot]
       email: 41898282+github-actions[bot]@users.noreply.github.com
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            %w[agentpaas agentpaasd agentpaas-harness-linux agentpaas-harness-linux-amd64].each do |name|
+              system_command "/usr/bin/xattr", args: ["-cr", "#{staged_path}/#{name}"]
+            end
+          end
 
 changelog:
   sort: asc
