@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = REPO_ROOT / "integrations" / "hermes-plugin" / "scripts" / "complete-install.py"
+PLUGIN_SKILL = REPO_ROOT / "integrations" / "hermes-plugin" / "SKILL.md"
 SETUP_SKILL = REPO_ROOT / "integrations" / "hermes-plugin" / "skills" / "setup" / "SKILL.md"
 
 
@@ -24,7 +25,11 @@ class CompleteInstallTests(unittest.TestCase):
 
             first = self._run_script(SCRIPT, home, profile)
             self.assertEqual(first.returncode, 0, first.stderr)
-            self.assertIn("complete", first.stdout.lower())
+            self.assertIn(
+                "Reopen this session: /quit then hermes -p cold-test",
+                first.stdout,
+            )
+            self.assertNotIn("gateway", first.stdout.lower())
 
             config = (profile_dir / "config.yaml").read_text(encoding="utf-8")
             self.assertIn("    - agentpaas", config)
@@ -46,6 +51,13 @@ class CompleteInstallTests(unittest.TestCase):
         self.assertIn("one session reopen", text.lower())
         self.assertNotIn("no restart is needed", text.lower())
         self.assertNotIn("available in this session", text.lower())
+
+    def test_skill_reopen_command_is_quit_then_hermes_profile(self):
+        for path in (PLUGIN_SKILL, SETUP_SKILL):
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("/quit then hermes -p", text, path)
+            self.assertNotIn("gateway restart", text.lower(), path)
+            self.assertNotIn("hermes gateway", text.lower(), path)
 
     @staticmethod
     def _run_script(script, home, profile):

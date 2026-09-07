@@ -198,7 +198,7 @@ def main() -> int:
         soul = profile_dir / "SOUL.md"
         upsert_soul(soul)
         print(f"[ok] upserted onboarding rules: {soul}")
-        print("AgentPaaS filesystem install complete. Reopen Hermes once for slash commands and tools.")
+        print(f"Reopen this session: /quit then hermes -p {profile}")
         if os.environ.get("AGENTPAAS_SKIP_RUNTIME") != "1":
             _run_runtime(plugin_dir)
         return 0
