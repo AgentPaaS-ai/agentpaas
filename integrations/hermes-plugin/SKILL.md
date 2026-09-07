@@ -68,18 +68,14 @@ when `agentpaas doctor` is 7/7. 7/7 is the only success line.
    Then `agentpaas version` must show 0.4.0. If it shows HEAD, 0.4.1, or
    anything else: STOP. Do not doctor.
 
-2. If `docker` or `colima` is missing: `brew install docker colima lima`,
-   then `colima start --mount /Users:w`, then `agentpaas daemon start`.
-   NEVER set `DOCKER_HOST`. NEVER sudo `/var/run/docker.sock`. NEVER
+2. GitHub install ALWAYS runs `ensure-docker-runtime.py` via
+   `complete-install.py` BEFORE doctor. Do not tell the user to brew install docker or colima.
+   The agent runs the script. NEVER set `DOCKER_HOST`. NEVER sudo `/var/run/docker.sock`. NEVER
    "point the daemon at Colima's Docker socket." Colima registers the
    docker context. Unset `DOCKER_HOST` if it is set. Daemon uses Docker
-   CLI as-is.
+   CLI as-is. Runtime start is `colima start --mount /Users:w`.
 
-3. `agentpaas doctor` must be 7/7 before any authoring. 7/7 is the only
-   success line. Do not ask for Jira hostname or secrets until doctor is
-   7/7.
-
-4. Then install the plugin from that same GitHub URL and complete this
+3. Install the plugin from that same GitHub URL and complete this
    profile:
 
    `hermes plugins install --force --enable https://github.com/AgentPaaS-ai/agentpaas`
@@ -88,7 +84,12 @@ when `agentpaas doctor` is 7/7. 7/7 is the only success line.
 
    `python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>`
 
-5. Reopen the session once so slash commands and `agentpaas_*` tools
+   complete-install runs ensure-docker-runtime BEFORE `agentpaas doctor`.
+   `agentpaas doctor` must print `Overall: 7/7 checks passed`. 7/7 is the
+   only success line. Do not report installed or verified if doctor is
+   not 7/7. Do not ask for Jira hostname or secrets until doctor is 7/7.
+
+4. Reopen the session once so slash commands and `agentpaas_*` tools
    load (`/quit`, then `hermes -p <profile>`). Do not reinstall. Do not
    ask for LLM keys during setup.
 
