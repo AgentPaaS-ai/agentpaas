@@ -24,10 +24,9 @@ weather (they fabricate values).
 1. **Hermes Agent**: `brew install nousresearch/tap/hermes-agent`
 2. **Docker**: `brew install colima && colima start`
 3. **AgentPaaS**: `brew install agentpaas-ai/tap/agentpaas`
-4. **Clear quarantine** (brew cask not notarized):
-   ```bash
-   xattr -cr /opt/homebrew/bin/agentpaas
-   ```
+4. **Verify**: `agentpaas doctor`
+
+Brew post-install clears macOS quarantine on the installed binaries.
 
 
 ## Quick Start (through Hermes)

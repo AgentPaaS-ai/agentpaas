@@ -63,12 +63,23 @@ def xattr_list(path: Path) -> str:
 def xattr_clear(path: Path) -> None:
     if not Path(XATTR).is_file():
         return
+    orig_mode = None
+    try:
+        orig_mode = path.stat().st_mode
+        path.chmod(orig_mode | 0o200)
+    except OSError:
+        orig_mode = None
     subprocess.run(
         [XATTR, "-cr", str(path)],
         capture_output=True,
         text=True,
         check=False,
     )
+    if orig_mode is not None:
+        try:
+            path.chmod(orig_mode)
+        except OSError:
+            pass
 
 
 def quarantine_present(listing: str) -> bool:

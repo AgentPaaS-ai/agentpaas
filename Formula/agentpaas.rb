@@ -31,7 +31,11 @@ class Agentpaas < Formula
       agentpaas-harness-linux
       agentpaas-harness-linux-amd64
     ].each do |name|
-      system "/usr/bin/xattr", "-cr", bin/name
+      target = bin/name
+      next unless target.exist?
+      chmod "u+w", target
+      system "/usr/bin/xattr", "-cr", target
+      chmod 0555, target
     end
   end
 

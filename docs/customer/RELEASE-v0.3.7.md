@@ -15,10 +15,6 @@ brew upgrade --cask AgentPaaS-ai/homebrew-tap/agentpaas
 # or first install:
 # brew install --cask AgentPaaS-ai/homebrew-tap/agentpaas
 
-xattr -cr "$(brew --prefix)/bin/agentpaas" \
-  "$(brew --prefix)/bin/agentpaasd" \
-  "$(brew --prefix)/bin/agentpaas-harness-linux"
-
 agentpaas version
 # expect: CLI: 0.3.7 | Commit: 509b4c8… (or later patch)
 
@@ -26,6 +22,8 @@ agentpaas daemon stop 2>/dev/null || true
 agentpaas daemon start
 agentpaas doctor
 ```
+
+Brew post-install clears macOS quarantine on the installed binaries.
 
 ## What is new
 
