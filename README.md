@@ -1,18 +1,14 @@
 # AgentPaaS
 
-**Run AI agents so that even a compromised one can't leak your data.**
+**Secure PaaS for agents, applications, MCP servers, and agentic integration workflows.**
 
-Building an agent is easy now. In Hermes you write a prompt, attach a skill,
-and wire up an MCP server. Minutes later you have a full agent on your machine
-that can call tools and hit the network. The hard part is trust. That stack
-might be buggy, prompt-injected, or straight-up hostile. One bad outbound call
-and your API keys, files, or PII are gone.
+AgentPaaS.ai gives teams one end-to-end path to build, deploy, run, govern, and audit workloads with Agent Security at the foundation. The proof is isolated containers, default-deny egress, gateway-brokered credentials, signed bundles, and tamper-evident audit.
 
-AgentPaaS is the secure execution platform that sits under those agents. It runs agents you can't trust: you keep writing and running them the way you already do (usually through Hermes), and the platform assumes the agent itself may be compromised. Every agent runs in an isolated container on a default-deny network.
-Outbound traffic only leaves through a sidecar gateway that enforces your
-policy: approved hosts only. Secrets stay in the macOS Keychain and are
-injected by that gateway at request time, so the agent process never holds
-them. Every allow and deny is written to a tamper-evident audit log.
+Start with the open-source CLI locally, then deploy the governed package to AgentPaaS Cloud. You can keep building in Hermes or your own environment.
+
+[Start a free 30-day trial](https://agentpaas.ai/#contact) · [Read the documentation](https://docs.agentpaas.ai/) · [Install](#install)
+
+Building an agent is easy now. The hard part is trust. One bad outbound call can expose API keys, files, or PII. AgentPaaS provides the end-to-end platform path that lets teams build useful workloads while keeping policy, secrets, isolation, provenance, and audit at the platform layer.
 
 When an agent tries an unknown host, the call is blocked, you see the denial
 in the log, and your secrets are never leaked. When you hand an agent to a
