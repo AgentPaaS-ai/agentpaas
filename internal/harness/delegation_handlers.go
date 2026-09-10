@@ -873,11 +873,17 @@ func (s *harnessRPCServer) performLiveCallHop(req rpcRequest, dts *DelegationTru
 					if outcome == "timed_out" || outcome == "seat_wait_timeout" || code == "timed_out" || code == "seat_wait_timeout" {
 						return s.failLiveCallTask(dts, task, "seat_wait_timeout", true)
 					}
+					if outcome == "failed" {
+						failCode := "live_call_denied"
+						if code != "" {
+							failCode = code
+						}
+						return s.failLiveCallTask(dts, task, failCode, true)
+					}
 					if outcome == "started" {
 						break
 					}
-					s.storeLiveCallOutput(string(task.TaskID), mboxParsed)
-					return s.succeedLiveCallTask(dts, task)
+					return s.failLiveCallTask(dts, task, "live_call_denied", true)
 				}
 				return s.failLiveCallTask(dts, task, "live_call_denied", true)
 			}
