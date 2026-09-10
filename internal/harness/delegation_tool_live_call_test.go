@@ -551,3 +551,52 @@ func TestDelegateTask_Mailbox202PollInvokeTimeout(t *testing.T) {
 		t.Fatalf("code = %q, want invoke_timeout", resp.Code)
 	}
 }
+
+func TestAdversaryM144_Mailbox202FailedMustNotSucceed(t *testing.T) {
+	t.Setenv("AGENTPAAS_AGENT_KIND", "tool")
+	s := setupToolDelegationServer(t, phoneCallToolSnapshot(), false)
+	s.liveCallHopSleep = func(time.Duration) {}
+	s.liveCallHop = liveCallRoundTrip(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/delegate":
+			return &http.Response{
+				StatusCode: 202,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"mailbox_token":"tok-failed"}`)),
+			}, nil
+		case req.Method == http.MethodGet && req.URL.Path == "/mailbox":
+			if req.URL.Query().Get("token") != "tok-failed" {
+				t.Fatalf("mailbox token = %q, want tok-failed", req.URL.Query().Get("token"))
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"outcome":"failed","run_id":"run_child"}`)),
+			}, nil
+		default:
+			t.Fatalf("unexpected hop %s %s", req.Method, req.URL)
+			return nil, nil
+		}
+	})
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-mailbox-failed",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "dep-agent-peer",
+			"idempotency_key": "idem-mailbox-failed",
+			"message":         map[string]any{"task": "lookup"},
+		},
+	})
+	dts := s.getDelegationTrustState()
+	task, err := dts.Store.GetTaskByIdempotencyKey(context.Background(), dts.Snapshot.CallerDeploymentID, "idem-mailbox-failed")
+	if err != nil || task == nil {
+		t.Fatalf("GetTaskByIdempotencyKey: %v", err)
+	}
+	if task.Status == delegation.TaskStatusSucceeded {
+		t.Fatal("mailbox outcome=failed must not succeed the live-call task")
+	}
+	if resp.OK {
+		t.Fatalf("mailbox outcome=failed must be an RPC error, got OK %+v", resp.Result)
+	}
+}
