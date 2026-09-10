@@ -3,16 +3,16 @@ class Agentpaas < Formula
   homepage "https://github.com/AgentPaaS-ai/agentpaas"
   # Published install path is the Homebrew cask in AgentPaaS-ai/homebrew-tap
   # (goreleaser updates Casks/agentpaas.rb). This Formula is the in-repo mirror.
-  version "0.4.0"
+  version "0.4.1"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.0/agentpaas_0.4.0_darwin_arm64.tar.gz"
+      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.1/agentpaas_0.4.1_darwin_arm64.tar.gz"
       sha256 "4120b0e5edf4e7812b866df03386af4e419a383ccd019d50d937799e58aebff2"
     end
     on_intel do
-      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.0/agentpaas_0.4.0_darwin_amd64.tar.gz"
+      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.1/agentpaas_0.4.1_darwin_amd64.tar.gz"
       sha256 "5b704f595c83416c8c17728515e96a307c0e06b62c0c6db83a35be8309baaf95"
     end
   end
@@ -41,6 +41,6 @@ class Agentpaas < Formula
 
   test do
     output = shell_output("#{bin}/agentpaas version")
-    assert_match(/0\.4\.0/, output)
+    assert_match(/0\.4\.1/, output)
   end
 end
