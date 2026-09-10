@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -645,6 +646,7 @@ func int64Param(params map[string]any, key string) int64 {
 // platformLiveCallURL is intercepted by the parent RunContainer DO
 // (injectEgressHandler) before handleOutbound. Not an allowlisted customer host.
 const platformLiveCallURL = "https://livecall.agentpaas.internal/delegate"
+const platformLiveCallMailboxURL = "https://livecall.agentpaas.internal/mailbox"
 
 type liveCallHopError struct {
 	msg  string
@@ -655,6 +657,9 @@ type liveCallHopError struct {
 func (e *liveCallHopError) Error() string { return e.msg }
 
 func (s *harnessRPCServer) parentRemainingMs() int64 {
+	if s.liveCallParentRemainingMs != nil {
+		return s.liveCallParentRemainingMs()
+	}
 	s.mu.RLock()
 	inv := s.invoke
 	s.mu.RUnlock()
@@ -771,7 +776,7 @@ func (s *harnessRPCServer) performLiveCallHop(req rpcRequest, dts *DelegationTru
 			"named_callee":        namedCallee,
 			"work_order":          workOrder,
 			"idempotency_key":     task.IdempotencyKey,
-			"parent_remaining_ms": remaining,
+			"parent_remaining_ms": s.parentRemainingMs(),
 		})
 		if err != nil {
 			return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
@@ -812,6 +817,71 @@ func (s *harnessRPCServer) performLiveCallHop(req rpcRequest, dts *DelegationTru
 		if resp.StatusCode == http.StatusOK {
 			s.storeLiveCallOutput(string(task.TaskID), parsed)
 			return s.succeedLiveCallTask(dts, task)
+		}
+
+		if resp.StatusCode == http.StatusAccepted {
+			token := ""
+			if rec, ok := parsed.(map[string]any); ok {
+				token, _ = rec["mailbox_token"].(string)
+			}
+			if token == "" {
+				return s.failLiveCallTask(dts, task, "live_call_denied", true)
+			}
+			for {
+				remaining := s.parentRemainingMs()
+				if remaining < 15000 {
+					return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+				}
+				timeout := time.Duration(remaining) * time.Millisecond
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				mailboxURL := platformLiveCallMailboxURL + "?token=" + url.QueryEscape(token)
+				httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, mailboxURL, nil)
+				if err != nil {
+					cancel()
+					return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+				}
+				mboxResp, err := s.liveCallHop.RoundTrip(httpReq)
+				if err != nil {
+					cancel()
+					if ctx.Err() != nil {
+						return s.failLiveCallTask(dts, task, "invoke_timeout", true)
+					}
+					return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+				}
+				mboxBody, readErr := io.ReadAll(mboxResp.Body)
+				_ = mboxResp.Body.Close()
+				cancel()
+				if readErr != nil {
+					return s.failLiveCallTask(dts, task, "live_call_hop_failed", true)
+				}
+				if mboxResp.StatusCode == http.StatusNoContent {
+					s.sleepLiveCallHop(10 * time.Second)
+					continue
+				}
+				if mboxResp.StatusCode == http.StatusOK {
+					var mboxParsed any
+					if len(mboxBody) > 0 {
+						if uerr := json.Unmarshal(mboxBody, &mboxParsed); uerr != nil {
+							mboxParsed = string(mboxBody)
+						}
+					}
+					code := hopResponseCode(mboxParsed)
+					outcome := ""
+					if rec, ok := mboxParsed.(map[string]any); ok {
+						outcome, _ = rec["outcome"].(string)
+					}
+					if outcome == "timed_out" || outcome == "seat_wait_timeout" || code == "timed_out" || code == "seat_wait_timeout" {
+						return s.failLiveCallTask(dts, task, "seat_wait_timeout", true)
+					}
+					if outcome == "started" {
+						break
+					}
+					s.storeLiveCallOutput(string(task.TaskID), mboxParsed)
+					return s.succeedLiveCallTask(dts, task)
+				}
+				return s.failLiveCallTask(dts, task, "live_call_denied", true)
+			}
+			continue
 		}
 
 		code := hopResponseCode(parsed)
