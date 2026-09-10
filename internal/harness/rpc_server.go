@@ -73,6 +73,10 @@ type harnessRPCServer struct {
 	// Nil uses time.Sleep.
 	liveCallHopSleep func(time.Duration)
 
+	// liveCallParentRemainingMs overrides parentRemainingMs when non-nil.
+	// Nil uses invoke budget (or 120000 when invoke/budget is unset).
+	liveCallParentRemainingMs func() int64
+
 	// liveCallOutputs holds A's invoke JSON keyed by task id. Never contains
 	// endpoints or tokens.
 	liveCallOutputs map[string]any

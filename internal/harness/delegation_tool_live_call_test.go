@@ -413,3 +413,141 @@ func TestDelegateTask_WaitingSeatThenSeatWaitTimeoutDoesNotSucceed(t *testing.T)
 		t.Fatalf("code = %q, want seat_wait_timeout", resp.Code)
 	}
 }
+
+func TestDelegateTask_Mailbox202PollStartedThenDelegateSucceeds(t *testing.T) {
+	t.Setenv("AGENTPAAS_AGENT_KIND", "tool")
+	s := setupToolDelegationServer(t, phoneCallToolSnapshot(), false)
+	s.liveCallHopSleep = func(time.Duration) {}
+	var posts int
+	var mailboxGets int
+	s.liveCallHop = liveCallRoundTrip(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodPost && req.URL.Path == "/delegate":
+			posts++
+			if posts == 1 {
+				return &http.Response{
+					StatusCode: 202,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(`{"mailbox_token":"tok-mailbox"}`)),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"final_output":"ok"}`)),
+			}, nil
+		case req.Method == http.MethodGet && req.URL.Path == "/mailbox":
+			mailboxGets++
+			if req.URL.Query().Get("token") != "tok-mailbox" {
+				t.Fatalf("mailbox token = %q, want tok-mailbox", req.URL.Query().Get("token"))
+			}
+			if mailboxGets == 1 {
+				return &http.Response{
+					StatusCode: 204,
+					Body:       io.NopCloser(strings.NewReader("")),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"outcome":"started"}`)),
+			}, nil
+		default:
+			t.Fatalf("unexpected hop %s %s", req.Method, req.URL)
+			return nil, nil
+		}
+	})
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-mailbox-started",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "dep-agent-peer",
+			"idempotency_key": "idem-mailbox-started",
+			"message":         map[string]any{"task": "lookup"},
+		},
+	})
+	if mailboxGets == 0 {
+		t.Fatal("expected GET /mailbox during 202 poll")
+	}
+	if !resp.OK {
+		t.Fatalf("mailbox started then hop must succeed: %s (code=%s)", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not a map: %T", resp.Result)
+	}
+	if status, _ := result["status"].(string); status != delegation.TaskStatusSucceeded.String() {
+		t.Fatalf("expected status SUCCEEDED after mailbox poll, got %q", status)
+	}
+	taskID, _ := result["task_id"].(string)
+
+	got := s.handleRequest(rpcRequest{
+		ID:     "req-mailbox-started-get",
+		Method: "get_task",
+		Params: map[string]any{"task_id": taskID},
+	})
+	if !got.OK {
+		t.Fatalf("get_task: %s", got.Error)
+	}
+	taskResult, ok := got.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("get_task result is not a map: %T", got.Result)
+	}
+	output, ok := taskResult["output"].(map[string]any)
+	if !ok {
+		t.Fatalf("get_task output missing or wrong type: %#v", taskResult["output"])
+	}
+	if output["final_output"] != "ok" {
+		t.Fatalf("output.final_output = %v", output["final_output"])
+	}
+}
+
+func TestDelegateTask_Mailbox202PollInvokeTimeout(t *testing.T) {
+	t.Setenv("AGENTPAAS_AGENT_KIND", "tool")
+	s := setupToolDelegationServer(t, phoneCallToolSnapshot(), false)
+	s.liveCallHopSleep = func(time.Duration) {}
+	var remainingCalls int
+	s.liveCallParentRemainingMs = func() int64 {
+		remainingCalls++
+		// First two calls cover hop POST remaining + payload; then poll sees 0.
+		if remainingCalls <= 2 {
+			return 60000
+		}
+		return 0
+	}
+	s.liveCallHop = liveCallRoundTrip(func(req *http.Request) (*http.Response, error) {
+		if req.Method != http.MethodPost || req.URL.Path != "/delegate" {
+			t.Fatalf("unexpected hop %s %s", req.Method, req.URL)
+		}
+		return &http.Response{
+			StatusCode: 202,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"mailbox_token":"tok-mailbox"}`)),
+		}, nil
+	})
+
+	resp := s.handleRequest(rpcRequest{
+		ID:     "req-mailbox-timeout",
+		Method: "delegate_task",
+		Params: map[string]any{
+			"capability":      "dep-agent-peer",
+			"idempotency_key": "idem-mailbox-timeout",
+			"message":         map[string]any{"task": "lookup"},
+		},
+	})
+	dts := s.getDelegationTrustState()
+	task, err := dts.Store.GetTaskByIdempotencyKey(context.Background(), dts.Snapshot.CallerDeploymentID, "idem-mailbox-timeout")
+	if err != nil || task == nil {
+		t.Fatalf("GetTaskByIdempotencyKey: %v", err)
+	}
+	if task.Status == delegation.TaskStatusSucceeded {
+		t.Fatal("202 mailbox poll invoke_timeout must not succeed the task")
+	}
+	if resp.OK {
+		t.Fatalf("invoke_timeout must be an RPC error, got OK %+v", resp.Result)
+	}
+	if resp.Code != "invoke_timeout" {
+		t.Fatalf("code = %q, want invoke_timeout", resp.Code)
+	}
+}
