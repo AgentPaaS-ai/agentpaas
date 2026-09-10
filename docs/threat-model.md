@@ -122,6 +122,32 @@ assurance class changes.
 
 ---
 
+## 3.5 Ingress platform vs egress gateway (webhook plane)
+
+The cloud webhook plane is two trust boundaries. Ingress admits a
+governed run. Egress is still the per-run gateway from §3.4 / §3.1a.
+This section records that split (handoff). It does not claim M15
+budgets or guardrails are implemented.
+
+**Ingress (cloud Worker `/v1/hooks/src_`).** Untrusted HTTP is verified
+and filtered here, then a governed run is admitted. HMAC is checked
+before any run exists. Signing secrets are AES-GCM at rest. The source
+filter is an allow-list (no regex, no CEL). Rate-limit runs after the
+filter. Cross-tenant identity is re-asserted at admit. Mode B reply
+channel is pinned on the run row at admit; the agent does not choose it
+later.
+
+**Egress (per-run gateway).** After admit, outbound traffic remains
+default-deny with brokered credentials and a host allow-list. Slack
+Mode A reply is `slack.com:443` plus a brokered token. The workload
+never holds an `xoxb-` value.
+
+**Shared invoke limit.** Ingress consumes the same per-tenant invoke
+limit as CLI invoke (`inv:{deployment_id}`). Passing HMAC and filter
+does not create a second budget.
+
+---
+
 ## Phase 2 Threats: secure agent sharing
 
 Phase 2 adds secure agent sharing: bundles, publisher identities, and
