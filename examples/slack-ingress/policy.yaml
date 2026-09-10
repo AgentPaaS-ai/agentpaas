@@ -1,0 +1,13 @@
+version: "1.0"
+agent:
+  name: slack-ingress
+  description: Slack ingress example. Bot token is brokered; no xoxb literals.
+egress:
+  - domain: slack.com
+    ports: [443]
+    credential: slack-bot-token
+credentials:
+  - id: slack-bot-token
+    type: brokered
+    service: slack-bot-token
+ingress: []
