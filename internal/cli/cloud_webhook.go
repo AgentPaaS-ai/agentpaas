@@ -39,21 +39,25 @@ HMAC secrets are never printed. Use --secret-stdin for set and fire.`,
 	return cmd
 }
 
-func readWebhookSecret(cmd *cobra.Command, secret string, secretStdin bool) (string, error) {
+func readSecretFlag(cmd *cobra.Command, secret string, secretStdin bool, verb string) (string, error) {
 	if secretStdin && secret != "" {
-		return "", fmt.Errorf("cloud webhook: --secret and --secret-stdin are mutually exclusive")
+		return "", fmt.Errorf("%s: --secret and --secret-stdin are mutually exclusive", verb)
 	}
 	if secretStdin {
 		b, err := io.ReadAll(cmd.InOrStdin())
 		if err != nil {
-			return "", fmt.Errorf("cloud webhook: read --secret-stdin: %w", err)
+			return "", fmt.Errorf("%s: read --secret-stdin: %w", verb, err)
 		}
 		secret = strings.TrimSpace(string(b))
 	}
 	if secret == "" {
-		return "", fmt.Errorf("cloud webhook: --secret or --secret-stdin is required")
+		return "", fmt.Errorf("%s: --secret or --secret-stdin is required", verb)
 	}
 	return secret, nil
+}
+
+func readWebhookSecret(cmd *cobra.Command, secret string, secretStdin bool) (string, error) {
+	return readSecretFlag(cmd, secret, secretStdin, "cloud webhook")
 }
 
 func requireHTTPSWebhookURL(raw string) error {
