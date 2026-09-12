@@ -1,4 +1,4 @@
-.PHONY: build build-harness-linux build-harness-linux-amd64 build-all test soak-test proto lint race osv install-plugin clean fmt vet
+.PHONY: build build-harness-linux build-harness-linux-amd64 build-all test test-plugin soak-test proto lint race osv install-plugin clean fmt vet
 
 # LDFLAGS_VERSION stamps the dev version into all binaries when building without
 # a release tag. goreleaser overrides these at tag time with the actual version.
@@ -30,6 +30,9 @@ build-all: build build-harness-linux build-harness-linux-amd64
 
 test:
 	go test ./...
+
+test-plugin:
+	python3 -m unittest discover -s tests/hermes-plugin -t tests/hermes-plugin
 
 # Long-running operator soak tests (TestSoak_*, TestOperatorSoak_*) are gated
 # behind the `soak` build tag and are NOT part of `make test`. They need Docker

@@ -3,7 +3,7 @@
 File reads are the product. No live brew.
 
 Run:
-  python3 -m unittest integrations/hermes-plugin/tests/test_brew_quarantine_contract.py -v
+  python3 -m unittest tests/hermes-plugin/test_brew_quarantine_contract.py -v
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ try:
 except ImportError:
     yaml = None
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = Path(__file__).resolve().parents[2] / "integrations" / "hermes-plugin"
 REPO_ROOT = PLUGIN_ROOT.parents[1]
 FORMULA = REPO_ROOT / "Formula" / "agentpaas.rb"
 GORELEASER = REPO_ROOT / ".goreleaser.yaml"
@@ -40,8 +40,8 @@ class FormulaQuarantineContractTests(unittest.TestCase):
         cls.text = FORMULA.read_text(encoding="utf-8")
 
     def test_version_is_0_4_0(self):
-        self.assertIn('version "0.4.0"', self.text)
-        self.assertNotIn('version "0.4.1"', self.text)
+        self.assertIn('version "0.4.1"', self.text)
+        self.assertNotIn('version "0.4.2"', self.text)
 
     def test_defines_post_install_xattr_on_four_bins(self):
         self.assertIn("def post_install", self.text)
@@ -53,7 +53,7 @@ class FormulaQuarantineContractTests(unittest.TestCase):
                 self.assertIn(name, self.text)
 
     def test_keeps_version_assertion(self):
-        self.assertRegex(self.text, r"assert_match\(/0\\.4\\.0/")
+        self.assertRegex(self.text, r"assert_match\(/0\\.4\\.1/")
 
 
 class GoreleaserCaskHookContractTests(unittest.TestCase):
@@ -144,10 +144,11 @@ class PluginSkillQuarantineContractTests(unittest.TestCase):
                 self.assertNotEqual(dpos, -1)
                 self.assertLess(qpos, dpos)
 
-    def test_does_not_tell_the_user_to_run_xattr(self):
+    def test_agent_runs_xattr_without_hiding_it_from_the_user(self):
         for label, text in (("plugin", self.plugin), ("setup", self.setup)):
             with self.subTest(skill=label):
-                self.assertIn("Do not tell the user to run xattr", text)
+                self.assertNotIn("do not tell the user", text.lower())
+                self.assertIn("xattr", text)
                 self.assertNotIn("Then clear quarantine", text)
                 self.assertNotIn("Ran `xattr -cr`", text)
                 self.assertNotRegex(text, r"(?i)please run [`']?xattr")

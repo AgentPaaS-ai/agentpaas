@@ -1,6 +1,6 @@
 """Adversary regression tests for B26-T04 proto/contract extensions.
 Each test probes one of the 10 specified attack vectors.
-Run: python3 -m unittest integrations/hermes-plugin/tests/test_adversary_b26_t04.py -v
+Run: python3 -m unittest tests/hermes-plugin/test_adversary_b26_t04.py -v
 """
 
 import json
@@ -9,7 +9,7 @@ from pathlib import Path
 import sys
 
 # Add repo root for imports
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "integrations/hermes-plugin"))
 
 import contracts

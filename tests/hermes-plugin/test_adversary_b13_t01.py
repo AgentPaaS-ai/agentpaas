@@ -1,6 +1,6 @@
 """Adversary regression tests for B13-T01 Hermes plugin skeleton.
 These tests are designed to break security claims. Do not weaken or remove.
-Run with: python3 -m unittest discover -s integrations/hermes-plugin/tests -v -k Adversary
+Run with: python3 -m unittest discover -s tests/hermes-plugin -v -k Adversary
 """
 
 import json

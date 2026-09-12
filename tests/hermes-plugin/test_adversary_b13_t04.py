@@ -1,6 +1,6 @@
 """Adversary regression tests for B13-T04 prompt-injection boundary.
 These tests verify fixes for previously documented bypasses.
-Run: python3 -m unittest discover -s integrations/hermes-plugin/tests -k Adversary -v
+Run: python3 -m unittest discover -s tests/hermes-plugin -k Adversary -v
 """
 
 import json

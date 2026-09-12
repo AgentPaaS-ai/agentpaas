@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 COMPLETE_SCRIPT = REPO_ROOT / "scripts" / "complete-install.py"
 VERIFY_SCRIPT = REPO_ROOT / "scripts" / "verify-installed-state.py"
 

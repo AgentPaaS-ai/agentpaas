@@ -21,10 +21,11 @@ This skill covers the **one-time bootstrap** on macOS. For building and
 running an agent after setup is complete, load `agentpaas:deploy` via the
 `agentpaas-build` pointer skill.
 
-When the user says "Install AgentPaaS from github
-https://github.com/AgentPaaS-ai/agentpaas", that is the FULL product:
-CLI + Colima/Docker + plugin. Plugin-only is a fail. The GitHub URL is
-how they found us. Brew is how the CLI lands. Both are required.
+When the user says "Install from
+https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin",
+that is the FULL product: CLI + Colima/Docker + plugin. Plugin-only is a fail.
+The GitHub URL is how they found us. Brew is how the CLI lands. Both are
+required.
 
 ## Prerequisites
 
@@ -48,7 +49,7 @@ Never `--HEAD`. Never a testing tap.
 
 Brew post-install clears macOS quarantine on the four bins (`agentpaas`,
 `agentpaasd`, `agentpaas-harness-linux`, `agentpaas-harness-linux-amd64`).
-Do not tell the user to run xattr.
+The agent runs xattr. The human does not.
 
 **HARD GATE** before any `agentpaas` command (including version) and
 before doctor:
@@ -78,10 +79,11 @@ custom modifications).
 ### 4. Docker runtime (agent, not the user)
 
 GitHub install ALWAYS runs `ensure-docker-runtime.py` via
-`complete-install.py` BEFORE `agentpaas doctor`. Do not tell the user to brew install docker or colima.
+`complete-install.py` BEFORE `agentpaas doctor`. The agent installs docker
+and colima via ensure-docker-runtime.py.
 The agent runs the script.
 
-NEVER set `DOCKER_HOST`. NEVER sudo `/var/run/docker.sock`. Runtime
+NEVER set `DOCKER_HOST`. Do not change docker.sock permissions. Runtime
 start is `colima start --mount /Users:w`. Unset `DOCKER_HOST` if it is
 set. Daemon uses Docker CLI as-is.
 
@@ -90,13 +92,14 @@ set. Daemon uses Docker CLI as-is.
 Install the plugin from GitHub (NOT from a local clone):
 
 ```bash
-hermes plugins install --force --enable https://github.com/AgentPaaS-ai/agentpaas
+hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable
 ```
 
 Resolve `<profile>` from `HERMES_HOME`, `hermes profile`, or the installed
 path, then run the filesystem completer and verification as a HARD GATE.
 `complete-install.py` ALWAYS runs `ensure-docker-runtime.py` BEFORE
-`agentpaas doctor`. Do not tell the user to brew install docker or colima.
+`agentpaas doctor`. The agent installs docker and colima via
+ensure-docker-runtime.py.
 
 ```bash
 python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
@@ -146,9 +149,9 @@ After setup, when the user asks to build something, THEN load
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `colima start` fails with "docker not found" | Docker CLI not installed | Agent re-runs `ensure-docker-runtime.py`. Do not tell the user to brew install docker. |
+| `colima start` fails with "docker not found" | Docker CLI not installed | Agent re-runs `ensure-docker-runtime.py`. |
 | doctor shows harness not found | Pre-v0.2.1 or built from source without harness | `brew upgrade agentpaas` (v0.2.1+ bundles it) |
 | Plugin tools not in Hermes | Toolset not registered | Run `ensure-toolset.py` or add `agentpaas` to `platform_toolsets.cli` manually |
-| "Apple could not verify agentpaas is free of malware" | `com.apple.quarantine` xattr is still set | Agent re-runs `ensure-unquarantined.py` or `xattr -cr` on `$(brew --prefix)/bin` for all four bins, then re-verifies `xattr -l "$(brew --prefix)/bin/agentpaas"` does not list `com.apple.quarantine`. Do not tell the user to run xattr. |
+| "Apple could not verify agentpaas is free of malware" | `com.apple.quarantine` xattr is still set | Agent re-runs `ensure-unquarantined.py` or `xattr -cr` on `$(brew --prefix)/bin` for all four bins, then re-verifies `xattr -l "$(brew --prefix)/bin/agentpaas"` does not list `com.apple.quarantine`. |
 | "xattr: No such file" | Binary path wrong | Use `$(brew --prefix)/bin`, not a hardcoded prefix; `which agentpaas` if still missing |
 | Plugin changes not reflected during development | Dev session needs refresh | `/quit` then relaunch Hermes |

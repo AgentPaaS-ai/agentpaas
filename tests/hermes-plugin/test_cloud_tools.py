@@ -210,4 +210,4 @@ def test_walkthrough_uses_one_invoke_per_path_and_cold_provider_picker():
 
 
 def plugin_path():
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2] / "integrations" / "hermes-plugin"

@@ -31,7 +31,7 @@ HTTP request at call time.
 
 When the user says:
 
-> Install AgentPaaS from github https://github.com/AgentPaaS-ai/agentpaas
+> Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin
 
 that one sentence means the FULL product: CLI, daemon, linux harness,
 Docker/Colima, then the Hermes plugin. NEVER treat it as "install the
@@ -51,7 +51,7 @@ when `agentpaas doctor` is 7/7. 7/7 is the only success line.
 
    Brew post-install clears macOS quarantine on the four bins
    (`agentpaas`, `agentpaasd`, `agentpaas-harness-linux`,
-   `agentpaas-harness-linux-amd64`). Do not tell the user to run xattr.
+   `agentpaas-harness-linux-amd64`). The agent runs xattr. The human does not.
 
    HARD GATE before any `agentpaas` command (including version) and
    before doctor: VERIFY
@@ -69,16 +69,18 @@ when `agentpaas doctor` is 7/7. 7/7 is the only success line.
    anything else: STOP. Do not doctor.
 
 2. GitHub install ALWAYS runs `ensure-docker-runtime.py` via
-   `complete-install.py` BEFORE doctor. Do not tell the user to brew install docker or colima.
-   The agent runs the script. NEVER set `DOCKER_HOST`. NEVER sudo `/var/run/docker.sock`. NEVER
+   `complete-install.py` BEFORE doctor. The agent installs docker and
+   colima via ensure-docker-runtime.py.
+   The agent runs the script. NEVER set `DOCKER_HOST`. Do not change
+   docker.sock permissions. NEVER
    "point the daemon at Colima's Docker socket." Colima registers the
    docker context. Unset `DOCKER_HOST` if it is set. Daemon uses Docker
    CLI as-is. Runtime start is `colima start --mount /Users:w`.
 
-3. Install the plugin from that same GitHub URL and complete this
-   profile:
+3. Install the plugin from the GitHub plugin subdirectory and complete
+   this profile:
 
-   `hermes plugins install --force --enable https://github.com/AgentPaaS-ai/agentpaas`
+   `hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable`
 
    `python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>`
 
@@ -186,7 +188,7 @@ the same `t=,v1=` shape; path `/hooks/stripe`.
 
 ### Completion (receipt) and delivery (the answer)
 
-Public HTTPS destinations only (webhook.site is fine for a test).
+Public HTTPS destinations only (a public HTTPS catcher is fine for a test).
 
 ```
 agentpaas cloud webhook completion <dep_id> --url https://...
@@ -744,7 +746,7 @@ stays up and phones named teammates from the signed list. A call
 outside that list fails. Stopping A cancels that A's children only.
 
 Set the max duration from the human's job (seconds under the hood).
-Do not tell the user to set sleepAfter.
+The agent sets sleepAfter from that duration.
 
 ### What you compose (v0.4)
 

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "integrations" / "hermes-plugin" / "scripts" / "complete-install.py"
 PLUGIN_SKILL = REPO_ROOT / "integrations" / "hermes-plugin" / "SKILL.md"
 SETUP_SKILL = REPO_ROOT / "integrations" / "hermes-plugin" / "skills" / "setup" / "SKILL.md"

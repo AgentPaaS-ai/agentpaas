@@ -36,7 +36,7 @@ Brew post-install clears macOS quarantine on the installed binaries.
 In Hermes, tell it:
 
 ```bash
-hermes plugins install https://github.com/AgentPaaS-ai/agentpaas --force --enable
+hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable
 ```
 
 After install, complete the filesystem state and verify it before reopening:
