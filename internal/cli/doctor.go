@@ -76,6 +76,29 @@ Use the global --json flag for structured output suitable for scripts.`,
 	}
 }
 
+func homebrewBinDirs() []string {
+	return []string{"/opt/homebrew/bin", "/usr/local/bin"}
+}
+
+func resolveNamedBinary(name string, extraDirs []string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	for _, dir := range extraDirs {
+		p := filepath.Join(dir, name)
+		st, err := os.Lstat(p)
+		if err != nil || st.IsDir() {
+			continue
+		}
+		return p
+	}
+	return ""
+}
+
+func resolveDockerPath() string {
+	return resolveNamedBinary("docker", homebrewBinDirs())
+}
+
 func runDoctorChecks() []map[string]string {
 	var checks []map[string]string
 
@@ -88,8 +111,8 @@ func runDoctorChecks() []map[string]string {
 	})
 
 	// 2. Docker CLI
-	dockerExe, err := exec.LookPath("docker")
-	if err != nil {
+	dockerExe := resolveDockerPath()
+	if dockerExe == "" {
 		checks = append(checks, map[string]string{
 			"name":    "Docker CLI",
 			"status":  "fail",
