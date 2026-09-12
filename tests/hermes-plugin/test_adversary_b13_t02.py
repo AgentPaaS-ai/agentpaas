@@ -1,6 +1,6 @@
 """Adversary regression tests for B13-T02 contract-parity gate.
 Each test is a negative probe designed to break the claimed security/contract guarantees.
-Run: python3 -m unittest discover -s integrations/hermes-plugin/tests -v -k Adversary
+Run: python3 -m unittest discover -s tests/hermes-plugin -v -k Adversary
 """
 
 import inspect

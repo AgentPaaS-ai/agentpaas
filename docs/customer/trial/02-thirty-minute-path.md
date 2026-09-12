@@ -7,7 +7,7 @@ End-to-end trial map. Detail pages are linked from each step.
 2. Install Hermes and the AgentPaaS plugin  
    → [Install](21-install-macos.md) · [Hermes](22-hermes-plugin.md)
 3. In Hermes paste:  
-   `Install from https://github.com/AgentPaaS-ai/agentpaas`
+   `Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin`
 4. Paste:  
    `Build a weather agent that uses an LLM, and responds in a friendly demeanour`  
    Use **OpenRouter** + a cheap model. Store key via terminal stdin.  

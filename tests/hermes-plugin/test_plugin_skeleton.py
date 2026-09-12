@@ -16,7 +16,7 @@ try:
 except ImportError:
     yaml = None
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = Path(__file__).resolve().parents[2] / "integrations" / "hermes-plugin"
 REPO_ROOT = PLUGIN_ROOT.parents[1]
 MANIFEST_PATH = PLUGIN_ROOT / "plugin.yaml"
 REPO_BIN = REPO_ROOT / "bin" / "agentpaas"

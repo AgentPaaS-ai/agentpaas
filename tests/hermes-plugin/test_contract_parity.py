@@ -1,7 +1,7 @@
 """Contract-parity tests for B13-T02 Hermes plugin operator wrappers.
 
 Verifies that plugin tool handlers mirror the Block 11 Go operator contract.
-Run with: python3 -m unittest discover -s integrations/hermes-plugin/tests -v -k Parity
+Run with: python3 -m unittest discover -s tests/hermes-plugin -v -k Parity
 """
 
 import importlib.util
@@ -14,7 +14,7 @@ import warnings
 from pathlib import Path
 from unittest import mock
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = Path(__file__).resolve().parents[2] / "integrations" / "hermes-plugin"
 REPO_ROOT = PLUGIN_ROOT.parents[1]
 
 # Error envelope fields allowed on any response.

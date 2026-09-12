@@ -1,7 +1,7 @@
 """Tests for ensure-unquarantined.py (agent-side brew quarantine gate).
 
 Run:
-  python3 -m unittest integrations/hermes-plugin/tests/test_ensure_unquarantined.py -v
+  python3 -m unittest tests/hermes-plugin/test_ensure_unquarantined.py -v
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = Path(__file__).resolve().parents[2] / "integrations" / "hermes-plugin"
 SCRIPT = PLUGIN_ROOT / "scripts" / "ensure-unquarantined.py"
 
 BINS = (

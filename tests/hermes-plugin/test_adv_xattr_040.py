@@ -4,7 +4,7 @@ Permanent RED until product actually clears com.apple.quarantine on
 Homebrew-Cleaner 0555 keg bins and stops telling humans to run xattr.
 
 Run:
-  python3 -m unittest integrations/hermes-plugin/tests/test_adv_xattr_040.py -v
+  python3 -m unittest tests/hermes-plugin/test_adv_xattr_040.py -v
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = Path(__file__).resolve().parents[2] / "integrations" / "hermes-plugin"
 REPO_ROOT = PLUGIN_ROOT.parents[1]
 SCRIPT = PLUGIN_ROOT / "scripts" / "ensure-unquarantined.py"
 FORMULA = REPO_ROOT / "Formula" / "agentpaas.rb"

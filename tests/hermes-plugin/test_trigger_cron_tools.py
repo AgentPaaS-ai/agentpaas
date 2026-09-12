@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_ROOT = Path(__file__).resolve().parents[2] / "integrations" / "hermes-plugin"
 
 
 def _load_plugin_package():

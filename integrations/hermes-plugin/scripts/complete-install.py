@@ -7,11 +7,16 @@ This deliberately does not import Hermes or call plugin register(). Hermes loads
 plugin tools and slash commands at session start, but these filesystem changes
 must be available immediately after installation.
 """
+from __future__ import annotations
+
 from pathlib import Path
 import os
 import shutil
+import stat
 import subprocess
 import sys
+
+_HOMEBREW_BIN_DIRS = (Path("/opt/homebrew/bin"), Path("/usr/local/bin"))
 
 POINTER_NAME = "agentpaas-build"
 SOUL_MARK_BEGIN = "# AgentPaaS Onboarding Rule"
@@ -85,41 +90,56 @@ instructions.
 """
 
 
+def _resolve_bin(name: str) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    for directory in _HOMEBREW_BIN_DIRS:
+        candidate = directory / name
+        try:
+            st = candidate.lstat()
+        except OSError:
+            continue
+        if stat.S_ISDIR(st.st_mode):
+            continue
+        if os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
 def _brew_bin_dir() -> Path:
-    brew = shutil.which("brew") or "brew"
-    result = subprocess.run(
-        [brew, "--prefix"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
-    )
-    prefix = (result.stdout or "").strip()
-    if result.returncode != 0 or not prefix:
-        raise RuntimeError("brew --prefix failed")
-    return Path(prefix) / "bin"
+    brew = _resolve_bin("brew")
+    if brew:
+        result = subprocess.run(
+            [brew, "--prefix"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        prefix = (result.stdout or "").strip()
+        if result.returncode == 0 and prefix:
+            return Path(prefix) / "bin"
+    for directory in _HOMEBREW_BIN_DIRS:
+        if directory.is_dir():
+            return directory
+    raise RuntimeError("Homebrew bin dir not found")
 
 
 def _runtime_env() -> dict:
     env = os.environ.copy()
-    env["PATH"] = str(_brew_bin_dir()) + os.pathsep + env.get("PATH", "")
+    parts = [str(p) for p in _HOMEBREW_BIN_DIRS]
+    try:
+        parts.insert(0, str(_brew_bin_dir()))
+    except RuntimeError:
+        pass
+    env["PATH"] = os.pathsep.join(parts) + os.pathsep + env.get("PATH", "")
     env.pop("DOCKER_HOST", None)
     return env
 
 
 def _run_runtime(plugin_dir: Path) -> None:
     scripts = plugin_dir / "scripts"
-    unq = scripts / "ensure-unquarantined.py"
-    result = subprocess.run(
-        [sys.executable, str(unq)],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=60,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "ensure-unquarantined.py failed")
-
     docker = scripts / "ensure-docker-runtime.py"
     result = subprocess.run(
         [sys.executable, str(docker)],
@@ -130,6 +150,17 @@ def _run_runtime(plugin_dir: Path) -> None:
     )
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or "ensure-docker-runtime.py failed")
+
+    unq = scripts / "ensure-unquarantined.py"
+    result = subprocess.run(
+        [sys.executable, str(unq)],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or "ensure-unquarantined.py failed")
 
     env = _runtime_env()
     subprocess.run(
