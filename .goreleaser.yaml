@@ -121,6 +121,9 @@ homebrew_casks:
     commit_author:
       name: github-actions[bot]
       email: 41898282+github-actions[bot]@users.noreply.github.com
+    # Homebrew 6 invalidates macOS-only binary casks without this.
+    custom_block: |
+      depends_on :macos
     hooks:
       post:
         install: |
