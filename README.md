@@ -138,7 +138,7 @@ hermes
 Install the plugin from GitHub with the enable flag:
 
 ```bash
-hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable
+hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/install --enable
 ```
 
 Then complete and verify the filesystem state. Both commands are a hard gate;

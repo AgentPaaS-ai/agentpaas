@@ -70,7 +70,7 @@ hermes -p agentpaas-testing
 Paste **one** message:
 
 ```text
-Install from https://github.com/AgentPaaS-ai/agentpaas
+Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/install
 ```
 
 **Orch verify:**

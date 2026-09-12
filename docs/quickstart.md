@@ -313,7 +313,7 @@ hermes
 
 Then tell Hermes:
 
-> Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin
+> Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/install
 
 No restart needed — the toolset registers live. Run `/agentpaas-doctor`, store
 keys with `agentpaas secret add` in a **separate** terminal, and build agents

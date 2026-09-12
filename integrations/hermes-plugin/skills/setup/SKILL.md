@@ -22,7 +22,7 @@ running an agent after setup is complete, load `agentpaas:deploy` via the
 `agentpaas-build` pointer skill.
 
 When the user says "Install from
-https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin",
+https://github.com/AgentPaaS-ai/agentpaas/tree/main/install",
 that is the FULL product: CLI + Colima/Docker + plugin. Plugin-only is a fail.
 The GitHub URL is how they found us. Brew is how the CLI lands. Both are
 required.
@@ -92,7 +92,7 @@ set. Daemon uses Docker CLI as-is.
 Install the plugin from GitHub (NOT from a local clone):
 
 ```bash
-hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable
+hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/install --enable
 ```
 
 Resolve `<profile>` from `HERMES_HOME`, `hermes profile`, or the installed
