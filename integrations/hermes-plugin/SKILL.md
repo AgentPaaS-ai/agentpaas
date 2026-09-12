@@ -31,7 +31,7 @@ HTTP request at call time.
 
 When the user says:
 
-> Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin
+> Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/install
 
 that one sentence means the FULL product: CLI, daemon, linux harness,
 Docker/Colima, then the Hermes plugin. NEVER treat it as "install the
@@ -80,7 +80,7 @@ when `agentpaas doctor` is 7/7. 7/7 is the only success line.
 3. Install the plugin from the GitHub plugin subdirectory and complete
    this profile:
 
-   `hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin --enable`
+   `hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/install --enable`
 
    `python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>`
 

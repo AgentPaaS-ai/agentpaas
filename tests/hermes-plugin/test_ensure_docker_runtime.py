@@ -21,7 +21,7 @@ SETUP_SKILL = PLUGIN_ROOT / "skills" / "setup" / "SKILL.md"
 
 OPTIONAL_DOCKER = "If `docker` or `colima` is missing"
 INSTALL_URL = (
-    "https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin"
+    "https://github.com/AgentPaaS-ai/agentpaas/tree/main/install"
 )
 
 

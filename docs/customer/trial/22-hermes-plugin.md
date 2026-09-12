@@ -2,7 +2,7 @@
 
 1. Install Hermes: https://hermes-agent.nousresearch.com/docs
 2. In Hermes paste:  
-   `Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/integrations/hermes-plugin`
+   `Install from https://github.com/AgentPaaS-ai/agentpaas/tree/main/install`
 3. If tools do not appear: type `/quit` and reopen Hermes.
 4. Confirm tools exist (doctor / agentpaas tools).
 
