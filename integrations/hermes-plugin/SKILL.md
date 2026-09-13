@@ -473,8 +473,10 @@ If it returns "no publisher identity", tell the user to run in their
 own terminal (NEVER via your terminal tool):
 
 ```
-agentpaas identity init --name <your-name>
+agentpaas identity init --name <yourname>
 ```
+
+NEVER substitute a live username. Do not use $USER, whoami, the Mac account, the home folder name, or pms88. Keep the literal placeholder `<yourname>`. The user types their chosen publisher slug in their own terminal. Identity creation is terminal-gated. NEVER run identity init via the terminal tool.
 
 They'll be prompted for a publisher name (GitHub-style slug, 1-39 chars).
 After they confirm they've done it, verify with `agentpaas identity show`.
@@ -623,7 +625,7 @@ policy.yaml with hostnames + port 443, configure LLM
 
 Before `agentpaas_pack`, verify:
 1. **Publisher identity exists** — call `agentpaas_identity_show`. If it returns
-   an error, STOP and tell the user: "Run `agentpaas identity init --name <your-name>`
+   an error, STOP and tell the user: "Run `agentpaas identity init --name <yourname>`
    in your terminal, then tell me when done." Do NOT proceed to pack without it.
 2. Egress policy lists every external hostname the agent will access.
 3. Every credential is in Keychain (`agentpaas_secret_list` — never
@@ -1033,7 +1035,7 @@ use xAI or Nous, extract a fresh token immediately before storing it.
 When a user wants to share an agent with someone else:
 
 1. **Verify identity exists** — call `agentpaas_identity_show`. If no identity,
-   tell the USER to run in their own terminal: `agentpaas identity init --name <your-name>`
+   tell the USER to run in their own terminal: `agentpaas identity init --name <yourname>`
    and follow the prompts. Do NOT create the identity yourself.
 
 2. **Export the bundle** — call `agentpaas_export` with the project directory.
