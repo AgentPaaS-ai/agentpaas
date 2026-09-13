@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/openai/openai-go/v3"
@@ -128,7 +130,10 @@ func callLLMChatCompletion(ctx context.Context, baseURL, originalHost, apiKey, m
 	if openRouterReasoningExclude(originalHost, provider) {
 		opts = append(opts, option.WithJSONSet("reasoning", map[string]any{"exclude": true}))
 	}
+	start := time.Now()
+	log.Printf("harness: llm Completions.New start model=%s", model)
 	completion, err := client.Chat.Completions.New(ctx, params, opts...)
+	log.Printf("harness: llm Completions.New returned err=%t elapsed=%s", err != nil, time.Since(start).Round(time.Millisecond))
 	if err != nil {
 		return nil, err
 	}

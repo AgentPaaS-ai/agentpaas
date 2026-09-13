@@ -1,7 +1,9 @@
 package harness
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -107,6 +109,48 @@ func TestHandleLLM_EmptyContentFallsBackToReasoning(t *testing.T) {
 	}
 	if result["text"] != "the answer is 42" {
 		t.Fatalf("text = %q, want reasoning fallback", result["text"])
+	}
+}
+
+// TestHandleLLM_CompletionsNewIgnoresCtx_TerminalsAtDeadline pins option A:
+// if Completions.New never returns when ctx fires, handleLLM must still
+// return llm_failed at the ctx deadline so the RPC error line is written.
+func TestHandleLLM_CompletionsNewIgnoresCtx_TerminalsAtDeadline(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+
+	s := &harnessRPCServer{
+		nowMonotonicMs: func() int64 { return routedrun.NowMonotonicMs(nil) },
+		llmChatCompletion: func(ctx context.Context, baseURL, originalHost, apiKey, model, prompt string, maxTokens int, provider string) (*llm.LLMResult, error) {
+			// Ignore ctx the way a stuck openai-go Completions.New would.
+			select {
+			case <-release:
+			case <-time.After(3 * time.Second):
+			}
+			return nil, errors.New("completions still hanging")
+		},
+	}
+	state := llmStateForOpenAI(t, envelopeMS(t, 200))
+	start := time.Now()
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	elapsed := time.Since(start)
+	if resp.OK {
+		t.Fatal("expected error (ctx deadline), got OK")
+	}
+	if resp.Code != "llm_failed" {
+		t.Fatalf("code = %q, want llm_failed", resp.Code)
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("elapsed = %v, want < 1.5s (ctx deadline 200ms; Completions.New ignored ctx)", elapsed)
+	}
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("elapsed = %v, want roughly the 200ms ctx deadline", elapsed)
+	}
+	errLower := strings.ToLower(resp.Error)
+	if !strings.Contains(errLower, "timeout") &&
+		!strings.Contains(errLower, "deadline") &&
+		!strings.Contains(errLower, "context") {
+		t.Fatalf("error = %q, want timeout/deadline/context", resp.Error)
 	}
 }
 
