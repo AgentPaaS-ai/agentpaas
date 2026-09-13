@@ -27,7 +27,8 @@ func (a *openRouterAdapter) BuildRequest(ctx context.Context, model, prompt, cre
 		model = defaultOpenRouterModel
 	}
 	body := map[string]interface{}{
-		"model": model,
+		"model":  model,
+		"stream": false,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
