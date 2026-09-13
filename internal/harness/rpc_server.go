@@ -222,7 +222,12 @@ const legacyModelClientTimeout = 120 * time.Second
 // the model-call timeout, the attempt-lease remaining, and the active time
 // remaining (B30-T03 Part B, ceiling 5). When no envelope is present (legacy
 // v0.2.3 compat), it falls back to legacyModelClientTimeout.
+//
+// The result is hard-capped at legacyModelClientTimeout even when the run
+// lease is much longer (e.g. 30 min). A finished upstream generation must
+// not leave /invoke open for the remaining lease.
 func (s *harnessRPCServer) modelClientTimeout(state *rpcInvokeState) time.Duration {
+	d := legacyModelClientTimeout
 	if state != nil && state.timeEnvelope != nil {
 		nowMs := routedrun.NowMonotonicMs(nil)
 		if s.nowMonotonicMs != nil {
@@ -234,9 +239,12 @@ func (s *harnessRPCServer) modelClientTimeout(state *rpcInvokeState) time.Durati
 			// a structured error rather than an immediate zero-timeout panic.
 			return 1 * time.Millisecond
 		}
-		return time.Duration(deadlineMs) * time.Millisecond
+		d = time.Duration(deadlineMs) * time.Millisecond
 	}
-	return legacyModelClientTimeout
+	if d > legacyModelClientTimeout {
+		return legacyModelClientTimeout
+	}
+	return d
 }
 
 // SetProgressMetadata wires the progress journal, identity, and resume
@@ -731,8 +739,11 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		prompt = combineSystemPrompt(sp, prompt)
 	}
 
-	// Build the HTTP request.
-	ctx := context.Background()
+	// Build the HTTP request. Bind the request context to the model-client
+	// timeout so a held-open SSE body cannot outlive the hard cap.
+	timeout := s.modelClientTimeout(state)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	var httpReq *http.Request
 	var err error
 	if maxTokensPerRequest > 0 {
@@ -787,21 +798,23 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// connect directly to the redirect target, bypassing the gateway's
 	// egress policy and producing TLS handshake errors.
 	client := &http.Client{
-		Timeout: s.modelClientTimeout(state),
+		Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		log.Printf("harness: llm http failed: %v", err)
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "http request failed: "+err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
 	defer func() { _ = resp.Body.Close() }() // best-effort close
 
-	// Read response body (1 MB limit, same as handleHTTP).
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1024*1024))
+	// Read JSON or SSE until [DONE]/deadline (1 MB limit, same as handleHTTP).
+	respBody, err := readLLMHTTPBody(resp.Body, resp.Header.Get("Content-Type"))
 	if err != nil {
+		log.Printf("harness: llm response read failed: %v", err)
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", "response read failed: "+err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
@@ -809,6 +822,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	// Parse the response.
 	result, err := adapter.ParseResponse(resp.StatusCode, respBody)
 	if err != nil {
+		log.Printf("harness: llm parse failed: %v", err)
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}

@@ -51,6 +51,31 @@ func TestB30T03PartB_ModelClientTimeout_LegacyFallback120s(t *testing.T) {
 	}
 }
 
+// TestB30T03PartB_ModelClientTimeout_HardCap120sDespiteLongLease pins the
+// founder-demo hang: a 30-minute run lease must not keep /invoke open after
+// the provider finished. Model HTTP timeout is capped at the 120s legacy
+// constant even when the envelope remaining time is much larger.
+func TestB30T03PartB_ModelClientTimeout_HardCap120sDespiteLongLease(t *testing.T) {
+	const thirtyMinMS = int64(30 * 60 * 1000)
+	env, ok := routedrun.TimeEnvelopeFromCeilings(thirtyMinMS, thirtyMinMS, 10_000, thirtyMinMS)
+	if !ok {
+		t.Fatal("expected envelope")
+	}
+	nowMs := routedrun.NowMonotonicMs(nil)
+	s := &harnessRPCServer{
+		nowMonotonicMs: func() int64 { return nowMs },
+	}
+	state := &rpcInvokeState{
+		payload:      map[string]any{},
+		budget:       NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+		timeEnvelope: &env,
+	}
+	want := 120 * time.Second
+	if got := s.modelClientTimeout(state); got != want {
+		t.Fatalf("modelClientTimeout = %v, want %v (hard cap despite 30min lease)", got, want)
+	}
+}
+
 // TestB30T03PartB_ModelClientTimeout_EnvelopeExhaustedClampsLow verifies
 // that an exhausted envelope yields a sub-second (effectively zero) timeout
 // rather than the legacy 120s — the model call cannot exceed remaining time.

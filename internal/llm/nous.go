@@ -27,7 +27,8 @@ func (a *nousAdapter) BuildRequest(ctx context.Context, model, prompt, credentia
 		model = defaultNousModel
 	}
 	body := map[string]interface{}{
-		"model": model,
+		"model":  model,
+		"stream": false,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
