@@ -79,159 +79,89 @@ is in the [security features doc](docs/security-features.md#red-team-smoke).
 
 ## Prerequisites
 
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) — install first;
-  AgentPaaS runs through Hermes
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) or
-  [Colima](https://github.com/abiosoft/colima)
+Install [Hermes](https://hermes-agent.nousresearch.com/docs) first.
+AgentPaaS runs through Hermes.
 
-  ```bash
-  brew install colima docker
-  colima start
-  ```
+If you use a dedicated Hermes testing profile, `google/gemini-3.8-flash`
+is a good default. Other models work.
 
-- macOS (Apple Silicon or Intel)
+macOS (Apple Silicon or Intel).
 
 ## Install
 
-Install with Homebrew. Do not build from source for normal use. Even with
-the repo cloned, `make build-all` produces dev binaries (`0.3.0-dev`,
-unknown commit, no version stamp). The brew cask ships versioned binaries
-and the Linux harness. A new user should not need Go, `make`, or the
-source tree.
+Open Hermes and paste:
 
-### 1. Install Hermes
-
-```bash
-brew install nousresearch/tap/hermes-agent
+```
+Install AgentPaaS from github https://github.com/AgentPaaS-ai/agentpaas/tree/main/install
 ```
 
-### 2. Install Docker if needed
+That one line is the full product: brew CLI, Docker or Colima, the Hermes
+plugin, install completion, and doctor 7/7. Do not run
+`hermes plugins install` or python install scripts yourself.
 
-```bash
-brew install colima docker
-colima start
-```
-
-### 3. Install AgentPaaS
-
-```bash
-brew tap AgentPaaS-ai/homebrew-tap
-brew install agentpaas
-agentpaas doctor
-agentpaas version
-```
-
-Brew post-install clears macOS quarantine on the installed binaries.
-`agentpaas doctor` checks Docker, the daemon, keychain, and the harness.
-If something fails, it says what to fix.
-
-## Quickstart: build and run a governed agent
-
-Do this inside Hermes:
-
-```bash
-hermes
-```
-
-### Step 1: Install the AgentPaaS plugin
-
-Install the plugin from GitHub with the enable flag:
-
-```bash
-hermes plugins install https://github.com/AgentPaaS-ai/agentpaas/tree/main/install --enable
-```
-
-Then complete and verify the filesystem state. Both commands are a hard gate;
-fix any reported failure before reopening Hermes:
-
-```bash
-python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/complete-install.py <profile>
-python3 ~/.hermes/profiles/<profile>/plugins/agentpaas/scripts/verify-installed-state.py <profile>
-```
-
-Reopen Hermes exactly once so it loads the slash commands and tools:
+If Hermes asks you to reopen:
 
 ```
 /quit
 hermes
 ```
 
-After reopening, run `/agentpaas-doctor`.
+Testing profile: `hermes -p ap-testing`.
 
-### Step 2: Configure the build agent
+## Quickstart
 
-An LLM API key is not an install prerequisite. When you are ready to build an
-agent, store the selected provider key in a separate terminal:
+### Build a weather agent
 
-Keys never go through the Hermes chat. They go into macOS Keychain. In a
-separate terminal:
+In Hermes, paste:
 
-```bash
-agentpaas secret add openrouter-key
-# paste your API key when prompted
+```
+Build a weather agent that uses an LLM, and responds with a friendly demeanour
 ```
 
-Then tell Hermes you are done. It checks that the label exists, never the
-value.
+When asked for a publisher identity, run this in your own terminal:
 
-### Step 3: Build an agent
-
-Tell Hermes:
-
-> Build a weather agent that takes a city name as input, fetches real weather data from wttr.in, uses an LLM to summarize the conditions, and returns a short forecast.
-
-Hermes asks a few short questions (provider, model, hostnames), writes the
-agent, builds an egress policy for `wttr.in` and your LLM host, packs a
-signed image, and runs it under governance. Pack fails if any external
-hostname or credential is missing from the policy, so a broken or open
-runtime never ships.
-
-### Step 4: Invoke the agent
-
-Tell Hermes:
-
-> What's the weather in Folsom?
-
-Hermes calls the agent through the trigger API. The agent hits wttr.in
-through the gateway, calls the LLM with a brokered credential, and returns
-the forecast.
-
-### Step 5: Read and verify the audit chain
-
-Every allow and deny is written as it happens: time, agent identity,
-destination, credential used (by id, not value), and the policy decision.
-
-```bash
-# Recent events
-agentpaas audit query
-
-# One run
-agentpaas audit query --run-id <run-id>
+```
+agentpaas identity init --name <yourname>
 ```
 
-How the chain works:
+Keep the placeholder `<yourname>`. Type your chosen publisher slug. Do not
+use your Mac account name, `$USER`, `whoami`, or your home folder name.
+Identity creation is terminal-gated.
 
-1. Each record is a line of JSON (JSONL) with a sequence number.
-2. Record N stores `prev_hash` = hash of record N-1.
-3. Record N also stores its own `record_hash` over canonical JSON.
-4. After each write, the daemon signs a checkpoint over the latest hash.
-5. `agentpaas audit verify` walks the chain, recomputes every hash, and
-   checks the checkpoints. Exit 0 means intact. Non-zero means something
-   changed, moved, or was inserted.
+API keys never go in chat. In your own terminal run `agentpaas secret add`,
+then tell Hermes you are done.
 
-```bash
-agentpaas audit verify
-# Audit chain valid: N records, N checkpoints
+### Lineage and audits
+
+Paste:
+
+```
+Show me lineage and audits
 ```
 
-Hand a signed export to someone else (or yourself on another box):
+A packed agent has four digests:
 
-```bash
-agentpaas audit export --output ~/audit-export.json
+- Image digest: the container that ran
+- Policy digest: the signed allow-list
+- Build input digest: packed source
+- SBOM digest: pack-time bill of materials
+
+A simple weather agent SBOM is OS (Debian slim) plus the AgentPaaS harness
+Go modules, not a pip supply chain, unless the agent declared pip deps.
+
+The audit order is the proof: weather host (wttr.in) first, then the LLM.
+That is a real fetch, then a summarize.
+
+### Run in AgentPaaS Cloud
+
+Paste:
+
+```
+Make it run in the agentpaas cloud
 ```
 
-Full field list and second-machine verify flow:
-[docs/audit-export.md](docs/audit-export.md).
+When asked to log in, run `agentpaas cloud login` in your own terminal.
+Use the same browser as your claim.
 
 ## Sharing agents
 
