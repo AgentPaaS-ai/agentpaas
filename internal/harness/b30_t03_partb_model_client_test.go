@@ -1,7 +1,6 @@
 package harness
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -108,8 +107,7 @@ func TestB30T03PartB_ModelClient_RealCall_UsesEnvelopeTimeout(t *testing.T) {
 	// Upstream sleeps 2s; envelope gives a 200ms model-call timeout.
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second)
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "late"}},
 			},
@@ -128,7 +126,7 @@ func TestB30T03PartB_ModelClient_RealCall_UsesEnvelopeTimeout(t *testing.T) {
 	nowMs := routedrun.NowMonotonicMs(nil)
 	recorder := &recordingAuditAppender{}
 	s := &harnessRPCServer{
-		audit:         recorder,
+		audit:          recorder,
 		nowMonotonicMs: func() int64 { return nowMs },
 	}
 	state := &rpcInvokeState{
