@@ -739,26 +739,18 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		prompt = combineSystemPrompt(sp, prompt)
 	}
 
-	// Build the HTTP request. Bind the request context to the model-client
-	// timeout so a held-open SSE body cannot outlive the hard cap.
+	// One deadline owner: context.WithTimeout from modelClientTimeout /
+	// TimeEnvelope. openai-go Completions.New honors ctx; do not stack a
+	// second http.Client.Timeout that disagrees with the envelope.
 	timeout := s.modelClientTimeout(state)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	var httpReq *http.Request
-	var err error
-	if maxTokensPerRequest > 0 {
-		httpReq, err = adapter.BuildRequest(ctx, model, prompt, cred.Value, maxTokensPerRequest)
-	} else {
-		httpReq, err = adapter.BuildRequest(ctx, model, prompt, cred.Value)
-	}
-	if err != nil {
-		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "build request failed: "+err.Error())
-		return rpcError(req.ID, err.Error(), "llm_failed")
-	}
 
 	// Rewrite URL for gateway-native HTTP routing (Bug 021). Preserve the
-	// original Host header so the gateway can match routes by hostname.
+	// original Host so the gateway can match routes by hostname.
 	originalEndpoint := adapter.Endpoint()
+	requestEndpoint := originalEndpoint
+	originalHost := ""
 	gatewayURL := os.Getenv("AGENTPAAS_GATEWAY_URL")
 	if gatewayURL != "" {
 		rewritten, rewriteErr := rewriteURLForGateway(originalEndpoint, gatewayURL)
@@ -771,66 +763,29 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 			s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, "", "denied", "parse original URL: "+parseErr.Error())
 			return rpcError(req.ID, parseErr.Error(), "llm_failed")
 		}
-		rewrittenU, parseErr := url.Parse(rewritten)
-		if parseErr != nil {
-			s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, "", "denied", "parse rewrittenURL: "+parseErr.Error())
-			return rpcError(req.ID, parseErr.Error(), "llm_failed")
-		}
-		httpReq.URL = rewrittenU
-		httpReq.Host = origU.Host
+		originalHost = origU.Host
+		requestEndpoint = rewritten
 	}
-
-	// Execute the HTTP request.
-	// LLM calls (especially reasoning models like grok-4.3, o3, etc.) can take
-	// 30+ seconds to respond. The previous 5s timeout killed requests before
-	// the provider returned, causing "context deadline exceeded" failures on
-	// anything requiring non-trivial reasoning.
-	//
-	// B30-T03 Part B (ceiling 5): the timeout is now derived from the
-	// TimeEnvelope's EffectiveOperationDeadlineMs when one is available; when
-	// no envelope is present (legacy v0.2.3 compat), modelClientTimeout
-	// returns legacyModelClientTimeout (120s).
-	//
-	// BUG-033/034 fix: deny HTTP redirects. The gateway rewrites URLs to
-	// http://gateway:7799/path; a 302 redirect target is an HTTPS URL that
-	// the client cannot TLS-terminate directly (the gateway does TLS). Without
-	// this guard, Go's default redirect follower (up to 10 hops) tries to
-	// connect directly to the redirect target, bypassing the gateway's
-	// egress policy and producing TLS handshake errors.
-	client := &http.Client{
-		Timeout: timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	resp, err := client.Do(httpReq)
+	baseURL, err := openaiChatCompletionsBaseURL(requestEndpoint)
 	if err != nil {
-		log.Printf("harness: llm http failed: %v", err)
-		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "http request failed: "+err.Error())
-		return rpcError(req.ID, err.Error(), "llm_failed")
-	}
-	defer func() { _ = resp.Body.Close() }() // best-effort close
-
-	// Read JSON or SSE until [DONE]/deadline (1 MB limit, same as handleHTTP).
-	respBody, err := readLLMHTTPBody(resp.Body, resp.Header.Get("Content-Type"))
-	if err != nil {
-		log.Printf("harness: llm response read failed: %v", err)
-		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", "response read failed: "+err.Error())
+		s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, "", "denied", "openai-go base URL: "+err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
 
-	// Parse the response.
-	result, err := adapter.ParseResponse(resp.StatusCode, respBody)
+	result, err := callLLMChatCompletion(ctx, baseURL, originalHost, cred.Value, model, prompt, maxTokensPerRequest)
 	if err != nil {
-		log.Printf("harness: llm parse failed: %v", err)
-		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
+		log.Printf("harness: llm chat completion failed: %v", err)
+		status := llmHTTPStatusFromError(err)
+		s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, status, "denied", err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
+
+	const llmHTTPOK = "200"
 
 	// Response-side guardrails (same ruleset as request for regex/webhook).
 	respText, gerr := applyGuardrailsToText(cg, result.Text, "response", state.credentials)
 	if gerr != nil {
-		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", gerr.Error())
+		s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, llmHTTPOK, "denied", gerr.Error())
 		return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
 	}
 	result.Text = respText
@@ -846,10 +801,10 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	if err := state.budget.RecordTokens(tokens); err != nil {
 		if errors.Is(err, ErrBudgetExceeded) && state.terminate != nil {
 			go state.terminate()
-			s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
+			s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, llmHTTPOK, "denied", err.Error())
 			return rpcError(req.ID, err.Error(), StatusBudgetExceeded)
 		}
-		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "denied", err.Error())
+		s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, llmHTTPOK, "denied", err.Error())
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
 	if observabilityEnabled(state.payload) {
@@ -865,7 +820,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	if respModel == "" {
 		respModel = model
 	}
-	s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, strconv.Itoa(resp.StatusCode), "allowed", "")
+	s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, llmHTTPOK, "allowed", "")
 
 	return rpcResponse{
 		ID: req.ID,
