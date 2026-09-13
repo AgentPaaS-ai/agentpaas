@@ -772,7 +772,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
 
-	result, err := callLLMChatCompletion(ctx, baseURL, originalHost, cred.Value, model, prompt, maxTokensPerRequest)
+	result, err := callLLMChatCompletion(ctx, baseURL, originalHost, cred.Value, model, prompt, maxTokensPerRequest, provider)
 	if err != nil {
 		log.Printf("harness: llm chat completion failed: %v", err)
 		status := llmHTTPStatusFromError(err)

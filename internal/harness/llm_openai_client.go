@@ -105,7 +105,15 @@ func messageReasoning(msg openai.ChatCompletionMessage) string {
 	return parsed.Reasoning
 }
 
-func callLLMChatCompletion(ctx context.Context, baseURL, originalHost, apiKey, model, prompt string, maxTokens int) (*llm.LLMResult, error) {
+func openRouterReasoningExclude(originalHost, provider string) bool {
+	if strings.EqualFold(strings.TrimSpace(provider), "openrouter") {
+		return true
+	}
+	host, _, _ := strings.Cut(originalHost, ":")
+	return strings.EqualFold(host, "openrouter.ai")
+}
+
+func callLLMChatCompletion(ctx context.Context, baseURL, originalHost, apiKey, model, prompt string, maxTokens int, provider string) (*llm.LLMResult, error) {
 	client := newLLMChatClient(baseURL, originalHost, apiKey)
 	params := openai.ChatCompletionNewParams{
 		Model: model,
@@ -116,7 +124,11 @@ func callLLMChatCompletion(ctx context.Context, baseURL, originalHost, apiKey, m
 	if maxTokens > 0 {
 		params.MaxTokens = openai.Int(int64(maxTokens))
 	}
-	completion, err := client.Chat.Completions.New(ctx, params, option.WithJSONSet("stream", false))
+	opts := []option.RequestOption{option.WithJSONSet("stream", false)}
+	if openRouterReasoningExclude(originalHost, provider) {
+		opts = append(opts, option.WithJSONSet("reasoning", map[string]any{"exclude": true}))
+	}
+	completion, err := client.Chat.Completions.New(ctx, params, opts...)
 	if err != nil {
 		return nil, err
 	}
