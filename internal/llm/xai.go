@@ -27,7 +27,8 @@ func (a *xAIAdapter) BuildRequest(ctx context.Context, model, prompt, credential
 		model = defaultXAIModel
 	}
 	body := map[string]interface{}{
-		"model": model,
+		"model":  model,
+		"stream": false,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},

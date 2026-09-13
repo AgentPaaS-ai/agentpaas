@@ -27,7 +27,8 @@ func (a *openAIAdapter) BuildRequest(ctx context.Context, model, prompt, credent
 		model = defaultOpenAIModel
 	}
 	body := map[string]interface{}{
-		"model": model,
+		"model":  model,
+		"stream": false,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
