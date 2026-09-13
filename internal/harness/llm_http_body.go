@@ -36,7 +36,6 @@ func readChatCompletionSSE(r *bufio.Reader) ([]byte, error) {
 	var text strings.Builder
 	var model string
 	var usage any
-	sawDone := false
 	for {
 		line, err := r.ReadString('\n')
 		if len(line) > 0 {
@@ -47,7 +46,6 @@ func readChatCompletionSSE(r *bufio.Reader) ([]byte, error) {
 			case strings.HasPrefix(trimmed, "data:"):
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				if payload == "[DONE]" {
-					sawDone = true
 					return marshalSSEResult(text.String(), model, usage)
 				}
 				model, usage = accumulateSSEChunk(payload, &text, model, usage)
@@ -60,7 +58,7 @@ func readChatCompletionSSE(r *bufio.Reader) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if !sawDone && text.Len() == 0 {
+	if text.Len() == 0 {
 		return nil, fmt.Errorf("llm sse response ended without content or [DONE]")
 	}
 	return marshalSSEResult(text.String(), model, usage)
