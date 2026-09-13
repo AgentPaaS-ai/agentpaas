@@ -80,6 +80,10 @@ type harnessRPCServer struct {
 	// liveCallOutputs holds A's invoke JSON keyed by task id. Never contains
 	// endpoints or tokens.
 	liveCallOutputs map[string]any
+
+	// llmChatCompletion, when non-nil, replaces callLLMChatCompletion so tests
+	// can stub a Completions.New that ignores ctx. Production leaves this nil.
+	llmChatCompletion func(ctx context.Context, baseURL, originalHost, apiKey, model, prompt string, maxTokens int, provider string) (*llm.LLMResult, error)
 }
 
 type rpcInvokeState struct {
@@ -310,7 +314,11 @@ func (s *harnessRPCServer) handleConn(conn net.Conn) {
 			}
 			continue
 		}
-		if encErr := encoder.Encode(s.handleRequest(req)); encErr != nil {
+		resp := s.handleRequest(req)
+		if req.Method == "llm" {
+			log.Printf("harness: rpc writing llm response id=%s ok=%t code=%s", resp.ID, resp.OK, resp.Code)
+		}
+		if encErr := encoder.Encode(resp); encErr != nil {
 			log.Printf("harness: rpc encode response: %v", encErr)
 		}
 	}
@@ -772,7 +780,26 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		return rpcError(req.ID, err.Error(), "llm_failed")
 	}
 
-	result, err := callLLMChatCompletion(ctx, baseURL, originalHost, cred.Value, model, prompt, maxTokensPerRequest, provider)
+	fn := callLLMChatCompletion
+	if s.llmChatCompletion != nil {
+		fn = s.llmChatCompletion
+	}
+	type llmCall struct {
+		result *llm.LLMResult
+		err    error
+	}
+	ch := make(chan llmCall, 1)
+	go func() {
+		out, callErr := fn(ctx, baseURL, originalHost, cred.Value, model, prompt, maxTokensPerRequest, provider)
+		ch <- llmCall{out, callErr}
+	}()
+	var result *llm.LLMResult
+	select {
+	case <-ctx.Done():
+		err = ctx.Err()
+	case o := <-ch:
+		result, err = o.result, o.err
+	}
 	if err != nil {
 		log.Printf("harness: llm chat completion failed: %v", err)
 		status := llmHTTPStatusFromError(err)
