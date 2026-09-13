@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
 import uuid
 from typing import Any
+
+# Default read deadline for one RPC response line: 120s model cap + 10s slack.
+# Override with AGENTPAAS_RPC_READ_TIMEOUT_SEC (seconds, float).
+_DEFAULT_RPC_READ_TIMEOUT_SEC = 130.0
+
+
+def _rpc_read_timeout_sec() -> float:
+    raw = os.environ.get("AGENTPAAS_RPC_READ_TIMEOUT_SEC")
+    if raw is None:
+        return _DEFAULT_RPC_READ_TIMEOUT_SEC
+    raw = raw.strip()
+    if not raw:
+        return _DEFAULT_RPC_READ_TIMEOUT_SEC
+    try:
+        timeout = float(raw)
+    except ValueError:
+        return _DEFAULT_RPC_READ_TIMEOUT_SEC
+    if timeout <= 0:
+        return _DEFAULT_RPC_READ_TIMEOUT_SEC
+    return timeout
 
 
 class RPCError(RuntimeError):
@@ -89,6 +110,20 @@ class RPCClient:
         finally:
             self._sock.close()
 
+    def _readline_with_deadline(self) -> bytes:
+        """Read one RPC line with a socket deadline, then restore the prior timeout."""
+        previous = self._sock.gettimeout()
+        try:
+            self._sock.settimeout(_rpc_read_timeout_sec())
+            return self._file.readline()
+        except (TimeoutError, socket.timeout) as exc:
+            raise RPCError("harness rpc read timed out", "llm_rpc_timeout") from exc
+        finally:
+            try:
+                self._sock.settimeout(previous)
+            except OSError:
+                pass
+
     def call(self, method: str, params: dict[str, Any] | None = None) -> Any:
         request_id = uuid.uuid4().hex
         payload = {
@@ -99,7 +134,7 @@ class RPCClient:
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         with self._lock:
             self._file.write(data)
-            line = self._file.readline()
+            line = self._readline_with_deadline()
         if not line:
             raise RPCError("harness rpc connection closed", "rpc_closed")
         response = json.loads(line.decode("utf-8"))
@@ -137,7 +172,7 @@ class RPCClient:
         data = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         with self._lock:
             self._file.write(data)
-            first = self._file.readline()
+            first = self._readline_with_deadline()
         if not first:
             raise RPCError("harness rpc connection closed", "rpc_closed")
         first_resp = json.loads(first.decode("utf-8"))
