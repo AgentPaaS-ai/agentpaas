@@ -156,3 +156,53 @@ func TestHandleLLM_KeepaliveNeverCloses_TerminalsAtCtxDeadline(t *testing.T) {
 		t.Fatalf("error = %q, want timeout/deadline/context", resp.Error)
 	}
 }
+
+// TestHandleLLM_OpenRouterRequestExcludesReasoning pins OpenRouter docs:
+// reasoning.exclude=true means the model still reasons internally but omits
+// reasoning tokens from the response. stream:false stays set. DeepSeek
+// (weather-agent default) treats exclude as a no-op and still returns content.
+func TestHandleLLM_OpenRouterRequestExcludesReasoning(t *testing.T) {
+	var gotBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		writeChatCompletion(w, "Folsom: 72F and sunny", "", "deepseek/deepseek-v4-flash", 8)
+	}))
+	defer func() { ts.Close() }()
+
+	t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+	s := &harnessRPCServer{}
+	state := &rpcInvokeState{
+		payload: map[string]any{
+			"llm": map[string]any{
+				"provider":   "openrouter",
+				"model":      "deepseek/deepseek-v4-flash",
+				"credential": testCredID,
+			},
+		},
+		credentials: map[string]rpcCredential{
+			testCredID: {Header: "Authorization", Value: testSecret},
+		},
+		budget: NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+	}
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{
+		"prompt": "What's the weather in Folsom?",
+	}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected result map, got %T", resp.Result)
+	}
+	if result["text"] != "Folsom: 72F and sunny" {
+		t.Fatalf("text = %q, want weather reply (deepseek path still works)", result["text"])
+	}
+	if v, ok := gotBody["stream"]; !ok || v != false {
+		t.Fatalf("stream = %v, want false", gotBody["stream"])
+	}
+	reasoning, _ := gotBody["reasoning"].(map[string]any)
+	if reasoning["exclude"] != true {
+		t.Fatalf("reasoning.exclude = %v, want true; body=%v", gotBody["reasoning"], gotBody)
+	}
+}

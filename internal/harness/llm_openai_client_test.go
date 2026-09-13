@@ -119,3 +119,56 @@ func TestChatCompletionText_EmptyContentFallsBackToReasoning(t *testing.T) {
 		t.Fatalf("text = %q, want reasoning fallback", got)
 	}
 }
+
+func TestCallLLMChatCompletion_OpenRouterExcludesReasoning(t *testing.T) {
+	cases := []struct {
+		name         string
+		originalHost string
+		provider     string
+	}{
+		{name: "originalHost openrouter.ai", originalHost: "openrouter.ai"},
+		{name: "provider openrouter", provider: "openrouter"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody map[string]any
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"id":      "chatcmpl-or",
+					"object":  "chat.completion",
+					"created": 1,
+					"model":   "deepseek/deepseek-v4-flash",
+					"choices": []map[string]any{
+						{
+							"index":         0,
+							"finish_reason": "stop",
+							"message":       map[string]any{"role": "assistant", "content": "Folsom: 72F and sunny"},
+						},
+					},
+					"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+				})
+			}))
+			defer func() { ts.Close() }()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			res, err := callLLMChatCompletion(ctx, ts.URL+"/v1/", tc.originalHost, "dummy", "deepseek/deepseek-v4-flash", "What's the weather in Folsom?", 0, tc.provider)
+			if err != nil {
+				t.Fatalf("callLLMChatCompletion: %v", err)
+			}
+			if res == nil || res.Text != "Folsom: 72F and sunny" {
+				t.Fatalf("text = %#v, want weather reply (deepseek path still works)", res)
+			}
+			if v, ok := gotBody["stream"]; !ok || v != false {
+				t.Fatalf("stream = %v, want false", gotBody["stream"])
+			}
+			reasoning, _ := gotBody["reasoning"].(map[string]any)
+			if reasoning["exclude"] != true {
+				t.Fatalf("reasoning.exclude = %v, want true; body=%v", gotBody["reasoning"], gotBody)
+			}
+		})
+	}
+}
