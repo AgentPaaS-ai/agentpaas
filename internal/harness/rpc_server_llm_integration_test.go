@@ -1,7 +1,6 @@
 package harness
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,8 +18,7 @@ func TestHandleLLM_Integration_FullFlow_OpenAI(t *testing.T) {
 		if ct != "application/json" {
 			t.Errorf("Content-Type = %q, want application/json", ct)
 		}
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "Integration: Hello from OpenAI"}},
 			},
@@ -28,7 +26,7 @@ func TestHandleLLM_Integration_FullFlow_OpenAI(t *testing.T) {
 			"model": "gpt-4o",
 		})
 	}))
-	defer ts.Close()
+	defer func() { ts.Close() }()
 
 	restore := llm.SetTestEndpoints(ts.URL, "", "")
 	defer restore()
@@ -73,28 +71,23 @@ func TestHandleLLM_Integration_FullFlow_OpenAI(t *testing.T) {
 
 func TestHandleLLM_Integration_FullFlow_Anthropic(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth := r.Header.Get("x-api-key")
-		if auth != testSecret {
-			t.Errorf("x-api-key = %q, want %s", auth, testSecret)
-		}
-		anthropicVersion := r.Header.Get("anthropic-version")
-		if anthropicVersion != "2023-06-01" {
-			t.Errorf("anthropic-version = %q, want 2023-06-01", anthropicVersion)
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer "+testSecret {
+			t.Errorf("Authorization = %q, want Bearer %s", auth, testSecret)
 		}
 		ct := r.Header.Get("Content-Type")
 		if ct != "application/json" {
 			t.Errorf("Content-Type = %q, want application/json", ct)
 		}
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"content": []map[string]any{
-				{"type": "text", "text": "Integration: Bonjour from Claude"},
+		writeLLMJSON(w, map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "Integration: Bonjour from Claude"}},
 			},
-			"usage": map[string]any{"output_tokens": 77},
+			"usage": map[string]any{"total_tokens": 77},
 			"model": "claude-3-5-sonnet-20241022",
 		})
 	}))
-	defer ts.Close()
+	defer func() { ts.Close() }()
 
 	restore := llm.SetTestEndpoints("", ts.URL, "")
 	defer restore()

@@ -15,6 +15,17 @@ const (
 	testCredID = "openai-key"
 )
 
+func writeLLMJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeLLMJSONStatus(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
 func TestHandleLLM_FakeFallback_NoLLMConfig(t *testing.T) {
 	t.Setenv("AGENTPAAS_TEST_FAKE_LLM", "1")
 	recorder := &recordingAuditAppender{}
@@ -54,8 +65,7 @@ func TestHandleLLM_RealCall_OpenAI(t *testing.T) {
 		if ct != "application/json" {
 			t.Errorf("Content-Type = %q, want application/json", ct)
 		}
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "Hello from OpenAI"}},
 			},
@@ -112,7 +122,7 @@ func TestHandleLLM_PerRequestMaxTokensIsForwarded(t *testing.T) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		maxTokens, _ = body["max_tokens"].(float64)
-		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}}, "usage": map[string]any{"total_tokens": 2}})
+		writeLLMJSON(w, map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}}, "usage": map[string]any{"total_tokens": 2}})
 	}))
 	defer ts.Close()
 	restore := llm.SetTestEndpoints(ts.URL, "", "")
@@ -137,7 +147,7 @@ func TestHandleLLM_PerRequestMaxTokensIsForwarded(t *testing.T) {
 
 func TestHandleLLM_ObservabilityEmitsResult(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []any{map[string]any{"message": map[string]any{"content": "ok"}}},
 			"usage":   map[string]any{"prompt_tokens": 4, "completion_tokens": 6, "total_tokens": 10},
 			"model":   "gpt-4o-mini",
@@ -248,8 +258,7 @@ func TestHandleLLM_ModelOverride(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&reqBody)
 		actualModel = reqBody.Model
 
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "Model override works"}},
 			},
@@ -299,8 +308,9 @@ func TestHandleLLM_ModelOverride(t *testing.T) {
 
 func TestHandleLLM_HTTPFailure(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"error": "internal error"}`))
+		writeLLMJSONStatus(w, http.StatusInternalServerError, map[string]any{
+			"error": map[string]any{"message": "internal error", "type": "server_error"},
+		})
 	}))
 	defer ts.Close()
 
@@ -340,8 +350,7 @@ func TestHandleLLM_HTTPFailure(t *testing.T) {
 
 func TestHandleLLM_AuditRecorded(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "audit test"}},
 			},
@@ -404,8 +413,7 @@ func TestHandleLLM_AuditRecorded(t *testing.T) {
 
 func TestHandleLLM_SecretNotInResult(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "clean response"}},
 			},
@@ -456,8 +464,7 @@ func TestHandleLLM_SecretNotInResult(t *testing.T) {
 
 func TestHandleLLM_BudgetExceededTerminates(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "budget busting response"}},
 			},
@@ -500,9 +507,8 @@ func TestHandleLLM_BudgetExceededTerminates(t *testing.T) {
 
 func TestHandleLLM_TokensZeroFallbackToWordCount(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
 		// Return 0 tokens to trigger word-count fallback.
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "four word response here"}},
 			},
@@ -547,8 +553,7 @@ func TestHandleLLM_TokensZeroFallbackToWordCount(t *testing.T) {
 // Ensure errors.Is works with budget errors.
 func TestHandleLLM_BudgetExceededWithoutTerminateReturnsLLMFailed(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "response"}},
 			},
@@ -612,20 +617,15 @@ func TestHandleLLM_EmptyPromptStillWorks(t *testing.T) {
 
 func TestHandleLLM_AnthropicAdapter(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		auth := r.Header.Get("x-api-key")
-		if auth != testSecret {
-			t.Errorf("x-api-key = %q, want %s", auth, testSecret)
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer "+testSecret {
+			t.Errorf("Authorization = %q, want Bearer %s", auth, testSecret)
 		}
-		anthropicVersion := r.Header.Get("anthropic-version")
-		if anthropicVersion != "2023-06-01" {
-			t.Errorf("anthropic-version = %q, want 2023-06-01", anthropicVersion)
-		}
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"content": []map[string]any{
-				{"type": "text", "text": "Claude response"},
+		writeLLMJSON(w, map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": "Claude response"}},
 			},
-			"usage": map[string]any{"output_tokens": 12},
+			"usage": map[string]any{"total_tokens": 12},
 			"model": "claude-3-5-sonnet-20241022",
 		})
 	}))
@@ -667,8 +667,7 @@ func TestHandleLLM_AnthropicAdapter(t *testing.T) {
 
 func TestHandleLLM_NilAuditDoesNotPanic(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "ok"}},
 			},
@@ -814,8 +813,7 @@ func TestHandleLLM_RewritesURLAndPreservesHost(t *testing.T) {
 		sawHost = r.Host
 		sawURLHost = r.URL.Host
 		sawPath = r.URL.Path
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		writeLLMJSON(w, map[string]any{
 			"choices": []map[string]any{
 				{"message": map[string]any{"content": "via gateway"}},
 			},
