@@ -657,9 +657,10 @@ for line in sys.stdin:
 `
 
 func workerEnv(base []string, rpcAddr string) []string {
-	env := make([]string, 0, len(base)+5)
+	env := make([]string, 0, len(base)+6)
 	pythonPath := pythonPackagePath()
 	var sawPythonPath bool
+	var sawRPCReadTimeout bool
 	for _, item := range base {
 		if strings.HasPrefix(item, "AGENTPAAS_RPC_ADDR=") {
 			continue
@@ -679,6 +680,11 @@ func workerEnv(base []string, rpcAddr string) []string {
 		if strings.HasPrefix(item, "AGENTPAAS_DELEGATION_SNAPSHOT_JSON=") {
 			continue
 		}
+		if strings.HasPrefix(item, "AGENTPAAS_RPC_READ_TIMEOUT_SEC=") {
+			sawRPCReadTimeout = true
+			env = append(env, item)
+			continue
+		}
 		if strings.HasPrefix(item, "PYTHONPATH=") {
 			sawPythonPath = true
 			env = append(env, item+string(os.PathListSeparator)+pythonPath)
@@ -690,6 +696,12 @@ func workerEnv(base []string, rpcAddr string) []string {
 		env = append(env, "PYTHONPATH="+pythonPath)
 	}
 	env = append(env, "AGENTPAAS_RPC_ADDR="+rpcAddr)
+	if !sawRPCReadTimeout {
+		// Cover max model deadline (5 min) + slack so a 130s default cannot
+		// cap pitch-filter. Per-call Python timeout still reads this env.
+		sec := rpcReadTimeoutFor(maxModelClientTimeout).Seconds()
+		env = append(env, "AGENTPAAS_RPC_READ_TIMEOUT_SEC="+strconv.FormatFloat(sec, 'f', -1, 64))
+	}
 	return env
 }
 
