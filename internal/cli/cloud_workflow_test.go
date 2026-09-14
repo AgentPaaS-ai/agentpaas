@@ -25,6 +25,7 @@ func TestCloudWorkflow_CommandsRegistered(t *testing.T) {
 		{"cloud", "workflow", "live-call"},
 		{"cloud", "workflow", "hangup"},
 		{"cloud", "workflow", "compose"},
+		{"cloud", "workflow", "retire"},
 	}
 	for _, p := range paths {
 		if _, _, err := cmd.Find(p); err != nil {
@@ -532,6 +533,121 @@ func TestCloudWorkflowCompose_MissingCompose_NoHTTP(t *testing.T) {
 	}
 	if hits != 0 {
 		t.Errorf("HTTP hits = %d, want 0", hits)
+	}
+}
+
+func TestCloudWorkflowHelp_ListsRetire(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "workflow", "--help")
+	if err != nil {
+		t.Fatalf("cloud workflow --help: %v", err)
+	}
+	if !strings.Contains(stdout, "retire") {
+		t.Errorf("cloud workflow --help should list retire, got: %s", stdout)
+	}
+}
+
+func TestCloudWorkflowRetire_RequiresYes(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_wf_retire")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("cloud workflow retire without --yes must not call API; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "workflow", "retire", "wf_abc")
+	if err == nil {
+		t.Fatal("expected error without --yes")
+	}
+	combined := err.Error() + stderr
+	want := "cloud workflow retire: refusing without --yes (this retires a workflow)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudWorkflowRetire_YesConfirmIDMismatch_NonTTY(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_wf_retire")
+
+	called := false
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		t.Errorf("cloud workflow retire with mismatched --confirm-id must not call API; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "workflow", "retire", "wf_abc", "--yes", "--confirm-id", "wf_other")
+	if err == nil {
+		t.Fatal("expected error for mismatched --confirm-id")
+	}
+	if called {
+		t.Fatal("workflow retire with mismatched --confirm-id called the API")
+	}
+	combined := err.Error() + stderr
+	want := "cloud workflow retire: confirmation failed (run this in your own terminal, not via an agent)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudWorkflowRetire_Success(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_wf_retire")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost && r.Method != http.MethodPatch {
+			t.Errorf("expected POST or PATCH, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/workflows/wf_abc/retire" {
+			t.Errorf("path = %s, want /v1/workflows/wf_abc/retire", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"id": "wf_abc", "status": "retired"})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "workflow", "retire", "wf_abc", "--yes", "--confirm-id", "wf_abc")
+	if err != nil {
+		t.Fatalf("workflow retire: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Retired") && !strings.Contains(stdout, "wf_abc") {
+		t.Errorf("expected retired confirmation, got: %q", stdout)
+	}
+}
+
+func TestCloudWorkflowRetire_ConflictPrintsInstances(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_wf_retire")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":        "workflow_in_use",
+			"message":      "Workflow has in-use instances",
+			"instance_ids": []string{"wfi_1", "wfi_2"},
+		})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "workflow", "retire", "wf_abc", "--yes", "--confirm-id", "wf_abc")
+	if err == nil {
+		t.Fatal("expected 409 error")
+	}
+	combined := err.Error() + stdout + stderr
+	if !strings.Contains(combined, "wfi_1") || !strings.Contains(combined, "wfi_2") {
+		t.Errorf("409 should print in-use instance ids, got: %q", combined)
 	}
 }
 
