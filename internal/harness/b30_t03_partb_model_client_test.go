@@ -3,6 +3,8 @@ package harness
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,11 +52,36 @@ func TestB30T03PartB_ModelClientTimeout_LegacyFallback120s(t *testing.T) {
 	}
 }
 
-// TestB30T03PartB_ModelClientTimeout_HardCap120sDespiteLongLease pins the
+// TestB30T03PartB_ModelClientTimeout_Allows300sFromEnvelope pins pitch-filter:
+// a TimeEnvelope ModelCallTimeoutMs of 5 minutes must not be hard-capped at
+// the legacy 120s. Weather/other agents keep the 120s default when the
+// envelope is lower or absent.
+func TestB30T03PartB_ModelClientTimeout_Allows300sFromEnvelope(t *testing.T) {
+	const fiveMinMS = int64(5 * 60 * 1000)
+	env, ok := routedrun.TimeEnvelopeFromCeilings(30*60*1000, 30*60*1000, 10_000, fiveMinMS)
+	if !ok {
+		t.Fatal("expected envelope")
+	}
+	nowMs := routedrun.NowMonotonicMs(nil)
+	s := &harnessRPCServer{
+		nowMonotonicMs: func() int64 { return nowMs },
+	}
+	state := &rpcInvokeState{
+		payload:      map[string]any{},
+		budget:       NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+		timeEnvelope: &env,
+	}
+	want := 300 * time.Second
+	if got := s.modelClientTimeout(state); got != want {
+		t.Fatalf("modelClientTimeout = %v, want %v (300s envelope, not 120s cap)", got, want)
+	}
+}
+
+// TestB30T03PartB_ModelClientTimeout_HardCap5MinDespiteLongLease pins the
 // founder-demo hang: a 30-minute run lease must not keep /invoke open after
-// the provider finished. Model HTTP timeout is capped at the 120s legacy
-// constant even when the envelope remaining time is much larger.
-func TestB30T03PartB_ModelClientTimeout_HardCap120sDespiteLongLease(t *testing.T) {
+// the provider finished. Model HTTP timeout is capped at 5 minutes even when
+// the envelope remaining time is much larger.
+func TestB30T03PartB_ModelClientTimeout_HardCap5MinDespiteLongLease(t *testing.T) {
 	const thirtyMinMS = int64(30 * 60 * 1000)
 	env, ok := routedrun.TimeEnvelopeFromCeilings(thirtyMinMS, thirtyMinMS, 10_000, thirtyMinMS)
 	if !ok {
@@ -69,9 +96,9 @@ func TestB30T03PartB_ModelClientTimeout_HardCap120sDespiteLongLease(t *testing.T
 		budget:       NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
 		timeEnvelope: &env,
 	}
-	want := 120 * time.Second
+	want := 5 * time.Minute
 	if got := s.modelClientTimeout(state); got != want {
-		t.Fatalf("modelClientTimeout = %v, want %v (hard cap despite 30min lease)", got, want)
+		t.Fatalf("modelClientTimeout = %v, want %v (5min cap despite 30min lease)", got, want)
 	}
 }
 
@@ -153,5 +180,35 @@ func TestB30T03PartB_ModelClient_RealCall_UsesEnvelopeTimeout(t *testing.T) {
 	}
 	if elapsed > 1500*time.Millisecond {
 		t.Errorf("elapsed = %v, want < 1.5s (envelope timeout 200ms)", elapsed)
+	}
+}
+
+// TestRPCReadTimeout_Covers300sModelDeadline pins: a 130s Python RPC read
+// ceiling must not block a 300s model deadline. Harness worker env (or the
+// derived timeout) is model deadline + slack, at least 310s.
+func TestRPCReadTimeout_Covers300sModelDeadline(t *testing.T) {
+	got := rpcReadTimeoutFor(300 * time.Second)
+	if got < 310*time.Second {
+		t.Fatalf("rpcReadTimeoutFor(300s) = %v, want >= 310s (model deadline + slack; 130s must not be the ceiling)", got)
+	}
+
+	env := workerEnv([]string{"PATH=/usr/bin"}, "127.0.0.1:1")
+	var raw string
+	for _, item := range env {
+		const prefix = "AGENTPAAS_RPC_READ_TIMEOUT_SEC="
+		if strings.HasPrefix(item, prefix) {
+			raw = strings.TrimPrefix(item, prefix)
+			break
+		}
+	}
+	if raw == "" {
+		t.Fatal("workerEnv missing AGENTPAAS_RPC_READ_TIMEOUT_SEC; 130s Python default would cap a 300s model call")
+	}
+	sec, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		t.Fatalf("parse AGENTPAAS_RPC_READ_TIMEOUT_SEC=%q: %v", raw, err)
+	}
+	if sec < 310 {
+		t.Fatalf("AGENTPAAS_RPC_READ_TIMEOUT_SEC=%v, want >= 310 (130s must not be the ceiling when deadline is 300s)", sec)
 	}
 }

@@ -309,6 +309,77 @@ func TestCallLLMChatCompletion_ProbeLogs(t *testing.T) {
 	}
 }
 
+// TestHandleLLM_SSEKeepaliveNeverCompletes_FailsClosedAtDeadline pins fail-closed:
+// text/event-stream keepalives that never send a completion must return
+// llm_failed at the ctx deadline (200ms here), not sit on the 30 min lease.
+func TestHandleLLM_SSEKeepaliveNeverCompletes_FailsClosedAtDeadline(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			_, _ = io.WriteString(w, ": keepalive\n\n")
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	nowMs := routedrun.NowMonotonicMs(nil)
+	s := &harnessRPCServer{nowMonotonicMs: func() int64 { return nowMs }}
+	state := llmStateForOpenAI(t, envelopeMS(t, 200))
+	start := time.Now()
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	elapsed := time.Since(start)
+	if resp.OK {
+		t.Fatal("expected error (SSE keepalive hung), got OK")
+	}
+	if resp.Code != "llm_failed" {
+		t.Fatalf("code = %q, want llm_failed", resp.Code)
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("elapsed = %v, want < 1.5s (ctx deadline 200ms; hung SSE must not hold /invoke)", elapsed)
+	}
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("elapsed = %v, want roughly the 200ms ctx deadline", elapsed)
+	}
+}
+
+// TestHandleLLM_SSECompletedMessageDone_ReturnsContent pins: when the provider
+// returns SSE despite stream=false, a completed message + [DONE] must return
+// message.content immediately (do not sit until the 5 min deadline).
+func TestHandleLLM_SSECompletedMessageDone_ReturnsContent(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "data: {\"id\":\"cmpl-sse\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gemini-flash\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"pitch ok\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	s := &harnessRPCServer{}
+	state := llmStateForOpenAI(t, envelopeMS(t, 2000))
+	start := time.Now()
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	elapsed := time.Since(start)
+	if !resp.OK {
+		t.Fatalf("expected OK from completed SSE, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected result map, got %T", resp.Result)
+	}
+	if result["text"] != "pitch ok" {
+		t.Fatalf("text = %q, want message.content from SSE", result["text"])
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("elapsed = %v, want immediate return on [DONE] (not the 2s envelope)", elapsed)
+	}
+}
+
 // TestHandleLLM_CompletionsNewReturns_LogsSelectWinner pins the B-side probe:
 // when Completions.New returns before ctx.Done, handleLLM logs that winner.
 func TestHandleLLM_CompletionsNewReturns_LogsSelectWinner(t *testing.T) {

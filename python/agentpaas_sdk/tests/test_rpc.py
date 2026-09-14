@@ -143,3 +143,23 @@ class RPCReadTimeoutTests(unittest.TestCase):
         result = client.call("llm", {"prompt": "hi"})
         self.assertEqual(result["text"], "pong")
         self.assertEqual(result["tokens"], 1)
+
+
+class RPCReadTimeoutDefaultTests(unittest.TestCase):
+    def test_default_covers_300s_model_deadline(self) -> None:
+        import agentpaas_sdk._rpc as rpc
+
+        prev = os.environ.pop("AGENTPAAS_RPC_READ_TIMEOUT_SEC", None)
+        self.addCleanup(
+            lambda: (
+                os.environ.__setitem__("AGENTPAAS_RPC_READ_TIMEOUT_SEC", prev)
+                if prev is not None
+                else os.environ.pop("AGENTPAAS_RPC_READ_TIMEOUT_SEC", None)
+            )
+        )
+        got = rpc._rpc_read_timeout_sec()
+        self.assertGreaterEqual(
+            got,
+            310.0,
+            "130s RPC default would cap a 300s model deadline",
+        )
