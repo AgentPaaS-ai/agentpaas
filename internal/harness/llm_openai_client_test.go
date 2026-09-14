@@ -40,7 +40,7 @@ func TestNewLLMChatClient_LoopbackBaseURL(t *testing.T) {
 	defer func() { ts.Close() }()
 
 	baseURL := ts.URL + "/v1/"
-	client := newLLMChatClient(baseURL, "", "dummy-not-a-real-key")
+	client := newLLMChatClient(baseURL, "", "dummy-not-a-real-key", 2*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 

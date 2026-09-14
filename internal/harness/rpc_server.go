@@ -95,8 +95,9 @@ type rpcInvokeState struct {
 
 	// timeEnvelope is the authoritative active-time envelope (B30-T03 Part B,
 	// ceiling 5). When present, the LLM HTTP client timeout is derived from
-	// env.EffectiveOperationDeadlineMs(nowMs, env.ModelCallTimeoutMs). When
-	// nil (legacy v0.2.3 compat path), the legacy 120s constant applies.
+	// env.EffectiveOperationDeadlineMs(nowMs, env.ModelCallTimeoutMs) and
+	// capped at maxModelClientTimeout (5 min). When nil (legacy v0.2.3
+	// compat path), the legacy 120s constant applies.
 	timeEnvelope *routedrun.TimeEnvelope
 
 	// Progress journal (B27)
@@ -216,9 +217,29 @@ func (s *harnessRPCServer) ClearInvoke() {
 
 // legacyModelClientTimeout is the v0.2.3 fixed HTTP timeout for LLM calls.
 // It is used ONLY when no TimeEnvelope is available on the durable path
-// (legacy compat). On the durable path the timeout is derived from
+// (legacy compat). Weather/other agents keep this 120s default. On the
+// durable path the timeout is derived from
 // env.EffectiveOperationDeadlineMs(nowMs, env.ModelCallTimeoutMs).
 const legacyModelClientTimeout = 120 * time.Second
+
+// maxModelClientTimeout is the hard cap for a single model HTTP call
+// (pitch-filter / Gemini). Envelope remaining time may be a 30 min lease;
+// the socket must still die by 5 minutes.
+const maxModelClientTimeout = 5 * time.Minute
+
+// rpcReadTimeoutSlack is added to the model-call deadline so the Python
+// RPC read wait is strictly longer than the harness LLM timeout.
+const rpcReadTimeoutSlack = 10 * time.Second
+
+// rpcReadTimeoutFor returns the Python RPC line-read deadline for a model
+// call of the given duration (model deadline + slack). A 130s-only RPC
+// ceiling cannot cover a 300s model call.
+func rpcReadTimeoutFor(modelTimeout time.Duration) time.Duration {
+	if modelTimeout <= 0 {
+		modelTimeout = maxModelClientTimeout
+	}
+	return modelTimeout + rpcReadTimeoutSlack
+}
 
 // modelClientTimeout returns the HTTP client timeout for an LLM call. When a
 // TimeEnvelope is attached to the invoke state, the timeout is derived from
@@ -227,9 +248,9 @@ const legacyModelClientTimeout = 120 * time.Second
 // remaining (B30-T03 Part B, ceiling 5). When no envelope is present (legacy
 // v0.2.3 compat), it falls back to legacyModelClientTimeout.
 //
-// The result is hard-capped at legacyModelClientTimeout even when the run
-// lease is much longer (e.g. 30 min). A finished upstream generation must
-// not leave /invoke open for the remaining lease.
+// The result is hard-capped at maxModelClientTimeout (5 min) even when the
+// run lease is much longer (e.g. 30 min). A hung socket fail-closes with
+// llm_failed; a finished upstream generation must not leave /invoke open.
 func (s *harnessRPCServer) modelClientTimeout(state *rpcInvokeState) time.Duration {
 	d := legacyModelClientTimeout
 	if state != nil && state.timeEnvelope != nil {
@@ -245,8 +266,8 @@ func (s *harnessRPCServer) modelClientTimeout(state *rpcInvokeState) time.Durati
 		}
 		d = time.Duration(deadlineMs) * time.Millisecond
 	}
-	if d > legacyModelClientTimeout {
-		return legacyModelClientTimeout
+	if d > maxModelClientTimeout {
+		return maxModelClientTimeout
 	}
 	return d
 }
@@ -748,8 +769,9 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	}
 
 	// One deadline owner: context.WithTimeout from modelClientTimeout /
-	// TimeEnvelope. openai-go Completions.New honors ctx; do not stack a
-	// second http.Client.Timeout that disagrees with the envelope.
+	// TimeEnvelope (up to 5 min). callLLMChatCompletion also sets
+	// http.Client.Timeout and option.WithRequestTimeout to that deadline so
+	// the socket dies even when Completions.New ignores ctx (Gemini SSE).
 	timeout := s.modelClientTimeout(state)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

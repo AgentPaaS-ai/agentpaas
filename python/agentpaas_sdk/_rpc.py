@@ -9,9 +9,11 @@ import threading
 import uuid
 from typing import Any
 
-# Default read deadline for one RPC response line: 120s model cap + 10s slack.
-# Override with AGENTPAAS_RPC_READ_TIMEOUT_SEC (seconds, float).
-_DEFAULT_RPC_READ_TIMEOUT_SEC = 130.0
+# Default read deadline for one RPC response line: 300s model cap + 10s slack.
+# Override with AGENTPAAS_RPC_READ_TIMEOUT_SEC (seconds, float). The harness
+# also sets this from maxModelClientTimeout + slack so a 130s default cannot
+# cap a 5-minute pitch-filter/Gemini call.
+_DEFAULT_RPC_READ_TIMEOUT_SEC = 310.0
 
 
 def _rpc_read_timeout_sec() -> float:
