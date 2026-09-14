@@ -32,19 +32,19 @@ type AdmitImageResponse struct {
 
 // ImageRecord represents a single image record returned by the API.
 type ImageRecord struct {
-	ID                    string                 `json:"id"`
-	TenantID              string                 `json:"tenant_id,omitempty"`
-	ImageDigest           string                 `json:"image_digest"`
-	RunDigest             string                 `json:"run_digest,omitempty"`
-	Platform              string                 `json:"platform,omitempty"`
-	RegistryRef           string                 `json:"registry_ref,omitempty"`
-	AgentName             string                 `json:"agent_name,omitempty"`
-	AgentVersion          string                 `json:"agent_version,omitempty"`
-	PublicKeyFingerprint  string                 `json:"public_key_fingerprint,omitempty"`
-	Status                string                 `json:"status"`
-	CreatedAt             string                 `json:"created_at,omitempty"`
-	PublisherName         string                 `json:"publisher_name,omitempty"`
-	AgentYAML             map[string]interface{} `json:"agent_yaml,omitempty"`
+	ID                   string                 `json:"id"`
+	TenantID             string                 `json:"tenant_id,omitempty"`
+	ImageDigest          string                 `json:"image_digest"`
+	RunDigest            string                 `json:"run_digest,omitempty"`
+	Platform             string                 `json:"platform,omitempty"`
+	RegistryRef          string                 `json:"registry_ref,omitempty"`
+	AgentName            string                 `json:"agent_name,omitempty"`
+	AgentVersion         string                 `json:"agent_version,omitempty"`
+	PublicKeyFingerprint string                 `json:"public_key_fingerprint,omitempty"`
+	Status               string                 `json:"status"`
+	CreatedAt            string                 `json:"created_at,omitempty"`
+	PublisherName        string                 `json:"publisher_name,omitempty"`
+	AgentYAML            map[string]interface{} `json:"agent_yaml,omitempty"`
 }
 
 // MarshalJSON preserves the existing string field API while sending an
@@ -160,4 +160,12 @@ func (c *CloudClient) GetImage(ctx context.Context, token string, idOrDigest str
 		return nil, fmt.Errorf("get image: decode response: %w", err)
 	}
 	return &result, nil
+}
+
+// DeleteImage calls DELETE /v1/images/{idOrDigest} with a Bearer token.
+func (c *CloudClient) DeleteImage(ctx context.Context, token string, idOrDigest string) error {
+	if strings.ContainsAny(idOrDigest, "/\\\n\r") {
+		return fmt.Errorf("delete image: invalid idOrDigest %q", idOrDigest)
+	}
+	return c.authenticatedJSON(ctx, http.MethodDelete, token, "/v1/images/"+idOrDigest, "delete image", nil, nil)
 }

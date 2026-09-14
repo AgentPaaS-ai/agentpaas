@@ -51,6 +51,9 @@ type HTTPStatusError struct {
 	ErrorCode     string
 	Reason        string
 	RetryAfterSec int
+	DeploymentIDs []string
+	InstanceIDs   []string
+	ConnectionIDs []string
 }
 
 // Error implements error.
@@ -124,11 +127,14 @@ func statusError(op string, resp *http.Response) error {
 	msg := strings.TrimSpace(string(body))
 	if msg != "" {
 		var payload struct {
-			Error         string `json:"error"`
-			Reason        string `json:"reason"`
-			Message       string `json:"message"`
-			Hint          string `json:"hint"`
-			RetryAfterSec int    `json:"retry_after_sec"`
+			Error         string   `json:"error"`
+			Reason        string   `json:"reason"`
+			Message       string   `json:"message"`
+			Hint          string   `json:"hint"`
+			RetryAfterSec int      `json:"retry_after_sec"`
+			DeploymentIDs []string `json:"deployment_ids"`
+			InstanceIDs   []string `json:"instance_ids"`
+			ConnectionIDs []string `json:"connection_ids"`
 		}
 		if json.Unmarshal(body, &payload) == nil && (payload.Error != "" || payload.Reason != "") {
 			errMsg := fmt.Sprintf("%s: %s (status %d)", op, payload.Error, resp.StatusCode)
@@ -151,6 +157,9 @@ func statusError(op string, resp *http.Response) error {
 				ErrorCode:     payload.Error,
 				Reason:        payload.Reason,
 				RetryAfterSec: payload.RetryAfterSec,
+				DeploymentIDs: payload.DeploymentIDs,
+				InstanceIDs:   payload.InstanceIDs,
+				ConnectionIDs: payload.ConnectionIDs,
 			}
 		}
 		// Non-JSON body: include a short excerpt.
