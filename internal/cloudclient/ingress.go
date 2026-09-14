@@ -196,6 +196,15 @@ func (c *CloudClient) ListIngressSourceEvents(ctx context.Context, token, source
 	return result, nil
 }
 
+// DeleteIngressSource calls DELETE /v1/ingress/sources/:id.
+func (c *CloudClient) DeleteIngressSource(ctx context.Context, token, sourceID string) error {
+	path, err := ingressSourcePath(sourceID, "")
+	if err != nil {
+		return fmt.Errorf("delete ingress source: %w", err)
+	}
+	return c.authenticatedJSON(ctx, http.MethodDelete, token, path, "delete ingress source", nil, nil)
+}
+
 // DisableIngressSource calls POST /v1/ingress/sources/:id/disable.
 func (c *CloudClient) DisableIngressSource(ctx context.Context, token, sourceID string) (*IngressSourceResponse, error) {
 	path, err := ingressSourcePath(sourceID, "/disable")

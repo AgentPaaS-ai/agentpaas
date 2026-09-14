@@ -311,3 +311,44 @@ func (c *CloudClient) Hangup(ctx context.Context, token string, id string) (*Han
 	}
 	return &result, nil
 }
+
+// RetireWorkflow calls POST /v1/workflows/{id}/retire with a Bearer token.
+func (c *CloudClient) RetireWorkflow(ctx context.Context, token string, id string) (*WorkflowRecord, error) {
+	if invalidWorkflowID(id) {
+		return nil, fmt.Errorf("retire workflow: invalid id %q", id)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/workflows/"+id+"/retire", nil)
+	if err != nil {
+		return nil, fmt.Errorf("retire workflow: create request: %w", err)
+	}
+	httpReq.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.HTTPClient.Do(httpReq)
+	if err != nil {
+		return nil, wrapTransportError("retire workflow", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("retire workflow: not authenticated (token may be expired or invalid)")
+	}
+	if resp.StatusCode == http.StatusNoContent {
+		return &WorkflowRecord{ID: id, Status: "retired"}, nil
+	}
+	if !jsonOK(resp.StatusCode) {
+		return nil, statusError("retire workflow", resp)
+	}
+
+	var result WorkflowRecord
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("retire workflow: decode response: %w", err)
+	}
+	if result.ID == "" {
+		result.ID = id
+	}
+	if result.Status == "" {
+		result.Status = "retired"
+	}
+	return &result, nil
+}
