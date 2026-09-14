@@ -44,7 +44,7 @@ func TestCloudIngressCommandRegistered(t *testing.T) {
 	for _, c := range source.Commands() {
 		sourceNames[c.Name()] = true
 	}
-	for _, want := range []string{"create", "disable", "rotate", "bind-reply"} {
+	for _, want := range []string{"create", "disable", "rotate", "bind-reply", "delete"} {
 		if !sourceNames[want] {
 			t.Errorf("missing ingress source %s", want)
 		}
@@ -398,11 +398,128 @@ func TestCloudIngress_LifecycleRejectsSlashIDs(t *testing.T) {
 		{"cloud", "ingress", "connections", "src/1"},
 		{"cloud", "ingress", "events", "src/1"},
 		{"cloud", "ingress", "test-filter", "src/1", "--filter", "{}", "--event", "{}"},
+		{"cloud", "ingress", "source", "delete", "src/1", "--yes", "--confirm-id", "src/1"},
 	}
 	for _, args := range cases {
 		_, _, err := executeCloudCmd(t, "", args...)
 		if err == nil || !strings.Contains(err.Error(), "invalid") {
 			t.Fatalf("args=%v err=%v, want invalid id", args, err)
 		}
+	}
+}
+
+func TestCloudIngressSourceHelp_ListsDelete(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "ingress", "source", "--help")
+	if err != nil {
+		t.Fatalf("cloud ingress source --help: %v", err)
+	}
+	if !strings.Contains(stdout, "delete") {
+		t.Errorf("cloud ingress source --help should list delete, got: %s", stdout)
+	}
+}
+
+func TestCloudIngressSourceDelete_RequiresYes(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_ingress")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("ingress source delete without --yes must not call API; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "ingress", "source", "delete", "src_01J")
+	if err == nil {
+		t.Fatal("expected error without --yes")
+	}
+	combined := err.Error() + stderr
+	want := "cloud ingress source delete: refusing without --yes (this deletes an ingress source)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudIngressSourceDelete_YesConfirmIDMismatch_NonTTY(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_ingress")
+
+	deleted := false
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = true
+		}
+		t.Errorf("ingress source delete with mismatched --confirm-id must not call DELETE; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "ingress", "source", "delete", "src_01J", "--yes", "--confirm-id", "src_other")
+	if err == nil {
+		t.Fatal("expected error for mismatched --confirm-id")
+	}
+	if deleted {
+		t.Fatal("ingress source delete with mismatched --confirm-id deleted the source")
+	}
+	combined := err.Error() + stderr
+	want := "cloud ingress source delete: confirmation failed (run this in your own terminal, not via an agent)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudIngressSourceDelete_Success(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_ingress")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/ingress/sources/src_01J" {
+			t.Errorf("path = %s, want /v1/ingress/sources/src_01J", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "ingress", "source", "delete", "src_01J", "--yes", "--confirm-id", "src_01J")
+	if err != nil {
+		t.Fatalf("ingress source delete: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Deleted") {
+		t.Errorf("expected 'Deleted' in output, got: %q", stdout)
+	}
+}
+
+func TestCloudIngressSourceDelete_ConflictDisableConnections(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_ingress")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":          "source_in_use",
+			"message":        "Disable connections first",
+			"connection_ids": []string{"con_1", "con_2"},
+		})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "ingress", "source", "delete", "src_01J", "--yes", "--confirm-id", "src_01J")
+	if err == nil {
+		t.Fatal("expected 409 error")
+	}
+	combined := err.Error() + stdout + stderr
+	if !strings.Contains(combined, "connection disable con_1") || !strings.Contains(combined, "connection disable con_2") {
+		t.Errorf("409 should print disable connection commands, got: %q", combined)
 	}
 }

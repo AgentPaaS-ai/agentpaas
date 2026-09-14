@@ -50,6 +50,11 @@ func TestCloudSecrets_CommandsRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Find cloud secrets list: %v", err)
 	}
+
+	_, _, err = cmd.Find([]string{"cloud", "secrets", "delete"})
+	if err != nil {
+		t.Fatalf("Find cloud secrets delete: %v", err)
+	}
 }
 
 func TestCloudSecrets_AliasSecret(t *testing.T) {
@@ -594,5 +599,151 @@ func TestCloudSecretsBind_HelpMentionsOAuthDelegated(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "oauth_delegated") {
 		t.Errorf("help should mention oauth_delegated, got: %s", stdout)
+	}
+}
+
+func TestCloudSecretsHelp_ListsDelete(t *testing.T) {
+	stdout, _, err := executeCloudCmd(t, "", "cloud", "secrets", "--help")
+	if err != nil {
+		t.Fatalf("cloud secrets --help: %v", err)
+	}
+	if !strings.Contains(stdout, "delete") {
+		t.Errorf("cloud secrets --help should list delete, got: %s", stdout)
+	}
+}
+
+func TestCloudSecretsDelete_RequiresYes(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_secrets_delete_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("cloud secrets delete without --yes must not call API; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "secrets", "delete", "openai-key")
+	if err == nil {
+		t.Fatal("expected error without --yes")
+	}
+	combined := err.Error() + stderr
+	want := "cloud secrets delete: refusing without --yes (this deletes a cloud secret)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudSecretsDelete_YesConfirmIDMismatch_NonTTY(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_secrets_delete_test")
+
+	deleted := false
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			deleted = true
+		}
+		t.Errorf("cloud secrets delete with mismatched --confirm-id must not call DELETE; got %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	_, stderr, err := executeCloudCmd(t, "", "cloud", "secrets", "delete", "openai-key", "--yes", "--confirm-id", "other-key")
+	if err == nil {
+		t.Fatal("expected error for mismatched --confirm-id")
+	}
+	if deleted {
+		t.Fatal("secrets delete with mismatched --confirm-id deleted the secret")
+	}
+	combined := err.Error() + stderr
+	want := "cloud secrets delete: confirmation failed (run this in your own terminal, not via an agent)"
+	if !strings.Contains(combined, want) {
+		t.Errorf("error = %q, want containing %q", combined, want)
+	}
+}
+
+func TestCloudSecretsDelete_Success(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_secrets_delete_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		if r.URL.Path != "/v1/secrets/openai-key" {
+			t.Errorf("path = %s, want /v1/secrets/openai-key", r.URL.Path)
+		}
+		if r.URL.RawQuery != "" {
+			t.Errorf("query = %q, want empty without --force", r.URL.RawQuery)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "secrets", "delete", "openai-key", "--yes", "--confirm-id", "openai-key")
+	if err != nil {
+		t.Fatalf("secrets delete: err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Deleted") {
+		t.Errorf("expected 'Deleted' in output, got: %q", stdout)
+	}
+	if strings.Contains(stdout, "super-secret") || strings.Contains(stderr, "super-secret") {
+		t.Error("secret value leaked")
+	}
+}
+
+func TestCloudSecretsDelete_ForceQuery(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_secrets_delete_test")
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "force=1" {
+			t.Errorf("query = %q, want force=1", r.URL.RawQuery)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	if _, _, err := executeCloudCmd(t, "", "cloud", "secrets", "delete", "openai-key", "--yes", "--force", "--confirm-id", "openai-key"); err != nil {
+		t.Fatalf("secrets delete --force: %v", err)
+	}
+}
+
+func TestCloudSecretsDelete_ConflictPrintsDeploymentIDs(t *testing.T) {
+	store := setupFakeTokenStore(t)
+	_ = store.Set(context.Background(), "apc_secrets_delete_test")
+
+	secretValue := "sk-live-must-never-print"
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":          "secret_in_use",
+			"message":        "Secret label is bound to one or more deployments. Rotate by saving the same label with a new value, or pass force=1 to delete anyway (invokes will fail until re-added under the same name).",
+			"deployment_ids": []string{"dep_bound_1", "dep_bound_2"},
+			"value":          secretValue,
+		})
+	}))
+	defer func() { apiServer.Close() }()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_URL", apiServer.URL)
+
+	stdout, stderr, err := executeCloudCmd(t, "", "cloud", "secrets", "delete", "openai-key", "--yes", "--confirm-id", "openai-key")
+	if err == nil {
+		t.Fatal("expected 409 error")
+	}
+	combined := err.Error() + stdout + stderr
+	if !strings.Contains(combined, "dep_bound_1") || !strings.Contains(combined, "dep_bound_2") {
+		t.Errorf("409 should print bound deployment ids, got: %q", combined)
+	}
+	if strings.Contains(combined, secretValue) {
+		t.Error("secret value leaked in 409 path")
 	}
 }
