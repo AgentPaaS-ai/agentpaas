@@ -3,6 +3,13 @@
 All notable changes to AgentPaaS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.4.2 — 2026-09-14
+
+### Fixed
+- Long Gemini (OpenRouter) reasoning could leave a cloud invoke `running` after the provider already finished (`finish_reason=stop`). `Completions.New` waited for one JSON body while OpenRouter streamed; Python `agent.llm()` never returned; `/invoke` held the mutex until the 30 minute lease.
+- Single model HTTP call now fail-closes at 5 minutes (socket timeout equals ctx). SSE responses use openai-go `NewStreaming` and return `message.content`. Python RPC read deadline is 310s so a 5 minute model call is not killed at 130s.
+- Cloud cancel/timeout now keep `logs.txt` (`invoke_forward` start/end) so a hung run is diagnosable.
+
 ## 0.4.1 — 2026-08-31
 
 ### Added

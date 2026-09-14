@@ -3,16 +3,16 @@ class Agentpaas < Formula
   homepage "https://github.com/AgentPaaS-ai/agentpaas"
   # Published install path is the Homebrew cask in AgentPaaS-ai/homebrew-tap
   # (goreleaser updates Casks/agentpaas.rb). This Formula is the in-repo mirror.
-  version "0.4.1"
+  version "0.4.2"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.1/agentpaas_0.4.1_darwin_arm64.tar.gz"
+      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.2/agentpaas_0.4.2_darwin_arm64.tar.gz"
       sha256 "90cacdd1f94b05c69cec0e5be68b1a0121059fc20898110494aa343bb864cb35"
     end
     on_intel do
-      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.1/agentpaas_0.4.1_darwin_amd64.tar.gz"
+      url "https://github.com/AgentPaaS-ai/agentpaas/releases/download/v0.4.2/agentpaas_0.4.2_darwin_amd64.tar.gz"
       sha256 "63e5218774121be785c0b240bf71cedca20112c13e0a82305b122041839e490c"
     end
   end
