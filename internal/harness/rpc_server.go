@@ -796,8 +796,10 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	var result *llm.LLMResult
 	select {
 	case <-ctx.Done():
+		log.Printf("harness: llm ctx.Done wins vs Completions.New err=%v", ctx.Err())
 		err = ctx.Err()
 	case o := <-ch:
+		log.Printf("harness: llm Completions.New returns vs ctx.Done err=%t", o.err != nil)
 		result, err = o.result, o.err
 	}
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -131,7 +132,12 @@ func callLLMChatCompletion(ctx context.Context, baseURL, originalHost, apiKey, m
 		opts = append(opts, option.WithJSONSet("reasoning", map[string]any{"exclude": true}))
 	}
 	start := time.Now()
-	log.Printf("harness: llm Completions.New start model=%s", model)
+	deadlineMs := int64(-1)
+	if dl, ok := ctx.Deadline(); ok {
+		deadlineMs = time.Until(dl).Milliseconds()
+	}
+	log.Printf("harness: llm Completions.New start model=%s deadline_ms=%d rss_bytes=%d stream=false",
+		model, deadlineMs, optionalRSSBytes())
 	completion, err := client.Chat.Completions.New(ctx, params, opts...)
 	log.Printf("harness: llm Completions.New returned err=%t elapsed=%s", err != nil, time.Since(start).Round(time.Millisecond))
 	if err != nil {
@@ -151,6 +157,12 @@ func callLLMChatCompletion(ctx context.Context, baseURL, originalHost, apiKey, m
 		InputTokens:  completion.Usage.PromptTokens,
 		OutputTokens: completion.Usage.CompletionTokens,
 	}, nil
+}
+
+func optionalRSSBytes() int64 {
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	return int64(ms.Sys)
 }
 
 func llmHTTPStatusFromError(err error) string {
