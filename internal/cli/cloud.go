@@ -1184,10 +1184,12 @@ the cloud registry.`,
 
 // newCloudImagesCmd creates the `agentpaas cloud images` command.
 func newCloudImagesCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "images",
 		Short: "List admitted cloud images",
 		Long: `List all images admitted to the AgentPaaS Cloud control plane.
+
+Use 'agentpaas cloud images delete <img_|sha256:…> --yes' to remove an unused image.
 
 Requires a valid login. Use 'agentpaas cloud login' first.`,
 		Args: cobra.NoArgs,
@@ -1227,6 +1229,8 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 			return nil
 		},
 	}
+	cmd.AddCommand(newCloudImagesDeleteCmd())
+	return cmd
 }
 
 // newCloudRegistryCmd creates the `agentpaas cloud registry` command.
@@ -1500,19 +1504,23 @@ func newCloudSecretsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "secrets",
 		Aliases: []string{"secret"},
-		Short:   "Push and list cloud secrets (labels only, never values)",
+		Short:   "Push, list, and delete cloud secrets (labels only, never values)",
 		Long: `Sync local keychain secrets to the AgentPaaS Cloud.
 
 Secrets are pushed by name only; values are transmitted over TLS but
-never displayed by the CLI. Requires a valid cloud login.`,
+never displayed by the CLI. Requires a valid cloud login.
+
+Use 'agentpaas cloud secrets delete <name> --yes' to remove a secret.`,
 		Example: `  agentpaas cloud secrets push my-api-key
-  agentpaas cloud secrets list`,
+  agentpaas cloud secrets list
+  agentpaas cloud secrets delete my-api-key --yes --confirm-id my-api-key`,
 	}
 
 	cmd.AddCommand(newCloudSecretsPushCmd())
 	cmd.AddCommand(newCloudSecretsListCmd())
 	cmd.AddCommand(newCloudSecretsBindCmd())
 	cmd.AddCommand(newCloudSecretsBindingsCmd())
+	cmd.AddCommand(newCloudSecretsDeleteCmd())
 
 	return cmd
 }
@@ -1787,6 +1795,68 @@ func newCloudSecretsBindingsCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// newCloudSecretsDeleteCmd creates the `agentpaas cloud secrets delete` command.
+func newCloudSecretsDeleteCmd() *cobra.Command {
+	var yes bool
+	var force bool
+	var confirmID string
+	cmd := &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a cloud secret (never prints values)",
+		Long: `Delete a cloud secret by name.
+
+This calls DELETE /v1/secrets/:name. Values are never printed.
+If the secret is bound to deployments, the API returns 409 unless --force
+is set. On 409 this command prints the bound deployment ids.
+
+Requires --yes. JSON mode still requires --yes.
+When stdin is not a TTY, also requires --confirm-id equal to the secret name.
+When stdin is a TTY, type the secret name at the prompt (even with --yes).
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			const verb = "cloud secrets delete"
+			if !yes {
+				return fmt.Errorf("%s: refusing without --yes (this deletes a cloud secret)", verb)
+			}
+			name := args[0]
+			if strings.ContainsAny(name, "/\\\n\r") {
+				return fmt.Errorf("%s: invalid name %q: must not contain '/', '\\', newline, or carriage return", verb, name)
+			}
+			if err := confirmCloudDestructive(cmd, verb, "Type the secret name to confirm delete: ", name, confirmID); err != nil {
+				return err
+			}
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("%s: %w", verb, err)
+			}
+
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			if err := client.DeleteSecretOpts(cmd.Context(), token, name, force); err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return wrapDeleteConflict(verb, err, boundDeploymentIDLines(err))
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, map[string]string{"name": name, "status": "deleted"}, nil)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Deleted secret: %s\n", name)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm delete (required; this deletes a cloud secret)")
+	cmd.Flags().BoolVar(&force, "force", false, "Delete even if deployments still bind this secret")
+	cmd.Flags().StringVar(&confirmID, "confirm-id", "", "Exact secret name (required when stdin is not a TTY)")
+	return cmd
 }
 
 // printNotLoggedIn returns a typed cloud error. The cloud command wrapper
@@ -2217,8 +2287,6 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 	return cmd
 }
 
-const cloudUndeployConfirmFailed = "cloud undeploy: confirmation failed (run this in your own terminal, not via an agent)"
-
 func stdinIsTTY(in io.Reader) bool {
 	f, ok := in.(*os.File)
 	if !ok {
@@ -2227,23 +2295,96 @@ func stdinIsTTY(in io.Reader) bool {
 	return term.IsTerminal(int(f.Fd()))
 }
 
-func confirmCloudUndeploy(cmd *cobra.Command, depID, confirmID string) error {
+func confirmCloudDestructive(cmd *cobra.Command, verb, prompt, id, confirmID string) error {
+	failed := verb + ": confirmation failed (run this in your own terminal, not via an agent)"
 	in := cmd.InOrStdin()
 	if stdinIsTTY(in) {
-		fmt.Fprint(cmd.ErrOrStderr(), "Type the deployment id to confirm undeploy: ")
+		_, _ = fmt.Fprint(cmd.ErrOrStderr(), prompt)
 		line, err := bufio.NewReader(in).ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
-			return errors.New(cloudUndeployConfirmFailed)
+			return errors.New(failed)
 		}
-		if strings.TrimRight(line, "\r\n") != depID {
-			return errors.New(cloudUndeployConfirmFailed)
+		if strings.TrimRight(line, "\r\n") != id {
+			return errors.New(failed)
 		}
 		return nil
 	}
-	if confirmID != depID {
-		return errors.New(cloudUndeployConfirmFailed)
+	if confirmID != id {
+		return errors.New(failed)
 	}
 	return nil
+}
+
+func confirmCloudUndeploy(cmd *cobra.Command, depID, confirmID string) error {
+	return confirmCloudDestructive(cmd, "cloud undeploy", "Type the deployment id to confirm undeploy: ", depID, confirmID)
+}
+
+func safeConflictIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" || strings.ContainsAny(id, "/\\\n\r") {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
+func conflictStatus(err error) *cloudclient.HTTPStatusError {
+	var statusErr *cloudclient.HTTPStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr
+	}
+	return nil
+}
+
+func wrapDeleteConflict(verb string, err error, next []string) error {
+	if len(next) == 0 {
+		return fmt.Errorf("%s: %w", verb, err)
+	}
+	return fmt.Errorf("%s: %w\n  %s", verb, err, strings.Join(next, "\n  "))
+}
+
+func undeployNextCommands(err error) []string {
+	statusErr := conflictStatus(err)
+	if statusErr == nil {
+		return nil
+	}
+	ids := safeConflictIDs(statusErr.DeploymentIDs)
+	lines := make([]string, 0, len(ids))
+	for _, id := range ids {
+		lines = append(lines, "agentpaas cloud undeploy "+id+" --yes --confirm-id "+id)
+	}
+	return lines
+}
+
+func boundDeploymentIDLines(err error) []string {
+	statusErr := conflictStatus(err)
+	if statusErr == nil {
+		return nil
+	}
+	return safeConflictIDs(statusErr.DeploymentIDs)
+}
+
+func inUseInstanceLines(err error) []string {
+	statusErr := conflictStatus(err)
+	if statusErr == nil {
+		return nil
+	}
+	return safeConflictIDs(statusErr.InstanceIDs)
+}
+
+func disableConnectionCommands(err error) []string {
+	statusErr := conflictStatus(err)
+	if statusErr == nil {
+		return nil
+	}
+	ids := safeConflictIDs(statusErr.ConnectionIDs)
+	lines := make([]string, 0, len(ids))
+	for _, id := range ids {
+		lines = append(lines, "agentpaas cloud ingress connection disable "+id)
+	}
+	return lines
 }
 
 // newCloudUndeployCmd creates the `agentpaas cloud undeploy` command.

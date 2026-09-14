@@ -20,9 +20,10 @@ func newCloudWorkflowCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "workflow",
 		Short: "Manage cloud workflows",
-		Long: `Create, list, get, and start AgentPaaS Cloud workflows.
+		Long: `Create, list, get, start, and retire AgentPaaS Cloud workflows.
 
-Use 'agentpaas cloud workflow instance' to inspect a started instance.`,
+Use 'agentpaas cloud workflow instance' to inspect a started instance.
+Use 'agentpaas cloud workflow retire <wf_> --yes' to retire a recipe.`,
 	}
 	cmd.AddCommand(newCloudWorkflowCreateCmd())
 	cmd.AddCommand(newCloudWorkflowComposeCmd())
@@ -32,6 +33,7 @@ Use 'agentpaas cloud workflow instance' to inspect a started instance.`,
 	cmd.AddCommand(newCloudWorkflowInstanceCmd())
 	cmd.AddCommand(newCloudWorkflowLiveCallCmd())
 	cmd.AddCommand(newCloudWorkflowHangupCmd())
+	cmd.AddCommand(newCloudWorkflowRetireCmd())
 	return cmd
 }
 
@@ -315,6 +317,67 @@ func newCloudWorkflowHangupCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newCloudWorkflowRetireCmd() *cobra.Command {
+	var yes bool
+	var confirmID string
+	cmd := &cobra.Command{
+		Use:   "retire <wf_id>",
+		Short: "Retire a cloud workflow recipe",
+		Long: `Retire a cloud workflow by ID.
+
+This calls POST /v1/workflows/:id/retire. It does not delete in-use instances.
+If instances are still running, the API returns 409 and this command prints
+the in-use instance ids.
+
+Requires --yes. JSON mode still requires --yes.
+When stdin is not a TTY, also requires --confirm-id equal to the workflow id.
+When stdin is a TTY, type the workflow id at the prompt (even with --yes).
+Never prints secrets.
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			const verb = "cloud workflow retire"
+			if !yes {
+				return fmt.Errorf("%s: refusing without --yes (this retires a workflow)", verb)
+			}
+			id := args[0]
+			if strings.ContainsAny(id, "/\\\n\r") {
+				return fmt.Errorf("%s: invalid workflow id %q: must not contain '/', '\\', newline, or carriage return", verb, id)
+			}
+			if err := confirmCloudDestructive(cmd, verb, "Type the workflow id to confirm retire: ", id, confirmID); err != nil {
+				return err
+			}
+
+			token, err := resolveToken(cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "not logged in") {
+					return printNotLoggedIn(cmd)
+				}
+				return fmt.Errorf("%s: %w", verb, err)
+			}
+
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			res, err := client.RetireWorkflow(cmd.Context(), token, id)
+			if err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return wrapDeleteConflict(verb, err, inUseInstanceLines(err))
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, res, nil)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Retired: %s (status=%s)\n", res.ID, res.Status)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm retire (required; this retires a workflow)")
+	cmd.Flags().StringVar(&confirmID, "confirm-id", "", "Exact workflow id (required when stdin is not a TTY)")
+	return cmd
 }
 
 func parseWorkflowJSONObjectFlag(raw, flagName string) (json.RawMessage, error) {

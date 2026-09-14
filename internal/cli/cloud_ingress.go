@@ -26,6 +26,7 @@ Signing secrets and reply credentials are never printed. Use --secret-stdin.`,
   agentpaas cloud ingress sources
   agentpaas cloud ingress connections src_01J...
   agentpaas cloud ingress source disable src_01J...
+  agentpaas cloud ingress source delete src_01J... --yes --confirm-id src_01J...
   agentpaas cloud ingress connection disable con_01J...
   printf '%s' "$SLACK_SIGNING_SECRET" | agentpaas cloud ingress source rotate src_01J... --secret-stdin
   printf '%s' "$SLACK_BOT_TOKEN" | agentpaas cloud ingress source bind-reply src_01J... --credential slack-bot-token --secret-stdin
@@ -70,6 +71,7 @@ func newCloudIngressSourceCmd() *cobra.Command {
 	cmd.AddCommand(newCloudIngressSourceDisableCmd())
 	cmd.AddCommand(newCloudIngressSourceRotateCmd())
 	cmd.AddCommand(newCloudIngressSourceBindReplyCmd())
+	cmd.AddCommand(newCloudIngressSourceDeleteCmd())
 	return cmd
 }
 
@@ -279,6 +281,62 @@ func newCloudIngressSourceDisableCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newCloudIngressSourceDeleteCmd() *cobra.Command {
+	var yes bool
+	var confirmID string
+	cmd := &cobra.Command{
+		Use:   "delete <src_id>",
+		Short: "Delete an ingress source",
+		Long: `Delete an ingress source by ID.
+
+This calls DELETE /v1/ingress/sources/:id. Signing secrets are never printed.
+If enabled connections still reference the source, the API returns 409 and
+this command prints 'agentpaas cloud ingress connection disable <con_>' for
+each blocker.
+
+Requires --yes. JSON mode still requires --yes.
+When stdin is not a TTY, also requires --confirm-id equal to the source id.
+When stdin is a TTY, type the source id at the prompt (even with --yes).
+
+Requires a valid login. Use 'agentpaas cloud login' first.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			const verb = "cloud ingress source delete"
+			if !yes {
+				return fmt.Errorf("%s: refusing without --yes (this deletes an ingress source)", verb)
+			}
+			sourceID, err := requireIngressID(verb, "source", args[0])
+			if err != nil {
+				return err
+			}
+			if err := confirmCloudDestructive(cmd, verb, "Type the source id to confirm delete: ", sourceID, confirmID); err != nil {
+				return err
+			}
+
+			token, err := resolveIngressToken(cmd, verb)
+			if err != nil {
+				return err
+			}
+			client := cloudclient.NewCloudClient(resolveAPIURL())
+			if err := client.DeleteIngressSource(cmd.Context(), token, sourceID); err != nil {
+				if strings.Contains(err.Error(), "not authenticated") {
+					return printNotLoggedIn(cmd)
+				}
+				return wrapDeleteConflict(verb, err, disableConnectionCommands(err))
+			}
+
+			if jsonOutput(cmd) {
+				return printTextOrJSON(true, map[string]string{"id": sourceID, "status": "deleted"}, nil)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Deleted source: %s\n", sourceID)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "Confirm delete (required; this deletes an ingress source)")
+	cmd.Flags().StringVar(&confirmID, "confirm-id", "", "Exact source id (required when stdin is not a TTY)")
+	return cmd
 }
 
 func newCloudIngressConnectionDisableCmd() *cobra.Command {
