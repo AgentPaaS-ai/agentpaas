@@ -1,12 +1,15 @@
 package harness
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +17,14 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 )
+
+func captureHarnessLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	return &buf
+}
 
 func llmStateForOpenAI(t *testing.T, env *routedrun.TimeEnvelope) *rpcInvokeState {
 	t.Helper()
@@ -130,6 +141,7 @@ func TestHandleLLM_CompletionsNewIgnoresCtx_TerminalsAtDeadline(t *testing.T) {
 			return nil, errors.New("completions still hanging")
 		},
 	}
+	logs := captureHarnessLogs(t)
 	state := llmStateForOpenAI(t, envelopeMS(t, 200))
 	start := time.Now()
 	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
@@ -139,6 +151,13 @@ func TestHandleLLM_CompletionsNewIgnoresCtx_TerminalsAtDeadline(t *testing.T) {
 	}
 	if resp.Code != "llm_failed" {
 		t.Fatalf("code = %q, want llm_failed", resp.Code)
+	}
+	gotLogs := logs.String()
+	if !strings.Contains(gotLogs, "ctx.Done wins vs Completions.New") {
+		t.Fatalf("logs = %q, want ctx.Done wins vs Completions.New (A vs B probe)", gotLogs)
+	}
+	if strings.Contains(gotLogs, testSecret) {
+		t.Fatal("logs leaked credential value")
 	}
 	if elapsed > 1500*time.Millisecond {
 		t.Fatalf("elapsed = %v, want < 1.5s (ctx deadline 200ms; Completions.New ignored ctx)", elapsed)
@@ -248,5 +267,70 @@ func TestHandleLLM_OpenRouterRequestExcludesReasoning(t *testing.T) {
 	reasoning, _ := gotBody["reasoning"].(map[string]any)
 	if reasoning["exclude"] != true {
 		t.Fatalf("reasoning.exclude = %v, want true; body=%v", gotBody["reasoning"], gotBody)
+	}
+}
+
+// TestCallLLMChatCompletion_ProbeLogs pins hang-split probes: Completions.New
+// start echoes deadline_ms, optional rss_bytes, and stream=false. No secrets.
+func TestCallLLMChatCompletion_ProbeLogs(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeChatCompletion(w, "ok", "", "gpt-4o", 2)
+	}))
+	defer func() { ts.Close() }()
+
+	logs := captureHarnessLogs(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	res, err := callLLMChatCompletion(ctx, ts.URL+"/v1/", "", "sk-test-not-for-logs", "gpt-4o", "hi", 0, "openai")
+	if err != nil {
+		t.Fatalf("callLLMChatCompletion: %v", err)
+	}
+	if res == nil || res.Text != "ok" {
+		t.Fatalf("unexpected result: %#v", res)
+	}
+	got := logs.String()
+	if !strings.Contains(got, "Completions.New start") {
+		t.Fatalf("logs = %q, want Completions.New start", got)
+	}
+	if !strings.Contains(got, "deadline_ms=") {
+		t.Fatalf("logs = %q, want deadline_ms=", got)
+	}
+	if !strings.Contains(got, "stream=false") {
+		t.Fatalf("logs = %q, want stream=false echoed", got)
+	}
+	if !strings.Contains(got, "Completions.New returned") {
+		t.Fatalf("logs = %q, want Completions.New returned", got)
+	}
+	if strings.Contains(got, "sk-test-not-for-logs") {
+		t.Fatal("logs leaked api key")
+	}
+	if strings.Contains(got, "hi") && strings.Contains(got, "prompt") {
+		t.Fatal("logs leaked prompt body")
+	}
+}
+
+// TestHandleLLM_CompletionsNewReturns_LogsSelectWinner pins the B-side probe:
+// when Completions.New returns before ctx.Done, handleLLM logs that winner.
+func TestHandleLLM_CompletionsNewReturns_LogsSelectWinner(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeChatCompletion(w, "visible answer", "", "gpt-4o", 2)
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	logs := captureHarnessLogs(t)
+	s := &harnessRPCServer{}
+	state := llmStateForOpenAI(t, nil)
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	got := logs.String()
+	if !strings.Contains(got, "Completions.New returns vs ctx.Done") {
+		t.Fatalf("logs = %q, want Completions.New returns vs ctx.Done", got)
+	}
+	if strings.Contains(got, "ctx.Done wins vs Completions.New") {
+		t.Fatalf("logs = %q, did not expect ctx.Done winner on a finished call", got)
 	}
 }
