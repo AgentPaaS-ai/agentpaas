@@ -270,18 +270,20 @@ func rejectOAuthDelegatedOnlyFields(c Credential, prefix string) []ValidationErr
 	}
 	check("provider", "provider", strings.TrimSpace(c.Provider) != "")
 	check("auth_endpoint", "auth_endpoint", strings.TrimSpace(c.AuthEndpoint) != "")
-	// token_endpoint is shared with type=oauth (B19). Only reject when type is
-	// neither oauth nor oauth_delegated — callers invoke this helper only on
-	// non-delegated types; for type=oauth, skip token_endpoint/client_id style
-	// fields that legitimately belong to backend refresh.
-	if c.Type != "oauth" {
+	// token_endpoint/client_id/refresh_token_credential are shared with
+	// type=oauth (B19) and type=oauth_llm (M15.1). Callers invoke this helper
+	// only on non-delegated types; skip those fields for oauth and oauth_llm.
+	if c.Type != "oauth" && c.Type != "oauth_llm" {
 		check("token_endpoint", "token_endpoint", strings.TrimSpace(c.TokenEndpoint) != "")
 		check("client_id", "client_id", strings.TrimSpace(c.ClientID) != "")
 		check("refresh_token_credential", "refresh_token_credential", strings.TrimSpace(c.RefreshTokenCredential) != "")
 	}
 	check("client_id_credential", "client_id_credential", strings.TrimSpace(c.ClientIDCredential) != "")
 	check("client_secret_credential", "client_secret_credential", strings.TrimSpace(c.ClientSecretCredential) != "")
-	check("scopes", "scopes", len(c.Scopes) > 0)
+	// oauth_llm may declare scopes; other non-delegated types may not.
+	if c.Type != "oauth_llm" {
+		check("scopes", "scopes", len(c.Scopes) > 0)
+	}
 	check("max_scopes", "max_scopes", len(c.MaxScopes) > 0)
 	check("redirect_path", "redirect_path", strings.TrimSpace(c.RedirectPath) != "")
 	return errs
