@@ -3,6 +3,7 @@ package policy
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -251,6 +252,40 @@ func isHTTPSURL(s string) bool {
 		return false
 	}
 	return u.Scheme == "https" && u.Host != ""
+}
+
+var oauthLlmRefreshNameRe = regexp.MustCompile(`^oauth_llm_rt_[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func oauthLlmTokenEndpointOK(s string) bool {
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "https" || u.Host == "" || u.User != nil {
+		return false
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	return true
+}
+
+func validOAuthLlmRefreshName(s string) bool {
+	return oauthLlmRefreshNameRe.MatchString(s) && !ContainsInjectionPattern(s)
+}
+
+func redactOAuthLlmTokenEndpoint(s string) string {
+	if !oauthLlmTokenEndpointOK(s) {
+		return ""
+	}
+	return strings.TrimSpace(s)
+}
+
+func redactOAuthLlmRefreshName(s string) string {
+	if !validOAuthLlmRefreshName(s) {
+		return ""
+	}
+	return s
 }
 
 // rejectOAuthDelegatedOnlyFields fails closed when oauth_delegated-only fields

@@ -1338,6 +1338,9 @@ echoed back by list or show commands.`,
 			if err != nil {
 				return fmt.Errorf("new secret cmd: %w", err)
 			}
+			if len(bytes.TrimSpace(value)) == 0 {
+				return fmt.Errorf("new secret cmd: secret value is empty")
+			}
 			store, err := secretStoreFactory(cmd)
 			if err != nil {
 				return fmt.Errorf("new secret cmd: %w", err)

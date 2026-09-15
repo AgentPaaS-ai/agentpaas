@@ -448,6 +448,11 @@ func canonicalizeCredentials(creds []Credential, warnings *[]string) []Canonical
 			Reason:                 c.Reason,
 			// Value deliberately omitted — no secret values in canonical form.
 		}
+		if c.Type == "oauth_llm" {
+			cr.TokenEndpoint = redactOAuthLlmTokenEndpoint(c.TokenEndpoint)
+			cr.ClientID = strings.TrimSpace(c.ClientID)
+			cr.RefreshTokenCredential = redactOAuthLlmRefreshName(c.RefreshTokenCredential)
+		}
 		if len(c.Scopes) > 0 {
 			scopes := append([]string(nil), c.Scopes...)
 			for i := range scopes {
