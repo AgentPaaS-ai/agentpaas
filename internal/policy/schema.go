@@ -111,8 +111,13 @@ type RetryConfig struct {
 	MaxBackoff  string `yaml:"max_backoff"` // max backoff duration
 }
 
+// OAuthLlmRefreshPrefix is the required Keychain secret name prefix for
+// type=oauth_llm refresh_token_credential. The value is a secret NAME, not a
+// nested declared credential ID.
+const OAuthLlmRefreshPrefix = "oauth_llm_rt_"
+
 // Credential defines a credential source for the agent.
-// Type may be "header", "brokered", "oauth", "direct_lease", or "oauth_delegated".
+// Type may be "header", "brokered", "oauth", "direct_lease", "oauth_delegated", or "oauth_llm".
 type Credential struct {
 	ID      string `yaml:"id"`
 	Type    string `yaml:"type"`
@@ -128,6 +133,10 @@ type Credential struct {
 	// scope is policy-pinned.
 	Reason string `yaml:"reason"`
 	// OAuth fields (type: oauth — backend token refresh, B19-T5).
+	// type=oauth_llm (M15.1 LLM egress refresh) reuses token_endpoint,
+	// client_id, refresh_token_credential, and scopes. For oauth_llm,
+	// refresh_token_credential is a Keychain secret NAME that must start
+	// with OAuthLlmRefreshPrefix; it is not a nested declared credential ID.
 	TokenEndpoint          string `yaml:"token_endpoint,omitempty"`
 	ClientID               string `yaml:"client_id,omitempty"`
 	RefreshTokenCredential string `yaml:"refresh_token_credential,omitempty"`

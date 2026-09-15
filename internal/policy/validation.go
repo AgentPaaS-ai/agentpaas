@@ -382,6 +382,46 @@ func ValidatePolicy(p *Policy) []ValidationError {
 			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
 		case "file":
 			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
+		case "oauth_llm":
+			if c.TokenEndpoint == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".token_endpoint",
+					Message:  "oauth_llm credential requires token_endpoint",
+					Severity: "error",
+				})
+			} else {
+				parsed, urlErr := url.Parse(c.TokenEndpoint)
+				if urlErr != nil || parsed.Scheme != "https" {
+					errs = append(errs, ValidationError{
+						Field:    prefix + ".token_endpoint",
+						Message:  fmt.Sprintf("token_endpoint must be a valid https URL, got %q", c.TokenEndpoint),
+						Severity: "error",
+					})
+				}
+			}
+			if c.ClientID == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".client_id",
+					Message:  "oauth_llm credential requires client_id",
+					Severity: "error",
+				})
+			}
+			if c.RefreshTokenCredential == "" {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".refresh_token_credential",
+					Message:  "oauth_llm credential requires refresh_token_credential",
+					Severity: "error",
+				})
+			} else if !strings.HasPrefix(c.RefreshTokenCredential, OAuthLlmRefreshPrefix) {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".refresh_token_credential",
+					Message:  fmt.Sprintf("refresh_token_credential must start with %s", OAuthLlmRefreshPrefix),
+					Severity: "error",
+				})
+			}
+			// oauth_llm may have token_endpoint, client_id, refresh_token_credential,
+			// scopes; must reject delegated-only fields (provider, auth_endpoint, …).
+			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
 		case "oauth_delegated":
 			errs = append(errs, validateOAuthDelegated(c, credIDs, prefix)...)
 		default:

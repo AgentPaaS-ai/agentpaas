@@ -17,6 +17,7 @@ var validCredentialTypes = map[string]bool{
 	"file":            true,
 	"oauth":           true,
 	"oauth_delegated": true,
+	"oauth_llm":       true,
 }
 
 // ParsePolicy reads a policy.yaml from r and returns the parsed Policy
@@ -136,7 +137,7 @@ func validateCredentialEntry(node *yaml.Node) error {
 				return fmt.Errorf("credential.type must be a string, got YAML tag %s", typeNode.Tag)
 			}
 			if !validCredentialTypes[typeNode.Value] {
-				return fmt.Errorf("invalid credential type %q: must be one of: header, brokered, file, direct_lease, oauth, oauth_delegated", typeNode.Value)
+				return fmt.Errorf("invalid credential type %q: must be one of: header, brokered, file, direct_lease, oauth, oauth_delegated, oauth_llm", typeNode.Value)
 			}
 		}
 	}

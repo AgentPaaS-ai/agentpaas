@@ -275,10 +275,11 @@ type connectConfig struct {
 // CredentialRule represents a credential injection rule by id only.
 // The actual secret values are injected at runtime by the secrets broker.
 type CredentialRule struct {
-	ID     string               `yaml:"id"`
-	Header string               `yaml:"header,omitempty"`
-	Value  string               `yaml:"value,omitempty"`
-	OAuth  *OAuthCredentialRule `yaml:"oauth,omitempty"`
+	ID       string                  `yaml:"id"`
+	Header   string                  `yaml:"header,omitempty"`
+	Value    string                  `yaml:"value,omitempty"`
+	OAuth    *OAuthCredentialRule    `yaml:"oauth,omitempty"`
+	OAuthLlm *OAuthLlmCredentialRule `yaml:"oauth_llm,omitempty"`
 }
 
 // OAuthCredentialRule carries the OAuth metadata needed by the gateway
@@ -287,6 +288,15 @@ type OAuthCredentialRule struct {
 	TokenEndpoint          string `yaml:"tokenEndpoint"`
 	ClientID               string `yaml:"clientId"`
 	RefreshTokenCredential string `yaml:"refreshTokenCredential"`
+}
+
+// OAuthLlmCredentialRule carries oauth_llm metadata only. Secret VALUES
+// (including the refresh token) are never copied into compiled YAML.
+type OAuthLlmCredentialRule struct {
+	TokenEndpoint          string   `yaml:"tokenEndpoint"`
+	ClientID               string   `yaml:"clientId"`
+	RefreshTokenCredential string   `yaml:"refreshTokenCredential"`
+	Scopes                 []string `yaml:"scopes,omitempty"`
 }
 
 // CompileGatewayConfig compiles a *Policy into an agentgateway YAML configuration.
@@ -377,6 +387,15 @@ func CompileCredentialRules(p *Policy) ([]byte, error) {
 				TokenEndpoint:          c.TokenEndpoint,
 				ClientID:               c.ClientID,
 				RefreshTokenCredential: c.RefreshTokenCredential,
+			}
+		case "oauth_llm":
+			rule.Header = ""
+			rule.Value = ""
+			rule.OAuthLlm = &OAuthLlmCredentialRule{
+				TokenEndpoint:          c.TokenEndpoint,
+				ClientID:               c.ClientID,
+				RefreshTokenCredential: c.RefreshTokenCredential,
+				Scopes:                 c.Scopes,
 			}
 		case "direct_lease":
 			// direct_lease credentials don't have header injection;
