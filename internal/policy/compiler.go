@@ -392,9 +392,9 @@ func CompileCredentialRules(p *Policy) ([]byte, error) {
 			rule.Header = ""
 			rule.Value = ""
 			rule.OAuthLlm = &OAuthLlmCredentialRule{
-				TokenEndpoint:          c.TokenEndpoint,
-				ClientID:               c.ClientID,
-				RefreshTokenCredential: c.RefreshTokenCredential,
+				TokenEndpoint:          redactOAuthLlmTokenEndpoint(c.TokenEndpoint),
+				ClientID:               strings.TrimSpace(c.ClientID),
+				RefreshTokenCredential: redactOAuthLlmRefreshName(c.RefreshTokenCredential),
 				Scopes:                 c.Scopes,
 			}
 		case "direct_lease":
