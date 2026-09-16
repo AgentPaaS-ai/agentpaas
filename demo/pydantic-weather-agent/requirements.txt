@@ -1,0 +1,2 @@
+# pip-installed at pack time. Do NOT list agentpaas-sdk — it is bundled.
+pydantic-ai

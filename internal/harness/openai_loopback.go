@@ -103,6 +103,18 @@ func (l *openaiLoopback) Close() error {
 func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-AgentPaaS-Loopback", "1")
 	path := strings.TrimRight(r.URL.Path, "/")
+	if path == "/v1/models" {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if !validLoopbackBearer(r.Header.Get("Authorization")) {
+			writeOpenAIError(w, http.StatusUnauthorized, "invalid api key")
+			return
+		}
+		writeLoopbackModelList(w)
+		return
+	}
 	if path != "/v1/chat/completions" {
 		http.NotFound(w, r)
 		return
@@ -151,6 +163,16 @@ func validLoopbackBearer(auth string) bool {
 		return false
 	}
 	return strings.TrimSpace(strings.TrimPrefix(auth, prefix)) == openaiLoopbackAPIKey
+}
+
+func writeLoopbackModelList(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"object": "list",
+		"data": []map[string]any{
+			{"id": "gpt-4o", "object": "model", "owned_by": "agentpaas-loopback"},
+		},
+	})
 }
 
 func promptFromChatMessages(messages []chatCompletionMessage) string {
