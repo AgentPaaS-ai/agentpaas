@@ -18,16 +18,26 @@ import (
 // domains are lowercased and punycode-normalized, and duplicate entries are
 // removed with warnings.
 type CanonicalPolicy struct {
-	Version         string                       `json:"version"`
-	Agent           CanonicalAgentConfig         `json:"agent"`
-	Egress          []CanonicalEgressRule        `json:"egress,omitempty"`
-	Credentials     []CanonicalCredential        `json:"credentials,omitempty"`
-	MCPServers      []CanonicalMCPServer         `json:"mcp_servers,omitempty"`
-	Hooks           []CanonicalHook              `json:"hooks,omitempty"`
-	Ingress         []CanonicalIngressRule       `json:"ingress,omitempty"`
-	RoutedRun       *CanonicalRoutedRunPolicy    `json:"routed_run,omitempty"`
-	ModelRoutes     map[string]CanonicalModelRoute `json:"model_routes,omitempty"`
-	LLMBudget       *CanonicalLLMBudget           `json:"llm_budget,omitempty"`
+	Version     string                         `json:"version"`
+	Agent       CanonicalAgentConfig           `json:"agent"`
+	Egress      []CanonicalEgressRule          `json:"egress,omitempty"`
+	Credentials []CanonicalCredential          `json:"credentials,omitempty"`
+	MCPServers  []CanonicalMCPServer           `json:"mcp_servers,omitempty"`
+	Hooks       []CanonicalHook                `json:"hooks,omitempty"`
+	Ingress     []CanonicalIngressRule         `json:"ingress,omitempty"`
+	RoutedRun   *CanonicalRoutedRunPolicy      `json:"routed_run,omitempty"`
+	ModelRoutes map[string]CanonicalModelRoute `json:"model_routes,omitempty"`
+	LLMBudget   *CanonicalLLMBudget            `json:"llm_budget,omitempty"`
+	PII         *CanonicalPII                  `json:"pii,omitempty"`
+}
+
+// CanonicalPII is the canonical form of PIIGuardrail. Builtins and patterns are sorted.
+type CanonicalPII struct {
+	Action       string   `json:"action"`
+	Builtins     []string `json:"builtins,omitempty"`
+	Patterns     []string `json:"patterns,omitempty"`
+	RejectStatus int      `json:"reject_status,omitempty"`
+	RejectBody   string   `json:"reject_body,omitempty"`
 }
 
 // CanonicalLLMBudget is the canonical form of LLMBudget.
@@ -106,22 +116,22 @@ type CanonicalIngressRule struct {
 
 // CanonicalRoutedRunPolicy is the canonical form of RoutedRunPolicy.
 type CanonicalRoutedRunPolicy struct {
-	ModelCallTimeout               string `json:"model_call_timeout,omitempty"`
-	StallTimeout                   string `json:"stall_timeout,omitempty"`
-	AttemptLease                   string `json:"attempt_lease,omitempty"`
-	MaxActiveDuration              string `json:"max_active_duration,omitempty"`
-	RecoveryMargin                 string `json:"recovery_margin,omitempty"`
-	MaxLLMCalls                    int    `json:"max_llm_calls,omitempty"`
-	MaxModelRecoveriesPerAttempt   int    `json:"max_model_recoveries_per_attempt,omitempty"`
-	MaxWorkerRetries               int    `json:"max_worker_retries,omitempty"`
-	MaxIdenticalToolActions        int    `json:"max_identical_tool_actions,omitempty"`
-	MaxActionsWithoutProgress      int    `json:"max_actions_without_progress,omitempty"`
+	ModelCallTimeout             string `json:"model_call_timeout,omitempty"`
+	StallTimeout                 string `json:"stall_timeout,omitempty"`
+	AttemptLease                 string `json:"attempt_lease,omitempty"`
+	MaxActiveDuration            string `json:"max_active_duration,omitempty"`
+	RecoveryMargin               string `json:"recovery_margin,omitempty"`
+	MaxLLMCalls                  int    `json:"max_llm_calls,omitempty"`
+	MaxModelRecoveriesPerAttempt int    `json:"max_model_recoveries_per_attempt,omitempty"`
+	MaxWorkerRetries             int    `json:"max_worker_retries,omitempty"`
+	MaxIdenticalToolActions      int    `json:"max_identical_tool_actions,omitempty"`
+	MaxActionsWithoutProgress    int    `json:"max_actions_without_progress,omitempty"`
 }
 
 // CanonicalModelRoute is the canonical form of ModelRoute.
 type CanonicalModelRoute struct {
-	Pattern       string                `json:"pattern,omitempty"`
-	CloudTransfer string                `json:"cloud_transfer,omitempty"`
+	Pattern       string                 `json:"pattern,omitempty"`
+	CloudTransfer string                 `json:"cloud_transfer,omitempty"`
 	Minimum       *CanonicalModelMinimum `json:"minimum,omitempty"`
 	Candidates    []CanonicalCandidate   `json:"candidates,omitempty"`
 }
@@ -280,6 +290,16 @@ func Canonicalize(p *Policy) (*CanonicalPolicy, []string) {
 		}
 	}
 
+	if p.PII != nil {
+		cp.PII = &CanonicalPII{
+			Action:       p.PII.Action,
+			Builtins:     sortedStrings(p.PII.Builtins),
+			Patterns:     sortedStrings(p.PII.Patterns),
+			RejectStatus: p.PII.RejectStatus,
+			RejectBody:   p.PII.RejectBody,
+		}
+	}
+
 	return cp, warnings
 }
 
@@ -288,16 +308,16 @@ func canonicalizeRoutedRun(rr *RoutedRunPolicy) *CanonicalRoutedRunPolicy {
 		return nil
 	}
 	return &CanonicalRoutedRunPolicy{
-		ModelCallTimeout:               rr.ModelCallTimeout,
-		StallTimeout:                   rr.StallTimeout,
-		AttemptLease:                   rr.AttemptLease,
-		MaxActiveDuration:              rr.MaxActiveDuration,
-		RecoveryMargin:                 rr.RecoveryMargin,
-		MaxLLMCalls:                    rr.MaxLLMCalls,
-		MaxModelRecoveriesPerAttempt:   rr.MaxModelRecoveriesPerAttempt,
-		MaxWorkerRetries:               rr.MaxWorkerRetries,
-		MaxIdenticalToolActions:        rr.MaxIdenticalToolActions,
-		MaxActionsWithoutProgress:      rr.MaxActionsWithoutProgress,
+		ModelCallTimeout:             rr.ModelCallTimeout,
+		StallTimeout:                 rr.StallTimeout,
+		AttemptLease:                 rr.AttemptLease,
+		MaxActiveDuration:            rr.MaxActiveDuration,
+		RecoveryMargin:               rr.RecoveryMargin,
+		MaxLLMCalls:                  rr.MaxLLMCalls,
+		MaxModelRecoveriesPerAttempt: rr.MaxModelRecoveriesPerAttempt,
+		MaxWorkerRetries:             rr.MaxWorkerRetries,
+		MaxIdenticalToolActions:      rr.MaxIdenticalToolActions,
+		MaxActionsWithoutProgress:    rr.MaxActionsWithoutProgress,
 	}
 }
 

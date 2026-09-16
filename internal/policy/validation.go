@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -860,6 +861,10 @@ func ValidatePolicy(p *Policy) []ValidationError {
 		}
 	}
 
+	if p.PII != nil {
+		errs = append(errs, validatePIIGuardrail(p.PII)...)
+	}
+
 	// ----- Transformations validation -----
 	if p.Transformations != nil {
 		if p.Transformations.Request == nil && p.Transformations.Response == nil {
@@ -984,6 +989,72 @@ func ValidatePolicyWithRoute(p *Policy, routeName string) []ValidationError {
 	if p.Version == SchemaVersion11 {
 		errs = append(errs, validateRouteAndCandidateRules(p, routeName)...)
 	}
+	return errs
+}
+
+func validatePIIGuardrail(pii *PIIGuardrail) []ValidationError {
+	var errs []ValidationError
+	prefix := "guardrails.pii"
+
+	if pii.Action != PIIActionMask && pii.Action != PIIActionReject {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".action",
+			Message:  fmt.Sprintf("action must be 'mask' or 'reject', got %q", pii.Action),
+			Severity: "error",
+		})
+	}
+
+	if len(pii.Builtins) == 0 && len(pii.Patterns) == 0 {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".builtins",
+			Message:  "at least one of builtins or patterns is required",
+			Severity: "error",
+		})
+	}
+
+	for i, b := range pii.Builtins {
+		if !AllowedPIIBuiltin(b) {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("%s.builtins[%d]", prefix, i),
+				Message:  fmt.Sprintf("unknown PII builtin %q; allowed: CreditCard, Ssn, Email", b),
+				Severity: "error",
+			})
+		}
+	}
+
+	for i, pat := range pii.Patterns {
+		if _, err := regexp.Compile(pat); err != nil {
+			errs = append(errs, ValidationError{
+				Field:    fmt.Sprintf("%s.patterns[%d]", prefix, i),
+				Message:  fmt.Sprintf("invalid regex pattern: %v", err),
+				Severity: "error",
+			})
+		}
+	}
+
+	if pii.Action != PIIActionReject {
+		if pii.RejectStatus != 0 {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".reject_status",
+				Message:  "reject_status is only valid when action is reject",
+				Severity: "error",
+			})
+		}
+		if pii.RejectBody != "" {
+			errs = append(errs, ValidationError{
+				Field:    prefix + ".reject_body",
+				Message:  "reject_body is only valid when action is reject",
+				Severity: "error",
+			})
+		}
+	} else if pii.RejectStatus != 0 && (pii.RejectStatus < 400 || pii.RejectStatus > 499) {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".reject_status",
+			Message:  fmt.Sprintf("reject_status must be 4xx, got %d", pii.RejectStatus),
+			Severity: "error",
+		})
+	}
+
 	return errs
 }
 

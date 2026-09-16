@@ -15,8 +15,11 @@ type Policy struct {
 	LLMProviderLock *LLMProviderLock `yaml:"llm_provider_lock,omitempty"`
 	IngressAuth     *IngressAuth     `yaml:"ingress_auth,omitempty"`
 	Guardrails      []Guardrail      `yaml:"guardrails,omitempty"`
-	Transformations *Transformation  `yaml:"transformations,omitempty"`
-	Observability   *Observability   `yaml:"observability,omitempty"`
+	// PII is populated from the mapping form `guardrails: {pii: ...}` and is
+	// not a top-level YAML key. Sequence-form B19 guardrails leave this nil.
+	PII             *PIIGuardrail   `yaml:"-"`
+	Transformations *Transformation `yaml:"transformations,omitempty"`
+	Observability   *Observability  `yaml:"observability,omitempty"`
 	// v1.1 routed fields
 	RoutedRun   *RoutedRunPolicy      `yaml:"routed_run,omitempty"`
 	ModelRoutes map[string]ModelRoute `yaml:"model_routes,omitempty"`
@@ -192,6 +195,46 @@ type Guardrail struct {
 	Provider   string `yaml:"provider,omitempty"`
 	Credential string `yaml:"credential,omitempty"`
 	URL        string `yaml:"url,omitempty"`
+}
+
+// PII action values for guardrails.pii (M15.5).
+const (
+	PIIActionMask   = "mask"
+	PIIActionReject = "reject"
+)
+
+// Gateway PII builtin detector names (D203). Extra detections use tenant patterns.
+const (
+	PIIBuiltinCreditCard = "CreditCard"
+	PIIBuiltinSsn        = "Ssn"
+	PIIBuiltinEmail      = "Email"
+)
+
+// PIIGuardrail is the mapping form of guardrails.pii.
+type PIIGuardrail struct {
+	Action       string   `yaml:"action"`
+	Builtins     []string `yaml:"builtins,omitempty"`
+	Patterns     []string `yaml:"patterns,omitempty"`
+	RejectStatus int      `yaml:"reject_status,omitempty"`
+	RejectBody   string   `yaml:"reject_body,omitempty"`
+}
+
+// AllowedPIIBuiltin reports whether name is a gateway PII builtin (D203).
+func AllowedPIIBuiltin(name string) bool {
+	switch name {
+	case PIIBuiltinCreditCard, PIIBuiltinSsn, PIIBuiltinEmail:
+		return true
+	default:
+		return false
+	}
+}
+
+// PIIRequiresBufferedStream is true when pii.action is mask or reject (D202).
+func PIIRequiresBufferedStream(p *Policy) bool {
+	if p == nil || p.PII == nil {
+		return false
+	}
+	return p.PII.Action == PIIActionMask || p.PII.Action == PIIActionReject
 }
 
 // Observability defines cost tracking and OTel tracing configuration

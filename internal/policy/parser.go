@@ -51,6 +51,11 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 		return nil, fmt.Errorf("policy: %w", err)
 	}
 
+	pii, raw, err := extractPIIGuardrailMapping(&doc, raw)
+	if err != nil {
+		return nil, err
+	}
+
 	// Decode into the struct with strict known-fields checking.
 	dec := yaml.NewDecoder(bytes.NewReader(raw))
 	dec.KnownFields(true)
@@ -85,7 +90,62 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 		return nil, fmt.Errorf("policy: expected exactly one document, found multiple")
 	}
 
+	p.PII = pii
 	return &p, nil
+}
+
+// extractPIIGuardrailMapping rewrites mapping-form guardrails.pii so KnownFields
+// decode of Policy still sees []Guardrail. Sequence or null guardrails are left
+// unchanged (B19). Mapping form must contain pii; unknown keys are rejected.
+func extractPIIGuardrailMapping(doc *yaml.Node, raw []byte) (*PIIGuardrail, []byte, error) {
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+		return nil, raw, nil
+	}
+	root := doc.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return nil, raw, nil
+	}
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		if root.Content[i].Value != "guardrails" {
+			continue
+		}
+		val := root.Content[i+1]
+		if val.Kind == yaml.SequenceNode || isYAMLNull(val) {
+			return nil, raw, nil
+		}
+		if val.Kind != yaml.MappingNode {
+			return nil, raw, nil
+		}
+		encoded, err := yaml.Marshal(val)
+		if err != nil {
+			return nil, raw, fmt.Errorf("policy: encode guardrails mapping: %w", err)
+		}
+		dec := yaml.NewDecoder(bytes.NewReader(encoded))
+		dec.KnownFields(true)
+		var extracted struct {
+			PII *PIIGuardrail `yaml:"pii"`
+		}
+		if err := dec.Decode(&extracted); err != nil {
+			return nil, raw, fmt.Errorf("policy: invalid yaml: %w", err)
+		}
+		if extracted.PII == nil {
+			return nil, raw, fmt.Errorf("policy: guardrails mapping must contain pii")
+		}
+		root.Content[i+1] = &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+		rematerialized, err := yaml.Marshal(root)
+		if err != nil {
+			return nil, raw, fmt.Errorf("policy: rematerialize policy: %w", err)
+		}
+		return extracted.PII, rematerialized, nil
+	}
+	return nil, raw, nil
+}
+
+func isYAMLNull(n *yaml.Node) bool {
+	if n == nil {
+		return true
+	}
+	return n.Kind == yaml.ScalarNode && (n.Tag == "!!null" || n.Value == "null" || n.Value == "~" || n.Value == "")
 }
 
 // MustParse parses the policy or panics. Useful for test helpers.
