@@ -4,8 +4,8 @@ Thin host support so a trial builder can author and operate AgentPaaS
 from inside their own IDE. The skin is how you build and run the product,
 not a second demo of one agent.
 
-Buyer: the trial builder in Cursor or Codex (this cut). Not a
-ChatGPT-wrapper user.
+Buyer: the trial builder in Cursor, Codex, ChatGPT desktop, Grok Build,
+or Claude Code. Not a ChatGPT-wrapper user.
 
 From a shipped skin you can create, pack, deploy, invoke, and inspect any
 component class the platform already productizes: agent, workflow, MCP
@@ -40,7 +40,7 @@ That absence is a platform gap, not an M18 gap.
 
 Only the host config block differs.
 
-1. Open the host (Cursor or Codex).
+1. Open the host (Cursor, Codex, ChatGPT desktop, Grok Build, or Claude Code).
 2. Connect to `agentpaas-mcp` with the host snippet, **or** install the CLI.
 3. Scaffold a component from template.
 4. Pack.
@@ -54,8 +54,22 @@ Cursor: copy `templates/hosts/cursor.mcp.json` into `.cursor/mcp.json`
 Codex: merge `templates/hosts/codex.toml` into `~/.codex/config.toml`.
 Restart Codex.
 
-Both snippets run `command: agentpaas-mcp` with empty args. No extra env.
-No per-host flags.
+ChatGPT desktop: copy `templates/hosts/chatgpt-desktop.mcp.json`. Same
+wrap (`command: agentpaas-mcp`, empty args). ChatGPT desktop Connectors /
+Developer Mode talks to remote HTTPS MCP servers and does not launch a
+local stdio command. Do not invent a bridge or URL runtime. If the app
+exposes a stdio command/args field, this is the wrap. Otherwise use the
+CLI path (2b). Do not claim a ChatGPT MCP-connect pass.
+
+Grok Build: merge `templates/hosts/grok.toml` into `~/.grok/config.toml`
+(user) or `.grok/config.toml` (project). Restart Grok / refresh MCP.
+
+Claude Code: copy `templates/hosts/claude-code.mcp.json` into `.mcp.json`
+(project) or merge the `mcpServers` object into `~/.claude.json` (user).
+Restart the Claude Code session.
+
+All five snippets run `command: agentpaas-mcp` with empty args. No extra
+env. No per-host flags.
 
 ### 2b. CLI (working path on 0.4 brew)
 
@@ -121,8 +135,9 @@ platform gap, not an M18 gap: do not claim it.
 
 ## This cut (D148a)
 
-Ships Cursor + Codex first. ChatGPT desktop, Grok Build, and Claude Code
-wait if the five-host set misses about a week.
+Ships all five hosts: Cursor, Codex, ChatGPT desktop, Grok Build, Claude
+Code. Same wrap. Live MCP-connect is still blocked on the missing
+`agentpaas-mcp` brew binary (platform gap). CLI is the working first-run.
 
 ## Out of scope
 
