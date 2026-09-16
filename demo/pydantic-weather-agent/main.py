@@ -2,14 +2,17 @@
 import os
 from agentpaas_sdk import agent
 from pydantic_ai import Agent
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
 
 
 def _pydantic_agent():
     model = os.environ.get("OPENAI_MODEL", "gpt-4o")
-    # OPENAI_BASE_URL and OPENAI_API_KEY are injected by the harness loopback.
-    _ = os.environ["OPENAI_BASE_URL"]
-    _ = os.environ["OPENAI_API_KEY"]
-    return Agent(f"openai:{model}")
+    provider = OpenAIProvider(
+        base_url=os.environ["OPENAI_BASE_URL"],
+        api_key=os.environ["OPENAI_API_KEY"],
+    )
+    return Agent(OpenAIModel(model, provider=provider))
 
 
 @agent.on_invoke
