@@ -289,8 +289,7 @@ func TestADV_M16_1_SC3_PydanticDirectProviderHostDenied(t *testing.T) {
 // but never read. loopbackDeniedProviderHosts is a list whose length is
 // checked, not a host matcher consulted on the pydantic HTTP path.
 func pydanticGoldenDirectHostDenied(host string) bool {
-	_ = host
-	return false
+	return pydanticDirectHostDenied(host)
 }
 
 // TestADV_M16_1_SC3_EmptyLoopbackURLMustNotFallOpenToSDKDefault

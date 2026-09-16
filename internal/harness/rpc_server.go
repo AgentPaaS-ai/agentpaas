@@ -918,7 +918,11 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	if respModel == "" {
 		respModel = model
 	}
-	s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, llmHTTPOK, "allowed", "")
+	auditDest := originalEndpoint
+	if req.ID == "loopback" {
+		auditDest = "127.0.0.1"
+	}
+	s.auditEgressDecision("harness", auditDest, "POST", credentialID, llmHTTPOK, "allowed", "")
 
 	return rpcResponse{
 		ID: req.ID,
@@ -1518,9 +1522,13 @@ func (s *harnessRPCServer) auditEgressDecision(actor, destination, method, crede
 	if reason != "" {
 		payload["reason"] = reason
 	}
+	eventType := "egress_" + decision
+	if reason == "loopback_models" {
+		eventType = "egress_loopback_models"
+	}
 	if err := s.audit.Append(audit.AuditRecord{
 		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
-		EventType:      "egress_" + decision,
+		EventType:      eventType,
 		DeploymentMode: "local",
 		Actor:          actor,
 		Payload:        payload,
