@@ -18,7 +18,7 @@ import (
 
 // Synthetic sentinels — never print the raw value in failure messages.
 const (
-	advM160ProviderSentinel = "ADV-SYNTHETIC-PROVIDER-KEY-M160"
+	advM160ProviderSentinel  = "ADV-SYNTHETIC-PROVIDER-KEY-M160"
 	advM160AnthropicSentinel = "sk-ant-ADV-SYNTHETIC-M160-not-a-real-key"
 	advM160AttackerBearer    = "sk-attacker-ADV-M160-passthrough"
 )
@@ -293,7 +293,7 @@ func TestADV_M16_0_SC3_BypassLoopbackToProviderHostDenied(t *testing.T) {
 // Always false on this construction — kept as a named seam so the fix worker
 // can flip it without rewriting the test.
 func denyProviderHostBypassExists() bool {
-	return false
+	return loopbackDeniesProviderHostBypass()
 }
 
 func TestADV_M16_0_V1_ProxyEnvEscapeBypassesLoopback(t *testing.T) {
@@ -386,9 +386,9 @@ func TestADV_M16_0_V2_NonDummyAuthorizationMustNotPassthrough(t *testing.T) {
 	reached = false
 	seenAPIKey = ""
 	resp2 := advLoopbackPOST(t, lb, "/v1/chat/completions", "Bearer "+openaiLoopbackAPIKey, map[string]string{
-		"X-Api-Key":          advM160AttackerBearer,
+		"X-Api-Key":           advM160AttackerBearer,
 		"Proxy-Authorization": "Bearer " + advM160AttackerBearer,
-		"X-OpenAI-Api-Key":   advM160AttackerBearer,
+		"X-OpenAI-Api-Key":    advM160AttackerBearer,
 	}, advChatBody(false))
 	body2 := advReadBody(t, resp2)
 	if advContainsSentinel(body2, advM160AttackerBearer) {
