@@ -304,6 +304,16 @@ func CompileGatewayConfig(p *Policy) ([]byte, error) {
 	if p == nil {
 		return nil, fmt.Errorf("policy is nil")
 	}
+	hasErr := false
+	for _, e := range ValidatePolicy(p) {
+		if e.Severity == "error" {
+			hasErr = true
+			break
+		}
+	}
+	if hasErr && !piiMayCompile(p) {
+		return nil, fmt.Errorf("policy: invalid")
+	}
 
 	cfg := &gatewayConfig{
 		Config: &rawConfig{
@@ -325,6 +335,29 @@ func CompileGatewayConfig(p *Policy) ([]byte, error) {
 	}
 
 	return yaml.Marshal(cfg)
+}
+
+// piiMayCompile is true when PII is off, or when action is mask|reject and at
+// least one allowed builtin or valid extra pattern is present. Invalid PII
+// (unknown action, empty mapping, no detectors) must not compile.
+func piiMayCompile(p *Policy) bool {
+	if p == nil || p.PII == nil {
+		return true
+	}
+	if p.PII.Action != PIIActionMask && p.PII.Action != PIIActionReject {
+		return false
+	}
+	for _, b := range p.PII.Builtins {
+		if AllowedPIIBuiltin(b) {
+			return true
+		}
+	}
+	for _, pat := range p.PII.Patterns {
+		if piiPatternError(pat) == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // CompileDNSAllowList returns a sorted, unique list of allowed egress domains.

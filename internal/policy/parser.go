@@ -39,6 +39,7 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 	if err != nil {
 		return nil, fmt.Errorf("policy: failed to read input: %w", err)
 	}
+	origRaw := raw
 
 	// Decode into a raw yaml.Node tree for type-level validation
 	// before the struct loses type information through coercion.
@@ -82,15 +83,22 @@ func ParsePolicy(r io.Reader) (*Policy, error) {
 		return nil, fmt.Errorf("policy: v1.0 schema must not contain v1.1 routed fields (routed_run, model_routes, max_cost_usd)")
 	}
 
-	// Decode a second time to ensure there is no trailing document.
-	// yaml.v3 Decode does not return io.EOF reliably on single-document
-	// streams, so we check explicitly.
+	// Trailing-document check MUST use the original bytes. Mapping-form
+	// rematerialization drops `---` so a second document would otherwise pass.
+	trail := yaml.NewDecoder(bytes.NewReader(origRaw))
+	var firstDoc interface{}
+	if err := trail.Decode(&firstDoc); err != nil {
+		return nil, fmt.Errorf("policy: invalid yaml: %w", err)
+	}
 	var extra interface{}
-	if err := dec.Decode(&extra); err != io.EOF {
+	if err := trail.Decode(&extra); err != io.EOF {
 		return nil, fmt.Errorf("policy: expected exactly one document, found multiple")
 	}
 
 	p.PII = pii
+	if p.PII != nil && p.PII.Action == PIIActionReject && p.PII.RejectBody == "" {
+		p.PII.RejectBody = "request rejected by policy"
+	}
 	return &p, nil
 }
 
@@ -115,6 +123,20 @@ func extractPIIGuardrailMapping(doc *yaml.Node, raw []byte) (*PIIGuardrail, []by
 		}
 		if val.Kind != yaml.MappingNode {
 			return nil, raw, nil
+		}
+		if err := rejectDuplicateYAMLKeys(val, "guardrails"); err != nil {
+			return nil, raw, err
+		}
+		for j := 0; j+1 < len(val.Content); j += 2 {
+			if val.Content[j].Value != "pii" {
+				continue
+			}
+			piiNode := val.Content[j+1]
+			if piiNode.Kind == yaml.MappingNode {
+				if err := rejectDuplicateYAMLKeys(piiNode, "guardrails.pii"); err != nil {
+					return nil, raw, err
+				}
+			}
 		}
 		encoded, err := yaml.Marshal(val)
 		if err != nil {
@@ -146,6 +168,21 @@ func isYAMLNull(n *yaml.Node) bool {
 		return true
 	}
 	return n.Kind == yaml.ScalarNode && (n.Tag == "!!null" || n.Value == "null" || n.Value == "~" || n.Value == "")
+}
+
+func rejectDuplicateYAMLKeys(n *yaml.Node, path string) error {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(n.Content)/2)
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		k := n.Content[i].Value
+		if _, ok := seen[k]; ok {
+			return fmt.Errorf("policy: duplicate key %q in %s", k, path)
+		}
+		seen[k] = struct{}{}
+	}
+	return nil
 }
 
 // MustParse parses the policy or panics. Useful for test helpers.
