@@ -1049,6 +1049,7 @@ project policy; validate compiles a local dry-run; explain/propose help debug de
 	cmd.AddCommand(newPolicyExplainCmd())
 	cmd.AddCommand(newPolicyProposeCmd())
 	cmd.AddCommand(newPolicyInitCmd())
+	cmd.AddCommand(newPolicyLineageCmd())
 	return cmd
 }
 
