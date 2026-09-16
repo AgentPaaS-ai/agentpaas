@@ -204,6 +204,19 @@ agent secrets set api-key
 - The compiler produces a deterministic `policy_digest` regardless of YAML
   key order or comments.
 
+## Inspect the compiled contract
+
+After pack, inspect what will be enforced:
+
+```
+agentpaas policy show
+agentpaas policy validate
+```
+
+`show` renders the compiled contract for a packed or deployed target. `validate` renders the same view as a pre-deploy dry-run. Credentials appear as IDs, never values.
+
+The Cloud console Gateway Policy page and the policy block on a deployment detail are a read-only window on that same compiled contract (digest plus those CLI commands). Components and Workflows only link to Policy. The console never edits policy.
+
 ## Related docs
 
 - [How enforcement works](how-enforcement-works.md)
