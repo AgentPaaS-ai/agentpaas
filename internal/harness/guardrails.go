@@ -178,12 +178,12 @@ func piiFromPayload(payload map[string]any) *piiConfig {
 		cfg.rejectBody = body
 	}
 	for _, name := range asStringSlice(m["builtins"]) {
-		switch name {
-		case "CreditCard":
+		switch {
+		case strings.EqualFold(name, "CreditCard"):
 			cfg.detectors = append(cfg.detectors, piiBuiltinCreditCard)
-		case "Ssn":
+		case strings.EqualFold(name, "Ssn"):
 			cfg.detectors = append(cfg.detectors, piiBuiltinSsn)
-		case "Email":
+		case strings.EqualFold(name, "Email"):
 			cfg.detectors = append(cfg.detectors, piiBuiltinEmail)
 		}
 	}
@@ -193,6 +193,9 @@ func piiFromPayload(payload map[string]any) *piiConfig {
 			return &piiConfig{rejectBody: cfg.rejectBody}
 		}
 		cfg.detectors = append(cfg.detectors, re)
+	}
+	if (cfg.action == "mask" || cfg.action == "reject") && len(cfg.detectors) == 0 {
+		return &piiConfig{rejectBody: cfg.rejectBody}
 	}
 	cfg.valid = true
 	return cfg
