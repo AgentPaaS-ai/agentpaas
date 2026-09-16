@@ -68,6 +68,12 @@ func TestM161PydanticUsesLoopbackBaseURL(t *testing.T) {
 	if !strings.Contains(body, "OPENAI_BASE_URL") {
 		t.Fatal("main.py must use harness OPENAI_BASE_URL")
 	}
+	if !strings.Contains(body, "base_url=") && !strings.Contains(body, "base_url =") {
+		t.Fatal("main.py must pass base_url= from OPENAI_BASE_URL into the OpenAI provider, not discard the env")
+	}
+	if strings.Contains(body, "_ = os.environ[\"OPENAI_BASE_URL\"]") {
+		t.Fatal("do not discard OPENAI_BASE_URL")
+	}
 	lower := strings.ToLower(body)
 	for _, host := range []string{"api.openai.com", "openrouter.ai", "api.anthropic.com"} {
 		if strings.Contains(lower, host) {
