@@ -1,0 +1,10 @@
+version: "1.0"
+agent:
+  name: langgraph-weather-agent
+  description: LangGraph weather-class golden — loopback LLM, wttr.in egress
+egress:
+  - domain: wttr.in
+    ports: [443]
+    methods: [GET]
+credentials: []
+ingress: []
