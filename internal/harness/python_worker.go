@@ -71,6 +71,12 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 		errResp := &ErrorResponse{Status: "FAILED", Reason: "rpc_start_failed", Detail: err.Error()}
 		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
 	}
+	if err := rpcServer.startOpenAILoopback(); err != nil {
+		_ = rpcServer.Close()     // best-effort cleanup
+		_ = stderrCapture.Close() // best-effort cleanup
+		errResp := &ErrorResponse{Status: "FAILED", Reason: "rpc_start_failed", Detail: err.Error()}
+		return nil, attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+	}
 
 	// Load pre-resolved credentials from the sidecar file before starting
 	// the Python worker, so credential values are in memory before agent
@@ -143,7 +149,7 @@ func startPythonWorker(cfg Config, reaper *childReaper) (*pythonWorker, *ErrorRe
 
 	workerCtx, cancel := context.WithCancel(context.Background())
 	cmd := commandContext(workerCtx, cfg.Python, "-u", "-c", pythonRunner, cfg.AgentPath, cfg.StdoutPath)
-	cmd.Env = appendPolicyResourceEnv(workerEnv(os.Environ(), rpcServer.Addr()), cfg.DurablePath, cfg.CPUQuotaSeconds, cfg.MaxPIDs)
+	cmd.Env = appendPolicyResourceEnv(workerEnvOpenAI(os.Environ(), rpcServer.Addr(), rpcServer.openaiLoopbackBaseURL()), cfg.DurablePath, cfg.CPUQuotaSeconds, cfg.MaxPIDs)
 	// Service mode: set agent kind and declared tools from Config.
 	if cfg.AgentKind != "" {
 		cmd.Env = append(cmd.Env, "AGENTPAAS_AGENT_KIND="+cfg.AgentKind)
@@ -688,6 +694,9 @@ func workerEnv(base []string, rpcAddr string) []string {
 		if strings.HasPrefix(item, "PYTHONPATH=") {
 			sawPythonPath = true
 			env = append(env, item+string(os.PathListSeparator)+pythonPath)
+			continue
+		}
+		if isWorkloadOpenAIEnv(item) {
 			continue
 		}
 		env = append(env, item)
