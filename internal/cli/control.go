@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -1157,33 +1156,12 @@ with run- query by run ID (not yet fully implemented).`,
 				})
 			}
 
-			// Treat target as a project directory — read policy.yaml
+			// Treat target as a project directory — parse policy.yaml
 			projectDir := target
 			if projectDir == "" {
 				projectDir = "."
 			}
-			policyPath := filepath.Join(projectDir, "policy.yaml")
-
-			data, err := os.ReadFile(policyPath)
-			if err != nil {
-				if errors.Is(err, os.ErrNotExist) {
-					return fmt.Errorf("policy.yaml not found in %s; run 'agentpaas policy init %s' to create one", projectDir, projectDir)
-				}
-				return fmt.Errorf("read policy: %w", err)
-			}
-
-			result := struct {
-				SchemaVersion string `json:"schema_version"`
-				ProjectDir    string `json:"project_dir"`
-				Policy        string `json:"policy"`
-			}{
-				SchemaVersion: operator.SchemaVersion,
-				ProjectDir:    projectDir,
-				Policy:        string(data),
-			}
-			return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
-				return string(data)
-			})
+			return showProjectPolicy(cmd, projectDir)
 		},
 	}
 }
