@@ -1,0 +1,3 @@
+# pip-installed at pack time. The SDK is bundled — do not list it.
+langgraph==0.2.28
+openai>=1.0
