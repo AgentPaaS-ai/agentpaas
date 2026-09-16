@@ -84,6 +84,10 @@ type harnessRPCServer struct {
 	// llmChatCompletion, when non-nil, replaces callLLMChatCompletion so tests
 	// can stub a Completions.New that ignores ctx. Production leaves this nil.
 	llmChatCompletion func(ctx context.Context, baseURL, originalHost, apiKey, model, prompt string, maxTokens int, provider string) (*llm.LLMResult, error)
+
+	// loopback is the OpenAI-compatible 127.0.0.1 listener that rewrites
+	// POST /v1/chat/completions into handleLLM. Nil when not started.
+	loopback *openaiLoopback
 }
 
 type rpcInvokeState struct {
@@ -182,7 +186,27 @@ func (s *harnessRPCServer) Addr() string {
 func (s *harnessRPCServer) Close() error {
 	err := s.listener.Close()
 	<-s.done
-	return errors.Join(err, os.RemoveAll(filepath.Dir(s.socket)))
+	var loopbackErr error
+	if s.loopback != nil {
+		loopbackErr = s.loopback.Close()
+	}
+	return errors.Join(err, loopbackErr, os.RemoveAll(filepath.Dir(s.socket)))
+}
+
+func (s *harnessRPCServer) startOpenAILoopback() error {
+	lb, err := startOpenAILoopback(s)
+	if err != nil {
+		return err
+	}
+	s.loopback = lb
+	return nil
+}
+
+func (s *harnessRPCServer) openaiLoopbackBaseURL() string {
+	if s == nil || s.loopback == nil {
+		return ""
+	}
+	return s.loopback.baseURL()
 }
 
 // harnessRPCServer.SetInvoke sets the invoke.
