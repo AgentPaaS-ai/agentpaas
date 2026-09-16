@@ -16,6 +16,7 @@ build:
 	mkdir -p bin
 	go build $(BUILD_FLAGS) -o bin/agentpaas ./cmd/agent
 	go build $(BUILD_FLAGS) -o bin/agentpaasd ./cmd/agentpaasd
+	go build $(BUILD_FLAGS) -o bin/agentpaas-mcp ./cmd/agentpaas-mcp
 	go build $(BUILD_FLAGS_HARNESS) -o bin/agentpaas-harness ./cmd/harness
 
 build-harness-linux:
