@@ -29,15 +29,15 @@ a per-host runtime.
 
 What 0.4 brew actually installs (`Formula/agentpaas.rb`): `agentpaas`,
 `agentpaasd`, `agentpaas-harness-linux`, `agentpaas-harness-linux-amd64`.
-There is no `agentpaas-mcp` on that 0.4.2 formula. Build the dummy locally:
+There is no `agentpaas-mcp` on that 0.4.2 formula. Build it locally:
 
 ```
 go build -o bin/agentpaas-mcp ./cmd/agentpaas-mcp
 # or: make build  (also writes bin/agentpaas-mcp)
 ```
 
-The dummy speaks MCP stdio (initialize / tools/list / ping→pong) so a host
-can prove connect. It is not pack/deploy and not a per-host runtime.
+`agentpaas-mcp` is a thin stdio adapter over the `agentpaas` CLI. It is not
+pack/deploy itself and not a per-host runtime.
 `agentpaas cloud mcp call` talks to a *deployed* MCP server; it is not a
 host skin.
 
