@@ -685,14 +685,14 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 				return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
 			}
 			prompt = promptAfterGuard
+			if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
+				prompt = combineSystemPrompt(sp, prompt)
+			}
 			promptAfterPII, presp := s.enforceRequestPII(req, state, prompt)
 			if presp != nil {
 				return *presp
 			}
 			prompt = promptAfterPII
-			if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
-				prompt = combineSystemPrompt(sp, prompt)
-			}
 			text := "agentpaas fake llm response"
 			text, gerr = applyGuardrailsToText(cg, text, "response", state.credentials)
 			if gerr != nil {
@@ -771,16 +771,17 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
 	}
 	prompt = promptAfterGuard
+
+	// T18: inject_system_prompt (not expressible as host-backend gateway transform).
+	// Inspect the combined prompt so system-prompt PII cannot bypass request PII.
+	if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
+		prompt = combineSystemPrompt(sp, prompt)
+	}
 	promptAfterPII, presp := s.enforceRequestPII(req, state, prompt)
 	if presp != nil {
 		return *presp
 	}
 	prompt = promptAfterPII
-
-	// T18: inject_system_prompt (not expressible as host-backend gateway transform).
-	if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
-		prompt = combineSystemPrompt(sp, prompt)
-	}
 
 	// One deadline owner: context.WithTimeout from modelClientTimeout /
 	// TimeEnvelope (up to 5 min). callLLMChatCompletion also sets
@@ -839,10 +840,14 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		result, err = o.result, o.err
 	}
 	if err != nil {
-		log.Printf("harness: llm chat completion failed: %v", err)
+		failReason := err.Error()
+		if piiFromPayload(state.payload) != nil {
+			failReason = "llm_failed"
+		}
+		log.Printf("harness: llm chat completion failed: %s", failReason)
 		status := llmHTTPStatusFromError(err)
-		s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, status, "denied", err.Error())
-		return rpcError(req.ID, err.Error(), "llm_failed")
+		s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, status, "denied", failReason)
+		return rpcError(req.ID, failReason, "llm_failed")
 	}
 
 	const llmHTTPOK = "200"
@@ -922,6 +927,12 @@ func (s *harnessRPCServer) enforceResponsePII(req rpcRequest, state *rpcInvokeSt
 	cfg := piiFromPayload(state.payload)
 	out, err := applyPIIToText(cfg, text)
 	if err == nil {
+		if cfg != nil && s.audit != nil {
+			if aerr := s.auditPIIDecision("pii_masked"); aerr != nil {
+				resp := rpcError(req.ID, "pii_enforcement_unavailable", StatusPIIBlocked)
+				return "", &resp
+			}
+		}
 		return out, nil
 	}
 	reason := err.Error()
@@ -1004,6 +1015,9 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 		return rpcError(req.ID, "url is required", "invalid_http_request")
 	}
 	body := stringParam(req.Params, "body")
+	if _, perr := applyPIIToText(piiFromPayload(state.payload), rawURL+"\n"+body); perr != nil {
+		return rpcError(req.ID, perr.Error(), StatusPIIBlocked)
+	}
 	bodyMarker, bodyHash := redactedBodyEvidence(body)
 	credentialValue := ""
 	credID := ""
@@ -1224,6 +1238,13 @@ func (s *harnessRPCServer) handleMCP(req rpcRequest, state *rpcInvokeState) rpcR
 	tool := stringParam(req.Params, "tool")
 	input := req.Params["input"]
 	inputHash := hashJSONValue(input)
+	inspectText := fmt.Sprint(input)
+	if rawInput, marshalErr := json.Marshal(input); marshalErr == nil {
+		inspectText = string(rawInput)
+	}
+	if _, perr := applyPIIToText(piiFromPayload(state.payload), inspectText); perr != nil {
+		return rpcError(req.ID, perr.Error(), StatusPIIBlocked)
+	}
 
 	// B33-T06: enforce per-caller MCP concurrency bound.
 	sem := s.getMCPSemaphore()
