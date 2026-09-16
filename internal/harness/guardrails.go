@@ -14,6 +14,25 @@ import (
 // StatusGuardrailBlocked is returned when a guardrail blocks an LLM prompt or response.
 const StatusGuardrailBlocked = "guardrail_blocked"
 
+// StatusPIIBlocked is returned when mapping-form guardrails.pii rejects or fail-closes.
+const StatusPIIBlocked = "pii_blocked"
+
+const piiRedaction = "[REDACTED]"
+
+var (
+	piiBuiltinCreditCard = regexp.MustCompile(`\b\d{13,19}\b`)
+	piiBuiltinSsn        = regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)
+	piiBuiltinEmail      = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
+)
+
+// piiConfig is the invoke-payload form of policy.PII (D205). Absent/nil is SC8 off.
+type piiConfig struct {
+	valid      bool
+	action     string
+	detectors  []*regexp.Regexp
+	rejectBody string
+}
+
 // GuardrailRule is the invoke-payload form of a policy.Guardrail entry.
 // Only fields required by harness enforcement are kept.
 type GuardrailRule struct {
@@ -116,6 +135,96 @@ func asString(v any) string {
 	default:
 		return ""
 	}
+}
+
+func asStringSlice(v any) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			if s := asString(item); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+// piiFromPayload reads payload["pii"]. Nil/absent → off (SC8). Present including
+// pii:{} or unknown action → on and fail-closed until action is mask|reject.
+func piiFromPayload(payload map[string]any) *piiConfig {
+	if payload == nil {
+		return nil
+	}
+	raw, ok := payload["pii"]
+	if !ok || raw == nil {
+		return nil
+	}
+	cfg := &piiConfig{rejectBody: "request rejected by policy"}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return cfg
+	}
+	action := asString(m["action"])
+	if action != "mask" && action != "reject" {
+		return cfg
+	}
+	cfg.action = action
+	if body := asString(m["reject_body"]); body != "" {
+		cfg.rejectBody = body
+	}
+	for _, name := range asStringSlice(m["builtins"]) {
+		switch name {
+		case "CreditCard":
+			cfg.detectors = append(cfg.detectors, piiBuiltinCreditCard)
+		case "Ssn":
+			cfg.detectors = append(cfg.detectors, piiBuiltinSsn)
+		case "Email":
+			cfg.detectors = append(cfg.detectors, piiBuiltinEmail)
+		}
+	}
+	for _, pat := range asStringSlice(m["patterns"]) {
+		re, err := regexp.Compile(pat)
+		if err != nil {
+			return &piiConfig{rejectBody: cfg.rejectBody}
+		}
+		cfg.detectors = append(cfg.detectors, re)
+	}
+	cfg.valid = true
+	return cfg
+}
+
+// applyPIIToText inspects the full buffer (D202). Skip only when cfg is nil (SC8).
+// Mask replaces hits with [REDACTED]. Reject returns reject_body with no raw PII.
+func applyPIIToText(cfg *piiConfig, text string) (string, error) {
+	if cfg == nil {
+		return text, nil
+	}
+	if !cfg.valid {
+		return "", fmt.Errorf("pii_fail_closed")
+	}
+	out := text
+	matched := false
+	for _, re := range cfg.detectors {
+		if re == nil {
+			continue
+		}
+		if !re.MatchString(out) {
+			continue
+		}
+		matched = true
+		if cfg.action == "mask" {
+			out = re.ReplaceAllString(out, piiRedaction)
+		}
+	}
+	if matched && cfg.action == "reject" {
+		return "", fmt.Errorf("%s", cfg.rejectBody)
+	}
+	return out, nil
 }
 
 // applyGuardrailsToText enforces regex (+ optional webhook) on LLM prompt or response text.

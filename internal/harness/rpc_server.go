@@ -685,6 +685,11 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 				return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
 			}
 			prompt = promptAfterGuard
+			promptAfterPII, presp := s.enforceRequestPII(req, state, prompt)
+			if presp != nil {
+				return *presp
+			}
+			prompt = promptAfterPII
 			if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
 				prompt = combineSystemPrompt(sp, prompt)
 			}
@@ -692,6 +697,10 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 			text, gerr = applyGuardrailsToText(cg, text, "response", state.credentials)
 			if gerr != nil {
 				return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
+			}
+			text, presp = s.enforceResponsePII(req, state, text)
+			if presp != nil {
+				return *presp
 			}
 			tokens := int64(len(strings.Fields(prompt)))
 			if tokens == 0 && prompt != "" {
@@ -762,6 +771,11 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
 	}
 	prompt = promptAfterGuard
+	promptAfterPII, presp := s.enforceRequestPII(req, state, prompt)
+	if presp != nil {
+		return *presp
+	}
+	prompt = promptAfterPII
 
 	// T18: inject_system_prompt (not expressible as host-backend gateway transform).
 	if sp := injectSystemPromptFromPayload(state.payload); sp != "" {
@@ -839,6 +853,10 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 		s.auditEgressDecision("harness", originalEndpoint, "POST", credentialID, llmHTTPOK, "denied", gerr.Error())
 		return rpcError(req.ID, gerr.Error(), StatusGuardrailBlocked)
 	}
+	respText, presp = s.enforceResponsePII(req, state, respText)
+	if presp != nil {
+		return *presp
+	}
 	result.Text = respText
 
 	// Record tokens (use provider tokens, fall back to word-count estimate).
@@ -883,6 +901,52 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 			"model":   respModel,
 		},
 	}
+}
+
+func (s *harnessRPCServer) enforceRequestPII(req rpcRequest, state *rpcInvokeState, prompt string) (string, *rpcResponse) {
+	cfg := piiFromPayload(state.payload)
+	out, err := applyPIIToText(cfg, prompt)
+	if err == nil {
+		return out, nil
+	}
+	reason := err.Error()
+	if aerr := s.auditPIIDecision(reason); aerr != nil {
+		resp := rpcError(req.ID, "pii_enforcement_unavailable", StatusPIIBlocked)
+		return "", &resp
+	}
+	resp := rpcError(req.ID, reason, StatusPIIBlocked)
+	return "", &resp
+}
+
+func (s *harnessRPCServer) enforceResponsePII(req rpcRequest, state *rpcInvokeState, text string) (string, *rpcResponse) {
+	cfg := piiFromPayload(state.payload)
+	out, err := applyPIIToText(cfg, text)
+	if err == nil {
+		return out, nil
+	}
+	reason := err.Error()
+	if aerr := s.auditPIIDecision(reason); aerr != nil {
+		resp := rpcError(req.ID, "pii_enforcement_unavailable", StatusPIIBlocked)
+		return "", &resp
+	}
+	resp := rpcError(req.ID, reason, StatusPIIBlocked)
+	return "", &resp
+}
+
+func (s *harnessRPCServer) auditPIIDecision(reason string) error {
+	if s.audit == nil {
+		return nil
+	}
+	return s.audit.Append(audit.AuditRecord{
+		Timestamp:      time.Now().UTC().Format(time.RFC3339Nano),
+		EventType:      "egress_denied",
+		DeploymentMode: "local",
+		Actor:          "harness",
+		Payload: map[string]interface{}{
+			"decision": "denied",
+			"reason":   reason,
+		},
+	})
 }
 
 func observabilityEnabled(payload map[string]any) bool {
