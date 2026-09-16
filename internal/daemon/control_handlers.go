@@ -2458,7 +2458,7 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 		if err := json.Unmarshal(triggerPayload, &userPayload); err != nil {
 			return nil, fmt.Errorf("invalid trigger payload JSON: %w", err)
 		}
-		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true, "budget": true, "guardrails": true, "inject_system_prompt": true, "time_envelope": true}
+		reserved := map[string]bool{"llm": true, "credentials": true, "mcp": true, "budget": true, "guardrails": true, "inject_system_prompt": true, "time_envelope": true, "pii": true}
 		for k, v := range userPayload {
 			if reserved[k] {
 				continue
@@ -2589,6 +2589,22 @@ func (s *controlServer) buildInvokePayload(ctx context.Context, agentName string
 				gs = append(gs, entry)
 			}
 			payload["guardrails"] = gs
+		}
+		if parsedPolicy.PII != nil {
+			pii := map[string]any{"action": parsedPolicy.PII.Action}
+			if len(parsedPolicy.PII.Builtins) > 0 {
+				pii["builtins"] = parsedPolicy.PII.Builtins
+			}
+			if len(parsedPolicy.PII.Patterns) > 0 {
+				pii["patterns"] = parsedPolicy.PII.Patterns
+			}
+			if parsedPolicy.PII.RejectStatus != 0 {
+				pii["reject_status"] = parsedPolicy.PII.RejectStatus
+			}
+			if parsedPolicy.PII.RejectBody != "" {
+				pii["reject_body"] = parsedPolicy.PII.RejectBody
+			}
+			payload["pii"] = pii
 		}
 		if parsedPolicy.Transformations != nil && parsedPolicy.Transformations.Request != nil {
 			sp := parsedPolicy.Transformations.Request.InjectSystemPrompt
