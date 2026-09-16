@@ -112,6 +112,9 @@ func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			writeOpenAIError(w, http.StatusUnauthorized, "invalid api key")
 			return
 		}
+		if l.rpc != nil {
+			l.rpc.auditEgressDecision("harness", "127.0.0.1", "GET", "", "200", "allowed", "loopback_models")
+		}
 		writeLoopbackModelList(w)
 		return
 	}
@@ -283,7 +286,11 @@ func isWorkloadOpenAIEnv(item string) bool {
 		"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
 		"AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_BASE_URL",
 		"GOOGLE_API_KEY", "GEMINI_API_KEY", "GEMINI_API_ENDPOINT",
-		"GOOGLE_GENERATIVE_AI_API_KEY":
+		"GOOGLE_GENERATIVE_AI_API_KEY",
+		"OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
+		"LOGFIRE_TOKEN", "DEEPSEEK_API_KEY", "XAI_API_KEY", "GROQ_API_KEY",
+		"OTEL_EXPORTER_OTLP_HEADERS", "OPENAI_PROJECT", "OPENAI_API_TYPE",
+		"PYDANTIC_AI_GATEWAY_API_KEY":
 		return true
 	}
 	if strings.Contains(name, "API_KEY") &&
@@ -292,6 +299,15 @@ func isWorkloadOpenAIEnv(item string) bool {
 			strings.Contains(name, "GEMINI") ||
 			strings.Contains(name, "AZURE") ||
 			strings.Contains(name, "GOOGLE")) {
+		return true
+	}
+	if (strings.Contains(name, "API_KEY") || strings.Contains(name, "_TOKEN")) &&
+		(strings.Contains(name, "OPENROUTER") ||
+			strings.Contains(name, "LOGFIRE") ||
+			strings.Contains(name, "DEEPSEEK") ||
+			strings.Contains(name, "XAI") ||
+			strings.Contains(name, "GROQ") ||
+			strings.Contains(name, "PYDANTIC")) {
 		return true
 	}
 	return false
@@ -318,10 +334,26 @@ var loopbackDeniedProviderHosts = []string{
 	"api.anthropic.com",
 	"openai.azure.com",
 	"generativelanguage.googleapis.com",
+	"openrouter.ai",
 }
 
 func loopbackDeniesProviderHostBypass() bool {
 	return len(loopbackDeniedProviderHosts) > 0
+}
+
+func pydanticDirectHostDenied(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	h = strings.TrimSuffix(h, ".")
+	if h == "" {
+		return false
+	}
+	for _, denied := range loopbackDeniedProviderHosts {
+		d := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(denied), "."))
+		if h == d || strings.HasSuffix(h, "."+d) {
+			return true
+		}
+	}
+	return false
 }
 
 func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
@@ -333,15 +365,16 @@ func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
 		}
 		out = append(out, item)
 	}
-	if openaiBaseURL == "" {
-		return out
-	}
 	out = append(out,
-		"OPENAI_BASE_URL="+openaiBaseURL,
-		"OPENAI_API_BASE="+openaiBaseURL,
 		"OPENAI_API_KEY="+openaiLoopbackAPIKey,
 		"AGENTPAAS_LOOPBACK_PIN=1",
 		"AGENTPAAS_EGRESS_DENY=1",
 	)
+	if openaiBaseURL != "" {
+		out = append(out,
+			"OPENAI_BASE_URL="+openaiBaseURL,
+			"OPENAI_API_BASE="+openaiBaseURL,
+		)
+	}
 	return out
 }
