@@ -33,11 +33,13 @@ type CanonicalPolicy struct {
 
 // CanonicalPII is the canonical form of PIIGuardrail. Builtins and patterns are sorted.
 type CanonicalPII struct {
-	Action       string   `json:"action"`
-	Builtins     []string `json:"builtins,omitempty"`
-	Patterns     []string `json:"patterns,omitempty"`
-	RejectStatus int      `json:"reject_status,omitempty"`
-	RejectBody   string   `json:"reject_body,omitempty"`
+	Action         string   `json:"action"`
+	Builtins       []string `json:"builtins,omitempty"`
+	Patterns       []string `json:"patterns,omitempty"`
+	RejectStatus   int      `json:"reject_status,omitempty"`
+	RejectBody     string   `json:"reject_body,omitempty"`
+	FailClosed     bool     `json:"fail_closed,omitempty"`
+	BufferedStream bool     `json:"buffered_stream,omitempty"`
 }
 
 // CanonicalLLMBudget is the canonical form of LLMBudget.
@@ -292,11 +294,13 @@ func Canonicalize(p *Policy) (*CanonicalPolicy, []string) {
 
 	if p.PII != nil {
 		cp.PII = &CanonicalPII{
-			Action:       p.PII.Action,
-			Builtins:     sortedStrings(p.PII.Builtins),
-			Patterns:     sortedStrings(p.PII.Patterns),
-			RejectStatus: p.PII.RejectStatus,
-			RejectBody:   p.PII.RejectBody,
+			Action:         p.PII.Action,
+			Builtins:       dedupThenSortStrings(p.PII.Builtins),
+			Patterns:       sortedStrings(p.PII.Patterns),
+			RejectStatus:   p.PII.RejectStatus,
+			RejectBody:     p.PII.RejectBody,
+			FailClosed:     true,
+			BufferedStream: true,
 		}
 	}
 
@@ -377,6 +381,25 @@ func sortedStrings(s []string) []string {
 	}
 	out := make([]string, len(s))
 	copy(out, s)
+	sort.Strings(out)
+	return out
+}
+
+// dedupThenSortStrings keeps first occurrence, then sorts. Duplicate builtins
+// must not appear twice in canonical form.
+func dedupThenSortStrings(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(s))
+	out := make([]string, 0, len(s))
+	for _, v := range s {
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
 	sort.Strings(out)
 	return out
 }

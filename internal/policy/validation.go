@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/money"
 )
@@ -1023,10 +1024,10 @@ func validatePIIGuardrail(pii *PIIGuardrail) []ValidationError {
 	}
 
 	for i, pat := range pii.Patterns {
-		if _, err := regexp.Compile(pat); err != nil {
+		if msg := piiPatternError(pat); msg != "" {
 			errs = append(errs, ValidationError{
 				Field:    fmt.Sprintf("%s.patterns[%d]", prefix, i),
-				Message:  fmt.Sprintf("invalid regex pattern: %v", err),
+				Message:  msg,
 				Severity: "error",
 			})
 		}
@@ -1047,7 +1048,13 @@ func validatePIIGuardrail(pii *PIIGuardrail) []ValidationError {
 				Severity: "error",
 			})
 		}
-	} else if pii.RejectStatus != 0 && (pii.RejectStatus < 400 || pii.RejectStatus > 499) {
+	} else if pii.RejectStatus == 0 {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".reject_status",
+			Message:  "reject_status is required when action is reject",
+			Severity: "error",
+		})
+	} else if pii.RejectStatus < 400 || pii.RejectStatus > 499 {
 		errs = append(errs, ValidationError{
 			Field:    prefix + ".reject_status",
 			Message:  fmt.Sprintf("reject_status must be 4xx, got %d", pii.RejectStatus),
@@ -1055,7 +1062,37 @@ func validatePIIGuardrail(pii *PIIGuardrail) []ValidationError {
 		})
 	}
 
+	if strings.ContainsAny(pii.RejectBody, "\r\n") {
+		errs = append(errs, ValidationError{
+			Field:    prefix + ".reject_body",
+			Message:  "reject_body must not contain CR or LF",
+			Severity: "error",
+		})
+	}
+
 	return errs
+}
+
+func piiPatternError(pat string) string {
+	if !utf8.ValidString(pat) {
+		return "invalid UTF-8 pattern"
+	}
+	if strings.TrimSpace(pat) == "" {
+		return "empty pattern"
+	}
+	for _, r := range pat {
+		if r < 0x20 || r == 0x7f {
+			return "pattern contains control characters"
+		}
+	}
+	if strings.Contains(pat, "+)+") || strings.Contains(pat, "*)+") ||
+		strings.Contains(pat, "+)*") || strings.Contains(pat, "*)*") {
+		return "pattern contains nested quantifiers"
+	}
+	if _, err := regexp.Compile(pat); err != nil {
+		return fmt.Sprintf("invalid regex pattern: %v", err)
+	}
+	return ""
 }
 
 // isValidHeaderName checks whether a string is a valid HTTP header name

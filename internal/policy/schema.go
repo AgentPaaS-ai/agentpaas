@@ -229,12 +229,10 @@ func AllowedPIIBuiltin(name string) bool {
 	}
 }
 
-// PIIRequiresBufferedStream is true when pii.action is mask or reject (D202).
+// PIIRequiresBufferedStream is true whenever a PII block is present (D202),
+// including unknown actions and empty pii:{} mappings.
 func PIIRequiresBufferedStream(p *Policy) bool {
-	if p == nil || p.PII == nil {
-		return false
-	}
-	return p.PII.Action == PIIActionMask || p.PII.Action == PIIActionReject
+	return p != nil && p.PII != nil
 }
 
 // Observability defines cost tracking and OTel tracing configuration
