@@ -1036,14 +1036,16 @@ func newPolicyCmd() *cobra.Command {
 		Long: `Manage agent network/credential policies (policy.yaml).
 
 init scaffolds templates; apply validates/applies YAML; show reads the
-project policy; explain/propose help debug denials.`,
+project policy; validate compiles a local dry-run; explain/propose help debug denials.`,
 		Example: `  agentpaas policy init ./my-agent --template deny-all
   agentpaas policy show ./my-agent
+  agentpaas policy validate ./my-agent
   agentpaas policy apply ./my-agent/policy.yaml --dry-run
   agentpaas policy explain api.example.com`,
 	}
 	cmd.AddCommand(newPolicyApplyCmd())
 	cmd.AddCommand(newPolicyShowCmd())
+	cmd.AddCommand(newPolicyValidateCmd())
 	cmd.AddCommand(newPolicyExplainCmd())
 	cmd.AddCommand(newPolicyProposeCmd())
 	cmd.AddCommand(newPolicyInitCmd())
