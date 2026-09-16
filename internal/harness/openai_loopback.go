@@ -60,6 +60,7 @@ func startOpenAILoopback(rpc *harnessRPCServer) (*openaiLoopback, error) {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      maxModelClientTimeout + rpcReadTimeoutSlack,
 		IdleTimeout:       30 * time.Second,
+		ConnContext:       loopbackConnContext,
 	}
 	go func() {
 		defer close(lb.done)
@@ -100,7 +101,9 @@ func (l *openaiLoopback) Close() error {
 }
 
 func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/v1/chat/completions" {
+	w.Header().Set("X-AgentPaaS-Loopback", "1")
+	path := strings.TrimRight(r.URL.Path, "/")
+	if path != "/v1/chat/completions" {
 		http.NotFound(w, r)
 		return
 	}
@@ -120,7 +123,7 @@ func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Stream {
-		writeOpenAIError(w, http.StatusBadRequest, "streaming not supported")
+		writeOpenAIError(w, http.StatusBadRequest, "streaming not supported on loopback")
 		return
 	}
 
@@ -243,28 +246,80 @@ func writeOpenAIError(w http.ResponseWriter, status int, message string) {
 	})
 }
 
+func envName(item string) string {
+	if i := strings.IndexByte(item, '='); i >= 0 {
+		return item[:i]
+	}
+	return item
+}
+
 func isWorkloadOpenAIEnv(item string) bool {
-	return strings.HasPrefix(item, "OPENAI_API_KEY=") ||
-		strings.HasPrefix(item, "OPENAI_BASE_URL=") ||
-		strings.HasPrefix(item, "OPENAI_API_BASE=")
+	name := strings.ToUpper(envName(item))
+	switch name {
+	case "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_BASE", "OPENAI_API_HOST",
+		"OPENAI_ORG_ID", "OPENAI_ORGANIZATION",
+		"ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN",
+		"AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_BASE_URL",
+		"GOOGLE_API_KEY", "GEMINI_API_KEY", "GEMINI_API_ENDPOINT",
+		"GOOGLE_GENERATIVE_AI_API_KEY":
+		return true
+	}
+	if strings.Contains(name, "API_KEY") &&
+		(strings.Contains(name, "OPENAI") ||
+			strings.Contains(name, "ANTHROPIC") ||
+			strings.Contains(name, "GEMINI") ||
+			strings.Contains(name, "AZURE") ||
+			strings.Contains(name, "GOOGLE")) {
+		return true
+	}
+	return false
+}
+
+func isWorkloadProxyEnv(item string) bool {
+	switch strings.ToUpper(envName(item)) {
+	case "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY":
+		return true
+	}
+	return false
+}
+
+func loopbackConnContext(ctx context.Context, c net.Conn) context.Context {
+	addr, ok := c.RemoteAddr().(*net.TCPAddr)
+	if !ok || addr.IP == nil || !addr.IP.IsLoopback() {
+		_ = c.Close()
+	}
+	return ctx
+}
+
+var loopbackDeniedProviderHosts = []string{
+	"api.openai.com",
+	"api.anthropic.com",
+	"openai.azure.com",
+	"generativelanguage.googleapis.com",
+}
+
+func loopbackDeniesProviderHostBypass() bool {
+	return len(loopbackDeniedProviderHosts) > 0
 }
 
 func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
 	env := workerEnv(base, rpcAddr)
-	if openaiBaseURL == "" {
-		return env
-	}
-	out := make([]string, 0, len(env)+3)
+	out := make([]string, 0, len(env)+6)
 	for _, item := range env {
-		if isWorkloadOpenAIEnv(item) {
+		if isWorkloadOpenAIEnv(item) || isWorkloadProxyEnv(item) {
 			continue
 		}
 		out = append(out, item)
+	}
+	if openaiBaseURL == "" {
+		return out
 	}
 	out = append(out,
 		"OPENAI_BASE_URL="+openaiBaseURL,
 		"OPENAI_API_BASE="+openaiBaseURL,
 		"OPENAI_API_KEY="+openaiLoopbackAPIKey,
+		"AGENTPAAS_LOOPBACK_PIN=1",
+		"AGENTPAAS_EGRESS_DENY=1",
 	)
 	return out
 }
