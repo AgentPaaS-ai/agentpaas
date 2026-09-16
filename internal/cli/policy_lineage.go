@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -135,13 +136,13 @@ func emptyPolicyLineageEnforcement() policyLineageEnforcement {
 
 func loadLineageEnforcement(cmd *cobra.Command, runID string) policyLineageEnforcement {
 	empty := emptyPolicyLineageEnforcement()
-	path, err := localAuditJSONLPath(cmd)
-	if err != nil || path == "" {
+	if runID == "" {
 		return empty
 	}
-	rows, err := readLocalAuditRows(path)
-	if err != nil {
-		return empty
+	var rows []lineageAuditRow
+	for _, path := range lineageAuditJSONLPaths(cmd, runID) {
+		got, _ := readLocalAuditRows(path) // keep already-parsed rows if a later line fails
+		rows = append(rows, got...)
 	}
 	return enforcementFromAuditRows(rows, runID)
 }
@@ -152,6 +153,23 @@ func localAuditJSONLPath(cmd *cobra.Command) (string, error) {
 		return "", err
 	}
 	return filepath.Join(home.NewHomePaths(homeDir).State, "audit.jsonl"), nil
+}
+
+func lineageAuditJSONLPaths(cmd *cobra.Command, runID string) []string {
+	path, err := localAuditJSONLPath(cmd)
+	if err != nil || path == "" {
+		return nil
+	}
+	paths := []string{path}
+	if runID == "" {
+		return paths
+	}
+	homeDir, err := homeDirPath(cmd)
+	if err != nil {
+		return paths
+	}
+	paths = append(paths, filepath.Join(home.NewHomePaths(homeDir).State, "runs", runID, "harness-audit", "harness-audit.jsonl"))
+	return paths
 }
 
 type lineageAuditRow struct {
@@ -186,22 +204,22 @@ func readLocalAuditRows(path string) ([]lineageAuditRow, error) {
 	defer func() { _ = f.Close() }() // best-effort close
 
 	var rows []lineageAuditRow
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	reader := bufio.NewReader(f)
+	for {
+		line, readErr := reader.ReadString('\n')
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			var row lineageAuditRow
+			if err := json.Unmarshal([]byte(trimmed), &row); err == nil {
+				rows = append(rows, row)
+			}
 		}
-		var row lineageAuditRow
-		if err := json.Unmarshal([]byte(line), &row); err != nil {
-			continue
+		if readErr == io.EOF {
+			return rows, nil
 		}
-		rows = append(rows, row)
+		if readErr != nil {
+			return rows, readErr
+		}
 	}
-	if err := scanner.Err(); err != nil {
-		return rows, err
-	}
-	return rows, nil
 }
 
 func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineageEnforcement {
@@ -211,7 +229,8 @@ func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineag
 	}
 	allowByHost := map[string]int{}
 	denyByHost := map[string]int{}
-	denyExtra := map[string]string{}
+	denyExtra := map[string][]string{}
+	denyExtraSeen := map[string]map[string]struct{}{}
 	credSeen := map[string]struct{}{}
 	var creds []string
 	pii := 0
@@ -225,50 +244,54 @@ func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineag
 		if payload == nil {
 			payload = map[string]any{}
 		}
-		switch row.kind() {
-		case "egress.allowed":
-			host := payloadString(payload, "host")
-			if host == "" {
+		kind := row.kind()
+		switch {
+		case kind == "egress.allowed" || kind == "egress_allowed":
+			host := payloadHost(payload)
+			n := payloadCount(payload)
+			if host == "" || n <= 0 {
 				continue
 			}
-			allowByHost[host] += payloadCount(payload)
+			allowByHost[host] += n
 			creds = appendCredentialID(creds, credSeen, payloadString(payload, "credential_id"))
-		case "egress.denied":
-			host := payloadString(payload, "host")
+		case kind == "egress.denied" || kind == "egress_denied":
+			reason := payloadString(payload, "reason")
+			if isPIIMaskedReason(reason) {
+				pii++
+				continue
+			}
+			host := payloadHost(payload)
 			if host == "" {
 				continue
 			}
 			denyByHost[host]++
-			extra := strings.TrimSpace(payloadString(payload, "method") + " " + payloadString(payload, "reason"))
-			if extra == "" {
-				continue
-			}
-			if prev, ok := denyExtra[host]; !ok {
-				denyExtra[host] = extra
-			} else if prev != extra {
-				denyExtra[host] = ""
-			}
-		case "secret_injected", "credential.injected", "credential_injected":
+			extra := strings.TrimSpace(payloadString(payload, "method") + " " + reason)
+			appendUniqueDenyExtra(denyExtra, denyExtraSeen, host, extra)
+		case kind == "secret_injected" || kind == "credential.injected" || kind == "credential_injected":
 			creds = appendCredentialID(creds, credSeen, payloadString(payload, "credential_id"))
-		case "pii.mask", "pii.masked", "pii_mask", "pii_masked":
+		case kind == "pii.mask" || kind == "pii.masked" || kind == "pii_mask" || kind == "pii_masked":
 			pii++
-		case "budget.consumed", "budget_consumed":
-			if s := firstNonEmpty(
-				payloadString(payload, "budget_consumed"),
-				payloadString(payload, "consumed"),
-				payloadString(payload, "amount"),
-			); s != "" {
+		case kind == "budget.consumed" || kind == "budget_consumed" || kind == "budget_exceeded":
+			if s := budgetConsumedFromPayload(payload); s != "" {
 				budget = s
 			}
 		}
 	}
 
 	for _, host := range sortedKeys(allowByHost) {
-		out.EgressAllowed = append(out.EgressAllowed, fmt.Sprintf("%s ×%d", host, allowByHost[host]))
+		n := allowByHost[host]
+		if n <= 0 {
+			continue
+		}
+		out.EgressAllowed = append(out.EgressAllowed, fmt.Sprintf("%s ×%d", host, n))
 	}
 	for _, host := range sortedKeys(denyByHost) {
-		line := fmt.Sprintf("%s ×%d", host, denyByHost[host])
-		if extra := denyExtra[host]; extra != "" {
+		n := denyByHost[host]
+		if n <= 0 {
+			continue
+		}
+		line := fmt.Sprintf("%s ×%d", host, n)
+		if extra := strings.Join(denyExtra[host], " "); extra != "" {
 			line += " " + extra
 		}
 		out.EgressDenied = append(out.EgressDenied, line)
@@ -283,8 +306,55 @@ func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineag
 	return out
 }
 
+func payloadHost(payload map[string]any) string {
+	return firstNonEmpty(payloadString(payload, "host"), payloadString(payload, "destination"))
+}
+
+func isPIIMaskedReason(reason string) bool {
+	switch strings.TrimSpace(reason) {
+	case "pii_masked", "pii_mask", "pii.masked", "pii.mask":
+		return true
+	default:
+		return false
+	}
+}
+
+func appendUniqueDenyExtra(extras map[string][]string, seen map[string]map[string]struct{}, host, extra string) {
+	if extra == "" {
+		return
+	}
+	got := seen[host]
+	if got == nil {
+		got = map[string]struct{}{}
+		seen[host] = got
+	}
+	if _, ok := got[extra]; ok {
+		return
+	}
+	got[extra] = struct{}{}
+	extras[host] = append(extras[host], extra)
+}
+
+func budgetConsumedFromPayload(payload map[string]any) string {
+	if s := firstNonEmpty(
+		payloadString(payload, "budget_consumed"),
+		payloadString(payload, "consumed"),
+		payloadString(payload, "amount"),
+	); s != "" {
+		return s
+	}
+	cat := payloadString(payload, "category")
+	limit := payloadString(payload, "limit")
+	observed := payloadString(payload, "observed")
+	if cat == "" && limit == "" && observed == "" {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join([]string{cat, observed, limit}, " "))
+}
+
 func appendCredentialID(ids []string, seen map[string]struct{}, id string) []string {
-	if id == "" {
+	id = strings.TrimSpace(id)
+	if id == "" || isSecretShapedCredentialID(id) {
 		return ids
 	}
 	if _, ok := seen[id]; ok {
@@ -292,6 +362,28 @@ func appendCredentialID(ids []string, seen map[string]struct{}, id string) []str
 	}
 	seen[id] = struct{}{}
 	return append(ids, id)
+}
+
+func isSecretShapedCredentialID(id string) bool {
+	if len(id) > 80 {
+		return true
+	}
+	if strings.HasPrefix(id, "eyJ") || strings.HasPrefix(id, "vault:") {
+		return true
+	}
+	if strings.Contains(id, "Bearer") {
+		return true
+	}
+	if strings.Contains(id, "sk-") || strings.Contains(id, "sk_") {
+		return true
+	}
+	if strings.Contains(id, "AKIA") || strings.Contains(id, "ASIA") {
+		return true
+	}
+	if strings.Contains(id, "ghp_") || strings.Contains(id, "gho_") || strings.Contains(id, "github_pat_") {
+		return true
+	}
+	return false
 }
 
 func payloadString(payload map[string]any, key string) string {
