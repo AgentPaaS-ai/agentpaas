@@ -29,12 +29,17 @@ a per-host runtime.
 
 What 0.4 brew actually installs (`Formula/agentpaas.rb`): `agentpaas`,
 `agentpaasd`, `agentpaas-harness-linux`, `agentpaas-harness-linux-amd64`.
-There is no `agentpaas-mcp` binary on that formula. `agentpaas cloud mcp
-call` talks to a *deployed* MCP server; it is not a host skin.
+There is no `agentpaas-mcp` on that 0.4.2 formula. Build the dummy locally:
 
-If `agentpaas-mcp` is not on PATH, use the CLI path below. Do not invent
-a server. Do not claim a live MCP-connect pass until that binary exists.
-That absence is a platform gap, not an M18 gap.
+```
+go build -o bin/agentpaas-mcp ./cmd/agentpaas-mcp
+# or: make build  (also writes bin/agentpaas-mcp)
+```
+
+The dummy speaks MCP stdio (initialize / tools/list / ping→pong) so a host
+can prove connect. It is not pack/deploy and not a per-host runtime.
+`agentpaas cloud mcp call` talks to a *deployed* MCP server; it is not a
+host skin.
 
 ## First run (same five steps in every skin)
 
