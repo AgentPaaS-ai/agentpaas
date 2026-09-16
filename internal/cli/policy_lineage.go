@@ -1,12 +1,17 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 	"github.com/spf13/cobra"
 )
@@ -58,15 +63,15 @@ Optional --run-id is accepted; counts stay at zero when no aggregate rows exist.
 			if len(args) > 0 {
 				projectDir = args[0]
 			}
-			_, _ = cmd.Flags().GetString("run-id") // cobra flag default on missing; ignored without aggregate rows
-			return showProjectPolicyLineage(cmd, projectDir)
+			runID, _ := cmd.Flags().GetString("run-id") // cobra flag default on missing
+			return showProjectPolicyLineage(cmd, projectDir, strings.TrimSpace(runID))
 		},
 	}
 	cmd.Flags().String("run-id", "", "Optional run id; enforcement counts stay zero without aggregate rows")
 	return cmd
 }
 
-func showProjectPolicyLineage(cmd *cobra.Command, projectDir string) error {
+func showProjectPolicyLineage(cmd *cobra.Command, projectDir, runID string) error {
 	if projectDir == "" {
 		projectDir = "."
 	}
@@ -98,18 +103,15 @@ func showProjectPolicyLineage(cmd *cobra.Command, projectDir string) error {
 			Signature: "",
 			Parent:    "",
 		},
-		Policy: compiled,
-		Enforcement: policyLineageEnforcement{
-			EgressAllowed:        []string{},
-			EgressDenied:         []string{},
-			CredentialInjections: []string{},
-			PIIMasks:             0,
-			BudgetConsumed:       "",
-		},
+		Policy:      compiled,
+		Enforcement: emptyPolicyLineageEnforcement(),
 		Proof: policyLineageProof{
 			HashChainVerified: false,
 			ExportPointer:     "agentpaas audit export",
 		},
+	}
+	if runID != "" {
+		result.Enforcement = loadLineageEnforcement(cmd, runID)
 	}
 
 	return printTextOrJSON(jsonOutput(cmd), result, func(v interface{}) string {
@@ -119,6 +121,243 @@ func showProjectPolicyLineage(cmd *cobra.Command, projectDir string) error {
 		}
 		return formatPolicyLineageText(r)
 	})
+}
+
+func emptyPolicyLineageEnforcement() policyLineageEnforcement {
+	return policyLineageEnforcement{
+		EgressAllowed:        []string{},
+		EgressDenied:         []string{},
+		CredentialInjections: []string{},
+		PIIMasks:             0,
+		BudgetConsumed:       "",
+	}
+}
+
+func loadLineageEnforcement(cmd *cobra.Command, runID string) policyLineageEnforcement {
+	empty := emptyPolicyLineageEnforcement()
+	path, err := localAuditJSONLPath(cmd)
+	if err != nil || path == "" {
+		return empty
+	}
+	rows, err := readLocalAuditRows(path)
+	if err != nil {
+		return empty
+	}
+	return enforcementFromAuditRows(rows, runID)
+}
+
+func localAuditJSONLPath(cmd *cobra.Command) (string, error) {
+	homeDir, err := homeDirPath(cmd)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home.NewHomePaths(homeDir).State, "audit.jsonl"), nil
+}
+
+type lineageAuditRow struct {
+	EventType string         `json:"event_type"`
+	Type      string         `json:"type"`
+	RunID     string         `json:"run_id"`
+	Payload   map[string]any `json:"payload"`
+}
+
+func (r lineageAuditRow) kind() string {
+	if r.EventType != "" {
+		return r.EventType
+	}
+	return r.Type
+}
+
+func (r lineageAuditRow) run() string {
+	if r.RunID != "" {
+		return r.RunID
+	}
+	return payloadString(r.Payload, "run_id")
+}
+
+func readLocalAuditRows(path string) ([]lineageAuditRow, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer func() { _ = f.Close() }() // best-effort close
+
+	var rows []lineageAuditRow
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var row lineageAuditRow
+		if err := json.Unmarshal([]byte(line), &row); err != nil {
+			continue
+		}
+		rows = append(rows, row)
+	}
+	if err := scanner.Err(); err != nil {
+		return rows, err
+	}
+	return rows, nil
+}
+
+func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineageEnforcement {
+	out := emptyPolicyLineageEnforcement()
+	if runID == "" {
+		return out
+	}
+	allowByHost := map[string]int{}
+	denyByHost := map[string]int{}
+	denyExtra := map[string]string{}
+	credSeen := map[string]struct{}{}
+	var creds []string
+	pii := 0
+	budget := ""
+
+	for _, row := range rows {
+		if row.run() != runID {
+			continue
+		}
+		payload := row.Payload
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		switch row.kind() {
+		case "egress.allowed":
+			host := payloadString(payload, "host")
+			if host == "" {
+				continue
+			}
+			allowByHost[host] += payloadCount(payload)
+			creds = appendCredentialID(creds, credSeen, payloadString(payload, "credential_id"))
+		case "egress.denied":
+			host := payloadString(payload, "host")
+			if host == "" {
+				continue
+			}
+			denyByHost[host]++
+			extra := strings.TrimSpace(payloadString(payload, "method") + " " + payloadString(payload, "reason"))
+			if extra == "" {
+				continue
+			}
+			if prev, ok := denyExtra[host]; !ok {
+				denyExtra[host] = extra
+			} else if prev != extra {
+				denyExtra[host] = ""
+			}
+		case "secret_injected", "credential.injected", "credential_injected":
+			creds = appendCredentialID(creds, credSeen, payloadString(payload, "credential_id"))
+		case "pii.mask", "pii.masked", "pii_mask", "pii_masked":
+			pii++
+		case "budget.consumed", "budget_consumed":
+			if s := firstNonEmpty(
+				payloadString(payload, "budget_consumed"),
+				payloadString(payload, "consumed"),
+				payloadString(payload, "amount"),
+			); s != "" {
+				budget = s
+			}
+		}
+	}
+
+	for _, host := range sortedKeys(allowByHost) {
+		out.EgressAllowed = append(out.EgressAllowed, fmt.Sprintf("%s ×%d", host, allowByHost[host]))
+	}
+	for _, host := range sortedKeys(denyByHost) {
+		line := fmt.Sprintf("%s ×%d", host, denyByHost[host])
+		if extra := denyExtra[host]; extra != "" {
+			line += " " + extra
+		}
+		out.EgressDenied = append(out.EgressDenied, line)
+	}
+	sort.Strings(creds)
+	if creds == nil {
+		creds = []string{}
+	}
+	out.CredentialInjections = creds
+	out.PIIMasks = pii
+	out.BudgetConsumed = budget
+	return out
+}
+
+func appendCredentialID(ids []string, seen map[string]struct{}, id string) []string {
+	if id == "" {
+		return ids
+	}
+	if _, ok := seen[id]; ok {
+		return ids
+	}
+	seen[id] = struct{}{}
+	return append(ids, id)
+}
+
+func payloadString(payload map[string]any, key string) string {
+	if payload == nil {
+		return ""
+	}
+	v, ok := payload[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	default:
+		return strings.TrimSpace(fmt.Sprint(t))
+	}
+}
+
+func payloadCount(payload map[string]any) int {
+	if payload == nil {
+		return 1
+	}
+	v, ok := payload["count"]
+	if !ok || v == nil {
+		return 1
+	}
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case json.Number:
+		i, err := n.Int64()
+		if err != nil {
+			return 1
+		}
+		return int(i)
+	case string:
+		i, err := strconv.Atoi(strings.TrimSpace(n))
+		if err != nil {
+			return 1
+		}
+		return i
+	default:
+		return 1
+	}
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func sortedKeys(m map[string]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func formatPolicyLineageText(r *policyLineageResult) string {
@@ -132,13 +371,24 @@ func formatPolicyLineageText(r *policyLineageResult) string {
 	fmt.Fprintf(&b, "POLICY\n")
 	fmt.Fprintf(&b, "%s\n", formatPolicyShowText(r.Policy))
 	fmt.Fprintf(&b, "ENFORCEMENT\n")
-	fmt.Fprintf(&b, "egress allowed: %d\n", len(r.Enforcement.EgressAllowed))
-	fmt.Fprintf(&b, "egress denied: %d\n", len(r.Enforcement.EgressDenied))
-	fmt.Fprintf(&b, "credential injections: %d\n", len(r.Enforcement.CredentialInjections))
+	writeEnforcementLines(&b, "egress allowed", r.Enforcement.EgressAllowed)
+	writeEnforcementLines(&b, "egress denied", r.Enforcement.EgressDenied)
+	writeEnforcementLines(&b, "credential injections", r.Enforcement.CredentialInjections)
 	fmt.Fprintf(&b, "pii masks: %d\n", r.Enforcement.PIIMasks)
 	fmt.Fprintf(&b, "budget consumed: %s\n", r.Enforcement.BudgetConsumed)
 	fmt.Fprintf(&b, "PROOF\n")
 	fmt.Fprintf(&b, "hash chain verified: %v\n", r.Proof.HashChainVerified)
 	fmt.Fprintf(&b, "export pointer: %s", r.Proof.ExportPointer)
 	return b.String()
+}
+
+func writeEnforcementLines(b *strings.Builder, label string, lines []string) {
+	if len(lines) == 0 {
+		fmt.Fprintf(b, "%s: 0\n", label)
+		return
+	}
+	fmt.Fprintf(b, "%s:\n", label)
+	for _, line := range lines {
+		fmt.Fprintf(b, "  %s\n", line)
+	}
 }

@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -99,6 +101,41 @@ func TestPolicyLineageNoCanary(t *testing.T) {
 	if strings.Contains(jout+jerr, policyShowCanary) {
 		t.Fatal("canary credential value leaked in JSON output")
 	}
+
+	home := writeLineageAuditRows(t, []map[string]any{
+		{
+			"event_type": "egress.allowed",
+			"payload": map[string]any{
+				"run_id":        "run-canary",
+				"host":          "hooks.stripe.com",
+				"credential_id": "stripe-key",
+				"count":         2,
+				"value":         policyShowCanary,
+				"secret":        lineageFixtureSecret,
+			},
+		},
+	})
+	cOut, cErr, cErr2 := execPolicyLineage(t, dir, "--home", home, "--run-id", "run-canary")
+	if cErr2 != nil {
+		t.Fatalf("run-id Execute() error = %v\nstderr: %s\nstdout: %s", cErr2, cErr, cOut)
+	}
+	blob := cOut + cErr
+	if strings.Contains(blob, policyShowCanary) {
+		t.Fatal("canary credential value leaked in run-id text output")
+	}
+	if strings.Contains(blob, lineageFixtureSecret) {
+		t.Fatal("fixture secret value leaked in run-id text output")
+	}
+	cjOut, cjErr, cjErr2 := execPolicyLineage(t, dir, "--home", home, "--run-id", "run-canary", "--json")
+	if cjErr2 != nil {
+		t.Fatalf("run-id json Execute() error = %v\nstderr: %s\nstdout: %s", cjErr2, cjErr, cjOut)
+	}
+	if strings.Contains(cjOut+cjErr, policyShowCanary) {
+		t.Fatal("canary credential value leaked in run-id JSON output")
+	}
+	if strings.Contains(cjOut+cjErr, lineageFixtureSecret) {
+		t.Fatal("fixture secret value leaked in run-id JSON output")
+	}
 }
 
 func TestPolicyLineageNoInternalMarkers(t *testing.T) {
@@ -138,19 +175,27 @@ func TestPolicyLineageEnforcementZerosWithoutRunID(t *testing.T) {
 
 func TestPolicyLineageEnforcementZerosUnknownRun(t *testing.T) {
 	dir := writePolicyShowYAML(t, policyShowCompiledYAML)
-	stdout, stderr, err := execPolicyLineage(t, dir, "--run-id", "run-does-not-exist")
+	home := writeLineageAuditRows(t, []map[string]any{
+		{
+			"event_type": "egress.allowed",
+			"payload": map[string]any{
+				"run_id":        "run-other",
+				"host":          "hooks.stripe.com",
+				"credential_id": "stripe-key",
+				"count":         4,
+			},
+		},
+	})
+	stdout, stderr, err := execPolicyLineage(t, dir, "--home", home, "--run-id", "run-does-not-exist")
 	if err != nil {
 		t.Fatalf("Execute() error = %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
 	}
-	enforcement := stdout
-	if i := strings.Index(stdout, "ENFORCEMENT"); i >= 0 {
-		enforcement = stdout[i:]
-		if j := strings.Index(enforcement, "PROOF"); j >= 0 {
-			enforcement = enforcement[:j]
-		}
-	}
+	enforcement := lineageEnforcementSection(t, stdout)
 	if strings.Contains(enforcement, "api.openai.com") {
 		t.Fatalf("ENFORCEMENT invented a host for unknown run:\n%s", enforcement)
+	}
+	if strings.Contains(enforcement, "hooks.stripe.com") {
+		t.Fatalf("ENFORCEMENT used rows from a different run:\n%s", enforcement)
 	}
 }
 
@@ -212,5 +257,235 @@ func TestPolicyLineageMissingPolicyYAML(t *testing.T) {
 	blob := strings.ToLower(stdout + stderr + err.Error())
 	if !strings.Contains(blob, "policy.yaml") {
 		t.Fatalf("missing-policy error should mention policy.yaml, got %v\n%s\n%s", err, stdout, stderr)
+	}
+}
+
+const lineageFixtureSecret = "sk-fixture-lineage-canary"
+
+func lineageEnforcementSection(t *testing.T, stdout string) string {
+	t.Helper()
+	enforcement := stdout
+	if i := strings.Index(stdout, "ENFORCEMENT"); i >= 0 {
+		enforcement = stdout[i:]
+		if j := strings.Index(enforcement, "PROOF"); j >= 0 {
+			enforcement = enforcement[:j]
+		}
+	}
+	return enforcement
+}
+
+func writeLineageAuditRows(t *testing.T, rows []map[string]any) string {
+	t.Helper()
+	homeDir := t.TempDir()
+	stateDir := filepath.Join(homeDir, "state")
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatalf("mkdir state: %v", err)
+	}
+	var b strings.Builder
+	for _, row := range rows {
+		data, err := json.Marshal(row)
+		if err != nil {
+			t.Fatalf("marshal audit row: %v", err)
+		}
+		b.Write(data)
+		b.WriteByte('\n')
+	}
+	path := filepath.Join(stateDir, "audit.jsonl")
+	if err := os.WriteFile(path, []byte(b.String()), 0o600); err != nil {
+		t.Fatalf("write audit.jsonl: %v", err)
+	}
+	return homeDir
+}
+
+func lineageJSONEnforcement(t *testing.T, dir, home, runID string) (string, map[string]any) {
+	t.Helper()
+	stdout, stderr, err := execPolicyLineage(t, dir, "--home", home, "--run-id", runID, "--json")
+	if err != nil {
+		t.Fatalf("json Execute() error = %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
+	}
+	got := mustPolicyLineageJSON(t, stdout)
+	return stdout, jsonMap(t, got["enforcement"], "enforcement")
+}
+
+func jsonStringSlice(t *testing.T, m map[string]any, key string) []string {
+	t.Helper()
+	v, ok := m[key]
+	if !ok {
+		t.Fatalf("missing %q in %v", key, m)
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		t.Fatalf("%s: want array, got %T (%v)", key, v, v)
+	}
+	out := make([]string, 0, len(arr))
+	for i, item := range arr {
+		s, ok := item.(string)
+		if !ok {
+			t.Fatalf("%s[%d]: want string, got %T (%v)", key, i, item, item)
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func TestPolicyLineageEnforcementAllowAggregates(t *testing.T) {
+	dir := writePolicyShowYAML(t, policyShowCompiledYAML)
+	home := writeLineageAuditRows(t, []map[string]any{
+		{
+			"event_type": "egress.allowed",
+			"payload": map[string]any{
+				"run_id":        "run-allow",
+				"host":          "hooks.stripe.com",
+				"credential_id": "stripe-key",
+				"count":         3,
+			},
+		},
+		{
+			"event_type": "egress.allowed",
+			"payload": map[string]any{
+				"run_id":        "run-allow",
+				"host":          "hooks.stripe.com",
+				"credential_id": "stripe-key",
+				"count":         2,
+			},
+		},
+	})
+	stdout, stderr, err := execPolicyLineage(t, dir, "--home", home, "--run-id", "run-allow")
+	if err != nil {
+		t.Fatalf("Execute() error = %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
+	}
+	enforcement := lineageEnforcementSection(t, stdout)
+	if !strings.Contains(enforcement, "hooks.stripe.com ×5") {
+		t.Fatalf("ENFORCEMENT missing summed host ×N:\n%s", enforcement)
+	}
+	if strings.Contains(enforcement, "api.openai.com") {
+		t.Fatalf("ENFORCEMENT copied a policy host with no rows:\n%s", enforcement)
+	}
+
+	_, enf := lineageJSONEnforcement(t, dir, home, "run-allow")
+	allowed := jsonStringSlice(t, enf, "egress_allowed")
+	if len(allowed) != 1 || allowed[0] != "hooks.stripe.com ×5" {
+		t.Fatalf("egress_allowed = %v, want [hooks.stripe.com ×5]", allowed)
+	}
+}
+
+func TestPolicyLineageEnforcementDenials(t *testing.T) {
+	dir := writePolicyShowYAML(t, policyShowCompiledYAML)
+	home := writeLineageAuditRows(t, []map[string]any{
+		{
+			"event_type": "egress.denied",
+			"payload": map[string]any{
+				"run_id": "run-deny",
+				"host":   "evil.example.com",
+				"method": "POST",
+			},
+		},
+		{
+			"event_type": "egress.denied",
+			"payload": map[string]any{
+				"run_id": "run-deny",
+				"host":   "evil.example.com",
+				"method": "POST",
+			},
+		},
+	})
+	stdout, stderr, err := execPolicyLineage(t, dir, "--home", home, "--run-id", "run-deny")
+	if err != nil {
+		t.Fatalf("Execute() error = %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
+	}
+	enforcement := lineageEnforcementSection(t, stdout)
+	if !strings.Contains(enforcement, "evil.example.com") {
+		t.Fatalf("ENFORCEMENT masked or omitted deny host:\n%s", enforcement)
+	}
+	if !strings.Contains(enforcement, "×2") {
+		t.Fatalf("ENFORCEMENT missing denied ×M:\n%s", enforcement)
+	}
+
+	_, enf := lineageJSONEnforcement(t, dir, home, "run-deny")
+	denied := jsonStringSlice(t, enf, "egress_denied")
+	if len(denied) != 1 {
+		t.Fatalf("egress_denied = %v, want one host line", denied)
+	}
+	if !strings.Contains(denied[0], "evil.example.com") || !strings.Contains(denied[0], "×2") {
+		t.Fatalf("egress_denied line = %q, want host ×2", denied[0])
+	}
+}
+
+func TestPolicyLineageEnforcementSumSameHost(t *testing.T) {
+	dir := writePolicyShowYAML(t, policyShowCompiledYAML)
+	home := writeLineageAuditRows(t, []map[string]any{
+		{
+			"event_type": "egress.allowed",
+			"payload": map[string]any{
+				"run_id":        "run-sum",
+				"host":          "hooks.stripe.com",
+				"credential_id": "stripe-key",
+				"count":         2,
+			},
+		},
+		{
+			"event_type": "egress.allowed",
+			"payload": map[string]any{
+				"run_id":        "run-sum",
+				"host":          "hooks.stripe.com",
+				"credential_id": "backup-key",
+				"count":         3,
+			},
+		},
+	})
+	stdout, stderr, err := execPolicyLineage(t, dir, "--home", home, "--run-id", "run-sum")
+	if err != nil {
+		t.Fatalf("Execute() error = %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
+	}
+	enforcement := lineageEnforcementSection(t, stdout)
+	if !strings.Contains(enforcement, "hooks.stripe.com ×5") {
+		t.Fatalf("same-host allows should sum to ×5:\n%s", enforcement)
+	}
+	if strings.Count(enforcement, "hooks.stripe.com") != 1 {
+		t.Fatalf("want one host line for summed allows:\n%s", enforcement)
+	}
+	if !strings.Contains(enforcement, "stripe-key") || !strings.Contains(enforcement, "backup-key") {
+		t.Fatalf("both credential ids missing:\n%s", enforcement)
+	}
+
+	_, enf := lineageJSONEnforcement(t, dir, home, "run-sum")
+	allowed := jsonStringSlice(t, enf, "egress_allowed")
+	if len(allowed) != 1 || allowed[0] != "hooks.stripe.com ×5" {
+		t.Fatalf("egress_allowed = %v, want one summed host line", allowed)
+	}
+	ids := jsonStringSlice(t, enf, "credential_injections")
+	got := strings.Join(ids, ",")
+	if !strings.Contains(got, "stripe-key") || !strings.Contains(got, "backup-key") {
+		t.Fatalf("credential_injections = %v, want both ids", ids)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("credential_injections = %v, want 2 ids", ids)
+	}
+}
+
+func TestPolicyLineageEnforcementZerosEmptyFixture(t *testing.T) {
+	dir := writePolicyShowYAML(t, policyShowCompiledYAML)
+	home := writeLineageAuditRows(t, nil)
+	stdout, stderr, err := execPolicyLineage(t, dir, "--home", home, "--run-id", "run-empty")
+	if err != nil {
+		t.Fatalf("Execute() error = %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
+	}
+	enforcement := lineageEnforcementSection(t, stdout)
+	if strings.Contains(enforcement, "api.openai.com") || strings.Contains(enforcement, "hooks.stripe.com") {
+		t.Fatalf("empty fixture invented hosts:\n%s", enforcement)
+	}
+	if !strings.Contains(enforcement, "0") {
+		t.Fatalf("empty fixture should stay at zero counts:\n%s", enforcement)
+	}
+
+	_, enf := lineageJSONEnforcement(t, dir, home, "run-empty")
+	if got := jsonStringSlice(t, enf, "egress_allowed"); len(got) != 0 {
+		t.Fatalf("egress_allowed = %v, want empty", got)
+	}
+	if got := jsonStringSlice(t, enf, "egress_denied"); len(got) != 0 {
+		t.Fatalf("egress_denied = %v, want empty", got)
+	}
+	if got := jsonStringSlice(t, enf, "credential_injections"); len(got) != 0 {
+		t.Fatalf("credential_injections = %v, want empty", got)
 	}
 }
