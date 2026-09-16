@@ -33,6 +33,7 @@ security.
 | `agent.description` | no | Human-readable description. |
 | `egress` | no | Allow-list of outbound destinations. Empty = default deny. |
 | `credentials` | no | Credential sources injected by the gateway broker. |
+| `mcp_servers` | no | MCP servers this agent may use, with optional per-tool allow and deny lists. |
 | `ingress` | no | Inbound webhook/trigger listeners. |
 
 ## Egress rules
@@ -81,6 +82,35 @@ the gateway. The agent never sees the raw secret.
 |---|---|---|
 | `path` | yes | URL path prefix for the trigger listener. |
 | `port` | no | Listen port (default `7718`). |
+
+## MCP servers
+
+Each `mcp_servers` entry names one Model Context Protocol server. The server host must also appear on the egress allow list. Host allow is not enough on AgentPaaS Cloud: tool names are enforced from the signed deployment policy.
+
+| Field | Required | Description |
+|---|---|---|
+| `url` | yes | Server URL. The hostname must be on the egress allow list. |
+| `allowed_tools` | no | Exact tool names this deployment may list and call. |
+| `denied_tools` | no | Exact tool names this deployment must not list or call. Deny wins over allow. |
+
+```yaml
+mcp_servers:
+  - url: https://mcp.example.com
+    allowed_tools:
+      - read_issue
+      - list_issues
+    denied_tools:
+      - delete_issue
+```
+
+### Cloud per-tool enforcement
+
+On AgentPaaS Cloud, the signed deployment policy is the source of truth for which tools exist for that deployment.
+
+- `tools/list` returns only the tools that policy allows for that deployment.
+- `tools/call` for a tool missing from `allowed_tools`, listed in `denied_tools`, or hidden from `tools/list` is denied before the tool runs. No upstream call is made.
+- An empty `allowed_tools` list denies every tool on that server.
+- Changing the tool set means editing policy and redeploying. It is not a prompt change.
 
 ## Examples
 
