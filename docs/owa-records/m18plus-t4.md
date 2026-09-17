@@ -245,6 +245,44 @@ stderr: empty. process exit 0.
 - audit verify: honest FAIL — local audit chain tail truncation (checkpoint seq=43 vs 38 records)
 - No bypass of MCP. No customer tenancy ten_5e4aea6f.
 
+### Session 4 — initialize, pack --target linux/amd64, cloud_push --lock (deploy/invoke/audit not reached)
+
+Follow-up after session 3: platform must be linux/amd64 for cloud, got darwin/arm64. One stdio session on `/opt/homebrew/bin/agentpaas-mcp`. Sequential on the same stdin: initialize + initialized, then pack extra argv `["--target","linux/amd64"]` (project-dir defaulted to cwd). Pack returned a lock path, so cloud_push `--lock` that path. cloud_deploy / cloud_invoke were not sent because push timed out (MCP runCLI 60s). audit not sent (no time remaining after the 60s push timeout in this session; no second session). Binary not edited. No MCP login/secret tools. Tenant remains ten_91ea8938a5f2eaa4f77335feb53eabae from session 1 whoami (not ten_5e4aea6f).
+
+JSON-RPC written to the single stdin (pack result consumed before cloud_push was sent):
+
+```
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t4","version":"0"}}}
+{"jsonrpc":"2.0","method":"notifications/initialized"}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"pack","arguments":{"args":["--target","linux/amd64"]}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cloud_push","arguments":{"args":["--lock","/Users/pms88/.agentpaas/state/agents/weather-agent/agent.lock"]}}}
+```
+
+cwd: `/Users/pms88/projects/agentpaas/worktrees/oss/ap-m18plus-t4-mcp-weather/demo/weather-agent`
+PATH=/opt/homebrew/bin:/usr/bin:/bin
+binary: `/opt/homebrew/bin/agentpaas-mcp`
+
+Full stdout:
+
+```
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{}},"protocolVersion":"2024-11-05","serverInfo":{"name":"agentpaas-mcp","version":"0.5.0-dev"}}}
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"text":"Image: sha256:95db8b00330424d539d041ee951a11903c06f117bacc9e050c63e3617b795e8f\nDigest: sha256:95db8b00330424d539d041ee951a11903c06f117bacc9e050c63e3617b795e8f\nLock: /Users/pms88/.agentpaas/state/agents/weather-agent/agent.lock\nPush with: agentpaas cloud push --lock /Users/pms88/.agentpaas/state/agents/weather-agent/agent.lock\n","type":"text"}]}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"text":"Saving image…\nUploading…\nUploading… (chunk 1)\nUploading… (chunk 2)\nUploading… (chunk 3)\nUploading… (chunk 4)\nAdmitting image…\n\ncommand timed out after 60s","type":"text"}],"isError":true}}
+```
+
+stderr: empty. process exit 0.
+
+### Session 4 notes
+
+- pack args=["--target","linux/amd64"]: succeeded (new digest vs session 1 darwin/arm64 pack)
+  Image/Digest: sha256:95db8b00330424d539d041ee951a11903c06f117bacc9e050c63e3617b795e8f
+  Lock: /Users/pms88/.agentpaas/state/agents/weather-agent/agent.lock
+- cloud_push args=["--lock", new lock]: honest FAIL/timeout — Saving image… Uploading… (chunks 1–4) Admitting image… then `command timed out after 60s` (MCP runCLI). Binary not edited. MCP not bypassed.
+- cloud_deploy: not called (push did not succeed)
+- cloud_invoke: not called (no deployment_id; token not invented)
+- audit: not called (push timeout consumed the 60s runCLI window; no second session)
+- No bypass of MCP. No customer tenancy ten_5e4aea6f.
+
 ## Not done
 
 - No git push / gh pr
