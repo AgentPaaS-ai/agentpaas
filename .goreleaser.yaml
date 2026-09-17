@@ -39,6 +39,19 @@ builds:
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.DaemonVersion={{.Version}}
       - -X github.com/AgentPaaS-ai/agentpaas/internal/daemon.GitCommit={{.Commit}}
 
+  - id: agentpaas-mcp
+    main: ./cmd/agentpaas-mcp
+    binary: agentpaas-mcp
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
   - id: agentpaas-harness-linux
     main: ./cmd/harness
     binary: agentpaas-harness-linux
@@ -74,6 +87,7 @@ archives:
     ids:
       - agentpaas
       - agentpaasd
+      - agentpaas-mcp
     formats: [tar.gz]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
@@ -112,6 +126,7 @@ homebrew_casks:
     binaries:
       - agentpaas
       - agentpaasd
+      - agentpaas-mcp
       - agentpaas-harness-linux
       - agentpaas-harness-linux-amd64
     repository:
@@ -128,7 +143,7 @@ homebrew_casks:
       post:
         install: |
           if OS.mac?
-            %w[agentpaas agentpaasd agentpaas-harness-linux agentpaas-harness-linux-amd64].each do |name|
+            %w[agentpaas agentpaasd agentpaas-mcp agentpaas-harness-linux agentpaas-harness-linux-amd64].each do |name|
               system_command "/usr/bin/xattr", args: ["-cr", "#{staged_path}/#{name}"]
             end
           end
