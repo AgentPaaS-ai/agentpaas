@@ -92,7 +92,7 @@ egress:
     ports: [443]
 `
 
-func TestCreateAgentLock_AutoDeclaresLLMProviderHost(t *testing.T) {
+func TestCreateAgentLock_DoesNotAutoDeclareLLMProviderHost(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake shell tools require a POSIX shell")
 	}
@@ -152,8 +152,11 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 		}
 		got[s] = true
 	}
-	if !got["wttr.in"] || !got["openrouter.ai"] {
-		t.Fatalf("agent_yaml.egress = %v, want wttr.in and openrouter.ai", egress)
+	if !got["wttr.in"] {
+		t.Fatalf("agent_yaml.egress = %v, want wttr.in present", egress)
+	}
+	if got["openrouter.ai"] {
+		t.Fatalf("agent_yaml.egress = %v, want openrouter.ai absent (no auto-declare)", egress)
 	}
 }
 
