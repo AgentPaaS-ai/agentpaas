@@ -624,7 +624,6 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	}
 
 	mergePolicyEgressIntoAgentYAML(&cfg)
-	ensureLLMProviderEgress(cfg.AgentYAML)
 
 	lock := assembleAgentLock(cfg, sbom, sbomDigest, string(publicKeyPEM), privateKey, signatureReferrer, policyDigest)
 	if lock == nil {
