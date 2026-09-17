@@ -1,5 +1,7 @@
 # Grok Build host MCP wrap over agentpaas-mcp (D72).
-# Merge into ~/.grok/config.toml (user) or .grok/config.toml (project).
+# Primary gesture (live docs 2026-09-16): grok mcp add agentpaas -- agentpaas-mcp
+# Floor: merge this block into ~/.grok/config.toml (user) or .grok/config.toml (project).
+# Source: https://docs.x.ai/build/features/mcp-servers
 # Do not add a second AgentPaaS runtime.
 
 [mcp_servers.agentpaas]
