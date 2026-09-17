@@ -28,32 +28,46 @@ func ValidateLLMEgress(agentConfig *AgentYAML, policyFile *policy.Policy) error 
 		return nil
 	}
 
-	if llm.ProviderDomain(agentConfig.LLM.Provider) == "" {
+	domain := llm.ProviderDomain(agentConfig.LLM.Provider)
+	if domain == "" {
 		// Unknown/non-standard provider — skip validation
 		return nil
 	}
 
-	// Host is stamped onto AgentYAML.Egress by ensureLLMProviderEgress at lock
-	// time (founder Q1 auto-declare). Missing policy.yaml is not a pack error.
-	return nil
-}
+	if policyFile == nil {
+		return fmt.Errorf("policy is required when LLM provider is configured")
+	}
 
-// ensureLLMProviderEgress appends the LLM provider hostname to AgentYAML.Egress
-// so the signed lock carries it even when policy.yaml omitted the host.
-func ensureLLMProviderEgress(agent *AgentYAML) {
-	if agent == nil || agent.LLM.Provider == "" {
-		return
-	}
-	domain := strings.ToLower(strings.TrimSpace(llm.ProviderDomain(agent.LLM.Provider)))
-	if domain == "" {
-		return
-	}
-	for _, h := range agent.Egress {
-		if strings.EqualFold(strings.TrimSpace(h), domain) {
-			return
+	for _, rule := range policyFile.Egress {
+		if strings.EqualFold(rule.Domain, domain) {
+			return nil
+		}
+		// Also check wildcard domains
+		if rule.AllowWildcard != nil && *rule.AllowWildcard {
+			// Check if the domain matches a wildcard pattern
+			// e.g., *.openai.com matches api.openai.com
+			if strings.HasPrefix(rule.Domain, "*.") {
+				suffix := rule.Domain[1:] // ".openai.com"
+				if strings.HasSuffix(domain, suffix) {
+					return nil
+				}
+			}
 		}
 	}
-	agent.Egress = append(agent.Egress, domain)
+
+	return fmt.Errorf(
+		"LLM provider %q requires egress to %q:443 but it is not in the egress policy. "+
+			"Add it to policy.yaml or run: agentpaas policy init --template allow-llm --provider %s",
+		agentConfig.LLM.Provider, domain, agentConfig.LLM.Provider,
+	)
+}
+
+// ensureLLMProviderEgress does not stamp the LLM provider hostname onto
+// AgentYAML.Egress. Auto-declaring a host omitted from policy.yaml punches
+// M16 SC3 default-deny. Policy-allowed hosts are copied at lock time by
+// mergePolicyEgressIntoAgentYAML.
+func ensureLLMProviderEgress(_ *AgentYAML) {
+	// Default-deny: do not append the provider host.
 }
 
 // LoadPolicy reads and parses policy.yaml from the project directory.
