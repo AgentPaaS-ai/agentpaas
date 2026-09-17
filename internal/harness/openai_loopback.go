@@ -2,6 +2,8 @@ package harness
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -11,7 +13,12 @@ import (
 	"time"
 )
 
-const openaiLoopbackAPIKey = "sk-agentpaas-loopback"
+var openaiLoopbackAPIKey = mintLoopbackNonce()
+
+var (
+	loopbackKeysMu        sync.RWMutex
+	loopbackKeysByBaseURL = map[string]string{}
+)
 
 const maxChatCompletionsBody = 1 << 20
 
@@ -20,10 +27,19 @@ type openaiLoopback struct {
 	listener net.Listener
 	server   *http.Server
 	addr     string
+	apiKey   string
 	done     chan struct{}
 
 	closeOnce sync.Once
 	closeErr  error
+}
+
+func mintLoopbackNonce() string {
+	var b [32]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic("openai loopback nonce: " + err.Error())
+	}
+	return "sk-ap-h-" + hex.EncodeToString(b[:])
 }
 
 type chatCompletionRequest struct {
@@ -48,12 +64,18 @@ func startOpenAILoopback(rpc *harnessRPCServer) (*openaiLoopback, error) {
 		return nil, fmt.Errorf("openai loopback must bind 127.0.0.1, got %v", ln.Addr())
 	}
 
+	nonce := mintLoopbackNonce()
 	lb := &openaiLoopback{
 		rpc:      rpc,
 		listener: ln,
 		addr:     ln.Addr().String(),
+		apiKey:   nonce,
 		done:     make(chan struct{}),
 	}
+	loopbackKeysMu.Lock()
+	openaiLoopbackAPIKey = nonce
+	loopbackKeysByBaseURL[lb.baseURL()] = nonce
+	loopbackKeysMu.Unlock()
 	lb.server = &http.Server{
 		Handler:           http.HandlerFunc(lb.serveHTTP),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -88,6 +110,9 @@ func (l *openaiLoopback) Close() error {
 		return nil
 	}
 	l.closeOnce.Do(func() {
+		loopbackKeysMu.Lock()
+		delete(loopbackKeysByBaseURL, l.baseURL())
+		loopbackKeysMu.Unlock()
 		if l.server != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
@@ -108,7 +133,7 @@ func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if !validLoopbackBearer(r.Header.Get("Authorization")) {
+		if !l.validLoopbackBearer(r.Header.Get("Authorization")) {
 			writeOpenAIError(w, http.StatusUnauthorized, "invalid api key")
 			return
 		}
@@ -126,7 +151,7 @@ func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !validLoopbackBearer(r.Header.Get("Authorization")) {
+	if !l.validLoopbackBearer(r.Header.Get("Authorization")) {
 		writeOpenAIError(w, http.StatusUnauthorized, "invalid api key")
 		return
 	}
@@ -160,12 +185,13 @@ func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	writeLoopbackChatCompletion(w, body.Model, resp)
 }
 
-func validLoopbackBearer(auth string) bool {
+func (l *openaiLoopback) validLoopbackBearer(auth string) bool {
 	const prefix = "Bearer "
-	if !strings.HasPrefix(auth, prefix) {
+	if l == nil || l.apiKey == "" || !strings.HasPrefix(auth, prefix) {
 		return false
 	}
-	return strings.TrimSpace(strings.TrimPrefix(auth, prefix)) == openaiLoopbackAPIKey
+	got := strings.TrimSpace(strings.TrimPrefix(auth, prefix))
+	return got != "" && got == l.apiKey
 }
 
 func writeLoopbackModelList(w http.ResponseWriter) {
@@ -397,8 +423,16 @@ func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
 		}
 		out = append(out, item)
 	}
+	loopbackKeysMu.RLock()
+	key := openaiLoopbackAPIKey
+	if openaiBaseURL != "" {
+		if k, ok := loopbackKeysByBaseURL[openaiBaseURL]; ok && k != "" {
+			key = k
+		}
+	}
+	loopbackKeysMu.RUnlock()
 	out = append(out,
-		"OPENAI_API_KEY="+openaiLoopbackAPIKey,
+		"OPENAI_API_KEY="+key,
 		"AGENTPAAS_LOOPBACK_PIN=1",
 		"AGENTPAAS_EGRESS_DENY=1",
 		"CREWAI_DISABLE_TELEMETRY=true",
