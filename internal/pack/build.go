@@ -112,6 +112,9 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	if err := ValidateLangGraphLibraryDeps(cfg.ProjectDir); err != nil {
 		return nil, fmt.Errorf("build image: %w", err)
 	}
+	if err := ValidateCrewAITelemetry(cfg.ProjectDir, policyFile); err != nil {
+		return nil, fmt.Errorf("build image: %w", err)
+	}
 
 	ignore, err := LoadIgnore(cfg.ProjectDir)
 	if err != nil {
@@ -703,6 +706,7 @@ func renderDockerfile(cfg BuildConfig, deps []string) string {
 	}
 	fmt.Fprintf(&b, "FROM %s\n", cfg.BaseImage)
 	fmt.Fprintf(&b, "ENV SOURCE_DATE_EPOCH=%d\n", cfg.SourceDateEpoch.Unix())
+	b.WriteString("ENV CREWAI_DISABLE_TELEMETRY=true\n")
 	b.WriteString("WORKDIR /app\n")
 	b.WriteString("COPY --chown=0:0 harness /agentpaas/harness\n")
 	b.WriteString("COPY --chown=0:0 agentpaas-locked.txt /agentpaas/requirements.lock\n")
