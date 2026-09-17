@@ -20,6 +20,7 @@ class Agentpaas < Formula
   def install
     bin.install "agentpaas"
     bin.install "agentpaasd"
+    bin.install "agentpaas-mcp"
     bin.install "agentpaas-harness-linux"
     bin.install "agentpaas-harness-linux-amd64"
   end
@@ -28,6 +29,7 @@ class Agentpaas < Formula
     %w[
       agentpaas
       agentpaasd
+      agentpaas-mcp
       agentpaas-harness-linux
       agentpaas-harness-linux-amd64
     ].each do |name|
@@ -41,6 +43,6 @@ class Agentpaas < Formula
 
   test do
     output = shell_output("#{bin}/agentpaas version")
-    assert_match(/0\.4\.1/, output)
+    assert_match(/0\.4\.2/, output)
   end
 end
