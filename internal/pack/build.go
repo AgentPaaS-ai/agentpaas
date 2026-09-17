@@ -109,6 +109,9 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	if err := ValidateLLMEgress(agentConfig, policyFile); err != nil {
 		return nil, fmt.Errorf("build image: %w", err)
 	}
+	if err := ValidateLLMCredentialBinding(agentConfig, policyFile); err != nil {
+		return nil, fmt.Errorf("build image: %w", err)
+	}
 	if err := ValidateLangGraphLibraryDeps(cfg.ProjectDir); err != nil {
 		return nil, fmt.Errorf("build image: %w", err)
 	}

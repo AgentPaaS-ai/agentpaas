@@ -6,5 +6,8 @@ egress:
   - domain: wttr.in
     ports: [443]
     methods: [GET]
-credentials: []
+credentials:
+  - id: openrouter-key
+    type: brokered
+    service: keychain
 ingress: []
