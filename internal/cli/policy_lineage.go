@@ -179,6 +179,45 @@ type lineageAuditRow struct {
 	Payload   map[string]any `json:"payload"`
 }
 
+func (r *lineageAuditRow) UnmarshalJSON(data []byte) error {
+	var aux struct {
+		EventType string          `json:"event_type"`
+		Type      string          `json:"type"`
+		RunID     string          `json:"run_id"`
+		Payload   json.RawMessage `json:"payload"`
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.EventType = aux.EventType
+	r.Type = aux.Type
+	r.RunID = aux.RunID
+	r.Payload = decodeLineagePayload(aux.Payload)
+	return nil
+}
+
+func decodeLineagePayload(raw json.RawMessage) map[string]any {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return map[string]any{}
+	}
+	if raw[0] == '"' {
+		var s string
+		if json.Unmarshal(raw, &s) != nil {
+			return map[string]any{}
+		}
+		raw = bytes.TrimSpace([]byte(s))
+		if len(raw) == 0 {
+			return map[string]any{}
+		}
+	}
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil || m == nil {
+		return map[string]any{}
+	}
+	return m
+}
+
 func (r lineageAuditRow) kind() string {
 	if r.EventType != "" {
 		return r.EventType
