@@ -71,6 +71,12 @@ func TestM163CrewAIUsesLoopbackBaseURL(t *testing.T) {
 	if !strings.Contains(body, "Crew(") {
 		t.Fatal("main.py must construct crewai Crew(")
 	}
+	if !strings.Contains(body, "kickoff(") {
+		t.Fatal("main.py must crew.kickoff() the one Crew (do not construct-and-discard)")
+	}
+	if strings.Contains(body, "_ = crew") {
+		t.Fatal("main.py must not discard Crew")
+	}
 	if !strings.Contains(body, "from crewai import") {
 		t.Fatal("main.py must import crewai")
 	}
