@@ -295,7 +295,8 @@ func isWorkloadOpenAIEnv(item string) bool {
 		"LANGCHAIN_PROJECT", "LANGCHAIN_HUB_API_KEY",
 		"LANGSMITH_API_KEY", "LANGSMITH_TRACING", "LANGSMITH_ENDPOINT",
 		"LANGGRAPH_API_KEY", "LANGGRAPH_CLOUD_API_KEY", "LANGGRAPH_API_URL",
-		"FIREWORKS_API_KEY", "TOGETHER_API_KEY":
+		"FIREWORKS_API_KEY", "TOGETHER_API_KEY",
+		"CREWAI_API_KEY", "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT":
 		return true
 	}
 	if strings.Contains(name, "API_KEY") &&
@@ -320,6 +321,9 @@ func isWorkloadOpenAIEnv(item string) bool {
 		strings.Contains(name, "LANGGRAPH") ||
 		strings.Contains(name, "FIREWORKS") ||
 		strings.Contains(name, "TOGETHER") {
+		return true
+	}
+	if strings.Contains(name, "CREWAI") {
 		return true
 	}
 	return false
@@ -354,6 +358,9 @@ var loopbackDeniedProviderHosts = []string{
 	"inference-api.nousresearch.com",
 	"api.fireworks.ai",
 	"api.together.xyz",
+	"telemetry.crewai.com",
+	"app.posthog.com",
+	"api.crewai.com",
 }
 
 func loopbackDeniesProviderHostBypass() bool {
@@ -394,6 +401,7 @@ func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
 		"OPENAI_API_KEY="+openaiLoopbackAPIKey,
 		"AGENTPAAS_LOOPBACK_PIN=1",
 		"AGENTPAAS_EGRESS_DENY=1",
+		"CREWAI_DISABLE_TELEMETRY=true",
 	)
 	if openaiBaseURL != "" {
 		out = append(out,
