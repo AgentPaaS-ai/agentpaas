@@ -50,7 +50,7 @@ func TestValidateLLMEgress_DomainPresent(t *testing.T) {
 }
 
 func TestValidateLLMEgress_DomainMissing(t *testing.T) {
-	// auto-declare covers a missing provider host; pack must not fail
+	// policy omits api.x.ai → deny (no auto-declare punch)
 	agent := &AgentYAML{
 		LLM: LLMConfig{
 			Provider: "xai",
@@ -62,8 +62,8 @@ func TestValidateLLMEgress_DomainMissing(t *testing.T) {
 		},
 	}
 	err := ValidateLLMEgress(agent, pol)
-	if err != nil {
-		t.Errorf("ValidateLLMEgress(xai, policy without api.x.ai) = %v, want nil", err)
+	if err == nil {
+		t.Error("ValidateLLMEgress(xai, policy without api.x.ai) = nil, want error")
 	}
 }
 
@@ -102,29 +102,29 @@ func TestValidateLLMEgress_WildcardMatch(t *testing.T) {
 }
 
 func TestValidateLLMEgress_NilPolicyWithProvider(t *testing.T) {
-	// auto-declare covers a nil policy; pack must not fail
+	// nil policy + provider → deny (no auto-declare punch)
 	agent := &AgentYAML{
 		LLM: LLMConfig{
 			Provider: "openai",
 		},
 	}
 	err := ValidateLLMEgress(agent, nil)
-	if err != nil {
-		t.Errorf("ValidateLLMEgress(openai, nil) = %v, want nil", err)
+	if err == nil {
+		t.Error("ValidateLLMEgress(openai, nil) = nil, want error")
 	}
 }
 
-func TestEnsureLLMProviderEgress_AppendsOnce(t *testing.T) {
+func TestEnsureLLMProviderEgress_DoesNotStamp(t *testing.T) {
 	agent := &AgentYAML{
 		LLM:    LLMConfig{Provider: "openrouter"},
 		Egress: []string{"wttr.in"},
 	}
 	ensureLLMProviderEgress(agent)
-	if len(agent.Egress) != 2 || agent.Egress[0] != "wttr.in" || agent.Egress[1] != "openrouter.ai" {
-		t.Fatalf("egress = %v, want [wttr.in openrouter.ai]", agent.Egress)
+	if len(agent.Egress) != 1 || agent.Egress[0] != "wttr.in" {
+		t.Fatalf("egress = %v, want [wttr.in]", agent.Egress)
 	}
 	ensureLLMProviderEgress(agent)
-	if len(agent.Egress) != 2 {
+	if len(agent.Egress) != 1 || agent.Egress[0] != "wttr.in" {
 		t.Fatalf("second call mutated egress: %v", agent.Egress)
 	}
 }
