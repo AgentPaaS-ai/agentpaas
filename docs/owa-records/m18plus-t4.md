@@ -124,6 +124,127 @@ stderr: empty. process exit 0.
 - audit verify: honest FAIL — local audit chain tail truncation (checkpoint seq=43 vs 38 records)
 - cloud_push was not called. No bypass of MCP. No customer tenancy ten_5e4aea6f.
 
+## CLI argv (for MCP extra args only)
+
+PATH=/opt/homebrew/bin:/usr/bin:/bin. CLI help only; not a second MCP session.
+
+```
+$ export PATH=/opt/homebrew/bin:/usr/bin:/bin
+$ agentpaas cloud push --help
+Upload a locally built agent image to AgentPaaS Cloud and admit it for deployment. The image must have been packed with --target linux/amd64.
+
+This command reads the agent.lock file, verifies its signature, and
+streams a Docker save archive to the cloud API using your tenant token.
+The control plane verifies the lockfile signature and admits the image for
+deployment.
+
+Admit rejects unsigned locks.
+
+If --skip-registry is set, only the admission request is sent (no image
+upload). Use --registry-ref to admit an image that is already available in
+the cloud registry.
+
+Usage:
+  agentpaas cloud push [flags]
+
+Examples:
+  # Push and admit
+  agentpaas cloud push --lock agent.lock
+
+  # Push with admission only (no registry push)
+  agentpaas cloud push --lock agent.lock --skip-registry
+
+  # Admit an image already available in the cloud registry
+  agentpaas cloud push --lock agent.lock --registry-ref registry.example.com/...
+
+  # Push with explicit digest override
+  agentpaas cloud push --lock agent.lock --digest sha256:...
+
+Flags:
+      --digest string         Override image digest (default: from lock.image_digest)
+  -h, --help                  help for push
+      --image string          Override local image reference (optional)
+      --lock string           Path to agent.lock JSON (required)
+      --platform string       Target platform (default: from lock.platform or linux/amd64)
+      --registry-ref string   Cloud registry reference (optional)
+      --skip-registry         Skip image upload; admission only
+
+Global Flags:
+      --home string     AgentPaaS home directory (default: $AGENTPAAS_HOME, else ~/.agentpaas)
+      --json            Emit machine-readable JSON instead of human-readable text
+      --socket string   Daemon Unix socket path (default: $AGENTPAAS_SOCKET, else <home>/daemon.sock)
+```
+
+`--lock` is required. No other flags are required. MCP extra argv used: `["--lock", "<pack lock>"]`. `--skip-registry` / `--registry-ref` / `--digest` were not added.
+
+```
+$ agentpaas cloud invoke --help
+Invoke a deployment with a deployment invoke token.
+
+Use --token or AGENTPAAS_CLOUD_INVOKE_TOKEN for the invoke token. This
+command never uses the tenant cloud login token for the invoke request.
+
+Large inputs (M13.8): --input-file uploads via POST /v1/inputs (tenant
+login required) and attaches input_ref. --input-url attaches a URL ref.
+--input-sha256 and --input-size-bytes are optional; the CLI does not
+invent them.
+
+Usage:
+  agentpaas cloud invoke <deployment_id> [flags]
+
+Flags:
+      --body string             JSON request body (default "{}")
+      --body-file string        Read JSON request body from a file, or - for stdin
+  -h, --help                    help for invoke
+      --input-file string       Upload local file as input_ref (M13.8; requires cloud login)
+      --input-sha256 string     Optional SHA-256 hex for --input-url
+      --input-size-bytes int    Optional size_bytes for --input-url (default -1)
+      --input-url string        Attach URL input_ref (sha256 and size_bytes optional)
+      --token string            Deployment invoke token
+      --wait                    Wait for a terminal run result
+      --wait-timeout duration   Maximum time to wait when --wait is set (default 10m0s)
+
+Global Flags:
+      --home string     AgentPaaS home directory (default: $AGENTPAAS_HOME, else ~/.agentpaas)
+      --json            Emit machine-readable JSON instead of human-readable text
+      --socket string   Daemon Unix socket path (default: $AGENTPAAS_SOCKET, else <home>/daemon.sock)
+```
+
+Required positional: `<deployment_id>` (1 arg). Not invoked in session 3 (no deployment/workflow id).
+
+### Session 3 — initialize, cloud_push --lock, audit (deploy/invoke not reached)
+
+One stdio session on `/opt/homebrew/bin/agentpaas-mcp`. Sequential on the same stdin: initialize + initialized + cloud_push, then audit. cloud_deploy and cloud_invoke were not sent because push failed and did not report image already present. Pack/whoami/doctor/validate were not redone. No MCP login/secret tools. Tenant remains ten_91ea8938a5f2eaa4f77335feb53eabae from session 1 whoami (not ten_5e4aea6f).
+
+```
+$ export PATH=/opt/homebrew/bin:/usr/bin:/bin
+$ cd /Users/pms88/projects/agentpaas/worktrees/oss/ap-m18plus-t4-mcp-weather/demo/weather-agent
+$ printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t4","version":"0"}}}' \
+  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cloud_push","arguments":{"args":["--lock","/Users/pms88/.agentpaas/state/agents/weather-agent/agent.lock"]}}}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"audit","arguments":{"args":["verify"]}}}' \
+  | /opt/homebrew/bin/agentpaas-mcp
+```
+
+Full stdout:
+
+```
+{"jsonrpc":"2.0","id":1,"result":{"capabilities":{"tools":{}},"protocolVersion":"2024-11-05","serverInfo":{"name":"agentpaas-mcp","version":"0.5.0-dev"}}}
+{"jsonrpc":"2.0","id":2,"result":{"content":[{"text":"error: cloud push: platform must be linux/amd64 for cloud, got \"darwin/arm64\"\n","type":"text"}],"isError":true}}
+{"jsonrpc":"2.0","id":3,"result":{"content":[{"text":"Audit chain verification FAILED\n- tail truncation: checkpoint seq=43 anchors head anchor seq=43 but audit chain only has 38 records (last seq=38)\nerror: audit chain verification failed: 1 issue(s)\n","type":"text"}],"isError":true}}
+```
+
+stderr: empty. process exit 0.
+
+### Session 3 notes
+
+- cloud_push args=["--lock", pack lock]: honest FAIL — `error: cloud push: platform must be linux/amd64 for cloud, got "darwin/arm64"` (lock from session 1 pack; pack was not redone)
+- cloud_deploy: not called (push did not succeed; image not already present)
+- cloud_invoke: not called (no deployment/workflow id)
+- audit verify: honest FAIL — local audit chain tail truncation (checkpoint seq=43 vs 38 records)
+- No bypass of MCP. No customer tenancy ten_5e4aea6f.
+
 ## Not done
 
 - No git push / gh pr
