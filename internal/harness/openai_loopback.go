@@ -113,7 +113,7 @@ func (l *openaiLoopback) serveHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if l.rpc != nil {
-			l.rpc.auditEgressDecision("harness", "127.0.0.1", "GET", "", "200", "allowed", "loopback_models")
+			l.rpc.auditEgressDecision("harness", "127.0.0.1", "GET", "", "200", "allowed", "")
 		}
 		writeLoopbackModelList(w)
 		return
@@ -290,7 +290,12 @@ func isWorkloadOpenAIEnv(item string) bool {
 		"OPENROUTER_API_KEY", "OPENROUTER_BASE_URL",
 		"LOGFIRE_TOKEN", "DEEPSEEK_API_KEY", "XAI_API_KEY", "GROQ_API_KEY",
 		"OTEL_EXPORTER_OTLP_HEADERS", "OPENAI_PROJECT", "OPENAI_API_TYPE",
-		"PYDANTIC_AI_GATEWAY_API_KEY":
+		"PYDANTIC_AI_GATEWAY_API_KEY",
+		"LANGCHAIN_API_KEY", "LANGCHAIN_TRACING_V2", "LANGCHAIN_ENDPOINT",
+		"LANGCHAIN_PROJECT", "LANGCHAIN_HUB_API_KEY",
+		"LANGSMITH_API_KEY", "LANGSMITH_TRACING", "LANGSMITH_ENDPOINT",
+		"LANGGRAPH_API_KEY", "LANGGRAPH_CLOUD_API_KEY", "LANGGRAPH_API_URL",
+		"FIREWORKS_API_KEY", "TOGETHER_API_KEY":
 		return true
 	}
 	if strings.Contains(name, "API_KEY") &&
@@ -308,6 +313,13 @@ func isWorkloadOpenAIEnv(item string) bool {
 			strings.Contains(name, "XAI") ||
 			strings.Contains(name, "GROQ") ||
 			strings.Contains(name, "PYDANTIC")) {
+		return true
+	}
+	if strings.Contains(name, "LANGCHAIN") ||
+		strings.Contains(name, "LANGSMITH") ||
+		strings.Contains(name, "LANGGRAPH") ||
+		strings.Contains(name, "FIREWORKS") ||
+		strings.Contains(name, "TOGETHER") {
 		return true
 	}
 	return false
@@ -335,6 +347,13 @@ var loopbackDeniedProviderHosts = []string{
 	"openai.azure.com",
 	"generativelanguage.googleapis.com",
 	"openrouter.ai",
+	"api.smith.langchain.com",
+	"api.langchain.com",
+	"smith.langchain.com",
+	"api.x.ai",
+	"inference-api.nousresearch.com",
+	"api.fireworks.ai",
+	"api.together.xyz",
 }
 
 func loopbackDeniesProviderHostBypass() bool {
@@ -347,9 +366,15 @@ func pydanticDirectHostDenied(host string) bool {
 	if h == "" {
 		return false
 	}
+	if net.ParseIP(h) != nil {
+		return true
+	}
 	for _, denied := range loopbackDeniedProviderHosts {
 		d := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(denied), "."))
-		if h == d || strings.HasSuffix(h, "."+d) {
+		if d == "" {
+			continue
+		}
+		if h == d || strings.HasSuffix(h, "."+d) || strings.HasPrefix(h, d+".") {
 			return true
 		}
 	}
