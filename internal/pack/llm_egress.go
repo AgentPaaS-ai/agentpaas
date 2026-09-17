@@ -79,3 +79,22 @@ func LoadPolicy(projectDir string) (*policy.Policy, error) {
 
 	return parsed, nil
 }
+
+func ValidateLLMCredentialBinding(agentConfig *AgentYAML, policyFile *policy.Policy) error {
+	if agentConfig == nil {
+		return nil
+	}
+	cred := strings.TrimSpace(agentConfig.LLM.Credential)
+	if cred == "" {
+		return nil
+	}
+	if policyFile == nil || len(policyFile.Credentials) == 0 {
+		return fmt.Errorf("llm.credential %q declared but policy.yaml credentials is empty (brokered secret not policy-bound)", cred)
+	}
+	for _, c := range policyFile.Credentials {
+		if strings.TrimSpace(c.ID) == cred {
+			return nil
+		}
+	}
+	return fmt.Errorf("llm.credential %q is not a declared policy credential id", cred)
+}
