@@ -172,3 +172,75 @@ func TestCallLLMChatCompletion_OpenRouterExcludesReasoning(t *testing.T) {
 		})
 	}
 }
+
+func TestRewriteOpenAIErrorJSON_StringFieldBecomesObject(t *testing.T) {
+	got := rewriteOpenAIErrorJSON([]byte(`{"error":"Unauthorized"}`))
+	var obj map[string]any
+	if err := json.Unmarshal(got, &obj); err != nil {
+		t.Fatal(err)
+	}
+	errObj, ok := obj["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("error not object: %s", got)
+	}
+	if errObj["message"] != "Unauthorized" {
+		t.Fatalf("message = %v", errObj["message"])
+	}
+}
+
+func TestRewriteOpenAIErrorJSON_ObjectUnchanged(t *testing.T) {
+	in := []byte(`{"error":{"message":"nope","type":"invalid_request_error"}}`)
+	got := rewriteOpenAIErrorJSON(in)
+	var obj map[string]any
+	if err := json.Unmarshal(got, &obj); err != nil {
+		t.Fatal(err)
+	}
+	errObj, ok := obj["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("error not object: %s", got)
+	}
+	if errObj["message"] != "nope" {
+		t.Fatalf("message = %v", errObj["message"])
+	}
+}
+
+func TestCallLLMChatCompletion_StringErrorBodyIsNotUnmarshalCrash(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"gateway secret missing"}`))
+	}))
+	defer ts.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := callLLMChatCompletion(ctx, ts.URL+"/v1/", "openrouter.ai", "dummy", "m", "hi", 0, "openrouter")
+	if err == nil {
+		t.Fatal("expected llm error")
+	}
+	if strings.Contains(err.Error(), "cannot unmarshal") {
+		t.Fatalf("0.5 openai-go parse crash leaked: %v", err)
+	}
+	if !strings.Contains(err.Error(), "gateway secret missing") {
+		t.Fatalf("lost provider message: %v", err)
+	}
+}
+
+func TestCallLLMChatCompletion_ObjectErrorBodyStillSurfaces(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusPaymentRequired)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error": map[string]any{"message": "quota", "type": "insufficient_quota"},
+		})
+	}))
+	defer ts.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := callLLMChatCompletion(ctx, ts.URL+"/v1/", "", "dummy", "m", "hi", 0, "openai")
+	if err == nil {
+		t.Fatal("expected llm error")
+	}
+	if !strings.Contains(err.Error(), "quota") {
+		t.Fatalf("lost object message: %v", err)
+	}
+}
