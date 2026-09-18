@@ -46,6 +46,7 @@ var mappedTools = []mappedTool{
 	{"validate", []string{"validate"}},
 	{"pack", []string{"pack"}},
 	{"policy_show", []string{"policy", "show"}},
+	{"policy_validate", []string{"policy", "validate"}},
 	{"policy_init", []string{"policy", "init"}},
 	{"cloud_whoami", []string{"cloud", "whoami"}},
 	{"cloud_push", []string{"cloud", "push"}},

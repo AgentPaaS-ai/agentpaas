@@ -18,6 +18,7 @@ var requiredTools = []string{
 	"validate",
 	"pack",
 	"policy_show",
+	"policy_validate",
 	"policy_init",
 	"cloud_whoami",
 	"cloud_push",

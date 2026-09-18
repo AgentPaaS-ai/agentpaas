@@ -109,6 +109,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	if err := ValidateLLMEgress(agentConfig, policyFile); err != nil {
 		return nil, fmt.Errorf("build image: %w", err)
 	}
+	_ = CompileLLMCredentialIntoPolicy(agentConfig, policyFile)
 	if err := ValidateLLMCredentialBinding(agentConfig, policyFile); err != nil {
 		return nil, fmt.Errorf("build image: %w", err)
 	}

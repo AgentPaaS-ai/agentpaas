@@ -72,16 +72,6 @@ func resolveToken(cmd *cobra.Command) (string, error) {
 	return tok, nil
 }
 
-// resolveAPIURL returns the cloud API base URL. Order:
-// 1. AGENTPAAS_CLOUD_API_URL env var
-// 2. Default
-func resolveAPIURL() string {
-	if u := os.Getenv("AGENTPAAS_CLOUD_API_URL"); u != "" {
-		return u
-	}
-	return cloudclient.DefaultCloudAPIURL
-}
-
 // newCloudCmd creates the `agentpaas cloud` command.
 func newCloudCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -250,6 +240,7 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 				CPUMinutesUsed: resp.CPUMinutesUsed,
 			}
 
+			_ = persistCloudAPIURL(apiURL)
 			if jsonOutput(cmd) {
 				return printTextOrJSON(true, display, nil)
 			}
@@ -788,6 +779,7 @@ Idempotent — succeeds even if not currently logged in.`,
 			if err := store.Delete(cmd.Context()); err != nil {
 				return fmt.Errorf("cloud logout: %w", err)
 			}
+			clearPersistedCloudAPIURL()
 
 			if jsonOutput(cmd) {
 				return printTextOrJSON(true, struct {
@@ -1870,6 +1862,7 @@ func storeAndConfirmLogin(cmd *cobra.Command, store cloudclient.TokenStore, toke
 	if err := store.Set(cmd.Context(), token); err != nil {
 		return fmt.Errorf("cloud login: store token: %w", err)
 	}
+	_ = persistCloudAPIURL(resolveAPIURL())
 	if jsonOutput(cmd) {
 		return printTextOrJSON(true, struct {
 			Message string `json:"message"`
