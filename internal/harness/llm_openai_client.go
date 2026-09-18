@@ -2,6 +2,7 @@ package harness
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,75 @@ func (t preserveHostRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	return next.RoundTrip(cloned)
 }
 
+// openaiErrorShapeRoundTripper rewrites non-2xx bodies whose "error" field is
+// a JSON string. openai-go unmarshals error into apierror.Error (an object).
+// OpenRouter and the credential gateway often send `"error": "…"`. 0.4's
+// hand-rolled reader accepted that; Completions.New does not.
+type openaiErrorShapeRoundTripper struct {
+	next http.RoundTripper
+}
+
+func (t openaiErrorShapeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	next := t.next
+	if next == nil {
+		next = http.DefaultTransport
+	}
+	resp, err := next.RoundTrip(req)
+	if err != nil || resp == nil || resp.StatusCode < 400 || resp.Body == nil {
+		return resp, err
+	}
+	body, readErr := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if readErr != nil {
+		return nil, readErr
+	}
+	rewritten := rewriteOpenAIErrorJSON(body)
+	resp.Body = io.NopCloser(bytes.NewReader(rewritten))
+	resp.ContentLength = int64(len(rewritten))
+	resp.Header.Set("Content-Length", strconv.Itoa(len(rewritten)))
+	return resp, nil
+}
+
+func rewriteOpenAIErrorJSON(body []byte) []byte {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return body
+	}
+	if trimmed[0] == '"' {
+		var s string
+		if json.Unmarshal(trimmed, &s) == nil && s != "" {
+			return marshalOpenAIErrorObject(s)
+		}
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return marshalOpenAIErrorObject(string(trimmed))
+	}
+	errVal, ok := obj["error"]
+	if !ok {
+		return body
+	}
+	if s, ok := errVal.(string); ok {
+		obj["error"] = map[string]any{"message": s, "type": "api_error"}
+		out, err := json.Marshal(obj)
+		if err != nil {
+			return body
+		}
+		return out
+	}
+	return body
+}
+
+func marshalOpenAIErrorObject(msg string) []byte {
+	out, err := json.Marshal(map[string]any{
+		"error": map[string]any{"message": msg, "type": "api_error"},
+	})
+	if err != nil {
+		return []byte(`{"error":{"message":"llm provider error","type":"api_error"}}`)
+	}
+	return out
+}
+
 // newLLMChatClient constructs an openai-go client aimed at an injectable
 // BaseURL (gateway rewrite or M16 127.0.0.1 loopback). Dummy API keys are
 // accepted — the gateway injects the real credential. Redirects are not
@@ -83,7 +153,9 @@ func newLLMChatClient(baseURL, originalHost, apiKey string, requestTimeout time.
 		CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-		Transport: preserveHostRoundTripper{host: originalHost},
+		Transport: openaiErrorShapeRoundTripper{
+			next: preserveHostRoundTripper{host: originalHost},
+		},
 	}
 	return openai.NewClient(
 		option.WithBaseURL(baseURL),

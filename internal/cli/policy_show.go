@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
+	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 	"github.com/spf13/cobra"
 )
@@ -173,6 +174,11 @@ func showProjectPolicy(cmd *cobra.Command, projectDir string) error {
 }
 
 func compilePolicyShow(projectDir string, p *policy.Policy) (*policyShowResult, error) {
+	if p != nil {
+		if agent, err := pack.LoadAgentYAML(projectDir); err == nil {
+			_ = pack.CompileLLMCredentialIntoPolicy(agent, p)
+		}
+	}
 	digest, err := policy.Digest(p)
 	if err != nil {
 		return nil, err

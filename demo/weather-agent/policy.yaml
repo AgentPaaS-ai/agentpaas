@@ -9,5 +9,8 @@ egress:
   - domain: openrouter.ai
     ports: [443]
     methods: [POST]
-credentials: []
+credentials:
+  - id: openrouter-key
+    type: brokered
+    service: keychain
 ingress: []
