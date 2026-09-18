@@ -10,6 +10,7 @@ import (
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"gopkg.in/yaml.v3"
 )
 
 // ValidateLLMEgress checks that if the agent has an LLM provider configured,
@@ -92,6 +93,51 @@ func LoadPolicy(projectDir string) (*policy.Policy, error) {
 	}
 
 	return parsed, nil
+}
+
+// CompileLLMCredentialIntoPolicy stamps agent.yaml llm.credential onto the
+// compiled policy as a brokered keychain credential when missing. Pack is
+// the compiler: the signed policy must name the secret the agent already
+// declared. Does not write the author's policy.yaml.
+func CompileLLMCredentialIntoPolicy(agentConfig *AgentYAML, policyFile *policy.Policy) bool {
+	if agentConfig == nil || policyFile == nil {
+		return false
+	}
+	cred := strings.TrimSpace(agentConfig.LLM.Credential)
+	if cred == "" {
+		return false
+	}
+	for _, c := range policyFile.Credentials {
+		if strings.TrimSpace(c.ID) == cred {
+			return false
+		}
+	}
+	policyFile.Credentials = append(policyFile.Credentials, policy.Credential{
+		ID:      cred,
+		Type:    "brokered",
+		Service: "keychain",
+	})
+	return true
+}
+
+// compileLLMCredentialPolicyYAML returns compiled policy bytes when llm.credential
+// was stamped onto credentials; nil, nil when unchanged.
+func compileLLMCredentialPolicyYAML(agentConfig *AgentYAML, policyYAML []byte) ([]byte, error) {
+	if len(policyYAML) == 0 || agentConfig == nil {
+		return nil, nil
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(policyYAML))
+	if err != nil || parsed == nil {
+		return nil, err
+	}
+	if !CompileLLMCredentialIntoPolicy(agentConfig, parsed) {
+		return nil, nil
+	}
+	out, err := yaml.Marshal(parsed)
+	if err != nil {
+		return nil, fmt.Errorf("marshal compiled policy: %w", err)
+	}
+	return out, nil
 }
 
 func ValidateLLMCredentialBinding(agentConfig *AgentYAML, policyFile *policy.Policy) error {

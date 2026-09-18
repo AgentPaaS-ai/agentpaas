@@ -618,6 +618,11 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
 
+	if compiled, err := compileLLMCredentialPolicyYAML(cfg.AgentYAML, cfg.PolicyYAML); err != nil {
+		return nil, fmt.Errorf("policy validation: %w", err)
+	} else if compiled != nil {
+		cfg.PolicyYAML = compiled
+	}
 	policyDigest, err := ComputePolicyDigestWithRoute(cfg.PolicyYAML, routeNameFromAgentYAML(cfg.AgentYAML))
 	if err != nil {
 		return nil, fmt.Errorf("policy validation: %w", err)
