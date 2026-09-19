@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -85,7 +86,45 @@ func main() {
 }
 
 func serve(in io.Reader, out io.Writer) error {
-	sc := bufio.NewScanner(in)
+	br := bufio.NewReader(in)
+	if err := discardLeadingWS(br); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+	b, err := br.Peek(1)
+	if err == io.EOF {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if b[0] == '{' {
+		return serveNDJSON(br, out)
+	}
+	return serveLSP(br, out)
+}
+
+func discardLeadingWS(br *bufio.Reader) error {
+	for {
+		b, err := br.Peek(1)
+		if err != nil {
+			return err
+		}
+		switch b[0] {
+		case ' ', '	', '\n', '\r':
+			if _, err := br.ReadByte(); err != nil {
+				return err
+			}
+		default:
+			return nil
+		}
+	}
+}
+
+func serveNDJSON(br *bufio.Reader, out io.Writer) error {
+	sc := bufio.NewScanner(br)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)
@@ -94,59 +133,117 @@ func serve(in io.Reader, out io.Writer) error {
 		if len(line) == 0 {
 			continue
 		}
-		var req rpc
-		if err := json.Unmarshal(line, &req); err != nil {
-			if werr := enc.Encode(rpc{JSONRPC: "2.0", Error: &rpcError{Code: -32700, Message: "parse error"}}); werr != nil {
-				return werr
-			}
-			continue
-		}
-		if req.JSONRPC == "" {
-			req.JSONRPC = "2.0"
-		}
-		note := len(req.ID) == 0 || string(req.ID) == "null"
-		switch req.Method {
-		case "notifications/initialized", "notifications/cancelled":
-			continue
-		case "initialize":
-			if note {
-				continue
-			}
-			if err := enc.Encode(rpc{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Result: map[string]any{
-					"protocolVersion": protocolVersion,
-					"capabilities":    map[string]any{"tools": map[string]any{}},
-					"serverInfo":      map[string]any{"name": "agentpaas-mcp", "version": serverVersion},
-				},
-			}); err != nil {
-				return err
-			}
-		case "ping", "tools/list", "tools/call":
-			if note {
-				continue
-			}
-			res, err := handle(req)
-			if err != nil {
-				if werr := enc.Encode(rpc{JSONRPC: "2.0", ID: req.ID, Error: &rpcError{Code: -32603, Message: err.Error()}}); werr != nil {
-					return werr
-				}
-				continue
-			}
-			if err := enc.Encode(rpc{JSONRPC: "2.0", ID: req.ID, Result: res}); err != nil {
-				return err
-			}
-		default:
-			if note {
-				continue
-			}
-			if err := enc.Encode(rpc{JSONRPC: "2.0", ID: req.ID, Error: &rpcError{Code: -32601, Message: "method not found: " + req.Method}}); err != nil {
-				return err
-			}
+		if err := dispatch(line, func(msg rpc) error { return enc.Encode(msg) }); err != nil {
+			return err
 		}
 	}
 	return sc.Err()
+}
+
+func serveLSP(br *bufio.Reader, out io.Writer) error {
+	for {
+		body, err := readLSP(br)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if len(strings.TrimSpace(string(body))) == 0 {
+			continue
+		}
+		if err := dispatch(body, func(msg rpc) error { return writeLSP(out, msg) }); err != nil {
+			return err
+		}
+	}
+}
+
+func readLSP(br *bufio.Reader) ([]byte, error) {
+	n := -1
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if line == "" {
+			break
+		}
+		idx := strings.IndexByte(line, ':')
+		if idx < 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:idx])
+		val := strings.TrimSpace(line[idx+1:])
+		if !strings.EqualFold(key, "Content-Length") {
+			continue
+		}
+		parsed, err := strconv.Atoi(val)
+		if err != nil || parsed < 0 || parsed > 1024*1024 {
+			return nil, fmt.Errorf("bad Content-Length")
+		}
+		n = parsed
+	}
+	if n < 0 {
+		return nil, fmt.Errorf("missing Content-Length")
+	}
+	buf := make([]byte, n)
+	_, err := io.ReadFull(br, buf)
+	return buf, err
+}
+
+func writeLSP(out io.Writer, msg rpc) error {
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(out, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
+		return err
+	}
+	_, err = out.Write(body)
+	return err
+}
+
+func dispatch(raw []byte, write func(rpc) error) error {
+	var req rpc
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return write(rpc{JSONRPC: "2.0", Error: &rpcError{Code: -32700, Message: "parse error"}})
+	}
+	if req.JSONRPC == "" {
+		req.JSONRPC = "2.0"
+	}
+	note := len(req.ID) == 0 || string(req.ID) == "null"
+	switch req.Method {
+	case "notifications/initialized", "notifications/cancelled":
+		return nil
+	case "initialize":
+		if note {
+			return nil
+		}
+		return write(rpc{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result: map[string]any{
+				"protocolVersion": protocolVersion,
+				"capabilities":    map[string]any{"tools": map[string]any{}},
+				"serverInfo":      map[string]any{"name": "agentpaas-mcp", "version": serverVersion},
+			},
+		})
+	case "ping", "tools/list", "tools/call":
+		if note {
+			return nil
+		}
+		res, err := handle(req)
+		if err != nil {
+			return write(rpc{JSONRPC: "2.0", ID: req.ID, Error: &rpcError{Code: -32603, Message: err.Error()}})
+		}
+		return write(rpc{JSONRPC: "2.0", ID: req.ID, Result: res})
+	default:
+		if note {
+			return nil
+		}
+		return write(rpc{JSONRPC: "2.0", ID: req.ID, Error: &rpcError{Code: -32601, Message: "method not found: " + req.Method}})
+	}
 }
 
 func handle(req rpc) (any, error) {
