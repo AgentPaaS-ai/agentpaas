@@ -66,6 +66,10 @@ func TestInitializeServerInfo(t *testing.T) {
 	if ver == "" || ver == "0.0.1-dummy" {
 		t.Fatalf("serverInfo.version=%q", ver)
 	}
+	instr, _ := replies[0].Result.(map[string]any)["instructions"].(string)
+	if !strings.Contains(instr, "agent.llm") {
+		t.Fatalf("initialize missing SDK instructions: %q", instr)
+	}
 }
 
 func TestToolsListContainsRequiredNames(t *testing.T) {
