@@ -25,6 +25,10 @@ func TestInitCmdBasic(t *testing.T) {
 			t.Fatalf("expected %s to exist: %v", name, err)
 		}
 	}
+	mainPy := readCLITestFile(t, projectDir, "main.py")
+	if !strings.Contains(mainPy, "agent.llm") || !strings.Contains(mainPy, "agent.http") {
+		t.Fatalf("main.py missing SDK calls: %s", mainPy)
+	}
 }
 
 func TestInitCmdExplicitRuntime(t *testing.T) {
