@@ -225,8 +225,13 @@ func DefaultMainPy() string {
 
 @agent.on_invoke
 def handle_invoke(payload):
-    """Called when the agent is invoked. payload is a dict from the trigger."""
-    return {"status": "OK"}
+    query = payload.get("query", "What's the weather in Folsom?")
+    city = agent.llm("Extract the city name only: " + query).get("text", "Folsom").strip() or "Folsom"
+    weather = agent.http("GET", "https://wttr.in/" + city + "?format=j1")
+    answer = agent.llm(
+        "Friendly 2-3 sentence summary of: " + str(weather.get("body", ""))[:2000]
+    ).get("text", "")
+    return {"answer": answer, "final_output": answer}
 `
 }
 

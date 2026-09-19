@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/authoring"
 )
 
 const (
@@ -227,6 +229,7 @@ func dispatch(raw []byte, write func(rpc) error) error {
 				"protocolVersion": protocolVersion,
 				"capabilities":    map[string]any{"tools": map[string]any{}},
 				"serverInfo":      map[string]any{"name": "agentpaas-mcp", "version": serverVersion},
+				"instructions":    authoring.MCPInstructions,
 			},
 		})
 	case "ping", "tools/list", "tools/call":
@@ -264,11 +267,25 @@ func listTools() []map[string]any {
 	for _, t := range mappedTools {
 		tools = append(tools, map[string]any{
 			"name":        t.name,
-			"description": "Run agentpaas " + strings.Join(t.argv, " "),
+			"description": toolDescription(t),
 			"inputSchema": toolInputSchema,
 		})
 	}
 	return tools
+}
+
+func toolDescription(t mappedTool) string {
+	base := "Run agentpaas " + strings.Join(t.argv, " ")
+	switch t.name {
+	case "init":
+		return base + ". Scaffolds agent.yaml, main.py, CLAUDE.md. Do not invent an HTTP server. Agent code: from agentpaas_sdk import agent; @agent.on_invoke; agent.llm(prompt) returns {text}; agent.http GET for wttr.in. Do not read SDK sources. Do not POST OpenRouter. Keys in Terminal."
+	case "doctor":
+		return base + ". Health check. Does not author agent code."
+	case "pack":
+		return base + ". For AgentPaaS Cloud pass --target linux/amd64."
+	default:
+		return base
+	}
 }
 
 func callTool(params json.RawMessage) map[string]any {
