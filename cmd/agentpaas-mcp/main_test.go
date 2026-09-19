@@ -223,6 +223,72 @@ func TestServeStdioContract(t *testing.T) {
 	}
 }
 
+func TestServeContentLengthInitializeAndDoctor(t *testing.T) {
+	initBody := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}`
+	listBody := `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`
+	var in bytes.Buffer
+	fmt.Fprintf(&in, "Content-Length: %d\r\n\r\n%s", len(initBody), initBody)
+	fmt.Fprintf(&in, "Content-Length: %d\r\n\r\n%s", len(listBody), listBody)
+	var out bytes.Buffer
+	if err := serve(&in, &out); err != nil {
+		t.Fatal(err)
+	}
+	replies := decodeLSP(t, out.Bytes())
+	if len(replies) != 2 {
+		t.Fatalf("got %d replies: %s", len(replies), out.String())
+	}
+	name, ver := serverInfo(t, replies[0])
+	if name != "agentpaas-mcp" {
+		t.Fatalf("name=%q", name)
+	}
+	if ver == "" || ver == "0.0.1-dummy" {
+		t.Fatalf("version=%q", ver)
+	}
+	names := toolNames(t, replies[1])
+	have := false
+	for _, n := range names {
+		if n == "doctor" {
+			have = true
+		}
+	}
+	if !have {
+		t.Fatalf("doctor missing: %v", names)
+	}
+}
+
+func decodeLSP(t *testing.T, raw []byte) []rpc {
+	t.Helper()
+	var replies []rpc
+	rest := raw
+	for len(rest) > 0 {
+		head, body, ok := bytes.Cut(rest, []byte("\r\n\r\n"))
+		if !ok {
+			t.Fatalf("missing header break in %q", rest)
+		}
+		n := -1
+		for _, line := range bytes.Split(head, []byte("\r\n")) {
+			if !bytes.HasPrefix(bytes.ToLower(line), []byte("content-length:")) {
+				continue
+			}
+			parsed, err := strconv.Atoi(string(bytes.TrimSpace(bytes.TrimPrefix(bytes.ToLower(line), []byte("content-length:")))))
+			if err != nil {
+				t.Fatal(err)
+			}
+			n = parsed
+		}
+		if n < 0 || n > len(body) {
+			t.Fatalf("bad frame n=%d body=%d", n, len(body))
+		}
+		var r rpc
+		if err := json.Unmarshal(body[:n], &r); err != nil {
+			t.Fatal(err)
+		}
+		replies = append(replies, r)
+		rest = body[n:]
+	}
+	return replies
+}
+
 func rpcServe(t *testing.T, reqs ...string) []rpc {
 	t.Helper()
 	in := strings.NewReader(strings.Join(append(append([]string{}, reqs...), ""), "\n"))
