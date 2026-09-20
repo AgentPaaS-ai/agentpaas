@@ -339,17 +339,32 @@ func resolveBin() (string, error) {
 	return exec.LookPath("agentpaas")
 }
 
+func timeoutFor(argv []string) time.Duration {
+	if len(argv) > 0 && argv[0] == "pack" {
+		return 10 * time.Minute
+	}
+	if len(argv) > 1 && argv[0] == "cloud" {
+		switch argv[1] {
+		case "push", "deploy", "invoke":
+			return 10 * time.Minute
+		}
+	}
+	return execTimeout
+}
+
 func runCLI(bin string, argv []string) map[string]any {
-	ctx, cancel := context.WithTimeout(context.Background(), execTimeout)
+	limit := timeoutFor(argv)
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, argv...)
 	out, err := cmd.CombinedOutput()
 	text := string(out)
 	if ctx.Err() == context.DeadlineExceeded {
+		msg := fmt.Sprintf("command timed out after %s", limit)
 		if strings.TrimSpace(text) == "" {
-			text = "command timed out after 60s"
+			text = msg
 		} else {
-			text += "\ncommand timed out after 60s"
+			text += "\n" + msg
 		}
 		return errorContent(text)
 	}
