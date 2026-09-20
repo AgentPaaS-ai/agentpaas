@@ -15,7 +15,8 @@ This is an AgentPaaS agent, not a standalone HTTP app.
 3. Live weather via `agent.http("GET", "https://wttr.in/{city}?format=j1")`.
 4. Friendly summary via `agent.llm(prompt)` which returns `{"text": "..."}`.
 5. Payload `{"query":"What's the weather in Folsom?"}`.
-6. `agentpaas pack` then local run. For cloud, `pack --target linux/amd64` then cloud push/deploy/invoke.
-7. If a key is needed, tell the user to run `agentpaas secret add openrouter-key` in Terminal.
+6. `agentpaas pack` then local run. For cloud: `pack --target linux/amd64`, `cloud push`, `cloud deploy`.
+7. Before invoke: `agentpaas cloud secrets bind <dep_…> openrouter-key --as bearer --host openrouter.ai`. Do not invoke until that bind exists. Then one Folsom invoke.
+8. If a key is needed, tell the user to run `agentpaas secret add openrouter-key` in Terminal. Never put the key in chat.
 
 The harness injects the LLM credential. Do not open `/usr` SDK sources. Do not POST to OpenRouter from `requests`.
