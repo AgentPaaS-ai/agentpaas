@@ -1,0 +1,17 @@
+{
+  "name": "agentpaas",
+  "owner": {
+    "name": "AgentPaaS",
+    "url": "https://github.com/AgentPaaS-ai"
+  },
+  "metadata": {
+    "description": "AgentPaaS plugins for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "agentpaas",
+      "source": "./integrations/claude-code-plugin",
+      "description": "Build and run governed AgentPaaS agents from Claude Code"
+    }
+  ]
+}
