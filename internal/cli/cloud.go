@@ -112,6 +112,7 @@ Use 'agentpaas cloud whoami' to verify your session.`,
 	cmd.AddCommand(newCloudWorkflowCmd())
 	cmd.AddCommand(newCloudWebhookCmd())
 	cmd.AddCommand(newCloudIngressCmd())
+	cmd.AddCommand(newCloudSeatWaitCmd())
 
 	// All cloud descendants return errors through one renderer so API reason
 	// codes and semantic exit codes stay consistent across verbs.
