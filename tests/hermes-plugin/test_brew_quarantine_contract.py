@@ -40,7 +40,7 @@ class FormulaQuarantineContractTests(unittest.TestCase):
         cls.text = FORMULA.read_text(encoding="utf-8")
 
     def test_version_is_0_4_0(self):
-        self.assertIn('version "0.4.1"', self.text)
+        self.assertIn('version "0.5.0"', self.text)
         self.assertNotIn('version "0.4.2"', self.text)
 
     def test_defines_post_install_xattr_on_four_bins(self):
@@ -53,7 +53,7 @@ class FormulaQuarantineContractTests(unittest.TestCase):
                 self.assertIn(name, self.text)
 
     def test_keeps_version_assertion(self):
-        self.assertRegex(self.text, r"assert_match\(/0\\.4\\.1/")
+        self.assertRegex(self.text, r"assert_match\(/0\\.5\\.0/")
 
 
 class GoreleaserCaskHookContractTests(unittest.TestCase):
