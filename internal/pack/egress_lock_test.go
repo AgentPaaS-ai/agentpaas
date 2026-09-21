@@ -362,6 +362,17 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 	if _, ok := cgr["pii"]; !ok {
 		t.Fatal("canonical map missing guardrails.pii")
 	}
+	idx, ok := parsed["component_index"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("component_index missing: %s", raw)
+	}
+	igr, ok := idx["guardrails"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("component_index.guardrails missing: %s", raw)
+	}
+	if _, ok := igr["pii"]; !ok {
+		t.Fatalf("component_index.guardrails.pii missing: %s", raw)
+	}
 }
 
 func TestCreateAgentLock_OmitsPIIWhenAbsent_SC8(t *testing.T) {

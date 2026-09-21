@@ -22,6 +22,7 @@ type ComponentIndex struct {
 	Delegates     []string            `json:"delegates,omitempty"`
 	Egress        []string            `json:"egress"`
 	Ingress       []string            `json:"ingress"`
+	Guardrails    *AgentGuardrails    `json:"guardrails,omitempty"`
 	Bindings      []ComponentBinding  `json:"bindings"`
 	Provenance    ComponentProvenance `json:"provenance"`
 	Invoke        ComponentInvoke     `json:"invoke"`
@@ -193,6 +194,18 @@ func BuildComponentIndex(agent *AgentYAML, prov ComponentIndexProvenance) *Compo
 		}
 	}
 	applyComponentIndexOverlay(idx, overlayFromAgent(agent))
+	if agent != nil && agent.Guardrails != nil && agent.Guardrails.PII != nil {
+		src := agent.Guardrails.PII
+		idx.Guardrails = &AgentGuardrails{
+			PII: &AgentPIIGuardrail{
+				Action:       src.Action,
+				Builtins:     append([]string{}, src.Builtins...),
+				Patterns:     append([]string{}, src.Patterns...),
+				RejectStatus: src.RejectStatus,
+				RejectBody:   src.RejectBody,
+			},
+		}
+	}
 	if idx.Title == "" {
 		idx.Title = idx.Name
 	}
