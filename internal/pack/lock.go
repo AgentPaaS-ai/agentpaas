@@ -629,6 +629,8 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	}
 
 	mergePolicyEgressIntoAgentYAML(&cfg)
+	mergePolicyIngressIntoAgentYAML(&cfg)
+	mergePolicyPIIIntoAgentYAML(&cfg)
 
 	lock := assembleAgentLock(cfg, sbom, sbomDigest, string(publicKeyPEM), privateKey, signatureReferrer, policyDigest)
 	if lock == nil {
@@ -1410,6 +1412,33 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 		out["egress"] = egressCopy
 	}
 
+	if len(ay.Ingress) > 0 {
+		ingressCopy := make([]string, len(ay.Ingress))
+		copy(ingressCopy, ay.Ingress)
+		out["ingress"] = ingressCopy
+	}
+
+	if ay.Guardrails != nil && ay.Guardrails.PII != nil {
+		pii := ay.Guardrails.PII
+		piiMap := make(map[string]interface{})
+		setIfNotEmpty(piiMap, "action", pii.Action)
+		if len(pii.Builtins) > 0 {
+			b := make([]string, len(pii.Builtins))
+			copy(b, pii.Builtins)
+			piiMap["builtins"] = b
+		}
+		if len(pii.Patterns) > 0 {
+			p := make([]string, len(pii.Patterns))
+			copy(p, pii.Patterns)
+			piiMap["patterns"] = p
+		}
+		if pii.RejectStatus != 0 {
+			piiMap["reject_status"] = pii.RejectStatus
+		}
+		setIfNotEmpty(piiMap, "reject_body", pii.RejectBody)
+		out["guardrails"] = map[string]interface{}{"pii": piiMap}
+	}
+
 	if len(ay.MCPServers) > 0 {
 		servers := make([]map[string]interface{}, 0, len(ay.MCPServers))
 		failClosed := false
@@ -1509,6 +1538,70 @@ func mergePolicyEgressIntoAgentYAML(cfg *LockConfig) {
 		out = append(out, host)
 	}
 	cfg.AgentYAML.Egress = out
+}
+
+// mergePolicyIngressIntoAgentYAML copies unique packed IngressRule path:port
+// stamps onto AgentYAML.Ingress so the signed lock and component index carry
+// callers the same way egress domains are stamped.
+func mergePolicyIngressIntoAgentYAML(cfg *LockConfig) {
+	if cfg == nil || cfg.AgentYAML == nil || len(cfg.PolicyYAML) == 0 {
+		return
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(cfg.PolicyYAML))
+	if err != nil || parsed == nil {
+		return
+	}
+	seen := make(map[string]struct{}, len(cfg.AgentYAML.Ingress)+len(parsed.Ingress))
+	out := make([]string, 0, len(cfg.AgentYAML.Ingress)+len(parsed.Ingress))
+	for _, port := range cfg.AgentYAML.Ingress {
+		port = strings.TrimSpace(port)
+		if port == "" {
+			continue
+		}
+		if _, dup := seen[port]; dup {
+			continue
+		}
+		seen[port] = struct{}{}
+		out = append(out, port)
+	}
+	for _, rule := range parsed.Ingress {
+		path := strings.TrimSpace(rule.Path)
+		if path == "" || rule.Port <= 0 {
+			continue
+		}
+		stamp := fmt.Sprintf("%s:%d", path, rule.Port)
+		if _, dup := seen[stamp]; dup {
+			continue
+		}
+		seen[stamp] = struct{}{}
+		out = append(out, stamp)
+	}
+	cfg.AgentYAML.Ingress = out
+}
+
+// mergePolicyPIIIntoAgentYAML copies mapping-form policy.PII onto
+// AgentYAML.Guardrails so the signed lock carries guardrails.pii.
+// Sequence-form B19 guardrails leave parsed.PII nil (SC8 omit).
+func mergePolicyPIIIntoAgentYAML(cfg *LockConfig) {
+	if cfg == nil || cfg.AgentYAML == nil || len(cfg.PolicyYAML) == 0 {
+		return
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(cfg.PolicyYAML))
+	if err != nil || parsed == nil || parsed.PII == nil {
+		return
+	}
+	src := parsed.PII
+	builtins := append([]string{}, src.Builtins...)
+	patterns := append([]string{}, src.Patterns...)
+	cfg.AgentYAML.Guardrails = &AgentGuardrails{
+		PII: &AgentPIIGuardrail{
+			Action:       src.Action,
+			Builtins:     builtins,
+			Patterns:     patterns,
+			RejectStatus: src.RejectStatus,
+			RejectBody:   src.RejectBody,
+		},
+	}
 }
 
 // setIfNotEmpty sets m[key]=val only when val (string) is non-empty.
