@@ -2024,10 +2024,12 @@ def agentpaas_cloud_login(args, **kwargs):
         "error": "user_cli_login_required",
         "action_required": "user_cli_login",
         "message": (
-            "Cloud login must be done by the user in their own terminal "
-            "(not by this tool). Tell the user to run:\n\n"
+            "You are not logged into AgentPaaS Cloud yet. Get a claim link first:\n"
+            "go to https://agentpaas.ai and click Start free trial (or paste the\n"
+            "claim link your operator emailed). Open it in the browser and finish\n"
+            "sign-in. Only then run in your own terminal (not by this tool):\n\n"
             "  agentpaas cloud login\n\n"
-            "Then open the printed URL in the SAME browser used for the claim link, "
+            "Open the printed URL in the SAME browser used for the claim link, "
             "approve CLI access, and say 'done'. After that, call agentpaas_cloud_whoami."
         ),
         "user_command": "agentpaas cloud login",

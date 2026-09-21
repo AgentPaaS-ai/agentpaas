@@ -13,10 +13,15 @@ At build/pack time, after the user has chosen the project and LLM provider:
 3. Configure the agent: call `agentpaas_llm_configure` with project_dir,
    provider, model, and credential
 
-## Providers for the cold weather demo
-- openrouter (recommended first): simple API key, `openrouter-key`
-- openai: simple API key, `openai-key` (or user label)
-- anthropic: simple API key, `anthropic-key` (or user label)
+## Providers
+
+Only **openrouter** is trial-proven for the cold/stranger path. The other
+names have OSS adapters (unit/pack) but are not a cold-gate menu.
+
+- openrouter (recommended; trial-proven): simple API key, `openrouter-key`
+- openai: OSS adapter; simple API key, `openai-key` (or user label)
+- anthropic: OSS adapter; simple API key, `anthropic-key` (or user label)
+- xai / nous: OSS adapters exist; do not offer on the cold path
 
 ## OpenRouter model defaults (cold path / T11)
 Do **not** offer a model menu. Do **not** offer stale IDs

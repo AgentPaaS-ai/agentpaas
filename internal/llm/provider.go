@@ -19,7 +19,7 @@ type ProviderAdapter interface {
 	Endpoint() string
 	// AuthHeader returns the header name used for the API key (e.g. "Authorization", "x-api-key").
 	AuthHeader() string
-	// Name returns the provider name (e.g. "openai", "anthropic", "xiai").
+	// Name returns the provider name (e.g. "openai", "anthropic", "xai").
 	Name() string
 }
 

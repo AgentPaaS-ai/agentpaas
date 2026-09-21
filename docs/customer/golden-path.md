@@ -43,10 +43,12 @@ agentpaas daemon start                   # OK if already running
 
 ## 2. Login (once)
 
-Primary path — browser claim link:
+Primary path — browser claim link (strangers start here):
 
-1. Ask your AgentPaaS provider/operator for your tenant claim link.
-2. Open the link in a browser and complete sign-in (for example,
+1. Go to **https://agentpaas.ai** and click **Start free trial**, or paste the
+   claim link your operator emailed. Do not invent admin provision or Cloudflare
+   tokens.
+2. Open the claim link in a browser and complete sign-in (for example,
    `https://<api>/v1/auth/claim/<code>`). That sets a browser session cookie
    on the API host.
 3. Optional: if your provider exposes a dashboard, use the URL they provide.
@@ -54,7 +56,7 @@ Primary path — browser claim link:
    `AGENTPAAS_CLOUD_API_URL` to a legacy workers.dev API host during the
    transition. The dashboard, when available, is on the API origin rather
    than a separate app domain.
-4. In the same terminal, approve the CLI login:
+4. Only then, in the same terminal, approve the CLI login:
 
 ```bash
 agentpaas cloud login

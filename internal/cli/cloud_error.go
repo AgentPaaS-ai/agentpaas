@@ -18,6 +18,15 @@ const (
 	cloudExitNotFound = 4
 	cloudExitCapacity = 5
 	cloudExitConflict = 6
+
+	// Claim-first coaching for strangers who ran cloud login / whoami
+	// before a browser claim session exists (P2-18).
+	claimFirstLoginAdvice = "Get a claim link first: go to https://agentpaas.ai and click Start free trial, finish sign-in in the browser, then run: agentpaas cloud login"
+
+	// Canonical trial-limit sentences shared by CLI human and JSON output
+	// (P2-28 / P2-29). Cloud dashboard copy is lane A.
+	cpuQuotaExhaustedUserMessage  = "Trial CPU limit reached. Get a new trial or convert to paid."
+	agentLimitExceededUserMessage = "Trial agent limit reached. Convert to paid, or remove an agent."
 )
 
 // CloudErrorJSON is the stable machine-readable error envelope for cloud
@@ -38,7 +47,18 @@ type CloudCommandError struct {
 	rendered bool
 }
 
-func (e *CloudCommandError) Error() string { return e.cause.Error() }
+func (e *CloudCommandError) Error() string {
+	if e == nil {
+		return ""
+	}
+	if cloudCoachingMessage(e.payload) != "" {
+		return e.payload.Message
+	}
+	if e.cause != nil {
+		return e.cause.Error()
+	}
+	return e.payload.Message
+}
 
 func (e *CloudCommandError) Unwrap() error { return e.cause }
 
@@ -134,6 +154,7 @@ func classifyCloudError(err error) classifiedCloudError {
 		if payload.Reason == "" {
 			payload.Reason = payload.Error
 		}
+		applyCloudCoaching(&payload, err)
 		return classifiedCloudError{payload: payload, exitCode: cloudExitCodeFor(payload.Error, payload.Reason)}
 	}
 
@@ -142,7 +163,7 @@ func classifyCloudError(err error) classifiedCloudError {
 	case strings.Contains(lower, "not logged in"):
 		payload.Error = "not logged in"
 		payload.Reason = "unauthorized"
-		payload.Message = "No cloud token found"
+		payload.Message = claimFirstLoginAdvice
 	case strings.Contains(lower, "not authenticated"), strings.Contains(lower, "unauthorized"):
 		payload.Error = "unauthorized"
 		payload.Reason = "unauthorized"
@@ -152,7 +173,7 @@ func classifyCloudError(err error) classifiedCloudError {
 	case strings.Contains(lower, "no_slot_capacity"):
 		payload.Error = "capacity"
 		payload.Reason = "no_slot_capacity"
-	case strings.Contains(lower, "quota_exceeded"), strings.Contains(lower, "trial_expired"):
+	case strings.Contains(lower, "quota_exceeded"), strings.Contains(lower, "trial_expired"), strings.Contains(lower, "cpu_quota_exhausted"), strings.Contains(lower, "agent_limit_exceeded"):
 		payload.Error = "quota_exceeded"
 		payload.Reason = firstCloudReason(lower, "quota_exceeded", "trial_expired")
 	case strings.Contains(lower, "not_found"):
@@ -162,7 +183,46 @@ func classifyCloudError(err error) classifiedCloudError {
 		payload.Error = "container_start_failed"
 		payload.Reason = "container_start_failed"
 	}
+	applyCloudCoaching(&payload, err)
 	return classifiedCloudError{payload: payload, exitCode: cloudExitCodeFor(payload.Error, payload.Reason)}
+}
+
+func applyCloudCoaching(payload *CloudErrorJSON, err error) {
+	if payload == nil {
+		return
+	}
+	reason := strings.ToLower(payload.Reason)
+	code := strings.ToLower(payload.Error)
+	msg := strings.ToLower(payload.Message)
+	cause := ""
+	if err != nil {
+		cause = strings.ToLower(err.Error())
+	}
+	switch {
+	case reason == "cpu_quota_exhausted" || code == "cpu_quota_exhausted" || strings.Contains(cause, "cpu_quota_exhausted"):
+		payload.Reason = "cpu_quota_exhausted"
+		if payload.Error == "" {
+			payload.Error = "quota_exceeded"
+		}
+		payload.Message = cpuQuotaExhaustedUserMessage
+	case reason == "agent_limit_exceeded" || code == "agent_limit_exceeded" || strings.Contains(cause, "agent_limit_exceeded"):
+		payload.Reason = "agent_limit_exceeded"
+		if payload.Error == "" {
+			payload.Error = "quota_exceeded"
+		}
+		payload.Message = agentLimitExceededUserMessage
+	case payload.Error != "not logged in" && (reason == "claim_required" || code == "claim_required" || strings.Contains(msg, "claim link") || strings.Contains(cause, "claim_required") || strings.Contains(cause, "claim link first")):
+		payload.Reason = "claim_required"
+		payload.Message = claimFirstLoginAdvice
+	}
+}
+
+func cloudCoachingMessage(p CloudErrorJSON) string {
+	switch strings.ToLower(p.Reason) {
+	case "cpu_quota_exhausted", "agent_limit_exceeded", "claim_required":
+		return p.Message
+	}
+	return ""
 }
 
 func statusErrorCode(status int) string {
@@ -191,7 +251,7 @@ func cloudExitCodeFor(code, reason string) int {
 	code = strings.ToLower(code)
 	reason = strings.ToLower(reason)
 	switch {
-	case code == "quota_exceeded" || code == "quota" || reason == "quota_exceeded" || reason == "trial_expired" || code == "trial_expired":
+	case code == "quota_exceeded" || code == "quota" || reason == "quota_exceeded" || reason == "trial_expired" || code == "trial_expired" || reason == "cpu_quota_exhausted" || reason == "agent_limit_exceeded" || code == "cpu_quota_exhausted" || code == "agent_limit_exceeded":
 		return cloudExitQuota
 	case code == "unauthorized" || code == "auth" || reason == "unauthorized":
 		return cloudExitAuth
