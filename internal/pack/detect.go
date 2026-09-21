@@ -67,6 +67,10 @@ type AgentYAML struct {
 	// Guardrails.PII is stamped from policy.yaml mapping-form guardrails.pii
 	// onto the signed lock the same way egress/ingress are stamped.
 	Guardrails *AgentGuardrails `yaml:"guardrails,omitempty" json:"guardrails,omitempty"`
+	// LLMBudget is stamped from policy.yaml llm_budget onto the signed lock.
+	// Pointer omitempty omits the key when absent. MaxTokens has no omitempty:
+	// zero is a real cap.
+	LLMBudget *AgentLLMBudget `yaml:"llm_budget,omitempty" json:"llm_budget,omitempty"`
 	// MCPServers are client MCP servers declared in agent.yaml. Stamped
 	// onto lock agent_yaml so hosted bind can grant matching kind=mcp deploys.
 	MCPServers []MCPServerDecl `yaml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
@@ -95,6 +99,14 @@ type AgentPIIGuardrail struct {
 	Patterns     []string `yaml:"patterns,omitempty" json:"patterns,omitempty"`
 	RejectStatus int      `yaml:"reject_status,omitempty" json:"reject_status,omitempty"`
 	RejectBody   string   `yaml:"reject_body,omitempty" json:"reject_body,omitempty"`
+}
+
+// AgentLLMBudget is the packed llm_budget stamp. MaxTokens has no omitempty
+// because zero is a real cap. Absence is the nil pointer on AgentYAML.
+type AgentLLMBudget struct {
+	MaxTokens           int    `json:"max_tokens"`
+	MaxTokensPerRequest int    `json:"max_tokens_per_request,omitempty"`
+	MaxCostUSD          string `json:"max_cost_usd,omitempty"`
 }
 
 // DeclaredCapability is a single capability entry from the agent.yaml manifest.

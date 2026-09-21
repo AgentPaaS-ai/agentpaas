@@ -472,3 +472,156 @@ guardrails:
 		t.Fatalf("B19 sequence must not stamp mapping pii: %s", raw)
 	}
 }
+
+const llmBudgetPolicyYAML = `version: "1.0"
+agent:
+  name: budget-agent
+egress:
+  - domain: "openrouter.ai"
+    ports: [443]
+llm_budget:
+  max_tokens: 1
+  max_tokens_per_request: 1
+`
+
+func TestCreateAgentLock_StampsPolicyLLMBudget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+
+	lock, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         &AgentYAML{Name: "budget-agent"},
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PolicyYAML:        []byte(llmBudgetPolicyYAML),
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock: %v", err)
+	}
+
+	raw, err := json.Marshal(lock)
+	if err != nil {
+		t.Fatalf("json.Marshal lock: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal lock: %v", err)
+	}
+	ay, ok := parsed["agent_yaml"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("agent_yaml missing: %s", raw)
+	}
+	assertLLMBudgetStamp(t, ay["llm_budget"], "agent_yaml.llm_budget", raw)
+	canon := agentYAMLCanonicalMap(lock.AgentYAML)
+	assertLLMBudgetStamp(t, canon["llm_budget"], "canonical agent_yaml.llm_budget", raw)
+	idx, ok := parsed["component_index"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("component_index missing: %s", raw)
+	}
+	assertLLMBudgetStamp(t, idx["llm_budget"], "component_index.llm_budget", raw)
+}
+
+func TestCreateAgentLock_OmitsLLMBudgetWhenAbsent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+	lock, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         &AgentYAML{Name: "weather-agent"},
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PolicyYAML:        []byte(egressPolicyYAML),
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock: %v", err)
+	}
+	raw, err := json.Marshal(lock)
+	if err != nil {
+		t.Fatalf("json.Marshal lock: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal lock: %v", err)
+	}
+	ay := parsed["agent_yaml"].(map[string]interface{})
+	if _, ok := ay["llm_budget"]; ok {
+		t.Fatalf("llm_budget must be omitted when policy has none: %s", raw)
+	}
+	if _, ok := agentYAMLCanonicalMap(lock.AgentYAML)["llm_budget"]; ok {
+		t.Fatal("canonical agent_yaml must omit llm_budget when policy has none")
+	}
+	idx, ok := parsed["component_index"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("component_index missing: %s", raw)
+	}
+	if _, ok := idx["llm_budget"]; ok {
+		t.Fatalf("component_index.llm_budget must be omitted when policy has none: %s", raw)
+	}
+}
+
+func assertLLMBudgetStamp(t *testing.T, raw interface{}, where string, lockRaw []byte) {
+	t.Helper()
+	budget, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("%s missing: %s", where, lockRaw)
+	}
+	if !llmBudgetNumberIs(budget["max_tokens"], 1) {
+		t.Fatalf("%s.max_tokens=%v (%T), want 1", where, budget["max_tokens"], budget["max_tokens"])
+	}
+	if !llmBudgetNumberIs(budget["max_tokens_per_request"], 1) {
+		t.Fatalf("%s.max_tokens_per_request=%v (%T), want 1", where, budget["max_tokens_per_request"], budget["max_tokens_per_request"])
+	}
+}
+
+func llmBudgetNumberIs(v interface{}, want int) bool {
+	switch n := v.(type) {
+	case int:
+		return n == want
+	case int64:
+		return n == int64(want)
+	case float64:
+		return n == float64(want)
+	case json.Number:
+		i, err := n.Int64()
+		return err == nil && i == int64(want)
+	default:
+		return false
+	}
+}

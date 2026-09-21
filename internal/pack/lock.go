@@ -631,6 +631,7 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	mergePolicyEgressIntoAgentYAML(&cfg)
 	mergePolicyIngressIntoAgentYAML(&cfg)
 	mergePolicyPIIIntoAgentYAML(&cfg)
+	mergePolicyLLMBudgetIntoAgentYAML(&cfg)
 
 	lock := assembleAgentLock(cfg, sbom, sbomDigest, string(publicKeyPEM), privateKey, signatureReferrer, policyDigest)
 	if lock == nil {
@@ -1439,6 +1440,19 @@ func agentYAMLCanonicalMap(ay *AgentYAML) map[string]interface{} {
 		out["guardrails"] = map[string]interface{}{"pii": piiMap}
 	}
 
+	if ay.LLMBudget != nil {
+		budget := map[string]interface{}{
+			"max_tokens": ay.LLMBudget.MaxTokens,
+		}
+		if ay.LLMBudget.MaxTokensPerRequest != 0 {
+			budget["max_tokens_per_request"] = ay.LLMBudget.MaxTokensPerRequest
+		}
+		if ay.LLMBudget.MaxCostUSD != "" {
+			budget["max_cost_usd"] = ay.LLMBudget.MaxCostUSD
+		}
+		out["llm_budget"] = budget
+	}
+
 	if len(ay.MCPServers) > 0 {
 		servers := make([]map[string]interface{}, 0, len(ay.MCPServers))
 		failClosed := false
@@ -1601,6 +1615,25 @@ func mergePolicyPIIIntoAgentYAML(cfg *LockConfig) {
 			RejectStatus: src.RejectStatus,
 			RejectBody:   src.RejectBody,
 		},
+	}
+}
+
+// mergePolicyLLMBudgetIntoAgentYAML copies policy.LLMBudget onto
+// AgentYAML.LLMBudget so the signed lock carries llm_budget. Absent
+// policy budget leaves the key omitted (nil pointer).
+func mergePolicyLLMBudgetIntoAgentYAML(cfg *LockConfig) {
+	if cfg == nil || cfg.AgentYAML == nil || len(cfg.PolicyYAML) == 0 {
+		return
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(cfg.PolicyYAML))
+	if err != nil || parsed == nil || parsed.LLMBudget == nil {
+		return
+	}
+	src := parsed.LLMBudget
+	cfg.AgentYAML.LLMBudget = &AgentLLMBudget{
+		MaxTokens:           src.MaxTokens,
+		MaxTokensPerRequest: src.MaxTokensPerRequest,
+		MaxCostUSD:          src.MaxCostUSD,
 	}
 }
 
