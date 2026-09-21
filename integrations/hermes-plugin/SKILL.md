@@ -489,11 +489,15 @@ This step MUST happen before `agentpaas_pack`. Do NOT skip it.
 When the user is not logged in to cloud (`agentpaas_cloud_whoami` fails):
 1. Do **NOT** call `agentpaas_cloud_login` expecting it to finish auth (it only
    returns coaching text).
-2. Tell the user to run in **their** terminal:
+2. **Claim first.** Tell the user to go to **https://agentpaas.ai** and click
+   **Start free trial** (or paste the claim link your operator emailed). They
+   open the claim link in a browser and finish sign-in. Do not invent admin
+   provision or ask for Cloudflare tokens.
+3. Only then: tell the user to run in **their** terminal:
    `agentpaas cloud login`
-3. They open the printed URL in the **same browser as their claim link**, approve,
+4. They open the printed URL in the **same browser as their claim link**, approve,
    then say done.
-4. Verify with `agentpaas_cloud_whoami` only after they confirm.
+5. Verify with `agentpaas_cloud_whoami` only after they confirm.
 
 ### Step 1: Configure LLM Provider (when needed)
 

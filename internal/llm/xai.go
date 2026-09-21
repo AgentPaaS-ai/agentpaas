@@ -13,9 +13,11 @@ const defaultXAIModel = "grok-3-mini"
 type xAIAdapter struct{}
 
 // xAIAdapter.Name returns the provider or component name.
-func (a *xAIAdapter) Name() string       { return "xiai" }
+func (a *xAIAdapter) Name() string { return "xai" }
+
 // xAIAdapter.Endpoint returns the API endpoint URL.
-func (a *xAIAdapter) Endpoint() string   { return xaiEndpoint }
+func (a *xAIAdapter) Endpoint() string { return xaiEndpoint }
+
 // xAIAdapter.AuthHeader returns the HTTP authorization header name and value prefix.
 func (a *xAIAdapter) AuthHeader() string { return "Authorization" }
 

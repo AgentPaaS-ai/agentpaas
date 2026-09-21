@@ -688,3 +688,18 @@ func TestProviderDomains(t *testing.T) {
 		}
 	}
 }
+
+func TestXAIAdapter_NameIsXAI(t *testing.T) {
+	if got := (&xAIAdapter{}).Name(); got != "xai" {
+		t.Fatalf("xAIAdapter.Name() = %q, want %q", got, "xai")
+	}
+	for _, alias := range []string{"xai", "xiai"} {
+		adapter := GetAdapter(alias)
+		if adapter == nil {
+			t.Fatalf("GetAdapter(%q) = nil", alias)
+		}
+		if got := adapter.Name(); got != "xai" {
+			t.Fatalf("GetAdapter(%q).Name() = %q, want %q", alias, got, "xai")
+		}
+	}
+}

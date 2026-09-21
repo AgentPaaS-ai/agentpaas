@@ -131,10 +131,11 @@ func newCloudLoginCmd() *cobra.Command {
 		Short: "Log in to AgentPaaS Cloud",
 		Long: `Authenticate with AgentPaaS Cloud.
 
-Prints a claim URL for OAuth-style login. Open it manually in the same
-browser where you opened your claim link. Use --open-browser only when
-you explicitly want the system browser opened. The token is stored
-securely in your macOS Keychain.
+Get a claim link first: go to https://agentpaas.ai and click Start free trial
+(or paste the claim link your operator emailed). Open it in a browser and
+finish sign-in. Then run this command and open the printed URL in the SAME
+browser. Use --open-browser only when you explicitly want the system browser
+opened. The token is stored securely in your macOS Keychain.
 
 CI environments can use --token-stdin to read a token from stdin, or set
 the AGENTPAAS_CLOUD_API_TOKEN environment variable.`,
@@ -1854,7 +1855,7 @@ Requires a valid login. Use 'agentpaas cloud login' first.`,
 // printNotLoggedIn returns a typed cloud error. The cloud command wrapper
 // renders it as JSON when requested and maps it to the auth exit code.
 func printNotLoggedIn(cmd *cobra.Command) error {
-	return fmt.Errorf("not logged in. Run: agentpaas cloud login  (CI: export AGENTPAAS_CLOUD_API_TOKEN=...)")
+	return fmt.Errorf("not logged in. %s  (CI: export AGENTPAAS_CLOUD_API_TOKEN=...)", claimFirstLoginAdvice)
 }
 
 // storeAndConfirmLogin stores the token and prints a confirmation.
