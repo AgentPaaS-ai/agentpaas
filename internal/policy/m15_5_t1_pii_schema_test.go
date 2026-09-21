@@ -9,10 +9,10 @@ import (
 const canaryPII = "canary-pii-m155-t1-ssn-078-05-1120"
 
 func TestPIIBuiltinAllowList(t *testing.T) {
-	if PIIBuiltinCreditCard != "CreditCard" || PIIBuiltinSsn != "Ssn" || PIIBuiltinEmail != "Email" {
-		t.Fatalf("builtins=%q %q %q", PIIBuiltinCreditCard, PIIBuiltinSsn, PIIBuiltinEmail)
+	if PIIBuiltinCreditCard != "CreditCard" || PIIBuiltinSsn != "Ssn" || PIIBuiltinEmail != "Email" || PIIBuiltinDriversLicense != "DriversLicense" || PIIBuiltinKey != "Key" {
+		t.Fatalf("builtins=%q %q %q %q %q", PIIBuiltinCreditCard, PIIBuiltinSsn, PIIBuiltinEmail, PIIBuiltinDriversLicense, PIIBuiltinKey)
 	}
-	if !AllowedPIIBuiltin(PIIBuiltinCreditCard) || !AllowedPIIBuiltin(PIIBuiltinSsn) || !AllowedPIIBuiltin(PIIBuiltinEmail) {
+	if !AllowedPIIBuiltin(PIIBuiltinCreditCard) || !AllowedPIIBuiltin(PIIBuiltinSsn) || !AllowedPIIBuiltin(PIIBuiltinEmail) || !AllowedPIIBuiltin(PIIBuiltinDriversLicense) || !AllowedPIIBuiltin(PIIBuiltinKey) {
 		t.Fatal("gateway PII builtins must be allowed")
 	}
 	for _, bad := range []string{"AWS", "GitHub", "PEM", "aws_key", "private_key"} {

@@ -205,9 +205,11 @@ const (
 
 // Gateway PII builtin detector names (D203). Extra detections use tenant patterns.
 const (
-	PIIBuiltinCreditCard = "CreditCard"
-	PIIBuiltinSsn        = "Ssn"
-	PIIBuiltinEmail      = "Email"
+	PIIBuiltinCreditCard     = "CreditCard"
+	PIIBuiltinSsn            = "Ssn"
+	PIIBuiltinEmail          = "Email"
+	PIIBuiltinDriversLicense = "DriversLicense"
+	PIIBuiltinKey            = "Key"
 )
 
 // PIIGuardrail is the mapping form of guardrails.pii.
@@ -222,7 +224,7 @@ type PIIGuardrail struct {
 // AllowedPIIBuiltin reports whether name is a gateway PII builtin (D203).
 func AllowedPIIBuiltin(name string) bool {
 	switch name {
-	case PIIBuiltinCreditCard, PIIBuiltinSsn, PIIBuiltinEmail:
+	case PIIBuiltinCreditCard, PIIBuiltinSsn, PIIBuiltinEmail, PIIBuiltinDriversLicense, PIIBuiltinKey:
 		return true
 	default:
 		return false
