@@ -60,6 +60,13 @@ type AgentYAML struct {
 	// domains (and optionally declared in agent.yaml). String list only so
 	// `egress: [example.com]` still unmarshals.
 	Egress []string `yaml:"egress,omitempty" json:"egress,omitempty"`
+	// Ingress is a string-list of packed IngressRule path:port stamps from
+	// policy.yaml (and optionally declared in agent.yaml). Same shape the
+	// cloud inspect card expects so mermaid can draw callers on the left.
+	Ingress []string `yaml:"ingress,omitempty" json:"ingress,omitempty"`
+	// Guardrails.PII is stamped from policy.yaml mapping-form guardrails.pii
+	// onto the signed lock the same way egress/ingress are stamped.
+	Guardrails *AgentGuardrails `yaml:"guardrails,omitempty" json:"guardrails,omitempty"`
 	// MCPServers are client MCP servers declared in agent.yaml. Stamped
 	// onto lock agent_yaml so hosted bind can grant matching kind=mcp deploys.
 	MCPServers []MCPServerDecl `yaml:"mcp_servers,omitempty" json:"mcp_servers,omitempty"`
@@ -76,6 +83,18 @@ type AgentYAML struct {
 		Entrypoint string `yaml:"entrypoint" json:"entrypoint,omitempty"`
 		Entry      string `yaml:"entry" json:"entry,omitempty"`
 	} `yaml:"spec" json:"spec,omitempty"`
+}
+
+type AgentGuardrails struct {
+	PII *AgentPIIGuardrail `yaml:"pii,omitempty" json:"pii,omitempty"`
+}
+
+type AgentPIIGuardrail struct {
+	Action       string   `yaml:"action" json:"action,omitempty"`
+	Builtins     []string `yaml:"builtins,omitempty" json:"builtins,omitempty"`
+	Patterns     []string `yaml:"patterns,omitempty" json:"patterns,omitempty"`
+	RejectStatus int      `yaml:"reject_status,omitempty" json:"reject_status,omitempty"`
+	RejectBody   string   `yaml:"reject_body,omitempty" json:"reject_body,omitempty"`
 }
 
 // DeclaredCapability is a single capability entry from the agent.yaml manifest.

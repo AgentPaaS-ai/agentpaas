@@ -21,6 +21,7 @@ type ComponentIndex struct {
 	Description   string              `json:"description,omitempty"`
 	Delegates     []string            `json:"delegates,omitempty"`
 	Egress        []string            `json:"egress"`
+	Ingress       []string            `json:"ingress"`
 	Bindings      []ComponentBinding  `json:"bindings"`
 	Provenance    ComponentProvenance `json:"provenance"`
 	Invoke        ComponentInvoke     `json:"invoke"`
@@ -165,6 +166,7 @@ func BuildComponentIndex(agent *AgentYAML, prov ComponentIndexProvenance) *Compo
 		SchemaVersion: ComponentIndexSchemaV1,
 		Kind:          "agent",
 		Egress:        []string{},
+		Ingress:       []string{},
 		Bindings:      []ComponentBinding{},
 		Provenance: ComponentProvenance{
 			ImageDigest:  strings.TrimSpace(prov.ImageDigest),
@@ -182,6 +184,9 @@ func BuildComponentIndex(agent *AgentYAML, prov ComponentIndexProvenance) *Compo
 		idx.Kind = mapComponentKind(agent.Kind)
 		if len(agent.Egress) > 0 {
 			idx.Egress = append([]string{}, agent.Egress...)
+		}
+		if len(agent.Ingress) > 0 {
+			idx.Ingress = append([]string{}, agent.Ingress...)
 		}
 		if len(agent.Delegates) > 0 {
 			idx.Delegates = append([]string{}, agent.Delegates...)
@@ -323,6 +328,9 @@ func applyComponentIndexOverlay(idx *ComponentIndex, overlay map[string]interfac
 	}
 	if hosts := stringList(overlay["egress"]); hosts != nil {
 		idx.Egress = intersectEgressWithPolicy(hosts, idx.Egress)
+	}
+	if ports := stringList(overlay["ingress"]); ports != nil {
+		idx.Ingress = append([]string{}, ports...)
 	}
 	if raw, ok := overlay["bindings"]; ok {
 		idx.Bindings = parseBindings(raw)

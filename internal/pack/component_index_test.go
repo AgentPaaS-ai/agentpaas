@@ -129,6 +129,9 @@ func TestBuildComponentIndex_HonestEmptyWhenUndeclared(t *testing.T) {
 	if idx.Egress == nil {
 		t.Fatal("egress must be empty-declared, not omitted")
 	}
+	if idx.Ingress == nil {
+		t.Fatal("ingress must be empty-declared, not omitted")
+	}
 }
 
 func TestBuildComponentIndex_MCPNameOnlyToolsHonestEmptySchemas(t *testing.T) {
