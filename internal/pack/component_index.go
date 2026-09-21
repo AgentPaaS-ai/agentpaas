@@ -23,6 +23,7 @@ type ComponentIndex struct {
 	Egress        []string            `json:"egress"`
 	Ingress       []string            `json:"ingress"`
 	Guardrails    *AgentGuardrails    `json:"guardrails,omitempty"`
+	LLMBudget     *AgentLLMBudget     `json:"llm_budget,omitempty"`
 	Bindings      []ComponentBinding  `json:"bindings"`
 	Provenance    ComponentProvenance `json:"provenance"`
 	Invoke        ComponentInvoke     `json:"invoke"`
@@ -204,6 +205,14 @@ func BuildComponentIndex(agent *AgentYAML, prov ComponentIndexProvenance) *Compo
 				RejectStatus: src.RejectStatus,
 				RejectBody:   src.RejectBody,
 			},
+		}
+	}
+	if agent != nil && agent.LLMBudget != nil {
+		src := agent.LLMBudget
+		idx.LLMBudget = &AgentLLMBudget{
+			MaxTokens:           src.MaxTokens,
+			MaxTokensPerRequest: src.MaxTokensPerRequest,
+			MaxCostUSD:          src.MaxCostUSD,
 		}
 	}
 	if idx.Title == "" {
