@@ -1017,7 +1017,7 @@ func validatePIIGuardrail(pii *PIIGuardrail) []ValidationError {
 		if !AllowedPIIBuiltin(b) {
 			errs = append(errs, ValidationError{
 				Field:    fmt.Sprintf("%s.builtins[%d]", prefix, i),
-				Message:  fmt.Sprintf("unknown PII builtin %q; allowed: CreditCard, Ssn, Email", b),
+				Message:  fmt.Sprintf("unknown PII builtin %q; allowed: CreditCard, Ssn, Email, DriversLicense, Key", b),
 				Severity: "error",
 			})
 		}
