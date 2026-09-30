@@ -476,7 +476,7 @@ own terminal (NEVER via your terminal tool):
 agentpaas identity init --name <yourname>
 ```
 
-NEVER substitute a live username. Do not use $USER, whoami, the Mac account, the home folder name, or example. Keep the literal placeholder `<yourname>`. The user types their chosen publisher slug in their own terminal. Identity creation is terminal-gated. NEVER run identity init via the terminal tool.
+NEVER substitute a live username. Do not use $USER, whoami, the Mac account, or the home folder name. Keep the literal placeholder `<yourname>`. The user types their chosen publisher slug in their own terminal. Identity creation is terminal-gated. NEVER run identity init via the terminal tool.
 
 They'll be prompted for a publisher name (GitHub-style slug, 1-39 chars).
 After they confirm they've done it, verify with `agentpaas identity show`.

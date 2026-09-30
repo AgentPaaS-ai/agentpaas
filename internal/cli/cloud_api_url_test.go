@@ -12,7 +12,7 @@ func TestValidateCloudAPIURL(t *testing.T) {
 	t.Parallel()
 	ok := []string{
 		"https://cloud.agentpaas.ai",
-		"https://agentpaas-cloud-api-staging.example.workers.dev",
+		"https://staging.example.com",
 	}
 	for _, u := range ok {
 		if err := validateCloudAPIURL(u); err != nil {
@@ -43,7 +43,7 @@ func TestResolveAPIURL_Order(t *testing.T) {
 		t.Fatalf("default: got %q want %q", got, cloudclient.DefaultCloudAPIURL)
 	}
 
-	staging := "https://agentpaas-cloud-api-staging.example.workers.dev"
+	staging := "https://staging.example.com"
 	if err := persistCloudAPIURL(staging); err != nil {
 		t.Fatalf("persist: %v", err)
 	}

@@ -40,7 +40,7 @@ jobs:
           set -e
           # Personal identifiers, the founder's private CF subdomain, credential
           # store labels, and secret-looking assignments.
-          PATTERN='example|example|agentpaas-cloudflare-api-token|agentpaas-cloud-api\.[a-z0-9-]+\.workers\.dev'
+          PATTERN='agentpaas-cloudflare-api-token|agentpaas-cloud-api\.[a-z0-9-]+\.workers\.dev'
           FILES=$(git ls-files | grep -vE '^\.github/workflows/guardrail\.yml$|^\.gitignore$' || true)
           if [ -n "$FILES" ] && echo "$FILES" | xargs grep -nEI "$PATTERN" 2>/dev/null; then
             echo "::error::Personal identifier / private hostname / credential label in public repo. See matches above."

@@ -155,7 +155,7 @@ func TestCloudSeatWaitProve_RejectsRelativePath(t *testing.T) {
 }
 
 func TestCloudSeatWaitProve_RejectsDotDot(t *testing.T) {
-	_, _, err := executeCloudCmd(t, "", "cloud", "seat-wait", "prove", "--worker-dir", "/Users/example/../etc")
+	_, _, err := executeCloudCmd(t, "", "cloud", "seat-wait", "prove", "--worker-dir", "/tmp/../etc")
 	if err == nil {
 		t.Fatal("expected .. rejection")
 	}
