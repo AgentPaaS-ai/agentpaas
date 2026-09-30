@@ -711,6 +711,7 @@ func renderDockerfile(cfg BuildConfig, deps []string) string {
 	fmt.Fprintf(&b, "FROM %s\n", cfg.BaseImage)
 	fmt.Fprintf(&b, "ENV SOURCE_DATE_EPOCH=%d\n", cfg.SourceDateEpoch.Unix())
 	b.WriteString("ENV CREWAI_DISABLE_TELEMETRY=true\n")
+	b.WriteString("ENV OTEL_SDK_DISABLED=true\n")
 	b.WriteString("WORKDIR /app\n")
 	b.WriteString("COPY --chown=0:0 harness /agentpaas/harness\n")
 	b.WriteString("COPY --chown=0:0 agentpaas-locked.txt /agentpaas/requirements.lock\n")

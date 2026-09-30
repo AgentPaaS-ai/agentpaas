@@ -349,7 +349,11 @@ func isWorkloadOpenAIEnv(item string) bool {
 		strings.Contains(name, "TOGETHER") {
 		return true
 	}
-	if strings.Contains(name, "CREWAI") {
+	if strings.Contains(name, "CREWAI") ||
+		strings.Contains(name, "LITELLM") ||
+		strings.Contains(name, "POSTHOG") ||
+		strings.Contains(name, "SENTRY") ||
+		strings.Contains(name, "OTEL_") {
 		return true
 	}
 	return false
@@ -386,7 +390,11 @@ var loopbackDeniedProviderHosts = []string{
 	"api.together.xyz",
 	"telemetry.crewai.com",
 	"app.posthog.com",
+	"us.i.posthog.com",
+	"eu.i.posthog.com",
 	"api.crewai.com",
+	"telemetry.sentry.io",
+	"o447951.ingest.sentry.io",
 }
 
 func loopbackDeniesProviderHostBypass() bool {
@@ -436,6 +444,7 @@ func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
 		"AGENTPAAS_LOOPBACK_PIN=1",
 		"AGENTPAAS_EGRESS_DENY=1",
 		"CREWAI_DISABLE_TELEMETRY=true",
+		"OTEL_SDK_DISABLED=true",
 	)
 	if openaiBaseURL != "" {
 		out = append(out,

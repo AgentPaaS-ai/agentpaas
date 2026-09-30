@@ -246,13 +246,13 @@ func (s *harnessRPCServer) ClearInvoke() {
 // env.EffectiveOperationDeadlineMs(nowMs, env.ModelCallTimeoutMs).
 const legacyModelClientTimeout = 120 * time.Second
 
-// maxModelClientTimeout is the hard cap for a single model HTTP call
+// maxModelClientTimeout is the compat hard cap for a single model HTTP call
 // (pitch-filter / Gemini). Envelope remaining time may be a 30 min lease;
-// the socket must still die by 5 minutes.
+// the socket must still die by 5 minutes. This is not a run lifetime ceiling.
 const maxModelClientTimeout = 5 * time.Minute
 
-// rpcReadTimeoutSlack is added to the model-call deadline so the Python
-// RPC read wait is strictly longer than the harness LLM timeout.
+// rpcReadTimeoutSlack is the compat slack added to the model-call deadline so
+// the Python RPC read wait is strictly longer than the harness LLM timeout.
 const rpcReadTimeoutSlack = 10 * time.Second
 
 // rpcReadTimeoutFor returns the Python RPC line-read deadline for a model
