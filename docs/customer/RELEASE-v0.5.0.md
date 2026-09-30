@@ -31,7 +31,7 @@ Phone numbers use a custom pattern in this release. There is no `Phone` built-in
 
 ## Fixed
 
-- LLM completion handling now uses the governed loopback path for supported framework clients.
+- LLM completion handling uses the governed loopback path for supported LLM clients.
 - Policy inspection and pack use the same LLM credential compilation behavior.
 - The CLI persists the last successful Cloud API URL for later commands. `AGENTPAAS_CLOUD_API_URL` still takes precedence, and logout clears the saved value.
 
@@ -43,7 +43,6 @@ Phone numbers use a custom pattern in this release. There is no `Phone` built-in
 
 ## Known issues
 
-- Framework-specific integration guides for Pydantic AI, CrewAI, LangGraph, and LangChain are not part of this release.
 - Host-specific guides for Cursor, Claude Code, and Grok Build are not part of this release. Hermes is the documented host.
 - A provider-specific Nous Research OAuth configuration is not published until the production token endpoint, client registration, and scopes are verified. The generic `oauth_llm` schema is documented in the Cloud docs.
 

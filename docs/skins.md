@@ -171,6 +171,6 @@ The examples below are reference material for customers who choose to build thei
 - Changing the Hermes 0.4 walk
 - Console policy editor (skins use CLI/MCP only)
 - Per-host runtimes or per-host features
-- Framework goldens (Pydantic / LangGraph / CrewAI stay M16)
+- Framework-specific integrations are outside the supported 0.5.0 host path
 - Host-specific setup for Cursor, Claude Code, and Grok Build as a supported 0.5.0 path
 - `agentpaas-mcp` as a supported 0.5.0 integration
