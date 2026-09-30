@@ -83,7 +83,7 @@ func TestOpenAILoopbackChatCompletionsReachesHandleLLM(t *testing.T) {
 		t.Fatalf("NewRequest: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer sk-agentpaas-loopback")
+	req.Header.Set("Authorization", "Bearer "+lb.apiKey)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -142,12 +142,15 @@ func TestWorkerEnvOmitsRealProviderKey(t *testing.T) {
 
 	var sawKey, sawBase, sawAPIBase bool
 	for _, item := range env {
-		switch item {
-		case "OPENAI_API_KEY=sk-agentpaas-loopback":
-			sawKey = true
-		case "OPENAI_BASE_URL=http://127.0.0.1:54321/v1":
+		switch {
+		case strings.HasPrefix(item, "OPENAI_API_KEY="):
+			val := strings.TrimPrefix(item, "OPENAI_API_KEY=")
+			if val != "" && val != realKey {
+				sawKey = true
+			}
+		case item == "OPENAI_BASE_URL=http://127.0.0.1:54321/v1":
 			sawBase = true
-		case "OPENAI_API_BASE=http://127.0.0.1:54321/v1":
+		case item == "OPENAI_API_BASE=http://127.0.0.1:54321/v1":
 			sawAPIBase = true
 		}
 	}

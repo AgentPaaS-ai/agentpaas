@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -393,6 +394,8 @@ var loopbackDeniedProviderHosts = []string{
 	"us.i.posthog.com",
 	"eu.i.posthog.com",
 	"api.crewai.com",
+	"crewai.com",
+	"litellm.vercel.app",
 	"telemetry.sentry.io",
 	"o447951.ingest.sentry.io",
 }
@@ -402,16 +405,15 @@ func loopbackDeniesProviderHostBypass() bool {
 }
 
 func pydanticDirectHostDenied(host string) bool {
-	h := strings.ToLower(strings.TrimSpace(host))
-	h = strings.TrimSuffix(h, ".")
+	h := normalizeDeniedHost(host)
 	if h == "" {
-		return false
+		return strings.TrimSpace(host) != ""
 	}
 	if net.ParseIP(h) != nil {
 		return true
 	}
 	for _, denied := range loopbackDeniedProviderHosts {
-		d := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(denied), "."))
+		d := normalizeDeniedHost(denied)
 		if d == "" {
 			continue
 		}
@@ -420,6 +422,32 @@ func pydanticDirectHostDenied(host string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeDeniedHost(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" || strings.ContainsAny(s, "\n\r	\x00") {
+		return ""
+	}
+	if strings.Contains(s, "://") {
+		u, err := url.Parse(s)
+		if err != nil {
+			return ""
+		}
+		s = u.Hostname()
+	} else if i := strings.IndexByte(s, '/'); i >= 0 {
+		s = s[:i]
+	}
+	if strings.Count(s, ":") > 1 && !strings.HasPrefix(s, "[") {
+		return strings.ToLower(s)
+	}
+	if host, _, err := net.SplitHostPort(s); err == nil {
+		s = host
+	} else if i := strings.LastIndex(s, ":"); i >= 0 && strings.Count(s, ":") == 1 {
+		s = s[:i]
+	}
+	s = strings.ToLower(strings.TrimSpace(s))
+	return strings.TrimSuffix(s, ".")
 }
 
 func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {

@@ -484,14 +484,14 @@ func TestADV_M16_1_SC6_PydanticAuditShapeMatchesWeatherAgentReference(t *testing
 		t.Fatalf("NewRequest models: %v", err)
 	}
 	modelsReq.Header.Set("Authorization", "Bearer "+openaiLoopbackAPIKey)
+	beforeModels := len(pydanticRec.events())
 	modelsResp, err := client.Do(modelsReq)
 	if err != nil {
 		t.Fatalf("Do models: %v", err)
 	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(modelsResp.Body, 1<<20))
 	_ = modelsResp.Body.Close()
-	after := advM161EventShape(pydanticRec.events())
-	if modelsResp.StatusCode == http.StatusOK && len(after) == len(pydanticShape) {
+	if modelsResp.StatusCode == http.StatusOK && len(pydanticRec.events()) <= beforeModels {
 		// ADVERSARY BREAK: pydantic-ai GET /v1/models is unaudited LLM HTTP
 		t.Errorf("ADVERSARY BREAK: SC6 pydantic GET /v1/models produced no additional LLM/egress audit event (weather-agent analog has no unaudited LLM HTTP)")
 	}

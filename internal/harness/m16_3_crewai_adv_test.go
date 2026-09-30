@@ -532,7 +532,7 @@ func TestADV_M16_3_SC6_CrewAIAuditShapeMatchesWeatherAgentReference(t *testing.T
 		t.Errorf("ADVERSARY BREAK: SC6 crewai loopback response leaked credential material")
 	}
 
-	afterChat := advM163EventShape(crewRec.events())
+	beforeModels := len(crewRec.events())
 
 	modelsReq, err := http.NewRequest(http.MethodGet, "http://"+lb.Addr()+"/v1/models", nil)
 	if err != nil {
@@ -624,9 +624,11 @@ func TestADV_M16_3_SC6_CrewAIAuditShapeMatchesWeatherAgentReference(t *testing.T
 
 	if modelsResp.StatusCode == http.StatusOK {
 		modelsWeather := false
-		for _, event := range crewRec.events() {
-			if !afterChat[event.EventType] && (event.EventType == "llm_result" || event.EventType == "egress_allowed" || event.EventType == "egress_denied") {
-				modelsWeather = true
+		if len(crewRec.events()) > beforeModels {
+			for _, event := range crewRec.events()[beforeModels:] {
+				if event.EventType == "llm_result" || event.EventType == "egress_allowed" || event.EventType == "egress_denied" {
+					modelsWeather = true
+				}
 			}
 		}
 		if !modelsWeather {

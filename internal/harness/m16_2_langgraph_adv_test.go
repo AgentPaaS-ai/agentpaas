@@ -341,7 +341,7 @@ func TestADV_M16_2_SC6_LangGraphAuditShapeMatchesWeatherAgentReference(t *testin
 		t.Errorf("ADVERSARY BREAK: SC6 langgraph loopback response leaked credential material")
 	}
 
-	afterChat := advM162EventShape(lgRec.events())
+	beforeModels := len(lgRec.events())
 
 	modelsReq, err := http.NewRequest(http.MethodGet, "http://"+lb.Addr()+"/v1/models", nil)
 	if err != nil {
@@ -433,9 +433,11 @@ func TestADV_M16_2_SC6_LangGraphAuditShapeMatchesWeatherAgentReference(t *testin
 
 	if modelsResp.StatusCode == http.StatusOK {
 		modelsWeather := false
-		for _, event := range lgRec.events() {
-			if !afterChat[event.EventType] && (event.EventType == "llm_result" || event.EventType == "egress_allowed" || event.EventType == "egress_denied") {
-				modelsWeather = true
+		if len(lgRec.events()) > beforeModels {
+			for _, event := range lgRec.events()[beforeModels:] {
+				if event.EventType == "llm_result" || event.EventType == "egress_allowed" || event.EventType == "egress_denied" {
+					modelsWeather = true
+				}
 			}
 		}
 		if !modelsWeather {
