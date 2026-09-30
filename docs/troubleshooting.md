@@ -51,4 +51,4 @@ credentials:
     header: Authorization
 ```
 
-More cases: [manual testing guide](manual-testing.md).
+More cases: run `make test` in the repo root.

@@ -151,5 +151,4 @@ agentpaas trigger invoke weather-agent --payload '{"city": "Paris"}' --wait
 
 ## Troubleshooting
 
-See the [main README troubleshooting section](../README.md#troubleshooting)
-and the [manual testing guide](../docs/manual-testing.md).
+See the [main README troubleshooting section](../README.md#troubleshooting).

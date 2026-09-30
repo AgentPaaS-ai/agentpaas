@@ -260,7 +260,6 @@ Full guide: [docs/sharing.md](docs/sharing.md).
 - [Security features (full)](docs/security-features.md)
 - [Sharing guide](docs/sharing.md)
 - [Trust model](docs/trust-model.md)
-- [Manual testing guide](docs/manual-testing.md)
 - [Quickstart](docs/quickstart.md)
 - [Policy reference](docs/policy-reference.md)
 - [Secrets guide](docs/secrets.md)

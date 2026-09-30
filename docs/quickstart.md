@@ -356,7 +356,7 @@ If you get **"Open your claim link first"**, finish step 1 (or use
 | What signatures prove (and do not) | [trust-model.md](trust-model.md) |
 | Threat model | [threat-model.md](threat-model.md) |
 | Audit export | [audit-export.md](audit-export.md) |
-| Developer test suite (unit → redteam) | [manual-testing.md](manual-testing.md) |
+| Developer test suite (unit → redteam) | `make test` in the repo root |
 | Current limits | [known-limitations.md](known-limitations.md) |
 | Weather demo | [../demo/README.md](../demo/README.md) |
 
