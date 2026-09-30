@@ -3,7 +3,7 @@ class Agentpaas < Formula
   homepage "https://github.com/AgentPaaS-ai/agentpaas"
   # Published install path is the Homebrew cask in AgentPaaS-ai/homebrew-tap
   # (goreleaser updates Casks/agentpaas.rb). This Formula is the in-repo mirror.
-  # v0.5.0 source tag peeled SHA: 170b177ae8945bc5e0d31be14309f340a87439c1
+  # v0.5.0 source tag peeled SHA: aca2125b6c1b454ea9961a84372527bcaa2abce7
   version "0.5.0"
   license "MIT"
 
