@@ -1,6 +1,6 @@
 # AgentPaaS v0.5.0 release notes
 
-The OSS repository has tag `v0.5.0`. These notes cover the local CLI, daemon, harness, policy compiler, and Hermes path shipped at that tag. AgentPaaS Cloud has no matching public release tag, so Cloud behavior belongs in the Cloud documentation release notes.
+These notes cover the local CLI, daemon, harness, policy compiler, and Hermes path in AgentPaaS v0.5.0. Cloud behavior is documented in the [Cloud release notes](https://docs.agentpaas.ai/releases/v0.5.0).
 
 ## Added
 
