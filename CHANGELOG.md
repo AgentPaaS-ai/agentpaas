@@ -3,6 +3,33 @@
 All notable changes to AgentPaaS are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.5.0 — 2026-09-20
+
+### Added
+- LLM budgets through `llm_budget.max_tokens`, `llm_budget.max_tokens_per_request`, and `llm_budget.max_cost_usd`.
+- PII guardrails through `guardrails.pii`, with `mask` and `reject` actions, built-in detectors for `Email`, `Ssn`, `DriversLicense`, `CreditCard`, and `Key`, plus custom patterns.
+- OpenAI-compatible local loopback at `127.0.0.1/v1/chat/completions`.
+- `agentpaas policy show` and `agentpaas policy validate` for compiled policy inspection.
+- Policy lineage output for the compiled contract.
+
+### Changed
+- `agentpaas pack` carries LLM credential references from `agent.yaml` into the compiled signed policy without copying secret values into the bundle or container.
+- PII inspection buffers streams or fails closed when inspection is required.
+- The documented customer path remains Hermes plus the AgentPaaS CLI. Host-specific integrations are customer customization paths.
+
+### Fixed
+- The CLI persists the last successful Cloud API URL. `AGENTPAAS_CLOUD_API_URL` still takes precedence, and logout clears the saved value.
+
+### Security
+- PII values are masked before audit persistence when `action: mask` is active.
+- PII detector, audit, and budget failures fail closed.
+- The preview vault remains a preview backend. This release does not make OpenBao-grade isolation claims.
+
+### Known issues
+- Framework-specific integration guides for Pydantic AI, CrewAI, LangGraph, and LangChain are not part of this release.
+- Host-specific guides for Cursor, Claude Code, and Grok Build are not part of this release. Hermes is the documented host.
+- A provider-specific Nous Research OAuth configuration is pending verification of the production token endpoint, client registration, and scopes.
+
 ## 0.4.2 — 2026-09-14
 
 ### Fixed

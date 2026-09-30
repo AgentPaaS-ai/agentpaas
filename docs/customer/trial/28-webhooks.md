@@ -1,6 +1,6 @@
 # Webhooks
 
-Three webhooks. The agent never POSTs them. The AgentPaaS control plane does. Configure them in Hermes or via the API. The 0.4.0 brew cask does not add a `cloud webhook` command.
+Three webhooks. The agent never POSTs them. The AgentPaaS control plane does. Configure them in Hermes or via the API. The 0.5.0 brew cask does not add a `cloud webhook` command.
 
 ## Ingress
 

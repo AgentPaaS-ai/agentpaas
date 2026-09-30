@@ -18,7 +18,7 @@ AgentPaaS is a secure execution platform for agentic workflows. It runs AI agent
 
 You do **not** need Go, `make`, or a source checkout to use AgentPaaS as an
 operator. Install the Homebrew cask — do not run `make build-all` for day-to-day
-use (dev builds are stamped `0.4.0` and may omit a proper harness bundle).
+use (dev builds are stamped `0.5.0` and may omit a proper harness bundle).
 
 ## Install
 
@@ -57,7 +57,7 @@ when missing):
 agentpaas doctor
 ===============
 Version:           ok
-                   0.4.0 (darwin/arm64)
+                   0.5.0 (darwin/arm64)
 Docker CLI:        ok
                    (29.x.x)
 Docker daemon:     ok
@@ -357,7 +357,6 @@ If you get **"Open your claim link first"**, finish step 1 (or use
 | Threat model | [threat-model.md](threat-model.md) |
 | Audit export | [audit-export.md](audit-export.md) |
 | Developer test suite (unit → redteam) | [manual-testing.md](manual-testing.md) |
-| Release golden loop | [execution/reference/e2e-test-plan.md](execution/reference/e2e-test-plan.md) |
 | Current limits | [known-limitations.md](known-limitations.md) |
 | Weather demo | [../demo/README.md](../demo/README.md) |
 

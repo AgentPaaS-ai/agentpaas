@@ -35,6 +35,8 @@ security.
 | `credentials` | no | Credential sources injected by the gateway broker. |
 | `mcp_servers` | no | MCP servers this agent may use, with optional per-tool allow and deny lists. |
 | `ingress` | no | Inbound webhook/trigger listeners. |
+| `llm_budget` | no | Token and spend ceilings compiled into the LLM route. |
+| `guardrails.pii` | no | PII masking or rejection rules for LLM content. |
 
 ## Egress rules
 
@@ -193,6 +195,48 @@ Store the secret in the keychain before running:
 ```bash
 agent secrets set api-key
 ```
+
+## LLM budgets
+
+Use `llm_budget` to cap token use and recorded spend for an LLM run:
+
+```yaml
+llm_budget:
+  max_tokens: 100000
+  max_tokens_per_request: 8000
+  max_cost_usd: "10.00"
+```
+
+`max_tokens` is the total run ceiling. `max_tokens_per_request` is the ceiling for one LLM request. `max_cost_usd` is the recorded spend ceiling. Budget exhaustion fails the run.
+
+## PII guardrails
+
+Use the mapping form below:
+
+```yaml
+guardrails:
+  pii:
+    action: mask
+    builtins: [Email, Ssn, DriversLicense, CreditCard, Key]
+    patterns:
+      - "\\b(?:\\+1[-. ]?)?\\(?[2-9][0-9]{2}\\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}\\b"
+```
+
+`mask` replaces detected values with `[REDACTED]` before audit persistence. `reject` blocks the request. Phone numbers use custom patterns. The supported built-in names are `Email`, `Ssn`, `DriversLicense`, `CreditCard`, and `Key`.
+
+## Inspect the compiled contract
+
+```bash
+agentpaas policy show
+agentpaas policy validate
+```
+
+The commands show the compiled policy and the same pre-deploy validation used by pack. They print credential IDs, never secret values.
+
+## Related docs
+
+- [Cloud release notes](./customer/RELEASE-v0.5.0.md)
+- [How enforcement works](./how-enforcement-works.md)
 
 ## Validation rules
 

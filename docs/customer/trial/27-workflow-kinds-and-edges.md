@@ -18,6 +18,6 @@ Closed menu. Routes map a string to a child workflow. No default route. If the v
 
 Only when a living A is required. A stays up and pays. A may call only the signed callee list. A call outside the list is denied. Stop A cancels that A's children. Depth is 1. Standalone A cannot call agents. Mixing choice or fan-out with callees is rejected.
 
-## Not in 0.4
+## Not in 0.5
 
-Native HITL, for-each, wait/delay, join-any, spawn deeper than 1, in-envelope stage jumps.
+Native HITL, for-each, authored wait or delay, join-any, spawn deeper than 1, in-envelope stage jumps.

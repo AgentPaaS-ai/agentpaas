@@ -125,7 +125,7 @@ agentpaas cloud deploy latest
 # invoke + logs/audit as in docs/customer/golden-path.md
 ```
 
-Workflow (not a deployment; no slot). CLI after brew 0.4.0:
+Workflow (not a deployment; no slot). CLI after brew 0.5.0:
 
 ```bash
 agentpaas cloud workflow create
@@ -158,12 +158,11 @@ deployed MCP or tool is still not a workflow.
 If a class has no working pack to deploy to invoke path, that is a
 platform gap, not an M18+ gap: do not claim it.
 
-## This cut (M18+ T2)
+## 0.5.0 support boundary
 
-One-gesture install paths for Cursor, Claude Code, and Grok Build,
-verified against live host docs on 2026-09-16. Adapter verbs landed in
-T1. Live weather inside each host is not this T. Brew 0.4.2 still does
-not ship `agentpaas-mcp`.
+Hermes is the documented and supported host path for 0.5.0. The CLI remains the product surface. Customers can configure another host to invoke the CLI, but those host wrappers are customer customization and are not verified AgentPaaS integrations in this release.
+
+The examples below are reference material for customers who choose to build their own wrapper. They are not a support claim or a release acceptance path.
 
 ## Out of scope
 
@@ -173,5 +172,5 @@ not ship `agentpaas-mcp`.
 - Console policy editor (skins use CLI/MCP only)
 - Per-host runtimes or per-host features
 - Framework goldens (Pydantic / LangGraph / CrewAI stay M16)
-- Codex / ChatGPT desktop as this-cut hosts
-- Brew 0.4.2 retag
+- Host-specific setup for Cursor, Claude Code, and Grok Build as a supported 0.5.0 path
+- `agentpaas-mcp` as a supported 0.5.0 integration

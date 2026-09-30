@@ -29,7 +29,7 @@ export PATH="/opt/homebrew/bin:$PATH"
 Check:
 
 ```bash
-agentpaas version          # expect 0.4.0
+agentpaas version          # expect 0.5.0
 agentpaas doctor           # 7/7
 echo "API=${AGENTPAAS_CLOUD_API_URL:-https://cloud.agentpaas.ai}"
 ```

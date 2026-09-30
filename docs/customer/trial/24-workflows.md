@@ -22,6 +22,6 @@ Weather is not this path. Weather is pack, deploy, invoke. One agent.
 | Choice | Closed menu after a classifier | No default route. Undeclared value fails closed. |
 | Phone-call | Living A must stay up | Depth 1. Off-list denied. Stop A cancels those children. |
 
-Not in 0.4: native HITL, join-any, for-each, wait/delay, spawn deeper than 1.
+Not in 0.5: native HITL, join-any, for-each, authored wait or delay, spawn deeper than 1.
 
-CLI (after brew 0.4.0): `agentpaas cloud workflow create` then `agentpaas cloud workflow start`. Inspect with `workflow instance`.
+CLI (after brew 0.5.0): `agentpaas cloud workflow create` then `agentpaas cloud workflow start`. Inspect with `workflow instance`.

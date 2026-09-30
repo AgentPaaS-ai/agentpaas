@@ -20,7 +20,7 @@ see [known-limitations.md](known-limitations.md).
 | Container escape | kernel/runtime exploit | non-root, read-only rootfs, no shell, dropped capabilities (ALL), seccomp default profile, no privileged, pids-limit, memory/cpu caps |
 | Supply chain (our deps) | compromised base image / dep | distroless pinned digests, SBOM on every artifact, `go mod verify`, dependabot, pinned vendored agentgateway with checksum |
 | Supply chain (user deps) | typosquatted Python package | locked installs only (uv), SBOM surfaced in dashboard, osv-scanner advisory in `agentpaas pack` output |
-| Trigger API abuse | replay / brute force | idempotency keys, constant-time key compare, rate limit, lockout+audit on repeated 401 |
+| Trigger API abuse | replay / brute force | idempotency keys, constant-time key compare, lockout and audit on repeated 401 |
 | Audit tampering | attacker edits logs | canonical hash-chained JSONL, daemon-audit-key checkpoint signatures, local head anchor, signed export manifest, `agentpaas audit verify` |
 | Daemon compromise | local privilege escalation | daemon runs as user (not root); socket 0600; no setuid; secrets only via OS keychain APIs |
 | Malicious webhook targets | hook exfiltration channel | hook destinations are themselves policy-checked egress |
