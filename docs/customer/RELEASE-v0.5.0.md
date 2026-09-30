@@ -41,8 +41,8 @@ Phone numbers use a custom pattern in this release. There is no `Phone` built-in
 
 ## Known issues
 
-- Host-specific guides for Cursor, Claude Code, and Grok Build are not part of this release. Hermes is the documented host.
-- A provider-specific Nous Research OAuth configuration is not published until the production token endpoint, client registration, and scopes are verified. The generic `oauth_llm` schema is documented in the Cloud docs.
+- Hermes is the supported host path for this release. Other hosts can invoke the AgentPaaS CLI when you configure them yourself.
+- OAuth LLM credentials use the provider's public token endpoint and customer-managed refresh secret.
 
 ## How to use the new policy inspection commands
 

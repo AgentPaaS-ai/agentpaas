@@ -1,15 +1,6 @@
 # Threat Model
 
-This document captures the security posture and threat controls for
-AgentPaaS P1. It is derived from the internal PRD security deep-dive.
-
-For how controls map to runtime enforcement, see
-[how-enforcement-works.md](how-enforcement-works.md). For accepted P1 gaps,
-see [known-limitations.md](known-limitations.md).
-
----
-
-# 3. SECURITY DEEP-DIVE (BULLETPROOFING ACTIONS)
+This document describes the security boundaries, controls, and limits of AgentPaaS. For runtime behavior, see [how-enforcement-works.md](how-enforcement-works.md). For current capability limits, see [known-limitations.md](known-limitations.md).
 
 ## 3.1 Threat model (STRIDE-condensed)
 | Threat | Vector | Control |
@@ -42,43 +33,16 @@ uses a shared gateway.
 > AgentPaaS Cloud managed service, see §3.4 — the enforcement point and its
 > assurance class differ by tier.
 
-## 3.2 Hard security actions (all are execution-plan blocks)
-1. P1 applies macOS Docker Desktop/Colima container hardening by default
-   (non-root, read-only rootfs, no shell, dropped capabilities, seccomp where
-   Docker exposes it, pids/memory/cpu caps). P2 adds certified Linux-native
-   seccomp + AppArmor profiles.
-2. Fuzz the policy compiler and the Trigger API (go-fuzz / protobuf fuzz).
-3. `agentpaas doctor` verifies: docker version, network isolation actually
-   holds (spins a canary container and proves no default route), keychain
-   access, port collisions.
-4. P1 integration test suite includes a fast red-team smoke gate that runs
-   through the real pack/run/operator path and proves the core local release
-   claims: default-deny egress, policy/credential misuse denial, brokered
-   secret invisibility, host-access blocking smoke, resource containment
-   smoke, and operator prompt-injection refusal. Full adversarial coverage is
-   deferred to P2; P1 should be honest that this is release smoke proof, not a
-   comprehensive pentest.
-5. External pentest before GA tag; bug bounty (modest, scoped) at GA.
-6. SLSA provenance for our own release artifacts; users can verify
-   `agentpaas` binaries the same way we verify their agents.
-7. Security disclosure policy + SECURITY.md from the first public commit.
-8. CVE response SLA stated publicly: critical < 48h patch for the runtime.
+## Security limits
 
-## 3.3 What we explicitly do NOT claim in P1 (honesty = trust)
-- Not a sandbox against kernel 0-days (we harden containers; we are not gVisor).
-  P2 option: gVisor/Kata runtime class for high-assurance mode.
-- Outbound data-loss prevention is fingerprint-based, not semantic, in P1.
-- P1 red-team coverage is a fast smoke gate for demo/release-critical claims,
-  not a full adversarial research corpus. P2 adds DNS tunneling, proxy bypass
-  variants, IPv6/UDP/ICMP/domain-fronting depth, direct-lease exfil/DLP,
-  SBOM/signature tamper, full MCP prompt-injection matrix, fuzzed operator
-  payloads, and permanent red-team gating on every runtime/gateway change.
-- Local mode trusts the developer's machine; we protect against the AGENT,
-  not against the user.
+- AgentPaaS hardens containers. It does not claim protection from kernel zero-days.
+- PII and outbound data controls use configured detectors and patterns. They are not semantic DLP.
+- Local mode trusts the developer's machine.
+- Cloud default-tier enforcement depends on the AgentPaaS control plane and gateway. The high-assurance tier adds substrate-enforced network policy.
 
 ---
 
-## 3.4 Cloud (AgentPaaS Cloud) enforcement and assurance class
+## Cloud (AgentPaaS Cloud) enforcement and assurance class
 
 The cloud managed service runs the same signed OCI images on Cloudflare, but
 the enforcement mechanism and the strength of the guarantee differ from the
@@ -94,57 +58,25 @@ injects brokered credentials just-in-time. Agent code never holds a
 credential value. The platform fail-closed default denies non-HTTP/S ports
 and pins DNS, so if the carrier is absent the container has no internet.
 
-**Assurance class — the honest distinction.**
+**Assurance class.**
 
-- **Local (§3.1a): topological.** "No egress path exists except through the
-  gateway." Proven once, structurally, by the network shape.
-- **Cloud default tier: control-plane-enforced.** "Every egress path that
-  exists terminates at a carrier we control, which applies policy before any
-  bytes leave." This is enforced by OUR code and is proven correct per
-  release by verifier + adversary testing. There is no substrate backstop on
-  the routing decision, so a carrier bug is a potential bypass. This is the
- accepted assurance debt of the Cloudflare-only data plane.
- - **Cloud high-assurance tier (paid, on-demand): substrate-enforced.**
- For tenants who require it, workloads run in a dedicated Kubernetes
- namespace with a Cilium FQDN NetworkPolicy floor compiled from the signed
- policy.yaml and enforced by the kernel, independent of AgentPaaS
- control-plane code. This restores the topological guarantee and answers
- "who enforces the enforcer" with "the cluster, verifiably."
+- **Local:** the agent has no network route except through its gateway. The network shape provides the boundary.
+- **Cloud default tier:** the control plane and gateway enforce the per-instance policy. This tier does not claim substrate-enforced isolation.
+- **Cloud high-assurance tier:** a paid, on-demand tier adds substrate-enforced network policy in a dedicated Kubernetes namespace.
 
-**Cloud scope limits (accepted).** HTTP/S egress only — no non-HTTP
-protocol governance. No external A2A federation. Both are deliberate scope
-decisions, revivable on demand, and are not represented as capabilities.
+**Cloud scope limits.** Cloud governs HTTP and HTTPS egress. Raw TCP, UDP, ICMP, and external agent-to-agent federation are outside the current scope.
 
-**What does NOT differ by tier.** Signed images, SBOM, per-run identity,
-brokered credentials invisible to agent code, default-deny egress, and the
-hash-chained audit log hold on every tier. Only the enforcement mechanism's
-assurance class changes.
+Signed images, SBOMs, per-run identity, brokered credentials, default-deny egress, and hash-chained audit apply on every tier. The enforcement mechanism differs by tier.
 
 ---
 
-## 3.5 Ingress platform vs egress gateway (webhook plane)
+## Ingress platform and egress gateway
 
-The cloud webhook plane is two trust boundaries. Ingress admits a
-governed run. Egress is still the per-run gateway from §3.4 / §3.1a.
-This section records that split (handoff). It does not claim M15
-budgets or guardrails are implemented.
+The cloud webhook plane has two trust boundaries. Ingress verifies and admits a governed run. Egress remains the per-run gateway described above.
 
-**Ingress (cloud Worker `/v1/hooks/src_`).** Untrusted HTTP is verified
-and filtered here, then a governed run is admitted. HMAC is checked
-before any run exists. Signing secrets are AES-GCM at rest. The source
-filter is an allow-list (no regex, no CEL). Rate-limit runs after the
-filter. Cross-tenant identity is re-asserted at admit. Mode B reply
-channel is pinned on the run row at admit; the agent does not choose it
-later.
+**Ingress.** Untrusted HTTP is verified and filtered before a run exists. HMAC is checked before admission. Signing secrets are encrypted at rest. Source filters are allow-lists. Cross-tenant identity is checked at admission, and reply destinations are pinned to the run.
 
-**Egress (per-run gateway).** After admit, outbound traffic remains
-default-deny with brokered credentials and a host allow-list. Slack
-Mode A reply is `slack.com:443` plus a brokered token. The workload
-never holds an `xoxb-` value.
-
-**Shared invoke limit.** Ingress consumes the same per-tenant invoke
-limit as CLI invoke (`inv:{deployment_id}`). Passing HMAC and filter
-does not create a second budget.
+**Egress.** Outbound traffic remains default-deny with brokered credentials and a host allow-list. The workload never holds an `xoxb-` value.
 
 ---
 

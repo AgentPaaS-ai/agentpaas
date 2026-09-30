@@ -16,19 +16,10 @@ Cloud workflow envelopes are the multi-step path (linear, fan-out join-all, choi
 
 A single agent does not need a workflow. Native HITL, join-any, for-each, wait/delay, spawn deeper than 1, and standalone agent-to-agent calls are not shipped.
 
-## Cloud data-plane assurance debt
+## Cloud data-plane assurance
 
-AgentPaaS Cloud runs on a Cloudflare-only data plane. On the default tier,
-egress and topology are enforced by AgentPaaS control-plane carrier code
-(per-instance egress plus the gateway boundary), proven correct per release
-by review and adversary testing — not by the substrate. A carrier bug is a
-potential bypass; there is no kernel/substrate backstop on the routing
-decision as there is in the local sidecar model. This is the accepted
-assurance debt of the Cloudflare-only plane. Substrate-enforced isolation
-(kernel-enforced network policy, independent of our code) is reserved for
-the high-assurance Kubernetes tier (paid, on-demand). Cloud scope limits:
-HTTP/S egress only (no non-HTTP protocol governance), and no external
-agent-to-agent federation. See threat-model.md §3.4.
+AgentPaaS Cloud runs on a managed data plane. On the default tier, the control plane and gateway enforce egress at the per-instance boundary. This tier does not claim substrate-enforced isolation. The paid, on-demand high-assurance tier adds substrate-enforced network policy.
+
 
 ## Long-running and routed runs
 

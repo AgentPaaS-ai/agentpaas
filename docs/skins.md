@@ -4,26 +4,24 @@ Thin host support so a trial builder can author and operate AgentPaaS
 from inside their own IDE. The skin is how you build and run the product,
 not a second demo of one agent.
 
-Buyer this cut: Cursor, Grok Build, or Claude Code. Codex and ChatGPT
-desktop leftover snippets stay under `templates/hosts/` from M18; they
-are not this cut.
+The supported host path in 0.5.0 is Hermes. This page keeps reference material for customers who build their own CLI wrapper.
 
 From a shipped skin you can create, pack, deploy, invoke, and inspect any
 component class the platform already productizes: agent, workflow, MCP
 server, tool. Pack, policy.yaml, deploy/invoke as they exist today.
 
-Weather is the first golden walk (the 0.4 path). It is not the ceiling.
-This T does not claim an in-host weather PASS.
+Weather is the first golden walk. It is not the ceiling.
+This page does not claim an in-host weather pass.
 
-## Inventory (this worktree, M18+)
+## Inventory
 
-Hermes 0.4 host is the plugin, not an MCP config:
+Hermes host is the plugin, not an MCP config:
 
 - `integrations/hermes-plugin/plugin.yaml`
 - `docs/customer/trial/22-hermes-plugin.md`
 - First-run walk: `docs/customer/trial/02-thirty-minute-path.md`
 
-Do not change that Hermes walk.
+Do not change the Hermes first-run walk.
 
 `agentpaas-mcp` is the D72 name for the single MCP integration artifact.
 It is a thin stdio adapter over the `agentpaas` CLI. Not a new protocol
@@ -108,7 +106,7 @@ agentpaas doctor
 ```
 
 Mac (darwin/arm64). See `docs/customer/trial/21-install-macos.md`.
-Do not change the Hermes 0.4 walk.
+See the current install guide.
 
 ## Any productized class
 
@@ -156,7 +154,7 @@ Kinds: `docs/customer/trial/25-mcp-and-tools.md`. An agent calling a
 deployed MCP or tool is still not a workflow.
 
 If a class has no working pack to deploy to invoke path, that is a
-platform gap, not an M18+ gap: do not claim it.
+platform gap: do not claim it.
 
 ## 0.5.0 support boundary
 
