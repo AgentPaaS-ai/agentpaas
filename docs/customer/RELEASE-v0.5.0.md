@@ -6,10 +6,8 @@ The OSS repository has tag `v0.5.0`. These notes cover the local CLI, daemon, ha
 
 - LLM budgets in `policy.yaml` through `llm_budget.max_tokens`, `llm_budget.max_tokens_per_request`, and `llm_budget.max_cost_usd`.
 - PII guardrails through `guardrails.pii`, with `mask` and `reject` actions, five built-in detector names, and custom patterns.
-- The OpenAI-compatible local loopback path at `127.0.0.1/v1/chat/completions`.
 - Policy inspection through `agentpaas policy show` and `agentpaas policy validate`.
 - Policy lineage output for the compiled contract.
-- Governed examples for the loopback path and the 0.5.0 policy fields.
 
 The built-in PII detector names are:
 
@@ -31,7 +29,7 @@ Phone numbers use a custom pattern in this release. There is no `Phone` built-in
 
 ## Fixed
 
-- LLM completion handling uses the governed loopback path for supported LLM clients.
+- LLM completion handling remains on the documented Hermes and CLI path.
 - Policy inspection and pack use the same LLM credential compilation behavior.
 - The CLI persists the last successful Cloud API URL for later commands. `AGENTPAAS_CLOUD_API_URL` still takes precedence, and logout clears the saved value.
 

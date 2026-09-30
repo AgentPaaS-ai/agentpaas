@@ -8,7 +8,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - LLM budgets through `llm_budget.max_tokens`, `llm_budget.max_tokens_per_request`, and `llm_budget.max_cost_usd`.
 - PII guardrails through `guardrails.pii`, with `mask` and `reject` actions, built-in detectors for `Email`, `Ssn`, `DriversLicense`, `CreditCard`, and `Key`, plus custom patterns.
-- OpenAI-compatible local loopback at `127.0.0.1/v1/chat/completions`.
 - `agentpaas policy show` and `agentpaas policy validate` for compiled policy inspection.
 - Policy lineage output for the compiled contract.
 
