@@ -690,6 +690,27 @@ func (s *harnessRPCServer) applyDelegationSnapshot(data []byte) error {
 	return nil
 }
 
+// requestedReasoningEffort reads the effort the caller asked for.
+// Shapes: reasoning_effort, effort, and reasoning.effort (dotted key or
+// nested reasoning object). The value is passed through unchanged so max
+// stays max and none stays none.
+func requestedReasoningEffort(params map[string]any) string {
+	if params == nil {
+		return ""
+	}
+	for _, key := range []string{"reasoning_effort", "effort", "reasoning.effort"} {
+		if effort := strings.TrimSpace(stringParam(params, key)); effort != "" {
+			return effort
+		}
+	}
+	reasoning, ok := params["reasoning"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	effort, _ := reasoning["effort"].(string)
+	return strings.TrimSpace(effort)
+}
+
 func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcResponse {
 	prompt := stringParam(req.Params, "prompt")
 
@@ -814,6 +835,9 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 	timeout := s.modelClientTimeout(state)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	if effort := requestedReasoningEffort(req.Params); effort != "" {
+		ctx = withLLMReasoningEffort(ctx, effort)
+	}
 
 	// Rewrite URL for gateway-native HTTP routing (Bug 021). Preserve the
 	// original Host so the gateway can match routes by hostname.

@@ -29,6 +29,9 @@ const (
 	ReasoningEffortMedium ReasoningEffort = "medium"
 	// ReasoningEffortHigh requests high reasoning effort.
 	ReasoningEffortHigh ReasoningEffort = "high"
+	// ReasoningEffortMax requests maximum reasoning effort.
+	// max is not none, and none is not a substitute for max.
+	ReasoningEffortMax ReasoningEffort = "max"
 )
 
 // validRoles is the set of accepted message roles.
@@ -46,6 +49,7 @@ var validReasoningEfforts = map[ReasoningEffort]struct{}{
 	ReasoningEffortLow:    {},
 	ReasoningEffortMedium: {},
 	ReasoningEffortHigh:   {},
+	ReasoningEffortMax:    {},
 }
 
 // Message is a single role/content pair in the normalized envelope.

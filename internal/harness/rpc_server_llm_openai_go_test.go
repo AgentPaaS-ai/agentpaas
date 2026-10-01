@@ -16,6 +16,7 @@ import (
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
 )
 
 func captureHarnessLogs(t *testing.T) *bytes.Buffer {
@@ -267,6 +268,122 @@ func TestHandleLLM_OpenRouterRequestExcludesReasoning(t *testing.T) {
 	reasoning, _ := gotBody["reasoning"].(map[string]any)
 	if reasoning["exclude"] != true {
 		t.Fatalf("reasoning.exclude = %v, want true; body=%v", gotBody["reasoning"], gotBody)
+	}
+}
+
+// TestHandleLLM_OpenRouterForwardsReasoningEffort pins C12: handleLLM must
+// read reasoning_effort, effort, and reasoning.effort and callLLMChatCompletion
+// must put that value in the OpenRouter reasoning object. Fails if effort is
+// omitted or if max is rejected. none is not a substitute for max.
+func TestHandleLLM_OpenRouterForwardsReasoningEffort(t *testing.T) {
+	efforts := []string{"low", "medium", "high", "max"}
+	for _, effort := range efforts {
+		env := runtime.ModelCallEnvelope{
+			Messages:        []runtime.Message{{Role: runtime.RoleUser, Content: "ping"}},
+			ReasoningEffort: runtime.ReasoningEffort(effort),
+		}
+		if err := env.Validate(); err != nil {
+			t.Fatalf("ModelCallEnvelope.Validate rejected reasoning effort %q: %v", effort, err)
+		}
+		if string(env.ReasoningEffort) != effort {
+			t.Fatalf("reasoning effort %q rewritten to %q", effort, env.ReasoningEffort)
+		}
+		if effort == "max" && env.ReasoningEffort == runtime.ReasoningEffortNone {
+			t.Fatal("none substituted for max")
+		}
+	}
+	none := runtime.ModelCallEnvelope{
+		Messages:        []runtime.Message{{Role: runtime.RoleUser, Content: "ping"}},
+		ReasoningEffort: runtime.ReasoningEffortNone,
+	}
+	if err := none.Validate(); err != nil {
+		t.Fatalf("none must stay accepted: %v", err)
+	}
+	if none.ReasoningEffort != runtime.ReasoningEffortNone {
+		t.Fatalf("none rewritten to %q", none.ReasoningEffort)
+	}
+
+	paramForms := []struct {
+		name   string
+		params func(effort string) map[string]any
+	}{
+		{
+			name: "reasoning_effort",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "reasoning_effort": effort}
+			},
+		},
+		{
+			name: "effort",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "effort": effort}
+			},
+		},
+		{
+			name: "reasoning.effort",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "reasoning": map[string]any{"effort": effort}}
+			},
+		},
+		{
+			name: "reasoning.effort dotted key",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "reasoning.effort": effort}
+			},
+		},
+	}
+	for _, effort := range efforts {
+		for _, form := range paramForms {
+			t.Run(form.name+"/"+effort, func(t *testing.T) {
+				var gotBody map[string]any
+				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_ = json.NewDecoder(r.Body).Decode(&gotBody)
+					writeChatCompletion(w, "pong", "", "deepseek/deepseek-v4-flash", 2)
+				}))
+				defer ts.Close()
+				t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+				s := &harnessRPCServer{}
+				state := &rpcInvokeState{
+					payload: map[string]any{
+						"llm": map[string]any{
+							"provider":   "openrouter",
+							"model":      "deepseek/deepseek-v4-flash",
+							"credential": testCredID,
+						},
+					},
+					credentials: map[string]rpcCredential{
+						testCredID: {Header: "Authorization", Value: testSecret},
+					},
+					budget: NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+				}
+				resp := s.handleLLM(rpcRequest{
+					ID:     "1",
+					Method: "llm",
+					Params: form.params(effort),
+				}, state)
+				if !resp.OK {
+					t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+				}
+				reasoning, ok := gotBody["reasoning"].(map[string]any)
+				if !ok {
+					t.Fatalf("reasoning object missing; effort omitted; body=%v", gotBody)
+				}
+				if reasoning["exclude"] != true {
+					t.Fatalf("reasoning.exclude = %v, want true; body=%v", reasoning["exclude"], gotBody)
+				}
+				gotEffort, present := reasoning["effort"]
+				if !present {
+					t.Fatalf("effort omitted from reasoning object; body=%v", gotBody)
+				}
+				if gotEffort != effort {
+					t.Fatalf("reasoning.effort = %v, want %q; body=%v", gotEffort, effort, gotBody)
+				}
+				if effort == "max" && (gotEffort == "none" || gotEffort == string(runtime.ReasoningEffortNone)) {
+					t.Fatal("none substituted for max")
+				}
+			})
+		}
 	}
 }
 

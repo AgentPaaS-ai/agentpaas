@@ -91,11 +91,36 @@ func TestModelCallEnvelopeValidate_RejectsInvalidReasoningEffort(t *testing.T) {
 	}
 }
 
+// TestModelCallEnvelopeValidate_AcceptsMaxAndKeepsNone pins C12: max is a
+// valid effort. none stays none and is not a substitute for max.
+func TestModelCallEnvelopeValidate_AcceptsMaxAndKeepsNone(t *testing.T) {
+	maxEffort := ModelCallEnvelope{
+		Messages:        []Message{{Role: RoleUser, Content: "q"}},
+		ReasoningEffort: ReasoningEffort("max"),
+	}
+	if err := maxEffort.Validate(); err != nil {
+		t.Fatalf("max reasoning effort must be accepted, not rejected: %v", err)
+	}
+	if maxEffort.ReasoningEffort != "max" {
+		t.Fatalf("max rewritten to %q; none must not be substituted", maxEffort.ReasoningEffort)
+	}
+	none := ModelCallEnvelope{
+		Messages:        []Message{{Role: RoleUser, Content: "q"}},
+		ReasoningEffort: ReasoningEffortNone,
+	}
+	if err := none.Validate(); err != nil {
+		t.Fatalf("none must stay accepted as none: %v", err)
+	}
+	if none.ReasoningEffort != ReasoningEffortNone {
+		t.Fatalf("none rewritten to %q", none.ReasoningEffort)
+	}
+}
+
 func TestModelCallEnvelopeValidate_AcceptsStructuredOutputSchema(t *testing.T) {
 	schema := map[string]any{"type": "object", "properties": map[string]any{"x": map[string]any{"type": "string"}}}
 	e := ModelCallEnvelope{
-		Messages:           []Message{{Role: RoleUser, Content: "q"}},
-		StructuredOutput:   &StructuredOutputSpec{JSONSchema: schema},
+		Messages:         []Message{{Role: RoleUser, Content: "q"}},
+		StructuredOutput: &StructuredOutputSpec{JSONSchema: schema},
 	}
 	if err := e.Validate(); err != nil {
 		t.Fatalf("structured output schema must be accepted: %v", err)

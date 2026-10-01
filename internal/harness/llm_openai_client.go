@@ -198,6 +198,23 @@ func messageReasoning(msg openai.ChatCompletionMessage) string {
 	return parsed.Reasoning
 }
 
+type llmReasoningEffortCtxKey struct{}
+
+func withLLMReasoningEffort(ctx context.Context, effort string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, llmReasoningEffortCtxKey{}, effort)
+}
+
+func llmReasoningEffortFromCtx(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	effort, _ := ctx.Value(llmReasoningEffortCtxKey{}).(string)
+	return effort
+}
+
 func openRouterReasoningExclude(originalHost, provider string) bool {
 	if strings.EqualFold(strings.TrimSpace(provider), "openrouter") {
 		return true
@@ -368,7 +385,13 @@ func callLLMChatCompletion(ctx context.Context, baseURL, originalHost, apiKey, m
 		opts = append(opts, option.WithRequestTimeout(timeout))
 	}
 	if openRouterReasoningExclude(originalHost, provider) {
-		opts = append(opts, option.WithJSONSet("reasoning", map[string]any{"exclude": true}))
+		reasoning := map[string]any{"exclude": true}
+		// Requested effort belongs in the same reasoning object. Do not omit
+		// it, and do not substitute none for max.
+		if effort := llmReasoningEffortFromCtx(ctx); effort != "" {
+			reasoning["effort"] = effort
+		}
+		opts = append(opts, option.WithJSONSet("reasoning", reasoning))
 	}
 	// Skip Completions.New JSON decode so a text/event-stream body cannot hang
 	// the decoder. JSON is decoded below; SSE uses NewStreaming's ssestream.
