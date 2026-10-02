@@ -80,6 +80,8 @@ type CanonicalCredential struct {
 	TokenEndpoint          string `json:"token_endpoint,omitempty"`
 	ClientID               string `json:"client_id,omitempty"`
 	RefreshTokenCredential string `json:"refresh_token_credential,omitempty"`
+	// Pointer so an absent cap stays off the signed stamp and lock.
+	MaxAccessTTLSeconds *int `json:"max_access_ttl_seconds,omitempty"`
 
 	// oauth_delegated (M13.9) non-secret metadata. Scopes/MaxScopes are sorted.
 	Provider               string   `json:"provider,omitempty"`
@@ -490,6 +492,10 @@ func canonicalizeCredentials(creds []Credential, warnings *[]string) []Canonical
 			RedirectPath:           c.RedirectPath,
 			Reason:                 c.Reason,
 			// Value deliberately omitted — no secret values in canonical form.
+		}
+		if c.MaxAccessTTLSeconds != nil {
+			ttl := *c.MaxAccessTTLSeconds
+			cr.MaxAccessTTLSeconds = &ttl
 		}
 		if c.Type == "oauth_llm" {
 			cr.TokenEndpoint = redactOAuthLlmTokenEndpoint(c.TokenEndpoint)

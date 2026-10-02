@@ -297,6 +297,8 @@ type OAuthLlmCredentialRule struct {
 	ClientID               string   `yaml:"clientId"`
 	RefreshTokenCredential string   `yaml:"refreshTokenCredential"`
 	Scopes                 []string `yaml:"scopes,omitempty"`
+	// Pointer so an absent cap stays off the compiled credential lock.
+	MaxAccessTTLSeconds *int `yaml:"maxAccessTTLSeconds,omitempty"`
 }
 
 // CompileGatewayConfig compiles a *Policy into an agentgateway YAML configuration.
@@ -429,6 +431,10 @@ func CompileCredentialRules(p *Policy) ([]byte, error) {
 				ClientID:               strings.TrimSpace(c.ClientID),
 				RefreshTokenCredential: redactOAuthLlmRefreshName(c.RefreshTokenCredential),
 				Scopes:                 c.Scopes,
+			}
+			if c.MaxAccessTTLSeconds != nil {
+				ttl := *c.MaxAccessTTLSeconds
+				rule.OAuthLlm.MaxAccessTTLSeconds = &ttl
 			}
 		case "direct_lease":
 			// direct_lease credentials don't have header injection;

@@ -143,6 +143,9 @@ type Credential struct {
 	TokenEndpoint          string `yaml:"token_endpoint,omitempty"`
 	ClientID               string `yaml:"client_id,omitempty"`
 	RefreshTokenCredential string `yaml:"refresh_token_credential,omitempty"`
+	// Pointer so an absent max_access_ttl_seconds stays valid. A non-pointer
+	// int would treat omission as 0 and fail the >= 60 check.
+	MaxAccessTTLSeconds *int `yaml:"max_access_ttl_seconds,omitempty"`
 
 	// OAuth delegated fields (type: oauth_delegated — M13.9-T1).
 	// Provider is one of: google | github | slack | generic. For known

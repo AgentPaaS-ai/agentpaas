@@ -418,6 +418,15 @@ func ValidatePolicy(p *Policy) []ValidationError {
 					Severity: "error",
 				})
 			}
+			// Absent is valid. A non-nil value below 60 is not. Do not treat a
+			// missing field as 0 — MaxAccessTTLSeconds is a pointer for that reason.
+			if c.MaxAccessTTLSeconds != nil && *c.MaxAccessTTLSeconds < 60 {
+				errs = append(errs, ValidationError{
+					Field:    prefix + ".max_access_ttl_seconds",
+					Message:  "max_access_ttl_seconds must be >= 60",
+					Severity: "error",
+				})
+			}
 			// oauth_llm may have token_endpoint, client_id, refresh_token_credential,
 			// scopes; must reject delegated-only fields (provider, auth_endpoint, …).
 			errs = append(errs, rejectOAuthDelegatedOnlyFields(c, prefix)...)
