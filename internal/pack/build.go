@@ -724,7 +724,12 @@ func renderDockerfile(cfg BuildConfig, deps []string) string {
 	fmt.Fprintf(&b, "ENV SOURCE_DATE_EPOCH=%d\n", cfg.SourceDateEpoch.Unix())
 	b.WriteString("ENV CREWAI_DISABLE_TELEMETRY=true\n")
 	b.WriteString("ENV OTEL_SDK_DISABLED=true\n")
-	b.WriteString("WORKDIR /app\n")
+	// OCI WorkingDir must be empty or "/" so pinned OpenShell
+	// resolve_oci_workspace_root prepares /sandbox. WORKDIR /app is
+	// created as root; distroless has no shell to chown it, and any
+	// other path must already be writable by USER 64000. Agent files
+	// stay at /app via absolute COPY and AGENTPAAS_AGENT_PATH.
+	b.WriteString("WORKDIR /\n")
 	b.WriteString("COPY --chown=0:0 harness /agentpaas/harness\n")
 	b.WriteString("COPY --chown=0:0 agentpaas-locked.txt /agentpaas/requirements.lock\n")
 	fmt.Fprintf(&b, "COPY --chown=%d:%d project/ /app/\n", cfg.NonRootUID, cfg.NonRootUID)
