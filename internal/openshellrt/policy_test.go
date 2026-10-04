@@ -49,6 +49,61 @@ func TestProviderNameSanitizes(t *testing.T) {
 	}
 }
 
+// TestBrokerProviderVisibleInWorkspaceDefault pins the O02 failure where
+// Profiles().Get succeeded and Providers().Ensure then reported that
+// agentpaas-broker was not in the requested scope. Ensure looks up
+// provider.profile_workspace. Empty is the global scope and does not see a
+// profile imported into workspace default. The secret stays on the provider,
+// under the env var the profile declares, not in the agent environment.
+func TestBrokerProviderVisibleInWorkspaceDefault(t *testing.T) {
+	const secret = "broker-unit-fixture"
+	provider := brokerProvider("ap-o02-broker-key", secret)
+	if provider.Type != profileID {
+		t.Fatalf("type: got %q want %q", provider.Type, profileID)
+	}
+	if provider.Spec.ProfileWorkspace != workspaceDefault {
+		t.Fatalf("profile_workspace: got %q want %q; empty is the global scope Ensure missed", provider.Spec.ProfileWorkspace, workspaceDefault)
+	}
+	if provider.Spec.ProfileWorkspace == "" {
+		t.Fatal("empty profile_workspace is not the scope a workspace import is visible in")
+	}
+
+	profile := brokerProfile()
+	if len(profile.Endpoints) != 0 {
+		t.Fatalf("imported profile must stay endpointless, got %d endpoints", len(profile.Endpoints))
+	}
+	if len(profile.Credentials) != 1 || len(profile.Credentials[0].EnvVars) != 1 {
+		t.Fatal("profile must declare one env var; that is the key the gateway stores")
+	}
+	key := profile.Credentials[0].EnvVars[0]
+	if key == "" || key == "api_key" {
+		t.Fatalf("stored credential key %q is not the profile env var", key)
+	}
+	if got := provider.Spec.Credentials[key]; got != secret {
+		t.Fatalf("provider credential %q: got %q", key, got)
+	}
+	if _, ok := provider.Spec.Credentials["api_key"]; ok {
+		t.Fatal("api_key is not an accepted stored key when the profile declares an env var")
+	}
+
+	workspaceScoped := &osv1.ProviderProfile{ID: profileID, Scope: "workspace"}
+	if profileVisibleToEnsure(workspaceScoped, "") {
+		t.Fatal("Get of a workspace profile is not proof it is in the empty scope Ensure used")
+	}
+	if !profileVisibleToEnsure(workspaceScoped, workspaceDefault) {
+		t.Fatal("after import, the workspace profile must be visible to Ensure in workspace default")
+	}
+	if profileVisibleToEnsure(workspaceScoped, "other") {
+		t.Fatal("a default-workspace profile must not be treated as visible in another workspace")
+	}
+	if profileVisibleToEnsure(nil, workspaceDefault) {
+		t.Fatal("missing profile is not visible")
+	}
+	if profileVisibleToEnsure(&osv1.ProviderProfile{ID: "other", Scope: "workspace"}, workspaceDefault) {
+		t.Fatal("a different profile id is not the broker profile Ensure requests")
+	}
+}
+
 // TestBrokerProfileDoesNotEmitUnarmedRestEndpoint pins the gateway rejection
 // from O02: protocol rest on a profile endpoint requires rules or access, and
 // the pinned SDK converter (NetworkEndpointToProto) copies only Host, Port,

@@ -188,23 +188,68 @@ func (r *Runtime) EnsureBroker(ctx context.Context, credID, secret string) (stri
 		return "", err
 	}
 	name := providerName(credID)
-	_, err := r.client.Providers().Ensure(ctx, workspaceDefault, &osv1.Provider{
-		Name: name,
-		Type: profileID,
-		Spec: osv1.ProviderSpec{
-			Credentials: map[string]string{"api_key": secret},
-		},
-	})
-	if err != nil {
+	provider := brokerProvider(name, secret)
+	if _, err := r.ensureProvider(ctx, provider); err != nil {
 		return "", fmt.Errorf("openshell provider %s: %w", name, err)
 	}
 	return name, nil
 }
 
+// ensureProvider creates the provider in workspace default. A Get that found
+// the profile is not proof it is in the scope Ensure uses. If Ensure says the
+// profile is missing, import again and retry once with profile_workspace set.
+func (r *Runtime) ensureProvider(ctx context.Context, provider *osv1.Provider) (*osv1.Provider, error) {
+	got, err := r.client.Providers().Ensure(ctx, workspaceDefault, provider)
+	if err == nil || !profileMissingInScope(err) {
+		return got, err
+	}
+	if ierr := r.importBrokerProfile(ctx); ierr != nil {
+		return nil, ierr
+	}
+	if verr := r.requireProfileVisible(ctx); verr != nil {
+		return nil, verr
+	}
+	return r.client.Providers().Ensure(ctx, workspaceDefault, provider)
+}
+
+func profileMissingInScope(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "not found in the requested scope")
+}
+
 func (r *Runtime) ensureProfile(ctx context.Context) error {
-	if _, err := r.client.Providers().Profiles().Get(ctx, workspaceDefault, profileID); err == nil {
+	if r.profileVisible(ctx) {
 		return nil
 	}
+	if err := r.importBrokerProfile(ctx); err != nil {
+		return err
+	}
+	return r.requireProfileVisible(ctx)
+}
+
+func (r *Runtime) profileVisible(ctx context.Context) bool {
+	got, err := r.client.Providers().Profiles().Get(ctx, workspaceDefault, profileID)
+	if err != nil {
+		return false
+	}
+	// Do not treat Get success alone as proof. Ensure uses profile_workspace.
+	return profileVisibleToEnsure(got, workspaceDefault)
+}
+
+func (r *Runtime) requireProfileVisible(ctx context.Context) error {
+	got, err := r.client.Providers().Profiles().Get(ctx, workspaceDefault, profileID)
+	if err != nil {
+		return fmt.Errorf("openshell profile %s not visible to Ensure in workspace %s after import: %w", profileID, workspaceDefault, err)
+	}
+	if !profileVisibleToEnsure(got, workspaceDefault) {
+		return fmt.Errorf("openshell profile %s imported but not in the scope Ensure uses (scope %q)", profileID, got.Scope)
+	}
+	return nil
+}
+
+func (r *Runtime) importBrokerProfile(ctx context.Context) error {
 	res, err := r.client.Providers().Profiles().Import(ctx, workspaceDefault, []osv1.ProfileImportItem{{
 		Profile: brokerProfile(),
 		Source:  "agentpaas",
@@ -213,6 +258,38 @@ func (r *Runtime) ensureProfile(ctx context.Context) error {
 		return fmt.Errorf("import openshell profile: %w", err)
 	}
 	if res != nil && !res.Imported {
+		if importAlreadyPresent(res.Diagnostics) {
+			return nil
+		}
+		// An endpointless profile the gateway will not store has to be sent
+		// in a shape the pinned SDK can encode. That shape stays endpointless:
+		// a profile endpoint would become the credential boundary and reject
+		// SandboxPolicy credential_binding. Protocol rest is not an option;
+		// the pinned converter still drops Access and Rules.
+		if ferr := r.importStoredProfile(ctx); ferr == nil {
+			return nil
+		}
+		return fmt.Errorf("%s", formatDiag("openshell profile rejected", res.Diagnostics))
+	}
+	return nil
+}
+
+// importStoredProfile sends the minimal endpointless profile the pinned
+// gateway stores when the fuller broker profile is rejected. It does not add
+// a NetworkEndpoint.
+func (r *Runtime) importStoredProfile(ctx context.Context) error {
+	profile := brokerProfile()
+	profile.Binaries = nil
+	profile.InferenceCapable = false
+	profile.Category = osv1.ProfileCategoryOther
+	res, err := r.client.Providers().Profiles().Import(ctx, workspaceDefault, []osv1.ProfileImportItem{{
+		Profile: profile,
+		Source:  "agentpaas",
+	}})
+	if err != nil {
+		return err
+	}
+	if res != nil && !res.Imported && !importAlreadyPresent(res.Diagnostics) {
 		return fmt.Errorf("%s", formatDiag("openshell profile rejected", res.Diagnostics))
 	}
 	return nil

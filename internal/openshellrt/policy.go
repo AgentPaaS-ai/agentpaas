@@ -107,6 +107,63 @@ func brokerProfile() osv1.ProviderProfile {
 	}
 }
 
+// brokerProvider is the provider Ensure sends. ProfileWorkspace must be the
+// workspace the profile was imported into. An empty value is the global scope,
+// and Providers().Ensure then reports the workspace profile as missing even
+// when Profiles().Get succeeded. The credential key is the profile env var:
+// that is the key the gateway accepts and the placeholder it injects. The
+// secret value stays in this spec, not in the agent environment.
+func brokerProvider(name, secret string) *osv1.Provider {
+	key := placeholderEnv
+	if profile := brokerProfile(); len(profile.Credentials) == 1 && len(profile.Credentials[0].EnvVars) == 1 && profile.Credentials[0].EnvVars[0] != "" {
+		key = profile.Credentials[0].EnvVars[0]
+	}
+	return &osv1.Provider{
+		Name: name,
+		Type: profileID,
+		Spec: osv1.ProviderSpec{
+			Credentials:      map[string]string{key: secret},
+			ProfileWorkspace: workspaceDefault,
+		},
+	}
+}
+
+// profileVisibleToEnsure reports whether a profile returned by
+// Profiles().Get is in the scope Providers().Ensure uses. Get returns the
+// workspace catalog's effective profile. Ensure looks up provider.profile_workspace.
+// Empty is the global scope and does not see a workspace-scoped import.
+func profileVisibleToEnsure(p *osv1.ProviderProfile, profileWorkspace string) bool {
+	if p == nil || p.ID != profileID {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(p.Scope)) {
+	case "workspace":
+		return profileWorkspace == workspaceDefault
+	case "platform", "":
+		return profileWorkspace == "" || profileWorkspace == workspaceDefault
+	default:
+		return false
+	}
+}
+
+func importAlreadyPresent(diags []osv1.ProfileDiagnostic) bool {
+	if len(diags) == 0 {
+		return false
+	}
+	present := false
+	for _, d := range diags {
+		msg := strings.ToLower(d.Message)
+		if strings.Contains(msg, "already exists") {
+			present = true
+			continue
+		}
+		if d.Severity == "" || strings.EqualFold(d.Severity, "error") {
+			return false
+		}
+	}
+	return present
+}
+
 func formatDiag(prefix string, diags []osv1.ProfileDiagnostic) string {
 	if len(diags) == 0 {
 		return prefix
