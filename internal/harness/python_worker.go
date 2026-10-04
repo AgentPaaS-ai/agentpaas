@@ -741,22 +741,47 @@ func appendPolicyResourceEnv(env []string, durable bool, cpuQuotaSeconds int64, 
 	return env
 }
 
+// imagePythonPackageDir is where pack copies the SDK (COPY python/ /app/python/).
+// OCI WorkingDir is /, so a walk from cwd never reaches this directory.
+const imagePythonPackageDir = "/app/python"
+
 func pythonPackagePath() string {
 	wd, err := os.Getwd()
 	if err != nil {
-		return filepath.Join(".", "python")
+		wd = ""
 	}
-	for {
-		candidate := filepath.Join(wd, "python")
-		if info, statErr := os.Stat(filepath.Join(candidate, "agentpaas_sdk")); statErr == nil && info.IsDir() {
-			return candidate
+	return resolvePythonPackagePath(wd, imagePythonPackageDir)
+}
+
+// resolvePythonPackagePath walks up from wd looking for python/agentpaas_sdk.
+// When that walk misses (cwd is / inside the image), it uses imageSDKDir if
+// that directory contains agentpaas_sdk.
+func resolvePythonPackagePath(wd, imageSDKDir string) string {
+	if wd != "" {
+		for {
+			candidate := filepath.Join(wd, "python")
+			if pythonSDKDirExists(candidate) {
+				return candidate
+			}
+			parent := filepath.Dir(wd)
+			if parent == wd {
+				break
+			}
+			wd = parent
 		}
-		parent := filepath.Dir(wd)
-		if parent == wd {
-			return filepath.Join(".", "python")
-		}
-		wd = parent
 	}
+	if pythonSDKDirExists(imageSDKDir) {
+		return imageSDKDir
+	}
+	return filepath.Join(".", "python")
+}
+
+func pythonSDKDirExists(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(dir, "agentpaas_sdk"))
+	return err == nil && info.IsDir()
 }
 
 // sanitizeAgentPayload strips reserved platform keys from the invoke payload

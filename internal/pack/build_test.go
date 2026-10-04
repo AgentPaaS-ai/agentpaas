@@ -163,7 +163,7 @@ func TestRenderDockerfileMultiStageWithDeps(t *testing.T) {
 		"FROM gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
 		"COPY --chown=64000:64000 --from=builder /build/deps /app/deps",
 		"ENV AGENTPAAS_DEPS_LOCKED=/agentpaas/requirements.lock",
-		"ENV PYTHONPATH=/app/deps",
+		"ENV PYTHONPATH=/app/deps:/app/python",
 	)
 }
 
@@ -188,6 +188,13 @@ func TestRenderDockerfileOCIWorkingDirIsSandboxFallback(t *testing.T) {
 		}
 		if !strings.Contains(final, "USER 64000:64000") {
 			t.Fatalf("USER 64000:64000 missing:\n%s", dockerfile)
+		}
+		wantPythonPath := "ENV PYTHONPATH=/app/python"
+		if len(deps) > 0 {
+			wantPythonPath = "ENV PYTHONPATH=/app/deps:/app/python"
+		}
+		if !strings.Contains(final, wantPythonPath) {
+			t.Fatalf("final stage missing %q; cwd is / so agentpaas_sdk is not on the walk from WorkingDir:\n%s", wantPythonPath, dockerfile)
 		}
 	}
 }
@@ -224,11 +231,15 @@ func TestRenderDockerfileSingleStageNoDeps(t *testing.T) {
 		"AS builder",
 		"pip install",
 		"--from=builder",
-		"PYTHONPATH",
+		"ENV PYTHONPATH=/app/deps",
+		"WORKDIR /app",
 	)
 	requireDockerfileContains(t, dockerfile,
 		"FROM gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
 		"COPY --chown=64000:64000 project/ /app/",
+		"COPY --chown=64000:64000 python/ /app/python/",
+		"ENV PYTHONPATH=/app/python",
+		"WORKDIR /",
 		`ENTRYPOINT ["/agentpaas/harness"]`,
 	)
 }
