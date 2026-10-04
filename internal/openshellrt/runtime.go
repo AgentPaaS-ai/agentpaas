@@ -18,7 +18,7 @@ import (
 
 // Runtime is the local OpenShell gateway the daemon drives through the SDK.
 type Runtime struct {
-	client  *osv1.Client
+	client  osv1.ClientInterface
 	cmd     *exec.Cmd
 	cliPath string
 	version string
@@ -330,6 +330,9 @@ func (r *Runtime) CreateAgentSandbox(ctx context.Context, req SandboxRequest) (*
 	if req.Provider != "" {
 		spec.Providers = []string{req.Provider}
 	}
+	// Empty Command is a login shell at /bin/sh. The packed image is
+	// distroless; the executable entrypoint is the harness.
+	spec.Command = []string{"/agentpaas/harness"}
 	sb, err := r.client.Sandboxes().Create(ctx, workspaceDefault, req.Name, spec, map[string]string{
 		"agentpaas": "1",
 		"runtime":   "openshell",
