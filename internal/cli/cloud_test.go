@@ -13,10 +13,24 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/cloudclient"
 )
 
+// dispatchedLaneCLIHome is this lane's shared CLI home. Tests must not read
+// it: the home is shared, and a live token there must not satisfy a fixture.
+const dispatchedLaneCLIHome = "/Users/pms88/projects/agentpaas/worktrees/.cli-c"
+
 // setupFakeTokenStore overrides the token store factory to return a fake store
 // and restores it on test cleanup.
+//
+// An ambient AGENTPAAS_CLOUD_API_TOKEN wins over the store in resolveToken.
+// Clear it for this test so isolation assertions still see the fixture (or
+// the empty store). A test that wants the env token to win sets it after
+// this call. t.Setenv restores the process env when the test ends.
 func setupFakeTokenStore(t *testing.T) *cloudclient.FakeTokenStore {
 	t.Helper()
+
+	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
+	if os.Getenv("AGENTPAAS_HOME") == dispatchedLaneCLIHome {
+		t.Setenv("AGENTPAAS_HOME", t.TempDir())
+	}
 
 	store := cloudclient.NewFakeTokenStore()
 
