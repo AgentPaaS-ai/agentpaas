@@ -9,9 +9,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -114,8 +116,16 @@ func InstallDir(home string) string {
 	return "bin"
 }
 
+// gatewayGOOS is the host OS used when writing gateway.toml. Tests override
+// it so darwin and non-darwin configs are both checked without depending
+// on the machine.
+var gatewayGOOS = runtime.GOOS
+
 // writeGatewayConfig writes a schema-v2 gateway file that uses the host Docker
 // socket (colima or Docker Desktop) and plaintext loopback. No secrets.
+// On darwin the Docker driver runs inside a VM, so the supervisor must dial
+// the host gateway through host.docker.internal. Native Linux stays on the
+// driver's 127.0.0.1 default. bind_address is unchanged.
 func writeGatewayConfig(dir, socketPath string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
@@ -139,10 +149,28 @@ func writeGatewayConfig(dir, socketPath string) (string, error) {
 	fmt.Fprintf(&buf, "[openshell.gateway.gateway_jwt]\nsigning_key_path = %q\npublic_key_path = %q\nkid_path = %q\ngateway_id = \"agentpaas\"\n\n", signing, public, kid)
 	fmt.Fprintf(&buf, "[openshell.gateway.auth]\nallow_unauthenticated_users = true\n\n")
 	fmt.Fprintf(&buf, "[openshell.drivers.docker]\nsocket_path = %q\nimage_pull_policy = \"if_not_present\"\nsandbox_label = \"agentpaas\"\n", socketPath)
+	if gatewayGOOS == "darwin" {
+		port, err := gatewayListenPort(GatewayAddr)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&buf, "grpc_endpoint = %q\n", "http://host.docker.internal:"+port)
+	}
 	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+func gatewayListenPort(addr string) (string, error) {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "", fmt.Errorf("gateway address %q: %w", addr, err)
+	}
+	if port == "" {
+		return "", fmt.Errorf("gateway address %q has no port", addr)
+	}
+	return port, nil
 }
 
 func generateJWTKeys(signing, public, kid string) error {
