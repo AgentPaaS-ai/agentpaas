@@ -44,6 +44,24 @@ func SandboxPolicy(rules []EgressRule, providerName, brokerHost string) *osv1.Sa
 	}
 	return &osv1.SandboxPolicy{
 		Version: 1,
+		// An empty filesystem policy is replaced by the v0.1.1 proxy
+		// baseline, which does not include /agentpaas. Landlock then
+		// denies exec of /agentpaas/harness (os error 13) even though
+		// the file is mode 0555. A set policy replaces that baseline,
+		// so the entrypoint and the baseline paths must both be listed.
+		Filesystem: &osv1.FilesystemPolicy{
+			IncludeWorkdir: true,
+			ReadOnly: []string{
+				"/agentpaas",
+				"/usr",
+				"/lib",
+				"/etc",
+				"/app",
+				"/var/log",
+				"/proc",
+				"/dev/urandom",
+			},
+		},
 		NetworkPolicies: map[string]osv1.NetworkPolicyRule{
 			"agentpaas-egress": {
 				Name:      "agentpaas-egress",

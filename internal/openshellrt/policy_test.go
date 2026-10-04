@@ -2,6 +2,7 @@ package openshellrt
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -40,6 +41,39 @@ func TestSandboxPolicyAllowlistOmitsDeniedHost(t *testing.T) {
 	}
 	if !sawWttr || !sawBroker {
 		t.Fatalf("missing hosts wttr=%v broker=%v", sawWttr, sawBroker)
+	}
+}
+
+// TestSandboxPolicyReadOnlyIncludesAgentpaas pins the O02 Landlock failure:
+// an empty filesystem policy is replaced by the v0.1.1 proxy baseline
+// (/usr, /lib, /etc, /app, /var/log, /proc, /dev/urandom), which does not
+// grant execute on /agentpaas. The supervisor then cannot spawn
+// /agentpaas/harness (os error 13) even though the file is mode 0555 and
+// uid 64000 can execute it under docker run. A set filesystem policy
+// replaces that baseline, so both the entrypoint and the baseline paths
+// must be listed, and IncludeWorkdir must stay true.
+func TestSandboxPolicyReadOnlyIncludesAgentpaas(t *testing.T) {
+	pol := SandboxPolicy(nil, "", "")
+	if pol == nil || pol.Filesystem == nil {
+		t.Fatal("empty filesystem policy is replaced by a baseline that omits /agentpaas")
+	}
+	if !pol.Filesystem.IncludeWorkdir {
+		t.Fatal("IncludeWorkdir must be true so the workdir is not dropped when filesystem policy is set")
+	}
+	want := []string{
+		"/agentpaas",
+		"/usr",
+		"/lib",
+		"/etc",
+		"/app",
+		"/var/log",
+		"/proc",
+		"/dev/urandom",
+	}
+	for _, path := range want {
+		if !slices.Contains(pol.Filesystem.ReadOnly, path) {
+			t.Fatalf("SandboxPolicy read-only paths omit %q: %v", path, pol.Filesystem.ReadOnly)
+		}
 	}
 }
 
