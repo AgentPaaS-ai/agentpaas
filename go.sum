@@ -1,5 +1,7 @@
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
+github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260926030648-4ce767fc0cad h1:MNGc2AZjIgactEUt38Lv674a5kcqHmvBvuAJEVNWBDQ=
+github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260926030648-4ce767fc0cad/go.mod h1:+wnjuZwBJH2yz8cU1t7FiGK7xPQyxjOY3YZNFcfpL90=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=

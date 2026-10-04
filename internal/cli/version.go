@@ -22,14 +22,14 @@ structured JSON output.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			v := daemon.CurrentVersion()
-			dockerCtx, dockerAPI := probeDockerStatus()
+			osVer, osGw := probeOpenShellStatus()
 			output := VersionOutput{
 				CLIVersion:       v.CLIVersion,
 				ProtoVersion:     v.ProtoVersion,
 				GitCommit:        v.GitCommit,
 				OsArch:           v.OsArch,
-				DockerContext:    dockerCtx,
-				DockerAPIVersion: dockerAPI,
+				OpenShellVersion: osVer,
+				OpenShellGateway: osGw,
 			}
 			return printTextOrJSON(jsonOutput(cmd), output, func(v interface{}) string {
 				return VersionText(v.(VersionOutput))

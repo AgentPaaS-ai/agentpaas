@@ -22,6 +22,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/dashboard"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/openshellrt"
 	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
@@ -78,6 +79,9 @@ type Daemon struct {
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
+
+	// openShell makes Start drive a local OpenShell gateway through the SDK.
+	openShell bool
 }
 
 // lockIno holds the inode of the lock file at the time the flock was
@@ -97,6 +101,14 @@ type Option func(*Daemon)
 func WithAllowRoot() Option {
 	return func(d *Daemon) {
 		d.allowRoot = true
+	}
+}
+
+// WithOpenShell drives local runs through a pinned OpenShell gateway.
+// Production agentpaasd sets this. Unit tests do not.
+func WithOpenShell() Option {
+	return func(d *Daemon) {
+		d.openShell = true
 	}
 }
 
@@ -417,6 +429,21 @@ func (d *Daemon) Start(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "daemon: supervisor init: %v (durable lifecycle disabled)\n", err)
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
+	if d.openShell {
+		binDir := ""
+		if exe, err := os.Executable(); err == nil {
+			binDir = filepath.Dir(exe)
+		}
+		rt, err := openshellrt.EnsureLocal(ctx, d.paths.Home, binDir)
+		if err != nil {
+			_ = auditWriter.Close()
+			_ = auditIndex.Close()
+			_ = ln.Close()
+			_ = d.cleanupFiles()
+			return fmt.Errorf("daemon: openshell gateway: %w", err)
+		}
+		controlServer.openshell = rt
+	}
 	d.control = controlServer
 	if d.dashboard != nil {
 		if rt, err := controlServer.getOrCreateRuntime(); err == nil {

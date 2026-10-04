@@ -25,6 +25,7 @@ require (
 )
 
 require (
+	github.com/NVIDIA/OpenShell/sdk/go v0.0.0-20260926030648-4ce767fc0cad // indirect
 	github.com/docker/go-connections v0.8.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect

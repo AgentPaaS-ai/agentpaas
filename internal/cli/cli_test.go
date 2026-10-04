@@ -198,18 +198,17 @@ func TestAgentVersion_TextOutput(t *testing.T) {
 	// (UX-DDOCKER) so they are never empty stubs.
 	got := strings.TrimSpace(stdout)
 	prefix := fmt.Sprintf(
-		"CLI: 0.4.2-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | Docker: ",
+		"CLI: 0.4.2-dev | Proto: v1 | Commit: unknown | OS/Arch: %s | OpenShell: ",
 		expectedArch,
 	)
 	if !strings.HasPrefix(got, prefix) {
 		t.Fatalf("golden output prefix mismatch\nwant prefix: %q\ngot:  %q", prefix, got)
 	}
-	if !strings.Contains(got, " | Docker API: ") {
-		t.Fatalf("expected Docker API field in output: %q", got)
+	if !strings.Contains(got, " | OpenShell gateway: ") {
+		t.Fatalf("expected OpenShell gateway field in output: %q", got)
 	}
-	// Must not still stub as unknown when we probe (may be unavailable if no Docker).
-	if strings.Contains(got, "Docker: unknown | Docker API: unknown") {
-		t.Fatalf("Docker fields still stubbed as unknown: %q", got)
+	if strings.Contains(got, "Docker:") {
+		t.Fatalf("version must not name Docker: %q", got)
 	}
 }
 
@@ -248,11 +247,11 @@ func TestAgentVersion_JSONOutput(t *testing.T) {
 	if v.GitCommit == "" {
 		t.Error("git_commit must not be empty")
 	}
-	if v.DockerContext == "" {
-		t.Error("docker_context must not be empty")
+	if v.OpenShellVersion == "" {
+		t.Error("openshell_version must not be empty")
 	}
-	if v.DockerAPIVersion == "" {
-		t.Error("docker_api_version must not be empty")
+	if v.OpenShellGateway == "" {
+		t.Error("openshell_gateway must not be empty")
 	}
 }
 

@@ -14,6 +14,7 @@ BUILD_FLAGS_HARNESS := -trimpath -ldflags "$(LDFLAGS_HARNESS) -s -w"
 
 build:
 	mkdir -p bin
+	go run ./cmd/ensure-openshell -dir bin
 	go build $(BUILD_FLAGS) -o bin/agentpaas ./cmd/agent
 	go build $(BUILD_FLAGS) -o bin/agentpaasd ./cmd/agentpaasd
 	go build $(BUILD_FLAGS) -o bin/agentpaas-mcp ./cmd/agentpaas-mcp

@@ -67,7 +67,7 @@ func main() {
 	}
 
 	// Create the daemon and acquire the lock file.
-	d, err := daemon.New(paths, daemon.CurrentVersion())
+	d, err := daemon.New(paths, daemon.CurrentVersion(), daemon.WithOpenShell())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -95,7 +95,7 @@ func main() {
 	}()
 
 	// Start the daemon.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	if err := d.Start(ctx); err != nil {

@@ -108,14 +108,14 @@ func runDaemonStatus(cmd *cobra.Command) error {
 		}
 
 		// Build output from what we know.
-		dockerCtx, dockerAPI := probeDockerStatus()
+		osVer, osGw := probeOpenShellStatus()
 		output := DaemonStatusOutput{
 			DaemonVersion:    daemonVersionFromString(versionStr),
 			ProtoVersion:     "v1",
 			GitCommit:        gitCommitFromString(versionStr),
 			OsArch:           osArchFromString(versionStr),
-			DockerContext:    dockerCtx,
-			DockerAPIVersion: dockerAPI,
+			OpenShellVersion: osVer,
+			OpenShellGateway: osGw,
 			Ready:            resp.GetOverallStatus() == "ok",
 		}
 

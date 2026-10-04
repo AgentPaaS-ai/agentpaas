@@ -123,6 +123,21 @@ type rpcCredential struct {
 	Value  string
 }
 
+func openShellBrokerCredential(cred rpcCredential, ok bool) (rpcCredential, bool) {
+	if os.Getenv("AGENTPAAS_OPENSHELL") != "1" {
+		return cred, ok
+	}
+	ph := strings.TrimSpace(os.Getenv("AGENTPAAS_OS_BROKER_PLACEHOLDER"))
+	if ph == "" {
+		return cred, ok
+	}
+	header := cred.Header
+	if header == "" {
+		header = "Authorization"
+	}
+	return rpcCredential{Header: header, Value: ph}, true
+}
+
 // oauthBinding is metadata for oauth_delegated host-match inject in handleHTTP.
 // Loaded from AGENTPAAS_OAUTH_BINDINGS_JSON (no token values).
 type oauthBinding struct {
@@ -793,6 +808,7 @@ func (s *harnessRPCServer) handleLLM(req rpcRequest, state *rpcInvokeState) rpcR
 
 	// Get credential value from state.credentials.
 	cred, ok := state.credentials[credentialID]
+	cred, ok = openShellBrokerCredential(cred, ok)
 	if !ok {
 		s.auditEgressDecision("harness", adapter.Endpoint(), "POST", credentialID, "", "denied", "llm credential not declared")
 		return rpcError(req.ID, "llm credential not declared", "credential_denied")
@@ -1121,6 +1137,7 @@ func (s *harnessRPCServer) handleHTTP(req rpcRequest, state *rpcInvokeState, wit
 	if withCredential {
 		credID = stringParam(req.Params, "credential_id")
 		cred, ok := state.credentials[credID]
+		cred, ok = openShellBrokerCredential(cred, ok)
 		if !ok {
 			s.auditEgressDecision("harness", rawURL, method, credID, "", "denied", "credential not declared")
 			state.setFailureEvidence(&UpstreamEvidence{

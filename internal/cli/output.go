@@ -1,12 +1,10 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
-	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/openshellrt"
 )
 
 // VersionOutput holds the CLI version information for display.
@@ -15,16 +13,16 @@ type VersionOutput struct {
 	ProtoVersion     string `json:"proto_version"`
 	GitCommit        string `json:"git_commit"`
 	OsArch           string `json:"os_arch"`
-	DockerContext    string `json:"docker_context"`
-	DockerAPIVersion string `json:"docker_api_version"`
+	OpenShellVersion string `json:"openshell_version"`
+	OpenShellGateway string `json:"openshell_gateway"`
 }
 
 // VersionText returns a human-readable summary of VersionOutput.
 func VersionText(v VersionOutput) string {
 	return fmt.Sprintf(
-		"CLI: %s | Proto: %s | Commit: %s | OS/Arch: %s | Docker: %s | Docker API: %s",
+		"CLI: %s | Proto: %s | Commit: %s | OS/Arch: %s | OpenShell: %s | OpenShell gateway: %s",
 		v.CLIVersion, v.ProtoVersion, v.GitCommit, v.OsArch,
-		v.DockerContext, v.DockerAPIVersion,
+		v.OpenShellVersion, v.OpenShellGateway,
 	)
 }
 
@@ -34,8 +32,8 @@ type DaemonStatusOutput struct {
 	ProtoVersion     string `json:"proto_version"`
 	GitCommit        string `json:"git_commit"`
 	OsArch           string `json:"os_arch"`
-	DockerContext    string `json:"docker_context"`
-	DockerAPIVersion string `json:"docker_api_version"`
+	OpenShellVersion string `json:"openshell_version"`
+	OpenShellGateway string `json:"openshell_gateway"`
 	Ready            bool   `json:"ready"`
 }
 
@@ -46,9 +44,9 @@ func DaemonStatusText(s DaemonStatusOutput) string {
 		ready = "ready"
 	}
 	return fmt.Sprintf(
-		"Daemon: %s | Proto: %s | Commit: %s | OS/Arch: %s | Docker: %s | Docker API: %s | Status: %s",
+		"Daemon: %s | Proto: %s | Commit: %s | OS/Arch: %s | OpenShell: %s | OpenShell gateway: %s | Status: %s",
 		s.DaemonVersion, s.ProtoVersion, s.GitCommit, s.OsArch,
-		s.DockerContext, s.DockerAPIVersion, ready,
+		s.OpenShellVersion, s.OpenShellGateway, ready,
 	)
 }
 
@@ -74,29 +72,22 @@ func printTextOrJSON(jsonOut bool, val interface{}, textFn func(interface{}) str
 	return nil
 }
 
-// probeDockerStatus returns (context, server/API version) for status/version
-// lines. Never stubs as "unknown" when Docker is reachable (UX-DDOCKER).
-// On failure returns ("unavailable", "unavailable") so customers know to run
-// doctor rather than thinking the field is unimplemented.
-func probeDockerStatus() (dockerContext, dockerAPI string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	// Prefer active docker context name.
-	dockerContext = "default"
-	if out, err := exec.CommandContext(ctx, "docker", "context", "show").Output(); err == nil {
-		if s := strings.TrimSpace(string(out)); s != "" {
-			dockerContext = s
+// probeOpenShellStatus reports the pinned OpenShell CLI version and gateway.
+func probeOpenShellStatus() (version, gateway string) {
+	st := openshellrt.Probe()
+	version = st.CLIVersion
+	if version == "" {
+		version = "not found"
+	}
+	if st.GatewayReady {
+		gateway = st.GatewayDetail
+		if gateway == "" {
+			gateway = "ready"
 		}
+		return version, gateway
 	}
-
-	out, err := exec.CommandContext(ctx, "docker", "info", "--format", "{{.ServerVersion}}").Output()
-	if err != nil {
-		return "unavailable", "unavailable"
+	if st.GatewayDetail == "" {
+		return version, "unavailable"
 	}
-	ver := strings.TrimSpace(string(out))
-	if ver == "" {
-		return dockerContext, "unavailable"
-	}
-	return dockerContext, ver
+	return version, st.GatewayDetail
 }

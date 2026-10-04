@@ -195,3 +195,23 @@ func ExportHostToEnv() error {
 	}
 	return os.Setenv("DOCKER_HOST", host)
 }
+
+// SocketPath returns the Docker daemon Unix socket path, if the resolved
+// endpoint is a unix socket. TCP and npipe endpoints return an empty path.
+func SocketPath() (string, error) {
+	host, _, err := resolveHost()
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(host)
+	if err != nil {
+		return "", fmt.Errorf("parse docker host %q: %w", host, err)
+	}
+	if u.Scheme != "unix" {
+		return "", fmt.Errorf("docker host %q is not a unix socket", host)
+	}
+	if u.Path == "" {
+		return "", fmt.Errorf("docker host %q has an empty socket path", host)
+	}
+	return u.Path, nil
+}

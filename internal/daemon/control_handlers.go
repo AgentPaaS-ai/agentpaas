@@ -617,6 +617,10 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 		return nil, status.Errorf(codes.FailedPrecondition, "%v", err)
 	}
 
+	if s.useOpenShell() {
+		return s.runOnOpenShell(ctx, req, agentName, isInstalled, imageDigest, credentialMap, inputPrep)
+	}
+
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return nil, status.Errorf(codes.FailedPrecondition, "docker runtime not available: %v", err)
@@ -1243,6 +1247,12 @@ func checkDockerEngineVersion(ctx context.Context, rt *runtime.DockerRuntime) er
 }
 
 func (s *controlServer) cleanupRun(ctx context.Context, tr *trackedRun) {
+	if tr.OpenShellSandbox != "" {
+		if s.openshell != nil {
+			logBestEffort("DeleteSandbox", s.openshell.DeleteSandbox(ctx, tr.OpenShellSandbox))
+		}
+		return
+	}
 	rt, err := s.getOrCreateRuntime()
 	if err != nil {
 		return
@@ -1287,10 +1297,10 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 	dep, err := s.deploymentStore.GetDeployment(ctx, depID)
 	if err != nil {
 		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
-			"run_id":          runID,
-			"deployment_id":   string(depID),
-			"fail_reason":     "deployment_not_found",
-			"error":           err.Error(),
+			"run_id":        runID,
+			"deployment_id": string(depID),
+			"fail_reason":   "deployment_not_found",
+			"error":         err.Error(),
 		})
 		s.updateLegacyRunStatus(ctx, runID, "failed")
 		return
@@ -1812,14 +1822,14 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 
 	// Record audit event for durable run start.
 	s.recordAudit("invoke_deployment_start", "daemon", map[string]interface{}{
-		"run_id":          runID,
-		"agent_name":      agentName,
-		"deployment_id":   string(depID),
-		"image_ref":       imageRef,
-		"container_id":    string(containerID),
-		"network":         string(netID),
-		"invocation_id":   string(receipt.InvocationID),
-		"workflow_id":     string(receipt.WorkflowID),
+		"run_id":        runID,
+		"agent_name":    agentName,
+		"deployment_id": string(depID),
+		"image_ref":     imageRef,
+		"container_id":  string(containerID),
+		"network":       string(netID),
+		"invocation_id": string(receipt.InvocationID),
+		"workflow_id":   string(receipt.WorkflowID),
 	})
 
 	// 11. Auto-invoke the agent.
@@ -1938,6 +1948,39 @@ func (s *controlServer) Stop(ctx context.Context, req *controlv1.StopRequest) (*
 	tracked, ok := s.claimRun(runID)
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "run %q not found", runID)
+	}
+	if tracked.OpenShellSandbox != "" {
+		if tracked.CancelInvoke != nil {
+			tracked.CancelInvoke()
+		}
+		if tracked.InvokeDone != nil {
+			select {
+			case <-tracked.InvokeDone:
+			case <-time.After(3 * time.Second):
+				tracked.Status = "failed"
+				if tracked.FailReason == "" {
+					tracked.FailReason = "invoke did not complete within timeout"
+				}
+			}
+		}
+		if s.openshell != nil {
+			logBestEffort("DeleteSandbox", s.openshell.DeleteSandbox(ctx, tracked.OpenShellSandbox))
+		}
+		finalStatus := tracked.Status
+		if req.GetForce() {
+			finalStatus = "cancelled"
+		} else if finalStatus == "running" {
+			finalStatus = "succeeded"
+		}
+		tracked.Status = finalStatus
+		s.finalizeRun(ctx, runID, tracked)
+		s.recordAudit("run_stop", "cli", map[string]interface{}{
+			"run_id":  runID,
+			"runtime": "openshell",
+			"sandbox": tracked.OpenShellSandbox,
+			"status":  finalStatus,
+		})
+		return &controlv1.StopResponse{Acknowledged: true}, nil
 	}
 	containerID := tracked.Container
 

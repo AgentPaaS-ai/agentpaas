@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -467,6 +468,18 @@ func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
 		}
 	}
 	loopbackKeysMu.RUnlock()
+	if os.Getenv("AGENTPAAS_OPENSHELL") == "1" {
+		// OpenShell injects an opaque placeholder into the harness process.
+		// The agent process must not see a secret value, including a minted
+		// loopback key.
+		out = stripOpenShellWorkerSecrets(out)
+		return append(out,
+			"AGENTPAAS_LOOPBACK_PIN=1",
+			"AGENTPAAS_EGRESS_DENY=1",
+			"CREWAI_DISABLE_TELEMETRY=true",
+			"OTEL_SDK_DISABLED=true",
+		)
+	}
 	out = append(out,
 		"OPENAI_API_KEY="+key,
 		"AGENTPAAS_LOOPBACK_PIN=1",
@@ -479,6 +492,26 @@ func workerEnvOpenAI(base []string, rpcAddr, openaiBaseURL string) []string {
 			"OPENAI_BASE_URL="+openaiBaseURL,
 			"OPENAI_API_BASE="+openaiBaseURL,
 		)
+	}
+	return out
+}
+
+func stripOpenShellWorkerSecrets(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, item := range env {
+		name := strings.ToUpper(envName(item))
+		switch {
+		case name == "AGENTPAAS_OS_BROKER_PLACEHOLDER":
+			continue
+		case strings.HasPrefix(name, "AGENTPAAS_OS_CRED_"):
+			continue
+		case strings.Contains(name, "KEY"), strings.Contains(name, "SECRET"),
+			strings.Contains(name, "TOKEN"), strings.Contains(name, "PASSWORD"):
+			continue
+		case strings.Contains(item, "openshell:resolve:"):
+			continue
+		}
+		out = append(out, item)
 	}
 	return out
 }
