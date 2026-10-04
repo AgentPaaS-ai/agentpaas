@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/client"
 )
 
 func TestComputeBuildInputDigestDeterministic(t *testing.T) {
@@ -495,12 +495,12 @@ func requireDocker(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Skipf("Docker client unavailable: %v", err)
 	}
 	defer func() { _ = cli.Close() }()
-	if _, err := cli.Ping(ctx); err != nil {
+	if _, err := cli.Ping(ctx, client.PingOptions{}); err != nil {
 		t.Skipf("Docker daemon unavailable: %v", err)
 	}
 }
@@ -543,7 +543,7 @@ func inspectImage(t *testing.T, tag string) image.InspectResponse {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Fatalf("Docker client unavailable: %v", err)
 	}
@@ -553,7 +553,7 @@ func inspectImage(t *testing.T, tag string) image.InspectResponse {
 		t.Fatalf("ImageInspectWithRaw(%q) error = %v", tag, err)
 	}
 
-	return inspect
+	return inspect.InspectResponse
 }
 
 // TestBuildConfigPlatformField verifies that BuildConfig accepts a Platform

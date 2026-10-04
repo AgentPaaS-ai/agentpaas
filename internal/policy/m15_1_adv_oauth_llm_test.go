@@ -71,15 +71,6 @@ func advWalkYAML(v any, fn func(key string, val any)) {
 	}
 }
 
-func advHasValidationError(errs []ValidationError, substr string) bool {
-	for _, e := range errs {
-		if e.Severity == "error" && strings.Contains(e.Message, substr) {
-			return true
-		}
-	}
-	return false
-}
-
 func advValidationBlob(errs []ValidationError) string {
 	var b strings.Builder
 	for _, e := range errs {

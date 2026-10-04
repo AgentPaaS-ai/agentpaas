@@ -110,7 +110,7 @@ func TestE2E_HostBridgeProbes(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// ---- Get gateway's internal IP for probe tests ----
-	gatewayInfo, err := dr.cli.ContainerInspect(ctx, string(gatewayID))
+	gatewayInfo, err := inspectContainer(ctx, dr.cli, string(gatewayID))
 	if err != nil {
 		t.Fatalf("ContainerInspect(gateway) failed: %v", err)
 	}
@@ -118,15 +118,15 @@ func TestE2E_HostBridgeProbes(t *testing.T) {
 	var gatewayInternalIP string
 	for netName, netSettings := range gatewayInfo.NetworkSettings.Networks {
 		if strings.Contains(netName, "internal") || netName == internalNetName {
-			gatewayInternalIP = netSettings.IPAddress
+			gatewayInternalIP = ipString(netSettings.IPAddress)
 			break
 		}
 	}
 	if gatewayInternalIP == "" {
 		// Fallback: try to find any internal network IP
 		for _, netSettings := range gatewayInfo.NetworkSettings.Networks {
-			if netSettings.IPAddress != "" {
-				gatewayInternalIP = netSettings.IPAddress
+			if netSettings.IPAddress.IsValid() {
+				gatewayInternalIP = ipString(netSettings.IPAddress)
 				break
 			}
 		}
@@ -251,8 +251,8 @@ func TestE2E_HostBridgeProbes(t *testing.T) {
 		// ---- GATEWAY PROBE 2: Gateway container SSH/HTTPS probing blocked ----
 		t.Run("GatewayContainer_SSH_probe_blocked", func(t *testing.T) {
 			ports := []struct {
-				name  string
-				port  string
+				name string
+				port string
 			}{
 				{"SSH", "22"},
 				{"HTTPS", "443"},

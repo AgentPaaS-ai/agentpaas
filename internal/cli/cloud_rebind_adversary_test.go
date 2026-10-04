@@ -36,7 +36,7 @@ func rebindOKServer(t *testing.T, image string, hits *int64, lastPath *string) *
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/rollouts/"):
 			_, _ = w.Write([]byte(`{"result": {"id": "ro-1", "status": "completed"}}`))
 		case r.Method == http.MethodGet:
-			fmt.Fprintf(w, `{"result": {"id": "app", "configuration": {"image": %q, "entrypoint": ["/agentpaas/harness"]}}}`, image)
+			_, _ = fmt.Fprintf(w, `{"result": {"id": "app", "configuration": {"image": %q, "entrypoint": ["/agentpaas/harness"]}}}`, image)
 		default:
 			http.Error(w, "nf", http.StatusNotFound)
 		}
@@ -56,7 +56,7 @@ func TestCloudRebind_Adversary_TokenNotInErrorOutput(t *testing.T) {
 		// Malicious endpoint reflects the bearer token back in the error body.
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprintf(w, `{"success":false,"errors":[{"code":1000,"message":"bad token %s"}]}`, r.Header.Get("Authorization"))
+		_, _ = fmt.Fprintf(w, `{"success":false,"errors":[{"code":1000,"message":"bad token %s"}]}`, r.Header.Get("Authorization"))
 	}))
 	defer func() { server.Close() }()
 	t.Setenv("CF_API_BASE_URL", server.URL)
@@ -184,7 +184,7 @@ func TestCloudRebind_Adversary_ConfirmationNotBypassable(t *testing.T) {
 		"empty stdin (EOF)": "",
 		"blank line":        "\n",
 		"whitespace":        "   \n",
-		"junk":       "sure why not\n",
+		"junk":              "sure why not\n",
 		// NOTE: "Y\n" is accepted because the code lowercases the response
 		// before comparing to "y"/"yes" — confirmed safe, not tested as break.
 	}
@@ -360,7 +360,7 @@ func TestCloudRebind_Adversary_ImageJSONInjection(t *testing.T) {
 		case strings.Contains(r.URL.Path, "/rollouts/"):
 			_, _ = w.Write([]byte(`{"result": {"id": "ro-1", "status": "completed"}}`))
 		default:
-			fmt.Fprintf(w, `{"result": {"id": "app", "configuration": {"image": %q, "entrypoint": ["/agentpaas/harness"]}}}`, evilImage)
+			_, _ = fmt.Fprintf(w, `{"result": {"id": "app", "configuration": {"image": %q, "entrypoint": ["/agentpaas/harness"]}}}`, evilImage)
 		}
 	}))
 	defer func() { server.Close() }()

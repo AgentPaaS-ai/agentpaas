@@ -11,10 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func TestE2E_CapNetAdminDropped_AgentCannotFlushIPTables(t *testing.T) {
@@ -36,33 +35,37 @@ func TestE2E_CapNetAdminDropped_AgentCannotFlushIPTables(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
-		cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		cli, err := client.New(client.FromEnv)
 		if err != nil {
 			return
 		}
 		defer func() { _ = cli.Close() }()
-		_, _ = cli.ImageRemove(cleanupCtx, imageTag, image.RemoveOptions{Force: true})
+		_, _ = cli.ImageRemove(cleanupCtx, imageTag, client.ImageRemoveOptions{Force: true})
 	})
 
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Fatalf("NewClientWithOpts: %v", err)
 	}
 	defer func() { _ = cli.Close() }()
 
 	containerName := fmt.Sprintf("capset-verify-%d", time.Now().UnixNano())
-	createResp, err := cli.ContainerCreate(ctx, &container.Config{
-		Image: imageTag,
-		Env: []string{
-			"AGENTPAAS_EGRESS_FIREWALL=1",
-			"AGENTPAAS_GATEWAY_IP=172.18.0.2",
-			"AGENTPAAS_GATEWAY_SUBNET=172.18.0.0/16",
-			"AGENTPAAS_AGENT_PATH=/dev/null",
+	createResp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Name: containerName,
+		Config: &container.Config{
+			Image: imageTag,
+			Env: []string{
+				"AGENTPAAS_EGRESS_FIREWALL=1",
+				"AGENTPAAS_GATEWAY_IP=172.18.0.2",
+				"AGENTPAAS_GATEWAY_SUBNET=172.18.0.0/16",
+				"AGENTPAAS_AGENT_PATH=/dev/null",
+			},
+			User: "root",
 		},
-		User: "root",
-	}, &container.HostConfig{
-		CapAdd: []string{"NET_ADMIN"},
-	}, nil, nil, containerName)
+		HostConfig: &container.HostConfig{
+			CapAdd: []string{"NET_ADMIN"},
+		},
+	})
 	if err != nil {
 		t.Fatalf("ContainerCreate: %v", err)
 	}
@@ -70,10 +73,10 @@ func TestE2E_CapNetAdminDropped_AgentCannotFlushIPTables(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cleanupCancel()
-		_ = cli.ContainerRemove(cleanupCtx, containerID, container.RemoveOptions{Force: true})
+		_, _ = cli.ContainerRemove(cleanupCtx, containerID, client.ContainerRemoveOptions{Force: true})
 	})
 
-	if err := cli.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
+	if _, err := cli.ContainerStart(ctx, containerID, client.ContainerStartOptions{}); err != nil {
 		t.Fatalf("ContainerStart: %v", err)
 	}
 
@@ -117,7 +120,7 @@ ENTRYPOINT ["/agentpaas-harness"]
 
 func dockerExecAsUser(t *testing.T, cli *client.Client, ctx context.Context, containerID, user string, cmd []string) (stdout, stderr string, exitCode int) {
 	t.Helper()
-	execCreate, err := cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
+	execCreate, err := cli.ExecCreate(ctx, containerID, client.ExecCreateOptions{
 		User:         user,
 		Cmd:          cmd,
 		AttachStdout: true,
@@ -127,7 +130,7 @@ func dockerExecAsUser(t *testing.T, cli *client.Client, ctx context.Context, con
 		t.Fatalf("ContainerExecCreate(%v as %s): %v", cmd, user, err)
 	}
 
-	hijacked, err := cli.ContainerExecAttach(ctx, execCreate.ID, container.ExecAttachOptions{})
+	hijacked, err := cli.ExecAttach(ctx, execCreate.ID, client.ExecAttachOptions{})
 	if err != nil {
 		t.Fatalf("ContainerExecAttach: %v", err)
 	}
@@ -138,7 +141,7 @@ func dockerExecAsUser(t *testing.T, cli *client.Client, ctx context.Context, con
 		t.Fatalf("stdcopy: %v", err)
 	}
 
-	inspect, err := cli.ContainerExecInspect(ctx, execCreate.ID)
+	inspect, err := cli.ExecInspect(ctx, execCreate.ID, client.ExecInspectOptions{})
 	if err != nil {
 		t.Fatalf("ContainerExecInspect: %v", err)
 	}

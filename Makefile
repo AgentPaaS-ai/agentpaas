@@ -1,4 +1,4 @@
-.PHONY: build build-harness-linux build-harness-linux-amd64 build-all test test-plugin soak-test proto lint race osv install-plugin clean fmt vet
+.PHONY: build build-harness-linux build-harness-linux-amd64 build-all test test-plugin soak-test proto lint race osv install-plugin clean fmt vet verify
 
 # LDFLAGS_VERSION stamps the dev version into all binaries when building without
 # a release tag. goreleaser overrides these at tag time with the actual version.
@@ -59,6 +59,15 @@ fmt:
 
 vet:
 	go vet ./...
+
+# Release gate. A missing govulncheck binary fails this target; it is not skipped.
+# GOPATH/bin is on PATH the same way CI resolves Go-installed tools.
+verify:
+	go vet ./...
+	golangci-lint run --timeout 5m
+	go test ./...
+	$(MAKE) build
+	PATH="$(PATH):$(shell go env GOPATH)/bin" govulncheck ./...
 
 clean:
 	rm -rf bin/

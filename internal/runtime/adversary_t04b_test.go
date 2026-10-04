@@ -277,7 +277,7 @@ func TestAdversaryB5T04b_GatewayPortProbeAggressive(t *testing.T) {
 	t.Logf("Gateway networks: %+v", gatewayNets)
 
 	// Get gateway IP using docker inspect
-	gatewayInfo, err := dr.cli.ContainerInspect(ctx, string(gatewayID))
+	gatewayInfo, err := inspectContainer(ctx, dr.cli, string(gatewayID))
 	if err != nil {
 		t.Fatalf("ContainerInspect(gateway) failed: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestAdversaryB5T04b_GatewayPortProbeAggressive(t *testing.T) {
 	var gatewayIP string
 	for netName, netSettings := range gatewayInfo.NetworkSettings.Networks {
 		if strings.Contains(netName, "internal") {
-			gatewayIP = netSettings.IPAddress
+			gatewayIP = ipString(netSettings.IPAddress)
 			break
 		}
 	}

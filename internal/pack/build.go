@@ -19,7 +19,8 @@ import (
 	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
-	"github.com/docker/docker/api/types/build"
+	"github.com/moby/moby/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 const (
@@ -146,7 +147,7 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 	}
 	defer func() { _ = cli.Close() }() // best-effort close
 
-	opts := build.ImageBuildOptions{
+	opts := client.ImageBuildOptions{
 		Tags:       []string{cfg.ImageTag},
 		Remove:     true,
 		NoCache:    true,
@@ -161,7 +162,18 @@ func BuildImage(ctx context.Context, cfg BuildConfig) (*BuildResult, error) {
 		},
 	}
 	if cfg.Platform != "" {
-		opts.Platform = cfg.Platform
+		parts := strings.Split(cfg.Platform, "/")
+		p := ocispec.Platform{}
+		if len(parts) > 0 {
+			p.OS = parts[0]
+		}
+		if len(parts) > 1 {
+			p.Architecture = parts[1]
+		}
+		if len(parts) > 2 {
+			p.Variant = parts[2]
+		}
+		opts.Platforms = []ocispec.Platform{p}
 	}
 	buildResp, err := cli.ImageBuild(ctx, buildCtx, opts)
 	if err != nil {

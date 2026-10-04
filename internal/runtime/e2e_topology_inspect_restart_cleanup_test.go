@@ -224,7 +224,7 @@ func runTopologyInspections(t *testing.T, ctx context.Context, dr *DockerRuntime
 
 	// ---- INSPECT 3: Agent is NOT in host networking mode ----
 	t.Run("Inspect_AgentNoHostNetworking", func(t *testing.T) {
-		agentInfo, err := dr.cli.ContainerInspect(ctx, string(agentID))
+		agentInfo, err := inspectContainer(ctx, dr.cli, string(agentID))
 		if err != nil {
 			t.Fatalf("ContainerInspect(agent) failed: %v", err)
 		}
@@ -241,7 +241,7 @@ func runTopologyInspections(t *testing.T, ctx context.Context, dr *DockerRuntime
 
 	// ---- INSPECT 4: Agent does NOT share gateway namespace ----
 	t.Run("Inspect_AgentNoSharedNetNS", func(t *testing.T) {
-		agentInfo, err := dr.cli.ContainerInspect(ctx, string(agentID))
+		agentInfo, err := inspectContainer(ctx, dr.cli, string(agentID))
 		if err != nil {
 			t.Fatalf("ContainerInspect(agent) failed: %v", err)
 		}
@@ -442,7 +442,7 @@ func TestE2E_PartialCreateCleanup(t *testing.T) {
 		t.Log("Internal network removed")
 
 		// Verify no orphans remain
-		_, err = dr.cli.ContainerInspect(ctx, string(agentID))
+		_, err = inspectContainer(ctx, dr.cli, string(agentID))
 		if err == nil {
 			t.Error("Agent container still exists after removal — orphan detected")
 		} else {
@@ -511,7 +511,7 @@ func TestE2E_PartialCreateCleanup(t *testing.T) {
 		}
 
 		// Verify no orphans
-		_, err = dr.cli.ContainerInspect(ctx, string(gatewayID))
+		_, err = inspectContainer(ctx, dr.cli, string(gatewayID))
 		if err == nil {
 			t.Error("Gateway container still exists after removal — orphan detected")
 		} else {
@@ -605,7 +605,7 @@ func TestE2E_PartialCreateCleanup(t *testing.T) {
 
 		// Verify no orphans
 		for _, id := range []ContainerID{agentID, gatewayID} {
-			_, err := dr.cli.ContainerInspect(ctx, string(id))
+			_, err := inspectContainer(ctx, dr.cli, string(id))
 			if err == nil {
 				t.Errorf("Container %s still exists after removal — orphan detected", id)
 			}

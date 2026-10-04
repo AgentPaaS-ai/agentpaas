@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/client"
 )
 
 // newEnsureImageRuntime creates a DockerRuntime backed by a test server.
@@ -17,13 +17,12 @@ func newEnsureImageRuntime(t *testing.T, handler http.HandlerFunc) *DockerRuntim
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	cli, err := client.NewClientWithOpts(
+	cli, err := client.New(
 		client.WithHost(srv.URL),
 		client.WithHTTPClient(srv.Client()),
-		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
-		t.Fatalf("client.NewClientWithOpts() error = %v", err)
+		t.Fatalf("client.New() error = %v", err)
 	}
 	t.Cleanup(func() { _ = cli.Close() })
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -11,12 +12,9 @@ import (
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 const (
@@ -88,28 +86,28 @@ func CleanupLocalRegistry(ctx context.Context) error {
 	}
 	defer func() { _ = cli.Close() }() // best-effort close
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filters.NewArgs(filters.Arg("name", localRegistryName)),
+		Filters: make(client.Filters).Add("name", localRegistryName),
 	})
 	if err != nil {
 		return fmt.Errorf("list registry container: %w", err)
 	}
-	if len(containers) == 0 {
+	if len(containers.Items) == 0 {
 		return nil
 	}
 
-	id := containers[0].ID
+	id := containers.Items[0].ID
 	stopTimeoutSec := 10
 	stopCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	if err := cli.ContainerStop(stopCtx, id, container.StopOptions{Timeout: &stopTimeoutSec}); err != nil {
+	if _, err := cli.ContainerStop(stopCtx, id, client.ContainerStopOptions{Timeout: &stopTimeoutSec}); err != nil {
 		if !errdefs.IsNotFound(err) {
 			return fmt.Errorf("stop registry container: %w", err)
 		}
 	}
 
-	if err := cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true}); err != nil {
+	if _, err := cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true}); err != nil {
 		if errdefs.IsNotFound(err) {
 			return nil
 		}
@@ -134,11 +132,11 @@ func PushImageToLocalRegistry(ctx context.Context, sourceTag, agentName, agentVe
 	}
 	defer func() { _ = cli.Close() }() // best-effort close
 
-	if err := cli.ImageTag(ctx, sourceTag, targetTag); err != nil {
+	if _, err := cli.ImageTag(ctx, client.ImageTagOptions{Source: sourceTag, Target: targetTag}); err != nil {
 		return "", fmt.Errorf("tag image %q as %q: %w", sourceTag, targetTag, err)
 	}
 
-	pushReader, err := cli.ImagePush(ctx, targetTag, image.PushOptions{})
+	pushReader, err := cli.ImagePush(ctx, targetTag, client.ImagePushOptions{})
 	if err != nil {
 		return "", fmt.Errorf("push image %q: %w", targetTag, err)
 	}
@@ -160,19 +158,19 @@ func PushImageToLocalRegistry(ctx context.Context, sourceTag, agentName, agentVe
 }
 
 func ensureRegistryContainer(ctx context.Context, cli *client.Client) error {
-	containers, err := cli.ContainerList(ctx, container.ListOptions{
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filters.NewArgs(filters.Arg("name", localRegistryName)),
+		Filters: make(client.Filters).Add("name", localRegistryName),
 	})
 	if err != nil {
 		return fmt.Errorf("list registry container: %w", err)
 	}
 
-	if len(containers) > 0 {
-		if containers[0].State == "running" {
+	if len(containers.Items) > 0 {
+		if containers.Items[0].State == "running" {
 			return nil
 		}
-		if err := cli.ContainerStart(ctx, containers[0].ID, container.StartOptions{}); err != nil {
+		if _, err := cli.ContainerStart(ctx, containers.Items[0].ID, client.ContainerStartOptions{}); err != nil {
 			return fmt.Errorf("start registry container: %w", err)
 		}
 		return nil
@@ -182,7 +180,7 @@ func ensureRegistryContainer(ctx context.Context, cli *client.Client) error {
 }
 
 func createRegistryContainer(ctx context.Context, cli *client.Client) error {
-	reader, err := cli.ImagePull(ctx, localRegistryImage, image.PullOptions{})
+	reader, err := cli.ImagePull(ctx, localRegistryImage, client.ImagePullOptions{})
 	if err == nil {
 		defer func() { _ = reader.Close() }() // best-effort close
 		if _, drainErr := io.Copy(io.Discard, reader); drainErr != nil {
@@ -190,23 +188,29 @@ func createRegistryContainer(ctx context.Context, cli *client.Client) error {
 		}
 	}
 
-	port := nat.Port("5000/tcp")
-	resp, err := cli.ContainerCreate(ctx,
-		&container.Config{
+	port, err := network.ParsePort("5000/tcp")
+	if err != nil {
+		return fmt.Errorf("parse registry port: %w", err)
+	}
+	hostIP, err := netip.ParseAddr("127.0.0.1")
+	if err != nil {
+		return fmt.Errorf("parse registry host IP: %w", err)
+	}
+	resp, err := cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Name: localRegistryName,
+		Config: &container.Config{
 			Image: localRegistryImage,
-			ExposedPorts: nat.PortSet{
+			ExposedPorts: network.PortSet{
 				port: struct{}{},
 			},
 		},
-		&container.HostConfig{
-			PortBindings: nat.PortMap{
-				port: {{HostIP: "127.0.0.1", HostPort: strconv.Itoa(localRegistryPort)}},
+		HostConfig: &container.HostConfig{
+			PortBindings: network.PortMap{
+				port: {{HostIP: hostIP, HostPort: strconv.Itoa(localRegistryPort)}},
 			},
 		},
-		&network.NetworkingConfig{},
-		nil,
-		localRegistryName,
-	)
+		NetworkingConfig: &network.NetworkingConfig{},
+	})
 	if err != nil {
 		if isPortBindConflict(err) {
 			return fmt.Errorf(
@@ -217,9 +221,9 @@ func createRegistryContainer(ctx context.Context, cli *client.Client) error {
 		return fmt.Errorf("create registry container: %w", err)
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if _, err := cli.ContainerStart(ctx, resp.ID, client.ContainerStartOptions{}); err != nil {
 		if isPortBindConflict(err) {
-			_ = cli.ContainerRemove(ctx, resp.ID, container.RemoveOptions{Force: true}) // best-effort cleanup
+			_, _ = cli.ContainerRemove(ctx, resp.ID, client.ContainerRemoveOptions{Force: true}) // best-effort cleanup
 			return fmt.Errorf(
 				"registry port %d is already in use; set AGENTPAAS_TEST_REGISTRY_PORT to choose another port: %w",
 				localRegistryPort, err,

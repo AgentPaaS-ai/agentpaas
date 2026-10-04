@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 )
 
 // defaultSocket returns the platform-default Docker daemon socket path.
@@ -133,10 +133,11 @@ func ResolvedDockerHost() (string, error) {
 	return host, nil
 }
 
-// New returns a Docker client configured with the resolved endpoint, plus
-// API version negotiation. TLS settings are applied when the resolved host
-// uses TLS (tcp:// with certs configured in the context). It is safe to
-// call from both the CLI process and the daemon subprocess.
+// New returns a Docker client configured with the resolved endpoint.
+// API version negotiation is the client default. TLS settings are applied
+// when the resolved host uses TLS (tcp:// with certs configured in the
+// context). It is safe to call from both the CLI process and the daemon
+// subprocess.
 func New() (*client.Client, error) {
 	host, _, err := resolveHost() // best-effort host resolve
 	if err != nil {
@@ -144,7 +145,6 @@ func New() (*client.Client, error) {
 	}
 	opts := []client.Opt{
 		client.WithHost(host),
-		client.WithAPIVersionNegotiation(),
 	}
 
 	// If host is a tcp:// endpoint with TLS, honor DOCKER_TLS_VERIFY and the
@@ -165,7 +165,7 @@ func New() (*client.Client, error) {
 		}
 	}
 
-	cli, err := client.NewClientWithOpts(opts...)
+	cli, err := client.New(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create Docker client (host=%s): %w", host, err)
 	}

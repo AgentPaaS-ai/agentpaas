@@ -32,7 +32,7 @@ func TestHardening_NonRootUser(t *testing.T) {
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
 	// Inspect and verify User field
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestHardening_ReadOnlyRootfs(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestHardening_TmpfsOnTmp(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestHardening_CapDropAll(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestHardening_NoNewPrivileges(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestHardening_DefaultSeccomp(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestHardening_PidsLimit(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestHardening_IPv6Disabled(t *testing.T) {
 	}
 	defer func() { _ = dr.Stop(ctx, cid, nil) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -332,14 +332,14 @@ func TestHardening_MemoryAndCPULimits(t *testing.T) {
 		NetworkIDs:       []string{},
 		Labels:           Labels(ResourceTypeAgent, runID),
 		MemoryLimitBytes: 134217728, // 128 MB
-		NanoCPUs:         500000000,  // 0.5 CPU
+		NanoCPUs:         500000000, // 0.5 CPU
 	})
 	if err != nil {
 		t.Fatalf("Create() failed: %v", err)
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestHardening_AllFlagsApplied(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}

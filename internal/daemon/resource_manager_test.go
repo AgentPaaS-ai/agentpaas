@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/AgentPaaS-ai/agentpaas/internal/dashboard"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+	"github.com/moby/moby/client"
 )
 
 func requireDocker(t *testing.T) {
@@ -20,12 +20,12 @@ func requireDocker(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		t.Skipf("Docker client unavailable: %v", err)
 	}
 	defer func() { _ = cli.Close() }()
-	if _, err := cli.Ping(ctx); err != nil {
+	if _, err := cli.Ping(ctx, client.PingOptions{}); err != nil {
 		t.Skipf("Docker daemon unavailable: %v", err)
 	}
 }

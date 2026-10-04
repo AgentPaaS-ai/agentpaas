@@ -49,7 +49,7 @@ func runStub() int {
 		}
 		_ = os.WriteFile(p, []byte(b.String()), 0o600)
 	}
-	fmt.Fprint(os.Stdout, os.Getenv("AGENTPAAS_MCP_STUB_STDOUT"))
+	_, _ = fmt.Fprint(os.Stdout, os.Getenv("AGENTPAAS_MCP_STUB_STDOUT"))
 	code, _ := strconv.Atoi(os.Getenv("AGENTPAAS_MCP_STUB_EXIT"))
 	return code
 }

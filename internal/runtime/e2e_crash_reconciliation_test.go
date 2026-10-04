@@ -273,7 +273,7 @@ func TestE2E_SecretFreeDebugOutput(t *testing.T) {
 
 	// ---- TEST 1: Docker inspect output must have no raw secrets ----
 	t.Run("DockerInspect_NoRawSecrets", func(t *testing.T) {
-		_, rawBody, err := dr.cli.ContainerInspectWithRaw(ctx, string(containerID), false)
+		rawBody, err := inspectContainerRaw(ctx, dr.cli, string(containerID))
 		if err != nil {
 			t.Fatalf("ContainerInspectWithRaw failed: %v", err)
 		}

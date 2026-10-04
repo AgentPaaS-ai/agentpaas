@@ -34,7 +34,7 @@ func TestAdversaryB5T03_UserOverrideToRoot(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestAdversaryB5T03_NoCapDropOnEmptySpec(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -154,7 +154,7 @@ func TestAdversaryB5T03_ReadOnlyRootfsBypass(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestAdversaryB5T03_NoNewPrivilegesNotBypassable(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestAdversaryB5T03_PidsLimitBypass(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -295,7 +295,7 @@ func TestAdversaryB5T03_IPv6EnabledViaSysctl(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestAdversaryB5T03_UnlimitedMemory(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}

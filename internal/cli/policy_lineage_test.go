@@ -44,7 +44,7 @@ func TestPolicyLineageFourSectionsOrder(t *testing.T) {
 	iP := sectionIndex(t, stdout, "POLICY")
 	iE := sectionIndex(t, stdout, "ENFORCEMENT")
 	iR := sectionIndex(t, stdout, "PROOF")
-	if !(iL < iP && iP < iE && iE < iR) {
+	if iL >= iP || iP >= iE || iE >= iR {
 		t.Fatalf("section order want LINEAGE < POLICY < ENFORCEMENT < PROOF, got %d %d %d %d\n%s", iL, iP, iE, iR, stdout)
 	}
 }

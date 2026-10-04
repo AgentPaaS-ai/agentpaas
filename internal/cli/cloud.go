@@ -1436,11 +1436,7 @@ func runCloudRegistryGet(cmd *cobra.Command, idOrName string, inspect bool) erro
 		return err
 	}
 	if jsonOutput(cmd) {
-		payload := any(card.Raw)
-		if payload == nil {
-			payload = card
-		}
-		return printTextOrJSON(true, payload, nil)
+		return printTextOrJSON(true, card.Raw, nil)
 	}
 	out := cmd.OutOrStdout()
 	_, _ = fmt.Fprintf(out, "%s  %s  %s\n", card.Kind, card.Name, card.Version)

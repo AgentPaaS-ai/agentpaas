@@ -317,7 +317,7 @@ func TestAdversaryB5T04c_ICMPCovertChannel(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Get gateway IP on internal network
-	gatewayInfo, err := dr.cli.ContainerInspect(ctx, string(gatewayID))
+	gatewayInfo, err := inspectContainer(ctx, dr.cli, string(gatewayID))
 	if err != nil {
 		t.Fatalf("ContainerInspect(gateway) failed: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestAdversaryB5T04c_ICMPCovertChannel(t *testing.T) {
 	var gwIP string
 	for netName, netSettings := range gatewayInfo.NetworkSettings.Networks {
 		if strings.Contains(netName, "internal") {
-			gwIP = netSettings.IPAddress
+			gwIP = ipString(netSettings.IPAddress)
 			break
 		}
 	}
@@ -526,7 +526,7 @@ func TestAdversaryB5T04c_CONNECTTunnelBypass(t *testing.T) {
 				`printf '\x05\x01\x00' | nc -w 2 1.1.1.1 1080 || true`},
 		},
 		{
-			name: "wget_via_proxy",
+			name:    "wget_via_proxy",
 			command: []string{"wget", "-q", "-O", "/dev/null", "--timeout=3", "-Y", "on", "http://example.com"},
 		},
 	}
@@ -602,7 +602,7 @@ func TestAdversaryB5T04c_NamespaceSharing(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Verify the agent container's NetworkMode is NOT "container:<id>"
-	agentInfo, err := dr.cli.ContainerInspect(ctx, string(agentID))
+	agentInfo, err := inspectContainer(ctx, dr.cli, string(agentID))
 	if err != nil {
 		t.Fatalf("ContainerInspect(agent) failed: %v", err)
 	}

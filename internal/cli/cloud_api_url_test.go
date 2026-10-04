@@ -37,7 +37,9 @@ func TestValidateCloudAPIURL(t *testing.T) {
 func TestResolveAPIURL_Order(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("AGENTPAAS_HOME", homeDir)
-	os.Unsetenv("AGENTPAAS_CLOUD_API_URL")
+	if err := os.Unsetenv("AGENTPAAS_CLOUD_API_URL"); err != nil {
+		t.Fatal(err)
+	}
 
 	if got := resolveAPIURL(); got != cloudclient.DefaultCloudAPIURL {
 		t.Fatalf("default: got %q want %q", got, cloudclient.DefaultCloudAPIURL)
@@ -56,7 +58,9 @@ func TestResolveAPIURL_Order(t *testing.T) {
 		t.Fatalf("env wins: got %q", got)
 	}
 
-	os.Unsetenv("AGENTPAAS_CLOUD_API_URL")
+	if err := os.Unsetenv("AGENTPAAS_CLOUD_API_URL"); err != nil {
+		t.Fatal(err)
+	}
 	clearPersistedCloudAPIURL()
 	if got := resolveAPIURL(); got != cloudclient.DefaultCloudAPIURL {
 		t.Fatalf("cleared: got %q want default", got)

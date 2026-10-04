@@ -26,18 +26,20 @@ func (s *Server) handleAguiProxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"agui_loopback_invalid"}`, http.StatusBadGateway)
 		return
 	}
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	proxy.FlushInterval = 50 * time.Millisecond
-	orig := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		orig(req)
-		suffix := strings.TrimPrefix(req.URL.Path, "/agui")
-		if suffix == "" {
-			suffix = "/"
-		}
-		req.URL.Path = suffix
-		req.URL.RawPath = ""
-		req.Host = target.Host
+	proxy := &httputil.ReverseProxy{
+		FlushInterval: 50 * time.Millisecond,
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			suffix := strings.TrimPrefix(pr.Out.URL.Path, "/agui")
+			if suffix == "" {
+				suffix = "/"
+			}
+			pr.Out.URL.Path = suffix
+			pr.Out.URL.RawPath = ""
+			// Match the previous Director, which set Host to the loopback target.
+			pr.Out.Host = target.Host
+			pr.SetXForwarded()
+		},
 	}
 	proxy.ServeHTTP(w, r)
 }

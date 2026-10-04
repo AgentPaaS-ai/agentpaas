@@ -120,7 +120,7 @@ func TestE2E_ProtocolBypassProbes(t *testing.T) {
 
 	// ---- DOCKER INSPECT PROBE 1: No host networking mode ----
 	t.Run("Inspect_NoHostNetworkMode", func(t *testing.T) {
-		agentInfo, err := dr.cli.ContainerInspect(ctx, string(agentID))
+		agentInfo, err := inspectContainer(ctx, dr.cli, string(agentID))
 		if err != nil {
 			t.Fatalf("ContainerInspect(agent) failed: %v", err)
 		}
@@ -138,7 +138,7 @@ func TestE2E_ProtocolBypassProbes(t *testing.T) {
 
 	// ---- DOCKER INSPECT PROBE 2: No shared network namespace ----
 	t.Run("Inspect_NoSharedNetNS", func(t *testing.T) {
-		agentInfo, err := dr.cli.ContainerInspect(ctx, string(agentID))
+		agentInfo, err := inspectContainer(ctx, dr.cli, string(agentID))
 		if err != nil {
 			t.Fatalf("ContainerInspect(agent) failed: %v", err)
 		}
@@ -320,12 +320,12 @@ func TestE2E_ProtocolBypassProbes(t *testing.T) {
 	// ---- PROTOCOL PROBE 9: ICMP to gateway internal IP succeeds (positive) ----
 	if true {
 		// Get gateway IP on internal network to verify ICMP works on internal
-		gatewayInfo, err := dr.cli.ContainerInspect(ctx, string(gatewayID))
+		gatewayInfo, err := inspectContainer(ctx, dr.cli, string(gatewayID))
 		if err == nil {
 			var gwIP string
 			for netName, netSettings := range gatewayInfo.NetworkSettings.Networks {
 				if strings.Contains(netName, "internal") || netName == internalNetName {
-					gwIP = netSettings.IPAddress
+					gwIP = ipString(netSettings.IPAddress)
 					break
 				}
 			}

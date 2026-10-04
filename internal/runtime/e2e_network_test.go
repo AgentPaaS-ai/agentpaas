@@ -259,13 +259,13 @@ func TestE2E_Network_PositivePath(t *testing.T) {
 
 		// Find the gateway's IP on the internal network
 		var gatewayInternalIP string
-		gatewayInfo, err := dr.cli.ContainerInspect(ctx, string(gatewayID))
+		gatewayInfo, err := inspectContainer(ctx, dr.cli, string(gatewayID))
 		if err != nil {
 			t.Fatalf("ContainerInspect(gateway) failed: %v", err)
 		}
 		for netName, netSettings := range gatewayInfo.NetworkSettings.Networks {
 			if strings.Contains(netName, "internal") || netName == internalNetName {
-				gatewayInternalIP = netSettings.IPAddress
+				gatewayInternalIP = ipString(netSettings.IPAddress)
 				break
 			}
 		}
@@ -275,10 +275,10 @@ func TestE2E_Network_PositivePath(t *testing.T) {
 				netDetail, err := dr.InspectNetwork(ctx, NetworkID(netInfo.ID))
 				if err == nil && netDetail.Internal {
 					// We need the gateway's IP on this network
-					gatewayInfo, err := dr.cli.ContainerInspect(ctx, string(gatewayID))
+					gatewayInfo, err := inspectContainer(ctx, dr.cli, string(gatewayID))
 					if err == nil {
 						if ns, ok := gatewayInfo.NetworkSettings.Networks[netDetail.Name]; ok {
-							gatewayInternalIP = ns.IPAddress
+							gatewayInternalIP = ipString(ns.IPAddress)
 						}
 					}
 				}

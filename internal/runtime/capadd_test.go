@@ -30,7 +30,7 @@ func TestContainerSpec_CapAdd_NET_ADMIN(t *testing.T) {
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
 
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect: %v", err)
 	}

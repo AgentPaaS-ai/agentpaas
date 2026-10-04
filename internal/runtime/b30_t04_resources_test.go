@@ -29,7 +29,7 @@ func TestB30T04_PidsLimitDefault(t *testing.T) {
 		t.Fatalf("Create() failed: %v", err)
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestB30T04_PidsLimitPolicyOverride(t *testing.T) {
 		t.Fatalf("Create() failed: %v", err)
 	}
 	defer func() { _ = dr.Remove(ctx, cid, true) }()
-	info, err := dr.cli.ContainerInspect(ctx, string(cid))
+	info, err := inspectContainer(ctx, dr.cli, string(cid))
 	if err != nil {
 		t.Fatalf("ContainerInspect failed: %v", err)
 	}

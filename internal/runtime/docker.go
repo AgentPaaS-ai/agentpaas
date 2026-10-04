@@ -12,12 +12,10 @@ import (
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
 	"github.com/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	"github.com/moby/moby/client"
 )
 
 // defaultImage is the default container image used for agent and gateway
@@ -48,7 +46,7 @@ func NewDockerRuntime() (*DockerRuntime, error) {
 	// regardless so the caller can decide how to handle an unreachable daemon.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _ = cli.Ping(ctx) // optional value; zero on miss
+	_, _ = cli.Ping(ctx, client.PingOptions{}) // optional value; zero on miss
 
 	return &DockerRuntime{cli: cli}, nil
 }
@@ -61,11 +59,11 @@ func (d *DockerRuntime) ServerVersion(ctx context.Context) (string, error) {
 	if d.cli == nil {
 		return "", ErrDockerNotInitialized
 	}
-	info, err := d.cli.Info(ctx)
+	info, err := d.cli.Info(ctx, client.InfoOptions{})
 	if err != nil {
 		return "", fmt.Errorf("get Docker server info: %w", err)
 	}
-	return info.ServerVersion, nil
+	return info.Info.ServerVersion, nil
 }
 
 // ensureImage ensures the required image is available locally. For registry
@@ -77,13 +75,13 @@ func (d *DockerRuntime) ensureImage(ctx context.Context, imageRef string) error 
 	if strings.HasPrefix(imageRef, "sha256:") {
 		// Bare digest ref: check local Docker image store by ID.
 		// Never pull — installed agent images are local-only.
-		images, err := d.cli.ImageList(ctx, image.ListOptions{
+		images, err := d.cli.ImageList(ctx, client.ImageListOptions{
 			All: true,
 		})
 		if err != nil {
 			return fmt.Errorf("list images: %w", err)
 		}
-		for _, img := range images {
+		for _, img := range images.Items {
 			if img.ID == imageRef || img.ID == strings.TrimPrefix(imageRef, "sha256:") {
 				return nil // found locally
 			}
@@ -91,18 +89,18 @@ func (d *DockerRuntime) ensureImage(ctx context.Context, imageRef string) error 
 		return fmt.Errorf("local image %s not found in Docker store — agent may need reinstallation", imageRef)
 	}
 
-	summary, err := d.cli.ImageList(ctx, image.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("reference", imageRef)),
+	summary, err := d.cli.ImageList(ctx, client.ImageListOptions{
+		Filters: make(client.Filters).Add("reference", imageRef),
 	})
 	if err != nil {
 		return fmt.Errorf("list images: %w", err)
 	}
-	if len(summary) > 0 {
+	if len(summary.Items) > 0 {
 		return nil // already present
 	}
 
 	// Pull the image
-	reader, err := d.cli.ImagePull(ctx, imageRef, image.PullOptions{})
+	reader, err := d.cli.ImagePull(ctx, imageRef, client.ImagePullOptions{})
 	if err != nil {
 		return fmt.Errorf("pull image %q: %w", imageRef, err)
 	}
@@ -218,14 +216,18 @@ func (d *DockerRuntime) Create(ctx context.Context, spec ContainerSpec) (Contain
 		}
 	}
 
-	resp, err := d.cli.ContainerCreate(ctx, config, hostConfig, networkingConfig, nil, "")
+	resp, err := d.cli.ContainerCreate(ctx, client.ContainerCreateOptions{
+		Config:           config,
+		HostConfig:       hostConfig,
+		NetworkingConfig: networkingConfig,
+	})
 	if err != nil {
 		return "", fmt.Errorf("create container: %w", err)
 	}
 
 	// Connect additional networks for dual-homing
 	for _, netID := range additionalNetIDs {
-		if err := d.cli.NetworkConnect(ctx, netID, resp.ID, nil); err != nil {
+		if _, err := d.cli.NetworkConnect(ctx, netID, client.NetworkConnectOptions{Container: resp.ID}); err != nil {
 			_ = d.Remove(ctx, ContainerID(resp.ID), true) // best-effort cleanup
 			return "", fmt.Errorf("connect network %q: %w", netID, err)
 		}
@@ -245,7 +247,7 @@ func (d *DockerRuntime) Start(ctx context.Context, id ContainerID) error {
 	if d.cli == nil {
 		return ErrDockerNotInitialized
 	}
-	if err := d.cli.ContainerStart(ctx, string(id), container.StartOptions{}); err != nil {
+	if _, err := d.cli.ContainerStart(ctx, string(id), client.ContainerStartOptions{}); err != nil {
 		if errdefs.IsNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
@@ -266,12 +268,12 @@ func (d *DockerRuntime) Stop(ctx context.Context, id ContainerID, timeout *time.
 	if d.cli == nil {
 		return ErrDockerNotInitialized
 	}
-	stopOpts := container.StopOptions{}
+	stopOpts := client.ContainerStopOptions{}
 	if timeout != nil {
 		secs := int((*timeout).Seconds())
 		stopOpts.Timeout = &secs
 	}
-	if err := d.cli.ContainerStop(ctx, string(id), stopOpts); err != nil {
+	if _, err := d.cli.ContainerStop(ctx, string(id), stopOpts); err != nil {
 		if errdefs.IsNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
@@ -292,10 +294,10 @@ func (d *DockerRuntime) Remove(ctx context.Context, id ContainerID, force bool) 
 	if d.cli == nil {
 		return ErrDockerNotInitialized
 	}
-	removeOpts := container.RemoveOptions{
+	removeOpts := client.ContainerRemoveOptions{
 		Force: force,
 	}
-	if err := d.cli.ContainerRemove(ctx, string(id), removeOpts); err != nil {
+	if _, err := d.cli.ContainerRemove(ctx, string(id), removeOpts); err != nil {
 		if errdefs.IsNotFound(err) {
 			return fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
@@ -312,14 +314,14 @@ func (d *DockerRuntime) Status(ctx context.Context, id ContainerID) (ContainerSt
 	if d.cli == nil {
 		return ContainerStatusUnknown, ErrDockerNotInitialized
 	}
-	json, err := d.cli.ContainerInspect(ctx, string(id))
+	inspected, err := d.cli.ContainerInspect(ctx, string(id), client.ContainerInspectOptions{})
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return ContainerStatusRemoved, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
 		}
 		return ContainerStatusUnknown, fmt.Errorf("inspect container %q: %w", string(id), err)
 	}
-	switch json.State.Status {
+	switch inspected.Container.State.Status {
 	case "running":
 		return ContainerStatusRunning, nil
 	case "paused":
@@ -416,7 +418,7 @@ func (d *DockerRuntime) Stats(ctx context.Context, id ContainerID) (ContainerSta
 		return ContainerStats{}, ErrDockerNotInitialized
 	}
 
-	statsResp, err := d.cli.ContainerStats(ctx, string(id), false)
+	statsResp, err := d.cli.ContainerStats(ctx, string(id), client.ContainerStatsOptions{IncludePreviousSample: true})
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return ContainerStats{}, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
@@ -451,7 +453,7 @@ func (d *DockerRuntime) Logs(ctx context.Context, id ContainerID, opts LogOption
 	if opts.Tail <= 0 {
 		tail = "all"
 	}
-	logOpts := container.LogsOptions{
+	logOpts := client.ContainerLogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     opts.Follow,
@@ -494,7 +496,7 @@ func (d *DockerRuntime) Exec(ctx context.Context, id ContainerID, cmd []string) 
 		return "", "", -1, ErrDockerNotInitializedShort
 	}
 
-	execCreate, err := d.cli.ContainerExecCreate(ctx, string(id), container.ExecOptions{
+	execCreate, err := d.cli.ExecCreate(ctx, string(id), client.ExecCreateOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -503,7 +505,7 @@ func (d *DockerRuntime) Exec(ctx context.Context, id ContainerID, cmd []string) 
 		return "", "", -1, fmt.Errorf("exec create: %w", err)
 	}
 
-	hijacked, err := d.cli.ContainerExecAttach(ctx, execCreate.ID, container.ExecAttachOptions{})
+	hijacked, err := d.cli.ExecAttach(ctx, execCreate.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return "", "", -1, fmt.Errorf("exec attach: %w", err)
 	}
@@ -514,7 +516,7 @@ func (d *DockerRuntime) Exec(ctx context.Context, id ContainerID, cmd []string) 
 		return "", "", -1, fmt.Errorf("exec demux: %w", err)
 	}
 
-	inspect, err := d.cli.ContainerExecInspect(ctx, execCreate.ID)
+	inspect, err := d.cli.ExecInspect(ctx, execCreate.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return stdoutBuf.String(), stderrBuf.String(), -1, fmt.Errorf("exec inspect: %w", err)
 	}
@@ -536,7 +538,7 @@ func (d *DockerRuntime) ExecWithStdin(ctx context.Context, id ContainerID, cmd [
 		return "", "", -1, ErrDockerNotInitializedShort
 	}
 
-	execCreate, err := d.cli.ContainerExecCreate(ctx, string(id), container.ExecOptions{
+	execCreate, err := d.cli.ExecCreate(ctx, string(id), client.ExecCreateOptions{
 		Cmd:          cmd,
 		AttachStdout: true,
 		AttachStderr: true,
@@ -546,7 +548,7 @@ func (d *DockerRuntime) ExecWithStdin(ctx context.Context, id ContainerID, cmd [
 		return "", "", -1, fmt.Errorf("exec create: %w", err)
 	}
 
-	hijacked, err := d.cli.ContainerExecAttach(ctx, execCreate.ID, container.ExecAttachOptions{})
+	hijacked, err := d.cli.ExecAttach(ctx, execCreate.ID, client.ExecAttachOptions{})
 	if err != nil {
 		return "", "", -1, fmt.Errorf("exec attach: %w", err)
 	}
@@ -575,7 +577,7 @@ func (d *DockerRuntime) ExecWithStdin(ctx context.Context, id ContainerID, cmd [
 		return "", "", -1, fmt.Errorf("exec demux: %w", err)
 	}
 
-	inspect, err := d.cli.ContainerExecInspect(ctx, execCreate.ID)
+	inspect, err := d.cli.ExecInspect(ctx, execCreate.ID, client.ExecInspectOptions{})
 	if err != nil {
 		return stdoutBuf.String(), stderrBuf.String(), -1, fmt.Errorf("exec inspect: %w", err)
 	}
@@ -595,7 +597,7 @@ func (d *DockerRuntime) CreateNetwork(ctx context.Context, spec NetworkSpec) (Ne
 		return "", ErrDockerNotInitialized
 	}
 
-	netCreate := network.CreateOptions{
+	netCreate := client.NetworkCreateOptions{
 		Driver:   "bridge",
 		Internal: spec.Internal,
 		Labels:   spec.Labels,
@@ -620,7 +622,7 @@ func (d *DockerRuntime) RemoveNetwork(ctx context.Context, id NetworkID) error {
 	if d.cli == nil {
 		return ErrDockerNotInitialized
 	}
-	if err := d.cli.NetworkRemove(ctx, string(id)); err != nil {
+	if _, err := d.cli.NetworkRemove(ctx, string(id), client.NetworkRemoveOptions{}); err != nil {
 		if errdefs.IsNotFound(err) || strings.Contains(err.Error(), "not found") {
 			return fmt.Errorf("%w: %s", ErrNetworkNotFound, string(id))
 		}
@@ -637,7 +639,7 @@ func (d *DockerRuntime) InspectNetwork(ctx context.Context, id NetworkID) (Netwo
 	if d.cli == nil {
 		return NetworkInfo{}, ErrDockerNotInitialized
 	}
-	resource, err := d.cli.NetworkInspect(ctx, string(id), network.InspectOptions{})
+	resource, err := d.cli.NetworkInspect(ctx, string(id), client.NetworkInspectOptions{})
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return NetworkInfo{}, fmt.Errorf("%w: %s", ErrNetworkNotFound, string(id))
@@ -645,10 +647,10 @@ func (d *DockerRuntime) InspectNetwork(ctx context.Context, id NetworkID) (Netwo
 		return NetworkInfo{}, fmt.Errorf("inspect network %q: %w", string(id), err)
 	}
 	return NetworkInfo{
-		ID:       resource.ID,
-		Name:     resource.Name,
-		Internal: resource.Internal,
-		Labels:   resource.Labels,
+		ID:       resource.Network.ID,
+		Name:     resource.Network.Name,
+		Internal: resource.Network.Internal,
+		Labels:   resource.Network.Labels,
 	}, nil
 }
 
@@ -689,7 +691,7 @@ func (d *DockerRuntime) attachNetworkWithAliases(ctx context.Context, containerI
 		}
 	}
 
-	if err := d.cli.NetworkConnect(ctx, string(networkID), string(containerID), endpointSettings); err != nil {
+	if _, err := d.cli.NetworkConnect(ctx, string(networkID), client.NetworkConnectOptions{Container: string(containerID), EndpointConfig: endpointSettings}); err != nil {
 		return fmt.Errorf("attach container %q to network %q: %w", string(containerID), string(networkID), err)
 	}
 	return nil
@@ -710,7 +712,7 @@ func (d *DockerRuntime) DetachNetwork(ctx context.Context, containerID Container
 	if d.cli == nil {
 		return ErrDockerNotInitialized
 	}
-	if err := d.cli.NetworkDisconnect(ctx, string(networkID), string(containerID), true); err != nil {
+	if _, err := d.cli.NetworkDisconnect(ctx, string(networkID), client.NetworkDisconnectOptions{Container: string(containerID), Force: true}); err != nil {
 		// NetworkDisconnect returns an error if container is not connected.
 		// Treat "not found" errors as idempotent success.
 		if errdefs.IsNotFound(err) || strings.Contains(err.Error(), "not found") {
@@ -733,7 +735,7 @@ func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id Contain
 	if d.cli == nil {
 		return nil, ErrDockerNotInitialized
 	}
-	json, err := d.cli.ContainerInspect(ctx, string(id))
+	inspected, err := d.cli.ContainerInspect(ctx, string(id), client.ContainerInspectOptions{})
 	if err != nil {
 		if errdefs.IsNotFound(err) {
 			return nil, fmt.Errorf("%w: %s", ErrContainerNotFound, string(id))
@@ -742,12 +744,15 @@ func (d *DockerRuntime) InspectContainerNetworks(ctx context.Context, id Contain
 	}
 
 	var result []ContainerNetworkInfo
-	for netName, netSettings := range json.NetworkSettings.Networks {
+	for netName, netSettings := range inspected.Container.NetworkSettings.Networks {
 		info := ContainerNetworkInfo{
 			ID:        netSettings.NetworkID,
 			Name:      netName,
-			IPAddress: netSettings.IPAddress,
+			IPAddress: "",
 			Aliases:   netSettings.Aliases,
+		}
+		if netSettings.IPAddress.IsValid() {
+			info.IPAddress = netSettings.IPAddress.String()
 		}
 		result = append(result, info)
 	}
@@ -792,12 +797,12 @@ func (d *DockerRuntime) ListContainers(ctx context.Context, labelFilters ...stri
 		return nil, ErrDockerNotInitialized
 	}
 
-	filterArgs := filters.NewArgs()
+	filterArgs := make(client.Filters)
 	for _, lf := range labelFilters {
 		filterArgs.Add("label", lf)
 	}
 
-	containers, err := d.cli.ContainerList(ctx, container.ListOptions{
+	containers, err := d.cli.ContainerList(ctx, client.ContainerListOptions{
 		Filters: filterArgs,
 		All:     true,
 	})
@@ -806,7 +811,7 @@ func (d *DockerRuntime) ListContainers(ctx context.Context, labelFilters ...stri
 	}
 
 	var result []ContainerInfo
-	for _, c := range containers {
+	for _, c := range containers.Items {
 		status := ContainerStatusUnknown
 		switch {
 		case strings.Contains(c.Status, "Up"):
@@ -853,12 +858,12 @@ func (d *DockerRuntime) ListNetworks(ctx context.Context, labelFilters ...string
 		return nil, ErrDockerNotInitialized
 	}
 
-	filterArgs := filters.NewArgs()
+	filterArgs := make(client.Filters)
 	for _, lf := range labelFilters {
 		filterArgs.Add("label", lf)
 	}
 
-	resources, err := d.cli.NetworkList(ctx, network.ListOptions{
+	resources, err := d.cli.NetworkList(ctx, client.NetworkListOptions{
 		Filters: filterArgs,
 	})
 	if err != nil {
@@ -866,7 +871,7 @@ func (d *DockerRuntime) ListNetworks(ctx context.Context, labelFilters ...string
 	}
 
 	var result []NetworkInfo
-	for _, n := range resources {
+	for _, n := range resources.Items {
 		result = append(result, NetworkInfo{
 			ID:       n.ID,
 			Name:     n.Name,

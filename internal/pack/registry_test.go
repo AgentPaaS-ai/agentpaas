@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/AgentPaaS-ai/agentpaas/internal/dockerclient"
+	"github.com/moby/moby/client"
 )
 
 func TestCleanupLocalRegistry_RemovesContainer(t *testing.T) {
@@ -37,15 +36,15 @@ func TestCleanupLocalRegistry_RemovesContainer(t *testing.T) {
 	}
 	defer func() { _ = cli.Close() }()
 
-	containers, err := cli.ContainerList(ctx, container.ListOptions{
+	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{
 		All:     true,
-		Filters: filters.NewArgs(filters.Arg("name", localRegistryName)),
+		Filters: make(client.Filters).Add("name", localRegistryName),
 	})
 	if err != nil {
 		t.Fatalf("ContainerList: %v", err)
 	}
-	if len(containers) != 0 {
-		t.Fatalf("expected no %q container after cleanup, found %d", localRegistryName, len(containers))
+	if len(containers.Items) != 0 {
+		t.Fatalf("expected no %q container after cleanup, found %d", localRegistryName, len(containers.Items))
 	}
 }
 

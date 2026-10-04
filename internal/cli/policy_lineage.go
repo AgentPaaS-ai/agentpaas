@@ -284,8 +284,8 @@ func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineag
 			payload = map[string]any{}
 		}
 		kind := row.kind()
-		switch {
-		case kind == "egress.allowed" || kind == "egress_allowed":
+		switch kind {
+		case "egress.allowed", "egress_allowed":
 			host := payloadHost(payload)
 			n := payloadCount(payload)
 			if host == "" || n <= 0 {
@@ -293,7 +293,7 @@ func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineag
 			}
 			allowByHost[host] += n
 			creds = appendCredentialID(creds, credSeen, payloadString(payload, "credential_id"))
-		case kind == "egress.denied" || kind == "egress_denied":
+		case "egress.denied", "egress_denied":
 			reason := payloadString(payload, "reason")
 			if isPIIMaskedReason(reason) {
 				pii++
@@ -306,11 +306,11 @@ func enforcementFromAuditRows(rows []lineageAuditRow, runID string) policyLineag
 			denyByHost[host]++
 			extra := strings.TrimSpace(payloadString(payload, "method") + " " + reason)
 			appendUniqueDenyExtra(denyExtra, denyExtraSeen, host, extra)
-		case kind == "secret_injected" || kind == "credential.injected" || kind == "credential_injected":
+		case "secret_injected", "credential.injected", "credential_injected":
 			creds = appendCredentialID(creds, credSeen, payloadString(payload, "credential_id"))
-		case kind == "pii.mask" || kind == "pii.masked" || kind == "pii_mask" || kind == "pii_masked":
+		case "pii.mask", "pii.masked", "pii_mask", "pii_masked":
 			pii++
-		case kind == "budget.consumed" || kind == "budget_consumed" || kind == "budget_exceeded":
+		case "budget.consumed", "budget_consumed", "budget_exceeded":
 			if s := budgetConsumedFromPayload(payload); s != "" {
 				budget = s
 			}
