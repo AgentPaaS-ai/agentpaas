@@ -3,6 +3,8 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -53,7 +55,7 @@ func (s *controlServer) runOnOpenShell(ctx context.Context, req *controlv1.RunRe
 	_ = secret
 
 	runID := generateRunID()
-	sandboxName := strings.ReplaceAll(runID, "_", "-")
+	sandboxName := openShellSandboxName(runID)
 	env := map[string]string{
 		"AGENTPAAS_OPENSHELL":       "1",
 		"AGENTPAAS_AGENT_PATH":      "/app/main.py",
@@ -313,6 +315,36 @@ func (s *controlServer) brokerSecret(credID string, credentialMap map[string]str
 		return "", fmt.Errorf("credential %q is empty", lookup)
 	}
 	return string(val), nil
+}
+
+// openShellSandboxNameMax is OpenShell's routable-name limit. A longer
+// sandbox Name is rejected: "name exceeds maximum length (N > 19)".
+const openShellSandboxNameMax = 19
+
+// openShellSandboxName maps a run ID to an OpenShell sandbox Name.
+// generateRunID is "run-" plus 16 hex (20) or a longer clock fallback, and
+// that ID stays intact for state paths and tracking. The sandbox Name is a
+// DNS-1123 label of at most 19 characters. The happy path keeps all 16 hex
+// digits under a one-character prefix ("r" + 16 = 17). Longer IDs are hashed
+// so distinct values that share a 19-character prefix do not collide.
+func openShellSandboxName(runID string) string {
+	const maxBody = openShellSandboxNameMax - 1
+	body := strings.TrimPrefix(runID, "run-")
+	if body != "" && len(body) <= maxBody && dns1123Alnum(body) {
+		return "r" + body
+	}
+	sum := sha256.Sum256([]byte(runID))
+	// "s" keeps hashed names disjoint from the "r"+entropy happy path.
+	return "s" + hex.EncodeToString(sum[:8])
+}
+
+func dns1123Alnum(s string) bool {
+	for _, c := range s {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
+			return false
+		}
+	}
+	return s != ""
 }
 
 func jsonMarshal(v any) ([]byte, error) {
