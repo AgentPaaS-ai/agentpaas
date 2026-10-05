@@ -1281,13 +1281,14 @@ func (s *controlServer) cleanupRun(ctx context.Context, tr *trackedRun) {
 	}
 }
 
-// startDurableRun launches a container for a durable (routed) invocation.
+// startDurableRun launches an admitted non-pipeline deployment.
 // Called asynchronously from InvokeDeployment after admission succeeds
 // with ACCEPTED outcome (BUG-043).
 //
-// It follows the same container creation path as Run but uses the
-// receipt's RunID, resolved deployment ID, and input JSON instead of
-// generating new identities.
+// When OpenShell is configured, the agent runs in an OpenShell sandbox
+// the same way Run does, and the Docker runtime is not touched. Otherwise
+// it follows the container path using the receipt's RunID, resolved
+// deployment ID, and input JSON.
 func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, inputJSON string) {
 	ctx := context.Background()
 	runID := string(receipt.RunID)
@@ -1359,6 +1360,14 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 			s.updateLegacyRunStatus(ctx, runID, "failed")
 			return
 		}
+	}
+
+	// OpenShell is the production runtime (agentpaasd WithOpenShell).
+	// Launch the agent in a sandbox the same way Run does. Do not fall
+	// through to Docker, and do not treat a skipped launch as success.
+	if s.useOpenShell() {
+		s.startDurableRunOnOpenShell(ctx, receipt, agentName, imageDigest, triggerPayload)
+		return
 	}
 
 	// 6. Get runtime and check Docker Engine version.

@@ -11,7 +11,6 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
-	"github.com/AgentPaaS-ai/agentpaas/internal/openshellrt"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
@@ -142,8 +141,10 @@ type controlServer struct {
 	supervisor *supervisor.Supervisor
 
 	// openshell is the local OpenShell gateway client. Production daemon
-	// start sets it. Unit tests leave it nil and keep the Docker runtime seam.
-	openshell *openshellrt.Runtime
+	// start sets it via WithOpenShell. When set (and testRuntime is nil),
+	// Run and deployment invoke launch an OpenShell sandbox and do not
+	// fall through to Docker. Unit tests inject a fake to prove that.
+	openshell openShellGateway
 }
 
 // MCPFencer fences/shuts down MCP services for a workflow.

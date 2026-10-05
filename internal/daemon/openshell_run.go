@@ -21,10 +21,22 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/openshellrt"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
 	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// openShellGateway is the local OpenShell client the daemon drives.
+// *openshellrt.Runtime implements it. Tests inject a fake so a deployment
+// invoke can be shown to create a sandbox instead of a Docker stack.
+type openShellGateway interface {
+	EnsureBroker(ctx context.Context, credID, secret string) (string, error)
+	CreateAgentSandbox(ctx context.Context, req openshellrt.SandboxRequest) (*openshellrt.SandboxHandle, error)
+	DeleteSandbox(ctx context.Context, name string) error
+}
+
+var _ openShellGateway = (*openshellrt.Runtime)(nil)
 
 func (s *controlServer) useOpenShell() bool {
 	return s.openshell != nil && s.testRuntime == nil
@@ -110,6 +122,101 @@ func (s *controlServer) runOnOpenShell(ctx context.Context, req *controlv1.RunRe
 		AttemptId: attemptID,
 		Status:    "RUNNING",
 	}, nil
+}
+
+// startDurableRunOnOpenShell launches an admitted deployment run in an
+// OpenShell sandbox the same way Run does. It must not call getOrCreateRuntime,
+// checkDockerEngineVersion, CreateNetwork, or the Docker container path, and
+// it must not fall through to that path when sandbox setup fails.
+func (s *controlServer) startDurableRunOnOpenShell(ctx context.Context, receipt *routedrun.InvocationReceipt, agentName, imageDigest string, triggerPayload []byte) {
+	runID := string(receipt.RunID)
+	imageRef := pack.LocalImageRef(agentName, imageDigest)
+	deployedDir := pack.DeployedAgentPath(s.homePaths.Home, agentName)
+	rules, brokerHost, credID := loadOpenShellEgress(deployedDir)
+	secret, err := s.brokerSecret(credID, nil)
+	if err != nil {
+		s.failDurableOpenShell(ctx, runID, agentName, "broker_credential", err)
+		return
+	}
+	provider, err := s.openshell.EnsureBroker(ctx, credID, secret)
+	// Drop the secret from this stack frame. The provider holds it.
+	secret = ""
+	_ = secret
+	if err != nil {
+		s.failDurableOpenShell(ctx, runID, agentName, "openshell_provider", err)
+		return
+	}
+	sandboxName := openShellSandboxName(runID)
+	env := map[string]string{
+		"AGENTPAAS_OPENSHELL":       "1",
+		"AGENTPAAS_AGENT_PATH":      "/app/main.py",
+		"AGENTPAAS_AUDIT_PATH":      "/tmp/harness-audit.jsonl",
+		"AGENTPAAS_EGRESS_FIREWALL": "0",
+		"AGENTPAAS_RUNTIME":         "openshell",
+	}
+	sb, err := s.openshell.CreateAgentSandbox(ctx, openshellrt.SandboxRequest{
+		Name:        sandboxName,
+		Image:       imageRef,
+		Env:         env,
+		Provider:    provider,
+		Rules:       rules,
+		BrokerHost:  brokerHost,
+		HarnessPort: 8080,
+	})
+	if err != nil {
+		s.failDurableOpenShell(ctx, runID, agentName, "openshell_sandbox_create", err)
+		return
+	}
+
+	hostAuditDir := filepath.Join(s.homePaths.State, "runs", runID, "harness-audit")
+	_ = os.MkdirAll(hostAuditDir, 0o700)
+	tracked := &trackedRun{
+		OpenShellSandbox: sb.Name,
+		OpenShellService: sb.ServiceURL,
+		AuditDir:         hostAuditDir,
+		AgentName:        agentName,
+		StartedAt:        time.Now(),
+		Status:           "running",
+		InvokeDone:       make(chan struct{}),
+	}
+	s.trackRunPtr(runID, tracked)
+	s.updateLegacyRunStatus(ctx, runID, "running")
+	if s.supervisor != nil {
+		if _, claimErr := s.supervisor.ClaimForRun(ctx, routedrun.RunID(runID), receipt.InvocationID); claimErr != nil {
+			fmt.Fprintf(os.Stderr, "daemon: supervisor claim for run %s: %v\n", runID, claimErr)
+		}
+	}
+	if envelope, ok := routedrun.TimeEnvelopeFromReceipt(receipt); ok {
+		s.setRunTimeEnvelope(runID, envelope)
+	}
+	s.recordAudit("invoke_deployment_start", "daemon", map[string]interface{}{
+		"run_id":        runID,
+		"agent_name":    agentName,
+		"deployment_id": string(receipt.ResolvedDeploymentID),
+		"image_ref":     imageRef,
+		"runtime":       "openshell",
+		"sandbox":       sb.Name,
+		"invocation_id": string(receipt.InvocationID),
+		"workflow_id":   string(receipt.WorkflowID),
+	})
+
+	invokeCtx, cancel := context.WithCancel(context.Background())
+	tracked.CancelInvoke = cancel
+	go s.finishOpenShellInvoke(invokeCtx, tracked, runID, agentName, sb.ServiceURL, triggerPayload)
+}
+
+func (s *controlServer) failDurableOpenShell(ctx context.Context, runID, agentName, reason string, err error) {
+	payload := map[string]interface{}{
+		"run_id":      runID,
+		"agent_name":  agentName,
+		"runtime":     "openshell",
+		"fail_reason": reason,
+	}
+	if err != nil {
+		payload["error"] = err.Error()
+	}
+	s.recordAudit("invoke_deployment_failed", "daemon", payload)
+	s.updateLegacyRunStatus(ctx, runID, "failed")
 }
 
 func (s *controlServer) finishOpenShellInvoke(invokeCtx context.Context, tr *trackedRun, runID, agentName, serviceURL string, payload []byte) {

@@ -362,6 +362,8 @@ func (s *controlServer) InvokeDeployment(ctx context.Context, req *controlv1.Inv
 		// BUG-043: launch the container in a goroutine so the RPC
 		// response is not blocked on Docker operations.
 		// Skip in test environments where Docker is unavailable.
+		// When OpenShell is configured, startDurableRun uses that
+		// sandbox and does not fall through to Docker.
 		go s.startDurableRun(receipt, string(req.GetInputJson()))
 	}
 
