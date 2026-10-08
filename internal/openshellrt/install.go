@@ -79,7 +79,7 @@ func ensureOne(dir string, a asset) error {
 		_ = tmp.Close()
 		return fmt.Errorf("download %s: %w", a.name, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		_ = tmp.Close()
 		return fmt.Errorf("download %s: HTTP %d", a.name, resp.StatusCode)
@@ -104,12 +104,12 @@ func extractBinary(tarPath, want, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return fmt.Errorf("gzip %s: %w", tarPath, err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()

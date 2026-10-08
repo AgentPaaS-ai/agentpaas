@@ -19,7 +19,7 @@ func TestEnsureLocalGatewaySmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() { _ = rt.Close() }()
 	ver, err := rt.GatewayVersion(ctx)
 	if err != nil {
 		t.Fatal(err)

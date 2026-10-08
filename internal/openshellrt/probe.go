@@ -94,7 +94,7 @@ func gatewayReady() (bool, string) {
 	if err != nil {
 		return false, "gateway not ready"
 	}
-	defer rt.Close()
+	defer func() { _ = rt.Close() }()
 	ver, err := rt.GatewayVersion(ctx)
 	if err != nil {
 		return false, "gateway not ready"

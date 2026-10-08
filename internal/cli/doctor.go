@@ -94,10 +94,6 @@ func resolveNamedBinary(name string, extraDirs []string) string {
 	return ""
 }
 
-func resolveDockerPath() string {
-	return resolveNamedBinary("docker", homebrewBinDirs())
-}
-
 func runDoctorChecks() []map[string]string {
 	var checks []map[string]string
 
