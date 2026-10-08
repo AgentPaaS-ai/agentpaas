@@ -349,19 +349,20 @@ func (s *controlServer) InvokeDeployment(ctx context.Context, req *controlv1.Inv
 		outcome = controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_IDEMPOTENT_REPLAY
 	}
 
-	if outcome == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED {
-		// B34.5: For pipeline workflows, register for reconcile
-		// instead of single-package startDurableRun. Pipeline
-		// registration does not launch containers, so it runs even
-		// when disableContainerLaunch is true.
-		if s.shouldUsePipelineReconcile(ctx, receipt) {
-			go s.registerPipelineWorkflow(ctx, receipt)
-		} else if !s.disableContainerLaunch {
-			// BUG-043: launch the container in a goroutine so the RPC
-			// response is not blocked on Docker operations.
-			// Skip in test environments where Docker is unavailable.
-			go s.startDurableRun(receipt, string(req.GetInputJson()))
-		}
+	// B34.5: pipeline admission registers for reconcile instead of
+	// startDurableRun. Registration is an in-memory insert on this
+	// server's own registry and does not launch containers, so it runs
+	// even when disableContainerLaunch is true, and it runs on the RPC
+	// goroutine. A background goroutine leaves the workflow absent when
+	// the caller checks immediately (not a late reconcile). Idempotent
+	// replay registers the same ID again; the registry map keeps one entry.
+	if s.shouldUsePipelineReconcile(ctx, receipt) {
+		s.registerPipelineWorkflow(ctx, receipt)
+	} else if outcome == controlv1.AdmissionOutcomeCode_ADMISSION_OUTCOME_ACCEPTED && !s.disableContainerLaunch {
+		// BUG-043: launch the container in a goroutine so the RPC
+		// response is not blocked on Docker operations.
+		// Skip in test environments where Docker is unavailable.
+		go s.startDurableRun(receipt, string(req.GetInputJson()))
 	}
 
 	return s.invokeDeploymentReceiptResponse(req, receipt, outcome), nil
