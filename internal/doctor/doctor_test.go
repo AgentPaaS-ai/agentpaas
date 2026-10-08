@@ -553,6 +553,7 @@ func TestDoctorWithTimeout(t *testing.T) {
 
 func TestDoctorFullCycle(t *testing.T) {
 	tmpDir := t.TempDir()
+	isolateDaemonTrigger(t, tmpDir)
 	hp := home.NewHomePaths(tmpDir)
 
 	// Set up home.
@@ -628,7 +629,21 @@ func shortTempPaths(t *testing.T) *home.HomePaths {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	isolateDaemonTrigger(t, dir)
 	return home.NewHomePaths(dir)
+}
+
+// isolateDaemonTrigger gives a doctor test that starts the daemon its own
+// home env and ephemeral trigger listen addresses. Clients of that daemon
+// dial the Unix socket the test created, never 127.0.0.1:7717/7718.
+func isolateDaemonTrigger(t *testing.T, homeDir string) {
+	t.Helper()
+	if homeDir == "" {
+		homeDir = t.TempDir()
+	}
+	t.Setenv("AGENTPAAS_HOME", homeDir)
+	t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", "127.0.0.1:0")
+	t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", "127.0.0.1:0")
 }
 
 // testDaemonVersion returns a VersionInfo for integration tests.

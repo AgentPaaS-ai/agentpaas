@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"testing"
@@ -13,23 +14,48 @@ import (
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/trigger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
 
-// shortTempPaths creates a HomePaths rooted at a short temp path for tests
-// that need Unix socket paths under the ~104-byte macOS limit.
+// shortTempPaths creates a HomePaths for a daemon test.
+//
+// AGENTPAAS_HOME is a fresh t.TempDir(). The Unix socket lives in a short
+// temp directory because macOS sun_path is 104 bytes. Trigger gRPC and REST
+// listen on 127.0.0.1:0 unless the test already chose a non-default address.
 func shortTempPaths(t *testing.T) *home.HomePaths {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "dmn-*")
+	homeDir := t.TempDir()
+	t.Setenv("AGENTPAAS_HOME", homeDir)
+	useEphemeralTriggerAddrs(t)
+
+	sockDir, err := os.MkdirTemp("", "dmn-")
 	if err != nil {
 		t.Fatalf("MkdirTemp: %v", err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	hp := home.NewHomePaths(dir)
-	return hp
+	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
+	sock := filepath.Join(sockDir, "daemon.sock")
+	if len(sock) > 103 {
+		t.Fatalf("socket path %q length %d exceeds macOS sun_path", sock, len(sock))
+	}
+	t.Setenv("AGENTPAAS_SOCKET", sock)
+	return home.NewHomePaths(homeDir)
+}
+
+// useEphemeralTriggerAddrs points a daemon test at 127.0.0.1:0 unless it
+// already selected a non-default trigger address. Port 0 lets each Start
+// bind an address the server reports; clients must dial that address.
+func useEphemeralTriggerAddrs(t *testing.T) {
+	t.Helper()
+	if isDefaultTriggerListen(os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR"), trigger.DefaultGRPCPort) {
+		t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", "127.0.0.1:0")
+	}
+	if isDefaultTriggerListen(os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR"), trigger.DefaultRESTPort) {
+		t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", "127.0.0.1:0")
+	}
 }
 
 // testVersion returns a VersionInfo used in tests.

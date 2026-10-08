@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
@@ -167,6 +168,51 @@ func New(paths *home.HomePaths, version VersionInfo, opts ...Option) (*Daemon, e
 	return d, nil
 }
 
+// triggerListenAddrs resolves the trigger gRPC and REST listen addresses.
+// Empty env values keep the production defaults (127.0.0.1:7718 and
+// 127.0.0.1:7717). Under go test, a default address is refused before
+// listen so a daemon test cannot bind or dial the founder's trigger ports.
+func triggerListenAddrs() (grpcAddr, restAddr string, err error) {
+	grpcAddr = strings.TrimSpace(os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR"))
+	if grpcAddr == "" {
+		grpcAddr = fmt.Sprintf("127.0.0.1:%d", trigger.DefaultGRPCPort)
+	}
+	restAddr = strings.TrimSpace(os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR"))
+	if restAddr == "" {
+		restAddr = fmt.Sprintf("127.0.0.1:%d", trigger.DefaultRESTPort)
+	}
+	if err := refuseDefaultTriggerListen(grpcAddr, restAddr); err != nil {
+		return "", "", err
+	}
+	return grpcAddr, restAddr, nil
+}
+
+// refuseDefaultTriggerListen fails fast when a test would start the daemon
+// on a default trigger address. Production starts are unchanged.
+func refuseDefaultTriggerListen(grpcAddr, restAddr string) error {
+	if !testing.Testing() {
+		return nil
+	}
+	if isDefaultTriggerListen(grpcAddr, trigger.DefaultGRPCPort) || isDefaultTriggerListen(restAddr, trigger.DefaultRESTPort) {
+		return fmt.Errorf("daemon: refusing to start on default trigger address grpc=%s rest=%s", grpcAddr, restAddr)
+	}
+	return nil
+}
+
+// isDefaultTriggerListen reports whether addr is empty or uses a default
+// trigger port (7718 for gRPC, 7717 for REST).
+func isDefaultTriggerListen(addr string, defaultPort int) bool {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return true
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr == strconv.Itoa(defaultPort)
+	}
+	return port == strconv.Itoa(defaultPort)
+}
+
 // Start binds the Unix socket, starts the gRPC server, and begins serving.
 //
 // Before binding, it:
@@ -180,6 +226,10 @@ func New(paths *home.HomePaths, version VersionInfo, opts ...Option) (*Daemon, e
 //
 // After Start() returns, the daemon is listening but not yet ready to serve
 // requests. Call Ready() to transition to the ready state.
+//
+// A daemon test that would listen on a default trigger address
+// (127.0.0.1:7718 or 127.0.0.1:7717, or the same ports on any host) fails
+// before any bind.
 func (d *Daemon) Start(ctx context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -189,6 +239,14 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	if d.stopped {
 		return fmt.Errorf("daemon: already stopped")
+	}
+
+	// Resolve trigger listen addresses before any bind. A daemon test that
+	// would start on a default trigger address fails here, before listen,
+	// so it cannot collide with a founder's agentpaasd on 7717/7718.
+	triggerGRPCAddr, triggerRESTAddr, err := triggerListenAddrs()
+	if err != nil {
+		return err
 	}
 
 	// Check root.
@@ -368,15 +426,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	controlv1.RegisterControlServiceServer(d.server, controlServer)
 
 	// Start trigger server for external invocations (loopback-only for P1).
-	triggerGRPCAddr := os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR")
-	if triggerGRPCAddr == "" {
-		triggerGRPCAddr = "127.0.0.1:7718"
-	}
-	triggerRESTAddr := os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR")
-	if triggerRESTAddr == "" {
-		triggerRESTAddr = "127.0.0.1:7717"
-	}
-
+	// Addresses were resolved (and guarded) at the start of Start.
 	triggerAPIKey := os.Getenv("AGENTPAAS_TRIGGER_API_KEY")
 	triggerExpose := os.Getenv("AGENTPAAS_TRIGGER_EXPOSE")
 	exposeTrigger := triggerExpose == "1" || strings.EqualFold(triggerExpose, "true")

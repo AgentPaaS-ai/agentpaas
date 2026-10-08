@@ -372,6 +372,26 @@ func (s *TriggerService) SetInvokeFunc(fn func(ctx context.Context, agentName st
 	s.invokeFunc = fn
 }
 
+// BoundGRPCAddr returns the gRPC address clients must dial. After a
+// successful Start this is the kernel-bound address, including when the
+// configured address used port 0.
+func (s *Server) BoundGRPCAddr() string {
+	if s == nil {
+		return ""
+	}
+	return s.cfg.GRPCAddr
+}
+
+// BoundRESTAddr returns the REST address clients must dial. After a
+// successful Start this is the kernel-bound address, including when the
+// configured address used port 0.
+func (s *Server) BoundRESTAddr() string {
+	if s == nil {
+		return ""
+	}
+	return s.cfg.RESTAddr
+}
+
 // Stop gracefully shuts down the server.
 func (s *Server) Stop() {
 	if s.restServer != nil {

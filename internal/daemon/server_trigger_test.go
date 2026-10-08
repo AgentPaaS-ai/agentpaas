@@ -74,6 +74,9 @@ func waitForTriggerGRPC(t *testing.T, addr string) {
 
 func dialTriggerGRPC(t *testing.T, addr string) *grpc.ClientConn {
 	t.Helper()
+	if isDefaultTriggerListen(addr, trigger.DefaultGRPCPort) {
+		t.Fatalf("refusing to dial default trigger address %s", addr)
+	}
 	waitForTriggerGRPC(t, addr)
 
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -82,6 +85,31 @@ func dialTriggerGRPC(t *testing.T, addr string) *grpc.ClientConn {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	return conn
+}
+
+// reportedTriggerAddrs returns the addresses the daemon's own trigger
+// server bound. Callers dial these, never a default or the pre-bind env
+// value when that value used port 0.
+func reportedTriggerAddrs(t *testing.T, d *Daemon) (grpcAddr, restAddr string) {
+	t.Helper()
+	if d == nil || d.triggerServer == nil {
+		t.Fatal("daemon trigger server did not start")
+	}
+	grpcAddr = d.triggerServer.BoundGRPCAddr()
+	restAddr = d.triggerServer.BoundRESTAddr()
+	if isDefaultTriggerListen(grpcAddr, trigger.DefaultGRPCPort) || isDefaultTriggerListen(restAddr, trigger.DefaultRESTPort) {
+		t.Fatalf("trigger server reported a default address grpc=%s rest=%s", grpcAddr, restAddr)
+	}
+	if strings.HasSuffix(grpcAddr, ":0") || strings.HasSuffix(restAddr, ":0") {
+		t.Fatalf("trigger server reported an unbound port grpc=%s rest=%s", grpcAddr, restAddr)
+	}
+	return grpcAddr, restAddr
+}
+
+func mustReportedTriggerGRPC(t *testing.T, d *Daemon) string {
+	t.Helper()
+	grpcAddr, _ := reportedTriggerAddrs(t, d)
+	return grpcAddr
 }
 
 func injectMockRuntime(t *testing.T, d *Daemon) {
@@ -121,7 +149,8 @@ func TestTriggerServer_StartsOnLoopback(t *testing.T) {
 	d.Ready()
 	injectMockRuntime(t, d)
 
-	conn := dialTriggerGRPC(t, grpcAddr)
+	grpcBound, _ := reportedTriggerAddrs(t, d)
+	conn := dialTriggerGRPC(t, grpcBound)
 	client := triggerv1.NewTriggerServiceClient(conn)
 
 	resp, err := client.Invoke(ctx, &triggerv1.InvokeRequest{AgentName: "test-agent"})
@@ -135,7 +164,7 @@ func TestTriggerServer_StartsOnLoopback(t *testing.T) {
 		t.Fatalf("Status = %v, want %v", got, triggerv1.RunStatus_RUN_STATUS_RUNNING)
 	}
 
-	host := strings.Split(grpcAddr, ":")[0]
+	host := strings.Split(grpcBound, ":")[0]
 	if host != "127.0.0.1" {
 		t.Fatalf("trigger gRPC bound to %q, want loopback 127.0.0.1", host)
 	}
@@ -148,7 +177,14 @@ func TestTriggerServer_AddressesFromEnv(t *testing.T) {
 	d, _ := startDaemonWithTriggerAddrs(t, customGRPC, customREST)
 	defer func() { _ = d.Stop(context.Background()) }()
 
-	_ = dialTriggerGRPC(t, customGRPC)
+	grpcBound, restBound := reportedTriggerAddrs(t, d)
+	if grpcBound != customGRPC {
+		t.Fatalf("reported gRPC %q, want env address %q", grpcBound, customGRPC)
+	}
+	if restBound != customREST {
+		t.Fatalf("reported REST %q, want env address %q", restBound, customREST)
+	}
+	_ = dialTriggerGRPC(t, grpcBound)
 
 	if d.triggerServer == nil {
 		t.Fatal("daemon trigger server not initialized")
@@ -161,7 +197,8 @@ func TestTriggerServer_GracefulShutdown(t *testing.T) {
 
 	d, _ := startDaemonWithTriggerAddrs(t, grpcAddr, restAddr)
 
-	waitForTriggerGRPC(t, grpcAddr)
+	bound, _ := reportedTriggerAddrs(t, d)
+	waitForTriggerGRPC(t, bound)
 
 	if err := d.Stop(context.Background()); err != nil {
 		t.Fatalf("Stop() failed: %v", err)
@@ -169,14 +206,14 @@ func TestTriggerServer_GracefulShutdown(t *testing.T) {
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", grpcAddr, 100*time.Millisecond)
+		conn, err := net.DialTimeout("tcp", bound, 100*time.Millisecond)
 		if err != nil {
 			return
 		}
 		_ = conn.Close()
 		time.Sleep(25 * time.Millisecond)
 	}
-	t.Fatalf("expected trigger TCP listener at %s to close after daemon Stop()", grpcAddr)
+	t.Fatalf("expected trigger TCP listener at %s to close after daemon Stop()", bound)
 }
 
 func TestTriggerService_InvokeFuncWired(t *testing.T) {
@@ -219,7 +256,7 @@ func TestTriggerServer_APIKeyAuthRequired(t *testing.T) {
 	d, _ := startDaemonWithTriggerAddrs(t, grpcAddr, restAddr)
 	defer func() { _ = d.Stop(context.Background()) }()
 
-	conn := dialTriggerGRPC(t, grpcAddr)
+	conn := dialTriggerGRPC(t, mustReportedTriggerGRPC(t, d))
 	client := triggerv1.NewTriggerServiceClient(conn)
 	ctx := context.Background()
 
@@ -243,12 +280,57 @@ func TestTriggerServer_NoAuthWhenKeyUnset(t *testing.T) {
 	d, _ := startDaemonWithTriggerAddrs(t, grpcAddr, restAddr)
 	defer func() { _ = d.Stop(context.Background()) }()
 
-	conn := dialTriggerGRPC(t, grpcAddr)
+	conn := dialTriggerGRPC(t, mustReportedTriggerGRPC(t, d))
 	client := triggerv1.NewTriggerServiceClient(conn)
 
 	_, err := client.Invoke(context.Background(), &triggerv1.InvokeRequest{AgentName: "any-agent"})
 	if status.Code(err) == codes.Unauthenticated {
 		t.Fatalf("Invoke() without auth code = %v, want not Unauthenticated for backward compat (err=%v)", codes.Unauthenticated, err)
+	}
+}
+
+func TestDaemonStartFailsFastOnDefaultTriggerAddr(t *testing.T) {
+	// Explicit defaults, and the empty-env path that Start resolves to them.
+	// Either one must fail before a listen on the founder's ports.
+	cases := []struct {
+		name string
+		grpc string
+		rest string
+	}{
+		{name: "explicit defaults", grpc: "127.0.0.1:7718", rest: "127.0.0.1:7717"},
+		{name: "unset", grpc: "", rest: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hp := shortTempPaths(t)
+			if err := home.Ensure(hp); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", tc.grpc)
+			t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", tc.rest)
+
+			d, err := New(hp, testVersion())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = d.Stop(context.Background()) })
+
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			err = d.Start(ctx)
+			if err == nil {
+				t.Fatal("Start() succeeded on a default trigger address; want fail-fast")
+			}
+			if !strings.Contains(err.Error(), "default trigger address") {
+				t.Fatalf("Start() error = %v, want default trigger address refusal", err)
+			}
+			if strings.Contains(err.Error(), "address already in use") {
+				t.Fatalf("Start() bound a default trigger address: %v", err)
+			}
+			if d.triggerServer != nil {
+				t.Fatal("trigger server started on a default trigger address")
+			}
+		})
 	}
 }
 
