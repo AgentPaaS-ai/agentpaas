@@ -1,2 +1,5 @@
 # pip-installed at pack time. Do NOT list agentpaas-sdk — it is bundled.
-pydantic-ai==0.2.6
+pydantic-ai==1.107.7
+aiohttp==3.14.3
+httpx2==2.12.0
+httpcore2==2.12.0

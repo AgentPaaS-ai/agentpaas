@@ -1,3 +1,10 @@
 # pip-installed at pack time. The SDK is bundled — do not list it.
-crewai==0.80.0
-openai==1.54.0
+crewai==1.15.25
+openai==2.54.0
+chromadb==1.5.9
+anyio==4.14.2
+idna==3.15
+orjson==3.11.6
+pillow==12.3.0
+python-multipart==0.0.31
+uv==0.11.15

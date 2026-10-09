@@ -1,3 +1,7 @@
 # pip-installed at pack time. The SDK is bundled — do not list it.
-langgraph==0.2.28
+langgraph==1.2.3
 openai==1.54.0
+anyio==4.14.2
+idna==3.15
+requests==2.33.0
+tqdm==4.66.3
