@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -235,7 +236,8 @@ func isDefaultTriggerListen(addr string, defaultPort int) bool {
 	// dns:/// and passthrough:/// (and the opaque scheme:host:port form) are
 	// dial targets. Classify the endpoint grpc.NewClient uses, not the scheme
 	// string ResolveTCPAddr rejects. One split only: a nested scheme is a
-	// hostname, not another dial target.
+	// hostname, not another dial target. A dns authority with a port is
+	// classified inside grpcNewClientEndpoint when that authority is the dial.
 	if endpoint, ok := grpcNewClientEndpoint(addr); ok {
 		return founderTriggerHostPort(endpoint)
 	}
@@ -255,6 +257,12 @@ func founderTriggerHostPort(addr string) bool {
 // path, or the opaque part when the path is empty, with one leading slash
 // removed (resolver.Target.Endpoint). ok is false when addr is not such a
 // target, including a two-slash authority form whose endpoint is empty.
+//
+// For dns://authority/name, when the name is not an IP, grpc dials the
+// authority (URL.Host), not the name. If that host has a port, classify it
+// with founderTriggerHostPort before trusting the endpoint. A founder
+// authority port is returned so the caller refuses it. An empty endpoint
+// never reaches that check, so dns://127.0.0.1:7718 stays allowed.
 func grpcNewClientEndpoint(addr string) (string, bool) {
 	u, err := url.Parse(addr)
 	if err != nil || (u.Scheme != "dns" && u.Scheme != "passthrough") {
@@ -268,7 +276,66 @@ func grpcNewClientEndpoint(addr string) (string, bool) {
 	if endpoint == "" {
 		return "", false
 	}
+	if u.Scheme == "dns" {
+		hostport, hasPort := dnsAuthorityHostPort(u.Host)
+		if hasPort && dnsEndpointIsNonIPName(endpoint) && founderTriggerHostPort(hostport) {
+			return hostport, true
+		}
+	}
 	return endpoint, true
+}
+
+// dnsAuthorityHostPort reports whether host is a dns authority with a port.
+// The returned string is the host:port founderTriggerHostPort classifies.
+// A host without a port is not this dial: grpc defaults that authority to 53.
+func dnsAuthorityHostPort(host string) (string, bool) {
+	if host == "" {
+		return "", false
+	}
+	_, port, err := net.SplitHostPort(host)
+	if err != nil || port == "" {
+		return "", false
+	}
+	return host, true
+}
+
+// dnsEndpointIsNonIPName reports whether endpoint is a name the dns resolver
+// looks up by dialing URL.Host. An IP endpoint is dialed directly and does
+// not contact the authority. This matches grpc dns.Build: parseTarget, then
+// formatIP (netip.ParseAddr). A parse failure is not a name lookup.
+func dnsEndpointIsNonIPName(endpoint string) bool {
+	host, ok := dnsEndpointHost(endpoint)
+	if !ok {
+		return false
+	}
+	_, err := netip.ParseAddr(host)
+	return err != nil
+}
+
+// dnsEndpointHost is the host grpc's dns parseTarget returns. ok is false
+// when that parse fails and Build does not dial. The default port is only
+// used to split a host that omits one; the port itself is not classified.
+func dnsEndpointHost(endpoint string) (string, bool) {
+	if endpoint == "" {
+		return "", false
+	}
+	if _, err := netip.ParseAddr(endpoint); err == nil {
+		return endpoint, true
+	}
+	if host, port, err := net.SplitHostPort(endpoint); err == nil {
+		if port == "" {
+			return "", false
+		}
+		if host == "" {
+			return "localhost", true
+		}
+		return host, true
+	}
+	host, _, err := net.SplitHostPort(endpoint + ":443")
+	if err != nil {
+		return "", false
+	}
+	return host, true
 }
 
 // isFounderTriggerPort reports whether port is a founder trigger listen port.

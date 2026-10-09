@@ -189,3 +189,89 @@ func TestUseEphemeralTriggerAddrs_KeepsNonFounderSchemeTargets(t *testing.T) {
 		t.Fatalf("rest env = %q, want port 65536 left alone, not rewritten to 0", got)
 	}
 }
+
+// dns://authority/name dials the authority when the name is not an IP.
+// The endpoint is not a founder port, so classifying only the endpoint
+// misses the dial. This test does not bind, dial, or stop anything on
+// 7717 or 7718.
+func TestRefuseDefaultTriggerListen_DNSAuthorityHostnameEndpoint(t *testing.T) {
+	cases := []struct {
+		name string
+		addr string
+		port int
+	}{
+		{name: "ipv4 grpc", addr: "dns://127.0.0.1:7718/not-an-ip.invalid", port: 7718},
+		{name: "ipv4 rest", addr: "dns://127.0.0.1:7717/not-an-ip.invalid", port: 7717},
+		{name: "localhost grpc", addr: "dns://localhost:7718/not-an-ip.invalid", port: 7718},
+		{name: "empty host grpc", addr: "dns://:7718/not-an-ip.invalid", port: 7718},
+		{name: "padded grpc", addr: "dns://127.0.0.1:07718/not-an-ip.invalid", port: 7718},
+		{name: "ipv6 grpc", addr: "dns://[::1]:7718/not-an-ip.invalid", port: 7718},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := net.ResolveTCPAddr("tcp", tc.addr); err == nil {
+				t.Fatalf("ResolveTCPAddr(%q) succeeded; the authority is the miss", tc.addr)
+			}
+			if !isDefaultTriggerListen(tc.addr, trigger.DefaultGRPCPort) {
+				t.Fatalf("isDefaultTriggerListen(%q, %d) = false, want true", tc.addr, trigger.DefaultGRPCPort)
+			}
+			if !isDefaultTriggerListen(tc.addr, tc.port) {
+				t.Fatalf("isDefaultTriggerListen(%q, %d) = false, want true", tc.addr, tc.port)
+			}
+			if err := refuseDefaultTriggerListen(tc.addr, "127.0.0.1:9"); err == nil {
+				t.Fatalf("refuseDefaultTriggerListen(%q, non-default) = nil, want refusal", tc.addr)
+			}
+			if err := refuseDefaultTriggerListen("127.0.0.1:9", tc.addr); err == nil {
+				t.Fatalf("refuseDefaultTriggerListen(non-default, %q) = nil, want refusal", tc.addr)
+			}
+		})
+	}
+
+	// An IP endpoint is dialed directly. The authority is not the dial.
+	if isDefaultTriggerListen("dns://127.0.0.1:7718/127.0.0.1:9", trigger.DefaultGRPCPort) {
+		t.Fatal("dns IP endpoint treated as an authority dial")
+	}
+	// A founder port on an IP endpoint is still the dial. Do not skip it
+	// because the authority port is not 7717 or 7718.
+	if !isDefaultTriggerListen("dns://127.0.0.1:53/127.0.0.1:7718", trigger.DefaultGRPCPort) {
+		t.Fatal("dns IP endpoint on a founder port was allowed")
+	}
+	if isDefaultTriggerListen("dns://127.0.0.1:53/example.com", trigger.DefaultGRPCPort) {
+		t.Fatal("non-founder dns authority treated as a founder port")
+	}
+	if isDefaultTriggerListen("dns://127.0.0.1/not-an-ip.invalid", trigger.DefaultGRPCPort) {
+		t.Fatal("dns authority without a port treated as a founder port")
+	}
+	if isDefaultTriggerListen("passthrough://127.0.0.1:7718/not-an-ip.invalid", trigger.DefaultGRPCPort) {
+		t.Fatal("passthrough authority treated as a dial")
+	}
+	// Empty endpoint, including a trailing slash, is not a dial. The
+	// two-slash form stays allowed in TestRefuseDefaultTriggerListen_SchemeDialTargets.
+	if isDefaultTriggerListen("dns://127.0.0.1:7718/", trigger.DefaultGRPCPort) {
+		t.Fatal("dns empty endpoint with a trailing slash treated as a dial")
+	}
+}
+
+func TestUseEphemeralTriggerAddrs_RewritesDNSAuthorityHostnameEndpoint(t *testing.T) {
+	t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", "dns://127.0.0.1:7718/not-an-ip.invalid")
+	t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", "dns://127.0.0.1:7717/not-an-ip.invalid")
+	useEphemeralTriggerAddrs(t)
+	if got := os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR"); got != "127.0.0.1:0" {
+		t.Fatalf("grpc env = %q, want 127.0.0.1:0", got)
+	}
+	if got := os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR"); got != "127.0.0.1:0" {
+		t.Fatalf("rest env = %q, want 127.0.0.1:0", got)
+	}
+}
+
+func TestUseEphemeralTriggerAddrs_KeepsNonFounderDNSAuthority(t *testing.T) {
+	t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", "dns://127.0.0.1:53/example.com")
+	t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", "dns://127.0.0.1:9/not-an-ip.invalid")
+	useEphemeralTriggerAddrs(t)
+	if got := os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR"); got != "dns://127.0.0.1:53/example.com" {
+		t.Fatalf("grpc env = %q, want the non-founder authority left alone", got)
+	}
+	if got := os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR"); got != "dns://127.0.0.1:9/not-an-ip.invalid" {
+		t.Fatalf("rest env = %q, want the non-founder authority left alone", got)
+	}
+}
