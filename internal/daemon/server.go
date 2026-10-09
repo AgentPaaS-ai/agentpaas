@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -211,24 +212,63 @@ func refuseDefaultTriggerListen(grpcAddr, restAddr string) error {
 	return nil
 }
 
-// isDefaultTriggerListen reports whether addr is empty or would listen on a
-// founder trigger port (7717 or 7718). The port is parsed with the same rules
-// net.Listen uses, so a leading-zero token or a space before the port is the
-// same port as the decimal form. Callers share this check so a test cannot
-// start, rewrite past, or dial those ports under another spelling.
+// isDefaultTriggerListen reports whether addr is empty or would listen or
+// dial a founder trigger port (7717 or 7718). The port is parsed with the
+// same rules net.Listen uses, so a leading-zero token or a space before the
+// port is the same port as the decimal form. A ResolveTCPAddr error is not
+// enough to say the address is not a founder port: grpc.NewClient still
+// dials dns and passthrough targets. Callers share this check so a test
+// cannot start, rewrite past, or dial those ports under another spelling.
 func isDefaultTriggerListen(addr string, defaultPort int) bool {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return true
 	}
-	// ResolveTCPAddr is the parser net.Listen uses. An empty address is
-	// already handled above: ResolveTCPAddr("") is port 0, not a founder port.
-	if tcp, err := net.ResolveTCPAddr("tcp", addr); err == nil && isFounderTriggerPort(tcp.Port) {
+	if founderTriggerHostPort(addr) {
 		return true
 	}
 	// A bare port token is not a listen address. Keep the exact decimal match
 	// so a caller that passes "7718" or "7717" still treats it as default.
-	return addr == strconv.Itoa(defaultPort)
+	if addr == strconv.Itoa(defaultPort) {
+		return true
+	}
+	// dns:/// and passthrough:/// (and the opaque scheme:host:port form) are
+	// dial targets. Classify the endpoint grpc.NewClient uses, not the scheme
+	// string ResolveTCPAddr rejects. One split only: a nested scheme is a
+	// hostname, not another dial target.
+	if endpoint, ok := grpcNewClientEndpoint(addr); ok {
+		return founderTriggerHostPort(endpoint)
+	}
+	return false
+}
+
+// founderTriggerHostPort reports whether addr resolves to port 7717 or 7718.
+// A parse error is false. Callers that dial a scheme target must classify the
+// endpoint first; this function does not treat a parse error as a founder port.
+func founderTriggerHostPort(addr string) bool {
+	tcp, err := net.ResolveTCPAddr("tcp", addr)
+	return err == nil && isFounderTriggerPort(tcp.Port)
+}
+
+// grpcNewClientEndpoint returns the endpoint grpc.NewClient dials for a dns
+// or passthrough target. grpc splits the target with url.Parse and uses the
+// path, or the opaque part when the path is empty, with one leading slash
+// removed (resolver.Target.Endpoint). ok is false when addr is not such a
+// target, including a two-slash authority form whose endpoint is empty.
+func grpcNewClientEndpoint(addr string) (string, bool) {
+	u, err := url.Parse(addr)
+	if err != nil || (u.Scheme != "dns" && u.Scheme != "passthrough") {
+		return "", false
+	}
+	endpoint := u.Path
+	if endpoint == "" {
+		endpoint = u.Opaque
+	}
+	endpoint = strings.TrimPrefix(endpoint, "/")
+	if endpoint == "" {
+		return "", false
+	}
+	return endpoint, true
 }
 
 // isFounderTriggerPort reports whether port is a founder trigger listen port.

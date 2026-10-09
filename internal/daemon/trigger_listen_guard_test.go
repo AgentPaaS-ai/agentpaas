@@ -93,3 +93,99 @@ func TestUseEphemeralTriggerAddrs_KeepsNonDefaultSpellings(t *testing.T) {
 		t.Fatalf("rest env = %q, want the non-default spelling left alone", got)
 	}
 }
+
+// dns:/// and passthrough:/// targets are what grpc.NewClient dials. ResolveTCPAddr
+// rejects those strings, so a parse error must not mean the port is not 7717 or
+// 7718. This test does not bind, dial, or stop anything on 7717 or 7718.
+func TestRefuseDefaultTriggerListen_SchemeDialTargets(t *testing.T) {
+	cases := []struct {
+		name string
+		addr string
+		port int
+	}{
+		{name: "dns grpc", addr: "dns:///127.0.0.1:7718", port: 7718},
+		{name: "passthrough grpc", addr: "passthrough:///127.0.0.1:7718", port: 7718},
+		{name: "dns rest", addr: "dns:///127.0.0.1:7717", port: 7717},
+		{name: "passthrough rest", addr: "passthrough:///127.0.0.1:7717", port: 7717},
+		// The endpoint grpc.NewClient dials still has the listen-side spellings.
+		{name: "dns padded grpc", addr: "dns:///127.0.0.1:07718", port: 7718},
+		{name: "passthrough space before rest port", addr: "passthrough:///127.0.0.1: 7717", port: 7717},
+		{name: "dns ipv6 grpc", addr: "dns:///[::1]:7718", port: 7718},
+		{name: "passthrough opaque grpc", addr: "passthrough:127.0.0.1:7718", port: 7718},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := net.ResolveTCPAddr("tcp", tc.addr); err == nil {
+				t.Fatalf("ResolveTCPAddr(%q) succeeded; scheme targets are the miss", tc.addr)
+			}
+			// dialTriggerGRPC always passes DefaultGRPCPort. A 7717 scheme
+			// target must still be refused before grpc.NewClient.
+			if !isDefaultTriggerListen(tc.addr, trigger.DefaultGRPCPort) {
+				t.Fatalf("isDefaultTriggerListen(%q, %d) = false, want true", tc.addr, trigger.DefaultGRPCPort)
+			}
+			if !isDefaultTriggerListen(tc.addr, tc.port) {
+				t.Fatalf("isDefaultTriggerListen(%q, %d) = false, want true", tc.addr, tc.port)
+			}
+			if err := refuseDefaultTriggerListen(tc.addr, "127.0.0.1:9"); err == nil {
+				t.Fatalf("refuseDefaultTriggerListen(%q, non-default) = nil, want refusal", tc.addr)
+			}
+			if err := refuseDefaultTriggerListen("127.0.0.1:9", tc.addr); err == nil {
+				t.Fatalf("refuseDefaultTriggerListen(non-default, %q) = nil, want refusal", tc.addr)
+			}
+		})
+	}
+
+	if isDefaultTriggerListen("dns:///127.0.0.1:9", trigger.DefaultGRPCPort) {
+		t.Fatal("dns non-founder port treated as a founder port")
+	}
+	if isDefaultTriggerListen("passthrough:///127.0.0.1:8080", trigger.DefaultRESTPort) {
+		t.Fatal("passthrough non-founder port treated as a founder port")
+	}
+	if isDefaultTriggerListen("dns:///127.0.0.1:0", trigger.DefaultGRPCPort) {
+		t.Fatal("dns ephemeral port treated as a founder port")
+	}
+	if isDefaultTriggerListen("dns:///127.0.0.1:08080", trigger.DefaultGRPCPort) {
+		t.Fatal("dns padded non-founder port treated as a founder port")
+	}
+	if isDefaultTriggerListen("dns:///127.0.0.1:65536", trigger.DefaultGRPCPort) {
+		t.Fatal("dns port 65536 treated as a founder port")
+	}
+	if isDefaultTriggerListen("passthrough:///127.0.0.1:65536", trigger.DefaultRESTPort) {
+		t.Fatal("passthrough port 65536 treated as a founder port")
+	}
+	// Two-slash form is the authority, not the dial endpoint. grpc.NewClient
+	// does not connect. A bare endpoint token is a hostname, not port 7718.
+	if isDefaultTriggerListen("dns://127.0.0.1:7718", trigger.DefaultGRPCPort) {
+		t.Fatal("dns authority form treated as a dial endpoint")
+	}
+	if isDefaultTriggerListen("dns:///7718", trigger.DefaultGRPCPort) {
+		t.Fatal("dns bare token treated as founder port 7718")
+	}
+	if isDefaultTriggerListen("unix:///127.0.0.1:7718", trigger.DefaultGRPCPort) {
+		t.Fatal("unix target treated as a founder TCP port")
+	}
+}
+
+func TestUseEphemeralTriggerAddrs_RewritesSchemeDialTargets(t *testing.T) {
+	t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", "dns:///127.0.0.1:7718")
+	t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", "passthrough:///127.0.0.1:7717")
+	useEphemeralTriggerAddrs(t)
+	if got := os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR"); got != "127.0.0.1:0" {
+		t.Fatalf("grpc env = %q, want 127.0.0.1:0", got)
+	}
+	if got := os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR"); got != "127.0.0.1:0" {
+		t.Fatalf("rest env = %q, want 127.0.0.1:0", got)
+	}
+}
+
+func TestUseEphemeralTriggerAddrs_KeepsNonFounderSchemeTargets(t *testing.T) {
+	t.Setenv("AGENTPAAS_TRIGGER_GRPC_ADDR", "dns:///127.0.0.1:9")
+	t.Setenv("AGENTPAAS_TRIGGER_REST_ADDR", "passthrough:///127.0.0.1:65536")
+	useEphemeralTriggerAddrs(t)
+	if got := os.Getenv("AGENTPAAS_TRIGGER_GRPC_ADDR"); got != "dns:///127.0.0.1:9" {
+		t.Fatalf("grpc env = %q, want the non-founder scheme target left alone", got)
+	}
+	if got := os.Getenv("AGENTPAAS_TRIGGER_REST_ADDR"); got != "passthrough:///127.0.0.1:65536" {
+		t.Fatalf("rest env = %q, want port 65536 left alone, not rewritten to 0", got)
+	}
+}
