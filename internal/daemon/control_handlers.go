@@ -3500,6 +3500,13 @@ func (s *controlServer) reconcileOrphanedContainers(ctx context.Context) {
 		fmt.Fprintf(os.Stderr, "daemon: orphan reconciliation: list containers: %v\n", err)
 	} else {
 		for _, c := range containers {
+			// Pipeline stage containers share the agent resource type but
+			// are owned by the pipeline runtime, not daemon run tracking.
+			// Reaping them on daemon Start deletes a live stage out from
+			// under an in-flight pipeline (docker inspect then fails).
+			if c.Labels[runtime.LabelPipelineStage] == "true" {
+				continue
+			}
 			if _, known := knownRuns[c.RunID]; known {
 				continue
 			}

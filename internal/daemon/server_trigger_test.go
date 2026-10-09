@@ -141,9 +141,9 @@ func TestTriggerServer_StartsOnLoopback(t *testing.T) {
 	}
 	defer func() { _ = d.Stop(context.Background()) }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := d.Start(ctx); err != nil {
+	startCtx, startCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer startCancel()
+	if err := d.Start(startCtx); err != nil {
 		t.Fatalf("Start() failed: %v", err)
 	}
 	d.Ready()
@@ -153,7 +153,11 @@ func TestTriggerServer_StartsOnLoopback(t *testing.T) {
 	conn := dialTriggerGRPC(t, grpcBound)
 	client := triggerv1.NewTriggerServiceClient(conn)
 
-	resp, err := client.Invoke(ctx, &triggerv1.InvokeRequest{AgentName: "test-agent"})
+	// Start can consume the whole shared deadline under -race. Invoke
+	// must not inherit that spent context.
+	invokeCtx, invokeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer invokeCancel()
+	resp, err := client.Invoke(invokeCtx, &triggerv1.InvokeRequest{AgentName: "test-agent"})
 	if err != nil {
 		t.Fatalf("Invoke(): %v", err)
 	}

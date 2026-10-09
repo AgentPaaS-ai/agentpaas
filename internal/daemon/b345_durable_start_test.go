@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -69,12 +70,12 @@ func b345TestServer(t *testing.T, mock runtime.RuntimeDriver) *controlServer {
 func seedB345ActiveDeployment(t *testing.T, s *controlServer) string {
 	t.Helper()
 	d, err := s.CreateDeployment(context.Background(), &controlv1.CreateDeploymentRequest{
-		PackageName:    "b345-test-agent",
-		PackageVersion: "0.1.0",
-		BundleDigest:   "sha256:b345bundle",
-		PolicyDigest:   "",
+		PackageName:     "b345-test-agent",
+		PackageVersion:  "0.1.0",
+		BundleDigest:    "sha256:b345bundle",
+		PolicyDigest:    "",
 		ImageLockDigest: "",
-		ActorIdentity:  "tester",
+		ActorIdentity:   "tester",
 	})
 	if err != nil {
 		t.Fatalf("CreateDeployment: %v", err)
@@ -226,10 +227,12 @@ func TestB345_DurableStart_IdempotentReplayDoesNotLaunch(t *testing.T) {
 			}
 			return runtime.ContainerID("agent-replay"), nil
 		},
-		startFunc:       func(_ context.Context, _ runtime.ContainerID) error { return nil },
-		stopFunc:        func(_ context.Context, _ runtime.ContainerID, _ *time.Duration) error { return nil },
-		removeFunc:      func(_ context.Context, _ runtime.ContainerID, _ bool) error { return nil },
-		statusFunc:      func(_ context.Context, _ runtime.ContainerID) (runtime.ContainerStatus, error) { return runtime.ContainerStatusStopped, nil },
+		startFunc:  func(_ context.Context, _ runtime.ContainerID) error { return nil },
+		stopFunc:   func(_ context.Context, _ runtime.ContainerID, _ *time.Duration) error { return nil },
+		removeFunc: func(_ context.Context, _ runtime.ContainerID, _ bool) error { return nil },
+		statusFunc: func(_ context.Context, _ runtime.ContainerID) (runtime.ContainerStatus, error) {
+			return runtime.ContainerStatusStopped, nil
+		},
 		inspectContainerIPFunc: func(_ context.Context, _ runtime.ContainerID, _ string) (string, error) { return "10.0.0.2", nil },
 		execFunc: func(_ context.Context, _ runtime.ContainerID, _ []string) (string, string, int, error) {
 			return `{"result":"ok"}`, "", 0, nil
@@ -467,6 +470,49 @@ func TestB345_DurableStart_RunStatusUpdatesToRunning(t *testing.T) {
 	// succeed).
 	if finalStatus != "RUNNING" && finalStatus != "SUCCEEDED" && finalStatus != "FAILED" {
 		t.Fatalf("unexpected final status: %q", finalStatus)
+	}
+	// RUNNING means the status write landed, not that startDurableRun has
+	// finished. Keep the routed store alive until that goroutine (and the
+	// auto-invoke it launches) stops creating files, or TempDir cleanup
+	// races and fails with "directory not empty".
+	keepRoutedStoreUntilDurableStartDone(t, s, runID)
+}
+
+// keepRoutedStoreUntilDurableStartDone holds the routed store until
+// startDurableRun stops writing. Observing RUNNING is not that point:
+// the goroutine still writes the store (and the auto-invoke it launches
+// writes again). Returning earlier lets TempDir RemoveAll race with
+// those atomic writes and fail with "directory not empty".
+func keepRoutedStoreUntilDurableStartDone(t *testing.T, s *controlServer, runID string) {
+	t.Helper()
+	store := s.localStore
+	if store == nil {
+		t.Fatal("routed store nil while durable start may still be writing")
+	}
+	// Keep the store object (and its directory) reachable until the
+	// writer goroutine has finished. TempDir cleanup runs when this
+	// test returns.
+	defer goruntime.KeepAlive(store)
+
+	s.runMu.Lock()
+	var done <-chan struct{}
+	if s.runs != nil {
+		if tr := s.runs[runID]; tr != nil {
+			done = tr.InvokeDone
+		}
+	}
+	s.runMu.Unlock()
+	if done == nil {
+		// Early failure returns before trackRunPtr. That path's store
+		// write already completed — status was visible to the caller —
+		// and no later writer remains.
+		return
+	}
+
+	select {
+	case <-done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("durable start still writing to the routed store")
 	}
 }
 
