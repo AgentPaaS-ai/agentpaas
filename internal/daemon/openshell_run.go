@@ -373,9 +373,24 @@ func loadOpenShellEgress(deployedDir string) (rules []openshellrt.EgressRule, br
 				if openshellrt.EgressWildcardBlocked(eg.Domain, eg.AllowWildcard) {
 					continue
 				}
+				ports := eg.Ports
+				if len(eg.Ports) > 0 {
+					ports = make([]int, 0, len(eg.Ports))
+					for _, p := range eg.Ports {
+						// Match ValidatePolicy: only 1-65535. 65536 must not be
+						// copied, and must not be truncated to port 0.
+						if p < 1 || p > 65535 {
+							continue
+						}
+						ports = append(ports, p)
+					}
+					if len(ports) == 0 {
+						continue
+					}
+				}
 				rules = append(rules, openshellrt.EgressRule{
 					Domain:        eg.Domain,
-					Ports:         eg.Ports,
+					Ports:         ports,
 					Methods:       eg.Methods,
 					AllowWildcard: eg.AllowWildcard,
 				})

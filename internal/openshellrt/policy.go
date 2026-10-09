@@ -34,6 +34,12 @@ func SandboxPolicy(rules []EgressRule, providerName, brokerHost string) *osv1.Sa
 			continue
 		}
 		ports := declaredPorts(rule.Ports)
+		// A declared list that is entirely outside 1-65535 must not become an
+		// endpoint. preferredPort would otherwise substitute 443, and a uint16
+		// truncation of 65536 is port 0, which OpenShell treats as unrestricted.
+		if len(rule.Ports) > 0 && len(ports) == 0 {
+			continue
+		}
 		ep := osv1.PolicyNetworkEndpoint{
 			Host:        host,
 			Port:        preferredPort(ports),
@@ -153,7 +159,7 @@ func declaredPorts(ports []int) []uint32 {
 	out := make([]uint32, 0, len(ports))
 	seen := make(map[int]struct{}, len(ports))
 	for _, p := range ports {
-		if p <= 0 {
+		if p < 1 || p > 65535 {
 			continue
 		}
 		if _, ok := seen[p]; ok {
