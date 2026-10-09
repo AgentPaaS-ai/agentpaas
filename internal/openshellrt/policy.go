@@ -1,6 +1,8 @@
 package openshellrt
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -14,6 +16,11 @@ type EgressRule struct {
 	Domain  string
 	Ports   []int
 	Methods []string
+	// AllowWildcard is the policy allow_wildcard gate. Nil and false both
+	// block a wildcard domain, matching the policy compiler. True is not
+	// enough: the domain is still omitted unless the OpenShell glob means
+	// the same match.
+	AllowWildcard *bool
 }
 
 // SandboxPolicy builds an OpenShell sandbox policy from the agent allowlist.
@@ -23,19 +30,23 @@ func SandboxPolicy(rules []EgressRule, providerName, brokerHost string) *osv1.Sa
 	endpoints := make([]osv1.PolicyNetworkEndpoint, 0, len(rules))
 	for _, rule := range rules {
 		host := strings.TrimSpace(strings.ToLower(rule.Domain))
-		if host == "" {
+		if host == "" || EgressWildcardBlocked(host, rule.AllowWildcard) {
 			continue
 		}
-		port := uint32(443)
-		if len(rule.Ports) > 0 && rule.Ports[0] > 0 {
-			port = uint32(rule.Ports[0])
-		}
+		ports := declaredPorts(rule.Ports)
 		ep := osv1.PolicyNetworkEndpoint{
 			Host:        host,
-			Port:        port,
+			Port:        preferredPort(ports),
+			Ports:       ports,
 			Protocol:    "rest",
-			Access:      osv1.NetworkAccessPresetReadWrite,
 			Enforcement: osv1.NetworkEnforcementModeEnforce,
+		}
+		// Access and Rules are mutually exclusive. ReadWrite with an empty
+		// rule list is not a method allow. Unrestricted hosts keep the preset.
+		if allows := methodAllowRules(rule.Methods); len(allows) > 0 {
+			ep.Rules = allows
+		} else {
+			ep.Access = osv1.NetworkAccessPresetReadWrite
 		}
 		if brokerHost != "" && host == strings.ToLower(brokerHost) && providerName != "" {
 			ep.CredentialBinding = &ostypes.NetworkCredentialBinding{Provider: providerName}
@@ -77,6 +88,9 @@ func SandboxPolicy(rules []EgressRule, providerName, brokerHost string) *osv1.Sa
 }
 
 func providerName(credID string) string {
+	// Hash the original id so cred-a and cred_a do not collapse to one name.
+	sum := sha256.Sum256([]byte(credID))
+	hash := hex.EncodeToString(sum[:8])
 	var b strings.Builder
 	b.WriteString("ap-")
 	for _, r := range strings.ToLower(credID) {
@@ -88,9 +102,106 @@ func providerName(credID string) string {
 	}
 	name := strings.Trim(b.String(), "-")
 	if name == "ap" || name == "" {
-		return "ap-broker"
+		name = "ap-broker"
 	}
-	return name
+	suffix := "-" + hash
+	const maxProviderName = 63
+	if len(name)+len(suffix) > maxProviderName {
+		name = "ap"
+	}
+	return name + suffix
+}
+
+// EgressWildcardBlocked reports whether domain must not be copied into an
+// OpenShell host. The policy compiler skips a domain that contains '*' unless
+// allow_wildcard is explicitly true. OpenShell '*.example.com' is a one-label
+// DNS glob, so evil.example.com matches it. Policy '*.example.com' is an
+// any-depth suffix and not the apex. Those matches differ, so a wildcard
+// domain is omitted even when the gate is true.
+func EgressWildcardBlocked(domain string, allowWildcard *bool) bool {
+	host := strings.TrimSpace(strings.ToLower(domain))
+	if host == "" || !strings.Contains(host, "*") {
+		return false
+	}
+	if allowWildcard == nil || !*allowWildcard {
+		return true
+	}
+	return !openShellGlobMatchesPolicyWildcard(host)
+}
+
+// openShellGlobMatchesPolicyWildcard reports whether an OpenShell host glob
+// allows exactly the hosts the policy wildcard allows. It does not: policy
+// '*.<base>' matches nested labels, and OpenShell '*' matches one label.
+func openShellGlobMatchesPolicyWildcard(domain string) bool {
+	if !strings.HasPrefix(domain, "*.") || strings.Count(domain, "*") != 1 {
+		return false
+	}
+	base := domain[2:]
+	if base == "" || strings.Contains(base, "*") {
+		return false
+	}
+	nested := "a.b." + base
+	policyMatchesNested := strings.HasSuffix(nested, "."+base)
+	openShellStarMatchesNested := strings.Count(nested, ".") == strings.Count(base, ".")+1
+	return policyMatchesNested && openShellStarMatchesNested
+}
+
+func declaredPorts(ports []int) []uint32 {
+	if len(ports) == 0 {
+		return nil
+	}
+	out := make([]uint32, 0, len(ports))
+	seen := make(map[int]struct{}, len(ports))
+	for _, p := range ports {
+		if p <= 0 {
+			continue
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}
+		out = append(out, uint32(p))
+	}
+	return out
+}
+
+// preferredPort matches the policy compiler: 443 when it is listed, otherwise
+// the first declared port, otherwise 443. The Ports slice still carries every
+// declared port. OpenShell uses that slice when it is set.
+func preferredPort(ports []uint32) uint32 {
+	if len(ports) == 0 {
+		return 443
+	}
+	for _, p := range ports {
+		if p == 443 {
+			return 443
+		}
+	}
+	return ports[0]
+}
+
+func methodAllowRules(methods []string) []osv1.L7Rule {
+	if len(methods) == 0 {
+		return nil
+	}
+	out := make([]osv1.L7Rule, 0, len(methods))
+	for _, method := range methods {
+		method = strings.TrimSpace(method)
+		if method == "" {
+			continue
+		}
+		out = append(out, osv1.L7Rule{
+			Allow: &osv1.L7Allow{
+				Method: method,
+				// "**" is the documented any-path glob. An empty path is not.
+				Path: "**",
+			},
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func brokerProfile() osv1.ProviderProfile {

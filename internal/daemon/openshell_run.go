@@ -370,10 +370,14 @@ func loadOpenShellEgress(deployedDir string) (rules []openshellrt.EgressRule, br
 	if data, err := os.ReadFile(policyPath); err == nil {
 		if parsed, err := policy.ParsePolicy(bytes.NewReader(data)); err == nil {
 			for _, eg := range parsed.Egress {
+				if openshellrt.EgressWildcardBlocked(eg.Domain, eg.AllowWildcard) {
+					continue
+				}
 				rules = append(rules, openshellrt.EgressRule{
-					Domain:  eg.Domain,
-					Ports:   eg.Ports,
-					Methods: eg.Methods,
+					Domain:        eg.Domain,
+					Ports:         eg.Ports,
+					Methods:       eg.Methods,
+					AllowWildcard: eg.AllowWildcard,
 				})
 			}
 		}

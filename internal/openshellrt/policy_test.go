@@ -1,6 +1,8 @@
 package openshellrt
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"reflect"
 	"slices"
 	"strings"
@@ -31,8 +33,14 @@ func TestSandboxPolicyAllowlistOmitsDeniedHost(t *testing.T) {
 		}
 		if ep.Host == "openrouter.ai" {
 			sawBroker = true
-			if ep.Protocol != "rest" || ep.Access != osv1.NetworkAccessPresetReadWrite {
-				t.Fatalf("sandbox broker endpoint must stay rest with access, got protocol=%q access=%v", ep.Protocol, ep.Access)
+			if ep.Protocol != "rest" {
+				t.Fatalf("sandbox broker endpoint must stay rest, got protocol=%q", ep.Protocol)
+			}
+			if ep.Access != osv1.NetworkAccessPresetUnspecified || len(ep.Rules) == 0 {
+				t.Fatalf("POST-only broker host must be armed with method rules, not access %v rules %d", ep.Access, len(ep.Rules))
+			}
+			if ep.Rules[0].Allow == nil || ep.Rules[0].Allow.Method != "POST" {
+				t.Fatalf("broker method restriction dropped: %+v", ep.Rules)
 			}
 			if ep.CredentialBinding == nil || ep.CredentialBinding.Provider != "ap-o02-broker-key" {
 				t.Fatalf("openrouter binding: %+v", ep.CredentialBinding)
@@ -78,8 +86,11 @@ func TestSandboxPolicyReadOnlyIncludesAgentpaas(t *testing.T) {
 }
 
 func TestProviderNameSanitizes(t *testing.T) {
-	if got := providerName("o02-broker-key"); got != "ap-o02-broker-key" {
-		t.Fatalf("got %q", got)
+	const id = "o02-broker-key"
+	sum := sha256.Sum256([]byte(id))
+	want := "ap-o02-broker-key-" + hex.EncodeToString(sum[:8])
+	if got := providerName(id); got != want {
+		t.Fatalf("got %q want %q", got, want)
 	}
 }
 
