@@ -211,18 +211,29 @@ func refuseDefaultTriggerListen(grpcAddr, restAddr string) error {
 	return nil
 }
 
-// isDefaultTriggerListen reports whether addr is empty or uses a default
-// trigger port (7718 for gRPC, 7717 for REST).
+// isDefaultTriggerListen reports whether addr is empty or would listen on a
+// founder trigger port (7717 or 7718). The port is parsed with the same rules
+// net.Listen uses, so a leading-zero token or a space before the port is the
+// same port as the decimal form. Callers share this check so a test cannot
+// start, rewrite past, or dial those ports under another spelling.
 func isDefaultTriggerListen(addr string, defaultPort int) bool {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return true
 	}
-	_, port, err := net.SplitHostPort(addr)
-	if err != nil {
-		return addr == strconv.Itoa(defaultPort)
+	// ResolveTCPAddr is the parser net.Listen uses. An empty address is
+	// already handled above: ResolveTCPAddr("") is port 0, not a founder port.
+	if tcp, err := net.ResolveTCPAddr("tcp", addr); err == nil && isFounderTriggerPort(tcp.Port) {
+		return true
 	}
-	return port == strconv.Itoa(defaultPort)
+	// A bare port token is not a listen address. Keep the exact decimal match
+	// so a caller that passes "7718" or "7717" still treats it as default.
+	return addr == strconv.Itoa(defaultPort)
+}
+
+// isFounderTriggerPort reports whether port is a founder trigger listen port.
+func isFounderTriggerPort(port int) bool {
+	return port == trigger.DefaultGRPCPort || port == trigger.DefaultRESTPort
 }
 
 // Start binds the Unix socket, starts the gRPC server, and begins serving.
