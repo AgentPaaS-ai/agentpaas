@@ -6,5 +6,5 @@
 Markdown lives in that repo under `docs/`.  
 Click **Edit this page** on any article → opens GitHub → open a PR → owner merges.
 
-This `agentpaas` monorepo still holds engineering docs (quickstart, policy, internal, owa-records).  
+This `agentpaas` monorepo still holds engineering docs (quickstart, policy, internal). Evidence notes stay outside this repository.  
 Customer-facing trial/release prose is mirrored in `docs/customer/` for CLI packaging; the **canonical website** is `AgentPaaS-ai/docs`.

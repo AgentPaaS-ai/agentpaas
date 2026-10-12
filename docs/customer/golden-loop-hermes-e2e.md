@@ -34,7 +34,7 @@ agentpaas doctor     # 7/7
 agentpaas cloud whoami
 ```
 
-Evidence: paste into `docs/owa-records/golden-hermes-e2e-YYYYMMDD.md`.
+Evidence: write `golden-hermes-e2e-YYYYMMDD.md` outside this repository. Do not commit it here.
 
 ---
 
@@ -192,7 +192,7 @@ Hermes should have exercised without founder debug:
 
 ## Phase 8 — Evidence
 
-Write `docs/owa-records/golden-hermes-e2e-YYYYMMDD.md` with:
+Write `golden-hermes-e2e-YYYYMMDD.md` outside this repository with:
 - profile name, brew version/commit
 - local run_id + invoke-response excerpt
 - deny run_id + allow run_id
@@ -216,4 +216,4 @@ Write `docs/owa-records/golden-hermes-e2e-YYYYMMDD.md` with:
 
 - Terminal short path: `docs/customer/golden-path.md`
 - Legacy local share loop: `docs/execution/golden-loop-test.md`
-- Pre-M8 residuals: `docs/owa-records/m7.5-pre-m8-residuals.md`
+- Earlier residuals are recorded outside this repository.

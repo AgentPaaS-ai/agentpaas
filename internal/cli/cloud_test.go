@@ -7,15 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/cloudclient"
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
 )
-
-// dispatchedLaneCLIHome is this lane's shared CLI home. Tests must not read
-// it: the home is shared, and a live token there must not satisfy a fixture.
-const dispatchedLaneCLIHome = "/Users/pms88/projects/agentpaas/worktrees/.cli-c"
 
 // setupFakeTokenStore overrides the token store factory to return a fake store
 // and restores it on test cleanup.
@@ -24,13 +22,16 @@ const dispatchedLaneCLIHome = "/Users/pms88/projects/agentpaas/worktrees/.cli-c"
 // Clear it for this test so isolation assertions still see the fixture (or
 // the empty store). A test that wants the env token to win sets it after
 // this call. t.Setenv restores the process env when the test ends.
+//
+// Each fixture gets its own temporary home. A token stored in any other home
+// must not satisfy the fixture. The resolved token store path must sit under
+// that home.
 func setupFakeTokenStore(t *testing.T) *cloudclient.FakeTokenStore {
 	t.Helper()
 
 	t.Setenv("AGENTPAAS_CLOUD_API_TOKEN", "")
-	if os.Getenv("AGENTPAAS_HOME") == dispatchedLaneCLIHome {
-		t.Setenv("AGENTPAAS_HOME", t.TempDir())
-	}
+	homeDir := fixtureHome(t)
+	assertResolvedTokenStoreUnderHome(t, homeDir)
 
 	store := cloudclient.NewFakeTokenStore()
 
@@ -44,6 +45,67 @@ func setupFakeTokenStore(t *testing.T) *cloudclient.FakeTokenStore {
 	})
 
 	return store
+}
+
+// fixtureHome returns a private temporary directory for this test. A home
+// already set to a private temporary directory is kept so files written there
+// stay visible. Any other home is replaced so a token stored elsewhere cannot
+// satisfy the fixture.
+func fixtureHome(t *testing.T) string {
+	t.Helper()
+	homeDir := os.Getenv("AGENTPAAS_HOME")
+	if !isPrivateTempDir(homeDir) {
+		homeDir = t.TempDir()
+		t.Setenv("AGENTPAAS_HOME", homeDir)
+	}
+	return homeDir
+}
+
+// assertResolvedTokenStoreUnderHome fails unless the token store path resolved
+// from the process home sits under homeDir.
+func assertResolvedTokenStoreUnderHome(t *testing.T, homeDir string) {
+	t.Helper()
+	resolvedHome, err := home.DiscoverHome()
+	if err != nil {
+		t.Fatalf("resolve home: %v", err)
+	}
+	storePath := filepath.Join(resolvedHome, cloudInvokeTokenStoreName)
+	if !dirContains(homeDir, storePath) {
+		t.Fatalf("resolved token store %q is outside fixture home %q", storePath, homeDir)
+	}
+}
+
+func isPrivateTempDir(path string) bool {
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	return dirContains(os.TempDir(), path)
+}
+
+func dirContains(root, path string) bool {
+	root = resolveExisting(root)
+	path = resolveExisting(path)
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return !filepath.IsAbs(rel)
+}
+
+func resolveExisting(path string) string {
+	path = filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	parent := filepath.Dir(path)
+	if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
+		return filepath.Join(resolvedParent, filepath.Base(path))
+	}
+	return path
 }
 
 // executeCloudCmd builds a fresh command tree and executes it with the given args.
