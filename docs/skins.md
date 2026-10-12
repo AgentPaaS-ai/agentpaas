@@ -23,7 +23,7 @@ Hermes host is the plugin, not an MCP config:
 
 Do not change the Hermes first-run walk.
 
-`agentpaas-mcp` is the D72 name for the single MCP integration artifact.
+`agentpaas-mcp` is the name of the single MCP integration artifact.
 It is a thin stdio adapter over the `agentpaas` CLI. Not a new protocol
 and not a per-host runtime.
 

@@ -162,7 +162,7 @@ func TestM15_5_T16_D202_SplitEmailMasked(t *testing.T) {
 	result, _ := resp.Result.(map[string]any)
 	text, _ := result["text"].(string)
 	if strings.Contains(text, t16CanaryEmail) || strings.Contains(t16AuditBlob(rec), t16CanaryEmail) {
-		t.Fatalf("D202 canary survived: %q audit=%s", text, t16AuditBlob(rec))
+		t.Fatalf("canary survived: %q audit=%s", text, t16AuditBlob(rec))
 	}
 }
 
@@ -205,7 +205,7 @@ func TestM15_5_T16_D203_NoSecretPackDefaults(t *testing.T) {
 		t.Fatalf("email not masked: %q", text)
 	}
 	if !strings.Contains(text, "AKIAIOSFODNN7EXAMPLE") || !strings.Contains(text, "ghp_deadbeef") {
-		t.Fatalf("D203 secret-pack must not be builtins: %q", text)
+		t.Fatalf("secret-pack must not be builtins: %q", text)
 	}
 }
 

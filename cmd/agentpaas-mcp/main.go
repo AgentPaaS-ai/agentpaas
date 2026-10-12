@@ -1,5 +1,5 @@
 // Package main is a stdio MCP adapter that execs the agentpaas CLI.
-// D72 name: agentpaas-mcp. Not a per-host runtime. Not pack/deploy.
+// Binary name: agentpaas-mcp. Not a per-host runtime. Not pack/deploy.
 package main
 
 import (

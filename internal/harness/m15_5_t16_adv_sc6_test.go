@@ -98,7 +98,7 @@ func TestAdvSC6_MaskPathAuditAppendDownMustFailClosed(t *testing.T) {
 	}
 	resp := s.handleLLM(rpcRequest{ID: "adv-d208-mask", Method: "llm", Params: map[string]any{"prompt": "hello"}}, t16PIIState(t16MaskPII()))
 	if resp.OK {
-		t.Fatalf("// ADVERSARY BREAK: D208 mask path audit-down returned OK text=%v upstream=%d", resp.Result, upstream)
+		t.Fatalf("// ADVERSARY BREAK: mask path audit-down returned OK text=%v upstream=%d", resp.Result, upstream)
 	}
 	if strings.Contains(resp.Error, t16CanaryEmail) {
 		t.Fatalf("canary in error: %q", resp.Error)
@@ -192,7 +192,7 @@ func TestAdvSC6_JSONRoundTripPayloadStillRejects(t *testing.T) {
 	state.payload = advJSONRoundTripPayload(t, state.payload)
 	resp := s.handleLLM(rpcRequest{ID: "adv-json", Method: "llm", Params: map[string]any{"prompt": "ssn " + t16CanarySSN}}, state)
 	if upstream != 0 {
-		t.Fatalf("D205 json round-trip dropped enforce upstream=%d", upstream)
+		t.Fatalf("json round-trip dropped enforce upstream=%d", upstream)
 	}
 	if resp.OK || resp.Error != "pii_rejected" {
 		t.Fatalf("expected pii_rejected, got ok=%t err=%q", resp.OK, resp.Error)
@@ -231,7 +231,7 @@ func TestAdvSC6_ResponseRejectAuditDownFailClosed(t *testing.T) {
 	}
 	resp := s.handleLLM(rpcRequest{ID: "adv-d208-resp", Method: "llm", Params: map[string]any{"prompt": "hello"}}, t16PIIState(t16RejectPII()))
 	if resp.OK {
-		t.Fatal("D208 response reject audit-down must fail-closed")
+		t.Fatal("response reject audit-down must fail-closed")
 	}
 	if strings.Contains(resp.Error, t16CanarySSN) {
 		t.Fatalf("canary in error: %q", resp.Error)

@@ -25,7 +25,7 @@ var (
 	piiBuiltinEmail      = regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)
 )
 
-// piiConfig is the invoke-payload form of policy.PII (D205). Absent/nil is SC8 off.
+// piiConfig is the invoke-payload form of policy.PII. Absent/nil is SC8 off.
 type piiConfig struct {
 	valid      bool
 	action     string
@@ -201,7 +201,7 @@ func piiFromPayload(payload map[string]any) *piiConfig {
 	return cfg
 }
 
-// applyPIIToText inspects the full buffer (D202). Skip only when cfg is nil (SC8).
+// applyPIIToText inspects the full buffer. Skip only when cfg is nil (SC8).
 // Mask replaces hits with [REDACTED]. Reject returns reject_body with no raw PII.
 func applyPIIToText(cfg *piiConfig, text string) (string, error) {
 	if cfg == nil {

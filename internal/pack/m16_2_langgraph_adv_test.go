@@ -240,7 +240,7 @@ func TestADV_M16_2_SC4_PackRejectsCheckpointImportInEntrypoint(t *testing.T) {
 	err := ValidateLangGraphLibraryDeps(dir)
 	if err == nil {
 		// ADVERSARY BREAK: SC4 MemorySaver / langgraph.checkpoint in entrypoint not rejected
-		t.Errorf("ADVERSARY BREAK: SC4 pack accepted entrypoint that imports langgraph.checkpoint.memory.MemorySaver (core checkpointer; D150)")
+		t.Errorf("ADVERSARY BREAK: SC4 pack accepted entrypoint that imports langgraph.checkpoint.memory.MemorySaver (core checkpointer)")
 	}
 
 	golden := advM162PackDemoDir(t)

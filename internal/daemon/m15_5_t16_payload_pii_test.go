@@ -41,7 +41,7 @@ guardrails:
 	}
 	piiAny, ok := payload["pii"]
 	if !ok || piiAny == nil {
-		t.Fatalf("D205: pii missing from local invoke payload: %#v", payload)
+		t.Fatalf("pii missing from local invoke payload: %#v", payload)
 	}
 	pii, ok := piiAny.(map[string]any)
 	if !ok {
@@ -64,7 +64,7 @@ guardrails:
 	}
 	outStr := string(out)
 	if !strings.Contains(outStr, "api.openai.com") {
-		t.Fatalf("D205: do not omit egress host to fake leftover ADV:\n%s", outStr)
+		t.Fatalf("do not omit egress host to fake leftover ADV:\n%s", outStr)
 	}
 	if strings.Contains(outStr, "guardrails") {
 		t.Fatalf("compile still omits route-level guardrails, got:\n%s", outStr)

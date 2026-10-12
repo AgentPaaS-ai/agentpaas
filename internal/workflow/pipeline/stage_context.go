@@ -57,7 +57,7 @@ func CollectStageContextParams(ctx context.Context, store PipelineStore, claim *
 		}
 	}
 
-	// Child input is the work order only (D177). Never pass the full
+	// Child input is the work order only. Never pass the full
 	// prior HandoffEnvelope — notes, smash, and parent conversation stay
 	// platform-held.
 	var incoming json.RawMessage

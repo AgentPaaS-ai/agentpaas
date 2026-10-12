@@ -8,7 +8,7 @@ import (
 )
 
 // ValidateLangGraphLibraryDeps rejects langgraph-server and checkpointer
-// packages at pack time (M16.2 SC4 / D150). Library langgraph is allowed.
+// packages at pack time (M16.2 SC4). Library langgraph is allowed.
 func ValidateLangGraphLibraryDeps(projectDir string) error {
 	files := []string{
 		"requirements.txt", "pyproject.toml", "uv.lock", "poetry.lock",

@@ -129,7 +129,7 @@ func TestAdversaryT16_UnicodeDotTraversalNotRejected(t *testing.T) {
 }
 
 // TestAdversaryT16_PolicyYAMLNotCopiedOntoStamp
-// SC9 / D166: pack must stamp only agent.yaml mcp_servers, never policy.
+// SC9: pack must stamp only agent.yaml mcp_servers, never policy.
 func TestAdversaryT16_PolicyYAMLNotCopiedOntoStamp(t *testing.T) {
 	ay := &AgentYAML{Name: "t12a-agent-mcp"}
 	m := agentYAMLCanonicalMap(ay)
