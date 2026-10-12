@@ -20,6 +20,7 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/install"
 	"github.com/AgentPaaS-ai/agentpaas/internal/operator"
 	"github.com/AgentPaaS-ai/agentpaas/internal/pack"
+	"github.com/AgentPaaS-ai/agentpaas/internal/policy"
 	"github.com/AgentPaaS-ai/agentpaas/internal/secrets"
 	"github.com/AgentPaaS-ai/agentpaas/internal/strutil"
 	"github.com/spf13/cobra"
@@ -65,7 +66,7 @@ resolved to the correct platform-specific digest. The builder stage image
 				}
 			}
 
-			// BUG 9 fix: warn about wildcard egress policies before packing.
+			// Refuse an invalid policy before the daemon builds an image.
 			{
 				policyPath := filepath.Join(projectDir, "policy.yaml")
 				if data, err := os.ReadFile(policyPath); err == nil {
@@ -82,6 +83,9 @@ resolved to the correct platform-specific digest. The builder stage image
 						fmt.Fprintf(os.Stderr,
 							"WARNING: policy.yaml contains wildcard egress (domain: '*'). "+
 								"This allows the agent to access ANY HTTPS domain.\n")
+					}
+					if err := refuseInvalidProjectPolicy(data); err != nil {
+						return err
 					}
 				}
 			}
@@ -157,6 +161,20 @@ resolved to the correct platform-specific digest. The builder stage image
 	cmd.Flags().String("target", "", "Target platform for the image (e.g. \"linux/amd64\", \"linux/arm64\"). Empty means host default. For Cloudflare, use \"linux/amd64\"")
 	cmd.Flags().String("base-image", "", "Override the base distroless image (e.g. \"gcr.io/distroless/python3-debian12@sha256:...\")")
 	return cmd
+}
+
+// refuseInvalidProjectPolicy fails pack before any image build when policy.yaml
+// does not pass the shared admission loader.
+func refuseInvalidProjectPolicy(data []byte) error {
+	parsed, err := policy.ParsePolicy(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("parse policy.yaml: %w", err)
+	}
+	errs := policy.ValidatePolicy(parsed)
+	if !policy.HasErrors(errs) {
+		return nil
+	}
+	return fmt.Errorf("policy.yaml validation failed: %s", policy.FormatErrors(errs))
 }
 
 // validateTargetPlatform checks that target has the form "os/arch".

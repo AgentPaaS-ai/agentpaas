@@ -211,18 +211,16 @@ llm_budget:
 
 ## PII guardrails
 
-Use the mapping form below:
+Use the mapping form below. This release accepts built-in detectors only. `policy validate` and `pack` refuse a non-empty `patterns` list.
 
 ```yaml
 guardrails:
   pii:
     action: mask
     builtins: [Email, Ssn, DriversLicense, CreditCard, Key]
-    patterns:
-      - "\\b(?:\\+1[-. ]?)?\\(?[2-9][0-9]{2}\\)?[-. ]?[0-9]{3}[-. ]?[0-9]{4}\\b"
 ```
 
-`mask` replaces detected values with `[REDACTED]` before audit persistence. `reject` blocks the request. Phone numbers use custom patterns. The supported built-in names are `Email`, `Ssn`, `DriversLicense`, `CreditCard`, and `Key`.
+`mask` replaces detected values with `[REDACTED]` before audit persistence. `reject` blocks the request. Custom patterns are not supported. The supported built-in names are `Email`, `Ssn`, `DriversLicense`, `CreditCard`, and `Key`.
 
 ## Inspect the compiled contract
 

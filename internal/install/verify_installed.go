@@ -75,7 +75,7 @@ func verifyInstalledAtDir(installedDir string, auditAppender audit.AuditAppender
 		return fmt.Errorf("%w: read policy: %w", ErrInstallVerifyFailed, err)
 	}
 	if lock.PolicyDigest != "" {
-		computed, err := pack.ComputePolicyDigest(policyData)
+		computed, err := pack.ComputeInstalledPolicyDigest(policyData)
 		if err != nil {
 			return fmt.Errorf("%w: compute policy digest: %w", ErrInstallVerifyFailed, err)
 		}

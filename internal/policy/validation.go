@@ -1023,6 +1023,13 @@ func validatePIIGuardrail(pii *PIIGuardrail) []ValidationError {
 		}
 	}
 
+	// A non-empty list is refused at admission. The field stays in the schema
+	// and the canonical form so an already packed lock still verifies.
+	// Pattern-shape checks below stay for callers that omit this refusal.
+	if len(pii.Patterns) > 0 {
+		errs = append(errs, customPIIPatternRefusal())
+	}
+
 	for i, pat := range pii.Patterns {
 		if msg := piiPatternError(pat); msg != "" {
 			errs = append(errs, ValidationError{
@@ -1218,6 +1225,61 @@ func GetErrorCount(errs []ValidationError) int {
 // HasErrors returns true if any validation errors exist (excluding warnings).
 func HasErrors(errs []ValidationError) bool {
 	return GetErrorCount(errs) > 0
+}
+
+// customPIIPatternsUnsupportedMessage is the admission refusal for a
+// non-empty guardrails.pii patterns list. The five names are the built-ins.
+const customPIIPatternsUnsupportedMessage = "custom PII patterns are not supported in this release; use builtins: CreditCard, Ssn, Email, DriversLicense, Key"
+
+func customPIIPatternRefusal() ValidationError {
+	return ValidationError{
+		Field:    "guardrails.pii.patterns",
+		Message:  customPIIPatternsUnsupportedMessage,
+		Severity: "error",
+	}
+}
+
+// IsCustomPIIPatternRefusal reports the admission refusal for a non-empty
+// guardrails.pii patterns list.
+func IsCustomPIIPatternRefusal(e ValidationError) bool {
+	return e.Severity == "error" && e.Field == "guardrails.pii.patterns" && e.Message == customPIIPatternsUnsupportedMessage
+}
+
+// OmitCustomPIIPatternRefusal drops only that admission refusal. Digest
+// checks and the local harness still apply patterns an already packed lock
+// carries. policy validate, pack, and deploy use the unfiltered result.
+func OmitCustomPIIPatternRefusal(errs []ValidationError) []ValidationError {
+	if len(errs) == 0 {
+		return errs
+	}
+	out := make([]ValidationError, 0, len(errs))
+	for _, e := range errs {
+		if IsCustomPIIPatternRefusal(e) {
+			continue
+		}
+		out = append(out, e)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// FormatErrors joins error-severity findings for CLI and pack messages.
+func FormatErrors(errs []ValidationError) string {
+	var b strings.Builder
+	n := 0
+	for _, e := range errs {
+		if e.Severity != "error" {
+			continue
+		}
+		if n > 0 {
+			b.WriteString("; ")
+		}
+		b.WriteString(e.Error())
+		n++
+	}
+	return b.String()
 }
 
 // ContainsInjectionPattern checks for common HTTP injection characters

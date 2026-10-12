@@ -183,7 +183,7 @@ func checkPolicyDigest(b *Bundle, add verifyAdder) {
 		add(CheckPolicyDigest, false, "lock missing")
 		return
 	}
-	computed, err := pack.ComputePolicyDigest(b.PolicyYAML)
+	computed, err := pack.ComputeInstalledPolicyDigest(b.PolicyYAML)
 	if err != nil {
 		add(CheckPolicyDigest, false, err.Error())
 	} else if computed != b.Lock.PolicyDigest {

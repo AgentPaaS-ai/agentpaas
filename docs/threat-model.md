@@ -36,7 +36,7 @@ uses a shared gateway.
 ## Security limits
 
 - AgentPaaS hardens containers. It does not claim protection from kernel zero-days.
-- PII and outbound data controls use configured detectors and patterns. They are not semantic DLP.
+- PII and outbound data controls use configured built-in detectors. They are not semantic DLP.
 - Local mode trusts the developer's machine.
 - Cloud default-tier enforcement depends on the AgentPaaS control plane and gateway. The high-assurance tier adds substrate-enforced network policy.
 

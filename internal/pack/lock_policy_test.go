@@ -74,6 +74,50 @@ func TestComputePolicyDigest_InvalidYAML(t *testing.T) {
 	}
 }
 
+func TestComputePolicyDigest_CustomPIIPatternsRefused(t *testing.T) {
+	yml := `version: "1.0"
+agent:
+  name: test-agent
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+guardrails:
+  pii:
+    action: reject
+    builtins: [Ssn]
+    patterns:
+      - "\\d{3}-\\d{3}-\\d{4}"
+    reject_status: 422
+    reject_body: pii_rejected
+`
+	_, err := ComputePolicyDigest([]byte(yml))
+	if err == nil {
+		t.Fatal("ComputePolicyDigest accepted custom PII patterns")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"guardrails.pii.patterns",
+		"custom PII patterns are not supported",
+		"CreditCard",
+		"Ssn",
+		"Email",
+		"DriversLicense",
+		"Key",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("digest error %q missing %q", msg, want)
+		}
+	}
+	got, err := ComputeInstalledPolicyDigest([]byte(yml))
+	if err != nil {
+		t.Fatalf("installed digest must still hash a lock that already carries patterns: %v", err)
+	}
+	again, err := ComputeInstalledPolicyDigest([]byte(yml))
+	if err != nil || again != got {
+		t.Fatalf("installed digest unstable: %v %s %s", err, got, again)
+	}
+}
+
 func TestComputePolicyDigest_ValidationErrors(t *testing.T) {
 	_, err := ComputePolicyDigest([]byte(privateCIDRPolicy))
 	if err == nil {
@@ -121,15 +165,15 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 			BuildInputDigest: digestString("input"),
 			DepsLocked:       []string{"dep==1.0.0"},
 		},
-		AgentYAML:       &AgentYAML{},
-		Runtime:         RuntimeType("python"),
-		BaseImageDigest: "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
-		HarnessVersion:  "test",
-		Platform:        "linux/arm64",
-		SourceDateEpoch: testTime(),
-		KeyStore:        store,
-		KeyID:           store.keyID,
-		PolicyYAML:      policyBytes,
+		AgentYAML:         &AgentYAML{},
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PolicyYAML:        policyBytes,
 		PublisherKeyStore: pubKS,
 	})
 	if err != nil {
@@ -170,15 +214,15 @@ printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
 			BuildInputDigest: digestString("input"),
 			DepsLocked:       []string{"dep==1.0.0"},
 		},
-		AgentYAML:       &AgentYAML{},
-		Runtime:         RuntimeType("python"),
-		BaseImageDigest: "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
-		HarnessVersion:  "test",
-		Platform:        "linux/arm64",
-		SourceDateEpoch: testTime(),
-		KeyStore:        store,
-		KeyID:           store.keyID,
-		PolicyYAML:      nil,
+		AgentYAML:         &AgentYAML{},
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PolicyYAML:        nil,
 		PublisherKeyStore: pubKS,
 	})
 	if err != nil {

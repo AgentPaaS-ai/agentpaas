@@ -64,12 +64,12 @@ func advSC6ContainsAWSGitHubPEM(blob string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// D208 — fail-closed must persist when PII is on
+// fail-closed must persist when PII is on
 // ---------------------------------------------------------------------------
 
 func TestAdvSC6_D208_FailClosedMustPersistWhenPIIOn(t *testing.T) {
 	// ADVERSARY BREAK: Canonicalize/compile of mask|reject PII does not persist
-	// fail-closed (D208). Schema has no fail_closed / on_detector_error field
+	// fail-closed. Schema has no fail_closed / on_detector_error field
 	// and Canonicalize does not inject one, so a down detector/audit/budget
 	// store has no compiled closed default.
 	p := advSC6Parse(t, advSC6Base(`guardrails:
@@ -86,7 +86,7 @@ func TestAdvSC6_D208_FailClosedMustPersistWhenPIIOn(t *testing.T) {
 	}
 	cp, _ := Canonicalize(p)
 	if cp == nil || cp.PII == nil {
-		t.Fatal("ADVERSARY BREAK: Canonicalize dropped PII (D205/D208)")
+		t.Fatal("ADVERSARY BREAK: Canonicalize dropped PII")
 	}
 	b, err := json.Marshal(cp)
 	if err != nil {
@@ -99,7 +99,7 @@ func TestAdvSC6_D208_FailClosedMustPersistWhenPIIOn(t *testing.T) {
 		strings.Contains(blob, `"on_detector_error":"fail_closed"`) ||
 		strings.Contains(blob, `"on_audit_error":"reject"`)
 	if !closed {
-		t.Errorf("ADVERSARY BREAK: D208 fail-closed not persisted in canonical JSON: %s", blob)
+		t.Errorf("ADVERSARY BREAK: fail-closed not persisted in canonical JSON: %s", blob)
 	}
 	out, err := CompileGatewayConfig(p)
 	if err != nil {
@@ -109,7 +109,7 @@ func TestAdvSC6_D208_FailClosedMustPersistWhenPIIOn(t *testing.T) {
 	gwClosed := strings.Contains(gw, "fail_closed") || strings.Contains(gw, "failClosed") ||
 		strings.Contains(strings.ToLower(gw), "failclosed")
 	if !closed && !gwClosed {
-		t.Errorf("ADVERSARY BREAK: D208 fail-closed absent from compile output too")
+		t.Errorf("ADVERSARY BREAK: fail-closed absent from compile output too")
 	}
 }
 
@@ -152,7 +152,7 @@ func TestAdvSC6_D208_FailOpenKeysMustNotCompile(t *testing.T) {
 	} {
 		_, err := ParsePolicy(strings.NewReader(yml))
 		if err == nil {
-			t.Errorf("ADVERSARY BREAK: D208 fail-open/skip key parsed instead of rejected:\n%s", yml)
+			t.Errorf("ADVERSARY BREAK: fail-open/skip key parsed instead of rejected:\n%s", yml)
 		}
 	}
 }
@@ -196,14 +196,14 @@ func TestAdvSC6_D208_CompileMustNotSucceedWhenValidateFails(t *testing.T) {
 			}
 			out, err := CompileGatewayConfig(p)
 			if err == nil && len(out) > 0 {
-				t.Errorf("ADVERSARY BREAK: D208 CompileGatewayConfig succeeded on invalid PII %s (%d bytes)", c.name, len(out))
+				t.Errorf("ADVERSARY BREAK: CompileGatewayConfig succeeded on invalid PII %s (%d bytes)", c.name, len(out))
 			}
 		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// D202 — stream inspect must buffer or fail closed when mask|reject on
+// stream inspect must buffer or fail closed when mask|reject on
 // ---------------------------------------------------------------------------
 
 func TestAdvSC6_D202_StreamBufferMustPersistWhenMaskReject(t *testing.T) {
@@ -217,7 +217,7 @@ func TestAdvSC6_D202_StreamBufferMustPersistWhenMaskReject(t *testing.T) {
     builtins: [Email]
 `))
 		if !PIIRequiresBufferedStream(p) {
-			t.Errorf("ADVERSARY BREAK: D202 PIIRequiresBufferedStream=false for action=%s", action)
+			t.Errorf("ADVERSARY BREAK: PIIRequiresBufferedStream=false for action=%s", action)
 		}
 		cp, _ := Canonicalize(p)
 		b, _ := json.Marshal(cp)
@@ -233,7 +233,7 @@ func TestAdvSC6_D202_StreamBufferMustPersistWhenMaskReject(t *testing.T) {
 			strings.Contains(blob, `"fail_closed":true`) ||
 			strings.Contains(strings.ToLower(gw), "buffer") && strings.Contains(strings.ToLower(gw), "stream")
 		if !persisted {
-			t.Errorf("ADVERSARY BREAK: D202 stream buffer/fail-closed not persisted for action=%s canon=%s", action, blob)
+			t.Errorf("ADVERSARY BREAK: stream buffer/fail-closed not persisted for action=%s canon=%s", action, blob)
 		}
 	}
 }
@@ -249,7 +249,7 @@ func TestAdvSC6_D202_PIIPresentUnknownActionMustNotSkipInspect(t *testing.T) {
 		PII:     &PIIGuardrail{Action: "log_only", Builtins: []string{PIIBuiltinEmail}},
 	}
 	if !PIIRequiresBufferedStream(p) {
-		t.Errorf("ADVERSARY BREAK: D202 PII present with unknown action skipped inspect (buffered=false)")
+		t.Errorf("ADVERSARY BREAK: PII present with unknown action skipped inspect (buffered=false)")
 	}
 }
 
@@ -284,8 +284,7 @@ func TestAdvSC6_SC6_RejectRequiresPolicyDefinedError(t *testing.T) {
 func TestAdvSC6_SC6_RejectMustNotCompileUnconditionalUpstream(t *testing.T) {
 	// Locked SC6: reject-on-request is a policy-defined error (reject_status
 	// + reject_body persisted in parse/validate/canonical). "No upstream" is
-	// runtime/harness — NOT "omit declared egress host from compile" (D205
-	// same-policy). Compiled YAML must not leak a tenant canary.
+	// runtime/harness — NOT "omit declared egress host from compile". Compiled YAML must not leak a tenant canary.
 	p := advSC6Parse(t, advSC6Base(`guardrails:
   pii:
     action: reject
@@ -296,10 +295,17 @@ func TestAdvSC6_SC6_RejectMustNotCompileUnconditionalUpstream(t *testing.T) {
     reject_body: "policy-defined-reject"
 `))
 	errs := ValidatePolicy(p)
+	erred := false
 	for _, e := range errs {
-		if e.Severity == "error" {
-			t.Fatalf("valid reject policy must validate: %s", advSC6ErrBlob(errs))
+		if e.Severity == "error" && !IsCustomPIIPatternRefusal(e) {
+			erred = true
 		}
+	}
+	if !advSC6HasErr(errs, "custom PII patterns") || !advSC6HasErr(errs, "guardrails.pii.patterns") {
+		t.Fatalf("custom pattern must be refused: %s", advSC6ErrBlob(errs))
+	}
+	if erred {
+		t.Fatalf("reject contract must not fail for a reason other than custom patterns: %s", advSC6ErrBlob(errs))
 	}
 	if p.PII == nil || p.PII.Action != PIIActionReject || p.PII.RejectStatus != 422 || p.PII.RejectBody != "policy-defined-reject" {
 		t.Fatalf("SC6 parse did not keep policy-defined reject error: %+v", p.PII)
@@ -319,9 +325,9 @@ func TestAdvSC6_SC6_RejectMustNotCompileUnconditionalUpstream(t *testing.T) {
 		t.Fatalf("CompileGatewayConfig: %v", err)
 	}
 	gw := string(out)
-	// D205 same-policy: compile still emits declared egress hosts.
+	// same-policy: compile still emits declared egress hosts.
 	if !strings.Contains(gw, "api.openai.com") {
-		t.Errorf("ADVERSARY BREAK: D205 compile omitted declared egress host api.openai.com:\n%s", gw)
+		t.Errorf("ADVERSARY BREAK: compile omitted declared egress host api.openai.com:\n%s", gw)
 	}
 	if strings.Contains(gw, advSC6Canary) {
 		t.Errorf("ADVERSARY BREAK: SC6 tenant canary leaked into compiled gateway YAML:\n%s", gw)
@@ -362,7 +368,7 @@ guardrails:
 }
 
 // ---------------------------------------------------------------------------
-// D203 — builtins = gateway PII list only; extra = tenant patterns
+// builtins = gateway PII list only; extra = tenant patterns
 // ---------------------------------------------------------------------------
 
 func TestAdvSC6_D203_SecretPackBuiltinsRejected(t *testing.T) {
@@ -375,10 +381,10 @@ func TestAdvSC6_D203_SecretPackBuiltinsRejected(t *testing.T) {
 		}
 		errs := ValidatePolicy(p)
 		if !advSC6HasErr(errs, "builtin") {
-			t.Errorf("ADVERSARY BREAK: D203 builtin %q accepted: %s", bad, advSC6ErrBlob(errs))
+			t.Errorf("ADVERSARY BREAK: builtin %q accepted: %s", bad, advSC6ErrBlob(errs))
 		}
 		if AllowedPIIBuiltin(bad) {
-			t.Errorf("ADVERSARY BREAK: D203 AllowedPIIBuiltin(%q)=true", bad)
+			t.Errorf("ADVERSARY BREAK: AllowedPIIBuiltin(%q)=true", bad)
 		}
 	}
 }
@@ -393,15 +399,15 @@ func TestAdvSC6_D203_NoAWSGitHubPEMInjectedWhenNoExtra(t *testing.T) {
 	b, _ := json.Marshal(cp)
 	out, _ := CompileGatewayConfig(p)
 	if advSC6ContainsAWSGitHubPEM(string(b)) {
-		t.Errorf("ADVERSARY BREAK: D203 AWS/GitHub/PEM appeared in canonical with no tenant extra: %s", b)
+		t.Errorf("ADVERSARY BREAK: AWS/GitHub/PEM appeared in canonical with no tenant extra: %s", b)
 	}
 	if advSC6ContainsAWSGitHubPEM(string(out)) {
-		t.Errorf("ADVERSARY BREAK: D203 AWS/GitHub/PEM appeared in compile with no tenant extra")
+		t.Errorf("ADVERSARY BREAK: AWS/GitHub/PEM appeared in compile with no tenant extra")
 	}
 	if cp.PII != nil {
 		for _, x := range cp.PII.Builtins {
 			if !AllowedPIIBuiltin(x) {
-				t.Errorf("ADVERSARY BREAK: D203 canonical builtin %q not in gateway list", x)
+				t.Errorf("ADVERSARY BREAK: canonical builtin %q not in gateway list", x)
 			}
 		}
 	}
@@ -422,10 +428,10 @@ func TestAdvSC6_D203_TenantExtraNotMergedIntoBuiltinSlot(t *testing.T) {
 	}
 	for _, b := range cp.PII.Builtins {
 		if b == advSC6Canary {
-			t.Errorf("ADVERSARY BREAK: D203 tenant extra merged into builtins slot")
+			t.Errorf("ADVERSARY BREAK: tenant extra merged into builtins slot")
 		}
 		if !AllowedPIIBuiltin(b) {
-			t.Errorf("ADVERSARY BREAK: D203 builtin slot contains non-gateway %q", b)
+			t.Errorf("ADVERSARY BREAK: builtin slot contains non-gateway %q", b)
 		}
 	}
 	found := false
@@ -435,7 +441,7 @@ func TestAdvSC6_D203_TenantExtraNotMergedIntoBuiltinSlot(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("ADVERSARY BREAK: D205 tenant extra dropped from canonical patterns")
+		t.Errorf("ADVERSARY BREAK: tenant extra dropped from canonical patterns")
 	}
 }
 
@@ -449,7 +455,7 @@ func TestAdvSC6_D203_CaseAndHomoglyphBuiltinsRejected(t *testing.T) {
 		}
 		errs := ValidatePolicy(p)
 		if !advSC6HasErr(errs, "builtin") {
-			t.Errorf("ADVERSARY BREAK: D203 lookalike builtin %q accepted", bad)
+			t.Errorf("ADVERSARY BREAK: lookalike builtin %q accepted", bad)
 		}
 	}
 }
@@ -464,24 +470,22 @@ func TestAdvSC6_D203_TenantAWSPatternIsExtraNotBuiltin(t *testing.T) {
       - "(?i)AKIA[0-9A-Z]{16}"
 `))
 	errs := ValidatePolicy(p)
-	for _, e := range errs {
-		if e.Severity == "error" {
-			t.Fatalf("tenant extra AWS-shaped pattern must be allowed as extra: %s", advSC6ErrBlob(errs))
-		}
+	if !advSC6HasErr(errs, "custom PII patterns") || !advSC6HasErr(errs, "guardrails.pii.patterns") {
+		t.Fatalf("custom pattern must be refused: %s", advSC6ErrBlob(errs))
 	}
 	cp, _ := Canonicalize(p)
 	if AllowedPIIBuiltin("AWS") {
-		t.Fatal("ADVERSARY BREAK: D203 AWS became a gateway builtin")
+		t.Fatal("ADVERSARY BREAK: AWS became a gateway builtin")
 	}
 	for _, b := range cp.PII.Builtins {
 		if b == "AWS" || strings.Contains(strings.ToLower(b), "akia") {
-			t.Errorf("ADVERSARY BREAK: D203 extra promoted to builtin %q", b)
+			t.Errorf("ADVERSARY BREAK: extra promoted to builtin %q", b)
 		}
 	}
 }
 
 // ---------------------------------------------------------------------------
-// D205 — local compile then push the same policy.yaml
+// local compile then push the same policy.yaml
 // ---------------------------------------------------------------------------
 
 func TestAdvSC6_D205_CanonicalizeDoesNotDropPII(t *testing.T) {
@@ -496,13 +500,13 @@ func TestAdvSC6_D205_CanonicalizeDoesNotDropPII(t *testing.T) {
 `))
 	cp, _ := Canonicalize(p)
 	if cp.PII == nil {
-		t.Fatal("ADVERSARY BREAK: D205 Canonicalize dropped PII")
+		t.Fatal("ADVERSARY BREAK: Canonicalize dropped PII")
 	}
 	if cp.PII.Action != PIIActionReject {
-		t.Errorf("ADVERSARY BREAK: D205 action dropped/changed: %q", cp.PII.Action)
+		t.Errorf("ADVERSARY BREAK: action dropped/changed: %q", cp.PII.Action)
 	}
 	if cp.PII.RejectStatus != 422 || cp.PII.RejectBody != "policy-defined-reject" {
-		t.Errorf("ADVERSARY BREAK: D205 reject contract dropped: %+v", cp.PII)
+		t.Errorf("ADVERSARY BREAK: reject contract dropped: %+v", cp.PII)
 	}
 }
 
@@ -523,7 +527,7 @@ func TestAdvSC6_D205_CanonicalizeIdempotentAndDeterministic(t *testing.T) {
 	cp2, _ := Canonicalize(p)
 	b2, _ := json.Marshal(cp2)
 	if string(b1) != string(b2) {
-		t.Errorf("ADVERSARY BREAK: D205 Canonicalize not deterministic\n%s\n%s", b1, b2)
+		t.Errorf("ADVERSARY BREAK: Canonicalize not deterministic\n%s\n%s", b1, b2)
 	}
 	d1, err := Digest(p)
 	if err != nil {
@@ -534,7 +538,7 @@ func TestAdvSC6_D205_CanonicalizeIdempotentAndDeterministic(t *testing.T) {
 		t.Fatal(err)
 	}
 	if d1 != d2 {
-		t.Errorf("ADVERSARY BREAK: D205 Digest not stable: %s vs %s", d1, d2)
+		t.Errorf("ADVERSARY BREAK: Digest not stable: %s vs %s", d1, d2)
 	}
 }
 
@@ -551,10 +555,10 @@ func TestAdvSC6_D205_CompileDoesNotMutateCallerPII(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	if len(p.PII.Builtins) != 2 || p.PII.Builtins[0] != PIIBuiltinEmail || p.PII.Builtins[1] != advSC6Canary {
-		t.Errorf("ADVERSARY BREAK: D205 Compile mutated builtins: %v", p.PII.Builtins)
+		t.Errorf("ADVERSARY BREAK: Compile mutated builtins: %v", p.PII.Builtins)
 	}
 	if len(p.PII.Patterns) != 1 || p.PII.Patterns[0] != advSC6Canary {
-		t.Errorf("ADVERSARY BREAK: D205 Compile mutated patterns: %v", p.PII.Patterns)
+		t.Errorf("ADVERSARY BREAK: Compile mutated patterns: %v", p.PII.Patterns)
 	}
 	_, _ = Canonicalize(p)
 	if p.PII.Patterns[0] != advSC6Canary {
@@ -970,14 +974,14 @@ func TestAdvSC6_JSONSubsetParseParity(t *testing.T) {
 	js := `{"version":"1.0","agent":{"name":"test-agent"},"egress":[{"domain":"api.openai.com","ports":[443]}],"guardrails":{"pii":{"action":"mask","builtins":["Email"]}}}`
 	pj, jerr := ParsePolicy(strings.NewReader(js))
 	if jerr != nil {
-		// JSON-as-YAML may be unsupported; then D205 local yaml vs json push diverges.
+		// JSON-as-YAML may be unsupported; then local yaml vs json push diverges.
 		t.Logf("JSON subset ParsePolicy: %v", jerr)
 		return
 	}
 	dy, _ := Digest(py)
 	dj, _ := Digest(pj)
 	if dy != dj {
-		t.Errorf("ADVERSARY BREAK: D205 YAML vs JSON digest diverge: %s vs %s", dy, dj)
+		t.Errorf("ADVERSARY BREAK: YAML vs JSON digest diverge: %s vs %s", dy, dj)
 	}
 }
 

@@ -143,6 +143,9 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, status.Errorf(codes.Internal, "read policy.yaml: %v", err)
 	}
+	if err := refusePolicyBeforePack(policyYAML, agentYAML); err != nil {
+		return nil, err
+	}
 
 	// Resolve the target platform. When --target is provided by the CLI,
 	// this is the explicit value (e.g. "linux/amd64"). When empty, use the
@@ -258,6 +261,32 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 		ImageDigest: result.ImageDigest,
 		BuildLog:    fmt.Sprintf("Built %s, digest: %s", result.ImageRef, result.ImageDigest),
 	}, nil
+}
+
+// refusePolicyBeforePack runs the shared admission loader before BuildImage.
+// An empty policy is allowed (projects without policy.yaml).
+func refusePolicyBeforePack(policyYAML []byte, agentYAML *pack.AgentYAML) error {
+	if len(policyYAML) == 0 {
+		return nil
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(policyYAML))
+	if err != nil {
+		return status.Errorf(codes.InvalidArgument, "parse policy.yaml: %v", err)
+	}
+	routeName := ""
+	if agentYAML != nil {
+		routeName = agentYAML.LLM.Route
+	}
+	var errs []policy.ValidationError
+	if routeName != "" && parsed.IsSchema11() {
+		errs = policy.ValidatePolicyWithRoute(parsed, routeName)
+	} else {
+		errs = policy.ValidatePolicy(parsed)
+	}
+	if !policy.HasErrors(errs) {
+		return nil
+	}
+	return status.Errorf(codes.InvalidArgument, "policy.yaml validation failed: %s", policy.FormatErrors(errs))
 }
 
 // recheckWorkflowPromotion re-reads workflow.yaml from projectDir
@@ -404,7 +433,7 @@ func verifyDeployedAgent(homeDir, agentName string, auditAppender audit.AuditApp
 			}
 			return fmt.Errorf("read deployed policy.yaml: %w", err)
 		}
-		computedDigest, err := pack.ComputePolicyDigest(policyData)
+		computedDigest, err := pack.ComputeInstalledPolicyDigest(policyData)
 		if err != nil {
 			return fmt.Errorf("compute policy digest: %w", err)
 		}
@@ -707,7 +736,7 @@ func (s *controlServer) Run(ctx context.Context, req *controlv1.RunRequest) (*co
 			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "parse agent policy: %v", err)
 		}
-		if errs := policy.ValidatePolicy(parsedPolicy); policy.HasErrors(errs) {
+		if errs := policy.OmitCustomPIIPatternRefusal(policy.ValidatePolicy(parsedPolicy)); policy.HasErrors(errs) {
 			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
 			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			return nil, status.Errorf(codes.Internal, "validate agent policy: %v", errs)
@@ -1287,10 +1316,10 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 	dep, err := s.deploymentStore.GetDeployment(ctx, depID)
 	if err != nil {
 		s.recordAudit("invoke_deployment_failed", "daemon", map[string]interface{}{
-			"run_id":          runID,
-			"deployment_id":   string(depID),
-			"fail_reason":     "deployment_not_found",
-			"error":           err.Error(),
+			"run_id":        runID,
+			"deployment_id": string(depID),
+			"fail_reason":   "deployment_not_found",
+			"error":         err.Error(),
 		})
 		s.updateLegacyRunStatus(ctx, runID, "failed")
 		return
@@ -1440,7 +1469,7 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 			s.updateLegacyRunStatus(ctx, runID, "failed")
 			return
 		}
-		if errs := policy.ValidatePolicy(parsedPolicy); policy.HasErrors(errs) {
+		if errs := policy.OmitCustomPIIPatternRefusal(policy.ValidatePolicy(parsedPolicy)); policy.HasErrors(errs) {
 			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, egressNetID))
 			logBestEffort("RemoveNetwork", rt.RemoveNetwork(ctx, netID))
 			s.updateLegacyRunStatus(ctx, runID, "failed")
@@ -1812,14 +1841,14 @@ func (s *controlServer) startDurableRun(receipt *routedrun.InvocationReceipt, in
 
 	// Record audit event for durable run start.
 	s.recordAudit("invoke_deployment_start", "daemon", map[string]interface{}{
-		"run_id":          runID,
-		"agent_name":      agentName,
-		"deployment_id":   string(depID),
-		"image_ref":       imageRef,
-		"container_id":    string(containerID),
-		"network":         string(netID),
-		"invocation_id":   string(receipt.InvocationID),
-		"workflow_id":     string(receipt.WorkflowID),
+		"run_id":        runID,
+		"agent_name":    agentName,
+		"deployment_id": string(depID),
+		"image_ref":     imageRef,
+		"container_id":  string(containerID),
+		"network":       string(netID),
+		"invocation_id": string(receipt.InvocationID),
+		"workflow_id":   string(receipt.WorkflowID),
 	})
 
 	// 11. Auto-invoke the agent.

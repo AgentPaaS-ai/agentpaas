@@ -17,7 +17,7 @@ func TestPIIBuiltinAllowList(t *testing.T) {
 	}
 	for _, bad := range []string{"AWS", "GitHub", "PEM", "aws_key", "private_key"} {
 		if AllowedPIIBuiltin(bad) {
-			t.Fatalf("D203: builtin %q must be rejected", bad)
+			t.Fatalf("builtin %q must be rejected", bad)
 		}
 	}
 }
@@ -56,7 +56,16 @@ guardrails:
 		t.Fatalf("patterns=%v", p.PII.Patterns)
 	}
 	errs := ValidatePolicy(p)
-	requireNoValidationErrors(t, errs, false)
+	requireValidationError(t, errs, "error", "custom PII patterns are not supported")
+	foundField := false
+	for _, e := range errs {
+		if e.Field == "guardrails.pii.patterns" && e.Severity == "error" && strings.Contains(e.Message, "CreditCard") && strings.Contains(e.Message, "Ssn") && strings.Contains(e.Message, "Email") && strings.Contains(e.Message, "DriversLicense") && strings.Contains(e.Message, "Key") {
+			foundField = true
+		}
+	}
+	if !foundField {
+		t.Fatalf("custom pattern refusal must name the field and the five built-ins: %v", errs)
+	}
 }
 
 func TestParsePolicy_PIIOptionalAbsent_SC8(t *testing.T) {
@@ -156,6 +165,54 @@ func TestValidatePII_EmptyBuiltinsAndPatterns(t *testing.T) {
 	}
 	errs := ValidatePolicy(p)
 	requireValidationError(t, errs, "error", "builtins")
+}
+
+func TestValidatePII_CustomPatternsRefusedBuiltinsStay(t *testing.T) {
+	withPatterns := &Policy{
+		Version: "1.0",
+		Agent:   AgentConfig{Name: "test"},
+		Egress:  []EgressRule{{Domain: "api.openai.com", Ports: []int{443}}},
+		PII: &PIIGuardrail{
+			Action:       PIIActionReject,
+			Builtins:     []string{PIIBuiltinSsn},
+			Patterns:     []string{`\d{3}-\d{3}-\d{4}`},
+			RejectStatus: 422,
+		},
+	}
+	errs := ValidatePolicy(withPatterns)
+	if !hasCustomPIIRefusal(errs) {
+		t.Fatalf("custom pattern must be refused: %v", errs)
+	}
+	kept := OmitCustomPIIPatternRefusal(errs)
+	for _, e := range kept {
+		if e.Severity == "error" {
+			t.Fatalf("builtins-only contract must stay valid aside from the pattern refusal: %v", kept)
+		}
+	}
+	builtinsOnly := &Policy{
+		Version: "1.0",
+		Agent:   AgentConfig{Name: "test"},
+		Egress:  []EgressRule{{Domain: "api.openai.com", Ports: []int{443}}},
+		PII: &PIIGuardrail{
+			Action:       PIIActionReject,
+			Builtins:     []string{PIIBuiltinSsn},
+			RejectStatus: 422,
+		},
+	}
+	errs = ValidatePolicy(builtinsOnly)
+	requireNoValidationErrors(t, errs, false)
+	if hasCustomPIIRefusal(errs) {
+		t.Fatal("built-in-only policy must not be refused")
+	}
+}
+
+func hasCustomPIIRefusal(errs []ValidationError) bool {
+	for _, e := range errs {
+		if IsCustomPIIPatternRefusal(e) && strings.Contains(e.Error(), "guardrails.pii.patterns") && strings.Contains(e.Message, "CreditCard, Ssn, Email, DriversLicense, Key") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestValidatePII_InvalidRegexPattern(t *testing.T) {

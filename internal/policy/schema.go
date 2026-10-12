@@ -203,7 +203,7 @@ const (
 	PIIActionReject = "reject"
 )
 
-// Gateway PII builtin detector names (D203). Extra detections use tenant patterns.
+// Gateway PII builtin detector names. Extra detections use tenant patterns.
 const (
 	PIIBuiltinCreditCard     = "CreditCard"
 	PIIBuiltinSsn            = "Ssn"
@@ -221,7 +221,7 @@ type PIIGuardrail struct {
 	RejectBody   string   `yaml:"reject_body,omitempty"`
 }
 
-// AllowedPIIBuiltin reports whether name is a gateway PII builtin (D203).
+// AllowedPIIBuiltin reports whether name is a gateway PII builtin.
 func AllowedPIIBuiltin(name string) bool {
 	switch name {
 	case PIIBuiltinCreditCard, PIIBuiltinSsn, PIIBuiltinEmail, PIIBuiltinDriversLicense, PIIBuiltinKey:
@@ -231,7 +231,7 @@ func AllowedPIIBuiltin(name string) bool {
 	}
 }
 
-// PIIRequiresBufferedStream is true whenever a PII block is present (D202),
+// PIIRequiresBufferedStream is true whenever a PII block is present,
 // including unknown actions and empty pii:{} mappings.
 func PIIRequiresBufferedStream(p *Policy) bool {
 	return p != nil && p.PII != nil

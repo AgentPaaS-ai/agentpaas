@@ -2082,15 +2082,26 @@ func routeNameFromAgentYAML(agentYAML *AgentYAML) string {
 // ComputePolicyDigest parses, validates, and computes the SHA-256 digest of
 // the policy YAML. Returns empty string if yamlBytes is nil/empty (no policy
 // in project — backward compat). Returns error if parsing fails or
-// validation finds errors.
+// validation finds errors. A non-empty guardrails.pii patterns list is an error.
 func ComputePolicyDigest(yamlBytes []byte) (string, error) {
-	return ComputePolicyDigestWithRoute(yamlBytes, "")
+	return computePolicyDigest(yamlBytes, "", false)
 }
 
 // ComputePolicyDigestWithRoute is like ComputePolicyDigest but also performs
 // route/candidate validation using the route name from agent.yaml.
 // When routeName is empty, route-name-dependent checks are skipped (legacy v1.0 path).
 func ComputePolicyDigestWithRoute(yamlBytes []byte, routeName string) (string, error) {
+	return computePolicyDigest(yamlBytes, routeName, false)
+}
+
+// ComputeInstalledPolicyDigest recomputes the canonical digest of a policy
+// that may already carry custom PII patterns. New packs use ComputePolicyDigest,
+// which refuses those patterns. Canonical bytes are unchanged.
+func ComputeInstalledPolicyDigest(yamlBytes []byte) (string, error) {
+	return computePolicyDigest(yamlBytes, "", true)
+}
+
+func computePolicyDigest(yamlBytes []byte, routeName string, allowInstalledPatterns bool) (string, error) {
 	if len(yamlBytes) == 0 {
 		return "", nil
 	}
@@ -2103,6 +2114,9 @@ func ComputePolicyDigestWithRoute(yamlBytes []byte, routeName string) (string, e
 		errs = policy.ValidatePolicyWithRoute(parsed, routeName)
 	} else {
 		errs = policy.ValidatePolicy(parsed)
+	}
+	if allowInstalledPatterns {
+		errs = policy.OmitCustomPIIPatternRefusal(errs)
 	}
 	if policy.HasErrors(errs) {
 		return "", fmt.Errorf("policy.yaml validation failed: %s", policyValidationErrorString(errs))
