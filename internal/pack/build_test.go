@@ -163,57 +163,8 @@ func TestRenderDockerfileMultiStageWithDeps(t *testing.T) {
 		"FROM gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
 		"COPY --chown=64000:64000 --from=builder /build/deps /app/deps",
 		"ENV AGENTPAAS_DEPS_LOCKED=/agentpaas/requirements.lock",
-		"ENV PYTHONPATH=/app/deps:/app/python",
+		"ENV PYTHONPATH=/app/deps",
 	)
-}
-
-func TestRenderDockerfileOCIWorkingDirIsSandboxFallback(t *testing.T) {
-	cfg := BuildConfig{
-		BaseImage:       "gcr.io/distroless/python3-debian12@sha256:deadbeef",
-		BuilderImage:    "python:3.11-slim",
-		SourceDateEpoch: time.Unix(0, 0),
-		NonRootUID:      64000,
-	}
-	for _, deps := range [][]string{nil, {"idna==3.7"}} {
-		dockerfile := renderDockerfile(cfg, deps)
-		final := dockerfileFinalStage(dockerfile)
-		if strings.Contains(final, "WORKDIR /app") {
-			t.Fatalf("final stage sets WORKDIR /app; that directory is root-owned and OpenShell rejects it:\n%s", dockerfile)
-		}
-		if got := dockerfileWorkingDir(final); got != "" && got != "/" {
-			t.Fatalf("final stage WorkingDir = %q, want empty or / so OpenShell prepares /sandbox:\n%s", got, dockerfile)
-		}
-		if !strings.Contains(final, "COPY --chown=64000:64000 project/ /app/") {
-			t.Fatalf("agent files must stay at /app:\n%s", dockerfile)
-		}
-		if !strings.Contains(final, "USER 64000:64000") {
-			t.Fatalf("USER 64000:64000 missing:\n%s", dockerfile)
-		}
-		wantPythonPath := "ENV PYTHONPATH=/app/python"
-		if len(deps) > 0 {
-			wantPythonPath = "ENV PYTHONPATH=/app/deps:/app/python"
-		}
-		if !strings.Contains(final, wantPythonPath) {
-			t.Fatalf("final stage missing %q; cwd is / so agentpaas_sdk is not on the walk from WorkingDir:\n%s", wantPythonPath, dockerfile)
-		}
-	}
-}
-
-func dockerfileFinalStage(dockerfile string) string {
-	if i := strings.LastIndex(dockerfile, "\nFROM "); i >= 0 {
-		return dockerfile[i+1:]
-	}
-	return dockerfile
-}
-
-func dockerfileWorkingDir(stage string) string {
-	dir := ""
-	for _, line := range strings.Split(stage, "\n") {
-		if rest, ok := strings.CutPrefix(line, "WORKDIR "); ok {
-			dir = rest
-		}
-	}
-	return dir
 }
 
 func TestRenderDockerfileSingleStageNoDeps(t *testing.T) {
@@ -231,15 +182,11 @@ func TestRenderDockerfileSingleStageNoDeps(t *testing.T) {
 		"AS builder",
 		"pip install",
 		"--from=builder",
-		"ENV PYTHONPATH=/app/deps",
-		"WORKDIR /app",
+		"PYTHONPATH",
 	)
 	requireDockerfileContains(t, dockerfile,
 		"FROM gcr.io/distroless/python3-debian12@sha256:2fdb05402a2cf21cf78fdb3ba4c5db167241e9e498140f5bf689d7efb773731f",
 		"COPY --chown=64000:64000 project/ /app/",
-		"COPY --chown=64000:64000 python/ /app/python/",
-		"ENV PYTHONPATH=/app/python",
-		"WORKDIR /",
 		`ENTRYPOINT ["/agentpaas/harness"]`,
 	)
 }

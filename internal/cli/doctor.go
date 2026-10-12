@@ -1,15 +1,16 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
-	"github.com/AgentPaaS-ai/agentpaas/internal/openshellrt"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +23,7 @@ func newDoctorCmd() *cobra.Command {
 		Short: "Run system diagnostics",
 		Long: `Run local system diagnostics to verify AgentPaaS is configured correctly.
 
-Checks include: CLI version, OpenShell CLI, OpenShell gateway, macOS Keychain
+Checks include: CLI version, Docker CLI, Docker daemon, macOS Keychain
 (on Darwin), Linux harness binary, home directory writability, and optional
 skopeo. Does not require a running control daemon.
 
@@ -94,6 +95,10 @@ func resolveNamedBinary(name string, extraDirs []string) string {
 	return ""
 }
 
+func resolveDockerPath() string {
+	return resolveNamedBinary("docker", homebrewBinDirs())
+}
+
 func runDoctorChecks() []map[string]string {
 	var checks []map[string]string
 
@@ -105,34 +110,57 @@ func runDoctorChecks() []map[string]string {
 		"message": fmt.Sprintf("%s (%s)", daemon.CLIVersion, strings.Join(versionParts, " ")),
 	})
 
-	// 2. OpenShell CLI (pinned N-1). A missing binary is a fail, not a Docker fallback.
-	osStatus := openshellrt.Probe()
-	if osStatus.CLIPath == "" {
+	// 2. Docker CLI
+	dockerExe := resolveDockerPath()
+	if dockerExe == "" {
 		checks = append(checks, map[string]string{
-			"name":    "OpenShell CLI",
+			"name":    "Docker CLI",
 			"status":  "fail",
-			"message": "openshell not found in PATH",
+			"message": "docker not found in PATH",
 		})
 	} else {
-		checks = append(checks, map[string]string{
-			"name":    "OpenShell CLI",
-			"status":  "ok",
-			"message": fmt.Sprintf("(%s %s)", osStatus.CLIVersion, osStatus.CLIPath),
-		})
+		out, err := exec.Command(dockerExe, "version", "--format", "{{.Client.Version}}").Output()
+		if err != nil {
+			checks = append(checks, map[string]string{
+				"name":    "Docker CLI",
+				"status":  "fail",
+				"message": fmt.Sprintf("docker version failed: %v", err),
+			})
+		} else {
+			ver := strings.TrimSpace(string(out))
+			checks = append(checks, map[string]string{
+				"name":    "Docker CLI",
+				"status":  "ok",
+				"message": fmt.Sprintf("(%s)", ver),
+			})
+		}
 	}
 
-	// 3. OpenShell gateway driven by the daemon through the SDK.
-	if osStatus.GatewayReady {
-		checks = append(checks, map[string]string{
-			"name":    "OpenShell gateway",
-			"status":  "ok",
-			"message": osStatus.GatewayDetail,
-		})
+	// 3. Docker daemon
+	dockerDaemonOK := false
+	if dockerExe != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err := exec.CommandContext(ctx, dockerExe, "info", "--format", "{{.ServerVersion}}").Run()
+		cancel()
+		if err != nil {
+			checks = append(checks, map[string]string{
+				"name":    "Docker daemon",
+				"status":  "fail",
+				"message": "Docker daemon not responding (is Docker Desktop / Colima running?)",
+			})
+		} else {
+			dockerDaemonOK = true
+			checks = append(checks, map[string]string{
+				"name":    "Docker daemon",
+				"status":  "ok",
+				"message": "",
+			})
+		}
 	} else {
 		checks = append(checks, map[string]string{
-			"name":    "OpenShell gateway",
-			"status":  "fail",
-			"message": osStatus.GatewayDetail,
+			"name":    "Docker daemon",
+			"status":  "skip",
+			"message": "Docker CLI not found",
 		})
 	}
 
@@ -257,6 +285,8 @@ func runDoctorChecks() []map[string]string {
 			"message": fmt.Sprintf("(%s)", skopeoExe),
 		})
 	}
+
+	_ = dockerDaemonOK // reserved for future use (e.g. only show container info if daemon up)
 
 	return checks
 }

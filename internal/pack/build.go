@@ -724,26 +724,16 @@ func renderDockerfile(cfg BuildConfig, deps []string) string {
 	fmt.Fprintf(&b, "ENV SOURCE_DATE_EPOCH=%d\n", cfg.SourceDateEpoch.Unix())
 	b.WriteString("ENV CREWAI_DISABLE_TELEMETRY=true\n")
 	b.WriteString("ENV OTEL_SDK_DISABLED=true\n")
-	// OCI WorkingDir must be empty or "/" so pinned OpenShell
-	// resolve_oci_workspace_root prepares /sandbox. WORKDIR /app is
-	// created as root; distroless has no shell to chown it, and any
-	// other path must already be writable by USER 64000. Agent files
-	// stay at /app via absolute COPY and AGENTPAAS_AGENT_PATH.
-	b.WriteString("WORKDIR /\n")
+	b.WriteString("WORKDIR /app\n")
 	b.WriteString("COPY --chown=0:0 harness /agentpaas/harness\n")
 	b.WriteString("COPY --chown=0:0 agentpaas-locked.txt /agentpaas/requirements.lock\n")
 	fmt.Fprintf(&b, "COPY --chown=%d:%d project/ /app/\n", cfg.NonRootUID, cfg.NonRootUID)
 	fmt.Fprintf(&b, "COPY --chown=%d:%d python/ /app/python/\n", cfg.NonRootUID, cfg.NonRootUID)
-	// SDK is at /app/python. WorkingDir is /, so the harness cwd walk does
-	// not find python/agentpaas_sdk. PYTHONPATH must include /app/python or
-	// the worker raises ModuleNotFoundError: No module named 'agentpaas_sdk'.
-	pythonPath := "/app/python"
 	if len(deps) > 0 {
 		fmt.Fprintf(&b, "COPY --chown=%d:%d --from=builder /build/deps /app/deps\n", cfg.NonRootUID, cfg.NonRootUID)
 		b.WriteString("ENV AGENTPAAS_DEPS_LOCKED=/agentpaas/requirements.lock\n")
-		pythonPath = "/app/deps:/app/python"
+		b.WriteString("ENV PYTHONPATH=/app/deps\n")
 	}
-	b.WriteString("ENV PYTHONPATH=" + pythonPath + "\n")
 	fmt.Fprintf(&b, "USER %d:%d\n", cfg.NonRootUID, cfg.NonRootUID)
 	b.WriteString("ENTRYPOINT [\"/agentpaas/harness\"]\n")
 

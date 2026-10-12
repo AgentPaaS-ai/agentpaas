@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"net/netip"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,7 +22,6 @@ import (
 	"github.com/AgentPaaS-ai/agentpaas/internal/audit"
 	"github.com/AgentPaaS-ai/agentpaas/internal/dashboard"
 	"github.com/AgentPaaS-ai/agentpaas/internal/home"
-	"github.com/AgentPaaS-ai/agentpaas/internal/openshellrt"
 	"github.com/AgentPaaS-ai/agentpaas/internal/otel"
 	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
 	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
@@ -81,9 +78,6 @@ type Daemon struct {
 
 	// allowRoot bypasses the root-user check. Used only for tests.
 	allowRoot bool
-
-	// openShell makes Start drive a local OpenShell gateway through the SDK.
-	openShell bool
 }
 
 // lockIno holds the inode of the lock file at the time the flock was
@@ -103,14 +97,6 @@ type Option func(*Daemon)
 func WithAllowRoot() Option {
 	return func(d *Daemon) {
 		d.allowRoot = true
-	}
-}
-
-// WithOpenShell drives local runs through a pinned OpenShell gateway.
-// Production agentpaasd sets this. Unit tests do not.
-func WithOpenShell() Option {
-	return func(d *Daemon) {
-		d.openShell = true
 	}
 }
 
@@ -213,134 +199,18 @@ func refuseDefaultTriggerListen(grpcAddr, restAddr string) error {
 	return nil
 }
 
-// isDefaultTriggerListen reports whether addr is empty or would listen or
-// dial a founder trigger port (7717 or 7718). The port is parsed with the
-// same rules net.Listen uses, so a leading-zero token or a space before the
-// port is the same port as the decimal form. A ResolveTCPAddr error is not
-// enough to say the address is not a founder port: grpc.NewClient still
-// dials dns and passthrough targets. Callers share this check so a test
-// cannot start, rewrite past, or dial those ports under another spelling.
+// isDefaultTriggerListen reports whether addr is empty or uses a default
+// trigger port (7718 for gRPC, 7717 for REST).
 func isDefaultTriggerListen(addr string, defaultPort int) bool {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return true
 	}
-	if founderTriggerHostPort(addr) {
-		return true
-	}
-	// A bare port token is not a listen address. Keep the exact decimal match
-	// so a caller that passes "7718" or "7717" still treats it as default.
-	if addr == strconv.Itoa(defaultPort) {
-		return true
-	}
-	// dns:/// and passthrough:/// (and the opaque scheme:host:port form) are
-	// dial targets. Classify the endpoint grpc.NewClient uses, not the scheme
-	// string ResolveTCPAddr rejects. One split only: a nested scheme is a
-	// hostname, not another dial target. A dns authority with a port is
-	// classified inside grpcNewClientEndpoint when that authority is the dial.
-	if endpoint, ok := grpcNewClientEndpoint(addr); ok {
-		return founderTriggerHostPort(endpoint)
-	}
-	return false
-}
-
-// founderTriggerHostPort reports whether addr resolves to port 7717 or 7718.
-// A parse error is false. Callers that dial a scheme target must classify the
-// endpoint first; this function does not treat a parse error as a founder port.
-func founderTriggerHostPort(addr string) bool {
-	tcp, err := net.ResolveTCPAddr("tcp", addr)
-	return err == nil && isFounderTriggerPort(tcp.Port)
-}
-
-// grpcNewClientEndpoint returns the endpoint grpc.NewClient dials for a dns
-// or passthrough target. grpc splits the target with url.Parse and uses the
-// path, or the opaque part when the path is empty, with one leading slash
-// removed (resolver.Target.Endpoint). ok is false when addr is not such a
-// target, including a two-slash authority form whose endpoint is empty.
-//
-// For dns://authority/name, when the name is not an IP, grpc dials the
-// authority (URL.Host), not the name. If that host has a port, classify it
-// with founderTriggerHostPort before trusting the endpoint. A founder
-// authority port is returned so the caller refuses it. An empty endpoint
-// never reaches that check, so dns://127.0.0.1:7718 stays allowed.
-func grpcNewClientEndpoint(addr string) (string, bool) {
-	u, err := url.Parse(addr)
-	if err != nil || (u.Scheme != "dns" && u.Scheme != "passthrough") {
-		return "", false
-	}
-	endpoint := u.Path
-	if endpoint == "" {
-		endpoint = u.Opaque
-	}
-	endpoint = strings.TrimPrefix(endpoint, "/")
-	if endpoint == "" {
-		return "", false
-	}
-	if u.Scheme == "dns" {
-		hostport, hasPort := dnsAuthorityHostPort(u.Host)
-		if hasPort && dnsEndpointIsNonIPName(endpoint) && founderTriggerHostPort(hostport) {
-			return hostport, true
-		}
-	}
-	return endpoint, true
-}
-
-// dnsAuthorityHostPort reports whether host is a dns authority with a port.
-// The returned string is the host:port founderTriggerHostPort classifies.
-// A host without a port is not this dial: grpc defaults that authority to 53.
-func dnsAuthorityHostPort(host string) (string, bool) {
-	if host == "" {
-		return "", false
-	}
-	_, port, err := net.SplitHostPort(host)
-	if err != nil || port == "" {
-		return "", false
-	}
-	return host, true
-}
-
-// dnsEndpointIsNonIPName reports whether endpoint is a name the dns resolver
-// looks up by dialing URL.Host. An IP endpoint is dialed directly and does
-// not contact the authority. This matches grpc dns.Build: parseTarget, then
-// formatIP (netip.ParseAddr). A parse failure is not a name lookup.
-func dnsEndpointIsNonIPName(endpoint string) bool {
-	host, ok := dnsEndpointHost(endpoint)
-	if !ok {
-		return false
-	}
-	_, err := netip.ParseAddr(host)
-	return err != nil
-}
-
-// dnsEndpointHost is the host grpc's dns parseTarget returns. ok is false
-// when that parse fails and Build does not dial. The default port is only
-// used to split a host that omits one; the port itself is not classified.
-func dnsEndpointHost(endpoint string) (string, bool) {
-	if endpoint == "" {
-		return "", false
-	}
-	if _, err := netip.ParseAddr(endpoint); err == nil {
-		return endpoint, true
-	}
-	if host, port, err := net.SplitHostPort(endpoint); err == nil {
-		if port == "" {
-			return "", false
-		}
-		if host == "" {
-			return "localhost", true
-		}
-		return host, true
-	}
-	host, _, err := net.SplitHostPort(endpoint + ":443")
+	_, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return "", false
+		return addr == strconv.Itoa(defaultPort)
 	}
-	return host, true
-}
-
-// isFounderTriggerPort reports whether port is a founder trigger listen port.
-func isFounderTriggerPort(port int) bool {
-	return port == trigger.DefaultGRPCPort || port == trigger.DefaultRESTPort
+	return port == strconv.Itoa(defaultPort)
 }
 
 // Start binds the Unix socket, starts the gRPC server, and begins serving.
@@ -547,21 +417,6 @@ func (d *Daemon) Start(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "daemon: supervisor init: %v (durable lifecycle disabled)\n", err)
 	}
 	attachConfirmationStore(controlServer, d.confirmations)
-	if d.openShell {
-		binDir := ""
-		if exe, err := os.Executable(); err == nil {
-			binDir = filepath.Dir(exe)
-		}
-		rt, err := openshellrt.EnsureLocal(ctx, d.paths.Home, binDir)
-		if err != nil {
-			_ = auditWriter.Close()
-			_ = auditIndex.Close()
-			_ = ln.Close()
-			_ = d.cleanupFiles()
-			return fmt.Errorf("daemon: openshell gateway: %w", err)
-		}
-		controlServer.openshell = rt
-	}
 	d.control = controlServer
 	if d.dashboard != nil {
 		if rt, err := controlServer.getOrCreateRuntime(); err == nil {

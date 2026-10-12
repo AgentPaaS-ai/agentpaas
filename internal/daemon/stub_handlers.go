@@ -27,30 +27,25 @@ import (
 // This lets the daemon start, accept connections, and respond to the Doctor
 // diagnostic RPC while the remaining methods await real implementations.
 type trackedRun struct {
-	Container        runtime.ContainerID
-	Network          string              // internal network ID
-	EgressNetwork    string              // egress network ID
-	Gateway          runtime.ContainerID // gateway container ID (empty if no gateway)
-	AuditDir         string              // host path to harness-audit directory for post-run ingestion
-	GatewayConfigDir string              // per-run gateway config dir (compiled from agent policy or default-deny)
-	AgentName        string
-	StartedAt        time.Time
-	Status           string // "running" | "succeeded" | "failed" | "cancelled"
-	FailReason       string // reason for failure (empty if not failed)
-	CancelInvoke     context.CancelFunc
-	InvokeDone       chan struct{}             // closed when invoke goroutine exits
-	InvokeErr        error                     // written before close(InvokeDone); safe to read after channel receive
-	InvokeResponse   string                    // raw stdout from the invoke command (agent's response payload)
-	Tailer           *auditTailer              // real-time audit tailer (nil if not running)
-	ProgressTailer   *routedrun.ProgressTailer // B27: progress journal tailer
-	JournalKeyPath   string                    // host path to journal key file for cleanup
-	ArtifactDir      string                    // host path to artifact workspace dir
-	JournalHostPath  string                    // host path to journal file for tailer
-
-	// OpenShellSandbox is set when this run is an OpenShell sandbox, not a
-	// Docker container. Cleanup deletes the sandbox through the SDK.
-	OpenShellSandbox string
-	OpenShellService string
+	Container     runtime.ContainerID
+	Network       string // internal network ID
+	EgressNetwork string // egress network ID
+	Gateway       runtime.ContainerID // gateway container ID (empty if no gateway)
+	AuditDir          string // host path to harness-audit directory for post-run ingestion
+	GatewayConfigDir  string // per-run gateway config dir (compiled from agent policy or default-deny)
+	AgentName     string
+	StartedAt     time.Time
+	Status        string              // "running" | "succeeded" | "failed" | "cancelled"
+	FailReason    string              // reason for failure (empty if not failed)
+	CancelInvoke  context.CancelFunc
+	InvokeDone    chan struct{} // closed when invoke goroutine exits
+	InvokeErr     error         // written before close(InvokeDone); safe to read after channel receive
+	InvokeResponse string       // raw stdout from the invoke command (agent's response payload)
+	Tailer        *auditTailer    // real-time audit tailer (nil if not running)
+	ProgressTailer *routedrun.ProgressTailer // B27: progress journal tailer
+	JournalKeyPath string                    // host path to journal key file for cleanup
+	ArtifactDir    string                    // host path to artifact workspace dir
+	JournalHostPath string                   // host path to journal file for tailer
 
 	// TimeEnvelope is the authoritative active-time envelope (B30-T03 Part B,
 	// ceiling 1). When present (set by the durable admission path after
@@ -59,7 +54,7 @@ type trackedRun struct {
 	// (legacy v0.2.3 trigger path), the legacy 2-minute fallback applies.
 	TimeEnvelope *routedrun.TimeEnvelope
 
-	finalizeOnce sync.Once // ensures finalizeRun runs exactly once per run
+	finalizeOnce  sync.Once       // ensures finalizeRun runs exactly once per run
 }
 
 // maxConcurrentRuns is the hard limit on simultaneously active agent runs.
@@ -98,10 +93,10 @@ type controlServer struct {
 	// B26 routed-run stores (state foundation). Initialized in Start via
 	// initRoutedStores. Deployment/alias CRUD is enabled; invocation/control
 	// fail closed until B28/B35.
-	localStore      *routedrun.LocalStore
-	deploymentStore routedrun.DeploymentStore
-	runStore        routedrun.RunStore
-	workflowStore   routedrun.WorkflowStore
+	localStore       *routedrun.LocalStore
+	deploymentStore  routedrun.DeploymentStore
+	runStore         routedrun.RunStore
+	workflowStore    routedrun.WorkflowStore
 
 	// disableContainerLaunch prevents startDurableRun from launching
 	// Docker containers. Set by unit tests that don't have a Docker
@@ -139,12 +134,6 @@ type controlServer struct {
 	// store is ready. When non-nil, startDurableRun claims through it and
 	// the daemon reconciles in-flight runs on restart.
 	supervisor *supervisor.Supervisor
-
-	// openshell is the local OpenShell gateway client. Production daemon
-	// start sets it via WithOpenShell. When set (and testRuntime is nil),
-	// Run and deployment invoke launch an OpenShell sandbox and do not
-	// fall through to Docker. Unit tests inject a fake to prove that.
-	openshell openShellGateway
 }
 
 // MCPFencer fences/shuts down MCP services for a workflow.
