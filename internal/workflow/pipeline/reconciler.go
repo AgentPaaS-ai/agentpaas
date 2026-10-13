@@ -105,13 +105,16 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 
 		// Acknowledge running if the node is still LAUNCHING.
 		claim := &Claim{
-			WorkflowID:      workflowID,
-			NodeID:          n.NodeID,
-			RunID:           n.RunID,
+			WorkflowID:       workflowID,
+			NodeID:           n.NodeID,
+			RunID:            n.RunID,
 			LaunchGeneration: launchGen,
-			LaunchKey:       key,
+			LaunchKey:        key,
 		}
 		// We need the attempt — load the runs and find the latest attempt.
+		if r.Ctrl == nil || r.Ctrl.Store == nil {
+			return nil, fmt.Errorf("reconcile once: ack running: controller unset")
+		}
 		runs, err := findAttemptForLaunching(ctx, r.Ctrl.Store, n.RunID)
 		if err != nil {
 			return nil, fmt.Errorf("reconcile once: find attempt: %w", err)
@@ -119,7 +122,9 @@ func (r *Reconciler) ReconcileOnce(ctx context.Context, workflowID routedrun.Wor
 		if runs != nil {
 			claim.Attempt = runs
 		}
-
+		// Attempt may still be unset: a concurrent ReconcileOnce can observe
+		// LAUNCHING before CreateAttempt. Do not dereference it. Ack resolves
+		// under the controller lock or returns an error.
 		if err := r.Ctrl.AcknowledgeRunning(ctx, claim); err != nil {
 			return nil, fmt.Errorf("reconcile once: ack running: %w", err)
 		}

@@ -75,8 +75,8 @@ var _ PipelineStore = (*routedrun.MemoryStore)(nil)
 type Controller struct {
 	Store   PipelineStore
 	mu      sync.Mutex
-	nodeGen map[routedrun.NodeID]int64 // tracks node CAS generations
-	runGen  map[routedrun.RunID]int64  // tracks run CAS generations
+	nodeGen map[routedrun.NodeID]int64    // tracks node CAS generations
+	runGen  map[routedrun.RunID]int64     // tracks run CAS generations
 	attGen  map[routedrun.AttemptID]int64 // tracks attempt CAS generations
 }
 
@@ -377,6 +377,13 @@ func (c *Controller) ClaimNextReady(ctx context.Context, workflowID routedrun.Wo
 func (c *Controller) AcknowledgeRunning(ctx context.Context, claim *Claim) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	// Nil Store panics inside GetAttempt; refuse it before any deref.
+	if c.Store == nil {
+		return fmt.Errorf("acknowledge running: store unset")
+	}
+	if claim == nil {
+		return fmt.Errorf("acknowledge running: claim unset")
+	}
 	// Validate and update node: LAUNCHING → RUNNING.
 	node, err := c.Store.GetNode(ctx, claim.NodeID)
 	if err != nil {
@@ -384,9 +391,26 @@ func (c *Controller) AcknowledgeRunning(ctx context.Context, claim *Claim) error
 	}
 
 	// Idempotency: if already RUNNING with the same RunID, treat as success.
-	// This handles the double-ack scenario (crash recovery).
+	// This handles the double-ack scenario (crash recovery). Return before
+	// touching Attempt so a concurrent reconcile with an unset Attempt does
+	// not fail a completed ack.
 	if node.Status == routedrun.NodeStatusRunning && node.RunID == claim.RunID {
 		return nil
+	}
+
+	// Concurrent ReconcileOnce can observe LAUNCHING before the claimer
+	// persists the attempt, then ack with Attempt unset. Resolve under this
+	// lock — the claimer holds it across CreateAttempt — or fail closed.
+	// Never dereference a nil Attempt.
+	if claim.Attempt == nil {
+		resolved, rerr := findAttemptForLaunching(ctx, c.Store, claim.RunID)
+		if rerr != nil {
+			return fmt.Errorf("acknowledge running: %w", rerr)
+		}
+		if resolved == nil {
+			return fmt.Errorf("acknowledge running: attempt unset")
+		}
+		claim.Attempt = resolved
 	}
 
 	if err := routedrun.ValidateNodeTransition(node.Status, routedrun.NodeStatusRunning); err != nil {
