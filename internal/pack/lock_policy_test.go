@@ -3,6 +3,7 @@ package pack
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"runtime"
 	"strings"
 	"testing"
@@ -115,6 +116,149 @@ guardrails:
 	again, err := ComputeInstalledPolicyDigest([]byte(yml))
 	if err != nil || again != got {
 		t.Fatalf("installed digest unstable: %v %s %s", err, got, again)
+	}
+}
+
+func TestCreateAgentLock_RefusesAgentYAMLCustomPIIPatterns(t *testing.T) {
+	pattern := `\d{3}-\d{3}-\d{4}`
+	agent := &AgentYAML{
+		Name: "weather-agent",
+		Guardrails: &AgentGuardrails{
+			PII: &AgentPIIGuardrail{
+				Action:   "reject",
+				Builtins: []string{"Ssn"},
+				Patterns: []string{pattern},
+			},
+		},
+	}
+	cases := []struct {
+		name   string
+		policy []byte
+	}{
+		{name: "missing policy"},
+		{name: "policy without mapping-form pii", policy: []byte(validPolicyYAML)},
+		{name: "sequence-form guardrails", policy: []byte(`version: "1.0"
+agent:
+  name: test-agent
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+guardrails:
+  - type: regex
+    pattern: "(?i)password"
+    action: block
+`)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := CreateAgentLock(context.Background(), LockConfig{
+				AgentYAML:  agent,
+				PolicyYAML: tc.policy,
+			})
+			if err == nil {
+				t.Fatal("CreateAgentLock signed a lock carrying custom patterns")
+			}
+			msg := err.Error()
+			for _, want := range []string{
+				"guardrails.pii.patterns",
+				"custom PII patterns are not supported",
+				"CreditCard",
+				"Ssn",
+				"Email",
+				"DriversLicense",
+				"Key",
+			} {
+				if !strings.Contains(msg, want) {
+					t.Fatalf("refusal %q missing %q", msg, want)
+				}
+			}
+			if strings.Contains(msg, pattern) && strings.Contains(msg, "agent.lock") {
+				t.Fatalf("refusal must not write a lock that carries the pattern: %s", msg)
+			}
+		})
+	}
+}
+
+func TestCreateAgentLock_MappingFormPIIOverwritesAgentYAMLPatterns(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+
+	custom := `\d{3}-\d{3}-\d{4}`
+	agent := &AgentYAML{
+		Name: "pii-reject-agent",
+		Guardrails: &AgentGuardrails{
+			PII: &AgentPIIGuardrail{
+				Action:   "reject",
+				Builtins: []string{"Ssn"},
+				Patterns: []string{custom},
+			},
+		},
+	}
+	if err := RefuseAgentYAMLCustomPIIPatterns(agent, []byte(piiRejectPolicyYAML)); err != nil {
+		t.Fatalf("mapping-form policy must overwrite, not refuse before build: %v", err)
+	}
+	if err := RefuseAgentYAMLCustomPIIPatterns(&AgentYAML{
+		Guardrails: &AgentGuardrails{PII: &AgentPIIGuardrail{Action: "reject", Builtins: []string{"Ssn"}}},
+	}, nil); err != nil {
+		t.Fatalf("built-in-only agent.yaml must not be refused: %v", err)
+	}
+
+	lock, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         agent,
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PolicyYAML:        []byte(piiRejectPolicyYAML),
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentLock: %v", err)
+	}
+	raw, err := json.Marshal(lock)
+	if err != nil {
+		t.Fatalf("json.Marshal lock: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("json.Unmarshal lock: %v", err)
+	}
+	for _, path := range []string{"agent_yaml", "component_index"} {
+		block, ok := parsed[path].(map[string]interface{})
+		if !ok {
+			t.Fatalf("%s missing: %s", path, raw)
+		}
+		gr, ok := block["guardrails"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("%s.guardrails missing: %s", path, raw)
+		}
+		pii, ok := gr["pii"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("%s.guardrails.pii missing: %s", path, raw)
+		}
+		if _, ok := pii["patterns"]; ok {
+			t.Fatalf("%s.guardrails.pii.patterns = %v, want omitted after policy overwrite", path, pii["patterns"])
+		}
+		if strings.Contains(string(raw), custom) {
+			t.Fatalf("lock still carries custom pattern %q", custom)
+		}
 	}
 }
 

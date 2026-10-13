@@ -264,29 +264,32 @@ func (s *controlServer) Pack(ctx context.Context, req *controlv1.PackRequest) (*
 }
 
 // refusePolicyBeforePack runs the shared admission loader before BuildImage.
-// An empty policy is allowed (projects without policy.yaml).
+// An empty policy is allowed unless agent.yaml would stamp custom PII patterns
+// into a new lock.
 func refusePolicyBeforePack(policyYAML []byte, agentYAML *pack.AgentYAML) error {
-	if len(policyYAML) == 0 {
-		return nil
+	if len(policyYAML) > 0 {
+		parsed, err := policy.ParsePolicy(bytes.NewReader(policyYAML))
+		if err != nil {
+			return status.Errorf(codes.InvalidArgument, "parse policy.yaml: %v", err)
+		}
+		routeName := ""
+		if agentYAML != nil {
+			routeName = agentYAML.LLM.Route
+		}
+		var errs []policy.ValidationError
+		if routeName != "" && parsed.IsSchema11() {
+			errs = policy.ValidatePolicyWithRoute(parsed, routeName)
+		} else {
+			errs = policy.ValidatePolicy(parsed)
+		}
+		if policy.HasErrors(errs) {
+			return status.Errorf(codes.InvalidArgument, "policy.yaml validation failed: %s", policy.FormatErrors(errs))
+		}
 	}
-	parsed, err := policy.ParsePolicy(bytes.NewReader(policyYAML))
-	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "parse policy.yaml: %v", err)
+	if err := pack.RefuseAgentYAMLCustomPIIPatterns(agentYAML, policyYAML); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
-	routeName := ""
-	if agentYAML != nil {
-		routeName = agentYAML.LLM.Route
-	}
-	var errs []policy.ValidationError
-	if routeName != "" && parsed.IsSchema11() {
-		errs = policy.ValidatePolicyWithRoute(parsed, routeName)
-	} else {
-		errs = policy.ValidatePolicy(parsed)
-	}
-	if !policy.HasErrors(errs) {
-		return nil
-	}
-	return status.Errorf(codes.InvalidArgument, "policy.yaml validation failed: %s", policy.FormatErrors(errs))
+	return nil
 }
 
 // recheckWorkflowPromotion re-reads workflow.yaml from projectDir

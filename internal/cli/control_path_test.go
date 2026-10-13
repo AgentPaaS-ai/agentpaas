@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
@@ -136,6 +137,93 @@ func TestPackCmd_SendsAbsoluteProjectPath(t *testing.T) {
 	}
 	if !filepath.IsAbs(capture.captured.GetAgentProjectPath()) {
 		t.Fatalf("AgentProjectPath %q is not absolute", capture.captured.GetAgentProjectPath())
+	}
+}
+
+// agentYAMLCustomPII is the user-observable agent.yaml that must not pack
+// when policy.yaml is missing or has no mapping-form guardrails.pii.
+const agentYAMLCustomPII = `name: weather-agent
+version: "1.0"
+runtime: python
+entry: agent.py
+guardrails:
+  pii:
+    action: reject
+    builtins: [Ssn]
+    patterns: ["\\d{3}-\\d{3}-\\d{4}"]
+`
+
+const policyYAMLNoMappingPII = `version: "1.0"
+agent:
+  name: weather-agent
+egress:
+  - domain: "api.weather.gov"
+    ports: [443]
+`
+
+func assertCustomPIIPatternRefusal(t *testing.T, msg string) {
+	t.Helper()
+	for _, want := range []string{
+		"guardrails.pii.patterns",
+		"custom PII patterns are not supported",
+		"CreditCard",
+		"Ssn",
+		"Email",
+		"DriversLicense",
+		"Key",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("refusal %q missing %q", msg, want)
+		}
+	}
+}
+
+const policyYAMLSequenceGuardrails = `version: "1.0"
+agent:
+  name: weather-agent
+egress:
+  - domain: "api.weather.gov"
+    ports: [443]
+guardrails:
+  - type: regex
+    pattern: "(?i)password"
+    action: block
+`
+
+func TestPackCmd_RefusesAgentYAMLCustomPIIPatternsBeforeImageBuild(t *testing.T) {
+	cases := []struct {
+		name   string
+		policy string
+	}{
+		{name: "missing policy"},
+		{name: "policy without mapping-form pii", policy: policyYAMLNoMappingPII},
+		{name: "sequence-form guardrails", policy: policyYAMLSequenceGuardrails},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(agentYAMLCustomPII), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if tc.policy != "" {
+				if err := os.WriteFile(filepath.Join(dir, "policy.yaml"), []byte(tc.policy), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sock, capture := startCapturePackDaemon(t)
+			t.Setenv("AGENTPAAS_SOCKET", sock)
+			resetAgentCmd()
+			cmd := AgentCmd()
+			cmd.SetArgs([]string{"pack", dir})
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatal("pack accepted custom agent.yaml PII patterns")
+			}
+			assertCustomPIIPatternRefusal(t, err.Error())
+			if capture.captured != nil {
+				t.Fatal("pack reached the daemon before refusing custom patterns; image build must not start")
+			}
+		})
 	}
 }
 

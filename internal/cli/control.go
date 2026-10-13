@@ -67,9 +67,11 @@ resolved to the correct platform-specific digest. The builder stage image
 			}
 
 			// Refuse an invalid policy before the daemon builds an image.
+			var policyBytes []byte
 			{
 				policyPath := filepath.Join(projectDir, "policy.yaml")
 				if data, err := os.ReadFile(policyPath); err == nil {
+					policyBytes = data
 					if hasWildcardEgress(data) {
 						allowWildcard, _ := cmd.Flags().GetBool("allow-wildcard") // cobra flag default on missing
 						if !allowWildcard {
@@ -88,6 +90,13 @@ resolved to the correct platform-specific digest. The builder stage image
 						return err
 					}
 				}
+			}
+			agentYAML, err := pack.LoadAgentYAML(projectDir)
+			if err != nil {
+				return fmt.Errorf("new pack cmd: %w", err)
+			}
+			if err := pack.RefuseAgentYAMLCustomPIIPatterns(agentYAML, policyBytes); err != nil {
+				return err
 			}
 
 			agentName, _ := cmd.Flags().GetString("name")       // cobra flag default on missing

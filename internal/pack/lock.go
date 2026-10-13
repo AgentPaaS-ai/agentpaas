@@ -593,6 +593,9 @@ var retryableSignErrorPatterns = []string{
 
 // CreateAgentLock creates the canonical, signed agent.lock manifest.
 func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
+	if err := RefuseAgentYAMLCustomPIIPatterns(cfg.AgentYAML, cfg.PolicyYAML); err != nil {
+		return nil, fmt.Errorf("create agent lock: %w", err)
+	}
 	if err := validateLockConfig(cfg); err != nil {
 		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
@@ -631,6 +634,9 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 	mergePolicyEgressIntoAgentYAML(&cfg)
 	mergePolicyIngressIntoAgentYAML(&cfg)
 	mergePolicyPIIIntoAgentYAML(&cfg)
+	if err := refuseStampedCustomPIIPatterns(cfg.AgentYAML); err != nil {
+		return nil, fmt.Errorf("create agent lock: %w", err)
+	}
 	mergePolicyLLMBudgetIntoAgentYAML(&cfg)
 
 	lock := assembleAgentLock(cfg, sbom, sbomDigest, string(publicKeyPEM), privateKey, signatureReferrer, policyDigest)
@@ -1591,6 +1597,47 @@ func mergePolicyIngressIntoAgentYAML(cfg *LockConfig) {
 		out = append(out, stamp)
 	}
 	cfg.AgentYAML.Ingress = out
+}
+
+// RefuseAgentYAMLCustomPIIPatterns returns the shared admission refusal when
+// agent.yaml guardrails.pii.patterns would be copied into a new lock. A
+// missing policy, or a policy with no mapping-form PII, does not overwrite
+// AgentYAML.Guardrails. Mapping-form policy PII still overwrites and is not
+// this error.
+func RefuseAgentYAMLCustomPIIPatterns(agent *AgentYAML, policyYAML []byte) error {
+	if !agentYAMLCustomPIIPatternsWouldStamp(agent, policyYAML) {
+		return nil
+	}
+	return policy.CustomPIIPatternAdmissionError(agent.Guardrails.PII.Patterns)
+}
+
+// refuseStampedCustomPIIPatterns refuses a patterns list that survived merge
+// and would be copied into agent_yaml and component_index.
+func refuseStampedCustomPIIPatterns(agent *AgentYAML) error {
+	if agent == nil || agent.Guardrails == nil || agent.Guardrails.PII == nil {
+		return nil
+	}
+	return policy.CustomPIIPatternAdmissionError(agent.Guardrails.PII.Patterns)
+}
+
+func agentYAMLCustomPIIPatternsWouldStamp(agent *AgentYAML, policyYAML []byte) bool {
+	if agent == nil || agent.Guardrails == nil || agent.Guardrails.PII == nil || len(agent.Guardrails.PII.Patterns) == 0 {
+		return false
+	}
+	return !policyMappingPIIOverwritesAgent(policyYAML)
+}
+
+// policyMappingPIIOverwritesAgent matches the early returns in
+// mergePolicyPIIIntoAgentYAML. Do not treat a parse failure as an overwrite.
+func policyMappingPIIOverwritesAgent(policyYAML []byte) bool {
+	if len(policyYAML) == 0 {
+		return false
+	}
+	parsed, err := policy.ParsePolicy(bytes.NewReader(policyYAML))
+	if err != nil || parsed == nil || parsed.PII == nil {
+		return false
+	}
+	return true
 }
 
 // mergePolicyPIIIntoAgentYAML copies mapping-form policy.PII onto

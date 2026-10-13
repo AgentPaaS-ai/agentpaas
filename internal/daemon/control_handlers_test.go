@@ -46,6 +46,84 @@ func TestPack_RequiresProjectPath(t *testing.T) {
 	}
 }
 
+func TestPack_RefusesAgentYAMLCustomPIIPatternsBeforeImageBuild(t *testing.T) {
+	const agentYAML = `name: weather-agent
+version: "1.0"
+runtime: python
+entry: agent.py
+guardrails:
+  pii:
+    action: reject
+    builtins: [Ssn]
+    patterns: ["\\d{3}-\\d{3}-\\d{4}"]
+`
+	const policyNoPII = `version: "1.0"
+agent:
+  name: weather-agent
+egress:
+  - domain: "api.weather.gov"
+    ports: [443]
+`
+	const policySequence = `version: "1.0"
+agent:
+  name: weather-agent
+egress:
+  - domain: "api.weather.gov"
+    ports: [443]
+guardrails:
+  - type: regex
+    pattern: "(?i)password"
+    action: block
+`
+	cases := []struct {
+		name   string
+		policy string
+	}{
+		{name: "missing policy"},
+		{name: "policy without mapping-form pii", policy: policyNoPII},
+		{name: "sequence-form guardrails", policy: policySequence},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(agentYAML), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if tc.policy != "" {
+				if err := os.WriteFile(filepath.Join(dir, "policy.yaml"), []byte(tc.policy), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// Cancelled so a missing pre-build check cannot start an image build.
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := testControlServer(t).Pack(ctx, &controlv1.PackRequest{AgentProjectPath: dir})
+			if err == nil {
+				t.Fatal("Pack accepted custom agent.yaml PII patterns")
+			}
+			if status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("Pack() code = %v, want InvalidArgument before image build: %v", status.Code(err), err)
+			}
+			if strings.Contains(err.Error(), "pack failed") {
+				t.Fatalf("Pack reached image build: %v", err)
+			}
+			for _, want := range []string{
+				"guardrails.pii.patterns",
+				"custom PII patterns are not supported",
+				"CreditCard",
+				"Ssn",
+				"Email",
+				"DriversLicense",
+				"Key",
+			} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("refusal %q missing %q", err, want)
+				}
+			}
+		})
+	}
+}
+
 func TestRun_RequiresAgentName(t *testing.T) {
 	_, err := testControlServer(t).Run(context.Background(), &controlv1.RunRequest{})
 	if err == nil {

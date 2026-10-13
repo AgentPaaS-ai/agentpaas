@@ -1239,6 +1239,16 @@ func customPIIPatternRefusal() ValidationError {
 	}
 }
 
+// CustomPIIPatternAdmissionError is the admission refusal for a non-empty
+// guardrails.pii patterns list. An empty list is not an error. The message
+// names the field and the five built-ins.
+func CustomPIIPatternAdmissionError(patterns []string) error {
+	if len(patterns) == 0 {
+		return nil
+	}
+	return customPIIPatternRefusal()
+}
+
 // IsCustomPIIPatternRefusal reports the admission refusal for a non-empty
 // guardrails.pii patterns list.
 func IsCustomPIIPatternRefusal(e ValidationError) bool {
