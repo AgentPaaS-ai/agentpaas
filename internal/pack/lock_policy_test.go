@@ -179,6 +179,143 @@ guardrails:
 	}
 }
 
+func TestCreateAgentLock_RefusesCustomPIIPatternsBeforeCredentialRewrite(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+
+	policyYAML := []byte(`version: "1.0"
+agent:
+  name: test-agent
+  description: "Test agent"
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+credentials:
+  - id: "policy-key"
+    type: header
+    header: "X-API-Key"
+    value: "${env:KEY}"
+guardrails:
+  pii:
+    action: reject
+    builtins: [Ssn]
+    patterns:
+      - "\\d{3}-\\d{3}-\\d{4}"
+    reject_status: 422
+`)
+	agent := &AgentYAML{
+		Name: "weather-agent",
+		LLM:  LLMConfig{Credential: "llm-key"},
+	}
+	if err := RefuseAgentYAMLCustomPIIPatterns(agent, policyYAML); err != nil {
+		t.Fatalf("mapping-form policy PII must not be the agent.yaml refusal: %v", err)
+	}
+
+	lock, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         agent,
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PolicyYAML:        policyYAML,
+		PublisherKeyStore: pubKS,
+	})
+	if err == nil || lock != nil {
+		t.Fatal("CreateAgentLock signed a lock for a policy with custom PII patterns")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"guardrails.pii.patterns",
+		"custom PII patterns are not supported",
+		"CreditCard",
+		"Ssn",
+		"Email",
+		"DriversLicense",
+		"Key",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("loader error %q missing %q", msg, want)
+		}
+	}
+}
+
+func TestCreateAgentLock_BuiltinPIIStillPacksWhenCredentialRewritten(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake shell tools require a POSIX shell")
+	}
+	installFakeTool(t, "syft", `#!/bin/sh
+printf '%s' '{"spdxVersion":"SPDX-2.3","name":"agentpaas-test"}'
+`)
+	installFakeTool(t, "cosign", fakeCosignScript())
+	key, _ := testKeyPair(t)
+	store := testStoreForKey(t, key)
+	pubKS, _ := publisherTestStore(t)
+
+	policyYAML := []byte(`version: "1.0"
+agent:
+  name: test-agent
+  description: "Test agent"
+egress:
+  - domain: "api.example.com"
+    ports: [443]
+credentials:
+  - id: "policy-key"
+    type: header
+    header: "X-API-Key"
+    value: "${env:KEY}"
+guardrails:
+  pii:
+    action: reject
+    builtins: [Ssn]
+    reject_status: 422
+`)
+	agent := &AgentYAML{
+		Name: "weather-agent",
+		LLM:  LLMConfig{Credential: "llm-key"},
+	}
+	lock, err := CreateAgentLock(context.Background(), LockConfig{
+		BuildResult: &BuildResult{
+			ImageDigest:      digestString("image"),
+			ImageRef:         "agentpaas-test:latest",
+			BuildInputDigest: digestString("input"),
+			DepsLocked:       []string{"dep==1.0.0"},
+		},
+		AgentYAML:         agent,
+		Runtime:           RuntimeType("python"),
+		BaseImageDigest:   "gcr.io/distroless/python3-debian12@sha256:" + digestString("base"),
+		HarnessVersion:    "test",
+		Platform:          "linux/arm64",
+		SourceDateEpoch:   testTime(),
+		KeyStore:          store,
+		KeyID:             store.keyID,
+		PolicyYAML:        policyYAML,
+		PublisherKeyStore: pubKS,
+	})
+	if err != nil {
+		t.Fatalf("built-in-only policy must still pack: %v", err)
+	}
+	if lock == nil || lock.LockfileSignature == "" {
+		t.Fatal("built-in-only policy did not produce a signed lock")
+	}
+}
+
 func TestCreateAgentLock_MappingFormPIIOverwritesAgentYAMLPatterns(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake shell tools require a POSIX shell")

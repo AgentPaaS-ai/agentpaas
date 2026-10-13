@@ -621,12 +621,19 @@ func CreateAgentLock(ctx context.Context, cfg LockConfig) (*AgentLock, error) {
 		return nil, fmt.Errorf("create agent lock: %w", err)
 	}
 
+	// The shared loader must see the original policy bytes. A credential
+	// rewrite yaml.Marshals Policy and drops guardrails.pii (yaml:"-").
+	// A missing patterns key after that rewrite is not "no custom patterns".
+	routeName := routeNameFromAgentYAML(cfg.AgentYAML)
+	if _, err := ComputePolicyDigestWithRoute(cfg.PolicyYAML, routeName); err != nil {
+		return nil, fmt.Errorf("policy validation: %w", err)
+	}
 	if compiled, err := compileLLMCredentialPolicyYAML(cfg.AgentYAML, cfg.PolicyYAML); err != nil {
 		return nil, fmt.Errorf("policy validation: %w", err)
 	} else if compiled != nil {
 		cfg.PolicyYAML = compiled
 	}
-	policyDigest, err := ComputePolicyDigestWithRoute(cfg.PolicyYAML, routeNameFromAgentYAML(cfg.AgentYAML))
+	policyDigest, err := ComputePolicyDigestWithRoute(cfg.PolicyYAML, routeName)
 	if err != nil {
 		return nil, fmt.Errorf("policy validation: %w", err)
 	}
