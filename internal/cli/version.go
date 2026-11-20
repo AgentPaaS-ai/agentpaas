@@ -1,0 +1,46 @@
+package cli
+
+import (
+	"runtime"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/daemon"
+	"github.com/spf13/cobra"
+)
+
+// newVersionCmd creates the `agent version` command.
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print CLI version information",
+		Long: `Print the CLI version, protocol version, git commit, OS/architecture,
+Docker context, and Docker API version.
+
+Does not require a running daemon. Use the global --json flag for
+structured JSON output.`,
+		Example: `  agentpaas version
+  agentpaas version --json`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			v := daemon.CurrentVersion()
+			dockerCtx, dockerAPI := probeDockerStatus()
+			output := VersionOutput{
+				CLIVersion:       v.CLIVersion,
+				ProtoVersion:     v.ProtoVersion,
+				GitCommit:        v.GitCommit,
+				OsArch:           v.OsArch,
+				DockerContext:    dockerCtx,
+				DockerAPIVersion: dockerAPI,
+			}
+			return printTextOrJSON(jsonOutput(cmd), output, func(v interface{}) string {
+				return VersionText(v.(VersionOutput))
+			})
+		},
+	}
+}
+
+// init registers version-specific ldflags vars. This is a no-op placeholder
+// for the ldflags injection pattern; the actual values are set at build time
+// in internal/daemon.GitCommit.
+func init() {
+	_ = runtime.Version // intentionally ignored (reviewed)
+}

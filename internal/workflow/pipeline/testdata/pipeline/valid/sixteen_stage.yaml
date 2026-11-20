@@ -1,0 +1,128 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: stage-00
+      package_name: pkg-zero
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000001
+      handoff: public
+      output_schema: schema/v1
+    - name: stage-01
+      package_name: pkg-one
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000002
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-02
+      package_name: pkg-two
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000003
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-03
+      package_name: pkg-three
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000004
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-04
+      package_name: pkg-four
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000005
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-05
+      package_name: pkg-five
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000006
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-06
+      package_name: pkg-six
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000007
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-07
+      package_name: pkg-seven
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000008
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-08
+      package_name: pkg-eight
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000009
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-09
+      package_name: pkg-nine
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000010
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-10
+      package_name: pkg-ten
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000011
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-11
+      package_name: pkg-eleven
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000012
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-12
+      package_name: pkg-twelve
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000013
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-13
+      package_name: pkg-thirteen
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000014
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-14
+      package_name: pkg-fourteen
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000015
+      handoff: public
+      accepted_schemas:
+        - schema/v1
+      output_schema: schema/v1
+    - name: stage-15
+      package_name: pkg-fifteen
+      package_version: "1.0.0"
+      bundle_digest: sha256:00000000000000000000000000000016
+      handoff: public
+      accepted_schemas:
+        - schema/v1

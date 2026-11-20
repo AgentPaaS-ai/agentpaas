@@ -1,0 +1,13 @@
+version: "1.0"
+agent:
+  name: pydantic-weather-agent
+  description: Pydantic AI weather-class golden — loopback LLM, wttr.in egress
+egress:
+  - domain: wttr.in
+    ports: [443]
+    methods: [GET]
+credentials:
+  - id: openrouter-key
+    type: brokered
+    service: keychain
+ingress: []

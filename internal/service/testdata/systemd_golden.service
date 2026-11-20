@@ -1,0 +1,10 @@
+[Unit]
+Description=AgentPaaS Control Daemon
+
+[Service]
+ExecStart=/usr/local/bin/agentpaasd --home /Users/testuser/.agentpaas
+Restart=on-failure
+Environment=AGENTPAAS_HOME=/Users/testuser/.agentpaas
+
+[Install]
+WantedBy=default.target

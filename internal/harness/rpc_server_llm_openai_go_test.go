@@ -1,0 +1,524 @@
+package harness
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/llm"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+)
+
+func captureHarnessLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	return &buf
+}
+
+func llmStateForOpenAI(t *testing.T, env *routedrun.TimeEnvelope) *rpcInvokeState {
+	t.Helper()
+	return &rpcInvokeState{
+		payload: map[string]any{
+			"llm": map[string]any{
+				"provider":   "openai",
+				"model":      "gpt-4o",
+				"credential": testCredID,
+			},
+		},
+		credentials: map[string]rpcCredential{
+			testCredID: {Header: "Authorization", Value: testSecret},
+		},
+		budget:       NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+		timeEnvelope: env,
+	}
+}
+
+func envelopeMS(t *testing.T, modelCallTimeoutMs int64) *routedrun.TimeEnvelope {
+	t.Helper()
+	env, ok := routedrun.TimeEnvelopeFromCeilings(60_000, 60_000, 10_000, modelCallTimeoutMs)
+	if !ok {
+		t.Fatal("expected envelope")
+	}
+	return &env
+}
+
+func writeChatCompletion(w http.ResponseWriter, content, reasoning, model string, totalTokens int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	msg := map[string]any{"role": "assistant", "content": content}
+	if reasoning != "" {
+		msg["reasoning"] = reasoning
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id":      "chatcmpl-test",
+		"object":  "chat.completion",
+		"created": 1,
+		"model":   model,
+		"choices": []map[string]any{
+			{"index": 0, "finish_reason": "stop", "message": msg},
+		},
+		"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": totalTokens},
+	})
+}
+
+// TestHandleLLM_NonStreamContentPreferredOverReasoning pins Decision A:
+// stream:false JSON with both message.content and message.reasoning returns
+// content to the agent. Do not block waiting for reasoning.
+func TestHandleLLM_NonStreamContentPreferredOverReasoning(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeChatCompletion(w, "visible answer", "hidden chain of thought", "gpt-4o", 4)
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	s := &harnessRPCServer{}
+	state := llmStateForOpenAI(t, nil)
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected result map, got %T", resp.Result)
+	}
+	if result["text"] != "visible answer" {
+		t.Fatalf("text = %q, want visible answer (content, not reasoning)", result["text"])
+	}
+}
+
+// TestHandleLLM_EmptyContentFallsBackToReasoning pins OpenRouter
+// message.reasoning as a fallback only when content is empty.
+func TestHandleLLM_EmptyContentFallsBackToReasoning(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeChatCompletion(w, "", "the answer is 42", "gpt-4o", 4)
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	s := &harnessRPCServer{}
+	state := llmStateForOpenAI(t, nil)
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected result map, got %T", resp.Result)
+	}
+	if result["text"] != "the answer is 42" {
+		t.Fatalf("text = %q, want reasoning fallback", result["text"])
+	}
+}
+
+// TestHandleLLM_CompletionsNewIgnoresCtx_TerminalsAtDeadline pins option A:
+// if Completions.New never returns when ctx fires, handleLLM must still
+// return llm_failed at the ctx deadline so the RPC error line is written.
+func TestHandleLLM_CompletionsNewIgnoresCtx_TerminalsAtDeadline(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+
+	s := &harnessRPCServer{
+		nowMonotonicMs: func() int64 { return routedrun.NowMonotonicMs(nil) },
+		llmChatCompletion: func(ctx context.Context, baseURL, originalHost, apiKey, model, prompt string, maxTokens int, provider string) (*llm.LLMResult, error) {
+			// Ignore ctx the way a stuck openai-go Completions.New would.
+			select {
+			case <-release:
+			case <-time.After(3 * time.Second):
+			}
+			return nil, errors.New("completions still hanging")
+		},
+	}
+	logs := captureHarnessLogs(t)
+	state := llmStateForOpenAI(t, envelopeMS(t, 200))
+	start := time.Now()
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	elapsed := time.Since(start)
+	if resp.OK {
+		t.Fatal("expected error (ctx deadline), got OK")
+	}
+	if resp.Code != "llm_failed" {
+		t.Fatalf("code = %q, want llm_failed", resp.Code)
+	}
+	gotLogs := logs.String()
+	if !strings.Contains(gotLogs, "ctx.Done wins vs Completions.New") {
+		t.Fatalf("logs = %q, want ctx.Done wins vs Completions.New (A vs B probe)", gotLogs)
+	}
+	if strings.Contains(gotLogs, testSecret) {
+		t.Fatal("logs leaked credential value")
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("elapsed = %v, want < 1.5s (ctx deadline 200ms; Completions.New ignored ctx)", elapsed)
+	}
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("elapsed = %v, want roughly the 200ms ctx deadline", elapsed)
+	}
+	errLower := strings.ToLower(resp.Error)
+	if !strings.Contains(errLower, "timeout") &&
+		!strings.Contains(errLower, "deadline") &&
+		!strings.Contains(errLower, "context") {
+		t.Fatalf("error = %q, want timeout/deadline/context", resp.Error)
+	}
+}
+
+// TestHandleLLM_KeepaliveNeverCloses_TerminalsAtCtxDeadline pins the
+// Decision A timeout contract: a stub that never completes the JSON body
+// (keepalive-only / held-open) must terminal at the ctx deadline with
+// llm_failed. openai-go + context.WithTimeout owns the deadline — not a
+// custom idle timer.
+func TestHandleLLM_KeepaliveNeverCloses_TerminalsAtCtxDeadline(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			_, _ = io.WriteString(w, ": keepalive\n")
+			flusher.Flush()
+			_, _ = io.WriteString(w, "{")
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	nowMs := routedrun.NowMonotonicMs(nil)
+	s := &harnessRPCServer{nowMonotonicMs: func() int64 { return nowMs }}
+	state := llmStateForOpenAI(t, envelopeMS(t, 200))
+	start := time.Now()
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	elapsed := time.Since(start)
+	if resp.OK {
+		t.Fatal("expected error (ctx deadline), got OK")
+	}
+	if resp.Code != "llm_failed" {
+		t.Fatalf("code = %q, want llm_failed", resp.Code)
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("elapsed = %v, want < 1.5s (ctx deadline 200ms)", elapsed)
+	}
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("elapsed = %v, want roughly the 200ms ctx deadline (not an immediate parse error)", elapsed)
+	}
+	errLower := strings.ToLower(resp.Error)
+	if !strings.Contains(errLower, "timeout") &&
+		!strings.Contains(errLower, "deadline") &&
+		!strings.Contains(errLower, "context") {
+		t.Fatalf("error = %q, want timeout/deadline/context", resp.Error)
+	}
+}
+
+// TestHandleLLM_OpenRouterRequestExcludesReasoning pins OpenRouter docs:
+// reasoning.exclude=true means the model still reasons internally but omits
+// reasoning tokens from the response. stream:false stays set. DeepSeek
+// (weather-agent default) treats exclude as a no-op and still returns content.
+func TestHandleLLM_OpenRouterRequestExcludesReasoning(t *testing.T) {
+	var gotBody map[string]any
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		writeChatCompletion(w, "Folsom: 72F and sunny", "", "deepseek/deepseek-v4-flash", 8)
+	}))
+	defer func() { ts.Close() }()
+
+	t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+	s := &harnessRPCServer{}
+	state := &rpcInvokeState{
+		payload: map[string]any{
+			"llm": map[string]any{
+				"provider":   "openrouter",
+				"model":      "deepseek/deepseek-v4-flash",
+				"credential": testCredID,
+			},
+		},
+		credentials: map[string]rpcCredential{
+			testCredID: {Header: "Authorization", Value: testSecret},
+		},
+		budget: NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+	}
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{
+		"prompt": "What's the weather in Folsom?",
+	}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected result map, got %T", resp.Result)
+	}
+	if result["text"] != "Folsom: 72F and sunny" {
+		t.Fatalf("text = %q, want weather reply (deepseek path still works)", result["text"])
+	}
+	if v, ok := gotBody["stream"]; !ok || v != false {
+		t.Fatalf("stream = %v, want false", gotBody["stream"])
+	}
+	reasoning, _ := gotBody["reasoning"].(map[string]any)
+	if reasoning["exclude"] != true {
+		t.Fatalf("reasoning.exclude = %v, want true; body=%v", gotBody["reasoning"], gotBody)
+	}
+}
+
+// TestHandleLLM_OpenRouterForwardsReasoningEffort pins C12: handleLLM must
+// read reasoning_effort, effort, and reasoning.effort and callLLMChatCompletion
+// must put that value in the OpenRouter reasoning object. Fails if effort is
+// omitted or if max is rejected. none is not a substitute for max.
+func TestHandleLLM_OpenRouterForwardsReasoningEffort(t *testing.T) {
+	efforts := []string{"low", "medium", "high", "max"}
+	for _, effort := range efforts {
+		env := runtime.ModelCallEnvelope{
+			Messages:        []runtime.Message{{Role: runtime.RoleUser, Content: "ping"}},
+			ReasoningEffort: runtime.ReasoningEffort(effort),
+		}
+		if err := env.Validate(); err != nil {
+			t.Fatalf("ModelCallEnvelope.Validate rejected reasoning effort %q: %v", effort, err)
+		}
+		if string(env.ReasoningEffort) != effort {
+			t.Fatalf("reasoning effort %q rewritten to %q", effort, env.ReasoningEffort)
+		}
+		if effort == "max" && env.ReasoningEffort == runtime.ReasoningEffortNone {
+			t.Fatal("none substituted for max")
+		}
+	}
+	none := runtime.ModelCallEnvelope{
+		Messages:        []runtime.Message{{Role: runtime.RoleUser, Content: "ping"}},
+		ReasoningEffort: runtime.ReasoningEffortNone,
+	}
+	if err := none.Validate(); err != nil {
+		t.Fatalf("none must stay accepted: %v", err)
+	}
+	if none.ReasoningEffort != runtime.ReasoningEffortNone {
+		t.Fatalf("none rewritten to %q", none.ReasoningEffort)
+	}
+
+	paramForms := []struct {
+		name   string
+		params func(effort string) map[string]any
+	}{
+		{
+			name: "reasoning_effort",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "reasoning_effort": effort}
+			},
+		},
+		{
+			name: "effort",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "effort": effort}
+			},
+		},
+		{
+			name: "reasoning.effort",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "reasoning": map[string]any{"effort": effort}}
+			},
+		},
+		{
+			name: "reasoning.effort dotted key",
+			params: func(effort string) map[string]any {
+				return map[string]any{"prompt": "ping", "reasoning.effort": effort}
+			},
+		},
+	}
+	for _, effort := range efforts {
+		for _, form := range paramForms {
+			t.Run(form.name+"/"+effort, func(t *testing.T) {
+				var gotBody map[string]any
+				ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_ = json.NewDecoder(r.Body).Decode(&gotBody)
+					writeChatCompletion(w, "pong", "", "deepseek/deepseek-v4-flash", 2)
+				}))
+				defer ts.Close()
+				t.Setenv("AGENTPAAS_GATEWAY_URL", ts.URL)
+
+				s := &harnessRPCServer{}
+				state := &rpcInvokeState{
+					payload: map[string]any{
+						"llm": map[string]any{
+							"provider":   "openrouter",
+							"model":      "deepseek/deepseek-v4-flash",
+							"credential": testCredID,
+						},
+					},
+					credentials: map[string]rpcCredential{
+						testCredID: {Header: "Authorization", Value: testSecret},
+					},
+					budget: NewBudgetEnforcer(BudgetConfig{MaxTokens: 10000}),
+				}
+				resp := s.handleLLM(rpcRequest{
+					ID:     "1",
+					Method: "llm",
+					Params: form.params(effort),
+				}, state)
+				if !resp.OK {
+					t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+				}
+				reasoning, ok := gotBody["reasoning"].(map[string]any)
+				if !ok {
+					t.Fatalf("reasoning object missing; effort omitted; body=%v", gotBody)
+				}
+				if reasoning["exclude"] != true {
+					t.Fatalf("reasoning.exclude = %v, want true; body=%v", reasoning["exclude"], gotBody)
+				}
+				gotEffort, present := reasoning["effort"]
+				if !present {
+					t.Fatalf("effort omitted from reasoning object; body=%v", gotBody)
+				}
+				if gotEffort != effort {
+					t.Fatalf("reasoning.effort = %v, want %q; body=%v", gotEffort, effort, gotBody)
+				}
+				if effort == "max" && (gotEffort == "none" || gotEffort == string(runtime.ReasoningEffortNone)) {
+					t.Fatal("none substituted for max")
+				}
+			})
+		}
+	}
+}
+
+// TestCallLLMChatCompletion_ProbeLogs pins hang-split probes: Completions.New
+// start echoes deadline_ms, optional rss_bytes, and stream=false. No secrets.
+func TestCallLLMChatCompletion_ProbeLogs(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeChatCompletion(w, "ok", "", "gpt-4o", 2)
+	}))
+	defer func() { ts.Close() }()
+
+	logs := captureHarnessLogs(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	res, err := callLLMChatCompletion(ctx, ts.URL+"/v1/", "", "sk-test-not-for-logs", "gpt-4o", "hi", 0, "openai")
+	if err != nil {
+		t.Fatalf("callLLMChatCompletion: %v", err)
+	}
+	if res == nil || res.Text != "ok" {
+		t.Fatalf("unexpected result: %#v", res)
+	}
+	got := logs.String()
+	if !strings.Contains(got, "Completions.New start") {
+		t.Fatalf("logs = %q, want Completions.New start", got)
+	}
+	if !strings.Contains(got, "deadline_ms=") {
+		t.Fatalf("logs = %q, want deadline_ms=", got)
+	}
+	if !strings.Contains(got, "stream=false") {
+		t.Fatalf("logs = %q, want stream=false echoed", got)
+	}
+	if !strings.Contains(got, "Completions.New returned") {
+		t.Fatalf("logs = %q, want Completions.New returned", got)
+	}
+	if strings.Contains(got, "sk-test-not-for-logs") {
+		t.Fatal("logs leaked api key")
+	}
+	if strings.Contains(got, "hi") && strings.Contains(got, "prompt") {
+		t.Fatal("logs leaked prompt body")
+	}
+}
+
+// TestHandleLLM_SSEKeepaliveNeverCompletes_FailsClosedAtDeadline pins fail-closed:
+// text/event-stream keepalives that never send a completion must return
+// llm_failed at the ctx deadline (200ms here), not sit on the 30 min lease.
+func TestHandleLLM_SSEKeepaliveNeverCompletes_FailsClosedAtDeadline(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		if flusher, ok := w.(http.Flusher); ok {
+			_, _ = io.WriteString(w, ": keepalive\n\n")
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	nowMs := routedrun.NowMonotonicMs(nil)
+	s := &harnessRPCServer{nowMonotonicMs: func() int64 { return nowMs }}
+	state := llmStateForOpenAI(t, envelopeMS(t, 200))
+	start := time.Now()
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	elapsed := time.Since(start)
+	if resp.OK {
+		t.Fatal("expected error (SSE keepalive hung), got OK")
+	}
+	if resp.Code != "llm_failed" {
+		t.Fatalf("code = %q, want llm_failed", resp.Code)
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("elapsed = %v, want < 1.5s (ctx deadline 200ms; hung SSE must not hold /invoke)", elapsed)
+	}
+	if elapsed < 100*time.Millisecond {
+		t.Fatalf("elapsed = %v, want roughly the 200ms ctx deadline", elapsed)
+	}
+}
+
+// TestHandleLLM_SSECompletedMessageDone_ReturnsContent pins: when the provider
+// returns SSE despite stream=false, a completed message + [DONE] must return
+// message.content immediately (do not sit until the 5 min deadline).
+func TestHandleLLM_SSECompletedMessageDone_ReturnsContent(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "data: {\"id\":\"cmpl-sse\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gemini-flash\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"message\":{\"role\":\"assistant\",\"content\":\"pitch ok\"}}]}\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	s := &harnessRPCServer{}
+	state := llmStateForOpenAI(t, envelopeMS(t, 2000))
+	start := time.Now()
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	elapsed := time.Since(start)
+	if !resp.OK {
+		t.Fatalf("expected OK from completed SSE, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("expected result map, got %T", resp.Result)
+	}
+	if result["text"] != "pitch ok" {
+		t.Fatalf("text = %q, want message.content from SSE", result["text"])
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Fatalf("elapsed = %v, want immediate return on [DONE] (not the 2s envelope)", elapsed)
+	}
+}
+
+// TestHandleLLM_CompletionsNewReturns_LogsSelectWinner pins the B-side probe:
+// when Completions.New returns before ctx.Done, handleLLM logs that winner.
+func TestHandleLLM_CompletionsNewReturns_LogsSelectWinner(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeChatCompletion(w, "visible answer", "", "gpt-4o", 2)
+	}))
+	defer func() { ts.Close() }()
+	restore := llm.SetTestEndpoints(ts.URL, "", "")
+	defer restore()
+
+	logs := captureHarnessLogs(t)
+	s := &harnessRPCServer{}
+	state := llmStateForOpenAI(t, nil)
+	resp := s.handleLLM(rpcRequest{ID: "1", Method: "llm", Params: map[string]any{"prompt": "hi"}}, state)
+	if !resp.OK {
+		t.Fatalf("expected OK, got error=%s code=%s", resp.Error, resp.Code)
+	}
+	got := logs.String()
+	if !strings.Contains(got, "Completions.New returns vs ctx.Done") {
+		t.Fatalf("logs = %q, want Completions.New returns vs ctx.Done", got)
+	}
+	if strings.Contains(got, "ctx.Done wins vs Completions.New") {
+		t.Fatalf("logs = %q, did not expect ctx.Done winner on a finished call", got)
+	}
+}

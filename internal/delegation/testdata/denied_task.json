@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.3.0",
+  "task_id": "task-zzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+  "workflow_id": "wf-test",
+  "tenant_id": "tenant-test",
+  "caller": {
+    "deployment_id": "dep-caller",
+    "run_id": "run-caller",
+    "attempt_id": "at-caller",
+    "package_name": "weather-agent",
+    "package_digest": "sha256:abc123"
+  },
+  "callee": {
+    "deployment_id": "dep-callee",
+    "package_name": "report-verifier",
+    "package_version": "1.0.0",
+    "package_digest": "sha256:def456"
+  },
+  "binding_id": "bind-undeclared",
+  "capability": "undeclared.cap",
+  "operation": "",
+  "status": "DENIED",
+  "generation": 1,
+  "idempotency_key": "idem-denied-001",
+  "caller_identity": "caller-identity-001",
+  "communication_snapshot_generation": 1,
+  "max_active_duration_ms": 60000,
+  "max_cost_usd_decimal": "0.50",
+  "denial_reason": "DENY_CALLER_BINDING",
+  "created_at": "2026-07-21T00:00:00Z",
+  "updated_at": "2026-07-21T00:00:00Z"
+}

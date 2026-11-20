@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  # Pre-release gate: run all tests on self-hosted runner before building.
+  # If any check fails, the release is blocked — no binaries shipped.
+  pre-release-gate:
+    name: Pre-Release Gate
+    runs-on: self-hosted
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PATH
+        run: |
+          echo "/opt/homebrew/bin:$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Build binaries
+        run: |
+          go build -o bin/agentpaas ./cmd/agent
+          go build -o bin/agentpaasd ./cmd/agentpaasd
+          go build -o bin/agentpaas-harness ./cmd/harness
+          echo "$PWD/bin" >> $GITHUB_PATH
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      - name: Race detector
+        run: make race
+
+      - name: OSV scan
+        run: make osv
+
+      - name: Verify build
+        run: go build ./...
+
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+  release:
+    name: Release
+    runs-on: macos-latest
+    needs: pre-release-gate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft (SBOM)
+        uses: anchore/sbom-action@v0
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

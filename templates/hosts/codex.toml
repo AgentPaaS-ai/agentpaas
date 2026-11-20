@@ -1,0 +1,6 @@
+# Codex host MCP wrap over agentpaas-mcp (D72).
+# Merge into ~/.codex/config.toml. Do not add a second AgentPaaS runtime.
+
+[mcp_servers.agentpaas]
+command = "agentpaas-mcp"
+args = []

@@ -1,0 +1,6 @@
+# agentgateway binary is too large to commit (~69 MB).
+# Builds download and verify it on demand using CHECKSUM.
+agentgateway*
+!CHECKSUM
+!VERSION
+!.gitignore

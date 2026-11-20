@@ -1,0 +1,45 @@
+BUNDLE INSPECT
+
+Header
+  File:                  <bundle>
+  Size:                  <size> bytes
+  Bundle digest:         <digest>
+  Bundle schema:         1
+  Lock schema:           2
+  Agent:                 bundle-test-agent@0.1.0
+
+Integrity
+  manifest_parse      PASS  manifest parsed
+  manifest_signature  PASS  manifest signature valid
+  publisher_match     PASS  manifest and lock publisher match
+  lock_provenance     PASS  lock and provenance verified
+  content_sha256      PASS  lock, policy, and sbom digests match manifest
+  policy_digest       PASS  policy digest matches lock
+  sbom_digest         PASS  sbom digest matches lock
+  source_digest       PASS  source digest matches manifest and lock
+  image_digest        PASS  no image in bundle
+
+Publisher
+  Name:        test-publisher
+  Fingerprint: <fingerprint>
+  A valid signature proves who signed this and that it is unmodified.
+  It does not mean the agent is safe. Review the policy below.
+
+Provenance:
+  1. created  bundle-test-agent 0.1.0  by test-publisher  (<fp8>)  1970-01-01
+
+
+Policy summary
+  [egress] api.example.com:443 *
+  [credential] id=my-key type=header header=X-API-Key
+
+Requirements
+  Platform:    linux/arm64
+  LLM:         (not declared)
+  Image:       rebuild required (source in bundle; no prebuilt image)
+  Credentials:
+    - my-key (header) header=X-API-Key
+
+SBOM
+  Packages: 2
+  Top-level deps: idna, requests

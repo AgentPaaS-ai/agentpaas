@@ -1,0 +1,21 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: query
+      package_name: query-agent
+      package_version: "2.0.0"
+      bundle_digest: sha256:q1q2q3q4q5q6
+      handoff: public
+      output_schema: example/query-results/v1
+    - name: enrich
+      package_name: enrich-agent
+      package_version: "1.0.0"
+      bundle_digest: sha256:e1e2e3e4e5e6
+      handoff: internal
+      accepted_schemas:
+        - example/query-results/v1
+services:
+  - service_id: lookup
+    package_name: lookup-service
+    package_version: "1.0.0"
+    bundle_digest: sha256:svc111222333

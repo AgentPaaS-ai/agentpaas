@@ -1,0 +1,7 @@
+version: "1.0"
+agent:
+  name: mcp-feedback-service
+  description: MCP service that provides feedback lookup — deny-all egress
+egress: []
+credentials: []
+ingress: []

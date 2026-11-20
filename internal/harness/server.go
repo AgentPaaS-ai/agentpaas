@@ -1,0 +1,701 @@
+package harness
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+	"unicode"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/httpjson"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
+	"github.com/AgentPaaS-ai/agentpaas/internal/routedrun"
+)
+
+const (
+	MaxPayloadBytes = 50 * 1024 * 1024
+
+	defaultAddr          = "127.0.0.1:8080"
+	defaultImportTimeout = 60 * time.Second
+
+	// ReasonBakeMode is returned when an invoke arrives during bake.
+	// Bake does not start the worker, and a request cannot enter bake.
+	ReasonBakeMode = "bake_mode"
+)
+
+// Config controls the harness HTTP server and Python worker.
+type Config struct {
+	Addr            string
+	AgentPath       string
+	Python          string
+	ImportTimeout   time.Duration
+	InvokeTimeout   time.Duration
+	TerminateGrace  time.Duration
+	StdoutPath      string
+	StderrPath      string
+	Audit           AuditAppender
+	CredentialsPath string // Path to credentials.json sidecar file (empty = none)
+	CredentialsJSON string // JSON array of {id, header, value} objects (empty = none); used when CredentialsPath is empty
+	// OAuthBindingsJSON is AGENTPAAS_OAUTH_BINDINGS_JSON: host-match metadata
+	// for oauth_delegated (consent_url only; never tokens).
+	OAuthBindingsJSON string
+
+	// Progress journal integration (B27). The daemon writes the journal key
+	// to a sidecar file and bind-mounts it into the harness container. The
+	// harness reads it, constructs a journal writer, and deletes the file
+	// before starting Python (mirrors credentials sidecar pattern).
+	JournalKeyPath string // Path to journal key sidecar file (empty = no progress)
+	JournalPath    string // Path to journal file inside container (empty = no progress)
+	AttemptID      string // Attempt ID for journal records
+	LeaseID        string // Lease ID for journal records
+	RunID          string // Run ID for journal records (must match tailer's run ID)
+
+	// DelegationSnapshotPath is the path to the delegation snapshot sidecar
+	// file (BUG-040). The daemon writes the pre-built CommunicationSnapshot
+	// and per-binding capability tokens to a JSON file, bind-mounts it
+	// read-only into the harness container, and sets the env var. The
+	// harness reads the file at startup, constructs the DelegationTrustState,
+	// and injects it into the RPC server. Empty when no delegations are
+	// declared (backward compat).
+	DelegationSnapshotPath string
+
+	// DelegationSnapshotJSON is AGENTPAAS_DELEGATION_SNAPSHOT_JSON: the same
+	// sidecar payload as DelegationSnapshotPath. Used when the platform
+	// injects the snapshot via env (cloud CF) and does not set the path.
+	DelegationSnapshotJSON string
+
+	// MCPBindingSidecarPath is the path to the MCP binding sidecar file (B33-T08 c3).
+	// The daemon writes it before starting the harness. The harness reads it at
+	// startup, wires the managed resolver onto the Router, and registers each
+	// binding on the Manager. The file is then deleted if writable (mirrors
+	// credentials sidecar pattern). Empty when no managed MCP services are
+	// declared (backward compat).
+	MCPBindingSidecarPath string
+
+	// MCPBindingsJSON is AGENTPAAS_MCP_BINDINGS_JSON: HTTP MCP client
+	// bindings (name, url, headers, allowed_tools). Tokens stay in the
+	// harness process and must never reach the Python worker env.
+	MCPBindingsJSON string
+
+	// B30-T04: policy-derived resource ceilings. On the durable path
+	// (InvokeDeployment), the daemon populates these from the deployment
+	// policy and the harness propagates them to the Python worker via
+	// AGENTPAAS_CPU_QUOTA_SECONDS / AGENTPAAS_MAX_PIDS env vars. The
+	// Python runner applies them as RLIMIT_CPU / RLIMIT_NPROC.
+	//
+	// CPUQuotaSeconds is the per-attempt CPU-time budget in seconds.
+	// 0 means unlimited CPU (bounded by the container CFS quota set by
+	// the runtime driver); RLIMIT_CPU is NOT set on the durable path.
+	// MaxPIDs is the per-attempt process-count limit (RLIMIT_NPROC).
+	// 0 means an explicit policy decision to forbid ALL subprocesses;
+	// a positive value allows that many processes for approved local
+	// tools (git, grep, awk). When unset on the legacy v0.2.3 path,
+	// the runner falls back to RLIMIT_NPROC=0 (legacy compat).
+	//
+	// On the legacy v0.2.3 path (cmd/harness), these fields are zero —
+	// the runner then applies the legacy RLIMIT_CPU=30 / RLIMIT_NPROC=0
+	// constants with "legacy compat" comments.
+	CPUQuotaSeconds int64
+	MaxPIDs         int
+
+	// DurablePath marks the harness as running on the B30-T02 durable
+	// InvokeDeployment path (vs the legacy v0.2.3 trigger path). When
+	// true, the harness propagates the policy resource env vars to the
+	// Python runner so it applies policy-derived rlimits; when false,
+	// the runner falls back to the legacy fixed constants.
+	DurablePath bool
+
+	// AgentKind is the kind field from agent.yaml (e.g. "worker", "mcp_service").
+	// Set by the daemon/harness when constructing the worker. Empty means worker.
+	AgentKind string
+
+	// MCPDeclaredTools is the comma-separated list of declared tool names from
+	// the mcp_service block. Only set when AgentKind == "mcp_service".
+	MCPDeclaredTools string
+
+	// MCPMaxConcurrency is the max_concurrency from the mcp_service block.
+	// Defaults to 1 if unset. Only meaningful when AgentKind == "mcp_service".
+	MCPMaxConcurrency int
+
+	// Bake reports ready and does not start the worker. It is set only from
+	// process start (AGENTPAAS_BAKE or --bake). A request cannot enter bake,
+	// and an invoke during bake does not start component code.
+	Bake bool
+}
+
+// ErrorResponse is the structured failure envelope returned by lifecycle APIs.
+type ErrorResponse struct {
+	Status         string          `json:"status"`
+	Reason         string          `json:"reason"`
+	Detail         string          `json:"detail"`
+	FailureContext *FailureContext `json:"failure_context,omitempty"`
+}
+
+// InvokeResponse is returned by successful /invoke calls.
+type InvokeResponse struct {
+	Status string         `json:"status"`
+	Result map[string]any `json:"result,omitempty"`
+	Stdout string         `json:"stdout"`
+	Stderr string         `json:"stderr"`
+}
+
+// Server exposes the harness HTTP contract.
+type Server struct {
+	cfg Config
+
+	mux    *http.ServeMux
+	worker *pythonWorker
+	reaper *childReaper
+
+	mu          sync.RWMutex
+	ready       bool
+	importError *ErrorResponse
+	closed      bool
+	rpcServer   *harnessRPCServer
+
+	// router is the MCP protocol router installed via SetRouter.
+	// Accessed by InstallMCPBindingSidecar for sidecar loading.
+	router *mcpmanager.Router
+	// managedManager is the MCP Manager installed alongside the router.
+	// Used by InstallMCPBindingSidecar to register sidecar bindings.
+	managedManager *mcpmanager.Manager
+
+	// mcpBridge is the HTTP MCP bridge started when AgentKind == "mcp_service".
+	// It translates JSON-RPC requests to the Python worker's stdin/stdout protocol.
+	// The bridge is created in startWorker() and closed in Close().
+	mcpBridge *MCPBridge
+
+	invokeMu sync.Mutex
+
+	// nowMonotonicMs supplies the monotonic millisecond timestamp used to
+	// evaluate the TimeEnvelope in handleInvoke (B30-T03 Part B, ceiling 3).
+	// When nil, routedrun.NowMonotonicMs(nil) (time.Now().UnixMilli()) is used.
+	nowMonotonicMs func() int64
+}
+
+// NewServer creates a harness server and performs the Python import phase.
+func NewServer(cfg Config) *Server {
+	cfg = normalizeConfig(cfg)
+	s := &Server{
+		cfg:    cfg,
+		mux:    http.NewServeMux(),
+		reaper: startChildReaper(),
+	}
+	s.routes()
+	if cfg.Bake {
+		s.startBake()
+		return s
+	}
+	s.startWorker()
+	return s
+}
+
+// ListenAndServe serves the harness HTTP API on the configured localhost address.
+func (s *Server) ListenAndServe(ctx context.Context) error {
+	server := &http.Server{
+		Addr:              s.cfg.Addr,
+		Handler:           s,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("server listen and serve: %w", err)
+		}
+		return ctx.Err()
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	}
+}
+
+// Server.ServeHTTP serves http.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mux.ServeHTTP(w, r)
+}
+
+// Close stops the Python worker and the MCP bridge (if any).
+func (s *Server) Close() error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
+	worker := s.worker
+	bridge := s.mcpBridge
+	s.mu.Unlock()
+
+	if worker == nil {
+		if s.reaper != nil {
+			s.reaper.Stop()
+		}
+		if bridge != nil {
+			return bridge.Close()
+		}
+		return nil
+	}
+	err := worker.Close()
+	if bridge != nil {
+		err = errors.Join(err, bridge.Close())
+	}
+	if s.reaper != nil {
+		s.reaper.Stop()
+	}
+	return err
+}
+
+func (s *Server) routes() {
+	s.mux.HandleFunc("/healthz", s.handleHealthz)
+	s.mux.HandleFunc("/health", s.handleHealthz)
+	s.mux.HandleFunc("/readyz", s.handleReadyz)
+	s.mux.HandleFunc("/invoke", s.handleInvoke)
+	s.mux.HandleFunc("/agui/", s.handleAguiProxy)
+	s.mux.HandleFunc("/agui", s.handleAguiProxy)
+}
+
+// startBake marks the server ready without starting the Python worker.
+func (s *Server) startBake() {
+	if errResp := listenAddrError(s.cfg); errResp != nil {
+		s.importError = errResp
+		return
+	}
+	s.ready = true
+	log.Printf("harness: bake mode; worker not started")
+}
+
+func (s *Server) startWorker() {
+	worker, errResp := startPythonWorker(s.cfg, s.reaper)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if errResp != nil {
+		s.importError = errResp
+		return
+	}
+	s.worker = worker
+	s.rpcServer = worker.rpc
+	s.ready = true
+
+	// When running as a service agent, start the MCP HTTP bridge on the
+	// worker's stdin/stdout so managed resolvers can reach the agent via
+	// JSON-RPC with the capability header.
+	if s.cfg.AgentKind == "mcp_service" {
+		bridge := NewMCPBridge(MCPBridgeConfig{
+			Stdin:  worker.stdin,
+			Stdout: worker.stdout,
+			OnCallStart: func(p map[string]any) {
+				if worker.rpc != nil {
+					worker.rpc.SetInvoke(p, NewBudgetEnforcer(BudgetConfig{}), func() {})
+				}
+			},
+			OnCallEnd: func() {
+				if worker.rpc != nil {
+					worker.rpc.ClearInvoke()
+				}
+			},
+		})
+		if err := bridge.Start(); err != nil {
+			log.Printf("harness: MCP bridge start failed: %v", err)
+			_ = bridge.Close()
+		} else {
+			log.Printf("harness: MCP bridge started on %s", bridge.Addr())
+			s.mcpBridge = bridge
+		}
+	}
+}
+
+// SetRouter installs the MCP protocol router and manager on the harness RPC server.
+// Must be called before the Python worker starts invoking MCP tools.
+// When nil, the harness fails closed (no synthetic success for managed bindings).
+// The manager is stored on Server so InstallMCPBindingSidecar can register
+// sidecar bindings later.
+func (s *Server) SetRouter(router *mcpmanager.Router, manager *mcpmanager.Manager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.router = router
+	s.managedManager = manager
+	if s.rpcServer != nil {
+		s.rpcServer.SetRouter(router, manager)
+	}
+}
+
+// GetRouter returns the MCP Router installed via SetRouter. Used by tests
+// and by InstallMCPBindingSidecar to wire managed bindings.
+func (s *Server) GetRouter() *mcpmanager.Router {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.router
+}
+
+// MCPBridge returns the MCP HTTP bridge started for mcp_service agents.
+// Returns nil when AgentKind != "mcp_service" or the bridge failed to start.
+func (s *Server) MCPBridge() *MCPBridge {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.mcpBridge
+}
+
+// InstallMCPBindingSidecar reads a sidecar file at path, wires its bindings
+// into the Router and Manager, and deletes the file if writable. This mirrors
+// the credentials sidecar pattern: the daemon writes the file before starting
+// the harness, and the harness consumes and deletes it at startup.
+//
+// The sidecar file contains READY MCP bindings with endpoint + capability +
+// allowed tools. Capability tokens are trusted root-only material and never
+// reach the Python environment.
+func (s *Server) InstallMCPBindingSidecar(path string) error {
+	s.mu.RLock()
+	router := s.router
+	manager := s.managedManager
+	s.mu.RUnlock()
+
+	if router == nil || manager == nil {
+		return fmt.Errorf("harness: InstallMCPBindingSidecar: router and manager must be installed via SetRouter first")
+	}
+
+	sc, err := mcpmanager.ReadMCPBindingSidecar(path)
+	if err != nil {
+		return fmt.Errorf("harness: read MCP binding sidecar: %w", err)
+	}
+
+	if err := mcpmanager.InstallSidecarOnRouter(router, manager, sc); err != nil {
+		return fmt.Errorf("harness: install MCP binding sidecar on router: %w", err)
+	}
+
+	// Delete the sidecar file after successful load (like credentials).
+	// If the file is on a read-only mount, ignore the delete error.
+	_ = os.Remove(path)
+
+	return nil
+}
+
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	s.mu.RLock()
+	resp := map[string]any{
+		"status":         "OK",
+		"ready":          s.ready,
+		"oauth_bindings": s.oauthBindingCount(),
+		"credentials":    s.credentialCount(),
+	}
+	s.mu.RUnlock()
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// oauthBindingCount returns how many OAuth bindings were loaded at startup.
+// Caller must hold s.mu (at least RLock).
+func (s *Server) oauthBindingCount() int {
+	if s.rpcServer == nil {
+		return 0
+	}
+	s.rpcServer.mu.RLock()
+	defer s.rpcServer.mu.RUnlock()
+	return len(s.rpcServer.oauthBindings)
+}
+
+// credentialCount returns how many credentials were loaded at startup.
+// Caller must hold s.mu (at least RLock).
+func (s *Server) credentialCount() int {
+	if s.rpcServer == nil {
+		return 0
+	}
+	s.rpcServer.mu.RLock()
+	defer s.rpcServer.mu.RUnlock()
+	return len(s.rpcServer.credentials)
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	s.mu.RLock()
+	ready := s.ready
+	importError := s.importError
+	s.mu.RUnlock()
+
+	if importError != nil {
+		writeJSON(w, http.StatusServiceUnavailable, importError)
+		return
+	}
+	if !ready {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+			Status: "FAILED",
+			Reason: "not_ready",
+			Detail: "agent import has not completed",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "OK"})
+}
+
+func (s *Server) handleInvoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.Bake {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{
+			Status: "FAILED",
+			Reason: ReasonBakeMode,
+			Detail: "worker is not started in bake mode",
+		})
+		return
+	}
+
+	body, err := readLimitedBody(w, r)
+	if err != nil {
+		return
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Status: "FAILED",
+			Reason: "invalid_json",
+			Detail: err.Error(),
+		})
+		return
+	}
+
+	s.invokeMu.Lock()
+	defer s.invokeMu.Unlock()
+
+	worker, errResp := s.workerForInvoke()
+	if errResp != nil {
+		writeJSON(w, http.StatusServiceUnavailable, errResp)
+		return
+	}
+
+	meta := newInvokeMetadata(payload, s.cfg)
+	// B30-T03 Part B (ceiling 4): attach the TimeEnvelope from the payload to
+	// the budget config so the wall-clock budget is derived from
+	// ActiveTimeRemainingMs when present (legacy 120s fallback otherwise).
+	bCfg := budgetFromPayload(payload)
+	if env, ok := routedrun.UnmarshalTimeEnvelopeFromPayload(payload); ok {
+		bCfg.TimeEnvelope = &env
+	}
+	budget := newBudgetEnforcer(bCfg, meta.runID, meta.invokeID, s.cfg.Audit, time.Now)
+	// B30-T03 Part B (ceiling 3): derive the /invoke context timeout from the
+	// TimeEnvelope carried in the payload (via the durable admission receipt)
+	// when present; otherwise fall back to the configured InvokeTimeout (the
+	// legacy v0.2.3 300s default). The env var AGENTPAAS_INVOKE_TIMEOUT
+	// remains a legacy compat override.
+	ctx, cancel := contextWithOptionalTimeout(r.Context(), s.invokeTimeoutForPayload(payload))
+	defer cancel()
+	resp, invokeErr, evidence := worker.Invoke(ctx, payload, budget, s.cfg.TerminateGrace)
+	if invokeErr != nil {
+		invokeErr = attachFailureContext(invokeErr, buildFailureContext(invokeErr, meta, evidence), s.cfg.Audit)
+		writeJSON(w, http.StatusInternalServerError, invokeErr)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// invokeTimeoutForPayload returns the /invoke context timeout. When the
+// payload carries a TimeEnvelope (B30-T03 Part B, ceiling 3), the timeout is
+// derived from the envelope's active-time remaining and attempt-lease
+// remaining only — NOT the per-operation StallTimeoutMs, which is a
+// per-operation stall-detection ceiling inside the worker, not a session-level
+// ceiling for the entire /invoke HTTP handler.
+//
+// When no envelope is present (legacy v0.2.3 compat), it falls back to
+// s.cfg.InvokeTimeout (the 300s default from AGENTPAAS_INVOKE_TIMEOUT or its
+// legacy default).
+func (s *Server) invokeTimeoutForPayload(payload map[string]any) time.Duration {
+	if env, ok := routedrun.UnmarshalTimeEnvelopeFromPayload(payload); ok {
+		nowMs := routedrun.NowMonotonicMs(nil)
+		if s.nowMonotonicMs != nil {
+			nowMs = s.nowMonotonicMs()
+		}
+		deadlineMs := env.ActiveTimeRemainingMs(nowMs)
+		// Also bound by attempt lease if present.
+		if env.AttemptLeaseRemainingMs != nil && *env.AttemptLeaseRemainingMs < deadlineMs {
+			deadlineMs = *env.AttemptLeaseRemainingMs
+		}
+		if deadlineMs <= 0 {
+			// Envelope exhausted: tiny grace so the call surfaces a structured
+			// error rather than a zero-timeout panic.
+			return 1 * time.Millisecond
+		}
+		return time.Duration(deadlineMs) * time.Millisecond
+	}
+	return s.cfg.InvokeTimeout
+}
+
+func (s *Server) workerForInvoke() (*pythonWorker, *ErrorResponse) {
+	s.mu.RLock()
+	worker := s.worker
+	importError := s.importError
+	ready := s.ready
+	s.mu.RUnlock()
+
+	if importError != nil {
+		return nil, importError
+	}
+	if s.cfg.Bake {
+		return nil, &ErrorResponse{
+			Status: "FAILED",
+			Reason: ReasonBakeMode,
+			Detail: "worker is not started in bake mode",
+		}
+	}
+	if !ready || worker == nil {
+		return nil, &ErrorResponse{
+			Status: "FAILED",
+			Reason: "not_ready",
+			Detail: "agent is not ready to accept invokes",
+		}
+	}
+	if !worker.isClosed() {
+		return worker, nil
+	}
+
+	worker, errResp := startPythonWorker(s.cfg, s.reaper)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if errResp != nil {
+		s.ready = false
+		s.importError = errResp
+		return nil, errResp
+	}
+	s.worker = worker
+	s.ready = true
+	s.importError = nil
+	return worker, nil
+}
+
+func readLimitedBody(w http.ResponseWriter, r *http.Request) ([]byte, error) {
+	reader := http.MaxBytesReader(w, r.Body, MaxPayloadBytes)
+	defer func() { _ = reader.Close() }() // best-effort close
+
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, ErrorResponse{
+				Status: "FAILED",
+				Reason: "payload_too_large",
+				Detail: fmt.Sprintf("request body exceeds %d bytes", MaxPayloadBytes),
+			})
+			return nil, fmt.Errorf("read limited body: %w", err)
+		}
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{
+			Status: "FAILED",
+			Reason: "read_failed",
+			Detail: err.Error(),
+		})
+		return nil, fmt.Errorf("read limited body: %w", err)
+	}
+	return body, nil
+}
+
+func normalizeConfig(cfg Config) Config {
+	if cfg.Addr == "" {
+		cfg.Addr = defaultAddr
+	}
+	if cfg.Python == "" {
+		cfg.Python = "python3"
+	}
+	if cfg.ImportTimeout == 0 {
+		cfg.ImportTimeout = defaultImportTimeout
+	}
+	if cfg.TerminateGrace == 0 {
+		cfg.TerminateGrace = defaultTerminateGrace
+	}
+	if cfg.StdoutPath == "" {
+		cfg.StdoutPath = filepath.Join(os.TempDir(), fmt.Sprintf("agentpaas-harness-%d.stdout.log", time.Now().UnixNano()))
+	}
+	if cfg.StderrPath == "" {
+		cfg.StderrPath = filepath.Join(os.TempDir(), fmt.Sprintf("agentpaas-harness-%d.stderr.log", time.Now().UnixNano()))
+	}
+	return cfg
+}
+
+func writeJSON(w http.ResponseWriter, status int, value any) {
+	httpjson.Write(w, status, sanitizeResponse(value))
+}
+
+func sanitizeResponse(value any) any {
+	switch v := value.(type) {
+	case ErrorResponse:
+		v.Detail = sanitizeDetail(v.Detail)
+		if v.FailureContext != nil {
+			v.FailureContext.RedactedDetail = sanitizeDetail(v.FailureContext.RedactedDetail)
+		}
+		return v
+	case *ErrorResponse:
+		if v == nil {
+			return v
+		}
+		cleaned := *v
+		cleaned.Detail = sanitizeDetail(cleaned.Detail)
+		if cleaned.FailureContext != nil {
+			ctx := *cleaned.FailureContext
+			ctx.RedactedDetail = sanitizeDetail(ctx.RedactedDetail)
+			cleaned.FailureContext = &ctx
+		}
+		return &cleaned
+	default:
+		return value
+	}
+}
+
+func sanitizeDetail(detail string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\u2028' || r == '\u2029' || r == '\x7f' || (unicode.IsControl(r) && r != '	') {
+			return ' '
+		}
+		return r
+	}, detail)
+}
+
+func listenAddrError(cfg Config) *ErrorResponse {
+	if loopbackAddr(cfg.Addr) || os.Getenv("AGENTPAAS_ALLOW_NON_LOOPBACK_LISTEN") == "1" {
+		return nil
+	}
+	errResp := &ErrorResponse{Status: "FAILED", Reason: "invalid_listen_addr", Detail: "harness must listen on a loopback address"}
+	return attachFailureContext(errResp, newImportFailureContext(cfg, errResp.Reason, errResp.Detail), cfg.Audit)
+}
+
+func loopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr) // intentionally ignored (reviewed)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func commandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return cmd
+}

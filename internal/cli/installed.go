@@ -1,0 +1,229 @@
+package cli
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"strings"
+	"text/tabwriter"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/home"
+	"github.com/AgentPaaS-ai/agentpaas/internal/install"
+	"github.com/spf13/cobra"
+)
+
+// installStateFactory creates the install state store for CLI commands (overridden in tests).
+var installStateFactory = newDefaultInstallState
+
+// installedListFactory lists materialized installs (overridden in tests).
+var installedListFactory = defaultListInstalled
+
+// installedRemoveFactory removes materialized installs (overridden in tests).
+var installedRemoveFactory = defaultRemoveInstalled
+
+func newDefaultInstallState(cmd *cobra.Command) (install.InstallStateStore, error) {
+	homeDir, err := homeDirPath(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("new default install state: %w", err)
+	}
+	paths := home.NewHomePaths(homeDir)
+	return &install.FileInstallState{StateRoot: paths.State}, nil
+}
+
+func defaultListInstalled(cmd *cobra.Command) ([]install.InstalledAgentEntry, error) {
+	homeDir, err := homeDirPath(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("default list installed: %w", err)
+	}
+	paths := home.NewHomePaths(homeDir)
+	return install.ListInstalledAgents(paths.State)
+}
+
+func defaultRemoveInstalled(cmd *cobra.Command, ref string) error {
+	homeDir, err := homeDirPath(cmd)
+	if err != nil {
+		return fmt.Errorf("default remove installed: %w", err)
+	}
+	paths := home.NewHomePaths(homeDir)
+	return install.RemoveInstalledAgent(cmd.Context(), paths.State, ref, install.DockerContainerStopper{}, nil)
+}
+
+// newInstalledCmd creates the `agent installed` command group.
+func newInstalledCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "installed",
+		Short: "Manage installed shared agents",
+		Long: `Commands for installed agent state after 'agentpaas install'.
+
+List installed agents, set display aliases, map declared credentials to
+local secrets, or remove installed state (publisher trust pins are kept).`,
+		Example: `  agentpaas installed list
+  agentpaas installed alias weather@a1b2c3d4 weather
+  agentpaas installed map-credential weather OPENAI_API_KEY=openai-key
+  agentpaas installed remove weather --yes`,
+	}
+	cmd.AddCommand(newInstalledListCmd())
+	cmd.AddCommand(newInstalledRemoveCmd())
+	cmd.AddCommand(newInstalledAliasCmd())
+	cmd.AddCommand(newInstalledMapCredentialCmd())
+	return cmd
+}
+
+func newInstalledAliasCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "alias <ref> <alias>",
+		Short: "Set or change the display alias for an installed agent",
+		Long: `Set a short display alias for an installed agent reference (name@pub8).
+
+Aliases appear in 'agentpaas installed list' and can be used with run,
+trigger, fork, and other commands that accept an agent ref.`,
+		Example: `  agentpaas installed alias weather@a1b2c3d4 weather
+  agentpaas installed alias weather@a1b2c3d4 my-weather`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := homeDirPath(cmd)
+			if err != nil {
+				return fmt.Errorf("new installed alias cmd: %w", err)
+			}
+			paths := home.NewHomePaths(homeDir)
+			emit := func(eventType string, payload map[string]string) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "audit: %s %v\n", eventType, payload) // best-effort write
+			}
+			if err := install.SetInstalledAlias(paths.State, args[0], args[1], emit); err != nil {
+				return fmt.Errorf("new installed alias cmd: %w", err)
+			}
+			ref, err := install.ResolveAgentRef(install.ResolveRefOpts{
+				StateRoot: paths.State,
+				Input:     args[0],
+			})
+			if err != nil {
+				return fmt.Errorf("new installed alias cmd: %w", err)
+			}
+			display := install.FormatAgentDisplay(ref.Ref, strings.TrimSpace(args[1]))
+			cmd.Printf("Alias updated: %s\n", display)
+			return nil
+		},
+	}
+}
+
+func newInstalledListCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list",
+		Short: "List installed shared agents",
+		Long: `List agents materialized by 'agentpaas install'.
+
+Shows ref, alias, version, publisher, install time, and mode.
+Use the global --json flag for structured output.`,
+		Example: `  agentpaas installed list
+  agentpaas installed list --json`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			entries, err := installedListFactory(cmd)
+			if err != nil {
+				return fmt.Errorf("new installed list cmd: %w", err)
+			}
+			if jsonOutput(cmd) {
+				raw, err := json.Marshal(entries)
+				if err != nil {
+					return fmt.Errorf("new installed list cmd: %w", err)
+				}
+				fmt.Println(string(raw))
+				return nil
+			}
+			if len(entries) == 0 {
+				cmd.Println("No installed shared agents.")
+				return nil
+			}
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			_, _ = fmt.Fprintln(w, "REF\tALIAS\tVERSION\tPUBLISHER\tINSTALLED\tMODE") // best-effort write
+			for _, e := range entries {
+				alias := e.Alias
+				if alias == "" {
+					alias = "-"
+				}
+				at := "-"
+				if !e.InstalledAt.IsZero() {
+					at = e.InstalledAt.UTC().Format("2006-01-02 15:04:05")
+				}
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", e.Ref, alias, e.Version, e.Publisher, at, e.Mode) // best-effort write
+			}
+			return w.Flush()
+		},
+	}
+	return cmd
+}
+
+func newInstalledRemoveCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "remove <ref>",
+		Aliases: []string{"rm"},
+		Short:   "Remove installed agent state (trust pin retained)",
+		Long: `Remove a materialized installed agent and stop related containers.
+
+The publisher trust pin is retained so reinstall does not re-prompt TOFU.
+ref may be name@pub8 or a display alias.`,
+		Example: `  agentpaas installed remove weather@a1b2c3d4
+  agentpaas installed rm weather --yes`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := installedRemoveFactory(cmd, args[0]); err != nil {
+				return fmt.Errorf("new installed remove cmd: %w", err)
+			}
+			if jsonOutput(cmd) {
+				fmt.Println(`{"status":"ok"}`)
+			} else {
+				cmd.Println("Installed agent removed.")
+			}
+			return nil
+		},
+	}
+	cmd.Flags().Bool("yes", false, "Skip confirmation prompts (reserved for future interactive confirm)")
+	return cmd
+}
+
+func newInstalledMapCredentialCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "map-credential <ref> <declared>=<local>",
+		Short: "Map a declared policy credential to a local secret name",
+		Long: `Map a credential name declared in an installed agent's policy to a local
+secret stored via 'agentpaas secret add'.
+
+declared is the name from the bundle policy; local is the secret store key.
+ref may be name@pub8 or a display alias.`,
+		Example: `  agentpaas secret add openai-key
+  agentpaas installed map-credential weather OPENAI_API_KEY=openai-key
+  agentpaas installed map-credential weather@a1b2c3d4 OPENROUTER_API_KEY=or-key`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			homeDir, err := homeDirPath(cmd)
+			if err != nil {
+				return fmt.Errorf("new installed map credential cmd: %w", err)
+			}
+			state, err := installStateFactory(cmd)
+			if err != nil {
+				return fmt.Errorf("new installed map credential cmd: %w", err)
+			}
+			store, err := secretStoreFactory(cmd)
+			if err != nil {
+				return fmt.Errorf("new installed map credential cmd: %w", err)
+			}
+			paths := home.NewHomePaths(homeDir)
+			if err := install.ApplyMapCredential(install.MapCredentialOpts{
+				State:     state,
+				Store:     store,
+				Ref:       args[0],
+				Mapping:   args[1],
+				StateRoot: paths.State,
+			}); err != nil {
+				return err
+			}
+			if jsonOutput(cmd) {
+				fmt.Println(`{"status":"ok"}`)
+			} else {
+				cmd.Println("Credential mapping saved.")
+			}
+			return nil
+		},
+	}
+	return cmd
+}

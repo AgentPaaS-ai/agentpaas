@@ -1,0 +1,33 @@
+{
+  "schema_version": "agentpaas.workflow.handoff/v1",
+  "workflow_id": "wf_research_v2",
+  "handoff_id": "ho_normal_001",
+  "from_node_id": "stage_research",
+  "to_node_id": "stage_draft",
+  "producer_run_id": "run_r123",
+  "producer_attempt_id": "attempt_a456",
+  "producer_result_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "sequence": 1,
+  "created_at": "2026-07-16T12:00:00Z",
+  "classification": "internal",
+  "context": {
+    "schema": "example/research-notes/v1",
+    "value": {
+      "notes": "The research phase found three key insights about the market trends in Q3 2026.",
+      "sources": ["https://example.com/report1", "https://example.com/report2"],
+      "confidence": 0.85
+    }
+  },
+  "artifacts": [
+    {
+      "artifact_id": "artifact_notes_001",
+      "owner_node_id": "stage_research",
+      "owner_run_id": "run_r123",
+      "immutable_ref": "artifacts/research-notes.json",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "media_type": "application/json",
+      "size_bytes": 2048,
+      "classification": "internal"
+    }
+  ]
+}

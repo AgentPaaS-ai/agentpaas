@@ -1,0 +1,43 @@
+# LLM Configuration
+
+Configure the LLM provider for an agent by writing the llm: section in agent.yaml.
+
+## Steps
+
+At build/pack time, after the user has chosen the project and LLM provider:
+
+1. Tell the user to run `agentpaas secret add <name>` in a separate
+   terminal and paste the key when prompted. Wait for the user to confirm it
+   is stored; never ask for or receive the key in this conversation.
+2. Validate it works: call `agentpaas_secret_test` with the credential name
+3. Configure the agent: call `agentpaas_llm_configure` with project_dir,
+   provider, model, and credential
+
+## Providers
+
+Only **openrouter** is trial-proven for the cold/stranger path. The other
+names have OSS adapters (unit/pack) but are not a cold-gate menu.
+
+- openrouter (recommended; trial-proven): simple API key, `openrouter-key`
+- openai: OSS adapter; simple API key, `openai-key` (or user label)
+- anthropic: OSS adapter; simple API key, `anthropic-key` (or user label)
+- xai / nous: OSS adapters exist; do not offer on the cold path
+
+## OpenRouter model defaults (cold path / T11)
+Do **not** offer a model menu. Do **not** offer stale IDs
+(`deepseek/deepseek-chat`, `deepseek/deepseek-chat-v3-0324`,
+`deepseek/deepseek-r1-0528:free`, `openai/gpt-4o-mini`, etc.).
+
+Cold weather demo default (single choice):
+- provider: `openrouter`
+- model: `deepseek/deepseek-v4-flash`
+- credential: `openrouter-key`
+
+Tell the user once: "Using OpenRouter `deepseek/deepseek-v4-flash`." Only if
+they explicitly ask for a different provider/model, switch then.
+
+Do not offer Nous token-exchange or xAI OAuth on the cold path.
+
+## Security
+- The credential arg is a Keychain secret NAME (label), never the value
+- Secret values are never in agent.yaml, container env, or audit trail

@@ -1,0 +1,175 @@
+package daemon
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	controlv1 "github.com/AgentPaaS-ai/agentpaas/api/control/v1"
+	"github.com/AgentPaaS-ai/agentpaas/internal/runtime"
+)
+
+// ADVERSARY TEST SUITE for B14B-T02 HTTP_PROXY policy enforcement
+// Tests attempt to break proxy routing, IP discovery, NO_PROXY, env injection claims.
+// Run: go test ./internal/daemon -race -count=1 -run 'AdversaryT02' -v
+
+func TestAdversaryT02_ProxyEnvInjection_MaliciousGatewayIP(t *testing.T) {
+	badIP := "172.18.0.42\nHTTP_PROXY=http://attacker:1234\n"
+	var capturedSpec runtime.ContainerSpec
+	mock := defaultMockRuntimeDriver()
+	mock.inspectContainerIPFunc = func(_ context.Context, _ runtime.ContainerID, _ string) (string, error) {
+		return badIP, nil
+	}
+	mock.createFunc = func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+		if spec.Image == runtime.GatewayImage {
+			return runtime.ContainerID("gateway-test"), nil
+		}
+		capturedSpec = spec
+		return runtime.ContainerID("container-test"), nil
+	}
+
+	server, _ := testServerWithMockRuntime(t, mock)
+	_, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// After fix: malicious IP should be rejected, no proxy env vars set.
+	for _, env := range capturedSpec.Env {
+		if strings.Contains(env, "HTTP_PROXY") || strings.Contains(env, "HTTPS_PROXY") {
+			t.Fatalf("ADVERSARY: proxy env var set despite malicious gateway IP: %q", env)
+		}
+		if strings.Contains(env, "\n") || strings.Contains(env, "attacker") {
+			t.Fatalf("ADVERSARY: env var injection succeeded: %q", env)
+		}
+	}
+}
+
+// TestAdversaryT02_NO_PROXY_IncludesGatewayIP confirms that NO_PROXY
+// includes the gateway IP so the harness's rewritten LLM calls (already
+// pointing at gateway:7799) are not double-proxied through HTTP_PROXY.
+// Bug 021 regression fix: HTTP_PROXY is set for non-LLM egress, but
+// NO_PROXY must exempt the gateway itself.
+func TestAdversaryT02_NO_PROXY_IncludesGatewayIP(t *testing.T) {
+	const gatewayIP = "172.18.0.42"
+	var capturedSpec runtime.ContainerSpec
+	mock := defaultMockRuntimeDriver()
+	mock.inspectContainerIPFunc = func(_ context.Context, id runtime.ContainerID, networkID string) (string, error) {
+		return gatewayIP, nil
+	}
+	mock.createFunc = func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+		if spec.Image == runtime.GatewayImage {
+			return runtime.ContainerID("gateway-test"), nil
+		}
+		capturedSpec = spec
+		return runtime.ContainerID("container-test"), nil
+	}
+
+	server, _ := testServerWithMockRuntime(t, mock)
+	_, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	// NO_PROXY must contain the gateway IP so LLM calls (rewritten to
+	// http://gatewayIP:7799 by harness) bypass the proxy.
+	foundNO_PROXY := false
+	for _, env := range capturedSpec.Env {
+		if strings.HasPrefix(env, "NO_PROXY=") {
+			foundNO_PROXY = true
+			if !strings.Contains(env, gatewayIP) {
+				t.Fatalf("ADVERSARY: NO_PROXY does not contain gateway IP %q: %s", gatewayIP, env)
+			}
+		}
+	}
+	if !foundNO_PROXY {
+		t.Fatal("ADVERSARY: NO_PROXY not set — LLM calls would be double-proxied")
+	}
+
+	// Gateway-native routing must also be present.
+	foundGatewayURL := false
+	for _, env := range capturedSpec.Env {
+		if env == fmt.Sprintf("AGENTPAAS_GATEWAY_URL=http://%s:7799", gatewayIP) {
+			foundGatewayURL = true
+		}
+	}
+	if !foundGatewayURL {
+		t.Fatal("AGENTPAAS_GATEWAY_URL not set")
+	}
+}
+
+// TestAdversaryT02_GatewayIPDiscovery_EmptyOnError confirms non-fatal empty IP
+// path (agent runs without proxy). Race or transient inspect failure leads to
+// direct (blocked) connections.
+func TestAdversaryT02_GatewayIPDiscovery_EmptyOnError(t *testing.T) {
+	var capturedSpec runtime.ContainerSpec
+	mock := defaultMockRuntimeDriver()
+	mock.inspectContainerIPFunc = func(context.Context, runtime.ContainerID, string) (string, error) {
+		return "", fmt.Errorf("transient docker error")
+	}
+	mock.createFunc = func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+		if spec.Image == runtime.GatewayImage {
+			return runtime.ContainerID("gateway-test"), nil
+		}
+		capturedSpec = spec
+		return runtime.ContainerID("container-test"), nil
+	}
+
+	server, _ := testServerWithMockRuntime(t, mock)
+	resp, err := server.Run(context.Background(), &controlv1.RunRequest{AgentName: "test-agent"})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if resp.GetRunId() == "" {
+		t.Fatal("Run() returned empty run_id")
+	}
+
+	for _, env := range capturedSpec.Env {
+		if isProxyEnvVar(env) {
+			t.Fatalf("ADVERSARY BREAK: proxy env set despite InspectContainerIP failure: %s", env)
+		}
+	}
+}
+
+// TestAdversaryT02_EnvOverride_ProxyVars ensures user-controlled env cannot
+// override our injected proxy settings (no Env field in RunRequest path).
+func TestAdversaryT02_EnvOverride_ProxyVars(t *testing.T) {
+	// RunRequest has no Env field; proxyEnv is authoritative.
+	// Reflect on the protobuf to ensure no Env / Environment fields appear.
+	req := &controlv1.RunRequest{AgentName: "test-agent"}
+	md := req.ProtoReflect().Descriptor()
+	for i := 0; i < md.Fields().Len(); i++ {
+		name := string(md.Fields().Get(i).Name())
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "env") || strings.Contains(lower, "environ") {
+			t.Errorf("RunRequest exposes env-like field %q — user env merge risk", name)
+		}
+	}
+	// Defense-in-depth: Run with mock must not pick up process HTTP_PROXY into agent env.
+	t.Setenv("HTTP_PROXY", "http://evil-proxy.example:8080")
+	t.Setenv("HTTPS_PROXY", "http://evil-proxy.example:8080")
+	var capturedSpec runtime.ContainerSpec
+	mock := defaultMockRuntimeDriver()
+	mock.inspectContainerIPFunc = func(_ context.Context, _ runtime.ContainerID, _ string) (string, error) {
+		return "172.18.0.2", nil
+	}
+	mock.createFunc = func(_ context.Context, spec runtime.ContainerSpec) (runtime.ContainerID, error) {
+		if spec.Image == runtime.GatewayImage {
+			return runtime.ContainerID("gateway-test"), nil
+		}
+		capturedSpec = spec
+		return runtime.ContainerID("container-test"), nil
+	}
+	server, _ := testServerWithMockRuntime(t, mock)
+	if _, err := server.Run(context.Background(), req); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, env := range capturedSpec.Env {
+		if strings.Contains(env, "evil-proxy.example") {
+			t.Fatalf("process HTTP_PROXY leaked into agent env: %q", env)
+		}
+	}
+}
+
+// End of adversary_t02_test.go — exercises proxy bypass, injection, discovery vectors.

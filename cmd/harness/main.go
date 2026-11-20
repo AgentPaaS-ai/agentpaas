@@ -1,0 +1,256 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/AgentPaaS-ai/agentpaas/internal/harness"
+	"github.com/AgentPaaS-ai/agentpaas/internal/mcpmanager"
+)
+
+func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "-version", "version":
+			fmt.Println(harness.HarnessVersion)
+			return
+		}
+	}
+
+	// Bundle values are platform env, read once before the firewall and before
+	// any component code. A refusal has already written one reason line.
+	if err := harness.LoadRunBundleFromEnv(context.Background(), os.Stderr); err != nil {
+		os.Exit(1)
+	}
+
+	harness.InitEgressFirewall()
+	harness.DropNetAdminCapability()
+
+	cfg := buildConfig()
+	cfg.Bake = bakeRequested(os.Args)
+
+	// B4: Log env keys and value lengths at startup for diagnostics.
+	// Never log values — they may contain credentials or OAuth tokens.
+	logEnvSummary()
+
+	// B30-T04: durable-path resource ceilings. On the durable
+	// (InvokeDeployment) path, the daemon sets AGENTPAAS_DURABLE_PATH=1 and
+	// the policy-derived CPU/PID limits. On the legacy v0.2.3 path, these
+	// env vars are absent and the Python runner falls back to the fixed
+	// RLIMIT_CPU=30 / RLIMIT_NPROC=0 constants with "legacy compat"
+	// comments.
+	if v := os.Getenv("AGENTPAAS_DURABLE_PATH"); v == "1" || v == "true" {
+		cfg.DurablePath = true
+		cfg.CPUQuotaSeconds = envInt64("AGENTPAAS_CPU_QUOTA_SECONDS", 0)
+		cfg.MaxPIDs = envInt("AGENTPAAS_MAX_PIDS", 0)
+	}
+
+	// Wire the audit appender if a path is provided. The daemon mounts
+	// a volume and sets AGENTPAAS_AUDIT_PATH so harness audit events
+	// (egress decisions, MCP calls) flow back to the daemon.
+	if auditPath := os.Getenv("AGENTPAAS_AUDIT_PATH"); auditPath != "" {
+		appender, err := harness.NewFileAuditAppender(auditPath)
+		if err != nil {
+			log.Printf("harness: audit appender: %v", err)
+		} else {
+			cfg.Audit = appender
+			defer func() { _ = appender.Close() }() // best-effort close
+		}
+	}
+
+	server := harness.NewServer(cfg)
+
+	// B33-T05: Always install the MCP router in production. This replaces
+	// the legacy synthetic-success fallback with a real Router backed by a
+	// Manager. Server registrations populate at runtime via the invoke
+	// payload or sidecar. When no servers are registered, MCP calls fail
+	// closed with "mcp server/tool not allowed" — no synthetic success.
+	//
+	// Managed service bindings (agentpaas-service transport) are resolved
+	// through a ManagedServiceResolver when the ServiceRegistry is supplied
+	// by the daemon (future: sidecar file); until then, managed calls fail
+	// closed with ErrCodeRouterUnavail.
+	manager := mcpmanager.NewManager()
+	lifecycle := mcpmanager.NewLifecycle(manager, nil, "")
+	router := mcpmanager.NewRouter(manager, lifecycle, http.DefaultClient, cfg.Audit)
+	server.SetRouter(router, manager)
+	log.Printf("harness: MCP router installed (production mode, fail-closed)")
+
+	// B33-T08 c3: Load MCP binding sidecar if the daemon provided one.
+	if cfg.MCPBindingSidecarPath != "" {
+		if err := server.InstallMCPBindingSidecar(cfg.MCPBindingSidecarPath); err != nil {
+			log.Printf("harness: MCP binding sidecar load failed: %v", err)
+		} else {
+			log.Printf("harness: MCP binding sidecar loaded from %s", cfg.MCPBindingSidecarPath)
+		}
+	}
+	if cfg.MCPBindingsJSON != "" {
+		if err := server.InstallHTTPMCPBindingsJSON(cfg.MCPBindingsJSON); err != nil {
+			log.Printf("harness: MCP bindings JSON install failed: %v", err)
+		} else {
+			log.Printf("harness: MCP bindings JSON installed")
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		sig := <-sigCh
+		log.Printf("harness: received signal %v, shutting down", sig)
+		cancel()
+	}()
+
+	log.Printf("harness: listening on %s, agent=%s, agent_kind=%s", cfg.Addr, cfg.AgentPath, cfg.AgentKind)
+	if cfg.AgentKind == "mcp_service" {
+		bridgeAddr := envOrDefault("AGENTPAAS_MCP_HTTP_ADDR", "0.0.0.0:8080")
+		log.Printf("harness: MCP HTTP bridge will start on %s", bridgeAddr)
+	}
+	if err := server.ListenAndServe(ctx); err != nil {
+		log.Printf("harness: server error: %v", err)
+		os.Exit(1)
+	}
+}
+
+func detectPython() string {
+	if v := os.Getenv("AGENTPAAS_PYTHON"); v != "" {
+		return v
+	}
+	for _, name := range []string{"python3", "python"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return path
+		}
+	}
+	return "python3"
+}
+
+func envOrDefault(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultVal
+}
+
+func envDuration(key string, defaultVal time.Duration) time.Duration {
+	if v := os.Getenv(key); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			return d
+		}
+	}
+	return defaultVal
+}
+
+func envInt64(key string, defaultVal int64) int64 {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			return n
+		}
+	}
+	return defaultVal
+}
+
+func envInt(key string, defaultVal int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return defaultVal
+}
+
+// bakeRequested is true only from process start. AGENTPAAS_BAKE=0 wins over
+// --bake so a container committed from bake can be started as a worker.
+// A request cannot select bake.
+func bakeRequested(args []string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("AGENTPAAS_BAKE"))) {
+	case "0", "false", "no", "off":
+		return false
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return len(args) > 1 && args[1] == "--bake"
+}
+
+// logEnvSummary logs harness-relevant env keys and value lengths at startup.
+// Never logs values — they may contain credentials or OAuth tokens.
+func logEnvSummary() {
+	keys := []string{
+		"AGENTPAAS_OAUTH_BINDINGS_JSON",
+		"AGENTPAAS_CREDENTIALS_JSON",
+		"AGENTPAAS_CREDENTIALS_PATH",
+		"AGENTPAAS_AGENT_KIND",
+		"AGENTPAAS_MCP_DECLARED_TOOLS",
+		"AGENTPAAS_MCP_CAPABILITY",
+		"AGENTPAAS_DURABLE_PATH",
+		"AGENTPAAS_CPU_QUOTA_SECONDS",
+		"AGENTPAAS_MAX_PIDS",
+		"AGENTPAAS_ADDR",
+		"AGENTPAAS_MCP_HTTP_ADDR",
+		"AGENTPAAS_MCP_BINDINGS_JSON",
+		"AGENTPAAS_BUNDLE_URL",
+		"AGENTPAAS_BUNDLE_SHA256",
+		"AGENTPAAS_BUNDLE_SIZE",
+		"AGENTPAAS_BUNDLE_REHASH",
+		"AGENTPAAS_BAKE",
+	}
+	for _, k := range keys {
+		v := os.Getenv(k)
+		if v == "" {
+			log.Printf("harness: env %s = (empty)", k)
+		} else {
+			log.Printf("harness: env %s = %d chars", k, len(v))
+		}
+	}
+
+	// B5: Cross-check expectation marker vs actual bindings.
+	if os.Getenv("AGENTPAAS_OAUTH_EXPECTED") == "1" {
+		bindings := os.Getenv("AGENTPAAS_OAUTH_BINDINGS_JSON")
+		if bindings == "" {
+			log.Printf("WARN: harness: AGENTPAAS_OAUTH_EXPECTED=1 but AGENTPAAS_OAUTH_BINDINGS_JSON is empty — OAuth bindings were lost in transit (DO eviction? configure_egress miss?)")
+		} else {
+			log.Printf("harness: OAuth expected and present (%d chars)", len(bindings))
+		}
+	}
+}
+
+// buildConfig constructs harness.Config from env.
+// Durable-path /invoke timeout is Server.invokeTimeoutForPayload (TimeEnvelope-derived).
+// Config.InvokeTimeout is only the v0.2.3 legacy/compat fallback when no envelope is present.
+func buildConfig() harness.Config {
+	return harness.Config{
+		Addr:                   envOrDefault("AGENTPAAS_ADDR", "127.0.0.1:8080"),
+		AgentPath:              envOrDefault("AGENTPAAS_AGENT_PATH", "/agent/main.py"),
+		Python:                 detectPython(),
+		ImportTimeout:          envDuration("AGENTPAAS_IMPORT_TIMEOUT", 60*time.Second),  // legacy/compat default
+		InvokeTimeout:          envDuration("AGENTPAAS_INVOKE_TIMEOUT", 300*time.Second), // legacy/compat fallback; durable uses invokeTimeoutForPayload
+		TerminateGrace:         envDuration("AGENTPAAS_TERMINATE_GRACE", 10*time.Second), // legacy/compat operational grace
+		StdoutPath:             envOrDefault("AGENTPAAS_STDOUT_PATH", "/dev/stdout"),
+		StderrPath:             envOrDefault("AGENTPAAS_STDERR_PATH", "/dev/stderr"),
+		CredentialsPath:        os.Getenv("AGENTPAAS_CREDENTIALS_PATH"),
+		CredentialsJSON:        os.Getenv("AGENTPAAS_CREDENTIALS_JSON"),
+		OAuthBindingsJSON:      os.Getenv("AGENTPAAS_OAUTH_BINDINGS_JSON"),
+		JournalKeyPath:         os.Getenv("AGENTPAAS_JOURNAL_KEY_PATH"),
+		JournalPath:            os.Getenv("AGENTPAAS_JOURNAL_PATH"),
+		AttemptID:              os.Getenv("AGENTPAAS_ATTEMPT_ID"),
+		LeaseID:                os.Getenv("AGENTPAAS_LEASE_ID"),
+		RunID:                  os.Getenv("AGENTPAAS_RUN_ID"),
+		DelegationSnapshotPath: os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_PATH"),
+		DelegationSnapshotJSON: os.Getenv("AGENTPAAS_DELEGATION_SNAPSHOT_JSON"),
+		MCPBindingSidecarPath:  os.Getenv("AGENTPAAS_MCP_BINDING_SIDECAR_PATH"),
+		MCPBindingsJSON:        os.Getenv("AGENTPAAS_MCP_BINDINGS_JSON"),
+		AgentKind:              os.Getenv("AGENTPAAS_AGENT_KIND"),
+		MCPDeclaredTools:       os.Getenv("AGENTPAAS_MCP_DECLARED_TOOLS"),
+		MCPMaxConcurrency:      envInt("AGENTPAAS_MCP_MAX_CONCURRENCY", 0),
+	}
+}

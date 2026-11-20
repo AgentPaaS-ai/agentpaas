@@ -1,0 +1,266 @@
+# Policy Reference
+
+`policy.yaml` is the canonical policy file for an agent. It lives in git
+next to `agent.yaml`, is reviewed in PRs, and compiles into agentgateway
+configuration at apply time.
+
+See [how-enforcement-works.md](how-enforcement-works.md) for runtime
+enforcement and [quickstart.md](quickstart.md) for a worked example.
+
+## File format
+
+```yaml
+version: "1"
+agent:
+  name: <agent-name>
+  description: <optional description>
+egress: []        # outbound network rules (allow-list)
+credentials: []   # credential bindings for egress
+mcp_servers: []   # MCP server definitions (optional)
+hooks: []         # webhook destinations (optional)
+ingress: []       # inbound trigger listeners (optional)
+```
+
+Unknown fields are rejected. Typos fail closed instead of silently weakening
+security.
+
+## Top-level fields
+
+| Field | Required | Description |
+|---|---|---|
+| `version` | yes | Policy schema version. Use `"1"` for P1. |
+| `agent.name` | yes | Agent identity; should match `agent.yaml` name. |
+| `agent.description` | no | Human-readable description. |
+| `egress` | no | Allow-list of outbound destinations. Empty = default deny. |
+| `credentials` | no | Credential sources injected by the gateway broker. |
+| `mcp_servers` | no | MCP servers this agent may use, with optional per-tool allow and deny lists. |
+| `ingress` | no | Inbound webhook/trigger listeners. |
+| `llm_budget` | no | Token and spend ceilings compiled into the LLM route. |
+| `guardrails.pii` | no | PII masking or rejection rules for LLM content. |
+
+## Egress rules
+
+Each entry in `egress` is an **allow** rule. Domains not listed are denied
+(default deny). There is no explicit `action: deny` field — omission is
+denial.
+
+| Field | Required | Description |
+|---|---|---|
+| `domain` | usually | Exact hostname (e.g. `api.openai.com`). Subdomains require explicit entries or `allow_wildcard: true`. |
+| `ports` | no | Allowed ports (e.g. `[443]`). |
+| `methods` | no | Allowed HTTP methods (e.g. `[GET, POST]`). |
+| `credential` | no | Credential `id` to bind for this destination. |
+| `allow_wildcard` | no | Set `true` to allow wildcard domains like `*.example.com`. |
+| `cidr` | no | IP-CIDR allow rule (requires `allow_private: true` for RFC1918). |
+
+Compiled into agentgateway CEL rules:
+
+```yaml
+frontendPolicies:
+  networkAuthorization:
+    rules:
+      - allow: dns.domain == "api.example.com"
+```
+
+## Credentials
+
+| Field | Required | Description |
+|---|---|---|
+| `id` | yes | Unique credential identifier referenced by egress rules. |
+| `type` | yes | One of: `header`, `brokered`, `file`, `direct_lease`. |
+| `header` | for `header` | HTTP header name for injection (e.g. `Authorization`). |
+| `value` | for `header` | Header value template (e.g. `Bearer ${secret}`). |
+| `service` | for `brokered` | Keychain service name. |
+| `path` | for `file` / `direct_lease` | Mount path inside the container. |
+| `mode` | for `direct_lease` | `file` (P1; `env` is rejected). |
+| `reason` | for `direct_lease` | Justification string (required). |
+
+Brokered credentials are resolved from the macOS keychain and injected at
+the gateway. The agent never sees the raw secret.
+
+## Ingress rules
+
+| Field | Required | Description |
+|---|---|---|
+| `path` | yes | URL path prefix for the trigger listener. |
+| `port` | no | Listen port (default `7718`). |
+
+## MCP servers
+
+Each `mcp_servers` entry names one Model Context Protocol server. The server host must also appear on the egress allow list. Host allow is not enough on AgentPaaS Cloud: tool names are enforced from the signed deployment policy.
+
+| Field | Required | Description |
+|---|---|---|
+| `url` | yes | Server URL. The hostname must be on the egress allow list. |
+| `allowed_tools` | no | Exact tool names this deployment may list and call. |
+| `denied_tools` | no | Exact tool names this deployment must not list or call. Deny wins over allow. |
+
+```yaml
+mcp_servers:
+  - url: https://mcp.example.com
+    allowed_tools:
+      - read_issue
+      - list_issues
+    denied_tools:
+      - delete_issue
+```
+
+### Cloud per-tool enforcement
+
+On AgentPaaS Cloud, the signed deployment policy is the source of truth for which tools exist for that deployment.
+
+- `tools/list` returns only the tools that policy allows for that deployment.
+- `tools/call` for a tool missing from `allowed_tools`, listed in `denied_tools`, or hidden from `tools/list` is denied before the tool runs. No upstream call is made.
+- An empty `allowed_tools` list denies every tool on that server.
+- Changing the tool set means editing policy and redeploying. It is not a prompt change.
+
+## Examples
+
+### Allow one domain
+
+```yaml
+version: "1"
+agent:
+  name: weather-agent
+egress:
+  - domain: api.weather.gov
+    ports: [443]
+credentials: []
+ingress: []
+```
+
+### Allow multiple domains
+
+```yaml
+version: "1"
+agent:
+  name: invoice-chaser
+egress:
+  - domain: api.openai.com
+    ports: [443]
+    credential: openai-prod
+  - domain: api.stripe.com
+    ports: [443]
+    methods: [GET]
+    credential: stripe-readonly
+  - domain: hooks.slack.com
+    ports: [443]
+    methods: [POST]
+credentials:
+  - id: openai-prod
+    type: brokered
+    service: openai-prod
+  - id: stripe-readonly
+    type: brokered
+    service: stripe-readonly
+ingress: []
+```
+
+### Default deny
+
+An empty egress list denies all outbound traffic:
+
+```yaml
+version: "1"
+agent:
+  name: locked-down-agent
+egress: []
+credentials: []
+ingress: []
+```
+
+Any HTTP call from the agent receives `403` or a connection error at the
+gateway. This is the secure default scaffolded by `agent init --noninteractive`.
+
+### Credential injection
+
+```yaml
+version: "1"
+agent:
+  name: api-client
+egress:
+  - domain: api.example.com
+    ports: [443]
+    credential: api-key
+credentials:
+  - id: api-key
+    type: header
+    header: X-API-Key
+    value: "${api-key}"
+ingress: []
+```
+
+Store the secret in the keychain before running:
+
+```bash
+agent secrets set api-key
+```
+
+## LLM budgets
+
+Use `llm_budget` to cap token use and recorded spend for an LLM run:
+
+```yaml
+llm_budget:
+  max_tokens: 100000
+  max_tokens_per_request: 8000
+  max_cost_usd: "10.00"
+```
+
+`max_tokens` is the total run ceiling. `max_tokens_per_request` is the ceiling for one LLM request. `max_cost_usd` is the recorded spend ceiling. Budget exhaustion fails the run.
+
+## PII guardrails
+
+Use the mapping form below. This release accepts built-in detectors only. `policy validate` and `pack` refuse a non-empty `patterns` list.
+
+```yaml
+guardrails:
+  pii:
+    action: mask
+    builtins: [Email, Ssn, DriversLicense, CreditCard, Key]
+```
+
+`mask` replaces detected values with `[REDACTED]` before audit persistence. `reject` blocks the request. Custom patterns are not supported. The supported built-in names are `Email`, `Ssn`, `DriversLicense`, `CreditCard`, and `Key`.
+
+## Inspect the compiled contract
+
+```bash
+agentpaas policy show
+agentpaas policy validate
+```
+
+The commands show the compiled policy and the same pre-deploy validation used by pack. They print credential IDs, never secret values.
+
+## Related docs
+
+- [Cloud release notes](./customer/RELEASE-v0.5.0.md)
+- [How enforcement works](./how-enforcement-works.md)
+
+## Validation rules
+
+- Domain matching is exact by default. `example.com` does not allow
+  `api.example.com`.
+- Wildcard domains require `allow_wildcard: true`.
+- Private CIDR ranges require `allow_private: true`.
+- Brokered credential injection is header-only in P1.
+- The compiler produces a deterministic `policy_digest` regardless of YAML
+  key order or comments.
+
+## Inspect the compiled contract
+
+After pack, inspect what will be enforced:
+
+```
+agentpaas policy show
+agentpaas policy validate
+```
+
+`show` renders the compiled contract for a packed or deployed target. `validate` renders the same view as a pre-deploy dry-run. Credentials appear as IDs, never values.
+
+The Cloud console Gateway Policy page and the policy block on a deployment detail are a read-only window on that same compiled contract (digest plus those CLI commands). Components and Workflows only link to Policy. The console never edits policy.
+
+## Related docs
+
+- [How enforcement works](how-enforcement-works.md)
+- [Known limitations](known-limitations.md)
+- [Threat model](threat-model.md)

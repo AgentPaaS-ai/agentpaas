@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "agentpaas": {
+      "type": "stdio",
+      "command": "/opt/homebrew/bin/agentpaas-mcp",
+      "args": []
+    }
+  }
+}

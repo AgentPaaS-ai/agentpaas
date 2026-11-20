@@ -1,0 +1,16 @@
+kind: pipeline
+pipeline:
+  stages:
+    - name: producer
+      package_name: pkg-a
+      package_version: "1.0.0"
+      bundle_digest: sha256:aaa111
+      handoff: public
+      output_schema: example/output/v1
+    - name: consumer
+      package_name: pkg-b
+      package_version: "1.0.0"
+      bundle_digest: sha256:bbb222
+      handoff: internal
+      accepted_schemas:
+        - example/different/v1

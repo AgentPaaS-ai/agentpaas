@@ -1,0 +1,12 @@
+version: "1.0"
+agent:
+  name: openrouter-project
+  description: "Legacy OpenRouter project fixture"
+egress:
+  - domain: "openrouter.ai"
+    ports: [443]
+credentials:
+  - id: "openrouter-key"
+    type: header
+    header: "Authorization"
+    value: "${env:OPENROUTER_KEY}"

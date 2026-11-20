@@ -1,0 +1,208 @@
+# Changelog
+
+All notable changes to AgentPaaS are documented in this file.
+Format follows [Keep a Changelog](https://keepachangelog.com/).
+
+## 0.5.2 — Unreleased
+
+### Added
+- Linux/amd64 packs now produce a signed run bundle (`run.bundle.tar`) next to `agent.lock`. The lock records the bundle digest, size, and runtime (`py311-r1`).
+- The cloud accepts run bundles through the existing chunked upload and verifies signature, digest, size, ownership, and runtime before storing them.
+- The harness verifies a downloaded bundle's digest and size, refuses unsafe paths and links, and checks the restored tree against the signed bundle.
+- Bake mode (`AGENTPAAS_BAKE=1` or `--bake`) and `make base-image` / `make py311-r1` targets for building the base image.
+
+### Changed
+- `agentpaas cloud push --lock agent.lock` uploads the run bundle when the lock references one. Pushing an already-stored bundle uploads nothing new. An older cloud reports `the cloud is older than the CLI`.
+- `agentpaas cloud images` shows a `KIND` column, and the image API distinguishes bundles from images.
+- Pack and export secret scans use only AgentPaaS's built-in rules, so outside configuration or inline allow comments cannot change the result.
+
+### Fixed
+- Pack exports images through the Docker daemon that built them and handles Docker's tar directory entries correctly.
+- Refused or expired bundle uploads are cleaned up without touching bundles that were already accepted.
+
+### Known limitations
+- Deploying and running agents from a run bundle is not available yet. Packs without `--target linux/amd64` keep the existing image path, and existing limits are unchanged.
+
+## 0.5.0 — 2026-09-20
+
+### Added
+- LLM budgets through `llm_budget.max_tokens`, `llm_budget.max_tokens_per_request`, and `llm_budget.max_cost_usd`.
+- PII guardrails through `guardrails.pii`, with `mask` and `reject` actions, built-in detectors for `Email`, `Ssn`, `DriversLicense`, `CreditCard`, and `Key`, plus custom patterns.
+- `agentpaas policy show` and `agentpaas policy validate` for compiled policy inspection.
+- Policy lineage output for the compiled contract.
+
+### Changed
+- `agentpaas pack` carries LLM credential references from `agent.yaml` into the compiled signed policy without copying secret values into the bundle or container.
+- PII inspection buffers streams or fails closed when inspection is required.
+- The documented customer path remains Hermes plus the AgentPaaS CLI. Host-specific integrations are customer customization paths.
+
+### Fixed
+- The CLI persists the last successful Cloud API URL. `AGENTPAAS_CLOUD_API_URL` still takes precedence, and logout clears the saved value.
+
+### Security
+- PII values are masked before audit persistence when `action: mask` is active.
+- PII detector, audit, and budget failures fail closed.
+- The preview vault remains a preview backend. This release does not make OpenBao-grade isolation claims.
+
+### Known issues
+- Framework-specific integration guides for Pydantic AI, CrewAI, LangGraph, and LangChain are not part of this release.
+- Host-specific guides for Cursor, Claude Code, and Grok Build are not part of this release. Hermes is the documented host.
+- A provider-specific Nous Research OAuth configuration is pending verification of the production token endpoint, client registration, and scopes.
+
+## 0.4.2 — 2026-09-14
+
+### Fixed
+- Long Gemini (OpenRouter) reasoning could leave a cloud invoke `running` after the provider already finished (`finish_reason=stop`). `Completions.New` waited for one JSON body while OpenRouter streamed; Python `agent.llm()` never returned; `/invoke` held the mutex until the 30 minute lease.
+- Single model HTTP call now fail-closes at 5 minutes (socket timeout equals ctx). SSE responses use openai-go `NewStreaming` and return `message.content`. Python RPC read deadline is 310s so a 5 minute model call is not killed at 130s.
+- Cloud cancel/timeout now keep `logs.txt` (`invoke_forward` start/end) so a hung run is diagnosable.
+
+## 0.4.1 — 2026-08-31
+
+### Added
+- MCP server plugin card (kind mcp_service)
+
+### Fixed
+- Do not emit credential on agentgateway 1.3.0 routes
+
+## 0.4.0 — 2026-08-29
+
+### Added
+- MCP and tool deployments (`--type mcp`, `--type tool`)
+- Signed cloud workflows: linear, fan-out (join all), choice (fail-closed), phone-call (depth 1)
+- Component Registry and read-only console: Components, Workflows, Deployments, Runs, Logs
+- Hermes path for one agent and for a workflow
+- Cloud cron (named minimum every_5m)
+- Ingress HMAC webhook, completion webhook, delivery webhook (Hermes or API)
+- File inputs (50 MiB), URL inputs for packed hosts, stage file pointer, bounded retry (3, transient)
+
+### Changed
+- Trial: 5 agents + 5 tools + 5 MCP deployed; unlimited workflow recipes; 10 concurrent runs
+- Cron named minimum every_5m (one-minute rejected)
+
+## 0.3.6 — cloud result/logs, invoke-token store, golden-path doc, M5–M7 cloud CLI
+
+### Added
+- **Cloud result and logs CLI**: commands for retrieving cloud run results and logs.
+- **Invoke-token store**: local storage for cloud invocation tokens.
+- **Cloud CLI golden-path documentation**: operator guidance for the supported workflow.
+- **M5–M7 cloud CLI**: the completed cloud CLI milestones are included on `main`.
+
+## [Unreleased] — v0.3.0-dev
+
+### Changed
+- **Bumped dev version to 0.3.0-dev**: default `CLIVersion`/`DaemonVersion`
+  constants, Makefile ldflags, Formula template, docs, and tests all
+  reference 0.3.0. Old 0.1.x/0.2.x version strings removed or updated.
+- **Homebrew tap path corrected**: docs now point to
+  `AgentPaaS-ai/homebrew-tap` (not `agentpaas-ai/tap`).
+- **Version hygiene script**: `scripts/check-release-versions.sh` gate
+  fails CI if any binary embeds a stale 0.1.x or 0.2.x version string.
+
+### Added
+- **B32 delegation adversary break tests**: 14-pass gate proving
+  delegation RPC correctness, freshness, replay rejection, scope
+  isolation, and multi-tenant safety.
+
+## [0.2.3] — 2026-07-13
+
+### Added
+- **Consolidated defect log** (`docs/defects.md`): single source of truth
+  for all tracked bugs with root cause, reproduce steps, fix, and
+  post-fix verification. Supersedes scattered bug logs.
+
+### Fixed
+- Bug 032: Export source_digest mismatch caused by `.agentpaas.tmp` file
+  contaminating the source digest. Fixed: `.agentpaas.tmp` and
+  `audit-export.json` added to default ignore patterns.
+- Bug 033: Gateway no longer follows HTTP redirects. CheckRedirect on
+  both http.Client instances returns ErrUseLastResponse. Redirect
+  responses returned to agent with redirect_url field. Audited as
+  egress_denied.
+- Bug 034: TLS handshake error on redirect URLs resolved by Bug 033 fix
+  (redirects not followed, so no direct TLS connection to redirect target).
+- Bug 031: SKILL.md now explicitly requires egress hostname confirmation
+  for agent modification, not just creation.
+- Bug 018: SKILL.md now explicitly instructs agent to use `domain` field
+  name (not `host` or `hostname`) in policy.yaml.
+- Bug 027: Install error message for missing uv.lock now clearly explains
+  the issue and provides the exact command to fix it.
+- Bug 028: Added `--limit` as alias for `--page-size` on `audit query`.
+- Bug 035: Audit checkpoint verification now passes during daemon operation
+  AND after shutdown. Lowered DefaultCheckpointCadence from 25 to 1 so every
+  audit record gets an immediate checkpoint. AuditWriter.Close() final
+  checkpoint remains as a safety net for crash scenarios.
+
+## [0.2.2] — 2026-07-12
+
+### Added
+- **After-install Step 0 prerequisite check**: `hermes plugins install` now
+  detects missing prerequisites (colima, docker, agentpaas binaries) and
+  installs them via brew before proceeding. Includes anti-clone guard.
+
+### Fixed
+- Bug 030: Wall clock budget increased from 30s to 120s. The first
+  `agent.llm()` call to an LLM provider can take 10-30s (cold connection,
+  model loading). The 30s default caused `wall_clock_budget_exceeded` kills
+  before the LLM responded.
+
+## [0.2.1] — 2026-07-12
+
+### Added
+- **Post-build pack verification**: Pack now runs
+  a 4-step verification checklist after `docker build` succeeds — SDK presence,
+  image content audit (harness + entry + SDK in image), harness freshness
+  (MD5 match), and smoke test (healthz + readyz). Pack fails closed if any
+  check fails, preventing silent pack-then-runtime-failure cycles.
+- **Doctor skopeo check** (info-level): Doctor now reports whether skopeo is
+  available. Skopeo is an optional dependency for prebuilt image
+  install/export. Default install path (rebuild from source) works without it.
+- **Golden dataset tasks for sharing**: G46-G48 cover bundle export, TOFU
+  install, and fork-chain provenance for pass^k regression testing.
+
+### Fixed
+- Pack no longer succeeds silently when SDK is missing.
+- Post-build verification confirms harness and SDK are in image.
+- Smoke test catches broken harness, missing SDK, and import errors
+  before pack is declared done.
+- Harness freshness check prevents stale harness embedded in images.
+- Pack is not declared successful until the image actually runs.
+
+### Changed
+- Doctor check count increased from 11 to 12 (added skopeo check).
+
+## [0.2.0] — 2026-07-11
+
+### Added
+- **Phase 2 sharing**: Bundle export/import, TOFU trust, provenance chains,
+  fork support, identity onboarding, credential mapping.
+- **Hermes plugin sharing tools**: 8 new tools for identity, export, inspect,
+  install, list, provenance, trust, fork.
+- **Docker Engine readiness gate**: Doctor checks Docker server version and
+  rejects known-vulnerable versions.
+- **Moby SDK migration**: Replaced deprecated `github.com/docker/docker` with
+  `github.com/moby/moby` via go.mod replace directive.
+- **Go 1.26.5**: Upgraded toolchain to fix reachable `govulncheck` findings.
+- **Seven-claim red-team gate**: Integrity, provenance, policy transparency,
+  no-secret-export, no-credential-sharing, lineage integrity, human consent.
+
+### Fixed
+- Bug 021 regression: HTTP_PROXY re-added alongside AGENTPAAS_GATEWAY_URL.
+- Bug 024: SDK `agent.llm()` returns both `text` and `content` keys.
+- Bug 026: Trigger invoke timeout increased to 90s for installed agents.
+- Bug 029: Doctor now respects AGENTPAAS_HOME env var.
+
+## [0.1.1] — 2026-07-06
+
+### Added
+- Credential brokering: raw secrets never cross Docker exec boundary.
+- Gateway-native HTTP routing for rate limiting and guardrails.
+- LLM token budget enforcement at runtime.
+- Cost tracking and observability in harness audit.
+
+### Fixed
+- Bug 019: Daemon wires policy budget to harness BudgetEnforcer.
+- Bug 021: Gateway-native HTTP routing replaces CONNECT tunneling.
+
+## [0.1.0] — 2026-07-02
+
+Initial release.

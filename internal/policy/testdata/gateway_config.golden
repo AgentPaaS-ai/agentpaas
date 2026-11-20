@@ -1,0 +1,59 @@
+config:
+    dns:
+        lookupFamily: V4Only
+binds:
+    - port: 7718
+      listeners:
+        - protocol: HTTP
+          routes:
+            - name: ingress
+              backends:
+                - host: localhost:7718
+    - port: 7799
+      listeners:
+        - protocol: HTTP
+          routes:
+            - name: egress-api-openai-com
+              hostnames:
+                - api.openai.com
+              backends:
+                - host: api.openai.com:443
+                  policies:
+                    backendTLS: {}
+            - name: egress-api-stripe-com
+              hostnames:
+                - api.stripe.com
+              backends:
+                - host: api.stripe.com:443
+                  policies:
+                    backendTLS: {}
+            - name: egress-hooks-slack-com
+              hostnames:
+                - hooks.slack.com
+              backends:
+                - host: hooks.slack.com:443
+                  policies:
+                    backendTLS: {}
+            - name: denied
+              policies:
+                directResponse:
+                    status: 403
+                    body: 'egress denied: domain not in allowlist'
+    - port: 7800
+      listeners:
+        - protocol: HTTP
+          routes:
+            - name: filesystem-readonly
+              backends:
+                - mcp:
+                    targets:
+                        - name: filesystem-readonly
+                          stdio:
+                            cmd: agentpaas-mcp-filesystem
+                            args:
+                                - --root
+                                - ./data
+                                - --readonly
+frontendPolicies:
+    connect:
+        mode: route

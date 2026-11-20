@@ -1,0 +1,2 @@
+# Dependencies are bundled in the distroless base image (python3 stdlib).
+# The AgentPaaS SDK is copied at pack time — do NOT list it here.

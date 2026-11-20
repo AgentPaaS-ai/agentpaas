@@ -1,0 +1,657 @@
+{
+  "generated_at": "2023-11-14T14:13:20-08:00",
+  "fixtures": {
+    "cached_cold": {
+      "mode": "on_demand",
+      "timings": {
+        "admission": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "cleanup": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "first_model_token": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        },
+        "first_progress": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "image_pull": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "model_call": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        },
+        "sandbox_start": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "tool_call": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        }
+      },
+      "resources": {
+        "count": 0,
+        "cpu_percent": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "memory_mb": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "pids": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "container_seconds": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "gateway_overhead_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_in": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_out": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "stored_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "tokens_used": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cache_hit_count": 0,
+        "cache_miss_count": 0,
+        "sampled_from": "0001-01-01T00:00:00Z",
+        "sampled_to": "0001-01-01T00:00:00Z",
+        "interval_ns": 1000000
+      },
+      "regime": "cached_cold"
+    },
+    "cold_image": {
+      "mode": "on_demand",
+      "timings": {
+        "admission": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "cleanup": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "first_model_token": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        },
+        "first_progress": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "image_pull": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 2000000,
+            "p95_ns": 2000000,
+            "p99_ns": 2000000,
+            "max_ns": 2000000
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "model_call": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        },
+        "sandbox_start": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "tool_call": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        }
+      },
+      "resources": {
+        "count": 0,
+        "cpu_percent": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "memory_mb": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "pids": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "container_seconds": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "gateway_overhead_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_in": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_out": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "stored_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "tokens_used": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cache_hit_count": 0,
+        "cache_miss_count": 0,
+        "sampled_from": "0001-01-01T00:00:00Z",
+        "sampled_to": "0001-01-01T00:00:00Z",
+        "interval_ns": 1000000
+      },
+      "regime": "cold_image"
+    },
+    "resident": {
+      "mode": "resident",
+      "timings": {
+        "admission": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "first_model_token": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        },
+        "first_progress": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "gateway_prep": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "model_call": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        }
+      },
+      "resources": {
+        "count": 0,
+        "cpu_percent": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "memory_mb": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "pids": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "container_seconds": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "gateway_overhead_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_in": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_out": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "stored_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "tokens_used": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cache_hit_count": 0,
+        "cache_miss_count": 0,
+        "sampled_from": "0001-01-01T00:00:00Z",
+        "sampled_to": "0001-01-01T00:00:00Z",
+        "interval_ns": 1000000
+      },
+      "regime": "resident"
+    },
+    "warm": {
+      "mode": "warm",
+      "timings": {
+        "admission": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "cleanup": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "first_model_token": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        },
+        "first_progress": {
+          "overhead": {
+            "count": 1,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          }
+        },
+        "model_call": {
+          "overhead": {
+            "count": 0,
+            "p50_ns": 0,
+            "p95_ns": 0,
+            "p99_ns": 0,
+            "max_ns": 0
+          },
+          "provider": {
+            "count": 1,
+            "p50_ns": 1000000,
+            "p95_ns": 1000000,
+            "p99_ns": 1000000,
+            "max_ns": 1000000
+          }
+        }
+      },
+      "resources": {
+        "count": 0,
+        "cpu_percent": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "memory_mb": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "pids": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "container_seconds": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "gateway_overhead_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_in": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "bytes_out": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "stored_bytes": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "tokens_used": {
+          "avg": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "cache_hit_count": 0,
+        "cache_miss_count": 0,
+        "sampled_from": "0001-01-01T00:00:00Z",
+        "sampled_to": "0001-01-01T00:00:00Z",
+        "interval_ns": 1000000
+      },
+      "regime": "warm"
+    }
+  }
+}

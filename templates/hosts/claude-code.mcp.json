@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agentpaas": {
+      "command": "agentpaas-mcp",
+      "args": []
+    }
+  }
+}
